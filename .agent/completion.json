@@ -4,13 +4,14 @@
   "outcome": "ready-for-merge",
   "pr": 2849,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2847/4",
-  "contract_sha256": "eaafb38dfd07c2577f3883c0eb6108892d045876b926d2da7b66621b1a9b8bd7",
-  "head_sha": "89aba51616549a81765c27cc2cf1ee22175992b3",
+  "contract_ref": "refs/db-contracts/2847/5",
+  "contract_sha256": "d785b0a227aa79e0f3423afb6b559eb6f2931be200a143bb2ff0f88e4abc9421",
+  "head_sha": "1d1644feb46d95fe0318c6ad252ed5304944b3d7",
   "files_changed": [
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/db-coordination-events.mjs",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
@@ -20,22 +21,22 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 536, pass 536, fail 0, skipped 0, todo 0 at implementation commit 89aba516. Unchanged from the baseline required for this lane."
+      "evidence": "tests 536, pass 536, fail 0, skipped 0, todo 0 at implementation commit 1d1644fe on the tree merged with main 20a6b1c5. Before the fixture fix, test 550 \"guarded merge derives and admits its one live linked structural issue\" failed here, at the prior head 57f54727, and on PRs #2855/#2856, because its claim expired at 2026-09-13T00:00:00Z."
     },
     {
       "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 68, pass 68, fail 0, skipped 0, todo 0 at implementation commit 89aba516, up from the 61 baseline by the 7 red-first cases this revision adds. Red-first was proven, not asserted: with scripts/orchestrator-flow/outcome-lifecycle.mjs and scripts/db-coordination-events.mjs reverted to the reviewed head b8f9ce7b and the new tests left in place, the suite ran 68 tests with 61 pass and 7 fail, so each new test fails without its fix and passes with it."
+      "evidence": "tests 68, pass 68, fail 0, skipped 0, todo 0 at implementation commit 1d1644fe on the tree merged with main 20a6b1c5, up from the 61 baseline by the 7 red-first cases this revision adds. Red-first was proven, not asserted: with scripts/orchestrator-flow/outcome-lifecycle.mjs and scripts/db-coordination-events.mjs reverted to the reviewed head b8f9ce7b and the new tests left in place, the suite ran 68 tests with 61 pass and 7 fail, so each new test fails without its fix and passes with it."
     },
     {
       "command": "node --test scripts/db-coordination-events.test.mjs scripts/coordination-scenarios.test.mjs scripts/orchestrator-flow/coordination-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 49, pass 49, fail 0, skipped 0, todo 0 at implementation commit 89aba516. Unchanged from the baseline required for this lane, so restricting supersedes to the repair event type broke no existing coordination behaviour."
+      "evidence": "tests 49, pass 49, fail 0, skipped 0, todo 0 at implementation commit 1d1644fe on the tree merged with main 20a6b1c5. Unchanged from the baseline required for this lane, so restricting supersedes to the repair event type broke no existing coordination behaviour."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=284 at implementation commit 89aba516. The HIGH 1 refusal message at scripts/orchestrator-flow/outcome-lifecycle.mjs:239 contains the word 'missing' and is therefore discovered as one new call site, taking the inventory from 283 to 284. This was attributed by experiment rather than assumed: a probe worktree at main da9ff0c6 alone reports 283 and exits 0, so this lane introduced exactly the one site, and a diff of the checker's own discover() output between the two trees showed one added site and none removed. It is registered with an explicit 'excluded' disposition, because the message names a missing coordination lifecycle event in the outcome ledger rather than a missing or unapplied database object. call_site_count and call_site_sha256 were regenerated from discover() rather than hand-edited. The message was deliberately NOT reworded to dodge the audit pattern: the guard exists to force explicit review of every such line, so evading it would not be the same as satisfying it."
+      "evidence": "truth audit OK: call_sites=284 at implementation commit 1d1644fe on the tree merged with main 20a6b1c5, unchanged by the refresh. The HIGH 1 refusal message at scripts/orchestrator-flow/outcome-lifecycle.mjs:239 contains the word 'missing' and is therefore discovered as one new call site, taking the inventory from 283 to 284. This was attributed by experiment rather than assumed: a probe worktree at main da9ff0c6 alone reports 283 and exits 0, so this lane introduced exactly the one site, and a diff of the checker's own discover() output between the two trees showed one added site and none removed. It is registered with an explicit 'excluded' disposition, because the message names a missing coordination lifecycle event in the outcome ledger rather than a missing or unapplied database object. call_site_count and call_site_sha256 were regenerated from discover() rather than hand-edited. The message was deliberately NOT reworded to dodge the audit pattern: the guard exists to force explicit review of every such line, so evading it would not be the same as satisfying it."
     }
   ],
   "assumptions_resolved": [
@@ -45,7 +46,8 @@
     "The in-scope Mediums are closed: the duplicate-event_id repair no longer erases the legitimate original alongside the copy, event_id derivation now includes supersedes so two repair events cannot collide, and completeOutcome now uses the same bounded read-back backoff this pull request exists to introduce. The Low 'phantom supersedes ids' finding is closed by the same-issue outcome-id filter.",
     "detail was deliberately left out of the event_id derivation. It is free prose that does not distinguish one governed action from another, so including it would change existing ids for zero collision benefit.",
     "This evidence pair is a refresh. head_sha 89aba516 is the IMPLEMENTATION commit and not the commit carrying these two .agent files, and files_changed lists only implementation files. Generation 4 was required because generation 3 did not declare the throughput truth-audit registry, which this revision must write.",
-    "Main moved from c7465a75 to da9ff0c6 while this branch waited, leaving the pull request CONFLICTING. That was a hard blocker rather than an optional refresh, because GitHub cannot build a merge ref for a conflicting pull request and every pull_request-triggered workflow, including the required contract check, was silently suppressed. Main was merged in; only the shared .agent pair conflicted and no code file did."
+    "Main moved from c7465a75 to da9ff0c6 while this branch waited, leaving the pull request CONFLICTING. That was a hard blocker rather than an optional refresh, because GitHub cannot build a merge ref for a conflicting pull request and every pull_request-triggered workflow, including the required contract check, was silently suppressed. Main was merged in; only the shared .agent pair conflicted and no code file did.",
+    "Generation 5 is a refresh plus one test-fixture repair. head_sha 1d1644fe is the IMPLEMENTATION commit, not the commit carrying these .agent files. Main moved by one HANDOFF.d documentation file only; the only code change since the reviewed head 57f54727 is replacing the hard-coded fixture date 2026-09-13T00:00:00Z with Date.now() plus one day in scripts/manage-migration-author-lanes.test.mjs."
   ],
   "stop_conditions_hit": []
 }

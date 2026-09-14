@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2912,
-  "generation": 3,
+  "generation": 4,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Consume the sender-side database preview classification and make no-preview routing explicit, exact-input-bound, deterministic, target-bound, and fail closed before claim or review admission.",
@@ -51,7 +51,8 @@
     "The ai-devops sender contract is interface context only and remains owned by its existing worker.",
     "NO_DATABASE_PREVIEW returns work to its natural owner before claim, review, or preview reads; all database-impacting or unverifiable classifications retain governed database admission.",
     "Recovery contract after integration onto main 703c333847475d8adcb590904454a72dc27e0867; this does not claim prospective publication. Corrects old mistaken shared-db issue 433 to local receiver issue 2912; parent is popcre/ai-devops issue 433.",
-    "Generation 3 integrates merged PR #2901 and adds a receiver adapter for the actual landed sender schema. Sender digest, complete files, independent Git identity and impact are checked before binding repository-local identity; legacy receiver envelopes remain supported."
+    "Generation 3 integrates merged PR #2901 and adds a receiver adapter for the actual landed sender schema. Sender digest, complete files, independent Git identity and impact are checked before binding repository-local identity; legacy receiver envelopes remain supported.",
+    "Generation 4 places the immutable recovery contract after the implementation head so Git evidence contains exactly the two permitted metadata files."
   ],
   "stop_conditions": [
     "Any required test fails.",

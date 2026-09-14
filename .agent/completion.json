@@ -8,8 +8,6 @@
   "contract_sha256": "9a29c5d6ad207714b5d709cc61c3e9b0988a25240f9783da8046e5654fd45b2b",
   "head_sha": "42b73e24af5243cfb11a84d0dd4b9a1eb61a0209",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/admission.mjs"

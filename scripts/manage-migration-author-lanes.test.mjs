@@ -5380,6 +5380,10 @@ test('a completed preview remains evidence when only its downstream automatic pr
   assert.deepEqual(validateOriginalPreviewApplyEvidence(input,io),{type:'preview-apply',run_id:'33308168016'})
   evidence.jobs=downstreamPromotionFailureJobs({preview:'failure'})
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.jobs=downstreamPromotionFailureJobs({'SQL migration guards':'failure'})
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.jobs={...downstreamPromotionFailureJobs(),total_count:7,jobs:[...downstreamPromotionFailureJobs().jobs,{name:'unexpected',status:'completed',conclusion:'success'}]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
   evidence.jobs=downstreamPromotionFailureJobs({'Production apply (automatic evidence gates)':'success'})
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
   delete evidence.jobs

@@ -7154,7 +7154,7 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // refuses; the alternate reader cannot conceal contradictory named proof.
     if(ledgerLines.length===0&&typeof io.verifyPreviewApplyArtifact==='function'){
       const artifact=rows[0]
-      const proof=io.verifyPreviewApplyArtifact({run,artifact,binding,versions:expected,previewProjectRef:PROJECT_REFS.preview,verificationCommit:mergeCommitSha??appliedCommit})
+      const proof=io.verifyPreviewApplyArtifact({run,jobs,artifact,binding,versions:expected,previewProjectRef:PROJECT_REFS.preview,verificationCommit:mergeCommitSha??appliedCommit})
       if(proof?.verified===true&&proof.runId===run.id&&proof.artifactId===artifact.id&&proof.artifactDigest===artifact.digest&&JSON.stringify(proof.versions)===JSON.stringify(expected))matches.push({type:'preview-apply',run_id:String(runId)})
       continue
     }

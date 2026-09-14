@@ -8,7 +8,7 @@
   "dispatcher": "Albert Hazan (owner, repository-maintenance authorization 2026-09-14)",
   "worker": "claude-repo-session-2899",
   "branch": "claude/merged-pr-issue-binding-2506",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/mystifying-merkle-349616",
+  "worktree": "C:/tmp/wt-2901",
   "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".github/workflows/migration-author-lease.yml", ".agent/contract.json", ".agent/completion.json"],
   "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".github/workflows/migration-author-lease.yml", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
@@ -17,5 +17,5 @@
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/merged-pr-issue-binding.test.mjs", "git diff --check"],
   "assumptions": ["PR #2726 body names exactly one Work issue #2506 and its completion record names issue 2506, PR 2726, and migration 20260911213429, which has a permanent claim reservation."],
   "stop_conditions": ["Stop if binding would require editing a merged PR or deleting any coordination ref.", "Stop if issue #2506 admission refuses for a reason other than the missing closing link."],
-  "generation": 1
+  "generation": 2
 }

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2898,
+  "work_issue": 2906,
   "outcome": "ready-for-merge",
-  "pr": 2900,
+  "pr": 2908,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2898/1",
-  "contract_sha256": "c1c30b076de40a8280b7cfa381c1df82356d8ddb67f6368baba999111d8a52d0",
-  "head_sha": "8a51fa3afc9417f1fbf43e62bafdc35779dee759",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2906/1",
+  "contract_sha256": "8fcaee0c1b7a386ee78eba654ca3a5162832e1309ddd7576d41f16e78ec88633",
+  "head_sha": "5bf2ceddd464ece1a20296a84d78deb32f5ebfb4",
+  "files_changed": [".github/live-proofs/2848.sql", ".github/workflows/shared-db-live-proof.yml", "scripts/shared_db_live_proof.py", "scripts/test_shared_db_live_proof.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 553, pass 553, fail 0, skipped 0. The new #2898 test fails (false !== true) when coverage expectation is inverted, proving it can fail."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors"}
+    {"command": "python -m unittest scripts/test_shared_db_live_proof.py", "exit_code": 0, "evidence": "Ran 6 tests, OK, 0 skipped; covers 12 refusal cases, no query before scope checks, artifact name and file match the lane script, dispatch-only read-only main-only workflow, single-statement probes."},
+    {"command": "node scripts/check-github-transport-conformance.mjs", "exit_code": 0, "evidence": "223 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "notes": ["Collision safety unchanged: expanded recovery objects still pass assertLaneAvailable against every other claim and open PR; the new test proves a colliding addition is refused with zero writes.", "No database, preview, production, or workflow action was performed."],
-  "assumptions_resolved": ["A held table claim serializes writes to its columns, so treating column S.T.C as covered adds no collision exposure."],
+  "assumptions_resolved": ["#2848 scope returns to u2giants/shared-db; ledger at live_verified; PR #2815 closes only #2848; run 34871556647 has production-migration-apply-56a51e24 artifact 10359756277; the #2848 probe returned passed true on production."],
   "stop_conditions_hit": []
 }

@@ -29,6 +29,24 @@ export function databasePreviewRequiredFromEvidenceBundle(bundle){
   return {schema_version:1,...target,decision:DATABASE_PREVIEW_REQUIRED,reason_code:`impact_${firstRequired.impact.replaceAll('-','_')}`,inspected_digest:sha256(canonicalJson({classifier_version:PREVIEW_CLASSIFIER_VERSION,...target,files,applicable_checks})),files,applicable_checks,invalidated_by:[...INVALIDATION_CONDITIONS]}
 }
 
+export function bindSenderPreviewClassification(value,inspectedFiles,target){
+  const keys=['schema_version','decision','reason_code','base_sha','head_sha','inspected_digest','files','applicable_checks','invalidated_by']
+  if(!value||Object.keys(value).some(key=>!keys.includes(key))||value.schema_version!==1||value.base_sha!==target.base_sha||value.head_sha!==target.head_sha||!Array.isArray(value.files)||!Array.isArray(value.applicable_checks))throw new Error('sender preview identity or schema is invalid')
+  if(canonicalJson(value.invalidated_by)!==canonicalJson(INVALIDATION_CONDITIONS))throw new Error('sender preview invalidation conditions changed')
+  const expectedDigest=sha256(canonicalJson({classifier_version:1,base_sha:value.base_sha,head_sha:value.head_sha,files:value.files,applicable_checks:value.applicable_checks}))
+  if(value.inspected_digest!==expectedDigest)throw new Error('sender preview digest does not match its inputs')
+  const live=new Map(inspectedFiles.map(file=>[file.path,file]))
+  if(live.size!==inspectedFiles.length||value.files.length!==live.size||new Set(value.files.map(file=>file.path)).size!==live.size)throw new Error('sender preview file set differs from live Git')
+  const files=value.files.map(file=>{
+    const actual=live.get(file.path)
+    if(Object.keys(file).some(key=>!['path','sha256','mode','impact','reason','change_type'].includes(key))||!actual||file.sha256!==actual.sha256||file.mode!==actual.mode||file.impact!==actual.impact||file.change_type!==(actual.status==='removed'?'deleted':'present'))throw new Error('sender preview file identity or impact differs from live Git')
+    const {impact,...identity}=actual
+    return {...identity,impact,reason:file.reason}
+  }).sort((a,b)=>a.path.localeCompare(b.path))
+  const bound={...value,...target,files,inspected_digest:sha256(canonicalJson({classifier_version:PREVIEW_CLASSIFIER_VERSION,...target,files,applicable_checks:value.applicable_checks}))}
+  return validatePreviewClassification(bound,inspectedFiles,target)
+}
+
 export function validatePreviewClassification(value,inspectedFiles,target){
   if(!value||value.schema_version!==1||!Array.isArray(value.files)||!value.files.length)throw new Error('explicit schema-version-1 database preview classification is required')
   const known=new Set(['schema_version','repository','issue','pr','base_sha','head_sha','decision','reason_code','inspected_digest','files','applicable_checks','invalidated_by'])

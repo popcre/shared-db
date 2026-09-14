@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute } from './select-preview-route.mjs'
+import { bindSenderPreviewClassification, databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute } from './select-preview-route.mjs'
 import { canonicalJson, sha256 } from './evidence-bundle.mjs'
+
+test('current sender format binds only to independently matching live Git evidence',()=>{
+  const target={repository:'u2giants/shared-db',issue:2912,pr:2795,base_sha:'a'.repeat(40),head_sha:'b'.repeat(40)}
+  const file={path:'docs/canary.md',sha256:'c'.repeat(64),mode:'100644',impact:'documentation',reason:'Harmless documentation',change_type:'present'}
+  const sender={schema_version:1,decision:'NO_DATABASE_PREVIEW',reason_code:'proven_non_database_change',base_sha:target.base_sha,head_sha:target.head_sha,files:[file],applicable_checks:['docs-check'],invalidated_by:['file-content-change','file-set-change','impact-evidence-change','applicable-check-change','classifier-version-change']}
+  sender.inspected_digest=sha256(canonicalJson({classifier_version:1,base_sha:sender.base_sha,head_sha:sender.head_sha,files:sender.files,applicable_checks:sender.applicable_checks}))
+  const live=[{path:file.path,sha256:file.sha256,mode:file.mode,impact:file.impact,status:'added',blob_sha:'d'.repeat(40),base:null,head:{type:'blob',mode:file.mode,sha256:file.sha256,blob_sha:'d'.repeat(40)}}]
+  const result=bindSenderPreviewClassification(sender,live,target)
+  assert.equal(result.decision,'NO_DATABASE_PREVIEW');assert.equal(result.issue,2912);assert.equal(result.files[0].blob_sha,'d'.repeat(40))
+  for(const mutation of [{sha256:'e'.repeat(64)},{mode:'100755'},{impact:'database-behavior'},{status:'removed'}])assert.throws(()=>bindSenderPreviewClassification(sender,[{...live[0],...mutation}],target))
+  assert.throws(()=>bindSenderPreviewClassification(sender,[],target))
+  assert.throws(()=>bindSenderPreviewClassification({...sender,inspected_digest:'0'.repeat(64)},live,target))
+  assert.throws(()=>bindSenderPreviewClassification(sender,live,{...target,head_sha:'f'.repeat(40)}))
+})
 
 const invalidated_by=['file-content-change','file-set-change','impact-evidence-change','applicable-check-change','classifier-version-change']
 const target={repository:'u2giants/shared-db',issue:1720,pr:1721,base_sha:'9'.repeat(40),head_sha:'a'.repeat(40)}

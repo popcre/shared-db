@@ -37,7 +37,7 @@ export function selectNewestCommitStatus(rows,context){
   return matching.sort((a,b)=>b.createdAt-a.createdAt||b.id-a.id)[0]??null
 }
 import { buildEvidenceBundle, canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
-import { databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute, validatePreviewClassification } from './orchestrator-flow/select-preview-route.mjs'
+import { bindSenderPreviewClassification, databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute, validatePreviewClassification } from './orchestrator-flow/select-preview-route.mjs'
 import { PROJECT_REFS } from './orchestrator-flow/read-preview-ledger.mjs'; import { verdictOpensLine as sharedVerdictOpensLine, evidenceTiedToHead as sharedEvidenceTiedToHead, isApprovalFor as sharedIsApprovalFor, isVerdictFor as sharedIsVerdictFor, anyVerdictFor as sharedAnyVerdictFor } from './lib/review-verdict.mjs'
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIEW_VERDICTS, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
@@ -1491,7 +1491,7 @@ export const githubIo = {
   databasePreviewClassification(issue){
     const evidence=this.databasePreviewClassificationEvidence
     if(evidence===undefined||evidence===null)return null
-    if(Number(evidence.issue)!==Number(issue))throw new LaneError(`database preview evidence is for issue #${evidence.issue}, not #${issue}`)
+    if(evidence.decision===undefined&&Number(evidence.issue)!==Number(issue))throw new LaneError(`database preview evidence is for issue #${evidence.issue}, not #${issue}`)
     return evidence
   },
   // The changed-file list a documents-only classification is made from (#2102).
@@ -2168,7 +2168,9 @@ export function databasePreviewAdmission(options,io){
   if(io.databasePreviewClassificationEvidence===undefined||io.databasePreviewClassificationEvidence===null)return {guarded:true,decision:'DATABASE_PREVIEW_REQUIRED',reason:'no no-database-preview evidence was supplied; structural admission remains required'}
   const issue=Number(options.issue??options.preparePreviewDispatch)
   if(!Number.isInteger(issue)||issue<=0)throw new LaneError('supplied database preview evidence requires an exact --issue for this admission command')
-  const evidence=io.databasePreviewClassification(issue)
+  const supplied=io.databasePreviewClassification(issue)
+  const sender=supplied?.decision!==undefined&&supplied?.database_preview===undefined
+  const evidence=sender?{repository:REPO,issue,pr:Number(options.pr),base_sha:supplied.base_sha,head_sha:supplied.head_sha,database_preview:supplied,bundle_id:'0'.repeat(64)}:supplied
   if(evidence?.repository!==REPO||!Number.isInteger(evidence?.pr)||evidence.pr<=0||Number(options.pr)!==evidence.pr||!/^[0-9a-f]{40}$/i.test(String(evidence?.base_sha??''))||!/^[0-9a-f]{40}$/i.test(String(evidence?.head_sha??''))||!/^[0-9a-f]{64}$/.test(String(evidence?.bundle_id??'')))throw new LaneError('database preview evidence requires the exact command repository, PR, base, head, and bundle identities')
   if(options.headSha!==undefined&&String(options.headSha)!==evidence.head_sha)throw new LaneError('database preview evidence head does not match the command request')
   let live
@@ -2180,6 +2182,10 @@ export function databasePreviewAdmission(options,io){
   try{finalLive=io.getPr(evidence.pr)}catch(error){throw new LaneError(`final live pull request identity is unreadable: ${error.message}`)}
   if(!finalLive||finalLive.number!==evidence.pr||finalLive.state!=='open'||finalLive.base?.repo?.full_name!==REPO||finalLive.base?.sha!==evidence.base_sha||finalLive.head?.sha!==evidence.head_sha)throw new LaneError('pull request moved while authenticated changed-file evidence was read')
   const liveBundleId=sha256(canonicalJson({repository:REPO,pr:evidence.pr,base_sha:evidence.base_sha,head_sha:evidence.head_sha,files:inspectedFiles}))
+  if(sender){
+    evidence.database_preview=bindSenderPreviewClassification(supplied,inspectedFiles,{repository:REPO,issue,pr:evidence.pr,base_sha:evidence.base_sha,head_sha:evidence.head_sha})
+    evidence.bundle_id=liveBundleId
+  }
   if(evidence.bundle_id!==liveBundleId)throw new LaneError('database preview bundle identity does not match authenticated live Git files')
   const claimedImpacts=new Map((evidence.database_preview?.files??[]).map((file)=>[file.path,file.impact]))
   if(inspectedFiles.some((file)=>claimedImpacts.get(file.path)!==file.impact))throw new LaneError('database preview impact classification does not match authenticated live file content')

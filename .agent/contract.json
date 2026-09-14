@@ -1,1 +1,69 @@
-{"schema_version":1,"work_issue":2879,"generation":4,"work_type":"structural","route":"shared-db-orchestrator","goal":"Classify all Lucasfilm and 20th Century DCP landing tables under their exact non-other source systems in both source-inventory contracts.","base_sha":"31b269c2c785e905656567a11b2ccf5f64edf65e","dispatcher":"Codex orchestrator marker 2858","worker":"Codex subagent pr2872_gate","branch":"codex/issue-2879-inventory-families","worktree":"C:/Users/ahazan/.codex/worktrees/issue-2879-inventory-families/shared-db","allowed_paths":[".agent/completion.json",".agent/contract.json","docs/verification/throughput-guard-truth-baseline-20260828.json","scripts/production-verification-sidecars/20260914061331.json","scripts/production_business_risk_gate.py","scripts/production_catalog_verification.py","supabase/migrations/20260914061331_classify_dcp_inventory_families.sql","supabase/tests/dcp_inventory_family_classification_contracts.sql"],"file_writes":[".agent/completion.json",".agent/contract.json","docs/verification/throughput-guard-truth-baseline-20260828.json","scripts/production-verification-sidecars/20260914061331.json","scripts/production_business_risk_gate.py","scripts/production_catalog_verification.py","supabase/migrations/20260914061331_classify_dcp_inventory_families.sql","supabase/tests/dcp_inventory_family_classification_contracts.sql"],"db_reads":["table plm.lucasfilm_dcp_crawl","table plm.twentieth_century_dcp_crawl"],"db_writes":["function api.source_capture_inventory_exact","view api.source_capture_inventory"],"prohibited_actions":["Do not change api.db_data_admin_scraped_properties or its behavior.","Do not write, copy, expose, or alter licensed or application rows.","Do not change any unrelated source classification or inventory semantic.","Do not preview, merge, deploy, or apply to production until the orchestrator authorizes it.","Do not touch excluded issues, claims, FORK items, PR 2846, or PR 2849."],"required_checks":["bash scripts/check-sql.sh","git diff --check","node scripts/check-production-verification-sidecars.mjs --base origin/main","python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q","supabase/tests against an ephemeral database","two independent governed reviewers at the exact head"],"assumptions":["Current main 31b269c2 is the authorized post-2880 base.","Exactly 20 Lucasfilm and 20 Twentieth Century DCP family tables exist and must be classified without reading their licensed rows.","Migration 20260910155753 is the common definition predecessor and the migration refuses if its classification anchor is not present exactly once in either definition.","Generation 4 refreshes the contract onto post-2880 main and uses the supported SELECT INTO catalog-rewrite form without changing behavior."],"stop_conditions":["Stop if the live predecessor definitions do not contain the expected classification anchor exactly once.","Stop if any of the 40 family tables remains classified as other or receives the wrong exact source system.","Stop if any change to api.db_data_admin_scraped_properties or any row write would be required.","Stop if exact-head CI fails or either governed reviewer returns REVISE."]}
+{
+    "schema_version": 1,
+    "work_issue": 2879,
+    "generation": 5,
+    "work_type": "structural",
+    "route": "shared-db-orchestrator",
+    "goal": "Classify all Lucasfilm and 20th Century DCP landing tables under their exact non-other source systems in both source-inventory contracts.",
+    "base_sha": "31b269c2c785e905656567a11b2ccf5f64edf65e",
+    "dispatcher": "Codex orchestrator marker 2858",
+    "worker": "Codex subagent pr2872_gate",
+    "branch": "codex/issue-2879-inventory-families",
+    "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2879-inventory-families/shared-db",
+    "allowed_paths": [
+        ".agent/completion.json",
+        ".agent/contract.json",
+        "docs/verification/throughput-guard-truth-baseline-20260828.json",
+        "scripts/production-verification-sidecars/20260914061331.json",
+        "scripts/production_business_risk_gate.py",
+        "scripts/production_catalog_verification.py",
+        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql"
+    ],
+    "file_writes": [
+        ".agent/completion.json",
+        ".agent/contract.json",
+        "docs/verification/throughput-guard-truth-baseline-20260828.json",
+        "scripts/production-verification-sidecars/20260914061331.json",
+        "scripts/production_business_risk_gate.py",
+        "scripts/production_catalog_verification.py",
+        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql"
+    ],
+    "db_reads": [
+        "table plm.lucasfilm_dcp_crawl",
+        "table plm.twentieth_century_dcp_crawl"
+    ],
+    "db_writes": [
+        "function api.source_capture_inventory_exact",
+        "view api.source_capture_inventory"
+    ],
+    "prohibited_actions": [
+        "Do not change api.db_data_admin_scraped_properties or its behavior.",
+        "Do not write, copy, expose, or alter licensed or application rows.",
+        "Do not change any unrelated source classification or inventory semantic.",
+        "Do not preview, merge, deploy, or apply to production until the orchestrator authorizes it.",
+        "Do not touch excluded issues, claims, FORK items, PR 2846, or PR 2849."
+    ],
+    "required_checks": [
+        "bash scripts/check-sql.sh",
+        "git diff --check",
+        "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+        "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q",
+        "supabase/tests against an ephemeral database",
+        "two independent governed reviewers at the exact head"
+    ],
+    "assumptions": [
+        "Current main 31b269c2 is the authorized post-2880 base.",
+        "Exactly 20 Lucasfilm and 20 Twentieth Century DCP family tables exist and must be classified without reading their licensed rows.",
+        "Migration 20260910155753 is the common definition predecessor and the migration refuses if its classification anchor is not present exactly once in either definition.",
+        "Generation 4 refreshes the contract onto post-2880 main and uses the supported SELECT INTO catalog-rewrite form without changing behavior.",
+        "Generation 5 corrects completion changed-file accounting to list only substantive files outside the evidence pair."
+    ],
+    "stop_conditions": [
+        "Stop if the live predecessor definitions do not contain the expected classification anchor exactly once.",
+        "Stop if any of the 40 family tables remains classified as other or receives the wrong exact source system.",
+        "Stop if any change to api.db_data_admin_scraped_properties or any row write would be required.",
+        "Stop if exact-head CI fails or either governed reviewer returns REVISE."
+    ]
+}

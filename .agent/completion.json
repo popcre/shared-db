@@ -1,19 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2437,
   "outcome": "ready-for-merge",
-  "pr": 2891,
+  "pr": 2895,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/4",
-  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
-  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "contract_ref": "refs/db-contracts/2437/1",
+  "contract_sha256": "de29e6542e9f0c6cb904cb26b4dcbf6cb60fa1b202e628a94b7da4b363e0cb35",
+  "head_sha": "e6053d65012c988751e016aedb80b4c6885c1e8e",
+  "files_changed": [
+    ".github/ISSUE_TEMPLATE/destructive-proposal.md",
+    ".github/workflows/destructive-analysis-guard.yml",
+    "docs/sql-snippets/pg-stat-observation-window.md",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-destructive-analysis.test.mjs",
+    "scripts/lib/destructive-analysis-guard.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
+    {
+      "command": "node --test scripts/check-destructive-analysis.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 9, pass 9, fail 0, skipped 0. Removing 'Positive control' from REQUIRED_HEADINGS makes 1 test fail (pass 8, fail 1)."
+    }
   ],
-  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
-  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
+  "notes": [
+    "The snippet query was run read-only on production 2026-09-14: database stats_reset null, bgwriter stats_reset 2026-08-28 21:01:01.326-04, server start 21:01:01.043-04.",
+    "Replaying the SQL scan over the last 300 commits of main flags scripts/teardown-designflow-cutover-rehearsal.sql (DROP), the intended class of catch; the PR itself adds no SQL file.",
+    "Label destructive-proposal created. No database, preview, production, or migration action was performed.",
+    "Guard wording uses \"absent\" so it does not add call sites to the throughput truth-audit inventory (audit OK: call_sites=284)."
+  ],
+  "assumptions_resolved": [
+    "Migrations and supabase/tests fixtures are excluded from the scan; they keep their existing guards."
+  ],
   "stop_conditions_hit": []
 }

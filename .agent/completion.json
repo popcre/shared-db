@@ -8,6 +8,8 @@
   "contract_sha256": "de29e6542e9f0c6cb904cb26b4dcbf6cb60fa1b202e628a94b7da4b363e0cb35",
   "head_sha": "308ed3b16d4af638cea98b9b5dedf5bc36e4752e",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/ISSUE_TEMPLATE/destructive-proposal.md",
     ".github/workflows/destructive-analysis-guard.yml",
     "docs/sql-snippets/pg-stat-observation-window.md",

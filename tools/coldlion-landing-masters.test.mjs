@@ -5,7 +5,7 @@ import { fetchArrayMaster, fetchPagedMaster, masterUrl } from "./coldlion-landin
 import { ITEM_SPECS, MASTER_SPECS, knownApiFields } from "./coldlion-landing/lib/master-specs.mjs";
 import { assertKnownShape, projectCurrentRows, projectItemSlots } from "./coldlion-landing/lib/project-masters.mjs";
 import { buildMasterLoadSql } from "./coldlion-landing/lib/load-masters.mjs";
-import { assertRequestedScope, assertSameIdentitySet, collectMasters, dedupeSlots, main, parseArgs } from "./coldlion-landing/sync-masters.mjs";
+import { assertRequestedScope, assertSameIdentitySet, collectMasters, dedupeSlots, main, parseArgs, splitOrphanItemDetails } from "./coldlion-landing/sync-masters.mjs";
 import { assertExpectedTarget, masterFailureSql, redactPsqlError, runSql as landingRunSql } from "./coldlion-landing/lib/db.mjs";
 import { existsSync } from "node:fs";
 
@@ -282,4 +282,21 @@ test("landing runSql surfaces psql's real database error instead of a spawn faul
     }),
     (error) => error.code === "DATABASE_COMMAND_FAILED" && /ERROR:/.test(error.message),
   );
+});
+
+test("itemDetails with no item header are withheld, named, and alerted instead of aborting the snapshot", () => {
+  const headers=[{companyCode:"EDGEHOME",divisionCode:"CW001",itemNo:"HAS-HEADER"}];
+  const details=[
+    {companyCode:"EDGEHOME",divisionCode:"CW001",itemNo:"HAS-HEADER",itemPkey:"1"},
+    {companyCode:"EDGEHOME",divisionCode:"EH001",itemNo:"HAS-HEADER",itemPkey:"2"},
+    {companyCode:"EDGEHOME",divisionCode:"CW001",itemNo:"NO-HEADER",itemPkey:"3"},
+    {companyCode:"EDGEHOME",divisionCode:"EP001",itemNo:"NO-HEADER",itemPkey:"4"},
+  ];
+  const { landable, orphaned }=splitOrphanItemDetails(headers,details);
+  assert.deepEqual(landable.map((row)=>row.itemPkey),["1","4"]);
+  assert.deepEqual(orphaned,[{divisionCode:"EH001",itemNo:"HAS-HEADER",itemPkey:"2"},{divisionCode:"CW001",itemNo:"NO-HEADER",itemPkey:"3"}]);
+  const load={table:"item_detail",spec:ITEM_SPECS.item_detail,rows:[],excluded:0,orphaned:2,run:{id:RUN,endpoint:"/itemDetails",companyCode:"EDGEHOME",requestParams:{},requestedBy:"t",startedAt:NOW,finishedAt:NOW,durationMs:0,rowsFetched:4}};
+  const sql=buildMasterLoadSql({loads:[load],itemSlots:[],affectedItemGrains:[]});
+  assert.match(sql,/pg_notify\('coldlion_sync_alert', '\/itemDetails master snapshot withheld 2 row\(s\)/);
+  assert.ok(sql.indexOf("pg_notify")<sql.lastIndexOf("commit;"));
 });

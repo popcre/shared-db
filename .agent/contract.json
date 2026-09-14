@@ -1,21 +1,41 @@
 {
   "schema_version": 1,
-  "work_issue": 2797,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Fix api.db_data_admin_scraped_source_inventory so its Character and Style Guide arms read plm.wb_character_normalized and plm.wb_style_guide_normalized instead of the dropped plm.wb_character and plm.wb_style_guide, with a contract test that executes every arm.",
-  "base_sha": "56a51e24de428a59e146576e8e8d4fc22dcd76c2",
-  "dispatcher": "claude shared-db orchestrator route local_d16c82f5-fb42-453c-9ee5-765977d79195 (marker #2893)",
-  "worker": "claude-author-2893-2797 (claim #2902, PR #2903)",
-  "branch": "claude/2797-wb-normalized-arms",
-  "worktree": "scratchpad/wt2797",
-  "allowed_paths": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
-  "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
-  "prohibited_actions": ["No change to any object other than api.db_data_admin_scraped_source_inventory.", "No grant widening beyond the original function's grants.", "No direct DDL on production outside the governed migration route.", "No licensed row contents in public artifacts."],
-  "required_checks": ["git diff --check", "database contract tests (supabase/tests/*.sql)"],
-  "assumptions": ["plm.wb_character_normalized and plm.wb_style_guide_normalized exist on production with source_namespace, source_id, fallback_key, label, status, last_seen_at and capture_id columns."],
-  "stop_conditions": ["Stop if the normalized relations lack a column the arms need.", "Stop if the PR must edit the protected coordination source."],
-  "generation": 2
+  "work_issue": 2894,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Owner ruling (marker #2893, 2026-09-14): remove any limit on concurrent agents/lanes and on using a reviewer multiple times. Retire the already-reviewed reviewer exclusion reason (new exclusions refused, legacy records never bar a draw); author lane cap already removed (#2775) and reviewer leases already concurrent.",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "dispatcher": "Albert Hazan (owner) via chat, relayed by shared-db orchestrator marker #2893",
+  "worker": "shared-db repo-maintenance Claude subagent in worktree limits-removal-20260914",
+  "branch": "claude/remove-throughput-caps",
+  "worktree": "C:/repos/shared-db-worktrees/limits-removal-20260914",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database structure change of any kind.",
+    "Do not weaken exact-object collision locks, version reservation, serial preview/merge/production, or the rule that the orchestrating/authoring engine never reviews its own work.",
+    "Do not delete or rewrite historical exclusion records."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs"
+  ],
+  "assumptions": [
+    "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review."
+  ],
+  "stop_conditions": [
+    "Stop if removing the cap would require weakening a safety rule listed in prohibited_actions."
+  ]
 }

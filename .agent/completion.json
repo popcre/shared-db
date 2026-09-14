@@ -6,13 +6,13 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2921/1",
   "contract_sha256": "d97115227d56d4cfcfd42cb25152c8db2e564ad386d24b588d2e96a5113c8584",
-  "head_sha": "5764a4adfafe483b64ef9c5fa6726c4dda2abebf",
+  "head_sha": "afa1b46722b4e2c18a97f980ea93fac2baa47a58",
   "files_changed": [".github/live-proofs/2506.sql"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 9b55cd89 and implementation 5764a4ad."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 9b55cd89 and implementation afa1b467."}
   ],
-  "assumptions_resolved": ["Production has 20260911213429 (run 34898171486); the probe returned all components true on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting a nonexistent version returned [{\"passed\":false}]."],
+  "assumptions_resolved": ["Production has 20260911213429 (run 34898171486); the exact-match probe (index definitions, search_path array, return type, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."],
   "stop_conditions_hit": []
 }

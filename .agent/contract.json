@@ -1,53 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2662,
-  "generation": 14,
-  "work_type": "structural",
-  "route": "shared-db",
-  "goal": "Part A of issue #2662: remove the anon and authenticated Data API grants from four RLS-enabled, zero-policy public tables, so their protection no longer rests solely on an empty policy set that a later unrelated policy would silently defeat.",
-  "base_sha": "c72363e997bf2779558dabf29579ca4430f4fd89",
-  "dispatcher": "Claude shared-db lane dispatch for issue 2662",
-  "worker": "Claude issue2662 Part A lane",
-  "branch": "claude/issue-2662-part-a-revoke-grants",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2815",
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260914155226_revoke_api_role_grants_zero_policy_tables.sql"
-  ],
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260914155226_revoke_api_role_grants_zero_policy_tables.sql"
-  ],
-  "db_reads": [
-    "catalog pg_class",
-    "catalog pg_namespace",
-    "catalog pg_policy"
-  ],
-  "db_writes": [
-    "table public.ai_sentinel_cleanup_log",
-    "table public.dam_search_documents",
-    "table public.dam_search_synonyms",
-    "table public.scanner_ai_ignores"
-  ],
-  "prohibited_actions": [
-    "Do not touch the definer views or materialized views in the same finding; they carry an owner business judgement and are Part B, planned but not applied.",
-    "Do not add, alter or drop any RLS policy; this work removes grants only and leaves the empty policy set in place as the second layer.",
-    "Do not revoke from service_role or postgres; every live writer of these tables is server-side and must keep working.",
-    "Do not run direct production DDL, and do not weaken any guard to make a check pass."
-  ],
-  "required_checks": [
-    "bash scripts/check-sql.sh"
-  ],
-  "assumptions": [
-    "All four tables have RLS enabled with zero policies, so anon and authenticated are already denied and removing their grants changes no behaviour today.",
-    "The only live traffic to these tables is service-role, which bypasses RLS and is untouched by this migration.",
-    "Production promotion is a separate governed gate after merge, not part of this contract; it needs the owner to name the exact resource and action, so this lane delivers only as far as guarded merge and preview."
-  ],
-  "stop_conditions": [
-    "Stop if any of the four tables is found to have a policy, since revoking the grant would then remove access something actually relies on.",
-    "Stop if production edge logs show any browser anon or authenticated caller succeeding against any of the four tables, since the revoke would then be a breaking change rather than a tightening.",
-    "Stop if any of the four tables turns out to be shared with an object under another active claim on this issue."
-  ]
+  "work_issue": 2800,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Ship the DB Data Admin scraped-inventory UI from PR #2799: raw Properties, Characters and Style Guides tabs backed by the production-applied db_data_admin_scraped_source_inventory function, with section-scoped column filters and Property Matching renamed.",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "dispatcher": "claude shared-db orchestrator route local_d16c82f5-fb42-453c-9ee5-765977d79195 (marker #2893)",
+  "worker": "claude issue-2800 PR #2799 refresh author",
+  "branch": "codex/scraped-properties-inventory-ui",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2799",
+  "allowed_paths": ["apps/db-data-admin/src/**", "apps/db-data-admin/tests/browser/grid.spec.ts", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["No migration, SQL, grant, or database structure change.", "No database write from this code change.", "No weakening of any guard, workflow, or required check."],
+  "required_checks": ["npx vitest run", "npm run build", "git diff --check"],
+  "assumptions": ["Migration from PR #2808 creating db_data_admin_scraped_source_inventory is applied on production (run 34862499384)."],
+  "stop_conditions": ["Stop if the UI requires a database structure change.", "Stop if refreshing from main produces a conflict in a file outside allowed_paths."],
+  "generation": 1
 }

@@ -4,18 +4,18 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Give every row of api.db_data_admin_scraped_source_inventory a canonical licensor_group_key/licensor_group_name (single 'unresolved' group for conflict/unresolved licensors), classify NBCU Product Submissions picker property rows as Submissions, and group the DB Data Admin Scraped Properties page by the canonical key.",
-  "base_sha": "9892c20446307b9f192f008d183eb94c6e6bf1ab",
+  "base_sha": "1c436f46a7ae4b9c0dde15bb9b6b11558c92bade",
   "dispatcher": "claude shared-db orchestrator route local_d16c82f5-fb42-453c-9ee5-765977d79195",
   "worker": "claude-opus-5 subagent agent-a999da57 (claim #2909)",
   "branch": "claude/inventory-canonical-licensor-2905",
   "worktree": ".claude/worktrees/agent-a999da57a0ad813c8",
-  "allowed_paths": ["supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql", "supabase/tests/db_data_admin_scraped_source_inventory.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "docs/db-data-admin-scraped-properties.md", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql", "supabase/tests/db_data_admin_scraped_source_inventory.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "docs/db-data-admin-scraped-properties.md", ".agent/contract.json", ".agent/completion.json"],
+  "allowed_paths": ["supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql", "supabase/tests/db_data_admin_scraped_source_inventory.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/tests/browser/grid.spec.ts", "docs/db-data-admin-scraped-properties.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql", "supabase/tests/db_data_admin_scraped_source_inventory.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/tests/browser/grid.spec.ts", "docs/db-data-admin-scraped-properties.md", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": ["function api.db_data_admin_scraped_properties", "plm.nbcu_property"],
   "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
   "prohibited_actions": ["No change to any object other than api.db_data_admin_scraped_source_inventory.", "No grant widening beyond the original function's grants.", "No change to licensor_key or row_key values.", "No edit to docs/business-rules/*.", "No direct DDL on production outside the governed migration route.", "No licensed row contents in public artifacts."],
   "required_checks": ["git diff --check", "database contract tests (supabase/tests/*.sql)", "apps/db-data-admin vitest run"],
   "assumptions": ["plm.nbcu_property.source_kind exists with values property, franchise_asset, asset_metadata_label (129 picker rows and 120 asset_metadata_label rows at capture rank 1 on production)."],
   "stop_conditions": ["Stop if any unresolved or conflict licensor key would be assigned to a real licensor group.", "Stop if the PR must edit the protected coordination source or business rules."],
-  "generation": 1
+  "generation": 2
 }

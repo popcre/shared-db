@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2898,
   "outcome": "ready-for-merge",
-  "pr": 2891,
+  "pr": 2900,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/4",
-  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
-  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "contract_ref": "refs/db-contracts/2898/1",
+  "contract_sha256": "c1c30b076de40a8280b7cfa381c1df82356d8ddb67f6368baba999111d8a52d0",
+  "head_sha": "805ef312f7e218aae8259dd065bc0591e019c354",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 539, pass 539, fail 0, skipped 0. The new #2898 test fails (false !== true) when coverage expectation is inverted, proving it can fail."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors"}
   ],
-  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
-  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
+  "notes": ["Collision safety unchanged: expanded recovery objects still pass assertLaneAvailable against every other claim and open PR; the new test proves a colliding addition is refused with zero writes.", "No database, preview, production, or workflow action was performed."],
+  "assumptions_resolved": ["A held table claim serializes writes to its columns, so treating column S.T.C as covered adds no collision exposure."],
   "stop_conditions_hit": []
 }

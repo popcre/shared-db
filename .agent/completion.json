@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260911225108"
   ],
-  "contract_ref": "refs/db-contracts/2662/10",
-  "contract_sha256": "f68f06959b812820eaa463e1f7fa4917ab8956a65a4abcd5a0908adc9f2f20cd",
-  "head_sha": "f6ab0b6a1e71fafa90037cfadc6d7542cd5d6aa8",
+  "contract_ref": "refs/db-contracts/2662/11",
+  "contract_sha256": "e89e503a2d0ecc50ffffafe2a63b7cc3feb44bf3cc828ef19681a4efd7623214",
+  "head_sha": "01fe6aac82d8c1720ee300d3ad7c695b7476bc3c",
   "files_changed": [
     "supabase/migrations/20260911225108_revoke_api_role_grants_zero_policy_tables.sql"
   ],
@@ -37,7 +37,8 @@
     "No shared database writes were performed from this session; production was read only.",
     "Production promotion was not performed and is not claimed: it is a separate governed gate that requires the owner to name the exact resource and action, and the owner is asleep. The PR is ready for merge and preview only.",
     "Refresh onto main c7465a75 (PR #2736 merged): merge-tree reported exactly two conflicting paths, .agent/completion.json and .agent/contract.json, which every lane writes at the repo root, so main carried the issue #2716 lane's pair. Both were resolved WHOLESALE to this lane's own evidence with no hunk-level merging, then re-sealed as contract generation 10. files_changed is now the single migration file, set-equal to git diff c7465a75..f6ab0b6a; the two .agent files are the only paths following the implementation head, as the evidence checker requires.",
-    "DISCLOSURE: during this refresh a reset to the implementation commit briefly left main's foreign .agent pair in the tree, and one publish was issued from it, creating the stray ref refs/db-contracts/2716/10 on origin plus a corresponding comment on issue #2716. That ref belongs to the issue #2716 lane's namespace and is NOT this lane's contract; it was not deleted because ref deletion was outside this task's authority. The 2716 lane's real generations are 1 through 4 and none of them was altered or overwritten."
+    "DISCLOSURE: during this refresh a reset to the implementation commit briefly left main's foreign .agent pair in the tree, and one publish was issued from it, creating the stray ref refs/db-contracts/2716/10 on origin plus a corresponding comment on issue #2716. That ref belongs to the issue #2716 lane's namespace and is NOT this lane's contract; it was not deleted because ref deletion was outside this task's authority. The 2716 lane's real generations are 1 through 4 and none of them was altered or overwritten.",
+    "Refresh onto main 9006b253: merge commit 01fe6aac. The only conflicts were the two .agent files, resolved wholesale to this lane's own pair and re-sealed as contract generation 11. The migration file is byte-identical to the approved head fb402efa; no function bodies are involved."
   ],
   "stop_conditions_hit": []
 }

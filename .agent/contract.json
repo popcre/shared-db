@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "work_issue": 2662,
-  "generation": 10,
+  "generation": 11,
   "work_type": "structural",
   "route": "shared-db",
   "goal": "Part A of issue #2662: remove the anon and authenticated Data API grants from four RLS-enabled, zero-policy public tables, so their protection no longer rests solely on an empty policy set that a later unrelated policy would silently defeat.",
-  "base_sha": "c7465a7598fb2191e2df549ec63ba255360c484a",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
   "dispatcher": "Claude shared-db lane dispatch for issue 2662",
   "worker": "Claude issue2662 Part A lane",
   "branch": "claude/issue-2662-part-a-revoke-grants",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/refresh-2815",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2815",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",

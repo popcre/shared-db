@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2872,
   "migration_versions": ["20260914032423"],
-  "contract_ref": "refs/db-contracts/2870/1",
-  "contract_sha256": "e3f496fd7a8b17715ddb12253fb29e99f81e59e558a5cf7c4fc2a4157c832e58",
-  "head_sha": "71c7bdf32239dd113053096c203fbfc8804470e7",
+  "contract_ref": "refs/db-contracts/2870/2",
+  "contract_sha256": "522951ca853225cf74ab6a8f347f4f5919cdb3c002a504a32be07c9f532dba6b",
+  "head_sha": "d1dee3e0376ca1beed74c1d6e57bf6db38f7b7a6",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -26,7 +26,7 @@
     {
       "command": "ephemeral preview-equivalent database contract test",
       "exit_code": 0,
-      "evidence": "GitHub Actions job 103848659246 successfully replayed every migration and ran every SQL contract against an isolated ephemeral PostgreSQL database at implementation head 71c7bdf32239dd113053096c203fbfc8804470e7."
+      "evidence": "GitHub Actions job 103853283863 successfully replayed every migration and ran every SQL contract against an isolated ephemeral PostgreSQL database at refreshed implementation head d1dee3e0376ca1beed74c1d6e57bf6db38f7b7a6."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs",
@@ -48,6 +48,7 @@
     "The ephemeral full-history replay proved both dflow_prod parent tables exist before migration 20260914032423 runs.",
     "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
     "The migration performs DDL only and contains no application-row write."
+    ,"Generated types remain required downstream: repository policy generates them from the post-migration preview database, so popcre/designflow-backend#94 must supply the durable generated-types acceptance artifact after preview rather than this author PR hand-editing stale types."
   ],
   "stop_conditions_hit": []
 }

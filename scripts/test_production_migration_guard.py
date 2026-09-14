@@ -2072,13 +2072,35 @@ class ApplyLaneTests(unittest.TestCase):
         header = WORKFLOW_TEXT.split("\njobs:", 1)[0]
         self.assertIn("pull_request:", header)
         self.assertIn("workflow_dispatch:", header)
-        for required_input in ("target", "mode", "production_allowlist", "preview_allowlist", "claim_pr", "claim_head_sha", "commit_sha", "confirmation"):
+        for required_input in ("target", "mode", "production_allowlist", "derivation_override", "preview_allowlist", "claim_pr", "claim_head_sha", "commit_sha", "confirmation"):
             self.assertRegex(header, rf"(?m)^      {re.escape(required_input)}:$")
         self.assertIn("permissions:\n  contents: read", header)
         self.assertIn("issues: read", header)
         self.assertIn("github.event_name == 'pull_request'", header)
         self.assertIn("|| 'shared-supabase-migrations'", header)
         self.assertIn("cancel-in-progress: false", header)
+
+    def test_derivation_override_is_recorded_and_rechecked_at_every_production_choke_point(self) -> None:
+        """An absent-base exception must reach every guard, or fail closed before a push."""
+        for job_name, expected_calls in (
+            ("production-dry-run", 2),
+            ("production-apply-review", 1),
+            ("production-apply", 2),
+        ):
+            job = _job(job_name)
+            self.assertIn("DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}", job)
+            self.assertEqual(job.count('DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")'), expected_calls)
+            self.assertEqual(job.count('"${DERIVATION_ARGS[@]}"'), expected_calls)
+
+        automatic = _job("automatic-production-promotion")
+        dispatch = next(
+            step
+            for step in _steps(automatic)
+            if "Dispatch the existing serial production lane" in step
+        )
+        self.assertIn("DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}", dispatch)
+        self.assertIn("--arg derivation_override", dispatch)
+        self.assertIn("derivation_override:$derivation_override", dispatch)
 
     def test_admission_workflows_can_reopen_only_the_validated_linked_issue(self) -> None:
         for workflow, job in (("guarded-migration-merge.yml", "merge"), ("preview-ledger-orphan-reconciliation.yml", "reconcile")):
@@ -2700,6 +2722,50 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             # The advice must be the OPPOSITE of the "created by X" case: no
             # allowlist can bring a dropped object back.
             self.assertIn("Adding versions to the allowlist cannot fix this", message)
+
+    def test_2809_archiving_a_table_does_not_self_flag(self) -> None:
+        """#2809. The move statement NAMES the table it moves, and that name is
+        a hard reference. Booking the removal at the start of the statement
+        withdrew the table before its own reference was judged, so every
+        archive-a-table migration refused itself."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "supabase" / "migrations"
+            root.mkdir(parents=True)
+            (root / "20260101000000_a.sql").write_text(
+                "create table public.t (id uuid);\n", encoding="utf-8"
+            )
+            (root / "20260102000000_b.sql").write_text(
+                "create schema archive;\n"
+                "alter table public.t set schema archive;\n"
+                "revoke all on archive.t from public, anon, authenticated;\n",
+                encoding="utf-8",
+            )
+            migrations = local_migrations(Path(tmp))
+            # Must not raise.
+            preflight_batch(migrations, ["20260102000000"], {"20260101000000"})
+
+    def test_2809_the_OLD_name_after_a_move_is_still_REFUSED(self) -> None:
+        """The capability the guard exists for must survive the fix: once the
+        table has moved, touching its former name is still a real missing
+        reference."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "supabase" / "migrations"
+            root.mkdir(parents=True)
+            (root / "20260101000000_a.sql").write_text(
+                "create table public.t (id uuid);\n", encoding="utf-8"
+            )
+            (root / "20260102000000_b.sql").write_text(
+                "create schema archive;\n"
+                "alter table public.t set schema archive;\n"
+                "alter table public.t add column x uuid;\n",
+                encoding="utf-8",
+            )
+            migrations = local_migrations(Path(tmp))
+            with self.assertRaises(GuardError) as ctx:
+                preflight_batch(migrations, ["20260102000000"], {"20260101000000"})
+            message = str(ctx.exception)
+            self.assertIn("public.t", message)
+            self.assertIn("DROPPED (or renamed away) by 20260102000000", message)
 
     def test_f5_a_drop_in_the_APPLIED_LEDGER_is_honoured_too(self) -> None:
         """The removal need not be in the batch. If production already dropped

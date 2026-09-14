@@ -1,18 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2919,
+  "work_issue": 2915,
   "outcome": "ready-for-merge",
-  "pr": 2920,
+  "pr": 2916,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2919/1",
-  "contract_sha256": "c73e48fd721bbc89d0d641f081e06e9ff94978c9d55b8fc17da315525904a3fc",
-  "head_sha": "995b8b590f71506af9091eaba7d81122b122edc1",
-  "files_changed": [".github/live-proofs/2905.sql"],
+  "contract_ref": "refs/db-contracts/2915/2",
+  "contract_sha256": "73136d7fe4518eeac30af16440ac63743f82942fb494997bd82c63427e82c173",
+  "head_sha": "7aa09ef0ac8776190536d0a66e85e55600eddac2",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 8d96cbf7 and implementation 995b8b59."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "554 tests passed, 0 failed, 0 skipped, on the merge of current main 6433c8e6."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "7 tests passed. The reviewer-snapshot test and the new verdict-recording test fail on the prior code and pass here; recording accepts a merged PR only for the bound PR, bound issue, exact head, and verified open issue."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": ["#2905 scope returns to u2giants/shared-db; production has 20260914172031 (run 34892518005); the probe returned [{\"passed\":true}] on production read-only, and a draft expecting 130 returned false."],
+  "assumptions_resolved": ["Reviewer assignment read io.readReviewerOperationRoute, which the #2901 binding wrapper did not cover.", "Verdict recording refused every non-open PR; it now accepts a merged exact head only through io.mergedPrReviewTarget on the verified binding."],
   "stop_conditions_hit": []
 }

@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Repair the post-apply catalog verifier row-count query so PostgreSQL orders composite rows by their name field instead of applying a JSON operator to a record, while preserving full catalog verification.",
-  "base_sha": "c23dcdcf928f352aab2a144f52182cea4554bf17",
+  "base_sha": "6306532e35eb996b58d74b6fbbcfc6d7f63a9363",
   "dispatcher": "successor orchestrator marker 2858",
   "worker": "subagent:issue-2866-author assigned issue 2876",
   "branch": "codex/issue-2876-catalog-row-order",
@@ -45,5 +45,5 @@
     "Stop if the repair requires any database access or workflow replay.",
     "Stop if full catalog verification cannot be preserved."
   ],
-  "generation": 3
+  "generation": 4
 }

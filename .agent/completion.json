@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2877,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2876/3",
-  "contract_sha256": "84af88ee4a2934d9cefed40d1ab737dc168c6a30e1da21d1f55447bcf3a3b4cc",
-  "head_sha": "cf9d1d133ee894832d58c8ffc20bd75dae57bd8e",
+  "contract_ref": "refs/db-contracts/2876/4",
+  "contract_sha256": "2f84ebe4378474f60e3b80dd03284acebf1075fbcd25269f754781dd5e5dcf31",
+  "head_sha": "d6130b5b29cc59896508607a8f8227f66f5c5aee",
   "files_changed": [
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     "scripts/production_catalog_verification.py",
@@ -23,17 +23,17 @@
     {
       "command": "focused row-count formatter tests",
       "exit_code": 0,
-      "evidence": "12 focused SQL builder tests passed after the repair."
+      "evidence": "3 focused row-count tests passed, including 2 parameterized subtests; 187 unrelated tests were deselected."
     },
     {
       "command": "full production catalog-verification test suite",
       "exit_code": 0,
-      "evidence": "223 production catalog-verification and sidecar tests passed."
+      "evidence": "190 production catalog-verification tests passed, including 67 parameterized subtests."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main && node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
       "exit_code": 0,
-      "evidence": "The reviewed detector baseline and all four throughput-guard tests passed after regenerating only the verifier source digest."
+      "evidence": "The detector baseline was regenerated from the merged current-main tree; the sidecar check passed with status OK across 51 sidecars, and all 4 throughput-guard baseline tests passed."
     },
     {
       "command": "ai-task-gates check --before review",

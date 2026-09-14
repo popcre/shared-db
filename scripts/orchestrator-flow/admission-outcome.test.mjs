@@ -188,6 +188,33 @@ test('a truncated modified-migration patch is refused instead of hiding objects 
   assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911120000_example.sql',status:'modified',truncated:true,patch:'@@ -2 +2 @@\n-old index\n+create index example_id_idx on core.example(id);'}]),/patch is truncated/)
 })
 
+test('a do-block that rewrites a function from pg_get_functiondef and EXECUTEs it is structural',()=>{
+  const file=(content)=>[{filename:'supabase/migrations/20260911222514_rewrite.sql',status:'added',content}]
+  const rewrite=`-- derived-from: 20260911170526
+do $migration$
+declare
+  v_definition text;
+begin
+  select pg_get_functiondef(
+    'api.db_data_admin_scraped_properties(text,text,integer)'::regprocedure
+  ) into v_definition;
+  if position('anchor' in v_definition)=0 then
+    raise exception using errcode='55000', message='predecessor differs';
+  end if;
+  v_definition:=replace(v_definition,'old','new');
+  execute v_definition;
+end
+$migration$;`
+  assert.deepEqual(inspectPrStructuralChange(file(rewrite)).objects,['function api.db_data_admin_scraped_properties'])
+  const refuse=/no statement-leading schema DDL/
+  assert.throws(()=>inspectPrStructuralChange(file(`do $m$ begin insert into core.example values (1); update core.example set id=2; execute 'delete from core.example'; end $m$;`)),refuse)
+  assert.throws(()=>inspectPrStructuralChange(file(rewrite.replace('execute v_definition;','perform 1;'))),refuse)
+  assert.throws(()=>inspectPrStructuralChange(file(rewrite.replace('execute v_definition;',"execute 'select 1';"))),refuse)
+  assert.throws(()=>inspectPrStructuralChange(file(rewrite.replace('execute v_definition;','-- execute v_definition;'))),refuse)
+  assert.throws(()=>inspectPrStructuralChange(file(rewrite.replace("'api.db_data_admin_scraped_properties","'db_data_admin_scraped_properties"))),refuse)
+  assert.throws(()=>inspectPrStructuralChange(file(rewrite.replace(/^do \$migration\$/m,'select 1;').replace(/\$migration\$;/,''))),refuse)
+})
+
 test('preview preparation must name the admitted issue and its source PR',()=>{
   const io={enforceAdmission:true,orchestratorFlowAdapter:()=>{throw new Error('adapter must not be reached')}}
   const old=console.error;const messages=[];console.error=(m)=>messages.push(String(m))

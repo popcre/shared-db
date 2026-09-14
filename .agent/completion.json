@@ -6,7 +6,7 @@
   "migration_versions": ["20260914164141"],
   "contract_ref": "refs/db-contracts/2797/2",
   "contract_sha256": "ae28da1ec5a04a6c2221bc5e5fb8c20e752ca439ef050e50dc98e5e4279287e1",
-  "head_sha": "0bb22c2f7143780954f13893f14053448ae2b730",
+  "head_sha": "1c9036ad622bb37324b08ccb93cb207ee5676308",
   "files_changed": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
   "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
   "db_writes": ["function api.db_data_admin_scraped_source_inventory"],

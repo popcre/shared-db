@@ -4,15 +4,25 @@
   "outcome": "ready-for-merge",
   "pr": 2922,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2921/2",
-  "contract_sha256": "edd8e39a017bd668ce9ff9cc0dd4a240d7b8248a42af53ffc7387f019b4e3b0b",
-  "head_sha": "5f22a2c2f23aaabc1c3aa15d8317c483eea8bc70",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/live-proofs/2506.sql"],
+  "contract_ref": "refs/db-contracts/2921/3",
+  "contract_sha256": "023d03e683f55182ba2518c614d8025e310af7f5849834e90eeec8a0f5f3f735",
+  "head_sha": "7a42e035f2f3c3b3f3150ebaf95af83d24aef8f7",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2506.sql"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 9b55cd89 and implementation afa1b467."}
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors between base 9b55cd89 and implementation 7a42e035."
+    }
   ],
-  "assumptions_resolved": ["Production has 20260911213429 (run 34898171486); the exact-match probe (index definitions, search_path array, return type, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."],
+  "assumptions_resolved": [
+    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
+  ],
   "stop_conditions_hit": []
 }

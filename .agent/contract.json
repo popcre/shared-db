@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "work_issue": 2744,
-  "generation": 14,
+  "generation": 15,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Return the unfiltered Scraped Properties / DCP identity listing to comfortably under eight seconds for role authenticated, without changing its output, its authorization gate, or any timeout, role or memory setting.",
-  "base_sha": "fbbeb711d5f13ecb84821f953fe6e6427621d791",
+  "base_sha": "c23dcdcf928f352aab2a144f52182cea4554bf17",
   "dispatcher": "Codex orchestrator marker 2858",
   "worker": "Codex PR 2818 landing lane",
   "branch": "claude/issue-2744-unfiltered-perf",

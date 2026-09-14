@@ -3,47 +3,24 @@
   "work_issue": 2851,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Grant the automatic-production-promotion job the minimum permission (contents: write) to create its db-coordination admission commit object and ref, so automatic and manual production promotion stop failing with HTTP 403, without giving that job any database credential or weakening its ENGINEER ACTION REQUIRED fail-closed behaviour.",
-  "base_sha": "62d31d7138b0d598217521d2550e3c3e82adb376",
-  "dispatcher": "Albert Hazan (owner, repo-maintenance request 2026-09-13)",
-  "worker": "claude-repo-session-2851",
-  "branch": "claude/fix-auto-promotion-contents-write",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/cranky-mestorf-ee0f23",
-  "allowed_paths": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
+  "goal": "Keep an immutable successful preview apply eligible for a fresh production selector when only the downstream automatic-production qualification job failed, without weakening preview, artifact, identity, ledger, or production safety gates.",
+  "base_sha": "4fd0938ee1c9d1662e0b1690ac963451cb197e0d",
+  "dispatcher": "Albert Hazan (owner, issue 2851 continuation 2026-09-13)",
+  "worker": "codex-repo-session-2851",
+  "branch": "codex/issue-2851-preview-evidence",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/a785/shared-db",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No permission change on any job other than automatic-production-promotion; the top-level and production-apply-review contents: read stay.",
-    "No database secret added to automatic-production-promotion.",
-    "No removal, weakening or bypass of ENGINEER ACTION REQUIRED fail-closed logic.",
-    "No shared database reads or writes, no migration file, no author lane claim.",
-    "No re-dispatch of issue 2482's production promotion."
+    "No production or preview dispatch and no database read or write.",
+    "No acceptance of a failed or missing preview job, incomplete or unexpected job graph, or any production execution.",
+    "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.",
+    "Do not touch pull request 2849 and do not run repair-outcome-history."
   ],
-  "required_checks": [
-    "python -m unittest scripts.test_production_owner_decision_evidence",
-    "python -m unittest scripts.test_production_migration_guard",
-    "git diff --check",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
-  ],
-  "assumptions": [
-    "contents: write covers both Git data API writes the admission path makes: POST git/commits and POST/PATCH git/refs. No other scope is needed.",
-    "Generation 6 refreshes onto main 62d31d71 and restores main's evidence pair before sealing, so the reported implementation head has exactly the workflow and focused test in its own diff. Main's PR #2855 reviewer-lifecycle repair is inherited unchanged."
-  ],
-  "stop_conditions": [
-    "Stop if the admission step needs any permission beyond contents: write.",
-    "Stop if the fix would require giving this job a database credential.",
-    "Stop and report the exact refusal if a governed tool refuses, rather than working around it."
-  ],
-  "generation": 6
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check", "independent exact-head governed review", "required GitHub checks", "fresh issue 2482 selector returns a valid stored instruction after merge"],
+  "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
+  "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
+  "generation": 7
 }

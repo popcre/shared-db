@@ -2,41 +2,18 @@
   "schema_version": 1,
   "work_issue": 2851,
   "outcome": "ready-for-merge",
-  "pr": 2856,
+  "pr": 2868,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2851/6",
-  "contract_sha256": "ee0718faadfbe934e380847a24e5346c0ca65bc309a66fbf8835f8d651c62b05",
-  "head_sha": "77422573c9fe57cc0b8d11335911acbe67f0cdee",
-  "files_changed": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py"
-  ],
+  "contract_ref": "refs/db-contracts/2851/7",
+  "contract_sha256": "0f2d63851a81cd0b89f138acc378bd27ead9eb03ebd2ac390a3ea0f4587b1f49",
+  "head_sha": "2de18ce611f2a1fd0b70e6e0e0ad63c9bda05ede",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "python -m unittest scripts.test_production_owner_decision_evidence",
-      "exit_code": 0,
-      "evidence": "10 tests passed on main 62d31d71 plus this change. The test pins the automatic-production-promotion permission map, asserts no Supabase database credential is present, and retains ENGINEER ACTION REQUIRED."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_migration_guard",
-      "exit_code": 0,
-      "evidence": "250 tests passed; the top-level contents: read assertion and bounded migration manifest checks remain green."
-    },
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "537 tests, 537 pass, 0 fail, 0 cancelled, 0 skipped on main 62d31d71 plus this change."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors between base 62d31d71 and implementation commit 77422573."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, with negative controls for failed preview, production execution, and missing job evidence."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": [
-    "Confirmed that the admission path writes only Git commit/ref evidence, the job gains no database credential, and PR #2849 and PR #2855 implementation paths are absent from this PR's own base-to-implementation diff."
-  ],
+  "assumptions_resolved": ["Run 34681414931 has exactly six terminal jobs: SQL guards and preview succeeded, automatic qualification failed, and all production jobs skipped."],
   "stop_conditions_hit": []
 }

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2851/9",
   "contract_sha256": "8474eeb6bbf2c9b8444138625a74a01cd0bd7611f7a0b481345ffc537eb5b5f5",
-  "head_sha": "2de18ce611f2a1fd0b70e6e0e0ad63c9bda05ede",
+  "head_sha": "d99ac897b29ff4d65df6a1b1fe248e1c37cb4782",
   "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],

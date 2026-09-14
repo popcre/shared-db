@@ -5283,6 +5283,19 @@ function immutablePreviewApplyIo({sourcePr=1809,artifactRunId='33308168016',merg
   }
 }
 
+function downstreamPromotionFailureJobs(overrides={}){
+  const conclusions={
+    'SQL migration guards':'success',
+    preview:'success',
+    'Automatic production qualification and dispatch':'failure',
+    'Production apply review (immutable evidence + hard guards)':'skipped',
+    'Production apply (automatic evidence gates)':'skipped',
+    'production-dry-run':'skipped',
+    ...overrides,
+  }
+  return {total_count:6,jobs:Object.entries(conclusions).map(([name,conclusion])=>({name,status:'completed',conclusion}))}
+}
+
 function pinnedHistoricalClaimApplyIo({runId='34157812748',appliedCommit='bcc2603977678db73b4ca12d3ed1312a1bff64e2',previewProject='mvpkijzfmfcxhnzqogzs',migrationBody=null}={}){
   const dispatchHead='4f093e3d4c97e4272d147d38e7243ec57d3c08f1',version='20260907131728'
   const migration='supabase/migrations/20260907131728_popsg_preview_stats_indexed_categories.sql'
@@ -5356,6 +5369,25 @@ test('immutable original preview-apply evidence validates only the exact run',()
   const noDigest=immutablePreviewApplyIo()
   noDigest.previewApplyRun=()=>{const evidence=immutablePreviewApplyIo().previewApplyRun();delete evidence.artifacts.artifacts[0].digest;return evidence}
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,noDigest),/found 0/)
+})
+
+test('a completed preview remains evidence when only its downstream automatic promotion failed',()=>{
+  const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:'b'.repeat(40)}
+  const fixture=immutablePreviewApplyIo(), evidence=fixture.previewApplyRun()
+  evidence.run.conclusion='failure'
+  evidence.jobs=downstreamPromotionFailureJobs()
+  const io={...fixture,previewApplyRun:()=>evidence}
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,io),{type:'preview-apply',run_id:'33308168016'})
+  evidence.jobs=downstreamPromotionFailureJobs({preview:'failure'})
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.jobs=downstreamPromotionFailureJobs({'SQL migration guards':'failure'})
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.jobs={...downstreamPromotionFailureJobs(),total_count:7,jobs:[...downstreamPromotionFailureJobs().jobs,{name:'unexpected',status:'completed',conclusion:'success'}]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.jobs=downstreamPromotionFailureJobs({'Production apply (automatic evidence gates)':'success'})
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  delete evidence.jobs
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
 })
 
 test('the exact byte-pinned #2509 claim apply is valid immutable historical-rebind evidence',()=>{

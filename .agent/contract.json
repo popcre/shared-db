@@ -1,41 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2857,
   "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Repair the nightly ColdLion Landing Sync, which failed 2026-09-12 and 2026-09-13 with 'spawnSync psql EPIPE' while saving the master snapshot: pass the landing loader's SQL to psql as a private temp file instead of stdin so a large load cannot break the pipe and any real database error is surfaced.",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a non-blaming, release-only `review_target_superseded` terminal failure code so a reviewer lease stranded by a moved PR head can be released without recording a healthy provider as failed, and without weakening the exact-head release guard for any other code.",
   "base_sha": "bce5f2e005c67f7a8196105f98d48bf746e612b4",
-  "dispatcher": "Albert Hazan (owner) via coordinator: owner-authorized repo-maintenance repair of the ColdLion Landing Sync nightly",
-  "worker": "shared-db repo-maintenance session in worktree coldlion-api-storage-6c5a79",
-  "branch": "claude/coldlion-landing-psql-file-input",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/coldlion-api-storage-6c5a79",
+  "dispatcher": "Albert Hazan (direct repository-maintenance request)",
+  "worker": "claude-review-target-superseded",
+  "branch": "claude/review-target-superseded-code",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-orchestrator-issues-b3dd88",
   "allowed_paths": [
-    "tools/coldlion-landing/lib/db.mjs",
-    "tools/coldlion-landing-masters.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "tools/coldlion-landing/lib/db.mjs",
-    "tools/coldlion-landing-masters.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database structure change of any kind.",
-    "Do not weaken, disable, or bypass the sync job, ON_ERROR_STOP, the spawn timeout, or client-fault classification.",
-    "Do not hide the error: a real psql failure must still fail the job with its database message."
+    "No hand-deletion of any lease, claim, contract or review ref, including the stranded refs/db-review-active-v2/grok-4.6/2744-2818-4ad729ff02e2792222b3130e09cbd64f386f6771.",
+    "No weakening or bypassing of the exact-head release guard, the verdict check, or any other guard for existing failure codes.",
+    "No migration author lane claim and no db-work issue changes.",
+    "No shared database reads or writes."
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "EPIPE from spawnSync with piped input means psql stopped reading before the script was fully written; Node then reports only the spawn error and drops status and stderr.",
-    "The history half of the job is healthy: both failed runs reported 0 outstanding windows through 2026-09-07, and the current week is never loaded by design."
+    "Quarantine and retirement are static lists in code and no failure code feeds them automatically; the only code-driven provider penalty is the replacement redraw's failed-on-this-head set, which the new code never reaches because replacement refuses it."
   ],
   "stop_conditions": [
-    "Stop if the fix would require a database structure change.",
-    "Stop if a check can only be made green by weakening a guard."
+    "Stop if releasing a superseded lease would require relaxing the exact-head guard for any other failure code.",
+    "Stop and report the exact refusal if a required governed tool refuses, rather than working around it."
   ],
-  "generation": 1
+  "generation": 2
 }

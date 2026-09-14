@@ -1,77 +1,21 @@
 {
-    "schema_version": 1,
-    "work_issue": 2879,
-    "generation": 7,
-    "work_type": "structural",
-    "route": "shared-db-orchestrator",
-    "goal": "Classify all Lucasfilm and 20th Century DCP landing tables under their exact non-other source systems in both source-inventory contracts.",
-    "base_sha": "31b269c2c785e905656567a11b2ccf5f64edf65e",
-    "dispatcher": "Codex orchestrator marker 2858",
-    "worker": "Codex subagent pr2872_gate",
-    "branch": "codex/issue-2879-inventory-families",
-    "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2879-inventory-families/shared-db",
-    "allowed_paths": [
-        ".agent/completion.json",
-        ".agent/contract.json",
-        "docs/verification/throughput-guard-truth-baseline-20260828.json",
-        "scripts/production-verification-sidecars/20260914061331.json",
-        "scripts/production_business_risk_gate.py",
-        "scripts/production_catalog_verification.py",
-        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
-        "supabase/tests/peanuts_landing_contracts.sql",
-        "supabase/tests/sega_landing_contracts.sql",
-        "supabase/tests/wildbrain_landing_contracts.sql"
-    ],
-    "file_writes": [
-        ".agent/completion.json",
-        ".agent/contract.json",
-        "docs/verification/throughput-guard-truth-baseline-20260828.json",
-        "scripts/production-verification-sidecars/20260914061331.json",
-        "scripts/production_business_risk_gate.py",
-        "scripts/production_catalog_verification.py",
-        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
-        "supabase/tests/peanuts_landing_contracts.sql",
-        "supabase/tests/sega_landing_contracts.sql",
-        "supabase/tests/wildbrain_landing_contracts.sql"
-    ],
-    "db_reads": [
-        "table plm.lucasfilm_dcp_crawl",
-        "table plm.twentieth_century_dcp_crawl"
-    ],
-    "db_writes": [
-        "function api.source_capture_inventory_exact",
-        "view api.source_capture_inventory"
-    ],
-    "prohibited_actions": [
-        "Do not change api.db_data_admin_scraped_properties or its behavior.",
-        "Do not write, copy, expose, or alter licensed or application rows.",
-        "Do not change any unrelated source classification or inventory semantic.",
-        "Do not preview, merge, deploy, or apply to production until the orchestrator authorizes it.",
-        "Do not touch excluded issues, claims, FORK items, PR 2846, or PR 2849."
-    ],
-    "required_checks": [
-        "bash scripts/check-sql.sh",
-        "git diff --check",
-        "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-        "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q",
-        "supabase/tests against an ephemeral database",
-        "two independent governed reviewers at the exact head"
-    ],
-    "assumptions": [
-        "Current main 31b269c2 is the authorized post-2880 base.",
-        "Exactly 20 Lucasfilm and 20 Twentieth Century DCP family tables exist and must be classified without reading their licensed rows.",
-        "Migration 20260910155753 is the common definition predecessor and the migration refuses if its classification anchor is not present exactly once in either definition.",
-        "Generation 4 refreshes the contract onto post-2880 main and uses the supported SELECT INTO catalog-rewrite form without changing behavior.",
-        "Generation 5 corrects completion changed-file accounting to list only substantive files outside the evidence pair.",
-        "Generation 6 replaces catalog-text rewriting with explicit CREATE OR REPLACE definitions for both claimed objects after structural admission refused the unmodelled view rewrite.",
-        "Generation 7 adds the three existing exhaustive classification baselines that correctly rejected the new intended mappings until their independent expected maps were extended."
-    ],
-    "stop_conditions": [
-        "Stop if the live predecessor definitions do not contain the expected classification anchor exactly once.",
-        "Stop if any of the 40 family tables remains classified as other or receives the wrong exact source system.",
-        "Stop if any change to api.db_data_admin_scraped_properties or any row write would be required.",
-        "Stop if exact-head CI fails or either governed reviewer returns REVISE."
-    ]
+  "schema_version": 1,
+  "work_issue": 2885,
+  "generation": 1,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Reissue the proven DCP inventory definitions under a fresh migration version with promotion evidence present from authoring outset.",
+  "base_sha": "0c599a80ba50319a012816e8d8f09f388b0cff3c",
+  "dispatcher": "Codex orchestrator marker 2858 route 01a09d92-454c-7421-98a2-2b0a95f0f17c",
+  "worker": "Codex subagent pr2818_failures",
+  "branch": "codex/issue-2885-dcp-inventory-provenance",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2885-dcp-inventory-provenance/shared-db",
+  "allowed_paths": [".agent/completion.json", ".agent/contract.json", "scripts/production-verification-sidecars/20260914075758.json", "scripts/production_business_risk_gate.py", "supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql"],
+  "file_writes": [".agent/completion.json", ".agent/contract.json", "scripts/production-verification-sidecars/20260914075758.json", "scripts/production_business_risk_gate.py", "supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql"],
+  "db_reads": ["table plm.lucasfilm_dcp_crawl", "table plm.twentieth_century_dcp_crawl"],
+  "db_writes": ["function api.source_capture_inventory_exact", "view api.source_capture_inventory"],
+  "prohibited_actions": ["Do not change api.db_data_admin_scraped_properties or its behavior.", "Do not write, copy, expose, or alter licensed or application rows.", "Do not change inventory semantics beyond the already-proven definitions merged in PR 2882.", "Do not repair outcome history.", "Do not preview, merge, deploy, or apply to production until the landing controller authorizes it."],
+  "required_checks": ["bash scripts/check-sql.sh", "git diff --check", "node scripts/check-production-verification-sidecars.mjs --base origin/main", "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q", "the existing 40-table DCP classification contract and exhaustive Peanuts, Sega, and WildBrain baselines against an ephemeral database", "two independent governed reviewers at the exact head"],
+  "assumptions": ["Current main 0c599a80 contains the already-reviewed explicit definitions and all four SQL baseline suites.", "The failed production run 34819885746 rejected provenance only; it did not identify a semantic defect.", "Claim 2881 is reissued from issue 2879 and PR 2882 under the manager-reserved version 20260914075758, while issue 2885 records the successor provenance blocker."],
+  "stop_conditions": ["Stop if the reissued migration differs from the merged explicit definitions except for provenance comments.", "Stop if any of the 40 family tables receives the wrong source system.", "Stop if any row or admin API change would be required.", "Stop if exact-head CI fails or either governed reviewer returns REVISE."]
 }

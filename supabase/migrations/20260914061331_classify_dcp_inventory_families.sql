@@ -12,8 +12,8 @@ declare
       when c.relname like ''twentieth_century\_dcp\_%'' then ''twentieth_century_dcpvault''
       when c.relname like ''marvel\_%'' then ''marvel''';
 begin
-  v_function := pg_get_functiondef(
-    'api.source_capture_inventory_exact(text)'::regprocedure);
+  select pg_get_functiondef(
+    'api.source_capture_inventory_exact(text)'::regprocedure) into v_function;
   v_view := pg_get_viewdef('api.source_capture_inventory'::regclass, true);
 
   if (length(v_function)-length(replace(v_function,v_anchor,''))) / length(v_anchor) <> 1

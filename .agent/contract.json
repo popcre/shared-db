@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2865,
-  "generation": 3,
+  "generation": 4,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Finish repairing the nightly ColdLion Landing Sync. After PR 2864 removed the EPIPE, runs 34803418431 and 34834257904 exposed the real psql error: item_detail_company_code_division_code_item_no_fkey. A live read of /items and /itemDetails on 2026-09-14 found 8 detail rows (4 items) with no item header. Withhold only those rows, report them visibly (log count, sync_run request_params, coldlion_sync_alert), and let the rest of the snapshot land.",

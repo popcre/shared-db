@@ -15,12 +15,15 @@ const row = (
   licensor: string,
   purpose: 'Creative' | 'Submissions' = 'Creative',
   entityKind: ScrapedInventoryKind = 'property',
+  overrides: Partial<ScrapedInventoryRow> = {},
 ): ScrapedInventoryRow => ({
   id: key,
   row_key: key,
   entity_kind: entityKind,
   licensor_key: licensor.toLowerCase().replaceAll(' ', '-'),
   licensor_name: licensor,
+  licensor_group_key: licensor.toLowerCase().replaceAll(' ', '-'),
+  licensor_group_name: licensor,
   source_purpose: purpose,
   display_label: `${licensor} ${entityKind}`,
   source_system: licensor === 'Star Wars' ? 'lucasfilm_dcpvault' : `${licensor.toLowerCase()}_source`,
@@ -30,6 +33,7 @@ const row = (
   latest_seen_at: null,
   capture_marker: null,
   mapping_state: entityKind === 'property' && purpose === 'Creative' ? 'unmapped' : null,
+  ...overrides,
 })
 
 describe('ScrapedPropertiesTable', () => {
@@ -52,6 +56,33 @@ describe('ScrapedPropertiesTable', () => {
     expect(groups[0].creative).toHaveLength(1)
     expect(groups[0].submissions).toHaveLength(1)
     expect(groups[1].submissions).toHaveLength(0)
+  })
+
+  it('groups portal-named rows by the canonical licensor group, not label text', () => {
+    const groups = groupScrapedInventory([
+      row('d-opa', 'Disney - Submissions (OPA)', 'Submissions', 'property', { licensor_key: 'disney-opa', licensor_group_key: 'disney', licensor_group_name: 'Disney' }),
+      row('d-dcp', 'Disney - Creative (DCP Vault)', 'Creative', 'property', { licensor_key: 'disney', licensor_group_key: 'disney', licensor_group_name: 'Disney' }),
+      row('m-dcp', 'DCP Vault - Creative (authoritative Marvel scope)', 'Creative', 'property', { licensor_key: 'marvel', licensor_group_key: 'marvel', licensor_group_name: 'Marvel' }),
+      row('m-opa', 'Marvel - Submissions (OPA)', 'Submissions', 'property', { licensor_key: 'marvel-opa', licensor_group_key: 'marvel', licensor_group_name: 'Marvel' }),
+      row('lf', 'Lucasfilm / Star Wars - Creative (DCP Vault)', 'Creative', 'property', { licensor_key: 'lucasfilm-star-wars', licensor_group_key: 'lucasfilm-star-wars', licensor_group_name: 'Lucasfilm / Star Wars' }),
+      row('n-sub', 'NBCUniversal - Submissions (Product Submissions picker)', 'Submissions', 'property', { licensor_key: 'nbcuniversal', licensor_group_key: 'nbcuniversal', licensor_group_name: 'NBCUniversal' }),
+    ])
+    expect(groups.map(group => group.name)).toEqual(['Disney', 'Lucasfilm / Star Wars', 'Marvel', 'NBCUniversal'])
+    expect(groups.map(group => [group.creative.length, group.submissions.length])).toEqual([[1, 1], [1, 0], [1, 1], [0, 1]])
+    expect(groups.some(group => /DCP|OPA/.test(group.name))).toBe(false)
+  })
+
+  it('puts unresolved and conflicting licensors in one trailing group', () => {
+    const groups = groupScrapedInventory([
+      row('conflict', 'OPA - Submissions (scope conflict)', 'Submissions', 'property', { licensor_key: 'opa-scope-conflict', licensor_group_key: 'unresolved', licensor_group_name: 'Licensor not yet determined' }),
+      row('tag', 'DCP Vault - Creative (non-authoritative Marvel tag)', 'Creative', 'property', { licensor_key: 'dcp-vault-non-authoritative-marvel-tag', licensor_group_key: 'unresolved', licensor_group_name: 'Licensor not yet determined' }),
+      row('w', 'WWE - Creative', 'Creative', 'property', { licensor_key: 'wwe-creative', licensor_group_key: 'wwe', licensor_group_name: 'WWE' }),
+      row('a', 'Coca-Cola - Creative', 'Creative', 'property', { licensor_key: 'coca-cola-creative', licensor_group_key: 'coca-cola', licensor_group_name: 'Coca-Cola' }),
+    ])
+    expect(groups.map(group => group.key)).toEqual(['coca-cola', 'wwe', 'unresolved'])
+    expect(groups[2].name).toBe('Licensor not yet determined')
+    expect(groups[2].creative).toHaveLength(1)
+    expect(groups[2].submissions).toHaveLength(1)
   })
 
   it('loads every page from the selected raw inventory contract', async () => {

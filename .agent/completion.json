@@ -1,40 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2694,
+  "work_issue": 2898,
   "outcome": "ready-for-merge",
-  "pr": 2750,
+  "pr": 2900,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2694/9",
-  "contract_sha256": "ac3cdaf8685b32dbcf41a47331fa3ca223411d2ce44ef4fc624c31b01edecccd",
-  "head_sha": "50f9460d3a0bc3f64c36cf2179c637a357936800",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2898/1",
+  "contract_sha256": "c1c30b076de40a8280b7cfa381c1df82356d8ddb67f6368baba999111d8a52d0",
+  "head_sha": "8a51fa3afc9417f1fbf43e62bafdc35779dee759",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "552 passed, zero failed, skipped, cancelled or todo after refreshing from main at 56fdea49."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=285 against main at 56fdea49."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 553, pass 553, fail 0, skipped 0. The new #2898 test fails (false !== true) when coverage expectation is inverted, proving it can fail."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors"}
   ],
-  "assumptions_resolved": [
-    "Prospective delivery validation only; final exact-head review, CI and prerequisite installation remain separate gates."
-  ],
+  "notes": ["Collision safety unchanged: expanded recovery objects still pass assertLaneAvailable against every other claim and open PR; the new test proves a colliding addition is refused with zero writes.", "No database, preview, production, or workflow action was performed."],
+  "assumptions_resolved": ["A held table claim serializes writes to its columns, so treating column S.T.C as covered adds no collision exposure."],
   "stop_conditions_hit": []
 }

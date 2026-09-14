@@ -1,48 +1,21 @@
 {
   "schema_version": 1,
-  "generation": 9,
-  "work_issue": 2694,
+  "work_issue": 2898,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Complete scoped reviewer admission delivery while preserving parallel exact-head leases and truthful unknown provider capacity.",
-  "base_sha": "56fdea49fb1d8a8c0422654dcf0257f2c5c64b2e",
-  "dispatcher": "shared-db orchestrator marker #2893 (route local_d16c82f5-fb42-453c-9ee5-765977d79195)",
-  "worker": "Claude subagent for #2750 refresh",
-  "branch": "codex/396-scoped-reviewer-admission",
-  "worktree": "C:/Users/ahazan/AppData/Local/Temp/claude/C--repos-shared-db--claude-worktrees-mystifying-merkle-349616/a96084a6-3ccc-4c15-9a73-137b197a4097/scratchpad/wt2750",
-  "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
-  ],
-  "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
-  ],
+  "goal": "Let lease renewal/recovery treat a column scope write as covered by a held table claim, and let expired-claim recovery add uncovered issue-scope objects in one governed step, keeping exact-object collision safety.",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "dispatcher": "Albert Hazan (owner, repository-maintenance authorization 2026-09-14)",
+  "worker": "shared-db repo-maintenance Claude session claim-column-coverage",
+  "branch": "claude/claim-column-coverage",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/claim-column-coverage",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database structure or data access.",
-    "No orchestrator contact or new issues.",
-    "No arbitrary provider cap or weakened review, lease or CI gate."
-  ],
-  "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "git diff --check",
-    "node scripts/check-throughput-truth-audit.mjs"
-  ],
-  "assumptions": [
-    "Prospective delivery contract: existing implementation and review predate this publication; no retrospective publication claim.",
-    "Installed ai-devops scoped preflight contract is a required merge prerequisite.",
-    "Generation7 adds the existing semantic inventory disposition for local admission validation after CI qualification.",
-    "Generation 8 refreshes from current main: merge conflicts resolved; truth audit re-derived at 285 call sites; stale ledger-drift site dropped.",
-    "Generation 9 refreshes from main after #2896 merged; only .agent conflicts; truth audit still 285; 552 tests pass."
-  ],
-  "stop_conditions": [
-    "Refuse missing, malformed or mismatched admission evidence before assignment.",
-    "Stop delivery on failed checks or loss of parallel lease capability."
-  ]
+  "prohibited_actions": ["No database read or write, preview, or production action.", "No weakening of exact-object collision checks between claims or pull requests."],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
+  "assumptions": ["A table claim already serializes every write to that table's columns, so a column scope object under a held table is covered."],
+  "stop_conditions": ["Stop if the fix requires relaxing the collision check."],
+  "generation": 1
 }

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2851/5",
   "contract_sha256": "7c35871d720e84b3dda6f198808dcc67eccbdce2abeee65f80c3e179b1a732ff",
-  "head_sha": "9f37f1a686dd7d076f2d20af755db9517f53ebc4",
+  "head_sha": "9f37f1a616f6a10cfc40c5fe55d7ffcde8a8284b",
   "files_changed": [
     ".github/workflows/shared-supabase-migrations.yml",
     "scripts/test_production_owner_decision_evidence.py"

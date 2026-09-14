@@ -331,7 +331,7 @@ export type ScrapedInventoryRow = AdminRow & {
   source_status: string | null
   latest_seen_at: string | null
   capture_marker: string | null
-  mapping_state?: 'mapped' | 'unmapped' | null
+  mapping_state?: 'mapped' | 'conflict' | 'unmapped' | null
   mapping_display?: string
   is_unmapped_creative?: boolean
 }
@@ -355,7 +355,7 @@ export async function loadScrapedInventory(client: ApiClient, entityKind: Scrape
         id: row.row_key,
         mapping_display: entityKind !== 'property' || row.source_purpose !== 'Creative'
           ? '—'
-          : row.mapping_state === 'mapped' ? 'Mapped' : 'Unmapped',
+          : row.mapping_state === 'mapped' ? 'Mapped' : row.mapping_state === 'conflict' ? 'Conflict - review required' : 'Unmapped',
         is_unmapped_creative: isUnmapped,
       }
     }))
@@ -372,15 +372,19 @@ export function groupScrapedInventory(rows: ScrapedInventoryRow[]) {
     submissions: ScrapedInventoryRow[]
   }>()
   for (const row of rows) {
-    const group = groups.get(row.licensor_key) ?? {
-      key: row.licensor_key,
-      name: row.licensor_name,
+    // RPC keys and names encode purpose ("Sega - Creative (...)"), so group by the
+    // licensor part of the name and split into sections by source_purpose.
+    const name = (row.licensor_name ?? '').split(' - ')[0].trim() || row.licensor_key
+    const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const group = groups.get(key) ?? {
+      key,
+      name,
       creative: [],
       submissions: [],
     }
     if (row.source_purpose === 'Creative') group.creative.push(row)
     else group.submissions.push(row)
-    groups.set(row.licensor_key, group)
+    groups.set(key, group)
   }
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 }

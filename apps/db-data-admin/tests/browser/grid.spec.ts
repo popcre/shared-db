@@ -10,12 +10,12 @@ const customers = [
 ]
 const vendors = [{ id: '33333333-3333-3333-3333-333333333333', display_name: 'Atlas Manufacturing', status: 'active', crm_status: 'active', pm_status: 'active', dam_status: 'active', plm_status: null, erp_active: true, alias_count: 3, updated_at: '2026-07-20T12:00:00Z' }]
 const scrapedProperties = [
-  { row_key: 'disney-creative-1', entity_kind: 'property', licensor_key: 'disney', licensor_name: 'Disney', source_purpose: 'Creative', display_label: 'Frozen', source_system: 'disney_dcpvault', source_table: 'plm.dcp_property', source_id: 'd-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-1', mapping_state: 'unmapped' },
-  { row_key: 'disney-submissions-1', entity_kind: 'property', licensor_key: 'disney', licensor_name: 'Disney', source_purpose: 'Submissions', display_label: 'Frozen', source_system: 'disney_opa', source_table: 'plm.opa_property', source_id: 'opa-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-2', mapping_state: null },
-  { row_key: 'marvel-creative-1', entity_kind: 'property', licensor_key: 'marvel', licensor_name: 'Marvel', source_purpose: 'Creative', display_label: 'Lilo test fixture', source_system: 'marvel_asgard', source_table: 'plm.marvel_asgard_style_guide', source_id: 'm-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-3', mapping_state: 'mapped' },
-  { row_key: 'star-wars-creative-1', entity_kind: 'property', licensor_key: 'star-wars', licensor_name: 'Star Wars', source_purpose: 'Creative', display_label: 'The Mandalorian', source_system: 'lucasfilm_dcpvault', source_table: 'plm.lucasfilm_dcp_property', source_id: 'sw-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-4', mapping_state: 'unmapped' },
-  { row_key: 'sega-creative-1', entity_kind: 'property', licensor_key: 'sega', licensor_name: 'Sega', source_purpose: 'Creative', display_label: 'Sonic', source_system: 'sega_dsi', source_table: 'plm.sega_property', source_id: 'sega-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-5', mapping_state: 'unmapped' },
-  { row_key: 'sega-submissions-1', entity_kind: 'property', licensor_key: 'sega', licensor_name: 'Sega', source_purpose: 'Submissions', display_label: 'Sonic', source_system: 'sega_product_approval', source_table: 'plm.sega_submission_property', source_id: 'sega-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-6', mapping_state: null },
+  { row_key: 'disney-creative-1', entity_kind: 'property', licensor_key: 'disney', licensor_name: 'Disney - Creative (DCP Vault)', source_purpose: 'Creative', display_label: 'Frozen', source_system: 'disney_dcpvault', source_table: 'plm.dcp_property', source_id: 'd-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-1', mapping_state: 'unmapped' },
+  { row_key: 'disney-submissions-1', entity_kind: 'property', licensor_key: 'disney-opa', licensor_name: 'Disney - Submissions (OPA)', source_purpose: 'Submissions', display_label: 'Frozen', source_system: 'disney_opa', source_table: 'plm.opa_property', source_id: 'opa-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-2', mapping_state: null },
+  { row_key: 'marvel-creative-1', entity_kind: 'property', licensor_key: 'marvel-asgard-creative', licensor_name: 'Marvel - Creative (ASGARD)', source_purpose: 'Creative', display_label: 'Lilo test fixture', source_system: 'marvel_asgard', source_table: 'plm.marvel_asgard_style_guide', source_id: 'm-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-3', mapping_state: 'mapped' },
+  { row_key: 'star-wars-creative-1', entity_kind: 'property', licensor_key: 'lucasfilm-star-wars', licensor_name: 'Star Wars - Creative (DCP Vault)', source_purpose: 'Creative', display_label: 'The Mandalorian', source_system: 'lucasfilm_dcpvault', source_table: 'plm.lucasfilm_dcp_property', source_id: 'sw-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-4', mapping_state: 'unmapped' },
+  { row_key: 'sega-creative-1', entity_kind: 'property', licensor_key: 'sega-creative', licensor_name: 'Sega - Creative (DSI)', source_purpose: 'Creative', display_label: 'Sonic', source_system: 'sega_dsi', source_table: 'plm.sega_property', source_id: 'sega-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-5', mapping_state: 'unmapped' },
+  { row_key: 'sega-submissions-1', entity_kind: 'property', licensor_key: 'sega-submissions', licensor_name: 'Sega - Submissions (Product Approval)', source_purpose: 'Submissions', display_label: 'Sonic', source_system: 'sega_product_approval', source_table: 'plm.sega_submission_property', source_id: 'sega-1', source_status: 'active', latest_seen_at: null, capture_marker: 'run-6', mapping_state: null },
 ]
 const scrapedCharacters = [{ ...scrapedProperties[0], row_key: 'character-1', entity_kind: 'character', display_label: 'Elsa', source_id: 'character-1', mapping_state: null }]
 const scrapedStyleGuides = [{ ...scrapedProperties[0], row_key: 'guide-1', entity_kind: 'style_guide', display_label: 'Frozen Core Style Guide', source_id: 'guide-1', mapping_state: null }]
@@ -321,6 +321,7 @@ test('renders raw scrape inventory with two scoped sections per Licensor', async
   await mockAdmin(page); await page.goto('/')
   await page.getByRole('button', { name: 'Scraped Properties' }).click()
   await expect(page.getByRole('button', { name: 'Properties', exact: true })).toHaveClass(/active/)
+  await expect(page.getByRole('button', { name: 'Properties', exact: true })).toHaveCSS('color', 'rgb(32, 77, 189)')
   await expect(page.getByRole('button', { name: 'Characters' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Style Guides' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Disney', exact: true })).toBeVisible()
@@ -335,6 +336,9 @@ test('renders raw scrape inventory with two scoped sections per Licensor', async
     element as HTMLElement & { columns: Array<{ name: string }> }
   ).columns.slice(0, 4).map(column => column.name))).toEqual(['Property', 'Mapping', 'Source system', 'Source ID'])
   await expect.poll(() => scrapedGrid.evaluate(element => (element as HTMLElement & { rowSize: number }).rowSize)).toBe(58)
+  // Purpose-encoded RPC keys collapse to one heading per Licensor.
+  await expect(page.locator('.scraped-property-group')).toHaveCount(4)
+  await page.getByRole('gridcell', { name: 'The Mandalorian' }).scrollIntoViewIfNeeded()
   await expect(page.getByRole('gridcell', { name: 'The Mandalorian' })).toBeVisible()
   const unmappedCell = page.getByRole('gridcell', { name: 'Frozen' }).first()
   await expect(unmappedCell).toHaveCSS('background-color', 'rgb(255, 240, 240)')
@@ -349,7 +353,9 @@ test('renders raw scrape inventory with two scoped sections per Licensor', async
   // Creative rows. A Marvel value must not be suggested there or filter every grid.
   const disneyCreative = page.locator('#scraped-property-disney-creative').locator('..')
   await disneyCreative.getByRole('combobox', { name: 'Filter Property' }).fill('Lilo')
-  await expect(disneyCreative.getByRole('option')).toHaveCount(0)
+  // Suggestions are portalled to document.body, so assert page-wide: a leaked
+  // Marvel value would appear in the Property suggestions listbox.
+  await expect(page.getByRole('listbox', { name: 'Property suggestions' }).getByRole('option', { name: 'Lilo test fixture' })).toHaveCount(0)
   await expect.poll(() => disneyCreative.locator('revo-grid').evaluate(element => (
     element as HTMLElement & { source: unknown[] }
   ).source.length)).toBe(0)

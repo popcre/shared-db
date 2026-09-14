@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 2795,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2912/1",
-  "contract_sha256": "1310646e0389aeef37429697677f002af53e8e9caeae323b6fe1ac85af929e13",
-  "head_sha": "d2a250103bcffd503c16b6915c428e701ba17c30",
+  "contract_ref": "refs/db-contracts/2912/2",
+  "contract_sha256": "492bd6d03978339681d0f0c442dc9507fb1cd269746db749539cf2e2f531e706",
+  "head_sha": "558c1e5264243616e59dfcce4b2518698e46c86d",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
@@ -23,7 +25,7 @@
     {
       "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "701 passed, 0 failed, 0 skipped on combined implementation."
+      "evidence": "702 passed, 0 failed/skipped after sender compatibility repair. Actual current sender module output reached databasePreviewAdmission NO_DATABASE_PREVIEW with controlled independent Git fixture; not a live production acceptance claim."
     },
     {
       "command": "python -m unittest scripts.test_production_business_risk_gate",
@@ -49,7 +51,8 @@
   "assumptions_resolved": [
     "Merged prerequisites #2750 and sender popcre/ai-devops#435 verified live.",
     "Conflict resolution retains current main live-proof helpers, all current imports, evidence option and primary-operation validation before adding preview classification.",
-    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action."
+    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action.",
+    "Real sender previously failed target binding; the receiver now validates its original digest and independent complete Git evidence before creating a target-bound envelope. The new adversarial test refuses modified bytes, mode, impact, deletion state, file set, digest and head. Existing Python inputs are unchanged since the 146 passing tests."
   ],
   "stop_conditions_hit": []
 }

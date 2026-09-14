@@ -4,12 +4,10 @@
   "outcome": "ready-for-merge",
   "pr": 2877,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2876/2",
-  "contract_sha256": "2c480c5f3c34bdcd35bb4d5d7dc73b5bf140058729bb89ee9770b532ac0ef405",
+  "contract_ref": "refs/db-contracts/2876/3",
+  "contract_sha256": "84af88ee4a2934d9cefed40d1ab737dc168c6a30e1da21d1f55447bcf3a3b4cc",
   "head_sha": "cf9d1d133ee894832d58c8ffc20bd75dae57bd8e",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     "scripts/production_catalog_verification.py",
     "scripts/test_production_catalog_verification.py"
@@ -18,17 +16,17 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "pre-repair focused regression",
+      "command": "failing regression for the SQLSTATE 42883 composite-record query shape",
       "exit_code": 1,
       "evidence": "The new one-table and multi-table cases both failed because the formatter emitted jsonb_agg(x order by x->>'name'), reproducing the SQLSTATE 42883 query shape."
     },
     {
-      "command": "python -m unittest scripts.test_production_catalog_verification.SqlBuildTests",
+      "command": "focused row-count formatter tests",
       "exit_code": 0,
       "evidence": "12 focused SQL builder tests passed after the repair."
     },
     {
-      "command": "python -m unittest scripts.test_production_catalog_verification scripts.test_production_catalog_verification_noop_narrowing scripts.test_check_production_verification_sidecars",
+      "command": "full production catalog-verification test suite",
       "exit_code": 0,
       "evidence": "223 production catalog-verification and sidecar tests passed."
     },

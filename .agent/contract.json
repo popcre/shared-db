@@ -36,8 +36,7 @@
     "focused row-count formatter tests",
     "full production catalog-verification test suite",
     "ai-task-gates check --before review",
-    "git diff --check",
-    "fresh governed exact-head review"
+    "git diff --check"
   ],
   "assumptions": [
     "The derived-table alias x is a PostgreSQL composite record, so deterministic ordering must use x.name or an explicit JSON conversion rather than x->>'name'."
@@ -46,5 +45,5 @@
     "Stop if the repair requires any database access or workflow replay.",
     "Stop if full catalog verification cannot be preserved."
   ],
-  "generation": 2
+  "generation": 3
 }

@@ -3,7 +3,7 @@
   "detector_source_sha256": "1d5e1507654cbfd3a2e7707a1501445dc17be019804195a4f82476d76c08b024",
   "command": "node scripts/check-production-verification-sidecars.mjs",
   "total_migration_files": 674,
-  "matched_count": 104,
+  "matched_count": 103,
   "matched_paths": [
     {
       "version": "20260621150815",
@@ -519,11 +519,6 @@
       "version": "20260911222514",
       "path": "supabase/migrations/20260911222514_scraped_properties_narrow_asset_style_map.sql",
       "marker_count": 1
-    },
-    {
-      "version": "20260914061331",
-      "path": "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-      "marker_count": 2
     }
   ],
   "enforced_versions": [

@@ -1,25 +1,13 @@
 {
-  "schema_version": 1,
-  "migration_version": "20260914061331",
-  "migration_sha256": "9a233547c319b9963cffa246e344355ba861bf356878a971653023be0d90955b",
-  "marker_schema_version": 1,
-  "marker_reviews": [
-    {
-      "line_start": 36,
-      "line_end": 37,
-      "disposition": "checks",
-      "check_ids": [
-        "dcp_inventory_family_classification"
-      ],
-      "reason": "Both EXECUTE statements replace the definitions of the already-applied api.source_capture_inventory_exact(text) function and api.source_capture_inventory view with text derived from their live catalog definitions. Their durable outcome is therefore the changed pg_proc and pg_views definition rather than a newly created catalog object. Catalog contract dcp_inventory_family_classification_v1 reads the exact function definition back after apply, requires both DCP family patterns and both non-other source-system labels, and verifies the browser-safe view exposes exactly 20 Lucasfilm and 20 Twentieth Century DCP tables with neither family falling through to other. The contract is a strict superset of all_licensor_property_source_coverage_v1, preserving all prior source-inventory assertions. No table row, grant, policy, or api.db_data_admin_scraped_properties definition is changed."
-    }
-  ],
-  "checks": [
-    {
-      "id": "dcp_inventory_family_classification",
-      "kind": "catalog_contract",
-      "contract": "dcp_inventory_family_classification_v1",
-      "expected_count": 1
-    }
-  ]
+    "schema_version": 1,
+    "migration_version": "20260914061331",
+    "migration_sha256": "78ac799b1879f4c5b495e94843c4c7974e7c1af5f8c4bee469d6c42d8c66eecc",
+    "checks": [
+        {
+            "id": "dcp_inventory_family_classification",
+            "kind": "catalog_contract",
+            "contract": "dcp_inventory_family_classification_v1",
+            "expected_count": 1
+        }
+    ]
 }

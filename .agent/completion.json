@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260914025520"
   ],
-  "contract_ref": "refs/db-contracts/2866/4",
-  "contract_sha256": "bd7bd84dcf61ed319cab08ba6f5b7d2e5d8500f1aaecfd5e7671c4fd0c1334de",
-  "head_sha": "69c58fdff14137000e3420cffc76d2bc561a8db6",
+  "contract_ref": "refs/db-contracts/2866/5",
+  "contract_sha256": "891571fff749e3df8258ca4060effe834e13798566fb5260a2520c7c881548dc",
+  "head_sha": "16e89c4e9528b4887567f1b1ec0fc50830e8b44a",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -84,12 +84,12 @@
     {
       "command": "ai-task-gates check --before review",
       "exit_code": 0,
-      "evidence": "Repository task gate passed for shared-db structural review."
+      "evidence": "Repository task gate passed for shared-db structural review after the current-main refresh."
     },
     {
       "command": "scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static SQL checks passed; no local live ledger or database was used."
+      "evidence": "Static SQL checks passed against origin/main c23dcdcf; no local live ledger or database was used."
     },
     {
       "command": "database contract tests for hts_rag_shared_schema_contract.sql",
@@ -99,7 +99,7 @@
     {
       "command": "production verification sidecar validation",
       "exit_code": 0,
-      "evidence": "189 production catalog verifier unit tests passed; the sidecar migration hash and pinned producer entry are current."
+      "evidence": "222 production catalog verifier and sidecar tests passed; the migration hash and pinned producer entry remain current after the production-gate repair merge."
     },
     {
       "command": "git diff --check",
@@ -110,6 +110,16 @@
       "command": "exact object and claim guards",
       "exit_code": 0,
       "evidence": "Claim #2867 verified for migration 20260914025520 and the pull-request object collision guard reported no collisions."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate scripts.test_verify_preview_apply_artifact",
+      "exit_code": 0,
+      "evidence": "151 tests passed, preserving the current-main immutable-preview repair alongside this migration's pinned producer entry."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "538 coordination tests passed after the refresh."
     }
   ],
   "assumptions_resolved": [

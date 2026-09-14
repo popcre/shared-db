@@ -1,20 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2898,
+  "work_issue": 2905,
   "outcome": "ready-for-merge",
-  "pr": 2900,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2898/1",
-  "contract_sha256": "c1c30b076de40a8280b7cfa381c1df82356d8ddb67f6368baba999111d8a52d0",
-  "head_sha": "df4b0b09f58d254177031ce5cea8ee517f0cb0f6",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
-  "db_reads": [],
-  "db_writes": [],
-  "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 553, pass 553, fail 0, skipped 0. The new #2898 test fails (false !== true) when coverage expectation is inverted, proving it can fail."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors"}
+  "pr": 2910,
+  "migration_versions": [
+    "20260914172031"
   ],
-  "notes": ["Collision safety unchanged: expanded recovery objects still pass assertLaneAvailable against every other claim and open PR; the new test proves a colliding addition is refused with zero writes.", "No database, preview, production, or workflow action was performed."],
-  "assumptions_resolved": ["A held table claim serializes writes to its columns, so treating column S.T.C as covered adds no collision exposure."],
+  "contract_ref": "refs/db-contracts/2905/2",
+  "contract_sha256": "192cd11509bc01ceb2529958e8d06bc3bdc81721ad7f85d37d7e7c1aa1732180",
+  "head_sha": "bc0a59911f92fa7243ea92c35b5e4980d567f1e5",
+  "files_changed": [
+    "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx",
+    "apps/db-data-admin/src/lib/data-admin.ts",
+    "apps/db-data-admin/tests/browser/grid.spec.ts",
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql",
+    "supabase/tests/db_data_admin_scraped_source_inventory.sql",
+    "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"
+  ],
+  "db_reads": [
+    "function api.db_data_admin_scraped_properties",
+    "plm.nbcu_property"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against origin/main cc6ed5fe."
+    },
+    {
+      "command": "database contract tests (supabase/tests/*.sql)",
+      "exit_code": 0,
+      "evidence": "Definition test asserts canonical group columns in all three arms, the unresolved fallback and NBCU source_kind Submissions; call test asserts every returned row has a group. CI database-contract-tests runs them on PR #2910."
+    },
+    {
+      "command": "apps/db-data-admin vitest run",
+      "exit_code": 0,
+      "evidence": "vitest 22 files, 147 tests passed; Playwright browser suite 11 passed, including the fixture updated with canonical licensor groups."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only production count: plm.nbcu_property at capture rank 1 has property 118, franchise_asset 11, asset_metadata_label 120."
+  ],
   "stop_conditions_hit": []
 }

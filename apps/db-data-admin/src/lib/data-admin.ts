@@ -323,6 +323,8 @@ export type ScrapedInventoryRow = AdminRow & {
   entity_kind: ScrapedInventoryKind
   licensor_key: string
   licensor_name: string
+  licensor_group_key: string
+  licensor_group_name: string
   source_purpose: 'Creative' | 'Submissions'
   display_label: string
   source_system: string
@@ -364,6 +366,8 @@ export async function loadScrapedInventory(client: ApiClient, entityKind: Scrape
   return rows
 }
 
+export const UNRESOLVED_LICENSOR_GROUP_KEY = 'unresolved'
+
 export function groupScrapedInventory(rows: ScrapedInventoryRow[]) {
   const groups = new Map<string, {
     key: string
@@ -372,10 +376,10 @@ export function groupScrapedInventory(rows: ScrapedInventoryRow[]) {
     submissions: ScrapedInventoryRow[]
   }>()
   for (const row of rows) {
-    // RPC keys and names encode purpose ("Sega - Creative (...)"), so group by the
-    // licensor part of the name and split into sections by source_purpose.
-    const name = (row.licensor_name ?? '').split(' - ')[0].trim() || row.licensor_key
-    const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    // The RPC emits one canonical licensor group per row across both purposes;
+    // rows with an unresolved or conflicting licensor share the 'unresolved' group.
+    const key = row.licensor_group_key || UNRESOLVED_LICENSOR_GROUP_KEY
+    const name = row.licensor_group_name || 'Licensor not yet determined'
     const group = groups.get(key) ?? {
       key,
       name,
@@ -386,5 +390,10 @@ export function groupScrapedInventory(rows: ScrapedInventoryRow[]) {
     else group.submissions.push(row)
     groups.set(key, group)
   }
-  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
+  return [...groups.values()].sort((a, b) => {
+    const aUnresolved = a.key === UNRESOLVED_LICENSOR_GROUP_KEY
+    const bUnresolved = b.key === UNRESOLVED_LICENSOR_GROUP_KEY
+    if (aUnresolved !== bUnresolved) return aUnresolved ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
 }

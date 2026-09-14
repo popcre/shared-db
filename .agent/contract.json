@@ -1,1 +1,60 @@
-{"schema_version":1,"work_issue":2883,"generation":9,"work_type":"repo-maintenance","route":"repo-maintenance","goal":"Canonicalize the automatic review evidence artifact digest (upload-artifact bare hex to sha256:<hex>) so automatic production qualification reaches its dispatch step.","base_sha":"d30379133103efd2a94bad58026544ce09c17b0b","dispatcher":"Claude orchestrator marker 2893 route local_d16c82f5-fb42-453c-9ee5-765977d79195","worker":"Claude subagent issue 2883 review-digest repair","branch":"claude/issue-2883-review-digest","worktree":"C:/repos/shared-db/.claude/worktrees/issue2883-digest","allowed_paths":[".agent/completion.json",".agent/contract.json",".github/workflows/shared-supabase-migrations.yml","scripts/test_production_migration_guard.py"],"file_writes":[".agent/completion.json",".agent/contract.json",".github/workflows/shared-supabase-migrations.yml","scripts/test_production_migration_guard.py"],"db_reads":[],"db_writes":[],"prohibited_actions":["Do not change evidence validation semantics, allowlist meaning, or any other gate.","Do not change any database object, migration, preview, or production state.","Do not touch the protected coordination source scripts/manage-migration-author-lanes.mjs."],"required_checks":["python -m unittest scripts.test_production_migration_guard","python -m unittest scripts/test_production_apply_review_evidence.py","git diff --check"],"assumptions":["Preview run 34869716305 uploaded the review artifact (bare digest d724909f...) and refused dispatch only because the step output lacks the sha256: prefix the verifier requires.","Generation 9 reseals the unchanged GLM-reviewed repair onto current main as one evidence-pair commit."],"stop_conditions":["Stop if the fix requires relaxing the verifier's canonical digest rule.","Stop if exact-head CI or governed review rejects the repair."]}
+{
+  "schema_version": 1,
+  "work_issue": 2912,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Consume the sender-side database preview classification and make no-preview routing explicit, exact-input-bound, deterministic, target-bound, and fail closed before claim or review admission.",
+  "base_sha": "703c333847475d8adcb590904454a72dc27e0867",
+  "dispatcher": "Codex programme 401 repository-maintenance continuation",
+  "worker": "Codex receiver classification continuation",
+  "branch": "codex/433-no-db-preview",
+  "worktree": "C:/repos/shared-db-worktrees/401-2795-resume-20260914",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, preview, production, migration, marker, issue #2714, or pull request #2738 mutation.",
+    "No trust in a self-declared no-preview decision without an independently supplied exact file set, target identity, and matching content digests."
+  ],
+  "required_checks": [
+    "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "python -m unittest scripts.test_production_business_risk_gate",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The ai-devops sender contract is interface context only and remains owned by its existing worker.",
+    "NO_DATABASE_PREVIEW returns work to its natural owner before claim, review, or preview reads; all database-impacting or unverifiable classifications retain governed database admission.",
+    "Recovery contract after integration onto main 703c333847475d8adcb590904454a72dc27e0867; this does not claim prospective publication. Corrects old mistaken shared-db issue 433 to local receiver issue 2912; parent is popcre/ai-devops issue 433."
+  ],
+  "stop_conditions": [
+    "Any required test fails.",
+    "Exact target, file-set, or content-digest binding cannot be independently verified.",
+    "The change would require any prohibited mutation or weaken an existing database safety gate."
+  ]
+}

@@ -111,5 +111,5 @@
     "Stop if existing bounded cross-environment UPDATE semantics cannot be preserved.",
     "Stop if preview or production access is required for authoring."
   ],
-  "generation": 4
+  "generation": 5
 }

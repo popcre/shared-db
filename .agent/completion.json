@@ -1,20 +1,18 @@
 {
   "schema_version": 1,
-  "work_issue": 2915,
+  "work_issue": 2921,
   "outcome": "ready-for-merge",
-  "pr": 2916,
+  "pr": 2922,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2915/2",
-  "contract_sha256": "73136d7fe4518eeac30af16440ac63743f82942fb494997bd82c63427e82c173",
-  "head_sha": "7aa09ef0ac8776190536d0a66e85e55600eddac2",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs"],
+  "contract_ref": "refs/db-contracts/2921/1",
+  "contract_sha256": "d97115227d56d4cfcfd42cb25152c8db2e564ad386d24b588d2e96a5113c8584",
+  "head_sha": "5764a4adfafe483b64ef9c5fa6726c4dda2abebf",
+  "files_changed": [".github/live-proofs/2506.sql"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "554 tests passed, 0 failed, 0 skipped, on the merge of current main 6433c8e6."},
-    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "7 tests passed. The reviewer-snapshot test and the new verdict-recording test fail on the prior code and pass here; recording accepts a merged PR only for the bound PR, bound issue, exact head, and verified open issue."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 9b55cd89 and implementation 5764a4ad."}
   ],
-  "assumptions_resolved": ["Reviewer assignment read io.readReviewerOperationRoute, which the #2901 binding wrapper did not cover.", "Verdict recording refused every non-open PR; it now accepts a merged exact head only through io.mergedPrReviewTarget on the verified binding."],
+  "assumptions_resolved": ["Production has 20260911213429 (run 34898171486); the probe returned all components true on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting a nonexistent version returned [{\"passed\":false}]."],
   "stop_conditions_hit": []
 }

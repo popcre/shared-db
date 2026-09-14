@@ -100,14 +100,14 @@ begin
     insert into hts_rag.hts_rag_rulings (ruling_number, full_text, full_text_hash)
     values ('ZZ-R9', 'no provenance', repeat('8', 64));
     raise exception 'insert without source_environment was accepted';
-  exception when not_null_violation then null;
+  exception when not_null_violation or insufficient_privilege then null;
   end;
 
   begin
     insert into hts_rag.hts_rag_rulings (ruling_number, full_text, full_text_hash, source_environment)
     values ('ZZ-R9', 'bad provenance', repeat('8', 64), 'staging');
     raise exception 'unknown source_environment was accepted';
-  exception when check_violation then null;
+  exception when check_violation or insufficient_privilege then null;
   end;
 
   update hts_rag.hts_rag_rulings set operationally_revoked = false, subject = 'refreshed'

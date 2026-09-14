@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2797,
+  "work_issue": 2905,
   "outcome": "ready-for-merge",
-  "pr": 2903,
-  "migration_versions": ["20260914164141"],
-  "contract_ref": "refs/db-contracts/2797/2",
-  "contract_sha256": "ae28da1ec5a04a6c2221bc5e5fb8c20e752ca439ef050e50dc98e5e4279287e1",
-  "head_sha": "eb39bd12a8806e209c403f0f2b4e78688ce91fb3",
-  "files_changed": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
-  "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
+  "pr": 2910,
+  "migration_versions": ["20260914172031"],
+  "contract_ref": "refs/db-contracts/2905/1",
+  "contract_sha256": "c8198ac23ffbc3d065473998e984df67a2729e2087e75e59205761d0d5a0862e",
+  "head_sha": "b7be99a7a84934c507adf16052283b37b8796b72",
+  "files_changed": ["apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "docs/db-data-admin-scraped-properties.md", "supabase/migrations/20260914172031_db_data_admin_inventory_canonical_licensor_group.sql", "supabase/tests/db_data_admin_scraped_source_inventory.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
+  "db_reads": ["function api.db_data_admin_scraped_properties", "plm.nbcu_property"],
   "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main 56a51e24."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "New test calls the property, character and style_guide arms as a Licensing Manager; CI database-contract-tests runs it on PR #2903."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main 9892c204."},
+    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "Definition test asserts canonical group columns in all three arms, the unresolved fallback and NBCU source_kind Submissions; call test asserts every returned row has a group. CI database-contract-tests runs them on PR #2910."},
+    {"command": "apps/db-data-admin vitest run", "exit_code": 0, "evidence": "22 test files, 147 tests passed, including canonical grouping and trailing unresolved group tests."}
   ],
-  "assumptions_resolved": ["Production catalog read confirmed plm.wb_character_normalized and plm.wb_style_guide_normalized exist with the columns the arms use."],
+  "assumptions_resolved": ["Read-only production count: plm.nbcu_property at capture rank 1 has property 118, franchise_asset 11, asset_metadata_label 120."],
   "stop_conditions_hit": []
 }

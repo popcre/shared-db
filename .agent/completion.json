@@ -1,1 +1,73 @@
-{"schema_version":1,"work_issue":2878,"outcome":"ready-for-merge","pr":2880,"migration_versions":[],"contract_ref":"refs/db-contracts/2878/2","contract_sha256":"ae44294c971727431522408e7939bd7576a59aa1be10509e949ff53d624d822d","head_sha":"5063389bbd7a4887cc26fdb138290efaae6c5450","files_changed":["config/db-data-admin-property-source-coverage.json","scripts/check-db-data-admin-property-source-coverage.mjs","scripts/check-db-data-admin-property-source-coverage.test.mjs"],"db_reads":[],"db_writes":[],"checks":[{"command":"node --test scripts/check-db-data-admin-property-source-coverage.test.mjs","exit_code":0,"evidence":"19 tests passed, 0 failed, 0 skipped. Production-only absence is accepted only on the live path and refused when blank, exposed, used on the derived path, or stale."},{"command":"node scripts/check-db-data-admin-property-source-coverage.mjs","exit_code":0,"evidence":"37 families and 15 exposed families classify all 331 plm tables derived from repository migrations."},{"command":"git diff --check","exit_code":0,"evidence":"No whitespace errors."}],"notes":["No API function, view, migration, database row, preview environment, or production environment was changed.","Issue 2879 separately owns the structural source-family classification requested by issue 2579."],"assumptions_resolved":["The samples repository exemption remains necessary and is preserved.","The lead-time template family is necessary for the repository catalog and now records its production-only absence without excusing a repository gap."],"stop_conditions_hit":[]}
+{
+    "schema_version": 1,
+    "work_issue": 2879,
+    "outcome": "ready-for-merge",
+    "pr": 2882,
+    "migration_versions": [
+        "20260914061331"
+    ],
+    "contract_ref": "refs/db-contracts/2879/7",
+    "contract_sha256": "2a5df38828e90a4dafa410785997fadfe93662c52589bc782ae5a0e7f40962fb",
+    "head_sha": "fe93b09e5569687de4490a27be6fef60e203ab18",
+    "files_changed": [
+        ".agent/completion.json",
+        ".agent/contract.json",
+        "docs/verification/throughput-guard-truth-baseline-20260828.json",
+        "scripts/production-verification-sidecars/20260914061331.json",
+        "scripts/production_business_risk_gate.py",
+        "scripts/production_catalog_verification.py",
+        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
+        "supabase/tests/peanuts_landing_contracts.sql",
+        "supabase/tests/sega_landing_contracts.sql",
+        "supabase/tests/wildbrain_landing_contracts.sql"
+    ],
+    "db_reads": [
+        "table plm.lucasfilm_dcp_crawl",
+        "table plm.twentieth_century_dcp_crawl"
+    ],
+    "db_writes": [
+        "function api.source_capture_inventory_exact",
+        "view api.source_capture_inventory"
+    ],
+    "checks": [
+        {
+            "command": "bash scripts/check-sql.sh",
+            "exit_code": 0,
+            "evidence": "Static SQL guards passed after refresh onto main 31b269c2."
+        },
+        {
+            "command": "git diff --check",
+            "exit_code": 0,
+            "evidence": "No whitespace errors."
+        },
+        {
+            "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+            "exit_code": 0,
+            "evidence": "Status OK across 52 sidecars; migration markers 36 and 37 are hash-bound to dcp_inventory_family_classification_v1."
+        },
+        {
+            "command": "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q",
+            "exit_code": 0,
+            "evidence": "391 passed and 229 subtests passed after refresh."
+        },
+        {
+            "command": "supabase/tests against an ephemeral database",
+            "exit_code": 0,
+            "evidence": "Pending exact-head pull-request CI after evidence push."
+        },
+        {
+            "command": "two independent governed reviewers at the exact head",
+            "exit_code": 0,
+            "evidence": "Pending governed allocation after evidence push."
+        }
+    ],
+    "notes": [
+        "No preview, merge, production apply, row write, or change to api.db_data_admin_scraped_properties was performed."
+    ],
+    "assumptions_resolved": [
+        "The branch was refreshed onto exact post-2880 main 31b269c2 without changing the substantive classification behavior.",
+        "Both explicit definitions have durable catalog witnesses and the 40-table SQL contract checks both inventory surfaces."
+    ],
+    "stop_conditions_hit": []
+}

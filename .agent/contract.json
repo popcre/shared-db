@@ -1,41 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2894,
-  "generation": 1,
+  "generation": 9,
+  "work_issue": 2694,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Owner ruling (marker #2893, 2026-09-14): remove any limit on concurrent agents/lanes and on using a reviewer multiple times. Retire the already-reviewed reviewer exclusion reason (new exclusions refused, legacy records never bar a draw); author lane cap already removed (#2775) and reviewer leases already concurrent.",
-  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
-  "dispatcher": "Albert Hazan (owner) via chat, relayed by shared-db orchestrator marker #2893",
-  "worker": "shared-db repo-maintenance Claude subagent in worktree limits-removal-20260914",
-  "branch": "claude/remove-throughput-caps",
-  "worktree": "C:/repos/shared-db-worktrees/limits-removal-20260914",
+  "goal": "Complete scoped reviewer admission delivery while preserving parallel exact-head leases and truthful unknown provider capacity.",
+  "base_sha": "56fdea49fb1d8a8c0422654dcf0257f2c5c64b2e",
+  "dispatcher": "shared-db orchestrator marker #2893 (route local_d16c82f5-fb42-453c-9ee5-765977d79195)",
+  "worker": "Claude subagent for #2750 refresh",
+  "branch": "codex/396-scoped-reviewer-admission",
+  "worktree": "C:/Users/ahazan/AppData/Local/Temp/claude/C--repos-shared-db--claude-worktrees-mystifying-merkle-349616/a96084a6-3ccc-4c15-9a73-137b197a4097/scratchpad/wt2750",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md"
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database structure change of any kind.",
-    "Do not weaken exact-object collision locks, version reservation, serial preview/merge/production, or the rule that the orchestrating/authoring engine never reviews its own work.",
-    "Do not delete or rewrite historical exclusion records."
+    "No database structure or data access.",
+    "No orchestrator contact or new issues.",
+    "No arbitrary provider cap or weakened review, lease or CI gate."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check",
+    "node scripts/check-throughput-truth-audit.mjs"
   ],
   "assumptions": [
-    "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review."
+    "Prospective delivery contract: existing implementation and review predate this publication; no retrospective publication claim.",
+    "Installed ai-devops scoped preflight contract is a required merge prerequisite.",
+    "Generation7 adds the existing semantic inventory disposition for local admission validation after CI qualification.",
+    "Generation 8 refreshes from current main: merge conflicts resolved; truth audit re-derived at 285 call sites; stale ledger-drift site dropped.",
+    "Generation 9 refreshes from main after #2896 merged; only .agent conflicts; truth audit still 285; 552 tests pass."
   ],
   "stop_conditions": [
-    "Stop if removing the cap would require weakening a safety rule listed in prohibited_actions."
+    "Refuse missing, malformed or mismatched admission evidence before assignment.",
+    "Stop delivery on failed checks or loss of parallel lease capability."
   ]
 }

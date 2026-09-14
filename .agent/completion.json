@@ -1,14 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 2894,
+  "work_issue": 2694,
   "outcome": "ready-for-merge",
-  "pr": 2896,
+  "pr": 2750,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2894/1",
-  "contract_sha256": "5be8886dde800e05398e41cda591954e7b3a8cae5894b04930db7b76ad368647",
-  "head_sha": "68bfac2b04fc820419aeffa60e41a250cbc66d24",
+  "contract_ref": "refs/db-contracts/2694/9",
+  "contract_sha256": "ac3cdaf8685b32dbcf41a47331fa3ca223411d2ce44ef4fc624c31b01edecccd",
+  "head_sha": "50f9460d3a0bc3f64c36cf2179c637a357936800",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
@@ -16,20 +18,23 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 735, pass 735, fail 0, skipped 0"
+      "evidence": "552 passed, zero failed, skipped, cancelled or todo after refreshing from main at 56fdea49."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=285 against main at 56fdea49."
     }
   ],
   "assumptions_resolved": [
-    {
-      "assumption": "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review.",
-      "resolution": "Confirmed: independence-conflict remains recordable, barring and non-reinstatable; the draw also filters the live orchestrator engine and slot-1 provider."
-    }
+    "Prospective delivery validation only; final exact-head review, CI and prerequisite installation remain separate gates."
   ],
-  "stop_conditions_hit": [],
-  "notes": [
-    "Author lane cap was already removed by PR #2777 (issue #2775); reviewer leases are already concurrent in production.",
-    "Kept: independence-conflict exclusion, slot 2 distinct from slot 1 on one head, collision locks, version reservation, serial preview/merge/production, GitHub API request budgets."
-  ]
+  "stop_conditions_hit": []
 }

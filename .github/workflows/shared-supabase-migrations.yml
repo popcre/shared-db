@@ -974,7 +974,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # write: admission creates a db-coordination commit object and ref via the
+      # Git data API. It grants no database credential; this job holds none.
+      contents: write
       actions: write
       checks: read
       issues: read

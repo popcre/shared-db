@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal } from './manage-migration-author-lanes.mjs'
+import { CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
 
@@ -2429,7 +2429,7 @@ test('the six-hour #2237 shape probes and reclaims after an unchanged confirmati
   const released=reclaimSilentReviewer(options,new Date('2026-09-04T14:00:00Z'),io)
   assert.ok(released.releaseSha);assert.equal(io.refs.get(leaseRef)??null,null)
   assert.ok([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_SILENCE_RELEASE_REF_PREFIX)))
-  assert.equal(TERMINAL_FAILURE_CODES.length,6)
+  assert.equal(TERMINAL_FAILURE_CODES.length,7)
   assert.equal(TERMINAL_FAILURE_CODES.includes('silent_worker_observed'),false)
   assert.throws(()=>assignNextReviewer(request,io),/silent lease was reclaimed/)
   const replacement=replaceFailedReviewer({...options,failureCode:'silent_worker_observed'},io)
@@ -7537,4 +7537,35 @@ for(const mode of ['serial','parallel'])test('silent reclaim current key derivat
   const {io,options,state}=instrumentedSilentReclaimIo(mode)
   reclaimSilentReviewer(options,new Date('2026-09-04T14:00:00Z'),io)
   assert.equal(state.attempts,28)
+})
+
+// The PR head moved while a HEALTHY reviewer was mid-review. Releasing that lease
+// must not force a provider-blaming code, must not exclude or bench the provider,
+// and must be refused while the recorded head is still the open PR head.
+test('review_target_superseded releases a stranded lease without blaming or benching the provider',()=>{
+  assert.ok(TERMINAL_FAILURE_CODES.includes(REVIEW_TARGET_SUPERSEDED))
+  const io=failedReviewIo(),movedHead='9'.repeat(40)
+  io.readReviewRefs=(refs)=>new Map(refs.map((ref)=>[ref,io.refs.get(ref)??null]))
+  io.atomicReviewRefs=(changes)=>{for(const change of changes)assert.equal(io.refs.get(change.ref)??null,change.expected??null);for(const change of changes){if(change.sha===null)io.refs.delete(change.ref);else io.refs.set(change.ref,change.sha)}}
+  io.atomicReviewMutexRelease=(ownerSha)=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
+  const request={...replacementRequest,failureCode:REVIEW_TARGET_SUPERSEDED}
+  // Head unchanged: the code does not apply, and nothing is written.
+  io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
+  assert.throws(()=>releaseFailedReviewer(request,io),/requires proof the review target moved/)
+  assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_FAILURE_REF_PREFIX)),false)
+  // Replacement refuses the code outright, so the provider is never listed as failed.
+  assert.throws(()=>replaceFailedReviewer(request,io),/release-only/)
+  assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX)),false)
+  // Head moved: release succeeds and frees the lease.
+  io.getPr=()=>({state:'open',head:{sha:movedHead}})
+  io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:movedHead}},evidence:[]}]))
+  const released=releaseFailedReviewer(request,io)
+  assert.equal(released.failureCode,REVIEW_TARGET_SUPERSEDED)
+  assert.equal(io.refs.get(reviewActiveRef(released.reviewer))??null,null)
+  assert.equal(findBusyReviewers(io).has(released.reviewer),false)
+  assert.match(io.getCommit(released.failureSha).message,/code=review_target_superseded /)
+  // Not benched: no exclusion was written and the provider stays allocatable.
+  assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_EXCLUSION_REF_PREFIX)),false)
+  assert.equal(ACTIVE_REVIEWERS.some((row)=>row.name===released.reviewer),true)
+  assert.throws(()=>releaseFailedReviewer(request,io),/already released/)
 })

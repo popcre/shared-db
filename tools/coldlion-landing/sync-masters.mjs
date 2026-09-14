@@ -86,6 +86,8 @@ export async function collectMasters({ companyCode=COMPANY_CODE, apiKey, fetchOp
   assertRequestedScope(ITEM_SPECS.item_detail,source.item_detail,{companyCode});
 
   const fetchedItemDetails = source.item_detail;
+  // Shape, blank-key and duplicate-key guards still see every fetched row, withheld ones included.
+  projectCurrentRows(ITEM_SPECS.item_detail, fetchedItemDetails, {});
   const { landable, orphaned } = splitOrphanItemDetails(source.item_header, fetchedItemDetails);
   source.item_detail = landable;
 

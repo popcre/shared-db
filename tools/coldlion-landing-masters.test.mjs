@@ -254,6 +254,36 @@ test("collector fans seasons per division, merges active variants, and proves it
   assert.equal(result.loads.length,9); assert.ok(calls.some((call)=>call.startsWith("/seasons?")&&call.includes("divisionCode=SD001"))); assert.equal(calls.filter((call)=>call.startsWith("/itemDetails?")).length,2);
 });
 
+async function collectWithOrphanDetail(orphanRows) {
+  const byEndpoint=new Map([...Object.values(MASTER_SPECS),...Object.values(ITEM_SPECS)].map((spec)=>[spec.endpoint,spec]));
+  const fetchImpl=async(rawUrl)=>{
+    const url=new URL(rawUrl), endpoint=url.pathname.replace("/EhpApi",""); const spec=byEndpoint.get(endpoint);
+    const active=url.searchParams.get("active"); let rows=[];
+    if (active!=="N") rows=[sourceFor(spec,{companyCode:"EDGEHOME",...(spec.fields.some((field)=>field.api==="divisionCode")?{divisionCode:"SD001"}:{}),...(active?{active}:{}),...(endpoint==="/divisions"?{divisionCode:"SD001",active:"Y"}:{}),...(endpoint==="/itemDetails"?{itemNo:"I1",itemPkey:"P1"}:{}),...(endpoint==="/items"?{itemNo:"I1"}:{})})];
+    if (endpoint==="/itemDetails") rows.push(...orphanRows.map((extra)=>sourceFor(spec,{companyCode:"EDGEHOME",divisionCode:"SD001",...extra})));
+    const body=spec.paged?{content:rows,number:0,size:2000,numberOfElements:rows.length,totalElements:rows.length,totalPages:1,last:true}:rows;
+    return{ok:true,status:200,text:async()=>JSON.stringify(body)};
+  };
+  return collectMasters({companyCode:"EDGEHOME",apiKey:"hidden",fetchOptions:{fetchImpl,pauseMs:0}});
+}
+
+test("collector withholds a headerless itemDetail from rows, slots and grains while still counting and naming it",async()=>{
+  const result=await collectWithOrphanDetail([{itemNo:"ORPHAN",itemPkey:"P9",merchGroup01:"MG-ORPHAN"}]);
+  const detail=result.loads.find((load)=>load.table==="item_detail");
+  assert.equal(detail.run.rowsFetched,2);
+  assert.equal(detail.rows.length,1);
+  assert.equal(detail.orphaned,1);
+  assert.deepEqual(detail.run.requestParams.orphanedWithoutItemHeader,[{divisionCode:"SD001",itemNo:"ORPHAN",itemPkey:"P9"}]);
+  assert.ok(result.itemSlots.every((slot)=>slot.item_no!=="ORPHAN"));
+  assert.ok(result.affectedItemGrains.every((grain)=>grain.item_no!=="ORPHAN"));
+});
+
+test("collector still aborts on an unreviewed field that exists only on a withheld itemDetail",async()=>{
+  const clean=await collectWithOrphanDetail([{itemNo:"ORPHAN",itemPkey:"P9"}]);
+  assert.equal(clean.loads.find((load)=>load.table==="item_detail").orphaned,1);
+  await assert.rejects(collectWithOrphanDetail([{itemNo:"ORPHAN",itemPkey:"P9",unreviewedField:"x"}]),(error)=>!/identity proof/.test(error.message));
+});
+
 test("landing runSql passes the script as a file, not stdin, so a large load cannot EPIPE", () => {
   const sql = "select 1;\n".repeat(200000);
   let seen;

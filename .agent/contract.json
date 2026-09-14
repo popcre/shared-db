@@ -1,51 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 2851,
+  "work_issue": 2857,
   "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Grant the automatic-production-promotion job the minimum permission (contents: write) to create its db-coordination admission commit object and ref, so automatic and manual production promotion stop failing with HTTP 403, without giving that job any database credential or weakening its ENGINEER ACTION REQUIRED fail-closed behaviour.",
-  "base_sha": "62d31d7138b0d598217521d2550e3c3e82adb376",
-  "dispatcher": "Albert Hazan (owner, repo-maintenance request 2026-09-13)",
-  "worker": "claude-repo-session-2851",
-  "branch": "claude/fix-auto-promotion-contents-write",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/cranky-mestorf-ee0f23",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a non-blaming, release-only `review_target_superseded` terminal failure code so a reviewer lease stranded by a moved PR head can be released without recording a healthy provider as failed, and without weakening the exact-head release guard for any other code.",
+  "base_sha": "bce5f2e005c67f7a8196105f98d48bf746e612b4",
+  "dispatcher": "Albert Hazan (direct repository-maintenance request)",
+  "worker": "claude-review-target-superseded",
+  "branch": "claude/review-target-superseded-code",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-orchestrator-issues-b3dd88",
   "allowed_paths": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No permission change on any job other than automatic-production-promotion; the top-level and production-apply-review contents: read stay.",
-    "No database secret added to automatic-production-promotion.",
-    "No removal, weakening or bypass of ENGINEER ACTION REQUIRED fail-closed logic.",
-    "No shared database reads or writes, no migration file, no author lane claim.",
-    "No re-dispatch of issue 2482's production promotion."
+    "No hand-deletion of any lease, claim, contract or review ref, including the stranded refs/db-review-active-v2/grok-4.6/2744-2818-4ad729ff02e2792222b3130e09cbd64f386f6771.",
+    "No weakening or bypassing of the exact-head release guard, the verdict check, or any other guard for existing failure codes.",
+    "No migration author lane claim and no db-work issue changes.",
+    "No shared database reads or writes."
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_owner_decision_evidence",
-    "python -m unittest scripts.test_production_migration_guard",
-    "git diff --check",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "contents: write covers both Git data API writes the admission path makes: POST git/commits and POST/PATCH git/refs. No other scope is needed.",
-    "Generation 3 rebuilds on main bce5f2e0, which already repaired the expired guarded-merge admission fixture, so this branch no longer changes scripts/manage-migration-author-lanes.test.mjs.",
-    "Generation 4 preserves that exact implementation and aligns the immutable contract route with the live issue route repo-maintenance before the refreshed reviewer draw.",
-    "Generation 5 refreshes onto main 62d31d71 after PR #2855 landed. Only the shared .agent evidence pair conflicted; this branch's implementation diff remains the same workflow and focused test, while main's reviewer-lifecycle repair is inherited unchanged."
+    "Quarantine and retirement are static lists in code and no failure code feeds them automatically; the only code-driven provider penalty is the replacement redraw's failed-on-this-head set, which the new code never reaches because replacement refuses it."
   ],
   "stop_conditions": [
-    "Stop if the admission step needs any permission beyond contents: write.",
-    "Stop if the fix would require giving this job a database credential.",
-    "Stop and report the exact refusal if a governed tool refuses, rather than working around it."
+    "Stop if releasing a superseded lease would require relaxing the exact-head guard for any other failure code.",
+    "Stop and report the exact refusal if a required governed tool refuses, rather than working around it."
   ],
-  "generation": 5
+  "generation": 2
 }

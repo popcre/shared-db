@@ -6,9 +6,9 @@
     "migration_versions": [
         "20260914061331"
     ],
-    "contract_ref": "refs/db-contracts/2879/5",
-    "contract_sha256": "ea58a4449506cdef8729d516bf162c46c87aba6942cba3ffbcf8cf7f728cf272",
-    "head_sha": "0e0a541dbe93a27184cf2c969288aded1e5eb449",
+    "contract_ref": "refs/db-contracts/2879/6",
+    "contract_sha256": "eea44489807d386ab17f7e5bbbd0099dc6e86ec1f76f79cd4b0bcc14bbcdb1dc",
+    "head_sha": "8baa59a47dce60dc6a09e5ebfcfb9455e2db5a90",
     "files_changed": [
         "docs/verification/throughput-guard-truth-baseline-20260828.json",
         "scripts/production-verification-sidecars/20260914061331.json",
@@ -62,7 +62,7 @@
     ],
     "assumptions_resolved": [
         "The branch was refreshed onto exact post-2880 main 31b269c2 without changing the substantive classification behavior.",
-        "Both dynamic replacements have durable catalog witnesses and the 40-table SQL contract checks both inventory surfaces."
+        "Both explicit definitions have durable catalog witnesses and the 40-table SQL contract checks both inventory surfaces."
     ],
     "stop_conditions_hit": []
 }

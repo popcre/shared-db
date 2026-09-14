@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "work_issue": 2879,
-    "generation": 5,
+    "generation": 6,
     "work_type": "structural",
     "route": "shared-db-orchestrator",
     "goal": "Classify all Lucasfilm and 20th Century DCP landing tables under their exact non-other source systems in both source-inventory contracts.",
@@ -58,7 +58,8 @@
         "Exactly 20 Lucasfilm and 20 Twentieth Century DCP family tables exist and must be classified without reading their licensed rows.",
         "Migration 20260910155753 is the common definition predecessor and the migration refuses if its classification anchor is not present exactly once in either definition.",
         "Generation 4 refreshes the contract onto post-2880 main and uses the supported SELECT INTO catalog-rewrite form without changing behavior.",
-        "Generation 5 corrects completion changed-file accounting to list only substantive files outside the evidence pair."
+        "Generation 5 corrects completion changed-file accounting to list only substantive files outside the evidence pair.",
+        "Generation 6 replaces catalog-text rewriting with explicit CREATE OR REPLACE definitions for both claimed objects after structural admission refused the unmodelled view rewrite."
     ],
     "stop_conditions": [
         "Stop if the live predecessor definitions do not contain the expected classification anchor exactly once.",

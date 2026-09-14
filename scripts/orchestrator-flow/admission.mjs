@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { dispatchObjectKeys, inventoryDdlVerbs } from '../check-pr-object-collisions.mjs'
+import { canonicalIdentifier, dispatchObjectKeys, inventoryDdlVerbs } from '../check-pr-object-collisions.mjs'
 
 export class AdmissionError extends Error {
   constructor(message, result = null) {
@@ -145,8 +145,8 @@ export function inspectPrStructuralChange(prFiles = []) {
 // pg_get_functiondef is mutated and later EXECUTEd inside the same do-block.
 function catalogFunctionRewrites(sql){
   const found=new Set()
-  for(const block of String(sql).matchAll(/\bdo\s+\$([A-Za-z_]*)\$([\s\S]*?)\$\1\$\s*;/gi)){
-    const text=stripSqlComments(block[2])
+  for(const block of String(sql).matchAll(/\bdo\s+\$([A-Za-z_][A-Za-z0-9_]*|)\$([\s\S]*?)\$\1\$\s*;/gi)){
+    const text=stripSqlNestedDollarQuotedText(stripSqlComments(block[2]))
     const read=/pg_get_functiondef\(\s*'\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\.\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\([^')]*\)\s*'\s*::\s*regprocedure\s*\)\s*\)?\s*into\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/gi
     for(const match of text.matchAll(read)){
       const variable=match[3].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
@@ -155,8 +155,7 @@ function catalogFunctionRewrites(sql){
       if(!mutation)continue
       const afterMutation=rest.slice(mutation.index+mutation[0].length)
       if(!new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(afterMutation))continue
-      const part=(value)=>value.startsWith('"')?value.slice(1,-1):value.toLowerCase()
-      found.add(`function ${part(match[1])}.${part(match[2])}`)
+      found.add(`function ${canonicalIdentifier(`${match[1]}.${match[2]}`)}`)
     }
   }
   return [...found]
@@ -181,9 +180,13 @@ function stripSqlComments(sql){
 
 function stripSqlQuotedText(sql){
   return String(sql)
-    .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g,' ')
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*|)\$[\s\S]*?\$\1\$/g,' ')
     .replace(/'(?:[^']|'')*'/g,' ')
     .replace(/"(?:[^"]|"")*"/g,' ')
+}
+
+function stripSqlNestedDollarQuotedText(sql){
+  return String(sql).replace(/\$([A-Za-z_][A-Za-z0-9_]*|)\$[\s\S]*?\$\1\$/g,' ')
 }
 
 export function assertPrCarriesStructuralChange(prFiles = []) { return inspectPrStructuralChange(prFiles).migrations }

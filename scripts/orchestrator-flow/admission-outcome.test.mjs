@@ -87,6 +87,13 @@ $migration$;`
   assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_order.sql',status:'added',content:content.replace("v_definition:=replace(v_definition, 'old body', 'new body');\n  execute v_definition;","execute v_definition;\n  v_definition:=replace(v_definition, 'old body', 'new body');")}]),/actual change is not structural/)
   assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_literal.sql',status:'added',content:content.replace('execute v_definition;',"perform '; execute v_definition;';")}]),/actual change is not structural/)
   assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_block_comment.sql',status:'added',content:content.replace('execute v_definition;','/* execute v_definition; */')}]),/actual change is not structural/)
+  assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_wrong_variable.sql',status:'added',content:content.replace('v_definition:=replace(v_definition','v_other:=replace(v_other')}]),/actual change is not structural/)
+  assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_quoted_read.sql',status:'added',content:`do $migration$ begin
+    perform $$ select pg_get_functiondef('api.fake(integer)'::regprocedure) into v_definition;
+      v_definition:=replace(v_definition,'a','b'); execute v_definition; $$;
+  end $migration$;`}]),/actual change is not structural/)
+  assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_digit_tag.sql',status:'added',content:content.replace('execute v_definition;',"perform $m1$; execute v_definition; $m1$;")}]),/actual change is not structural/)
+  assert.deepEqual(inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_quoted_identifier.sql',status:'added',content:content.replace('api.db_data_admin_scraped_properties','"Api"."MixedCase"')}]).objects,['function "Api"."MixedCase"'])
 })
 
 test('shared reviewer and merge routing admits deterministic repository maintenance without fabricated DDL',()=>{

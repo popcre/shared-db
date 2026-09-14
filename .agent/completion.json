@@ -1,27 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2851,
   "outcome": "ready-for-merge",
-  "pr": 2864,
+  "pr": 2868,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/1",
-  "contract_sha256": "8a7770e665167bbdfa1bb7edeecad0cbe912ac2db745195dfcd6a8e2f2c2e1d2",
-  "head_sha": "0f4649bf8dd48c56d26ef1792a3b95bb23e9cf31",
-  "files_changed": [
-    "tools/coldlion-landing-masters.test.mjs",
-    "tools/coldlion-landing/lib/db.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2851/12",
+  "contract_sha256": "1fc45ac3b1688163fa2cfebd899bf60b7a714c21ec5f03538d41a4787932dbd4",
+  "head_sha": "8ddcdf39a40be0a67eb1f769830c27f7932524da",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/test_verify_preview_apply_artifact.py", "scripts/verify_preview_apply_artifact.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 97, pass 97, fail 0, skipped 0, todo 0. Includes the two new cases: the script is passed with -f <temp file> and stdin ignored and the temp file is removed afterwards; a non-zero psql exit surfaces DATABASE_COMMAND_FAILED with the ERROR line rather than a spawn fault."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, with negative controls for failed preview, guard failure, unexpected job graphs, production execution, and missing job evidence."},
+    {"command": "python -m unittest scripts.test_production_business_risk_gate", "exit_code": 0, "evidence": "146 production risk-gate tests passed with the same exact downstream-failure graph enforced by direct and historical preview consumers."},
+    {"command": "python scripts/test_verify_preview_apply_artifact.py", "exit_code": 0, "evidence": "5 artifact-verification tests passed, including acceptance of the exact downstream-failure graph and refusal after preview failure."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": [
-    "Both failed runs (34685660524, 34751469115) reached the master write and failed with 'spawnSync psql EPIPE'; history reported 0 outstanding windows, so only the stdin pipe path was at fault."
-  ],
+  "assumptions_resolved": ["Run 34681414931 has exactly six terminal jobs: SQL guards and preview succeeded, automatic qualification failed, and all production jobs skipped."],
   "stop_conditions_hit": []
 }

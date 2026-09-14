@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Let reviewer assignment and governed verdict recording accept the verified merged-PR issue binding from #2901 for a merged PR with no closing link, with exactly the same refusals as the preview binding, so PR #2726 (issue #2506) can receive an exact-head verdict.",
-  "base_sha": "8d96cbf7ff461403cfb52e1f75b94c74b46ac969",
+  "base_sha": "6433c8e69ddaf3786a96fbff978f749c61de4203",
   "dispatcher": "Albert Hazan (owner, repository-maintenance authorization 2026-09-14)",
   "worker": "claude-repo-session-2915",
   "branch": "claude/reviewer-assign-merged-binding-2506",
@@ -15,7 +15,7 @@
   "db_writes": [],
   "prohibited_actions": ["No database read or write from this code change.", "No binding looser than the verified preview binding: merged PR, one Work issue line, completion record, migration versions, claim reservations, open issue.", "No weakening of admission, review, lock, lease, mutex, or production gates.", "Never break or delete a preview, merge, production, mutex, lease, or claim ref."],
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/merged-pr-issue-binding.test.mjs", "git diff --check"],
-  "assumptions": ["Reviewer assignment refused PR #2726 with 'pull request must close exactly one work issue; found 0' because its routing snapshot bypassed the binding wrapper."],
+  "assumptions": ["Reviewer assignment refused PR #2726 with 'pull request must close exactly one work issue; found 0' because its routing snapshot bypassed the binding wrapper.", "Verdict recording refused every non-open PR (GLM review F6), so a bound merged PR also needs a binding-gated recording check."],
   "stop_conditions": ["Stop if the fix would require editing a merged PR or deleting any coordination ref."],
-  "generation": 1
+  "generation": 2
 }

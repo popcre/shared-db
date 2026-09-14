@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260914025520"
   ],
-  "contract_ref": "refs/db-contracts/2866/5",
-  "contract_sha256": "891571fff749e3df8258ca4060effe834e13798566fb5260a2520c7c881548dc",
-  "head_sha": "16e89c4e9528b4887567f1b1ec0fc50830e8b44a",
+  "contract_ref": "refs/db-contracts/2866/6",
+  "contract_sha256": "05ebef1255c7e98f23dd308d9eb8dea2e11f6a2a3294e5703cddc5c7d7ce8231",
+  "head_sha": "c4b1d33ee0abf2cf4c8e9bc8a47fe570aec2e6fa",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -89,7 +89,7 @@
     {
       "command": "scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static SQL checks passed against origin/main c23dcdcf; no local live ledger or database was used."
+      "evidence": "Static SQL checks passed against origin/main 6306532e; no local live ledger or database was used."
     },
     {
       "command": "database contract tests for hts_rag_shared_schema_contract.sql",
@@ -99,7 +99,7 @@
     {
       "command": "production verification sidecar validation",
       "exit_code": 0,
-      "evidence": "222 production catalog verifier and sidecar tests passed; the migration hash and pinned producer entry remain current after the production-gate repair merge."
+      "evidence": "222 production catalog verifier and sidecar tests passed; both the #2818 and #2869 pinned producer entries and the #2818 reviewed detector baseline remain current."
     },
     {
       "command": "git diff --check",
@@ -114,7 +114,7 @@
     {
       "command": "python -m unittest scripts.test_production_business_risk_gate scripts.test_verify_preview_apply_artifact",
       "exit_code": 0,
-      "evidence": "151 tests passed, preserving the current-main immutable-preview repair alongside this migration's pinned producer entry."
+      "evidence": "151 tests passed, preserving #2851 immutable-preview handling, #2818 producer evidence, and this migration's pinned producer entry."
     },
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",

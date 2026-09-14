@@ -1,58 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2847,
+  "work_issue": 2728,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop the outcome lifecycle ledger wedging itself when GitHub comment listing is eventually consistent: make the post-then-verify read-back bounded-retry instead of throwing on first miss, and add a governed append-only repair verb that supersedes the duplicate events already wedging issues #2802 and #2848. Generation 2 additionally answers the governed review of sequence 2577 on PR #2849: the repair verb must supersede ONLY the read-back-race problem classes and refuse loudly on any genuine lifecycle violation, and supersession must be honoured only from the single governed repair event type and only against outcome events of the same issue. Generation 3 re-seals the same work after refreshing the branch from main da9ff0c6; no behaviour changed. Generation 4 additionally registers the one new throughput-audit call site this lane's refusal message creates, regenerating the audit inventory rather than rewording the message to evade review. Generation 6 re-seals the same work on main c9e89a8c, which already carries its own repair of the expired guarded-merge test fixture; this branch therefore drops its equivalent fixture edit and its implementation diff is again exactly the five reviewed files.",
-  "base_sha": "c9e89a8c279992ebc322ff375922c1cd2b65337e",
-  "dispatcher": "u2giants/shared-db issue 2847 repo-maintenance brief, plus the REVISE verdict of governed review sequence 2577 on PR #2849",
-  "worker": "shared-db repo-maintenance landing session in worktree blissful-dewdney-1998b2",
-  "branch": "worktree-agent-ae540534d380fb3af",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/blissful-dewdney-1998b2",
+  "goal": "Deliver freshness-sealed event snapshot and composed delivery preflight foundations with exact-head evidence; live programme acceptance remains separate.",
+  "base_sha": "bce5f2e005c67f7a8196105f98d48bf746e612b4",
+  "dispatcher": "Codex programme 401 repository-maintenance owner",
+  "worker": "Codex programme 401 continuation",
+  "branch": "codex/issue-2728-events-preflight-repair",
+  "worktree": "C:/repos/shared-db-worktrees/401-2728-resume-20260914",
   "allowed_paths": [
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/db-coordination-events.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "file_writes": [
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/db-coordination-events.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never edit or delete an existing db-coordination-event comment; repair the ledger only by appending a superseding event.",
-    "Do not weaken, bypass, or delete any guard to make a check pass, and do not change REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT or REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE.",
-    "Do not run any production command, migration apply, or workflow dispatch, and do not dispatch the guarded merge for this pull request.",
-    "Do not touch issues #2705, #2709, #2290 or #2678, and do not run --repair-outcome-history against #2802 or #2848 without separate authorisation.",
-    "Do not assign a reviewer and do not merge this pull request; the orchestrator assigns the fresh exact-head review."
+    "No database, preview, production, marker or infrastructure mutation.",
+    "No takeover of PR 2750 or PR 2795; retain ordered integration hold."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "node --test scripts/db-coordination-events.test.mjs scripts/coordination-scenarios.test.mjs scripts/orchestrator-flow/coordination-audit.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
+    "git diff --check",
+    "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs"
   ],
   "assumptions": [
-    "The bounded-backoff read-back pattern already used by the --claim dispatch path is the house pattern and is followed rather than reinvented.",
-    "outcomeHistory already skips events whose result is refused, so supersession can express a repair without any edit or deletion.",
-    "Making event_id deterministic from (issue, state) is out of scope because outcomeHistory records a duplicate event_id as a problem, so collapsing a re-post would invalidate the ledger it is meant to fix.",
-    "The wedge issue #2847 describes has exactly two problem shapes, both artefacts of the read-back race: the same event_id posted twice, and the state already reached re-posted under a new event_id. Every other replay problem is a real gap in the record and repair must refuse it.",
-    "Generation 3 records base da9ff0c6. Main moved from c7465a75 to da9ff0c6 while this branch waited, which left the pull request CONFLICTING and suppressed every pull_request-triggered check except one, because GitHub cannot build a merge ref for a conflicting pull request. The branch was refreshed by MERGE, not rebase. The only conflicting paths were the two .agent evidence files, which every lane writes at the repo root; main carried issue #2809 / PR #2810 evidence, another lane's artifact and not shared state. Main touched none of this lane's four implementation files, so no code conflicted. The merge commit deliberately takes main's .agent pair so the implementation diff against the new base stays exactly the four implementation files, and this lane's own evidence is then re-sealed in the dedicated evidence commit that follows it.",
-    "The refusal message added for HIGH 1 contains the word 'missing' and is therefore discovered as a new throughput-guard truth-audit call site, taking the inventory from 283 to 284. Main alone at da9ff0c6 is green at 283, so this lane introduced it. It is registered with an explicit 'excluded' disposition and the inventory count and digest are regenerated from the checker's own discover() output. The message was deliberately NOT reworded to dodge the audit pattern, because evading a review guard is not the same as satisfying it.",
-    "Generation 6 records base c9e89a8c. Main moved 20a6b1c5 to c9e89a8c while this branch waited, landing PR #2853 including 42b73e24, which repairs the same expired hard-coded claim expiry (2026-09-13T00:00:00Z) in scripts/manage-migration-author-lanes.test.mjs that had broken main and every open PR. The branch was refreshed by MERGE, not rebase. The .agent pair and that test file conflicted; both were resolved wholesale to main, so this branch no longer changes the test file, and admission-outcome.test.mjs auto-merged main's added cases with this lane's."
+    "Recovery evidence records the existing authorized implementation at 020bff7931f3bcf4ad61c546ffd055655d74c843; publication is not claimed to precede that implementation.",
+    "This PR delivers library foundations; programme steps require production caller integration and live acceptance before issue completion."
   ],
   "stop_conditions": [
-    "Stop if a fix would require editing or deleting an existing coordination comment.",
-    "Stop if a test can only be made green by weakening a guard or changing a reviewer or budget constant.",
-    "Stop before merging this pull request or dispatching any guarded merge or workflow."
+    "Stop before merging while PR 2750 and PR 2795 dependencies remain unlanded.",
+    "Stop on unresolved exact-head review or required check failure."
   ],
-  "generation": 6
+  "generation": 1
 }

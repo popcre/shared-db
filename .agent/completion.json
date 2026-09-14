@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2899,
   "outcome": "ready-for-merge",
-  "pr": 2891,
+  "pr": 2901,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/4",
-  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
-  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "contract_ref": "refs/db-contracts/2899/1",
+  "contract_sha256": "e0f3091960dc4cc6ae5d1830fbc78bd37158cf83b15f5e3eddbf000312e40ff6",
+  "head_sha": "6d48e4e352dce2d3ed46052c0cf733b2069fc52f",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/workflows/migration-author-lease.yml", ".github/workflows/shared-supabase-migrations.yml", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, 0 failed, 0 skipped."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "5 tests passed, including refusals for unmerged PR, missing or duplicate Work issue line, branch mismatch, unreadable or mismatched completion record, version mismatch, missing claim reservation, disagreeing closing link, and unchanged refusal without a binding."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
-  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
+  "assumptions_resolved": ["PR #2726 body names exactly one Work issue #2506; its completion record names issue 2506, PR 2726, migration 20260911213429; refs/db-claims/20260911213429 exists."],
   "stop_conditions_hit": []
 }

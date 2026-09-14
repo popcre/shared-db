@@ -1,21 +1,56 @@
 {
   "schema_version": 1,
-  "work_issue": 2851,
+  "work_issue": 2876,
   "outcome": "ready-for-merge",
-  "pr": 2868,
+  "pr": 2877,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2851/12",
-  "contract_sha256": "1fc45ac3b1688163fa2cfebd899bf60b7a714c21ec5f03538d41a4787932dbd4",
-  "head_sha": "8ddcdf39a40be0a67eb1f769830c27f7932524da",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/test_verify_preview_apply_artifact.py", "scripts/verify_preview_apply_artifact.py"],
+  "contract_ref": "refs/db-contracts/2876/2",
+  "contract_sha256": "2c480c5f3c34bdcd35bb4d5d7dc73b5bf140058729bb89ee9770b532ac0ef405",
+  "head_sha": "cf9d1d133ee894832d58c8ffc20bd75dae57bd8e",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, with negative controls for failed preview, guard failure, unexpected job graphs, production execution, and missing job evidence."},
-    {"command": "python -m unittest scripts.test_production_business_risk_gate", "exit_code": 0, "evidence": "146 production risk-gate tests passed with the same exact downstream-failure graph enforced by direct and historical preview consumers."},
-    {"command": "python scripts/test_verify_preview_apply_artifact.py", "exit_code": 0, "evidence": "5 artifact-verification tests passed, including acceptance of the exact downstream-failure graph and refusal after preview failure."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "pre-repair focused regression",
+      "exit_code": 1,
+      "evidence": "The new one-table and multi-table cases both failed because the formatter emitted jsonb_agg(x order by x->>'name'), reproducing the SQLSTATE 42883 query shape."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_catalog_verification.SqlBuildTests",
+      "exit_code": 0,
+      "evidence": "12 focused SQL builder tests passed after the repair."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_catalog_verification scripts.test_production_catalog_verification_noop_narrowing scripts.test_check_production_verification_sidecars",
+      "exit_code": 0,
+      "evidence": "223 production catalog-verification and sidecar tests passed."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main && node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
+      "exit_code": 0,
+      "evidence": "The reviewed detector baseline and all four throughput-guard tests passed after regenerating only the verifier source digest."
+    },
+    {
+      "command": "ai-task-gates check --before review",
+      "exit_code": 0,
+      "evidence": "Repository task gate allowed code review with exact-head independent review and local tests required."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
   ],
-  "assumptions_resolved": ["Run 34681414931 has exactly six terminal jobs: SQL guards and preview succeeded, automatic qualification failed, and all production jobs skipped."],
+  "assumptions_resolved": [
+    "The row-count query remains a separate read-only catalog evidence query; only its deterministic ORDER BY expression changed from an invalid record JSON operator to composite-field access.",
+    "Every existing catalog, privilege, sidecar, enforcement, and failure-reporting test remains enabled and passing."
+  ],
   "stop_conditions_hit": []
 }

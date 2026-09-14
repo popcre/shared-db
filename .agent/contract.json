@@ -1,21 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 2851,
+  "work_issue": 2876,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Keep an immutable successful preview apply eligible for a fresh production selector when only the downstream automatic-production qualification job failed, without weakening preview, artifact, identity, ledger, or production safety gates.",
-  "base_sha": "6104f9d80872728b6e71ac8da1fe4bd3d5ab5af6",
-  "dispatcher": "Albert Hazan (owner, issue 2851 continuation 2026-09-13)",
-  "worker": "codex-repo-session-2851",
-  "branch": "codex/issue-2851-preview-evidence",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/a785/shared-db",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Repair the post-apply catalog verifier row-count query so PostgreSQL orders composite rows by their name field instead of applying a JSON operator to a record, while preserving full catalog verification.",
+  "base_sha": "c23dcdcf928f352aab2a144f52182cea4554bf17",
+  "dispatcher": "successor orchestrator marker 2858",
+  "worker": "subagent:issue-2866-author assigned issue 2876",
+  "branch": "codex/issue-2876-catalog-row-order",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2876-catalog-row-order/shared-db",
+  "allowed_paths": [
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["No production or preview dispatch and no database read or write.", "No acceptance of a failed or missing preview job, incomplete or unexpected job graph, or any production execution.", "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.", "Do not touch pull request 2849 and do not run repair-outcome-history."],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "python -m unittest scripts.test_production_business_risk_gate", "python scripts/test_verify_preview_apply_artifact.py", "git diff --check"],
-  "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
-  "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
-  "generation": 12
+  "prohibited_actions": [
+    "No database read or write.",
+    "No migration, preview, production dispatch, or merge.",
+    "No weakening, skipping, or replacing any catalog verification or enforcement path.",
+    "No write outside the verifier, its regression test, the reviewed detector-hash baseline, and the evidence pair."
+  ],
+  "required_checks": [
+    "failing regression for the SQLSTATE 42883 composite-record query shape",
+    "focused row-count formatter tests",
+    "full production catalog-verification test suite",
+    "ai-task-gates check --before review",
+    "git diff --check",
+    "fresh governed exact-head review"
+  ],
+  "assumptions": [
+    "The derived-table alias x is a PostgreSQL composite record, so deterministic ordering must use x.name or an explicit JSON conversion rather than x->>'name'."
+  ],
+  "stop_conditions": [
+    "Stop if the repair requires any database access or workflow replay.",
+    "Stop if full catalog verification cannot be preserved."
+  ],
+  "generation": 2
 }

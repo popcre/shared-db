@@ -1,27 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2851,
   "outcome": "ready-for-merge",
-  "pr": 2864,
+  "pr": 2856,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/1",
-  "contract_sha256": "8a7770e665167bbdfa1bb7edeecad0cbe912ac2db745195dfcd6a8e2f2c2e1d2",
-  "head_sha": "f5ae0ffa56bb5e995e609414f16d3c041f62c58d",
+  "contract_ref": "refs/db-contracts/2851/6",
+  "contract_sha256": "ee0718faadfbe934e380847a24e5346c0ca65bc309a66fbf8835f8d651c62b05",
+  "head_sha": "77422573c9fe57cc0b8d11335911acbe67f0cdee",
   "files_changed": [
-    "tools/coldlion-landing-masters.test.mjs",
-    "tools/coldlion-landing/lib/db.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/test_production_owner_decision_evidence.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
+      "command": "python -m unittest scripts.test_production_owner_decision_evidence",
       "exit_code": 0,
-      "evidence": "tests 97, pass 97, fail 0, skipped 0, todo 0. Includes the two new cases: the script is passed with -f <temp file> and stdin ignored and the temp file is removed afterwards; a non-zero psql exit surfaces DATABASE_COMMAND_FAILED with the ERROR line rather than a spawn fault."
+      "evidence": "10 tests passed on main 62d31d71 plus this change. The test pins the automatic-production-promotion permission map, asserts no Supabase database credential is present, and retains ENGINEER ACTION REQUIRED."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_migration_guard",
+      "exit_code": 0,
+      "evidence": "250 tests passed; the top-level contents: read assertion and bounded migration manifest checks remain green."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "537 tests, 537 pass, 0 fail, 0 cancelled, 0 skipped on main 62d31d71 plus this change."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors between base 62d31d71 and implementation commit 77422573."
     }
   ],
   "assumptions_resolved": [
-    "Both failed runs (34685660524, 34751469115) reached the master write and failed with 'spawnSync psql EPIPE'; history reported 0 outstanding windows, so only the stdin pipe path was at fault."
+    "Confirmed that the admission path writes only Git commit/ref evidence, the job gains no database credential, and PR #2849 and PR #2855 implementation paths are absent from this PR's own base-to-implementation diff."
   ],
   "stop_conditions_hit": []
 }

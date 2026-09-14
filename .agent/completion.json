@@ -1,35 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2894,
+  "work_issue": 2711,
   "outcome": "ready-for-merge",
-  "pr": 2896,
+  "pr": 2897,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2894/1",
-  "contract_sha256": "5be8886dde800e05398e41cda591954e7b3a8cae5894b04930db7b76ad368647",
-  "head_sha": "5c9f380685e301fd32c199dd6bb9e02d122e3283",
-  "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2711/4",
+  "contract_sha256": "893d3779c133da6c57d251003dda3fbcc09895da7d1b1ef1b1e8f4339f6592c1",
+  "head_sha": "5e3229981f6bc64e3680551e58d36859795a0c52",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 732, pass 732, fail 0, skipped 0"
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 541, pass 541, fail 0, cancelled 0, skipped 0, todo 0. Three new #2711 tests cover preview-only, reap of closed/head-moved/verdict leases with the live lease kept, skip of a lease that became live before the mutex, and the command-size refusal."}
   ],
-  "assumptions_resolved": [
-    {
-      "assumption": "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review.",
-      "resolution": "Confirmed: independence-conflict remains recordable, barring and non-reinstatable; the draw also filters the live orchestrator engine and slot-1 provider."
-    }
-  ],
-  "stop_conditions_hit": [],
-  "notes": [
-    "Author lane cap was already removed by PR #2777 (issue #2775); reviewer leases are already concurrent in production.",
-    "Kept: independence-conflict exclusion, slot 2 distinct from slot 1 on one head, collision locks, version reservation, serial preview/merge/production, GitHub API request budgets."
-  ]
+  "notes": ["No database, preview, production, migration, or workflow action was performed by this change.", "The reaper retires only refs/db-review-active-v2 leases already classified stale, re-proved under the review mutex, by compare-and-swap."],
+  "assumptions_resolved": ["findBusyReviewers already treats a closed, head-moved or verdict-recorded lease as free; the reaper only removes the ref."],
+  "stop_conditions_hit": []
 }

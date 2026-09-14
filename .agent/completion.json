@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2800,
   "outcome": "ready-for-merge",
-  "pr": 2891,
+  "pr": 2799,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/4",
-  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
-  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "contract_ref": "refs/db-contracts/2800/1",
+  "contract_sha256": "950ba14e4ec6f39fe01c29b775c2ade48573e1f52b38c0fb7bc8e330d15c066c",
+  "head_sha": "97d6b90cff16d47b3bdcb80aa392ef33d34adb99",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
+    {"command": "npx vitest run", "exit_code": 0, "evidence": "22 test files, 145 tests passed, 0 failed, 0 skipped."},
+    {"command": "npm run build", "exit_code": 0, "evidence": "Production build completed with exit 0; lint also exited 0."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main."}
   ],
-  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
-  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
+  "assumptions_resolved": ["PR #2808 migration creating db_data_admin_scraped_source_inventory is applied on production per run 34862499384."],
   "stop_conditions_hit": []
 }

@@ -1,7 +1,7 @@
 -- #2797 follow-up: point the Warner Bros. Character and Style Guide arms of
 -- api.db_data_admin_scraped_source_inventory at the tables that exist.
 --
--- derived-from: 20260911221304_db_data_admin_scraped_source_inventory.sql
+-- derived-from: 20260911221304
 --
 -- 20260911221304 read plm.wb_character and plm.wb_style_guide, which
 -- 20260825201330_wb_retire_legacy_capture_paths dropped. plpgsql binds

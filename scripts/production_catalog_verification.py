@@ -4389,6 +4389,23 @@ CATALOG_CONTRACTS["all_licensor_property_source_coverage_v1"] = (
 )
 
 
+# Issue #2879. Two DCP families predate the source-inventory classifier and
+# must never fall through to `other` in either its exact or browser-safe form.
+DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT = (
+    ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
+    + r" and position('lucasfilm\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('lucasfilm_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and (select count(*) from api.source_capture_inventory where source_system='lucasfilm_dcpvault' and table_name like 'lucasfilm\_dcp\_%')=20"
+    + r" and (select count(*) from api.source_capture_inventory where source_system='twentieth_century_dcpvault' and table_name like 'twentieth_century\_dcp\_%')=20"
+    + r" and not exists (select 1 from api.source_capture_inventory where source_system='other' and (table_name like 'lucasfilm\_dcp\_%' or table_name like 'twentieth_century\_dcp\_%'))"
+)
+CATALOG_CONTRACTS["dcp_inventory_family_classification_v1"] = (
+    DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT
+)
+
+
 # Issue #2744. The unfiltered DB Data Admin Scraped Properties listing.
 #
 # Migration 20260911222514 rewrites api.db_data_admin_scraped_properties in

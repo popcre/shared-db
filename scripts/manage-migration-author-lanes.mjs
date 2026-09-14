@@ -5782,9 +5782,7 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
   const base=io.closingIssuesForPr.bind(io)
   let verified=null
   const bound=Object.create(io)
-  bound.closingIssuesForPr=(number)=>{
-    const linked=base(number)
-    if(Number(number)!==binding.pr||!Array.isArray(linked))return linked
+  const apply=(linked)=>{
     if(linked.length){
       if(linked.length!==1||Number(linked[0]?.number)!==binding.issue)throw new LaneError(`merged PR issue binding refused: pull request #${binding.pr} already closes ${linked.map((item)=>`#${item?.number}`).join(',')}`)
       return linked
@@ -5794,6 +5792,23 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
       log(`MERGED PR ISSUE BINDING: PR #${binding.pr} -> issue #${binding.issue} (versions ${verified.versions.join(',')}; body, completion record, and claim reservations agree)`)
     }
     return [{number:binding.issue,state:verified.state,bound:true}]
+  }
+  bound.closingIssuesForPr=(number)=>{
+    const linked=base(number)
+    if(Number(number)!==binding.pr||!Array.isArray(linked))return linked
+    return apply(linked)
+  }
+  // Reviewer assignment and verdict recording read one GraphQL snapshot instead of
+  // closingIssuesForPr. The same verified binding, with the same refusals, fills that
+  // snapshot's empty closing-link set; a real link that disagrees still refuses.
+  if(typeof io.readReviewerOperationRoute==='function'){
+    const baseRoute=io.readReviewerOperationRoute.bind(io)
+    bound.readReviewerOperationRoute=(number)=>{
+      const snapshot=baseRoute(number)
+      if(Number(number)!==binding.pr||!Array.isArray(snapshot?.linkedIssues))return snapshot
+      const linked=apply(snapshot.linkedIssues)
+      return linked===snapshot.linkedIssues?snapshot:{...snapshot,linkedIssues:linked}
+    }
   }
   return bound
 }

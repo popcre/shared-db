@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2899/1",
   "contract_sha256": "e0f3091960dc4cc6ae5d1830fbc78bd37158cf83b15f5e3eddbf000312e40ff6",
-  "head_sha": "6d48e4e352dce2d3ed46052c0cf733b2069fc52f",
+  "head_sha": "0b5769c92bbf8a916dd677487b6d16331e634872",
   "files_changed": [".github/workflows/migration-author-lease.yml", ".github/workflows/shared-supabase-migrations.yml", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs"],
   "db_reads": [],
   "db_writes": [],

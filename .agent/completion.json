@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2797,
+  "work_issue": 2906,
   "outcome": "ready-for-merge",
-  "pr": 2903,
-  "migration_versions": ["20260914164141"],
-  "contract_ref": "refs/db-contracts/2797/2",
-  "contract_sha256": "ae28da1ec5a04a6c2221bc5e5fb8c20e752ca439ef050e50dc98e5e4279287e1",
-  "head_sha": "eb39bd12a8806e209c403f0f2b4e78688ce91fb3",
-  "files_changed": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
-  "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
-  "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
+  "pr": 2908,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2906/1",
+  "contract_sha256": "8fcaee0c1b7a386ee78eba654ca3a5162832e1309ddd7576d41f16e78ec88633",
+  "head_sha": "3569cbdd0b28f281ba87e4a730fed8e94c29cc38",
+  "files_changed": [".github/live-proofs/2848.sql", ".github/workflows/shared-db-live-proof.yml", "scripts/shared_db_live_proof.py", "scripts/test_shared_db_live_proof.py"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main 56a51e24."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "New test calls the property, character and style_guide arms as a Licensing Manager; CI database-contract-tests runs it on PR #2903."}
+    {"command": "python -m unittest scripts/test_shared_db_live_proof.py", "exit_code": 0, "evidence": "Ran 6 tests, OK, 0 skipped; covers 12 refusal cases, no query before scope checks, artifact name and file match the lane script, dispatch-only read-only main-only workflow, single-statement probes."},
+    {"command": "node scripts/check-github-transport-conformance.mjs", "exit_code": 0, "evidence": "223 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": ["Production catalog read confirmed plm.wb_character_normalized and plm.wb_style_guide_normalized exist with the columns the arms use."],
+  "assumptions_resolved": ["#2848 scope returns to u2giants/shared-db; ledger at live_verified; PR #2815 closes only #2848; run 34871556647 has production-migration-apply-56a51e24 artifact 10359756277; the #2848 probe returned passed true on production."],
   "stop_conditions_hit": []
 }

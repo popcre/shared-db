@@ -5443,6 +5443,27 @@ test('a completed preview remains evidence when only its downstream automatic pr
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
 })
 
+test('a failed downstream dispatcher may leave only its own review-evidence artifact',()=>{
+  const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:'b'.repeat(40)}
+  const fixture=immutablePreviewApplyIo(), evidence=fixture.previewApplyRun()
+  const preview=evidence.artifacts.artifacts[0],head=evidence.run.head_sha
+  const extra=(over={})=>({name:'automatic-production-apply-review-evidence',digest:`sha256:${'e'.repeat(64)}`,expired:false,workflow_run:{id:evidence.run.id,head_sha:head},...over})
+  evidence.run.conclusion='failure'
+  evidence.jobs=downstreamPromotionFailureJobs()
+  evidence.artifacts={total_count:2,artifacts:[extra(),preview]}
+  const io={...fixture,previewApplyRun:()=>evidence}
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,io),{type:'preview-apply',run_id:'33308168016'})
+  evidence.artifacts={total_count:2,artifacts:[extra({name:'something-else'}),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:2,artifacts:[extra({workflow_run:{id:1,head_sha:head}}),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:3,artifacts:[extra(),extra(),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:2,artifacts:[extra(),preview]}
+  evidence.run.conclusion='success'
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+})
+
 test('the exact byte-pinned #2509 claim apply is valid immutable historical-rebind evidence',()=>{
   const input={issue:2509,pr:2513,versions:['20260907131728'],mergeCommitSha:'c5f85ad3a98b7a5598e8c81a56735473d5bb5487'}
   assert.deepEqual(validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo()),{type:'preview-apply',run_id:'34157812748'})

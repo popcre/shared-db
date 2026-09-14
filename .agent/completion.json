@@ -1,44 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 2918,
+  "work_issue": 2921,
   "outcome": "ready-for-merge",
-  "pr": 2917,
+  "pr": 2922,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2918/1",
-  "contract_sha256": "eee48e561c92e8e34248ab75156b8a6fbbfd0faacb03fbf46160f69d40f78533",
-  "head_sha": "2b9b4c65b399767eafd66095459000daf338b3b1",
+  "contract_ref": "refs/db-contracts/2921/4",
+  "contract_sha256": "5f8cb34848dd2c574bc7f3a04fa6fe89470b19c4f71dde922d8ac712625f11ea",
+  "head_sha": "cfbf0df5487443fb51a5615299c4811a2b86628d",
   "files_changed": [
-    ".github/workflows/destructive-analysis-guard.yml",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-destructive-analysis.test.mjs",
-    "scripts/lib/destructive-analysis-guard.mjs"
+    ".github/live-proofs/2506.sql"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-destructive-analysis.test.mjs",
+      "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "tests 12, pass 12, fail 0, skipped 0. Mutations each turn it red: removing 'function' from DROP kinds (fail 1); deleting the label check (fail 2), checklist check (fail 2), existence check (fail 2), pull-request check (fail 2); disabling CLI rejection (fail 1); swallowing lookup errors (fail 1)."
-    },
-    {
-      "command": "node --test scripts/check-github-transport-conformance.test.mjs",
-      "exit_code": 0,
-      "evidence": "Combined run with the guard tests: tests 22, pass 22, fail 0, skipped 0. The first CI run failed this check on a direct gh spawn; the lookup now uses ghJson from scripts/lib/github-transport.mjs."
+      "evidence": "No whitespace errors between base 477b8633 and implementation cfbf0df5."
     }
   ],
-  "notes": [
-    "Decision on finding 1: flag DROP of function, procedure, routine, aggregate, trigger, event trigger, policy, constraint, rule, role, user, group, type, domain, extension, sequence, owned by, publication, subscription, foreign table and server; DROP DEFAULT and DROP NOT NULL stay allowed.",
-    "Finding 2: every issue a marker names is read with gh api and must exist, be an issue, carry destructive-proposal and pass checkProposalBody; lookup errors fail closed. Workflow gains issues: read only.",
-    "Live lookup probe: #2437 -> is not labeled destructive-proposal; #2895 -> is a pull request; #99999999 -> does not exist.",
-    "node scripts/check-destructive-analysis.mjs --diff-base origin/main on the branch head: no findings, exit 0.",
-    "No database, preview, production, or migration action was performed.",
-    "Contract publish printed a read-back refusal, but refs/db-contracts/2918/1 exists and its recorded sha256 equals the local contract hash; it was not re-published.",
-    "Refreshed from main 8d96cbf7 by merge (no conflict outside the .agent pair); the four implementation files are byte-identical to 415831f5 and the combined 22-test run passes again at the merge head."
-  ],
   "assumptions_resolved": [
-    "Migrations and supabase/tests fixtures stay excluded from the scan; they keep their existing guards.",
-    "The workflow token reads issues with issues: read; the live gh api probe confirmed issue, pull-request and missing-number responses."
+    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
   ],
   "stop_conditions_hit": []
 }

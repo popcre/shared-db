@@ -1,21 +1,46 @@
 {
   "schema_version": 1,
-  "work_issue": 2437,
+  "work_issue": 2918,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Gate the analysis path (issue #2437): a destructive-proposal issue template with window, positive control, second independent source, evidence class and earliest-action date; a workflow that requires those headings in the body of any issue labeled destructive-proposal; a PR scan for DROP/TRUNCATE/VACUUM FULL/DELETE-without-WHERE in SQL outside migrations and test fixtures; and a reusable read-only pg_stat observation-window query snippet.",
-  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
-  "dispatcher": "Albert Hazan (owner) via chat 2026-09-14T15:20Z: clear issue #2437 as fast as possible, as independent repo-maintenance",
-  "worker": "shared-db repo-maintenance Claude session in worktree mystifying-merkle-349616",
-  "branch": "claude/destructive-analysis-guard-2437",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/mystifying-merkle-349616",
-  "allowed_paths": [".github/ISSUE_TEMPLATE/destructive-proposal.md", ".github/workflows/destructive-analysis-guard.yml", "docs/sql-snippets/pg-stat-observation-window.md", "scripts/lib/destructive-analysis-guard.mjs", "scripts/check-destructive-analysis.mjs", "scripts/check-destructive-analysis.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": [".github/ISSUE_TEMPLATE/destructive-proposal.md", ".github/workflows/destructive-analysis-guard.yml", "docs/sql-snippets/pg-stat-observation-window.md", "scripts/lib/destructive-analysis-guard.mjs", "scripts/check-destructive-analysis.mjs", "scripts/check-destructive-analysis.test.mjs"],
+  "goal": "Follow up the two Medium findings of the governed GLM review of PR #2895 (issue #2918, follow-up to #2437): decide with tests whether destructive-analysis-guard should also flag DROP of function, procedure, trigger, policy, role, type, extension and owned-by; and stop the `-- destructive-proposal: #<n>` marker silencing a file unless CI proves the named issue exists, carries the destructive-proposal label and passes checkProposalBody. Keep scripts/check-destructive-analysis.test.mjs green and prove each new check can fail.",
+  "base_sha": "57461be68abdb1b692ecfc0fe02edafbd6751176",
+  "dispatcher": "Albert Hazan (owner) via chat 2026-09-14: once PR #2895 merged, follow up on the two Medium GLM findings; code PRs use the guarded merge lane",
+  "worker": "shared-db repo-maintenance Claude session in worktree github-issues-albert-0d573b",
+  "branch": "claude/destructive-guard-followup-2437",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/github-issues-albert-0d573b",
+  "allowed_paths": [
+    ".github/workflows/destructive-analysis-guard.yml",
+    "scripts/lib/destructive-analysis-guard.mjs",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-destructive-analysis.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    ".github/workflows/destructive-analysis-guard.yml",
+    "scripts/lib/destructive-analysis-guard.mjs",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-destructive-analysis.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["No database structure or data change of any kind.", "Do not change scripts/check-sql.sh migration guards or scripts/manage-migration-author-lanes.mjs.", "Do not make the new check a required status or alter branch protection."],
-  "required_checks": ["node --test scripts/check-destructive-analysis.test.mjs"],
-  "assumptions": ["Migrations and supabase/tests fixtures keep their existing guards and are excluded from the new SQL scan.", "The destructive-proposal label is created alongside this change."],
-  "stop_conditions": ["Stop if the scan flags SQL already on main at the PR head.", "Stop if enforcing the checklist would require changing branch protection."]
+  "prohibited_actions": [
+    "No database structure or data change of any kind.",
+    "Do not change scripts/check-sql.sh migration guards or scripts/manage-migration-author-lanes.mjs.",
+    "Do not make the check a required status or alter branch protection.",
+    "Grant the workflow no permission beyond contents: read and issues: read."
+  ],
+  "required_checks": [
+    "node --test scripts/check-destructive-analysis.test.mjs"
+  ],
+  "assumptions": [
+    "Migrations and supabase/tests fixtures keep their existing guards and stay excluded from the scan.",
+    "The workflow token can read issues with issues: read."
+  ],
+  "stop_conditions": [
+    "Stop if marker verification would need a write-capable token or a secret.",
+    "Stop if the widened DROP classes flag SQL already on main at the PR head."
+  ]
 }

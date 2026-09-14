@@ -1,16 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2437,
+  "work_issue": 2918,
   "outcome": "ready-for-merge",
-  "pr": 2895,
+  "pr": 2917,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2437/1",
-  "contract_sha256": "de29e6542e9f0c6cb904cb26b4dcbf6cb60fa1b202e628a94b7da4b363e0cb35",
-  "head_sha": "108d024071c8365839a321611a4ec960e4b0daee",
+  "contract_ref": "refs/db-contracts/2918/1",
+  "contract_sha256": "eee48e561c92e8e34248ab75156b8a6fbbfd0faacb03fbf46160f69d40f78533",
+  "head_sha": "415831f5169837d1ae8e2688327954dd1e1bc362",
   "files_changed": [
-    ".github/ISSUE_TEMPLATE/destructive-proposal.md",
     ".github/workflows/destructive-analysis-guard.yml",
-    "docs/sql-snippets/pg-stat-observation-window.md",
     "scripts/check-destructive-analysis.mjs",
     "scripts/check-destructive-analysis.test.mjs",
     "scripts/lib/destructive-analysis-guard.mjs"
@@ -21,18 +19,25 @@
     {
       "command": "node --test scripts/check-destructive-analysis.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 9, pass 9, fail 0, skipped 0. Removing 'Positive control' from REQUIRED_HEADINGS makes 1 test fail (pass 8, fail 1)."
+      "evidence": "tests 12, pass 12, fail 0, skipped 0. Mutations each turn it red: removing 'function' from DROP kinds (fail 1); deleting the label check (fail 2), checklist check (fail 2), existence check (fail 2), pull-request check (fail 2); disabling CLI rejection (fail 1); swallowing lookup errors (fail 1)."
+    },
+    {
+      "command": "node --test scripts/check-github-transport-conformance.test.mjs",
+      "exit_code": 0,
+      "evidence": "Combined run with the guard tests: tests 22, pass 22, fail 0, skipped 0. The first CI run failed this check on a direct gh spawn; the lookup now uses ghJson from scripts/lib/github-transport.mjs."
     }
   ],
   "notes": [
-    "The snippet query was run read-only on production 2026-09-14: database stats_reset null, bgwriter stats_reset 2026-08-28 21:01:01.326-04, server start 21:01:01.043-04.",
-    "Replaying the SQL scan over the last 300 commits of main flags scripts/teardown-designflow-cutover-rehearsal.sql (DROP), the intended class of catch; the PR itself adds no SQL file.",
-    "Label destructive-proposal created. No database, preview, production, or migration action was performed.",
-    "Guard wording uses \"absent\" so it does not add call sites to the throughput truth-audit inventory (audit OK: call_sites=284).",
-    "Refreshed by MERGE from main 6934a535 (not a rebase); only the .agent pair conflicted, resolved wholesale to this branch. PR diff is unchanged from GLM-approved head 48f88328."
+    "Decision on finding 1: flag DROP of function, procedure, routine, aggregate, trigger, event trigger, policy, constraint, rule, role, user, group, type, domain, extension, sequence, owned by, publication, subscription, foreign table and server; DROP DEFAULT and DROP NOT NULL stay allowed.",
+    "Finding 2: every issue a marker names is read with gh api and must exist, be an issue, carry destructive-proposal and pass checkProposalBody; lookup errors fail closed. Workflow gains issues: read only.",
+    "Live lookup probe: #2437 -> is not labeled destructive-proposal; #2895 -> is a pull request; #99999999 -> does not exist.",
+    "node scripts/check-destructive-analysis.mjs --diff-base origin/main on the branch head: no findings, exit 0.",
+    "No database, preview, production, or migration action was performed.",
+    "Contract publish printed a read-back refusal, but refs/db-contracts/2918/1 exists and its recorded sha256 equals the local contract hash; it was not re-published."
   ],
   "assumptions_resolved": [
-    "Migrations and supabase/tests fixtures are excluded from the scan; they keep their existing guards."
+    "Migrations and supabase/tests fixtures stay excluded from the scan; they keep their existing guards.",
+    "The workflow token reads issues with issues: read; the live gh api probe confirmed issue, pull-request and missing-number responses."
   ],
   "stop_conditions_hit": []
 }

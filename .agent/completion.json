@@ -6,8 +6,10 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2918/1",
   "contract_sha256": "eee48e561c92e8e34248ab75156b8a6fbbfd0faacb03fbf46160f69d40f78533",
-  "head_sha": "415831f5169837d1ae8e2688327954dd1e1bc362",
+  "head_sha": "2c10da67e2bb11063492d3017d5473851f9114f2",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/destructive-analysis-guard.yml",
     "scripts/check-destructive-analysis.mjs",
     "scripts/check-destructive-analysis.test.mjs",
@@ -33,7 +35,8 @@
     "Live lookup probe: #2437 -> is not labeled destructive-proposal; #2895 -> is a pull request; #99999999 -> does not exist.",
     "node scripts/check-destructive-analysis.mjs --diff-base origin/main on the branch head: no findings, exit 0.",
     "No database, preview, production, or migration action was performed.",
-    "Contract publish printed a read-back refusal, but refs/db-contracts/2918/1 exists and its recorded sha256 equals the local contract hash; it was not re-published."
+    "Contract publish printed a read-back refusal, but refs/db-contracts/2918/1 exists and its recorded sha256 equals the local contract hash; it was not re-published.",
+    "Refreshed from main 8d96cbf7 by merge (no conflict outside the .agent pair); the four implementation files are byte-identical to 415831f5 and the combined 22-test run passes again at the merge head."
   ],
   "assumptions_resolved": [
     "Migrations and supabase/tests fixtures stay excluded from the scan; they keep their existing guards.",

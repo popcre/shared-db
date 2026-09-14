@@ -1,19 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 2797,
+  "work_issue": 2894,
   "outcome": "ready-for-merge",
-  "pr": 2903,
-  "migration_versions": ["20260914164141"],
-  "contract_ref": "refs/db-contracts/2797/2",
-  "contract_sha256": "ae28da1ec5a04a6c2221bc5e5fb8c20e752ca439ef050e50dc98e5e4279287e1",
-  "head_sha": "eb39bd12a8806e209c403f0f2b4e78688ce91fb3",
-  "files_changed": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
-  "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
-  "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
-  "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main 56a51e24."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "New test calls the property, character and style_guide arms as a Licensing Manager; CI database-contract-tests runs it on PR #2903."}
+  "pr": 2896,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2894/1",
+  "contract_sha256": "5be8886dde800e05398e41cda591954e7b3a8cae5894b04930db7b76ad368647",
+  "head_sha": "68bfac2b04fc820419aeffa60e41a250cbc66d24",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "assumptions_resolved": ["Production catalog read confirmed plm.wb_character_normalized and plm.wb_style_guide_normalized exist with the columns the arms use."],
-  "stop_conditions_hit": []
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 735, pass 735, fail 0, skipped 0"
+    }
+  ],
+  "assumptions_resolved": [
+    {
+      "assumption": "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review.",
+      "resolution": "Confirmed: independence-conflict remains recordable, barring and non-reinstatable; the draw also filters the live orchestrator engine and slot-1 provider."
+    }
+  ],
+  "stop_conditions_hit": [],
+  "notes": [
+    "Author lane cap was already removed by PR #2777 (issue #2775); reviewer leases are already concurrent in production.",
+    "Kept: independence-conflict exclusion, slot 2 distinct from slot 1 on one head, collision locks, version reservation, serial preview/merge/production, GitHub API request budgets."
+  ]
 }

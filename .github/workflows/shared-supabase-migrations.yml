@@ -1121,6 +1121,11 @@ jobs:
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}
         run: |
           set -euo pipefail
+          # actions/upload-artifact@v4 reports artifact-digest as bare hex, while
+          # the evidence verifier and the preview digest use sha256:<hex> (#2883).
+          if [[ "$REVIEW_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            REVIEW_DIGEST="sha256:${REVIEW_DIGEST}"
+          fi
           if ! [[ "$REVIEW_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::ENGINEER ACTION REQUIRED: automatic review evidence has no canonical artifact digest. Nothing was dispatched." >&2
             exit 2

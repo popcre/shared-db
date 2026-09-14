@@ -410,12 +410,22 @@ code — but an orchestrator that leaves items standing in it is carrying other 
 The block prints **before** the refill line, not after it, so a queue that has dispatchable work
 cannot hide it — that ordering is deliberate.
 
+Every live claim, reviewer assignment, preview, merge, and production acquisition must also pass
+`--admit-issue <work-issue>`. Admission independently reads the issue and the proposed PR change:
+only actual shared-database structure work proceeds. A sender's label never admits documentation,
+application code or data, CI, reviewer/workflow work, or repository maintenance. Rejection is
+recorded as a typed `rejected_non_structural` event without consuming any lane or shared stage.
+
 ### Queue priority
 
-Among eligible structural issues, work that releases the largest number of other open issues is
-first. The count includes direct and chained `depends_on` relationships. If two issues release the
-same number, the older issue is first. The numeric `priority:` field remains required for scope
-compatibility but does not override blocker impact or age.
+Among eligible structural issues, service class orders urgent application work before standard
+application work and maintenance. Already-started work nearest direct live verification finishes
+before new work; work that releases the largest number of direct and chained blockers follows,
+then older creation time and issue number. An urgent item never preempts a started claim or bypasses
+the eight-author/shared-stage gates. `urgent-application` additionally requires a structured impact
+block proving one of: a live outage, a blocked application release, a security exposure, or an
+owner-declared business deadline. The numeric `priority:` field remains required for compatibility but does
+not override this order.
 
 An issue with **no** `db-work-scope` block at all is `unclassified`: it is not admitted, it is not
 worked, and it already blocks an empty-lane claim. Classify it or send it back.
@@ -701,6 +711,7 @@ rules below are the operative summary.
 
    ```bash
    node scripts/manage-migration-author-lanes.mjs --claim \
+     --admit-issue <work-issue> \
      --task "<issue and outcome>" --owner "<agent/session>" \
      --branch "<branch>" --worktree "<absolute isolated worktree>" \
      --objects "<every exact object written, comma-separated>"
@@ -762,6 +773,14 @@ rules below are the operative summary.
 
 2. **Preview database first. Production never receives untested schema.** Apply every migration to
    the preview branch, prove it works, *then* promote to production (`qsllyeztdwjgirsysgai`).
+
+   ⚠️ **Exception, #2758: low-risk SQL may skip the preview apply.** Dispatch the production apply
+   with `ephemeral_check_run_id` (the job ID of the successful `supabase/tests against an ephemeral
+   database` check on the source PR head) instead of `preview_run_id`/`preview_artifact_digest`.
+   The gate refuses unless that job's run positively applied each migration and the merged bytes
+   equal the tested head, and it refuses outright for anything its conservative classifier does
+   not recognise as low-risk (rewrites, long locks, drops, backfills, unknown statements) — those
+   still need preview. Target proof, the lane lock and post-apply verification are unchanged.
 
    ⚠️ **The preview project ref is deliberately NOT written down here.** Preview is rebuilt from
    time to time and its ref changes when it is — `rjyboqwcdzcocqgmsyel` was deleted on 2026-08-18.
@@ -880,8 +899,19 @@ Merge a `shared-db` PR **only when every item is true**:
 5. The change is additive, or any removal was explicitly approved.
 
 Then: merge to `main` (this auto-syncs the `shared-db/` folder into all apps) and
-promote to **production only in an approved window**. Docs-only PRs (no schema
-change) need just items 1 and "it reads correctly" — merge them promptly.
+run the governed merged-main preview rehearsal. For one source PR, a successful
+rehearsal automatically qualifies and dispatches the existing serial production
+lane. No session or owner names migration versions or artifact IDs for that
+ordinary path. Missing, stale, multi-source, failed, or ambiguous evidence stops
+before dispatch with **ENGINEER ACTION REQUIRED**. The production job still
+re-proves current main, the durable exact-head verdict, guarded merge, immutable
+preview evidence, the one open independently admitted structural work issue linked
+by GitHub to the source PR, exact target, bounded allowlist, fresh dry-run,
+all five machine-derived business-risk conclusions clear, exclusive lock, and
+post-apply ledger/catalog result. This narrow path authorizes no manual
+production command, manual workflow dispatch, other repository, or bypass.
+Docs-only PRs (no schema change) need just items 1 and "it reads correctly" —
+merge them promptly.
 
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 

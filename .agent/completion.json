@@ -1,41 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2753,
+  "work_issue": 2865,
   "outcome": "ready-for-merge",
-  "pr": 2755,
-  "migration_versions": [
-    "20260911170650"
-  ],
-  "contract_ref": "refs/db-contracts/2753/3",
-  "contract_sha256": "cbb90064dd60968824c5277b6597a50f2ad8fa9555193c5e88cda2af101bd943",
-  "head_sha": "aabcab8fa76a96d7f88759192a0f4f8987587449",
-  "files_changed": [
-    "supabase/migrations/20260911170650_pim_canonical_item_picker.sql",
-    "supabase/tests/pim_item_picker_contract.sql",
-    "scripts/test_pim_item_picker.py"
-  ],
-  "db_reads": [
-    "table plm.item"
-  ],
-  "db_writes": [
-    "view api.pim_item_picker"
-  ],
+  "pr": 2891,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2865/4",
+  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
+  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
-    {
-      "exit_code": 0,
-      "evidence": "Static SQL guards passed; live-ledger check not configured, parent owns fresh ledger.",
-      "command": "bash scripts/check-sql.sh"
-    },
-    {
-      "exit_code": 0,
-      "evidence": "Loopback disposable database: canonical identity, duplicate-number distinction, null preservation, authenticated read, inherited RLS, anonymous denial and write denial passed;0 skipped.",
-      "command": "python scripts/test_pim_item_picker.py"
-    }
+    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
   ],
-  "assumptions_resolved": [
-    "Claim2754 reserves20260911170650; no overlap.",
-    "Rebound to base e11a59896b870f9b9c11c1c77f7fe0a24f50ab66 and implementation head aabcab8fa76a96d7f88759192a0f4f8987587449 (version re-reserved from 20260911093445 after main advanced). Ready for exact-head review, required CI, and guarded merge.",
-    "Preserves legacy21columnview and all existing policies."
-  ],
+  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
+  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
   "stop_conditions_hit": []
 }

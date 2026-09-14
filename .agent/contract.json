@@ -1,49 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2753,
-  "generation": 3,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Expose exact canonical ColdLion UUID and source identity for the PIM item picker without changing compatibility views.",
-  "base_sha": "d530f85bc54d2b3c1f3ac52fcb9ee8d57c17fe3e",
-  "dispatcher": "Codex orchestrator marker2714",
-  "worker": "Codex issue2753 worker",
-  "branch": "codex/issue-2753-pim-item-picker",
-  "worktree": "C:/repos/shared-db-worktrees/issue-2753-pim-item-picker",
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260911170650_pim_canonical_item_picker.sql",
-    "supabase/tests/pim_item_picker_contract.sql",
-    "scripts/test_pim_item_picker.py"
-  ],
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260911170650_pim_canonical_item_picker.sql",
-    "supabase/tests/pim_item_picker_contract.sql",
-    "scripts/test_pim_item_picker.py"
-  ],
-  "db_reads": [
-    "table plm.item"
-  ],
-  "db_writes": [
-    "view api.pim_item_picker"
-  ],
-  "prohibited_actions": [
-    "No shared database writes, merges, main movement or paid review until parent coordination."
-  ],
-  "required_checks": [
-    "bash scripts/check-sql.sh",
-    "python scripts/test_pim_item_picker.py"
-  ],
-  "assumptions": [
-    "Claim2754 reserves20260911170650.",
-    "Existing authenticated plm.item policy and grants are retained through security_invoker.",
-    "The legacy21column item view remains unchanged."
-  ],
-  "stop_conditions": [
-    "Object collision or canonical identity mismatch.",
-    "Inherited RLS or anonymous denial failure."
-  ]
+  "work_issue": 2865,
+  "generation": 4,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Finish repairing the nightly ColdLion Landing Sync. After PR 2864 removed the EPIPE, runs 34803418431 and 34834257904 exposed the real psql error: item_detail_company_code_division_code_item_no_fkey. A live read of /items and /itemDetails on 2026-09-14 found 8 detail rows (4 items) with no item header. Withhold only those rows, report them visibly (log count, sync_run request_params, coldlion_sync_alert), and let the rest of the snapshot land.",
+  "base_sha": "cfbe5efcf789ff6b431108621ef0a8b691d45f2f",
+  "dispatcher": "Albert Hazan (owner) via chat: owner-authorized repo-maintenance repair of the ColdLion Landing Sync nightly",
+  "worker": "shared-db repo-maintenance Claude session in worktree upbeat-borg-d45c95",
+  "branch": "claude/coldlion-orphan-item-details",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/upbeat-borg-d45c95",
+  "allowed_paths": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["No database structure change of any kind.", "Do not drop or relax the item_detail foreign key.", "Do not silently discard rows: every withheld row must be counted, named, and alerted.", "Do not weaken the existing identity, scope, shape, or duplicate-key checks."],
+  "required_checks": ["node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs"],
+  "assumptions": ["The orphan rows are a ColdLion source defect, not a loader fault: the same identity is absent from the full /items snapshot.", "Withholding a detail row whose header does not exist loses nothing the schema could store."],
+  "stop_conditions": ["Stop if the fix would require a database structure change.", "Stop if the withheld set grows beyond the rows that genuinely lack a header."]
 }

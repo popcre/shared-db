@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2437/1",
   "contract_sha256": "de29e6542e9f0c6cb904cb26b4dcbf6cb60fa1b202e628a94b7da4b363e0cb35",
-  "head_sha": "e6053d65012c988751e016aedb80b4c6885c1e8e",
+  "head_sha": "308ed3b16d4af638cea98b9b5dedf5bc36e4752e",
   "files_changed": [
     ".github/ISSUE_TEMPLATE/destructive-proposal.md",
     ".github/workflows/destructive-analysis-guard.yml",
@@ -28,7 +28,8 @@
     "The snippet query was run read-only on production 2026-09-14: database stats_reset null, bgwriter stats_reset 2026-08-28 21:01:01.326-04, server start 21:01:01.043-04.",
     "Replaying the SQL scan over the last 300 commits of main flags scripts/teardown-designflow-cutover-rehearsal.sql (DROP), the intended class of catch; the PR itself adds no SQL file.",
     "Label destructive-proposal created. No database, preview, production, or migration action was performed.",
-    "Guard wording uses \"absent\" so it does not add call sites to the throughput truth-audit inventory (audit OK: call_sites=284)."
+    "Guard wording uses \"absent\" so it does not add call sites to the throughput truth-audit inventory (audit OK: call_sites=284).",
+    "Refreshed by MERGE from main 6934a535 (not a rebase); only the .agent pair conflicted, resolved wholesale to this branch. PR diff is unchanged from GLM-approved head 48f88328."
   ],
   "assumptions_resolved": [
     "Migrations and supabase/tests fixtures are excluded from the scan; they keep their existing guards."

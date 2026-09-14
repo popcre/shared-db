@@ -1,40 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2437,
+  "work_issue": 2899,
   "outcome": "ready-for-merge",
-  "pr": 2895,
+  "pr": 2901,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2437/1",
-  "contract_sha256": "de29e6542e9f0c6cb904cb26b4dcbf6cb60fa1b202e628a94b7da4b363e0cb35",
-  "head_sha": "308ed3b16d4af638cea98b9b5dedf5bc36e4752e",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/ISSUE_TEMPLATE/destructive-proposal.md",
-    ".github/workflows/destructive-analysis-guard.yml",
-    "docs/sql-snippets/pg-stat-observation-window.md",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-destructive-analysis.test.mjs",
-    "scripts/lib/destructive-analysis-guard.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2899/2",
+  "contract_sha256": "d1c4bf49121c9d51849b6fad63ace199e16028a623ea4101ec0acec1fcb831aa",
+  "head_sha": "84f4b2579afe5cabb5c109c32db7b1433962f3d2",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/workflows/migration-author-lease.yml", ".github/workflows/shared-supabase-migrations.yml", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test scripts/check-destructive-analysis.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 9, pass 9, fail 0, skipped 0. Removing 'Positive control' from REQUIRED_HEADINGS makes 1 test fail (pass 8, fail 1)."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "553 tests passed, 0 failed, 0 skipped."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "5 tests passed, including refusals for a closed work issue, a renamed or removed migration file, a branch case variant, duplicate identical Work issue lines, lazy verification of unrelated PRs, unmerged PR, missing or duplicate Work issue line, branch mismatch, unreadable or mismatched completion record, version mismatch, missing claim reservation, disagreeing closing link, and unchanged refusal without a binding."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "notes": [
-    "The snippet query was run read-only on production 2026-09-14: database stats_reset null, bgwriter stats_reset 2026-08-28 21:01:01.326-04, server start 21:01:01.043-04.",
-    "Replaying the SQL scan over the last 300 commits of main flags scripts/teardown-designflow-cutover-rehearsal.sql (DROP), the intended class of catch; the PR itself adds no SQL file.",
-    "Label destructive-proposal created. No database, preview, production, or migration action was performed.",
-    "Guard wording uses \"absent\" so it does not add call sites to the throughput truth-audit inventory (audit OK: call_sites=284).",
-    "Refreshed by MERGE from main 6934a535 (not a rebase); only the .agent pair conflicted, resolved wholesale to this branch. PR diff is unchanged from GLM-approved head 48f88328."
-  ],
-  "assumptions_resolved": [
-    "Migrations and supabase/tests fixtures are excluded from the scan; they keep their existing guards."
-  ],
+  "assumptions_resolved": ["PR #2726 body names exactly one Work issue #2506; its completion record names issue 2506, PR 2726, migration 20260911213429; refs/db-claims/20260911213429 exists."],
   "stop_conditions_hit": []
 }

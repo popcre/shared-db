@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2856,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2851/4",
-  "contract_sha256": "a4c554fd3a31ff118aed2c34b7e15877b008cb61e161d08c49136a38d3a5762f",
-  "head_sha": "ebe83f77b24a3b3951d704ae485294bcf1df90c8",
+  "contract_ref": "refs/db-contracts/2851/5",
+  "contract_sha256": "7c35871d720e84b3dda6f198808dcc67eccbdce2abeee65f80c3e179b1a732ff",
+  "head_sha": "9f37f1a686dd7d076f2d20af755db9517f53ebc4",
   "files_changed": [
     ".github/workflows/shared-supabase-migrations.yml",
     "scripts/test_production_owner_decision_evidence.py"
@@ -27,12 +27,12 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "536 tests, 536 pass, 0 fail, 0 cancelled, 0 skipped on main bce5f2e0 plus this change; this branch no longer edits that file because main carries its own fixture repair."
+      "evidence": "537 tests, 537 pass, 0 fail, 0 cancelled, 0 skipped on main 62d31d71 plus this change; main's new review_target_superseded case passes and this branch no longer edits that file."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors between base bce5f2e0 and implementation commit ebe83f77."
+      "evidence": "No whitespace errors between base 62d31d71 and implementation commit 9f37f1a6."
     }
   ],
   "assumptions_resolved": [

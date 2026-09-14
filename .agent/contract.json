@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Grant the automatic-production-promotion job the minimum permission (contents: write) to create its db-coordination admission commit object and ref, so automatic and manual production promotion stop failing with HTTP 403, without giving that job any database credential or weakening its ENGINEER ACTION REQUIRED fail-closed behaviour.",
-  "base_sha": "bce5f2e005c67f7a8196105f98d48bf746e612b4",
+  "base_sha": "62d31d7138b0d598217521d2550e3c3e82adb376",
   "dispatcher": "Albert Hazan (owner, repo-maintenance request 2026-09-13)",
   "worker": "claude-repo-session-2851",
   "branch": "claude/fix-auto-promotion-contents-write",
@@ -39,12 +39,13 @@
   "assumptions": [
     "contents: write covers both Git data API writes the admission path makes: POST git/commits and POST/PATCH git/refs. No other scope is needed.",
     "Generation 3 rebuilds on main bce5f2e0, which already repaired the expired guarded-merge admission fixture, so this branch no longer changes scripts/manage-migration-author-lanes.test.mjs.",
-    "Generation 4 preserves that exact implementation and aligns the immutable contract route with the live issue route repo-maintenance before the refreshed reviewer draw."
+    "Generation 4 preserves that exact implementation and aligns the immutable contract route with the live issue route repo-maintenance before the refreshed reviewer draw.",
+    "Generation 5 refreshes onto main 62d31d71 after PR #2855 landed. Only the shared .agent evidence pair conflicted; this branch's implementation diff remains the same workflow and focused test, while main's reviewer-lifecycle repair is inherited unchanged."
   ],
   "stop_conditions": [
     "Stop if the admission step needs any permission beyond contents: write.",
     "Stop if the fix would require giving this job a database credential.",
     "Stop and report the exact refusal if a governed tool refuses, rather than working around it."
   ],
-  "generation": 4
+  "generation": 5
 }

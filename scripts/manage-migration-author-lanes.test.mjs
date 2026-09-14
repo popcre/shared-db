@@ -2818,7 +2818,7 @@ test('guarded merge derives and admits its one live linked structural issue',()=
   const {io,headSha:head}=admittedReviewIo()
   io.getPr=(number)=>({number:Number(number),state:'open',merged_at:null,head:{sha:head,ref:'codex/x'},base:{sha:'b'.repeat(40)}})
   io.mainSha=()=> 'b'.repeat(40)
-  io.openClaims=()=>[{number:99,body:claimBody({version:'20260911120000',writes:['table core.example'],reads:[],owner:'author',branch:'codex/x',worktree:'C:/w/x',expiresAt:new Date(Date.now()+24*60*60*1000)})}]
+  io.openClaims=()=>[{number:99,body:claimBody({version:'20260911120000',writes:['table core.example'],reads:[],owner:'author',branch:'codex/x',worktree:'C:/w/x',expiresAt:new Date(Date.now()+3600000)})}]
   const result=acquireExclusive('merge',{owner:'tooling',pr:7,headSha:head,admissionOptions:{pr:7}},io)
   assert.ok(result.ownerSha);assert.ok(io.refs.has(EXCLUSIVE_REFS.merge));assert.equal(io.refs.has(MUTEX_REF),false)
 })

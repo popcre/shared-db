@@ -128,13 +128,37 @@ export function inspectPrStructuralChange(prFiles = []) {
     return file.patch.split(/\r?\n/).filter((line)=>line.startsWith('+')&&!line.startsWith('+++')).map((line)=>line.slice(1)).join('\n')
   })
   const ddl=inventoryDdlVerbs(proposedSql)
-  if(!ddl.length)throw new AdmissionError('the pull request migration files contain no statement-leading schema DDL, so the actual change is not structural')
+  const rewrites=proposedSql.flatMap((sql)=>catalogFunctionRewrites(sql))
+  if(!ddl.length&&!rewrites.length)throw new AdmissionError('the pull request migration files contain no statement-leading schema DDL, so the actual change is not structural')
   const ambiguous=ddl.filter((row)=>!row.acknowledged)
   if(ambiguous.length)throw new AdmissionError(`the pull request contains unmodelled DDL (${ambiguous.map((row)=>row.verb).join(', ')}); structural admission fails closed`)
   return {
     migrations:migrations.map((file) => file.filename ?? file.path),
-    objects:[...new Set(proposedSql.flatMap((sql)=>dispatchObjectKeys(sql)))].sort(),
+    objects:[...new Set([...proposedSql.flatMap((sql)=>dispatchObjectKeys(sql)),...rewrites])].sort(),
   }
+}
+
+// A do-block may rewrite an existing function from its own catalog definition:
+// `select pg_get_functiondef('schema.name(args)'::regprocedure) into v; ... execute v;`.
+// It carries no statement-leading DDL, yet its durable effect is CREATE OR REPLACE
+// FUNCTION on that exact object. Recognised only when the SAME variable read from
+// pg_get_functiondef of a schema-qualified regprocedure literal is later EXECUTEd
+// as a statement inside a do-block; any other do-block (row writes, reads, EXECUTE
+// of an unrelated string) earns nothing here. Admission-only: the shared collision
+// inventory is deliberately not widened.
+function catalogFunctionRewrites(sql){
+  const text=String(sql).replace(/--[^\n]*/g,'')
+  if(!/(^|;|\n)\s*do\s+\$[A-Za-z_]*\$/i.test(text))return []
+  const found=new Set()
+  const read=/pg_get_functiondef\(\s*'\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\.\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\([^')]*\)\s*'\s*::\s*regprocedure\s*\)\s*\)?\s*into\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/gi
+  for(const match of text.matchAll(read)){
+    const variable=match[3].toLowerCase()
+    const rest=text.slice(match.index+match[0].length)
+    if(!new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(rest))continue
+    const part=(value)=>value.startsWith('"')?value.slice(1,-1):value.toLowerCase()
+    found.add(`function ${part(match[1])}.${part(match[2])}`)
+  }
+  return [...found]
 }
 
 export function assertPrCarriesStructuralChange(prFiles = []) { return inspectPrStructuralChange(prFiles).migrations }

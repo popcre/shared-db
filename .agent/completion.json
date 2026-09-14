@@ -1,1 +1,18 @@
-{"schema_version":1,"work_issue":2913,"outcome":"ready-for-merge","pr":2914,"migration_versions":[],"contract_ref":"refs/db-contracts/2913/3","contract_sha256":"65e75a412c55d64e6e4ac7d25afc3f9aa4a096f8b775db1f06eb817858bde682","head_sha":"280c2d138b5e650406da5b1f35762102000a3122","files_changed":[".agent/completion.json",".agent/contract.json","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs"],"db_reads":[],"db_writes":[],"checks":[{"command":"node --test scripts/manage-migration-author-lanes.test.mjs","exit_code":0,"evidence":"New regression 'a failed downstream dispatcher may leave only its own review-evidence artifact' fails with found 0 before the fix and passes after."},{"command":"migration-author-lease.yml maintenance node --test suite","exit_code":0,"evidence":"988 tests, 988 pass, 0 fail, 0 skipped."},{"command":"git diff --check","exit_code":0,"evidence":"No whitespace errors."}],"notes":["Read-only probe: run 34879272176 now validates as preview-apply for PR 2910; historical-recovery run 34881492139 still refuses (no ledger add)."],"assumptions_resolved":["Run 34879272176 artifacts are exactly preview-migration-apply-66acdc8f and automatic-production-apply-review-evidence, same run and head."],"stop_conditions_hit":[]}
+{
+  "schema_version": 1,
+  "work_issue": 2919,
+  "outcome": "ready-for-merge",
+  "pr": 2920,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2919/1",
+  "contract_sha256": "c73e48fd721bbc89d0d641f081e06e9ff94978c9d55b8fc17da315525904a3fc",
+  "head_sha": "995b8b590f71506af9091eaba7d81122b122edc1",
+  "files_changed": [".github/live-proofs/2905.sql"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 8d96cbf7 and implementation 995b8b59."}
+  ],
+  "assumptions_resolved": ["#2905 scope returns to u2giants/shared-db; production has 20260914172031 (run 34892518005); the probe returned [{\"passed\":true}] on production read-only, and a draft expecting 130 returned false."],
+  "stop_conditions_hit": []
+}

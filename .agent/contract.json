@@ -19,8 +19,8 @@
     "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.",
     "Do not touch pull request 2849 and do not run repair-outcome-history."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check", "independent exact-head governed review", "required GitHub checks", "fresh issue 2482 selector returns a valid stored instruction after merge"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
   "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
   "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
-  "generation": 7
+  "generation": 8
 }

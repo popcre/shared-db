@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2802,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add a nullable boolean column has_talent_likeness to dam.style_guide_file recording whether the style-guide file's source explicitly indicated talent likeness, as a tri-state where NULL means the source exposed no determination. Structure only.",
@@ -13,12 +13,12 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260911224952_dam_style_guide_file_has_talent_likeness.sql"
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260911224952_dam_style_guide_file_has_talent_likeness.sql"
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
   ],
   "db_reads": [
     "table core.style_guide"

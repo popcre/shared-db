@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 2814,
   "migration_versions": [
-    "20260911224952"
+    "20260914152758"
   ],
-  "contract_ref": "refs/db-contracts/2802/1",
-  "contract_sha256": "8f3d34152b340470be46139ae6ae6fedbfeb8726568197329dcb2fdbcab32148",
-  "head_sha": "6eb316fa16bcdff286ecd05f17713a7a91e9e2d9",
+  "contract_ref": "refs/db-contracts/2802/2",
+  "contract_sha256": "4697e993fcdb6aa492922e3994af7c203f05368d8b59fe1e40331d1df3d3f358",
+  "head_sha": "9b975d86324623b56f163727678d9eab6a0cf530",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "supabase/migrations/20260911224952_dam_style_guide_file_has_talent_likeness.sql"
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
   ],
   "db_reads": [],
   "db_writes": [
@@ -22,7 +22,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at merge head 69fed8b1. Guard B: no migration sorts before the base branch's newest version 20260911214438 (source: git:origin/main). Issue #1235 expected-count guard passed. Verify-cost guard passed: 1 added migration contains no prohibited verification read. Issue #1684 EOL reference guard passed. Guard B2 did not run: no live ledger source configured (informational, issue #651)."
+      "evidence": "Static checks passed at head 9b975d86. Guard B: no migration sorts before the base branch newest version 20260914075758 (source: git:origin/main)."
     }
   ],
   "assumptions_resolved": [
@@ -31,5 +31,5 @@
     "No database was read or written by this work; it is static authoring only. The contract permitted a read of core.style_guide that proved unnecessary, so db_reads is reported empty rather than widened to match the contract."
   ],
   "stop_conditions_hit": [],
-  "evidence_note": "Third refresh of this lane. Main moved to c7465a75 when PR #2736 merged. Refreshed by MERGE from main (never a rebase), so history is extended rather than rewritten. git merge-tree against real main reported exactly two conflicting paths, .agent/completion.json and .agent/contract.json; no code file conflicted. Both were resolved WHOLESALE to this lane's own pair - main carried issue #2716 / PR #2736 evidence, a foreign lane's artifact and not shared state - and each resolved file is byte-identical to the pre-merge head 6c67b860. The migration SQL 20260911224952 is byte-identical across the merge, so the refresh regressed nothing in either direction. head_sha is the merge commit 6eb316fa, the implementation commit; this evidence commit sits on top of it and cannot describe itself. files_changed is set-equal to git diff c7465a75..6eb316fa. Contract generation stays 1: the contract's content did not change and still hashes to the published refs/db-contracts/2802/1, so no new generation was minted; the contract file is re-serialized whitespace-only here so that both evidence files follow the implementation head as the git-evidence rule requires, and its canonical hash is unchanged. No reviewer was drawn, no ref was created or deleted, and no guard was edited."
+  "evidence_note": "Fourth refresh. Merged main 9006b253 (merge 22aa2e5d; only the .agent pair conflicted, resolved wholesale to this lane). Expired claim #2811 recovered via --recover-expired-claim-from-pr, then the backdated version 20260911224952 was superseded by governed --reversion-active-claim to 20260914152758 (commit 9b975d86, pure rename, SQL bytes unchanged). Contract generation 2 published at refs/db-contracts/2802/2 with the renamed path. head_sha is the implementation commit 9b975d86; this evidence commit sits on top."
 }

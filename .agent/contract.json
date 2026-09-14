@@ -1,21 +1,52 @@
 {
   "schema_version": 1,
-  "work_issue": 2852,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Admit only causal catalog-derived do-block routine edits while retaining exact collision keys and every existing DDL refusal.",
-  "base_sha": "4fd0938ee1c9d1662e0b1690ac963451cb197e0d",
-  "dispatcher": "Codex repository-maintenance task for issue #2852",
-  "worker": "codex-issue-2852",
-  "branch": "codex/issue-2852-do-block-admission",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/2e6d/shared-db",
-  "allowed_paths": ["scripts/orchestrator-flow/admission.mjs", "scripts/orchestrator-flow/admission-outcome.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/orchestrator-flow/admission.mjs", "scripts/orchestrator-flow/admission-outcome.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "work_issue": 2870,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
+  "base_sha": "6104f9d80872728b6e71ac8da1fe4bd3d5ab5af6",
+  "dispatcher": "Codex shared-db orchestrator",
+  "worker": "subagent:issue-2870-cutover-columns",
+  "branch": "codex/issue-2870-cutover-columns",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2870-cutover-columns/shared-db",
+  "allowed_paths": [
+    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
+    "scripts/production-verification-sidecars/20260914032423.json",
+    "scripts/production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
+    "scripts/production-verification-sidecars/20260914032423.json",
+    "scripts/production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["Do not weaken, bypass, delete, or allowlist around structural admission or collision checks.", "Do not change PR #2818 or any migration.", "Do not read from or write to a shared database.", "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."],
-  "required_checks": ["node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs", "exact PR #2818 migration admission probe", "git diff --check"],
-  "assumptions": ["A qualifying edit reads one schema-qualified regprocedure definition into a variable, then mutates that same variable with replace or regexp_replace, then executes that same variable.", "Quoted SQL text and comments must not satisfy mutation or execution evidence."],
-  "stop_conditions": ["Stop if the do-block pattern cannot return an exact routine collision key.", "Stop if comment-only, string-only, out-of-order, unedited, data-only, or unmodelled-DDL inputs become admissible.", "Stop if the repair requires changing PR #2818 or a migration."],
-  "generation": 8
+  "prohibited_actions": [
+    "Do not write application rows.",
+    "Do not add foreign keys, defaults, indexes, or non-null constraints.",
+    "Do not preview, assign a reviewer, merge, deploy, or close the issue.",
+    "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "ephemeral preview-equivalent database contract test",
+    "node scripts/check-production-verification-sidecars.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "dflow_prod.users and dflow_prod.comments already exist in the preview and production-shaped schemas.",
+    "The two columns remain nullable UUIDs with no defaults and no foreign keys for exact cutover compatibility."
+  ],
+  "stop_conditions": [
+    "Stop if either parent table is absent.",
+    "Stop if compatibility requires row writes or a foreign key.",
+    "Stop if the reserved migration version collides."
+  ],
+  "generation": 1
 }

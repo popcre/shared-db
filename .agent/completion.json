@@ -1,20 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2852,
-  "outcome": "ready-for-merge",
-  "pr": 2859,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2852/8",
-  "contract_sha256": "5236f4cc0520c289a9e109927648ecd44b377af53622559d99ff68ee256d7048",
-  "head_sha": "07e19895547bc35a6b53272e74539ddf4babf0fa",
-  "files_changed": ["scripts/orchestrator-flow/admission-outcome.test.mjs", "scripts/orchestrator-flow/admission.mjs"],
+  "work_issue": 2870,
+  "outcome": "in-progress",
+  "pr": null,
+  "migration_versions": ["20260914032423"],
+  "head_sha": null,
+  "files_changed": [],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {"command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "607 tests passed, 0 failed on main 4fd0938e plus the repair."},
-    {"command": "exact PR #2818 migration admission probe", "exit_code": 0, "evidence": "The PR #2818 migration at head 93d3544538cb5c532053a97666c5aea52c68a298 was admitted and returned exactly function api.db_data_admin_scraped_properties."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
-  ],
-  "assumptions_resolved": ["The exact #2818 pattern qualifies because it reads, mutates, and executes one definition variable in causal order.", "Muse reviews identified ordering, quoted-text spoof, dollar-quoted read, digit-tag, quoted-identifier, and wrong-variable gaps; all are repaired with focused positive and negative regressions.", "PR #2818 and unrelated active PRs were not changed."],
+  "checks": [],
+  "assumptions_resolved": [],
   "stop_conditions_hit": []
 }

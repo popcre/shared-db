@@ -1,20 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 2906,
+  "work_issue": 2694,
   "outcome": "ready-for-merge",
-  "pr": 2908,
+  "pr": 2750,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2906/1",
-  "contract_sha256": "8fcaee0c1b7a386ee78eba654ca3a5162832e1309ddd7576d41f16e78ec88633",
-  "head_sha": "959dcc81bf0b83bc76adc38322816c318d2e4511",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/live-proofs/2848.sql", ".github/workflows/shared-db-live-proof.yml", "scripts/shared_db_live_proof.py", "scripts/test_shared_db_live_proof.py"],
+  "contract_ref": "refs/db-contracts/2694/9",
+  "contract_sha256": "ac3cdaf8685b32dbcf41a47331fa3ca223411d2ce44ef4fc624c31b01edecccd",
+  "head_sha": "50f9460d3a0bc3f64c36cf2179c637a357936800",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m unittest scripts/test_shared_db_live_proof.py", "exit_code": 0, "evidence": "Ran 6 tests, OK, 0 skipped; covers 12 refusal cases, no query before scope checks, artifact name and file match the lane script, dispatch-only read-only main-only workflow, single-statement probes."},
-    {"command": "node scripts/check-github-transport-conformance.mjs", "exit_code": 0, "evidence": "223 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "552 passed, zero failed, skipped, cancelled or todo after refreshing from main at 56fdea49."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=285 against main at 56fdea49."
+    }
   ],
-  "assumptions_resolved": ["#2848 scope returns to u2giants/shared-db; ledger at live_verified; PR #2815 closes only #2848; run 34871556647 has production-migration-apply-56a51e24 artifact 10359756277; the #2848 probe returned passed true on production."],
+  "assumptions_resolved": [
+    "Prospective delivery validation only; final exact-head review, CI and prerequisite installation remain separate gates."
+  ],
   "stop_conditions_hit": []
 }

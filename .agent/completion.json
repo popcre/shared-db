@@ -6,13 +6,13 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2800/1",
   "contract_sha256": "950ba14e4ec6f39fe01c29b775c2ade48573e1f52b38c0fb7bc8e330d15c066c",
-  "head_sha": "97d6b90cff16d47b3bdcb80aa392ef33d34adb99",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts"],
+  "head_sha": "bcf89a10e0dde705ae25facad1b443dc177fa1b0",
+  "files_changed": ["apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {"command": "npx vitest run", "exit_code": 0, "evidence": "22 test files, 145 tests passed, 0 failed, 0 skipped."},
-    {"command": "npm run build", "exit_code": 0, "evidence": "Production build completed with exit 0; lint also exited 0."},
+    {"command": "npm run build", "exit_code": 0, "evidence": "Production build completed with exit 0; lint exited 0; Playwright tests/browser/grid.spec.ts 10 passed."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main."}
   ],
   "assumptions_resolved": ["PR #2808 migration creating db_data_admin_scraped_source_inventory is applied on production per run 34862499384."],

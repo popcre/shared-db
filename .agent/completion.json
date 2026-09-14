@@ -1,27 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
-  "outcome": "ready-for-merge",
-  "pr": 2864,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/1",
-  "contract_sha256": "8a7770e665167bbdfa1bb7edeecad0cbe912ac2db745195dfcd6a8e2f2c2e1d2",
-  "head_sha": "0f4649bf8dd48c56d26ef1792a3b95bb23e9cf31",
-  "files_changed": [
-    "tools/coldlion-landing-masters.test.mjs",
-    "tools/coldlion-landing/lib/db.mjs"
-  ],
+  "work_issue": 2866,
+  "outcome": "in-progress",
+  "pr": null,
+  "migration_versions": ["20260914025520"],
+  "head_sha": null,
+  "files_changed": [],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 97, pass 97, fail 0, skipped 0, todo 0. Includes the two new cases: the script is passed with -f <temp file> and stdin ignored and the temp file is removed afterwards; a non-zero psql exit surfaces DATABASE_COMMAND_FAILED with the ERROR line rather than a spawn fault."
-    }
-  ],
-  "assumptions_resolved": [
-    "Both failed runs (34685660524, 34751469115) reached the master write and failed with 'spawnSync psql EPIPE'; history reported 0 outstanding windows, so only the stdin pipe path was at fault."
-  ],
+  "checks": [],
+  "assumptions_resolved": [],
   "stop_conditions_hit": []
 }

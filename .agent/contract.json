@@ -1,49 +1,41 @@
 {
   "schema_version": 1,
-  "work_issue": 2851,
+  "work_issue": 2865,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Grant the automatic-production-promotion job the minimum permission (contents: write) to create its db-coordination admission commit object and ref, so automatic and manual production promotion stop failing with HTTP 403, without giving that job any database credential or weakening its ENGINEER ACTION REQUIRED fail-closed behaviour.",
-  "base_sha": "62d31d7138b0d598217521d2550e3c3e82adb376",
-  "dispatcher": "Albert Hazan (owner, repo-maintenance request 2026-09-13)",
-  "worker": "claude-repo-session-2851",
-  "branch": "claude/fix-auto-promotion-contents-write",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/cranky-mestorf-ee0f23",
+  "goal": "Repair the nightly ColdLion Landing Sync, which failed 2026-09-12 and 2026-09-13 with 'spawnSync psql EPIPE' while saving the master snapshot: pass the landing loader's SQL to psql as a private temp file instead of stdin so a large load cannot break the pipe and any real database error is surfaced.",
+  "base_sha": "bce5f2e005c67f7a8196105f98d48bf746e612b4",
+  "dispatcher": "Albert Hazan (owner) via coordinator: owner-authorized repo-maintenance repair of the ColdLion Landing Sync nightly",
+  "worker": "shared-db repo-maintenance session in worktree coldlion-api-storage-6c5a79",
+  "branch": "claude/coldlion-landing-psql-file-input",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/coldlion-api-storage-6c5a79",
   "allowed_paths": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
+    "tools/coldlion-landing/lib/db.mjs",
+    "tools/coldlion-landing-masters.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "tools/coldlion-landing/lib/db.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No permission change on any job other than automatic-production-promotion; the top-level and production-apply-review contents: read stay.",
-    "No database secret added to automatic-production-promotion.",
-    "No removal, weakening or bypass of ENGINEER ACTION REQUIRED fail-closed logic.",
-    "No shared database reads or writes, no migration file, no author lane claim.",
-    "No re-dispatch of issue 2482's production promotion."
+    "No database structure change of any kind.",
+    "Do not weaken, disable, or bypass the sync job, ON_ERROR_STOP, the spawn timeout, or client-fault classification.",
+    "Do not hide the error: a real psql failure must still fail the job with its database message."
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_owner_decision_evidence",
-    "python -m unittest scripts.test_production_migration_guard",
-    "git diff --check",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs"
   ],
   "assumptions": [
-    "contents: write covers both Git data API writes the admission path makes: POST git/commits and POST/PATCH git/refs. No other scope is needed.",
-    "Generation 6 refreshes onto main 62d31d71 and restores main's evidence pair before sealing, so the reported implementation head has exactly the workflow and focused test in its own diff. Main's PR #2855 reviewer-lifecycle repair is inherited unchanged."
+    "EPIPE from spawnSync with piped input means psql stopped reading before the script was fully written; Node then reports only the spawn error and drops status and stderr.",
+    "The history half of the job is healthy: both failed runs reported 0 outstanding windows through 2026-09-07, and the current week is never loaded by design."
   ],
   "stop_conditions": [
-    "Stop if the admission step needs any permission beyond contents: write.",
-    "Stop if the fix would require giving this job a database credential.",
-    "Stop and report the exact refusal if a governed tool refuses, rather than working around it."
+    "Stop if the fix would require a database structure change.",
+    "Stop if a check can only be made green by weakening a guard."
   ],
-  "generation": 6
+  "generation": 1
 }

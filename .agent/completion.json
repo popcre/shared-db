@@ -1,22 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2889,
+  "work_issue": 2865,
   "outcome": "ready-for-merge",
-  "pr": 2890,
+  "pr": 2891,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2889/2",
-  "contract_sha256": "ac8df236f78f299acffeefdc8c5f8dc451ddd308d72eaa84a71a472c6f4ef91e",
-  "head_sha": "d23d3e85b13e4cefab5bdbe79b3873b419464451",
-  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs"],
+  "contract_ref": "refs/db-contracts/2865/2",
+  "contract_sha256": "3440b7a7285e5ef1e2266dad5ac050bd6118bf6c18c419d1262844548257f033",
+  "head_sha": "3e8494592b46edf523c2cecb9ff9907992cbfb2a",
+  "files_changed": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."},
-    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "43 tests passed."},
-    {"command": "exact-head pull-request CI", "exit_code": 0, "evidence": "Pending after this evidence-only commit."},
-    {"command": "governed exact-head review", "exit_code": 0, "evidence": "Pending after exact-head CI."}
+    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 98, pass 98, fail 0, skipped 0."}
   ],
-  "notes": ["The broad local Node glob reported two pre-existing private-artifact ownership failures unrelated to this diff; authoritative clean-checkout exact-head CI remains required.", "No database, preview, production, migration, workflow, claim, or outcome-history action was performed."],
-  "assumptions_resolved": ["The current file hashes and byte count exactly match the registered values.", "Production producer provenance is required and is bound to PR 2886 merge c0a36970."],
+  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
+  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
   "stop_conditions_hit": []
 }

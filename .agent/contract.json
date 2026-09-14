@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Keep an immutable successful preview apply eligible for a fresh production selector when only the downstream automatic-production qualification job failed, without weakening preview, artifact, identity, ledger, or production safety gates.",
-  "base_sha": "4fd0938ee1c9d1662e0b1690ac963451cb197e0d",
+  "base_sha": "6104f9d80872728b6e71ac8da1fe4bd3d5ab5af6",
   "dispatcher": "Albert Hazan (owner, issue 2851 continuation 2026-09-13)",
   "worker": "codex-repo-session-2851",
   "branch": "codex/issue-2851-preview-evidence",
@@ -13,14 +13,9 @@
   "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No production or preview dispatch and no database read or write.",
-    "No acceptance of a failed or missing preview job, incomplete or unexpected job graph, or any production execution.",
-    "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.",
-    "Do not touch pull request 2849 and do not run repair-outcome-history."
-  ],
+  "prohibited_actions": ["No production or preview dispatch and no database read or write.", "No acceptance of a failed or missing preview job, incomplete or unexpected job graph, or any production execution.", "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.", "Do not touch pull request 2849 and do not run repair-outcome-history."],
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
   "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
   "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
-  "generation": 8
+  "generation": 9
 }

@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/2865/3",
   "contract_sha256": "a8a6563fe4d83aa8f4cb69f35730e5bf088579d1677969b957e65bf44ebdfb00",
   "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [

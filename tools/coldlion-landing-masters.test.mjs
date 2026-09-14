@@ -6,7 +6,8 @@ import { ITEM_SPECS, MASTER_SPECS, knownApiFields } from "./coldlion-landing/lib
 import { assertKnownShape, projectCurrentRows, projectItemSlots } from "./coldlion-landing/lib/project-masters.mjs";
 import { buildMasterLoadSql } from "./coldlion-landing/lib/load-masters.mjs";
 import { assertRequestedScope, assertSameIdentitySet, collectMasters, dedupeSlots, main, parseArgs } from "./coldlion-landing/sync-masters.mjs";
-import { assertExpectedTarget, masterFailureSql, redactPsqlError } from "./coldlion-landing/lib/db.mjs";
+import { assertExpectedTarget, masterFailureSql, redactPsqlError, runSql as landingRunSql } from "./coldlion-landing/lib/db.mjs";
+import { existsSync } from "node:fs";
 
 const RUN="11111111-1111-4111-8111-111111111111";
 const NOW="2026-09-09T00:00:00.000Z";
@@ -251,4 +252,34 @@ test("collector fans seasons per division, merges active variants, and proves it
   };
   const result=await collectMasters({companyCode:"EDGEHOME",apiKey:"hidden",fetchOptions:{fetchImpl,pauseMs:0}});
   assert.equal(result.loads.length,9); assert.ok(calls.some((call)=>call.startsWith("/seasons?")&&call.includes("divisionCode=SD001"))); assert.equal(calls.filter((call)=>call.startsWith("/itemDetails?")).length,2);
+});
+
+test("landing runSql passes the script as a file, not stdin, so a large load cannot EPIPE", () => {
+  const sql = "select 1;\n".repeat(200000);
+  let seen;
+  const out = landingRunSql(sql, {
+    url: "postgresql://example.invalid/db",
+    spawn: (cmd, args, opts) => {
+      const file = args.at(-1);
+      seen = { flag: args.at(-2), file, stdin: opts.stdio[0], input: opts.input, body: readFileSync(file, "utf8") };
+      return { status: 0, stdout: "ok", stderr: "" };
+    },
+  });
+  assert.equal(out, "ok");
+  assert.equal(seen.flag, "-f");
+  assert.notEqual(seen.file, "-");
+  assert.equal(seen.stdin, "ignore");
+  assert.equal(seen.input, undefined);
+  assert.equal(seen.body, sql);
+  assert.equal(existsSync(seen.file), false, "temp script is removed after the run");
+});
+
+test("landing runSql surfaces psql's real database error instead of a spawn fault", () => {
+  assert.throws(
+    () => landingRunSql("select 1;", {
+      url: "postgresql://example.invalid/db",
+      spawn: () => ({ status: 3, stdout: "", stderr: "psql:script.sql:9: ERROR:  relation coldlion.x does not exist\n" }),
+    }),
+    (error) => error.code === "DATABASE_COMMAND_FAILED" && /ERROR:/.test(error.message),
+  );
 });

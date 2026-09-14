@@ -17,5 +17,5 @@
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "python -m unittest scripts.test_production_business_risk_gate", "python scripts/test_verify_preview_apply_artifact.py", "git diff --check"],
   "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
   "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
-  "generation": 10
+  "generation": 11
 }

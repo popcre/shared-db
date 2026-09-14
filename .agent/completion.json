@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 2868,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2851/10",
-  "contract_sha256": "9155b63713d0b55af4ffb26712abf1485c00b2c0ac6da285da14a3162c6de27e",
+  "contract_ref": "refs/db-contracts/2851/11",
+  "contract_sha256": "a09555a8178087689c7c1b79eb0c16160b5b5774f9de71573d41fb6923c4d699",
   "head_sha": "d0d396c608f9a39024713f7ea3c5c99233edf622",
   "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, with negative controls for failed preview, guard failure, unexpected job graphs, production execution, and missing job evidence."},
-    {"command": "python -m unittest scripts.test_production_business_risk_gate", "exit_code": 0, "evidence": "Production risk-gate suite passed with the same exact downstream-failure graph enforced by direct and historical preview consumers."},
+    {"command": "python -m unittest scripts.test_production_business_risk_gate", "exit_code": 0, "evidence": "146 production risk-gate tests passed with the same exact downstream-failure graph enforced by direct and historical preview consumers."},
     {"command": "python scripts/test_verify_preview_apply_artifact.py", "exit_code": 0, "evidence": "5 artifact-verification tests passed, including acceptance of the exact downstream-failure graph and refusal after preview failure."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],

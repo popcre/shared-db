@@ -1,1 +1,53 @@
-{"schema_version":1,"work_issue":2883,"generation":4,"work_type":"repo-maintenance","route":"repo-maintenance","goal":"Restore automatic production evidence writing by supporting both repository-root package import and existing direct-script execution.","base_sha":"19d2ff0f61bc2ffacaca297bc1b82335c5a3c853","dispatcher":"Claude orchestrator marker 2893 route local_d16c82f5-fb42-453c-9ee5-765977d79195","worker":"Claude subagent PR 2884 takeover","branch":"codex/issue-2883-production-evidence-import","worktree":"C:/repos/shared-db/.claude/worktrees/pr2884","allowed_paths":[".agent/completion.json",".agent/contract.json","scripts/production_apply_review_evidence.py","scripts/test_production_apply_review_evidence.py"],"file_writes":[".agent/completion.json",".agent/contract.json","scripts/production_apply_review_evidence.py","scripts/test_production_apply_review_evidence.py"],"db_reads":[],"db_writes":[],"prohibited_actions":["Do not change workflow authorization, allowlist meaning, or evidence semantics.","Do not change any database object, migration, preview, production, or workflow file.","Do not touch excluded issues or pull requests."],"required_checks":["python -m unittest scripts/test_production_apply_review_evidence.py","python -c from scripts.production_apply_review_evidence import automatic_evidence","python scripts/production_apply_review_evidence.py --help","git diff --check"],"assumptions":["Run 34810918728 failed solely because package import did not resolve the sibling allowlist module.","The workflow imports scripts.production_apply_review_evidence from repository-root inline Python while later jobs execute the same file directly.","Generation 4 refreshes the unchanged substantive repair onto current main 19d2ff0f after the prior Codex session closed."],"stop_conditions":["Stop if compatibility requires a workflow change or evidence-validation relaxation.","Stop if exact-head CI or governed review rejects the repair."]}
+{
+  "schema_version": 1,
+  "work_issue": 2662,
+  "generation": 14,
+  "work_type": "structural",
+  "route": "shared-db",
+  "goal": "Part A of issue #2662: remove the anon and authenticated Data API grants from four RLS-enabled, zero-policy public tables, so their protection no longer rests solely on an empty policy set that a later unrelated policy would silently defeat.",
+  "base_sha": "c72363e997bf2779558dabf29579ca4430f4fd89",
+  "dispatcher": "Claude shared-db lane dispatch for issue 2662",
+  "worker": "Claude issue2662 Part A lane",
+  "branch": "claude/issue-2662-part-a-revoke-grants",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2815",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260914155226_revoke_api_role_grants_zero_policy_tables.sql"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260914155226_revoke_api_role_grants_zero_policy_tables.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog pg_policy"
+  ],
+  "db_writes": [
+    "table public.ai_sentinel_cleanup_log",
+    "table public.dam_search_documents",
+    "table public.dam_search_synonyms",
+    "table public.scanner_ai_ignores"
+  ],
+  "prohibited_actions": [
+    "Do not touch the definer views or materialized views in the same finding; they carry an owner business judgement and are Part B, planned but not applied.",
+    "Do not add, alter or drop any RLS policy; this work removes grants only and leaves the empty policy set in place as the second layer.",
+    "Do not revoke from service_role or postgres; every live writer of these tables is server-side and must keep working.",
+    "Do not run direct production DDL, and do not weaken any guard to make a check pass."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "All four tables have RLS enabled with zero policies, so anon and authenticated are already denied and removing their grants changes no behaviour today.",
+    "The only live traffic to these tables is service-role, which bypasses RLS and is untouched by this migration.",
+    "Production promotion is a separate governed gate after merge, not part of this contract; it needs the owner to name the exact resource and action, so this lane delivers only as far as guarded merge and preview."
+  ],
+  "stop_conditions": [
+    "Stop if any of the four tables is found to have a policy, since revoking the grant would then remove access something actually relies on.",
+    "Stop if production edge logs show any browser anon or authenticated caller succeeding against any of the four tables, since the revoke would then be a breaking change rather than a tightening.",
+    "Stop if any of the four tables turns out to be shared with an object under another active claim on this issue."
+  ]
+}

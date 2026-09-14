@@ -81,6 +81,15 @@ export const REVIEW_SILENCE_RELEASE_REF_PREFIX = 'refs/db-review-silences'
 export const REVIEW_QUEUE_REF_PREFIX = 'refs/db-review-queue'
 export const REVIEW_EXCLUSION_REF_PREFIX = 'refs/db-review-exclusions'
 export const REVIEW_EXCLUSION_REASONS = new Set(['already-reviewed','independence-conflict','terminal-unavailable'])
+// NO LIMIT ON REUSING A REVIEWER (owner ruling, orchestrator marker #2893,
+// 2026-09-14). `already-reviewed` barred a provider from a pull request merely
+// because it had reviewed an earlier head. That is a reuse cap, not a safety
+// rule, and it is retired: it still PARSES so historical records stay readable,
+// but no new exclusion may use it and an existing one no longer bars a draw.
+// `independence-conflict` (the orchestrating/authoring engine never reviews its
+// own work) and `terminal-unavailable` are unchanged.
+export const RETIRED_EXCLUSION_REASONS = new Set(['already-reviewed'])
+export const RECORDABLE_EXCLUSION_REASONS = new Set([...REVIEW_EXCLUSION_REASONS].filter((reason)=>!RETIRED_EXCLUSION_REASONS.has(reason)))
 export const REVIEW_REINSTATEMENT_REF_PREFIX = 'refs/db-review-reinstatements'
 // WHY ONLY ONE REASON IS REINSTATABLE.
 //
@@ -2916,6 +2925,8 @@ function reviewerExclusions(issue,pr,io,{fresh=false}={}){
       if(!REINSTATABLE_EXCLUSION_REASONS.has(exclusion.reason))throw new LaneError(`reviewer reinstatement exists for a ${exclusion.reason} exclusion of ${exclusion.reviewer}; that reason is an independence guarantee and is never lifted`)
       continue
     }
+    // Retired reuse cap (#2893): a legacy `already-reviewed` record never bars a draw.
+    if(RETIRED_EXCLUSION_REASONS.has(exclusion.reason))continue
     result.set(exclusion.reviewer,exclusion)
   }
   return result
@@ -3214,7 +3225,7 @@ function liveExclusionGeneration({issue,pr,reviewer,reason,evidenceSha},io){
 export function excludeReviewerForPr({issue,pr,reviewer,reason,evidenceSha},io=githubIo){
   return withReviewRequestBudget(()=>{
     io=reviewOperationIo(io);issue=Number(issue);pr=Number(pr);reviewer=String(reviewer??'');reason=String(reason??'');evidenceSha=String(evidenceSha??'')
-    if(!Number.isInteger(issue)||!Number.isInteger(pr)||!REVIEWERS.some((row)=>row.name===reviewer)||!REVIEW_EXCLUSION_REASONS.has(reason)||!/^[0-9a-f]{7,40}$/i.test(evidenceSha))throw new LaneError('reviewer exclusion requires issue, PR, known reviewer, allowed reason, and durable evidence SHA')
+    if(!Number.isInteger(issue)||!Number.isInteger(pr)||!REVIEWERS.some((row)=>row.name===reviewer)||!RECORDABLE_EXCLUSION_REASONS.has(reason)||!/^[0-9a-f]{7,40}$/i.test(evidenceSha))throw new LaneError(RETIRED_EXCLUSION_REASONS.has(reason)?`reviewer exclusion reason ${reason} is retired: reusing a reviewer on the same pull request is allowed (#2893)`:'reviewer exclusion requires issue, PR, known reviewer, allowed reason, and durable evidence SHA')
     const evidence=parseReviewCursor(io.getCommit(evidenceSha))
     if(evidence.issue!==issue||evidence.pr!==pr||evidence.reviewer!==reviewer)throw new LaneError('reviewer exclusion evidence does not match the issue, PR, and reviewer')
     const assignmentRows=io.listRefs(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-`)??[]

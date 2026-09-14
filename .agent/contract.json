@@ -4,7 +4,7 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Bind each HTS RAG worker role to its own source_environment on INSERT across all ten tables while preserving shared reads, bounded cross-environment updates, immutable provenance, and the no-delete posture.",
-  "base_sha": "c23dcdcf928f352aab2a144f52182cea4554bf17",
+  "base_sha": "6306532e35eb996b58d74b6fbbcfc6d7f63a9363",
   "dispatcher": "successor orchestrator marker 2858",
   "worker": "subagent:issue-2866-hts-provenance",
   "branch": "codex/issue-2866-hts-insert-provenance",
@@ -111,5 +111,5 @@
     "Stop if existing bounded cross-environment UPDATE semantics cannot be preserved.",
     "Stop if preview or production access is required for authoring."
   ],
-  "generation": 5
+  "generation": 6
 }

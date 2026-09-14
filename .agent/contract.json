@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2662,
-  "generation": 11,
+  "generation": 12,
   "work_type": "structural",
   "route": "shared-db",
   "goal": "Part A of issue #2662: remove the anon and authenticated Data API grants from four RLS-enabled, zero-policy public tables, so their protection no longer rests solely on an empty policy set that a later unrelated policy would silently defeat.",
@@ -13,12 +13,12 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260911225108_revoke_api_role_grants_zero_policy_tables.sql"
+    "supabase/migrations/20260914152608_revoke_api_role_grants_zero_policy_tables.sql"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260911225108_revoke_api_role_grants_zero_policy_tables.sql"
+    "supabase/migrations/20260914152608_revoke_api_role_grants_zero_policy_tables.sql"
   ],
   "db_reads": [
     "catalog pg_class",

@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 2815,
   "migration_versions": [
-    "20260911225108"
+    "20260914152608"
   ],
-  "contract_ref": "refs/db-contracts/2662/11",
-  "contract_sha256": "e89e503a2d0ecc50ffffafe2a63b7cc3feb44bf3cc828ef19681a4efd7623214",
-  "head_sha": "01fe6aac82d8c1720ee300d3ad7c695b7476bc3c",
+  "contract_ref": "refs/db-contracts/2662/12",
+  "contract_sha256": "169f95a24831b85d13ac7fe6dc97448a9ac855e328cd25e00a55e74760b652b1",
+  "head_sha": "2e08af66715d4fcbe6e4b87afd5c9c471010777d",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "supabase/migrations/20260911225108_revoke_api_role_grants_zero_policy_tables.sql"
+    "supabase/migrations/20260914152608_revoke_api_role_grants_zero_policy_tables.sql"
   ],
   "db_reads": [
     "catalog pg_class",
@@ -40,7 +40,8 @@
     "Production promotion was not performed and is not claimed: it is a separate governed gate that requires the owner to name the exact resource and action, and the owner is asleep. The PR is ready for merge and preview only.",
     "Refresh onto main c7465a75 (PR #2736 merged): merge-tree reported exactly two conflicting paths, .agent/completion.json and .agent/contract.json, which every lane writes at the repo root, so main carried the issue #2716 lane's pair. Both were resolved WHOLESALE to this lane's own evidence with no hunk-level merging, then re-sealed as contract generation 10. files_changed is now the single migration file, set-equal to git diff c7465a75..f6ab0b6a; the two .agent files are the only paths following the implementation head, as the evidence checker requires.",
     "DISCLOSURE: during this refresh a reset to the implementation commit briefly left main's foreign .agent pair in the tree, and one publish was issued from it, creating the stray ref refs/db-contracts/2716/10 on origin plus a corresponding comment on issue #2716. That ref belongs to the issue #2716 lane's namespace and is NOT this lane's contract; it was not deleted because ref deletion was outside this task's authority. The 2716 lane's real generations are 1 through 4 and none of them was altered or overwritten.",
-    "Refresh onto main 9006b253: merge commit 01fe6aac. The only conflicts were the two .agent files, resolved wholesale to this lane's own pair and re-sealed as contract generation 11. The migration file is byte-identical to the approved head fb402efa; no function bodies are involved."
+    "Refresh onto main 9006b253: merge commit 01fe6aac. The only conflicts were the two .agent files, resolved wholesale to this lane's own pair and re-sealed as contract generation 11. The migration file is byte-identical to the approved head fb402efa; no function bodies are involved.",
+    "The guarded merge refused the old version as backdated (main's newest is 20260914075758). Claim #2812 was re-reserved through the governed --reversion-active-claim verb: 20260911225108 became 20260914152608 in commit 2e08af66, a pure rename with the SQL unchanged. Re-sealed as contract generation 12."
   ],
   "stop_conditions_hit": []
 }

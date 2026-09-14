@@ -1,54 +1,14 @@
 {
   "schema_version": 1,
   "work_issue": 2870,
-  "outcome": "ready-for-merge",
-  "pr": 2872,
+  "outcome": "in-progress",
+  "pr": null,
   "migration_versions": ["20260914032423"],
-  "contract_ref": "refs/db-contracts/2870/2",
-  "contract_sha256": "522951ca853225cf74ab6a8f347f4f5919cdb3c002a504a32be07c9f532dba6b",
-  "head_sha": "d1dee3e0376ca1beed74c1d6e57bf6db38f7b7a6",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production-verification-sidecars/20260914032423.json",
-    "scripts/production_business_risk_gate.py",
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
-  ],
+  "head_sha": null,
+  "files_changed": [],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "All static SQL migration guards passed; the local runner correctly deferred database execution because no disposable DATABASE_URL was configured."
-    },
-    {
-      "command": "ephemeral preview-equivalent database contract test",
-      "exit_code": 0,
-      "evidence": "GitHub Actions job 103853283863 successfully replayed every migration and ran every SQL contract against an isolated ephemeral PostgreSQL database at refreshed implementation head d1dee3e0376ca1beed74c1d6e57bf6db38f7b7a6."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
-      "exit_code": 0,
-      "evidence": "The sidecar validator returned status OK with all pinned scans accepted, including migration 20260914032423."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors were reported."
-    },
-    {
-      "command": "ai-task-gates check --before review",
-      "exit_code": 0,
-      "evidence": "The shared-db task declaration permits review and names the full protected gate set."
-    }
-  ],
-  "assumptions_resolved": [
-    "The ephemeral full-history replay proved both dflow_prod parent tables exist before migration 20260914032423 runs.",
-    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
-    "The migration performs DDL only and contains no application-row write."
-    ,"Generated types remain required downstream: repository policy generates them from the post-migration preview database, so popcre/designflow-backend#94 must supply the durable generated-types acceptance artifact after preview rather than this author PR hand-editing stale types."
-  ],
+  "checks": [],
+  "assumptions_resolved": [],
   "stop_conditions_hit": []
 }

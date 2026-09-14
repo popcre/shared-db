@@ -4,7 +4,7 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
-  "base_sha": "fbbeb711a14c36408e4fbcf8617e03a637326837",
+  "base_sha": "c23dcdcf928f352aab2a144f52182cea4554bf17",
   "dispatcher": "Codex shared-db orchestrator",
   "worker": "subagent:issue-2870-cutover-columns",
   "branch": "codex/issue-2870-cutover-columns",
@@ -54,5 +54,5 @@
     "Stop if compatibility requires row writes or a foreign key.",
     "Stop if the reserved migration version collides."
   ],
-  "generation": 2
+  "generation": 3
 }

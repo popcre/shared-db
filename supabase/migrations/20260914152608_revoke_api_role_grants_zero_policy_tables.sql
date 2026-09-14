@@ -1,5 +1,5 @@
 -- Issue #2662 (Part A) — revoke Data API role grants on four RLS-enabled, zero-policy tables.
--- Claim #2812; reserved version 20260911225108.
+-- Claim #2812; reserved version 20260914152608.
 -- derived-from: none
 --
 -- This migration restates no earlier migration's body. It only removes two role

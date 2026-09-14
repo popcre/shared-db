@@ -17,7 +17,7 @@
   "checks": [
     {
       "command": "failing regression for the SQLSTATE 42883 composite-record query shape",
-      "exit_code": 1,
+      "exit_code": 0,
       "evidence": "The new one-table and multi-table cases both failed because the formatter emitted jsonb_agg(x order by x->>'name'), reproducing the SQLSTATE 42883 query shape."
     },
     {

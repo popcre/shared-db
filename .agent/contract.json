@@ -1,21 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2800,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Ship the DB Data Admin scraped-inventory UI from PR #2799: raw Properties, Characters and Style Guides tabs backed by the production-applied db_data_admin_scraped_source_inventory function, with section-scoped column filters and Property Matching renamed.",
-  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
-  "dispatcher": "claude shared-db orchestrator route local_d16c82f5-fb42-453c-9ee5-765977d79195 (marker #2893)",
-  "worker": "claude issue-2800 PR #2799 refresh author",
-  "branch": "codex/scraped-properties-inventory-ui",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2799",
-  "allowed_paths": ["apps/db-data-admin/src/**", "apps/db-data-admin/tests/browser/grid.spec.ts", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": ["No migration, SQL, grant, or database structure change.", "No database write from this code change.", "No weakening of any guard, workflow, or required check."],
-  "required_checks": ["npx vitest run", "npm run build", "git diff --check"],
-  "assumptions": ["Migration from PR #2808 creating db_data_admin_scraped_source_inventory is applied on production (run 34862499384)."],
-  "stop_conditions": ["Stop if the UI requires a database structure change.", "Stop if refreshing from main produces a conflict in a file outside allowed_paths."],
-  "generation": 1
+  "work_issue": 2802,
+  "generation": 2,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a nullable boolean column has_talent_likeness to dam.style_guide_file recording whether the style-guide file's source explicitly indicated talent likeness, as a tri-state where NULL means the source exposed no determination. Structure only.",
+  "base_sha": "e420cd8619f57933de5b35aa5065f7d9ea3cc9de",
+  "dispatcher": "Claude shared-db orchestrator",
+  "worker": "Claude issue2802 migration author lane",
+  "branch": "claude/issue-2802-talent-likeness",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2802-talent-likeness",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
+  ],
+  "db_reads": [
+    "table core.style_guide"
+  ],
+  "db_writes": [
+    "table dam.style_guide_file"
+  ],
+  "prohibited_actions": [
+    "backfilling or otherwise writing any row value into has_talent_likeness; this intake authorizes structure only",
+    "inferring the value from a filename, path, folder or title",
+    "declaring the column NOT NULL or giving it a default, which would destroy the third NULL state",
+    "altering or repurposing the existing raw source filename and label columns (title, relative_path, folder, metadata)",
+    "running production DDL directly instead of through the governed promotion workflow"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "The raw source filename and label remain preserved separately in the existing title, relative_path, folder and metadata columns, so no new column is needed to retain them.",
+    "NULL is a distinct third answer meaning the source exposed no determination, and is never to be read as FALSE."
+  ],
+  "stop_conditions": [
+    "the governed reviewer returns REVISE",
+    "any repository guard or required check fails and passing it would require weakening or bypassing the guard",
+    "the work would require writing row data rather than structure",
+    "the correct value for the column cannot be determined from the source without inference"
+  ]
 }

@@ -1,20 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 2800,
+  "work_issue": 2802,
   "outcome": "ready-for-merge",
-  "pr": 2799,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2800/1",
-  "contract_sha256": "950ba14e4ec6f39fe01c29b775c2ade48573e1f52b38c0fb7bc8e330d15c066c",
-  "head_sha": "bcf89a10e0dde705ae25facad1b443dc177fa1b0",
-  "files_changed": ["apps/db-data-admin/src/DataAdmin.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.test.tsx", "apps/db-data-admin/src/ScrapedPropertiesTable.tsx", "apps/db-data-admin/src/lib/data-admin.ts", "apps/db-data-admin/src/scraped-properties-columns.ts", "apps/db-data-admin/src/styles.css", "apps/db-data-admin/tests/browser/grid.spec.ts"],
-  "db_reads": [],
-  "db_writes": [],
-  "checks": [
-    {"command": "npx vitest run", "exit_code": 0, "evidence": "22 test files, 145 tests passed, 0 failed, 0 skipped."},
-    {"command": "npm run build", "exit_code": 0, "evidence": "Production build completed with exit 0; lint exited 0; Playwright tests/browser/grid.spec.ts 10 passed."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main."}
+  "pr": 2814,
+  "migration_versions": [
+    "20260914152758"
   ],
-  "assumptions_resolved": ["PR #2808 migration creating db_data_admin_scraped_source_inventory is applied on production per run 34862499384."],
-  "stop_conditions_hit": []
+  "contract_ref": "refs/db-contracts/2802/2",
+  "contract_sha256": "4697e993fcdb6aa492922e3994af7c203f05368d8b59fe1e40331d1df3d3f358",
+  "head_sha": "9b975d86324623b56f163727678d9eab6a0cf530",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "supabase/migrations/20260914152758_dam_style_guide_file_has_talent_likeness.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dam.style_guide_file"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at head 9b975d86. Guard B: no migration sorts before the base branch newest version 20260914075758 (source: git:origin/main)."
+    }
+  ],
+  "assumptions_resolved": [
+    "Confirmed against the table definition in supabase/migrations/20260621151024_domain_tables.sql that dam.style_guide_file already carries title, relative_path, folder and metadata, so the raw source filename and label stay preserved separately and this migration does not touch them.",
+    "The column is declared nullable with no default, so NULL remains a distinct third state meaning the source exposed no determination and is never a stand-in for FALSE.",
+    "No database was read or written by this work; it is static authoring only. The contract permitted a read of core.style_guide that proved unnecessary, so db_reads is reported empty rather than widened to match the contract."
+  ],
+  "stop_conditions_hit": [],
+  "evidence_note": "Fourth refresh. Merged main 9006b253 (merge 22aa2e5d; only the .agent pair conflicted, resolved wholesale to this lane). Expired claim #2811 recovered via --recover-expired-claim-from-pr, then the backdated version 20260911224952 was superseded by governed --reversion-active-claim to 20260914152758 (commit 9b975d86, pure rename, SQL bytes unchanged). Contract generation 2 published at refs/db-contracts/2802/2 with the renamed path. head_sha is the implementation commit 9b975d86; this evidence commit sits on top."
 }

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2851/11",
   "contract_sha256": "a09555a8178087689c7c1b79eb0c16160b5b5774f9de71573d41fb6923c4d699",
-  "head_sha": "d0d396c608f9a39024713f7ea3c5c99233edf622",
+  "head_sha": "8ddcdf39a40be0a67eb1f769830c27f7932524da",
   "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py"],
   "db_reads": [],
   "db_writes": [],

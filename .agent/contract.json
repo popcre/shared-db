@@ -1,1 +1,21 @@
-{"schema_version":1,"work_issue":2913,"generation":3,"work_type":"repo-maintenance","route":"repo-maintenance","goal":"Let validateOriginalPreviewApplyEvidence admit the single automatic-production-apply-review-evidence artifact left by a failed downstream dispatcher, only when the job graph proves that dispatcher was the sole failure.","base_sha":"57461be68abdb1b692ecfc0fe02edafbd6751176","dispatcher":"Claude orchestrator marker 2893 route local_d16c82f5-fb42-453c-9ee5-765977d79195","worker":"Claude subagent issue 2913 preview evidence repair","branch":"claude/preview-evidence-downstream-artifact","worktree":"C:/repos/shared-db/.claude/worktrees/mystifying-merkle-349616","allowed_paths":[".agent/completion.json",".agent/contract.json","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs"],"file_writes":[".agent/completion.json",".agent/contract.json","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs"],"db_reads":[],"db_writes":[],"prohibited_actions":["Do not relax any other evidence, binding, ledger, exact-SHA or review check.","Do not change any database object, migration, preview, or production state."],"required_checks":["node --test scripts/manage-migration-author-lanes.test.mjs","migration-author-lease.yml maintenance node --test suite","git diff --check"],"assumptions":["Run 34879272176 is a merged-main preview whose only failure was automatic production qualification, which uploaded automatic-production-apply-review-evidence.","Generation 3 reseals the unchanged reviewed repair onto current main after #2901 and #2895 merged."],"stop_conditions":["Stop if the fix requires accepting any other extra artifact or job shape.","Stop if exact-head CI or governed review rejects the repair."]}
+{
+  "schema_version": 1,
+  "work_issue": 2915,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Let reviewer assignment and governed verdict recording accept the verified merged-PR issue binding from #2901 for a merged PR with no closing link, with exactly the same refusals as the preview binding, so PR #2726 (issue #2506) can receive an exact-head verdict.",
+  "base_sha": "8d96cbf7ff461403cfb52e1f75b94c74b46ac969",
+  "dispatcher": "Albert Hazan (owner, repository-maintenance authorization 2026-09-14)",
+  "worker": "claude-repo-session-2915",
+  "branch": "claude/reviewer-assign-merged-binding-2506",
+  "worktree": "C:/tmp/wt-assign",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["No database read or write from this code change.", "No binding looser than the verified preview binding: merged PR, one Work issue line, completion record, migration versions, claim reservations, open issue.", "No weakening of admission, review, lock, lease, mutex, or production gates.", "Never break or delete a preview, merge, production, mutex, lease, or claim ref."],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/merged-pr-issue-binding.test.mjs", "git diff --check"],
+  "assumptions": ["Reviewer assignment refused PR #2726 with 'pull request must close exactly one work issue; found 0' because its routing snapshot bypassed the binding wrapper."],
+  "stop_conditions": ["Stop if the fix would require editing a merged PR or deleting any coordination ref."],
+  "generation": 1
+}

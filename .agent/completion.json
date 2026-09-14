@@ -1,1 +1,20 @@
-{"schema_version":1,"work_issue":2913,"outcome":"ready-for-merge","pr":2914,"migration_versions":[],"contract_ref":"refs/db-contracts/2913/3","contract_sha256":"65e75a412c55d64e6e4ac7d25afc3f9aa4a096f8b775db1f06eb817858bde682","head_sha":"280c2d138b5e650406da5b1f35762102000a3122","files_changed":[".agent/completion.json",".agent/contract.json","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs"],"db_reads":[],"db_writes":[],"checks":[{"command":"node --test scripts/manage-migration-author-lanes.test.mjs","exit_code":0,"evidence":"New regression 'a failed downstream dispatcher may leave only its own review-evidence artifact' fails with found 0 before the fix and passes after."},{"command":"migration-author-lease.yml maintenance node --test suite","exit_code":0,"evidence":"988 tests, 988 pass, 0 fail, 0 skipped."},{"command":"git diff --check","exit_code":0,"evidence":"No whitespace errors."}],"notes":["Read-only probe: run 34879272176 now validates as preview-apply for PR 2910; historical-recovery run 34881492139 still refuses (no ledger add)."],"assumptions_resolved":["Run 34879272176 artifacts are exactly preview-migration-apply-66acdc8f and automatic-production-apply-review-evidence, same run and head."],"stop_conditions_hit":[]}
+{
+  "schema_version": 1,
+  "work_issue": 2915,
+  "outcome": "ready-for-merge",
+  "pr": 2916,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2915/1",
+  "contract_sha256": "080b275374cb5cb2ec84fe6e95afb497003f046479a041ba272fcf2e8d3e0aec",
+  "head_sha": "44d05d21aff18bf8d309b240025fb0e523fbecf4",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "554 tests passed, 0 failed, 0 skipped, on the merge of current main."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "6 tests passed. The new reviewer-snapshot test fails on unfixed main (deep-equal assertion) and passes here; it covers binding fill, unrelated PR untouched, matching real link kept, disagreeing link refused, and refusals for a closed issue, missing claim reservation, and unmerged PR."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+  ],
+  "assumptions_resolved": ["Reviewer assignment read io.readReviewerOperationRoute, which the #2901 binding wrapper did not cover; the governed review runner recorded verdicts with an unbound io."],
+  "stop_conditions_hit": []
+}

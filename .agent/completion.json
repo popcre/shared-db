@@ -1,46 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2918,
+  "work_issue": 2915,
   "outcome": "ready-for-merge",
-  "pr": 2917,
+  "pr": 2916,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2918/1",
-  "contract_sha256": "eee48e561c92e8e34248ab75156b8a6fbbfd0faacb03fbf46160f69d40f78533",
-  "head_sha": "2c10da67e2bb11063492d3017d5473851f9114f2",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/destructive-analysis-guard.yml",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-destructive-analysis.test.mjs",
-    "scripts/lib/destructive-analysis-guard.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2915/2",
+  "contract_sha256": "73136d7fe4518eeac30af16440ac63743f82942fb494997bd82c63427e82c173",
+  "head_sha": "7aa09ef0ac8776190536d0a66e85e55600eddac2",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs", "scripts/run-governed-review.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test scripts/check-destructive-analysis.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 12, pass 12, fail 0, skipped 0. Mutations each turn it red: removing 'function' from DROP kinds (fail 1); deleting the label check (fail 2), checklist check (fail 2), existence check (fail 2), pull-request check (fail 2); disabling CLI rejection (fail 1); swallowing lookup errors (fail 1)."
-    },
-    {
-      "command": "node --test scripts/check-github-transport-conformance.test.mjs",
-      "exit_code": 0,
-      "evidence": "Combined run with the guard tests: tests 22, pass 22, fail 0, skipped 0. The first CI run failed this check on a direct gh spawn; the lookup now uses ghJson from scripts/lib/github-transport.mjs."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "554 tests passed, 0 failed, 0 skipped, on the merge of current main 6433c8e6."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "7 tests passed. The reviewer-snapshot test and the new verdict-recording test fail on the prior code and pass here; recording accepts a merged PR only for the bound PR, bound issue, exact head, and verified open issue."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "notes": [
-    "Decision on finding 1: flag DROP of function, procedure, routine, aggregate, trigger, event trigger, policy, constraint, rule, role, user, group, type, domain, extension, sequence, owned by, publication, subscription, foreign table and server; DROP DEFAULT and DROP NOT NULL stay allowed.",
-    "Finding 2: every issue a marker names is read with gh api and must exist, be an issue, carry destructive-proposal and pass checkProposalBody; lookup errors fail closed. Workflow gains issues: read only.",
-    "Live lookup probe: #2437 -> is not labeled destructive-proposal; #2895 -> is a pull request; #99999999 -> does not exist.",
-    "node scripts/check-destructive-analysis.mjs --diff-base origin/main on the branch head: no findings, exit 0.",
-    "No database, preview, production, or migration action was performed.",
-    "Contract publish printed a read-back refusal, but refs/db-contracts/2918/1 exists and its recorded sha256 equals the local contract hash; it was not re-published.",
-    "Refreshed from main 8d96cbf7 by merge (no conflict outside the .agent pair); the four implementation files are byte-identical to 415831f5 and the combined 22-test run passes again at the merge head."
-  ],
-  "assumptions_resolved": [
-    "Migrations and supabase/tests fixtures stay excluded from the scan; they keep their existing guards.",
-    "The workflow token reads issues with issues: read; the live gh api probe confirmed issue, pull-request and missing-number responses."
-  ],
+  "assumptions_resolved": ["Reviewer assignment read io.readReviewerOperationRoute, which the #2901 binding wrapper did not cover.", "Verdict recording refused every non-open PR; it now accepts a merged exact head only through io.mergedPrReviewTarget on the verified binding."],
   "stop_conditions_hit": []
 }

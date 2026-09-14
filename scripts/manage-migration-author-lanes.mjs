@@ -7255,8 +7255,15 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply)continue
     if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha)continue
     const appliedCommit=pinnedClaimApply?binding.appliedCommit:run.head_sha
-    const rows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
-    if(Number(artifacts?.total_count)!==1||rows.length!==1||rows[0].expired!==false||!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))||rows[0].name!==`preview-migration-apply-${appliedCommit}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
+    const allRows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
+    // The failed downstream dispatcher may upload exactly one extra artifact,
+    // its own review-evidence file, from the same run. Admit that single known
+    // artifact only when the job graph proves the dispatcher was the sole
+    // failure; every other extra artifact still refuses.
+    const downstreamEvidence=allRows.filter((row)=>row?.name==='automatic-production-apply-review-evidence')
+    const tolerated=previewSucceededBeforeDownstreamFailure&&Number(artifacts?.total_count)===2&&allRows.length===2&&downstreamEvidence.length===1&&String(downstreamEvidence[0].workflow_run?.id)===String(runId)&&downstreamEvidence[0].workflow_run?.head_sha===run.head_sha
+    const rows=tolerated?allRows.filter((row)=>row!==downstreamEvidence[0]):allRows
+    if((tolerated?rows.length!==1:(Number(artifacts?.total_count)!==1||rows.length!==1))||rows[0].expired!==false||!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))||rows[0].name!==`preview-migration-apply-${appliedCommit}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
     const ledgerLines=String(logs).split(/\r?\n/).flatMap((line)=>{
       const fields=line.replace(/^\ufeff/,'').split('\t')
       if(fields.length<3||fields[1]!=='Report the preview ledger delta')return[]

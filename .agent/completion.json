@@ -1,1 +1,20 @@
-{"schema_version":1,"work_issue":2883,"outcome":"ready-for-merge","pr":2907,"migration_versions":[],"contract_ref":"refs/db-contracts/2883/9","contract_sha256":"bdd9f43c420a8d71fb99514eceb7a49251c5a1d4045784e621162d4d35e32de6","head_sha":"b9a16fa2e09b490b0ef9c0b20a8c1c73c9ce2557","files_changed":[".agent/completion.json",".agent/contract.json",".github/workflows/shared-supabase-migrations.yml","scripts/test_production_migration_guard.py"],"db_reads":[],"db_writes":[],"checks":[{"command":"python -m unittest scripts.test_production_migration_guard","exit_code":0,"evidence":"252 tests passed; the new digest test fails with the workflow change reverted."},{"command":"python -m unittest scripts/test_production_apply_review_evidence.py","exit_code":0,"evidence":"19 tests passed."},{"command":"git diff --check","exit_code":0,"evidence":"No whitespace errors."}],"notes":["Verifier canonical digest rule unchanged; only the upload-artifact output is prefixed with sha256: before the existing check."],"assumptions_resolved":["Runs 34869716305 and 34872292289 both uploaded the artifact and refused only at the prefix check."],"stop_conditions_hit":[]}
+{
+  "schema_version": 1,
+  "work_issue": 2899,
+  "outcome": "ready-for-merge",
+  "pr": 2901,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2899/2",
+  "contract_sha256": "d1c4bf49121c9d51849b6fad63ace199e16028a623ea4101ec0acec1fcb831aa",
+  "head_sha": "84f4b2579afe5cabb5c109c32db7b1433962f3d2",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/workflows/migration-author-lease.yml", ".github/workflows/shared-supabase-migrations.yml", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "553 tests passed, 0 failed, 0 skipped."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "5 tests passed, including refusals for a closed work issue, a renamed or removed migration file, a branch case variant, duplicate identical Work issue lines, lazy verification of unrelated PRs, unmerged PR, missing or duplicate Work issue line, branch mismatch, unreadable or mismatched completion record, version mismatch, missing claim reservation, disagreeing closing link, and unchanged refusal without a binding."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+  ],
+  "assumptions_resolved": ["PR #2726 body names exactly one Work issue #2506; its completion record names issue 2506, PR 2726, migration 20260911213429; refs/db-claims/20260911213429 exists."],
+  "stop_conditions_hit": []
+}

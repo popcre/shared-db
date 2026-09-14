@@ -1,6 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr } from './manage-migration-author-lanes.mjs'
+import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr, reviewTargetIsRecordable } from './manage-migration-author-lanes.mjs'
+
+test('verdict recording accepts a merged PR only through the same verified binding',()=>{
+  const open={state:'open',head:{sha:HEAD}}
+  const {io}=fixture()
+  assert.equal(reviewTargetIsRecordable(open,{pr:9,issue:1,headSha:HEAD},io),true,'an open exact head is unchanged')
+  assert.equal(reviewTargetIsRecordable({...open,head:{sha:'1'.repeat(40)}},{pr:9,issue:1,headSha:HEAD},io),false)
+  const merged={state:'closed',merged_at:'2026-09-11T22:49:13Z',head:{sha:HEAD}}
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},io),false,'no binding, no merged verdict')
+  const bound=withMergedPrIssueBinding(io,'2726:2506',()=>{})
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},bound),true)
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2507,headSha:HEAD},bound),false,'a different issue refuses')
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2727,issue:2506,headSha:HEAD},bound),false,'a different PR refuses')
+  assert.equal(reviewTargetIsRecordable({...merged,head:{sha:'1'.repeat(40)}},{pr:2726,issue:2506,headSha:HEAD},bound),false,'a different head refuses')
+  assert.equal(reviewTargetIsRecordable({state:'closed',head:{sha:HEAD}},{pr:2726,issue:2506,headSha:HEAD},bound),false,'closed unmerged refuses')
+  const closedIssue=fixture({issueState:'closed'})
+  assert.throws(()=>reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},withMergedPrIssueBinding(closedIssue.io,'2726:2506',()=>{})),/is not open/)
+})
 
 const HEAD='f'.repeat(40)
 function fixture(overrides={}){

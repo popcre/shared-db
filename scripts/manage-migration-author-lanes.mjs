@@ -2527,7 +2527,7 @@ export function recordReviewVerdict(options,io=githubIo){
   // hold THIS assignment SHA is left exactly as it is.
   const finish=(validated)=>({...validated,lease_ref:activeRef,lease_released:releaseRecordedVerdictLease(activeRef,assignmentSha,io)})
   const live=io.getPr(pr)
-  if(String(live?.state??'').toLowerCase()!=='open'||String(live?.head?.sha??'').toLowerCase()!==headSha)throw new LaneError('review target is no longer the exact open PR head')
+  if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw new LaneError('review target is no longer the exact open PR head')
   const ref=verdictRef({issue,pr,headSha,slot,replacementSequence})
   const existing=io.readRef(ref)
   // #2710. IDEMPOTENCY OUTLIVES THE LEASE, SO THE STANDING ARTIFACT IS READ
@@ -5810,7 +5810,23 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
       return linked===snapshot.linkedIssues?snapshot:{...snapshot,linkedIssues:linked}
     }
   }
+  // Verdict recording on a merged PR: only the bound PR and issue, and only after the
+  // same verification (merged, body, completion record, claims, open issue) passes.
+  bound.mergedPrReviewTarget=(number,issue)=>{
+    if(Number(number)!==binding.pr||Number(issue)!==binding.issue)return false
+    return apply([]).length===1
+  }
   return bound
+}
+
+// An open PR at the exact head is recordable, as before. A merged PR at the exact head
+// is recordable only through a verified merged-PR issue binding for that PR and issue.
+export function reviewTargetIsRecordable(live,{pr,issue,headSha},io=githubIo){
+  if(String(live?.head?.sha??'').toLowerCase()!==String(headSha).toLowerCase())return false
+  const state=String(live?.state??'').toLowerCase()
+  if(state==='open')return true
+  if(!live?.merged_at||typeof io?.mergedPrReviewTarget!=='function')return false
+  return io.mergedPrReviewTarget(pr,issue)===true
 }
 
 export function resolveAdmittedIssueForPr(pr, io = githubIo) {

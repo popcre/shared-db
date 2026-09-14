@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/2885/1",
   "contract_sha256": "1d4ed059d2f5e381cb280d009aa43ac51ca9451c8c5172bb0030584b9e00194d",
   "head_sha": "434a90b6a1414a33e2e18f3d2263e6e675d7ee60",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/production-verification-sidecars/20260914075758.json", "scripts/production_business_risk_gate.py", "supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql"],
+  "files_changed": ["scripts/production-verification-sidecars/20260914075758.json", "scripts/production_business_risk_gate.py", "supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql"],
   "db_reads": ["table plm.lucasfilm_dcp_crawl", "table plm.twentieth_century_dcp_crawl"],
   "db_writes": ["function api.source_capture_inventory_exact", "view api.source_capture_inventory"],
   "checks": [

@@ -105,6 +105,10 @@ on:
         description: "Material-risk apply only: pinned owner-decision evidence artifact digest"
         type: string
         required: false
+      merged_pr_issue_binding:
+        description: "Only for a merged source PR with no GitHub closing link: PR:ISSUE. Verified against the PR body, completion record, migration versions and claim reservations; any mismatch refuses."
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -305,6 +309,7 @@ jobs:
       # asserted below: this job must never write to production.
       PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
       PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       # FIRST STEP ON PURPOSE, before any credential is used. A lane that can be
       # pointed at the wrong project is worse than no lane, so the ref this job
@@ -985,6 +990,8 @@ jobs:
       checks: read
       issues: read
       pull-requests: read
+    env:
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1132,7 +1139,8 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg review_digest "$REVIEW_DIGEST" \
             --arg preview_digest "$PREVIEW_DIGEST" \
-            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest}}' \
+            --arg binding "${SHARED_DB_MERGED_PR_ISSUE_BINDING:-}" \
+            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest,merged_pr_issue_binding:$binding}}' \
             > "$RUNNER_TEMP/automatic-production-dispatch.json"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \
@@ -1580,6 +1588,7 @@ jobs:
     environment: production
     env:
       PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - name: Check exact confirmation
         env:

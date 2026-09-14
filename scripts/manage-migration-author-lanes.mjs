@@ -5731,6 +5731,73 @@ function admitIssueSerialized(number, io = githubIo, options = {}) {
   return withAuthorMutex('admission',io,options,()=>admitIssue(number,io,options))
 }
 
+// A merged pull request whose body never produced a GitHub closing link cannot
+// gain one after merge, so its post-merge preview/production routes refuse
+// forever. An operator names the binding explicitly as "PR:ISSUE" (workflow
+// input merged_pr_issue_binding). It applies only to that exact merged PR, only
+// when GitHub reports zero closing links, and only after independent records
+// agree: the PR body's single "Work issue #N" line, any issue-N branch name,
+// the merged head's .agent/completion.json (work_issue and pr), the PR's
+// migration versions equal to that record, and a permanent refs/db-claims
+// reservation for every version. Any mismatch, an unmerged PR, or a real closing
+// link that disagrees refuses, and so does a closed work issue or a renamed,
+// copied, or removed migration file. The reservation check proves each version
+// was issued by the claim allocator; it does not by itself tie the version to
+// this issue. That tie is the PR body, the completion record, and the unchanged
+// downstream issue admission, which still checks the declared objects.
+export function parseMergedPrIssueBinding(value) {
+  const match=/^\s*([1-9]\d*):([1-9]\d*)\s*$/.exec(String(value??''))
+  if(!match)throw new LaneError('merged PR issue binding must be exactly PR:ISSUE')
+  return {pr:Number(match[1]),issue:Number(match[2])}
+}
+
+export function verifyMergedPrIssueBinding({pr,issue}, io = githubIo) {
+  const livePr=io.getPr(pr)
+  if(!livePr?.merged_at||!/^[0-9a-f]{40}$/i.test(String(livePr?.head?.sha??'')))throw new LaneError(`merged PR issue binding refused: pull request #${pr} is not merged with a readable head`)
+  const workLines=[...String(livePr.body??'').matchAll(/\bWork issue #(\d+)\b/gi)].map((m)=>Number(m[1]))
+  if(workLines.length!==1||workLines[0]!==issue)throw new LaneError(`merged PR issue binding refused: pull request #${pr} body must name exactly one "Work issue #${issue}"; found ${workLines.join(',')||'none'}`)
+  const branchIssue=/(?:^|[/_-])issue-(\d+)(?:[/_-]|$)/i.exec(String(livePr.head?.ref??''))
+  if(branchIssue&&Number(branchIssue[1])!==issue)throw new LaneError(`merged PR issue binding refused: branch ${livePr.head.ref} names issue #${branchIssue[1]}`)
+  const work=io.getIssue(issue)
+  if(!work||Number(work.number)!==issue)throw new LaneError(`merged PR issue binding refused: issue #${issue} is unreadable`)
+  if(String(work.state??'').toLowerCase()!=='open')throw new LaneError(`merged PR issue binding refused: issue #${issue} is not open; a binding never reopens closed work`)
+  let completion
+  try{completion=JSON.parse(io.getFileAt('.agent/completion.json',livePr.head.sha))}catch{throw new LaneError(`merged PR issue binding refused: .agent/completion.json at pull request #${pr} head is unreadable`)}
+  if(Number(completion?.work_issue)!==issue||Number(completion?.pr)!==pr)throw new LaneError(`merged PR issue binding refused: completion record names issue #${completion?.work_issue} and PR #${completion?.pr}`)
+  const prFiles=io.getPrFiles(pr)
+  if(!Array.isArray(prFiles)||!prFiles.length)throw new LaneError(`merged PR issue binding refused: pull request #${pr} file inventory is unreadable`)
+  for(const file of prFiles){
+    const migration=[file?.filename,file?.previous_filename].some((value)=>MIGRATION_PATH.test(String(value??'').replace(/\\/g,'/')))
+    if(migration&&(file?.previous_filename!==undefined||!['added','modified'].includes(String(file?.status).toLowerCase())))throw new LaneError(`merged PR issue binding refused: migration file ${file?.filename} is ${file?.status}; only added or modified migrations can be bound`)
+  }
+  const versions=migrationVersions(prFiles).sort()
+  const recorded=Array.isArray(completion.migration_versions)?completion.migration_versions.map(String).sort():[]
+  if(!versions.length||versions.length!==recorded.length||versions.some((v,i)=>v!==recorded[i]))throw new LaneError(`merged PR issue binding refused: PR migrations ${versions.join(',')||'none'} do not equal completion record ${recorded.join(',')||'none'}`)
+  for(const version of versions)if(!io.readRef(`refs/db-claims/${version}`))throw new LaneError(`merged PR issue binding refused: version ${version} has no permanent claim reservation`)
+  return {pr,issue,versions,state:String(work.state??'').toLowerCase()}
+}
+
+export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(line)) {
+  const binding=parseMergedPrIssueBinding(value)
+  const base=io.closingIssuesForPr.bind(io)
+  let verified=null
+  const bound=Object.create(io)
+  bound.closingIssuesForPr=(number)=>{
+    const linked=base(number)
+    if(Number(number)!==binding.pr||!Array.isArray(linked))return linked
+    if(linked.length){
+      if(linked.length!==1||Number(linked[0]?.number)!==binding.issue)throw new LaneError(`merged PR issue binding refused: pull request #${binding.pr} already closes ${linked.map((item)=>`#${item?.number}`).join(',')}`)
+      return linked
+    }
+    if(!verified){
+      verified=verifyMergedPrIssueBinding(binding,io)
+      log(`MERGED PR ISSUE BINDING: PR #${binding.pr} -> issue #${binding.issue} (versions ${verified.versions.join(',')}; body, completion record, and claim reservations agree)`)
+    }
+    return [{number:binding.issue,state:verified.state,bound:true}]
+  }
+  return bound
+}
+
 export function resolveAdmittedIssueForPr(pr, io = githubIo) {
   if (!Number.isInteger(Number(pr)) || Number(pr) < 1) throw new LaneError('--resolve-admitted-issue-for-pr requires a pull request number')
   const linked = io.closingIssuesForPr(Number(pr))
@@ -6862,6 +6929,7 @@ function parseArgs(argv) {
 export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
+    if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
     const primaryKeys=['authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','reviewerCapacity','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')

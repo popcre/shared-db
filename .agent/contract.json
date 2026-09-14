@@ -9,13 +9,13 @@
   "worker": "codex-repo-session-2851",
   "branch": "codex/issue-2851-preview-evidence",
   "worktree": "C:/Users/ahazan/.codex/worktrees/a785/shared-db",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", "scripts/verify_preview_apply_artifact.py", "scripts/test_verify_preview_apply_artifact.py", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": ["No production or preview dispatch and no database read or write.", "No acceptance of a failed or missing preview job, incomplete or unexpected job graph, or any production execution.", "No weakening of immutable artifact, digest, commit, PR, migration-content, or ledger-delta validation.", "Do not touch pull request 2849 and do not run repair-outcome-history."],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "python -m unittest scripts.test_production_business_risk_gate", "python scripts/test_verify_preview_apply_artifact.py", "git diff --check"],
   "assumptions": ["A failed overall workflow is admissible only when its complete six-job graph proves SQL guards and preview succeeded, the automatic dispatcher alone failed, and all production jobs skipped."],
   "stop_conditions": ["Stop if the repair requires replaying preview or dispatching production.", "Stop if live evidence cannot prove the exact six-job terminal graph or immutable preview artifact."],
-  "generation": 9
+  "generation": 10
 }

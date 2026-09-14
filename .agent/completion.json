@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2750,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2694/8",
-  "contract_sha256": "39c662d9a90649e1933204d4560362c8df2bae8f0accc82f3819dda1305198f2",
-  "head_sha": "45ec570d856bc3944d11aff2e92d9670341b36a5",
+  "contract_ref": "refs/db-contracts/2694/9",
+  "contract_sha256": "ac3cdaf8685b32dbcf41a47331fa3ca223411d2ce44ef4fc624c31b01edecccd",
+  "head_sha": "50f9460d3a0bc3f64c36cf2179c637a357936800",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,7 +20,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "548 passed, zero failed, skipped, cancelled or todo after refreshing from current main."
+      "evidence": "552 passed, zero failed, skipped, cancelled or todo after refreshing from main at 56fdea49."
     },
     {
       "command": "git diff --check",
@@ -30,7 +30,7 @@
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=285 against current main plus the admission diagnostic exclusion."
+      "evidence": "truth audit OK: call_sites=285 against main at 56fdea49."
     }
   ],
   "assumptions_resolved": [

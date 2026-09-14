@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 8,
+  "generation": 9,
   "work_issue": 2694,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Complete scoped reviewer admission delivery while preserving parallel exact-head leases and truthful unknown provider capacity.",
-  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "base_sha": "56fdea49fb1d8a8c0422654dcf0257f2c5c64b2e",
   "dispatcher": "shared-db orchestrator marker #2893 (route local_d16c82f5-fb42-453c-9ee5-765977d79195)",
   "worker": "Claude subagent for #2750 refresh",
   "branch": "codex/396-scoped-reviewer-admission",
@@ -38,7 +38,8 @@
     "Prospective delivery contract: existing implementation and review predate this publication; no retrospective publication claim.",
     "Installed ai-devops scoped preflight contract is a required merge prerequisite.",
     "Generation7 adds the existing semantic inventory disposition for local admission validation after CI qualification.",
-    "Generation 8 refreshes from current main: merge conflicts resolved; truth audit re-derived at 285 call sites; stale ledger-drift site dropped."
+    "Generation 8 refreshes from current main: merge conflicts resolved; truth audit re-derived at 285 call sites; stale ledger-drift site dropped.",
+    "Generation 9 refreshes from main after #2896 merged; only .agent conflicts; truth audit still 285; 552 tests pass."
   ],
   "stop_conditions": [
     "Refuse missing, malformed or mismatched admission evidence before assignment.",

@@ -1,23 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2887,
+  "work_issue": 2889,
   "outcome": "ready-for-merge",
-  "pr": 2888,
+  "pr": 2890,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2887/2",
-  "contract_sha256": "eb6a85b45c28c1740e2a01e4fd22c0d30260c207c93c2c327e331c5c0e3f1ea5",
-  "head_sha": "87e2853612ba74d8330eaf84fbaf0f5ff8e8cd4e",
-  "files_changed": [".github/workflows/shared-supabase-migrations.yml", "scripts/test_production_migration_guard.py"],
+  "contract_ref": "refs/db-contracts/2889/2",
+  "contract_sha256": "ac8df236f78f299acffeefdc8c5f8dc451ddd308d72eaa84a71a472c6f4ef91e",
+  "head_sha": "d23d3e85b13e4cefab5bdbe79b3873b419464451",
+  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."},
-    {"command": "python -m pytest scripts/test_production_migration_guard.py -q", "exit_code": 0, "evidence": "251 passed and 356 subtests passed."},
-    {"command": "python -m pytest scripts -q", "exit_code": 0, "evidence": "1150 passed, 8 skipped, and 745 subtests passed using the installed Git Bash rather than the empty WSL launcher."},
+    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "43 tests passed."},
     {"command": "exact-head pull-request CI", "exit_code": 0, "evidence": "Pending after this evidence-only commit."},
     {"command": "governed exact-head review", "exit_code": 0, "evidence": "Pending after exact-head CI."}
   ],
-  "notes": ["The first governed review found a missing step-local environment binding under set -u; the implementation includes that repair and the regression scopes its assertion to the exact dispatch step.", "No database, preview, merge, production, claim, migration history, or outcome-history action was performed."],
-  "assumptions_resolved": ["The workflow omits an empty override and passes a non-empty recorded override through both bounded production jobs and the production review preflight.", "Automatic promotion forwards the same recorded override from its own step-local environment into the serialized production apply dispatch."],
+  "notes": ["The broad local Node glob reported two pre-existing private-artifact ownership failures unrelated to this diff; authoritative clean-checkout exact-head CI remains required.", "No database, preview, production, migration, workflow, claim, or outcome-history action was performed."],
+  "assumptions_resolved": ["The current file hashes and byte count exactly match the registered values.", "Production producer provenance is required and is bound to PR 2886 merge c0a36970."],
   "stop_conditions_hit": []
 }

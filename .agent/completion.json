@@ -6,13 +6,13 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2899/1",
   "contract_sha256": "e0f3091960dc4cc6ae5d1830fbc78bd37158cf83b15f5e3eddbf000312e40ff6",
-  "head_sha": "0b5769c92bbf8a916dd677487b6d16331e634872",
+  "head_sha": "84f4b2579afe5cabb5c109c32db7b1433962f3d2",
   "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/workflows/migration-author-lease.yml", ".github/workflows/shared-supabase-migrations.yml", "scripts/manage-migration-author-lanes.mjs", "scripts/merged-pr-issue-binding.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "538 tests passed, 0 failed, 0 skipped."},
-    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "5 tests passed, including refusals for unmerged PR, missing or duplicate Work issue line, branch mismatch, unreadable or mismatched completion record, version mismatch, missing claim reservation, disagreeing closing link, and unchanged refusal without a binding."},
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "553 tests passed, 0 failed, 0 skipped."},
+    {"command": "node --test scripts/merged-pr-issue-binding.test.mjs", "exit_code": 0, "evidence": "5 tests passed, including refusals for a closed work issue, a renamed or removed migration file, a branch case variant, duplicate identical Work issue lines, lazy verification of unrelated PRs, unmerged PR, missing or duplicate Work issue line, branch mismatch, unreadable or mismatched completion record, version mismatch, missing claim reservation, disagreeing closing link, and unchanged refusal without a binding."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": ["PR #2726 body names exactly one Work issue #2506; its completion record names issue 2506, PR 2726, migration 20260911213429; refs/db-claims/20260911213429 exists."],

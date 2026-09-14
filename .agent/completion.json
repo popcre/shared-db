@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2797,
+  "work_issue": 2711,
   "outcome": "ready-for-merge",
-  "pr": 2903,
-  "migration_versions": ["20260914164141"],
-  "contract_ref": "refs/db-contracts/2797/2",
-  "contract_sha256": "ae28da1ec5a04a6c2221bc5e5fb8c20e752ca439ef050e50dc98e5e4279287e1",
-  "head_sha": "1c9036ad622bb37324b08ccb93cb207ee5676308",
-  "files_changed": ["supabase/migrations/20260914164141_db_data_admin_inventory_wb_normalized_arms.sql", "supabase/tests/db_data_admin_scraped_source_inventory_calls.sql"],
-  "db_reads": ["plm.wb_property", "plm.wb_character_normalized", "plm.wb_style_guide_normalized"],
-  "db_writes": ["function api.db_data_admin_scraped_source_inventory"],
+  "pr": 2897,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2711/4",
+  "contract_sha256": "893d3779c133da6c57d251003dda3fbcc09895da7d1b1ef1b1e8f4339f6592c1",
+  "head_sha": "5e3229981f6bc64e3680551e58d36859795a0c52",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors against origin/main 56a51e24."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "New test calls the property, character and style_guide arms as a Licensing Manager; CI database-contract-tests runs it on PR #2903."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "tests 541, pass 541, fail 0, cancelled 0, skipped 0, todo 0. Three new #2711 tests cover preview-only, reap of closed/head-moved/verdict leases with the live lease kept, skip of a lease that became live before the mutex, and the command-size refusal."}
   ],
-  "assumptions_resolved": ["Production catalog read confirmed plm.wb_character_normalized and plm.wb_style_guide_normalized exist with the columns the arms use."],
+  "notes": ["No database, preview, production, migration, or workflow action was performed by this change.", "The reaper retires only refs/db-review-active-v2 leases already classified stale, re-proved under the review mutex, by compare-and-swap."],
+  "assumptions_resolved": ["findBusyReviewers already treats a closed, head-moved or verdict-recorded lease as free; the reaper only removes the ref."],
   "stop_conditions_hit": []
 }

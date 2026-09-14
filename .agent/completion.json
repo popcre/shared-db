@@ -1,73 +1,24 @@
 {
-    "schema_version": 1,
-    "work_issue": 2879,
-    "outcome": "ready-for-merge",
-    "pr": 2882,
-    "migration_versions": [
-        "20260914061331"
-    ],
-    "contract_ref": "refs/db-contracts/2879/7",
-    "contract_sha256": "2a5df38828e90a4dafa410785997fadfe93662c52589bc782ae5a0e7f40962fb",
-    "head_sha": "fe93b09e5569687de4490a27be6fef60e203ab18",
-    "files_changed": [
-        ".agent/completion.json",
-        ".agent/contract.json",
-        "docs/verification/throughput-guard-truth-baseline-20260828.json",
-        "scripts/production-verification-sidecars/20260914061331.json",
-        "scripts/production_business_risk_gate.py",
-        "scripts/production_catalog_verification.py",
-        "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
-        "supabase/tests/peanuts_landing_contracts.sql",
-        "supabase/tests/sega_landing_contracts.sql",
-        "supabase/tests/wildbrain_landing_contracts.sql"
-    ],
-    "db_reads": [
-        "table plm.lucasfilm_dcp_crawl",
-        "table plm.twentieth_century_dcp_crawl"
-    ],
-    "db_writes": [
-        "function api.source_capture_inventory_exact",
-        "view api.source_capture_inventory"
-    ],
-    "checks": [
-        {
-            "command": "bash scripts/check-sql.sh",
-            "exit_code": 0,
-            "evidence": "Static SQL guards passed after refresh onto main 31b269c2."
-        },
-        {
-            "command": "git diff --check",
-            "exit_code": 0,
-            "evidence": "No whitespace errors."
-        },
-        {
-            "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-            "exit_code": 0,
-            "evidence": "Status OK across 52 sidecars; migration markers 36 and 37 are hash-bound to dcp_inventory_family_classification_v1."
-        },
-        {
-            "command": "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q",
-            "exit_code": 0,
-            "evidence": "391 passed and 229 subtests passed after refresh."
-        },
-        {
-            "command": "supabase/tests against an ephemeral database",
-            "exit_code": 0,
-            "evidence": "Pending exact-head pull-request CI after evidence push."
-        },
-        {
-            "command": "two independent governed reviewers at the exact head",
-            "exit_code": 0,
-            "evidence": "Pending governed allocation after evidence push."
-        }
-    ],
-    "notes": [
-        "No preview, merge, production apply, row write, or change to api.db_data_admin_scraped_properties was performed."
-    ],
-    "assumptions_resolved": [
-        "The branch was refreshed onto exact post-2880 main 31b269c2 without changing the substantive classification behavior.",
-        "Both explicit definitions have durable catalog witnesses and the 40-table SQL contract checks both inventory surfaces."
-    ],
-    "stop_conditions_hit": []
+  "schema_version": 1,
+  "work_issue": 2885,
+  "outcome": "ready-for-merge",
+  "pr": 2886,
+  "migration_versions": ["20260914075758"],
+  "contract_ref": "refs/db-contracts/2885/1",
+  "contract_sha256": "1d4ed059d2f5e381cb280d009aa43ac51ca9451c8c5172bb0030584b9e00194d",
+  "head_sha": "434a90b6a1414a33e2e18f3d2263e6e675d7ee60",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/production-verification-sidecars/20260914075758.json", "scripts/production_business_risk_gate.py", "supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql"],
+  "db_reads": ["table plm.lucasfilm_dcp_crawl", "table plm.twentieth_century_dcp_crawl"],
+  "db_writes": ["function api.source_capture_inventory_exact", "view api.source_capture_inventory"],
+  "checks": [
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static SQL guard completed; this Windows host reports no installed WSL distribution, while exact-head CI supplies the authoritative Linux run."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."},
+    {"command": "node scripts/check-production-verification-sidecars.mjs --base origin/main", "exit_code": 0, "evidence": "Status OK across 53 sidecars, including fresh version 20260914075758."},
+    {"command": "python -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_migration_derivation.py scripts/test_production_business_risk_gate.py -q", "exit_code": 0, "evidence": "391 passed and 229 subtests passed."},
+    {"command": "the existing 40-table DCP classification contract and exhaustive Peanuts, Sega, and WildBrain baselines against an ephemeral database", "exit_code": 0, "evidence": "Pending exact-head pull-request CI after the evidence-only commit."},
+    {"command": "two independent governed reviewers at the exact head", "exit_code": 0, "evidence": "Pending governed allocation after exact-head CI."}
+  ],
+  "notes": ["No preview, merge, production apply, row write, admin API change, or outcome-history repair was performed."],
+  "assumptions_resolved": ["The executable body of the fresh migration is byte-for-line identical to the explicit definitions merged in PR 2882; only the provenance header differs.", "The fresh sidecar existed before any preview dispatch and its SHA-256 matches the fresh migration."],
+  "stop_conditions_hit": []
 }

@@ -1,12 +1,12 @@
 {
-  "schema_version" : 1,
+  "schema_version": 1,
   "work_issue": 2870,
   "outcome": "ready-for-merge",
   "pr": 2872,
   "migration_versions": ["20260914032423"],
-  "contract_ref": "refs/db-contracts/2870/3",
-  "contract_sha256": "666081abfe801afa6835ceb971226fd766730984e4ae99870dd4dff18d1f7488",
-  "head_sha": "86b0a94c65970a0dfaa613fd85d9c2a84ab9c32f",
+  "contract_ref": "refs/db-contracts/2870/4",
+  "contract_sha256": "38d8e482064dbbb54773bde0b9a945692884cd2c680b7546c9344a72539ae128",
+  "head_sha": "64d8be61095aeae82fd8b903e268add2bb09a09c",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",

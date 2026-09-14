@@ -26,7 +26,12 @@
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
+  ],
   "prohibited_actions": [
     "Do not write application rows.",
     "Do not add foreign keys, defaults, indexes, or non-null constraints.",

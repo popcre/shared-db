@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "work_issue": 2879,
-    "generation": 6,
+    "generation": 7,
     "work_type": "structural",
     "route": "shared-db-orchestrator",
     "goal": "Classify all Lucasfilm and 20th Century DCP landing tables under their exact non-other source systems in both source-inventory contracts.",
@@ -18,7 +18,10 @@
         "scripts/production_business_risk_gate.py",
         "scripts/production_catalog_verification.py",
         "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql"
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
+        "supabase/tests/peanuts_landing_contracts.sql",
+        "supabase/tests/sega_landing_contracts.sql",
+        "supabase/tests/wildbrain_landing_contracts.sql"
     ],
     "file_writes": [
         ".agent/completion.json",
@@ -28,7 +31,10 @@
         "scripts/production_business_risk_gate.py",
         "scripts/production_catalog_verification.py",
         "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql"
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
+        "supabase/tests/peanuts_landing_contracts.sql",
+        "supabase/tests/sega_landing_contracts.sql",
+        "supabase/tests/wildbrain_landing_contracts.sql"
     ],
     "db_reads": [
         "table plm.lucasfilm_dcp_crawl",
@@ -59,7 +65,8 @@
         "Migration 20260910155753 is the common definition predecessor and the migration refuses if its classification anchor is not present exactly once in either definition.",
         "Generation 4 refreshes the contract onto post-2880 main and uses the supported SELECT INTO catalog-rewrite form without changing behavior.",
         "Generation 5 corrects completion changed-file accounting to list only substantive files outside the evidence pair.",
-        "Generation 6 replaces catalog-text rewriting with explicit CREATE OR REPLACE definitions for both claimed objects after structural admission refused the unmodelled view rewrite."
+        "Generation 6 replaces catalog-text rewriting with explicit CREATE OR REPLACE definitions for both claimed objects after structural admission refused the unmodelled view rewrite.",
+        "Generation 7 adds the three existing exhaustive classification baselines that correctly rejected the new intended mappings until their independent expected maps were extended."
     ],
     "stop_conditions": [
         "Stop if the live predecessor definitions do not contain the expected classification anchor exactly once.",

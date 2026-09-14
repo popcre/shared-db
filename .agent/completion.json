@@ -6,16 +6,21 @@
     "migration_versions": [
         "20260914061331"
     ],
-    "contract_ref": "refs/db-contracts/2879/6",
-    "contract_sha256": "eea44489807d386ab17f7e5bbbd0099dc6e86ec1f76f79cd4b0bcc14bbcdb1dc",
-    "head_sha": "8baa59a47dce60dc6a09e5ebfcfb9455e2db5a90",
+    "contract_ref": "refs/db-contracts/2879/7",
+    "contract_sha256": "2a5df38828e90a4dafa410785997fadfe93662c52589bc782ae5a0e7f40962fb",
+    "head_sha": "fe93b09e5569687de4490a27be6fef60e203ab18",
     "files_changed": [
+        ".agent/completion.json",
+        ".agent/contract.json",
         "docs/verification/throughput-guard-truth-baseline-20260828.json",
         "scripts/production-verification-sidecars/20260914061331.json",
         "scripts/production_business_risk_gate.py",
         "scripts/production_catalog_verification.py",
         "supabase/migrations/20260914061331_classify_dcp_inventory_families.sql",
-        "supabase/tests/dcp_inventory_family_classification_contracts.sql"
+        "supabase/tests/dcp_inventory_family_classification_contracts.sql",
+        "supabase/tests/peanuts_landing_contracts.sql",
+        "supabase/tests/sega_landing_contracts.sql",
+        "supabase/tests/wildbrain_landing_contracts.sql"
     ],
     "db_reads": [
         "table plm.lucasfilm_dcp_crawl",

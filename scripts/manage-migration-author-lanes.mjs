@@ -5958,7 +5958,7 @@ export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
   }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
 }
 
-function renewalIssueScope(issue, lease, claimIssues=[], { allowClaimSuperset=false }={}) {
+export function renewalIssueScope(issue, lease, claimIssues=[], { allowClaimSuperset=false, allowIssueExpansion=false }={}) {
   const scope=issue?.state==='open'?parseQueueScope(issue.body):null
   const structural=scope?.status==='ready'&&scope.workType==='structural'&&scope.route==='shared-db-orchestrator'
   const curated=scope?.status==='ready'&&scope.workType==='curated-master-data'&&scope.route==='curated-master-data-governance'
@@ -5968,8 +5968,19 @@ function renewalIssueScope(issue, lease, claimIssues=[], { allowClaimSuperset=fa
     if(claimIssues.length!==1||claimIssues[0]!==Number(issue.number))throw new LaneError('blank curated renewal scope requires a claim title identifying exactly one work issue')
     return claimObjects
   }
-  if(issueObjects.some((object)=>!claimObjects.includes(object))||(!allowClaimSuperset&&issueObjects.length!==claimObjects.length))throw new LaneError('renewal issue objects do not exactly match the permanent claim objects')
+  const uncovered=issueObjects.filter((object)=>!claimCoversObject(claimObjects,object))
+  if(allowIssueExpansion&&allowClaimSuperset)return Object.assign([...claimObjects],{uncovered})
+  if(uncovered.length||(!allowClaimSuperset&&issueObjects.length!==claimObjects.length))throw new LaneError('renewal issue objects do not exactly match the permanent claim objects')
   return claimObjects
+}
+
+// #2898. A held `table S.T` claim covers a scope write on `column S.T.C` for renewal and
+// recovery comparison only. Collision checks still compare exact objects.
+export function claimCoversObject(claimObjects, object) {
+  const normalized=normalizeObject(object),held=claimObjects.map(normalizeObject)
+  if(held.includes(normalized))return true
+  const column=/^column (.+)\.[^.]+$/.exec(normalized)
+  return Boolean(column&&held.includes(`table ${column[1]}`))
 }
 
 export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
@@ -6070,7 +6081,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
     if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
     const workIssue=io.getIssue(options.issue)
-    renewalIssueScope(workIssue,lease,[Number(options.issue)],{allowClaimSuperset:true})
+    const issueUncovered=renewalIssueScope(workIssue,lease,[Number(options.issue)],{allowClaimSuperset:true,allowIssueExpansion:true}).uncovered??[]
     const pr=io.getPr(options.pr)
     if(pr?.state!=='open'||pr.head?.ref!==options.branch||pr.head?.sha!==options.headSha)throw new LaneError('open pull request branch or exact head mismatch')
     const fileVersions=migrationVersions(io.getPrFiles(options.pr))
@@ -6080,7 +6091,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
     const target=targets[0]
     if(target.versions?.length!==1||String(target.versions[0])!==lease.version)throw new LaneError('parsed pull request version does not match the permanent claim version')
     const claimed=new Set(lease.objects.map(normalizeObject)),parsed=validateClaimObjects(target.objects??[])
-    const uncovered=parsed.filter((object)=>!claimed.has(object))
+    const uncovered=[...new Set([...parsed,...issueUncovered])].filter((object)=>!claimed.has(object))
     if(!uncovered.length)throw new LaneError('pull request has no uncovered objects to recover')
     const expanded=[...lease.objects.map(normalizeObject),...uncovered]
     const others=claims.filter((claim)=>String(claim.number)!==String(options.claim)),otherPrs=sources.filter((source)=>source!==target)
@@ -6091,7 +6102,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
     if(freshWorkIssue?.state!==workIssue?.state||freshWorkIssue?.body!==workIssue?.body)throw new LaneError('recovery issue changed concurrently')
     if(freshClaim?.state!==before.state||freshClaim?.body!==before.body||freshClaim?.title!==before.title)throw new LaneError('claim changed concurrently during expired recovery')
     if(freshPr?.state!==pr.state||freshPr?.head?.ref!==pr.head.ref||freshPr?.head?.sha!==pr.head.sha)throw new LaneError('pull request changed concurrently during expired recovery')
-    renewalIssueScope(freshWorkIssue,lease,[Number(options.issue)],{allowClaimSuperset:true})
+    renewalIssueScope(freshWorkIssue,lease,[Number(options.issue)],{allowClaimSuperset:true,allowIssueExpansion:true})
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     possiblyChanged=true;io.updateIssue(options.claim,{body:expectedBody})
     requireOwnedRef(MUTEX_REF,ownerSha,io)

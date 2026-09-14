@@ -1,42 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2851,
+  "work_issue": 2852,
   "outcome": "ready-for-merge",
-  "pr": 2856,
+  "pr": 2859,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2851/6",
-  "contract_sha256": "ee0718faadfbe934e380847a24e5346c0ca65bc309a66fbf8835f8d651c62b05",
-  "head_sha": "77422573c9fe57cc0b8d11335911acbe67f0cdee",
-  "files_changed": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/test_production_owner_decision_evidence.py"
-  ],
+  "contract_ref": "refs/db-contracts/2852/8",
+  "contract_sha256": "5236f4cc0520c289a9e109927648ecd44b377af53622559d99ff68ee256d7048",
+  "head_sha": "07e19895547bc35a6b53272e74539ddf4babf0fa",
+  "files_changed": ["scripts/orchestrator-flow/admission-outcome.test.mjs", "scripts/orchestrator-flow/admission.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "python -m unittest scripts.test_production_owner_decision_evidence",
-      "exit_code": 0,
-      "evidence": "10 tests passed on main 62d31d71 plus this change. The test pins the automatic-production-promotion permission map, asserts no Supabase database credential is present, and retains ENGINEER ACTION REQUIRED."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_migration_guard",
-      "exit_code": 0,
-      "evidence": "250 tests passed; the top-level contents: read assertion and bounded migration manifest checks remain green."
-    },
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "537 tests, 537 pass, 0 fail, 0 cancelled, 0 skipped on main 62d31d71 plus this change."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors between base 62d31d71 and implementation commit 77422573."
-    }
+    {"command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "607 tests passed, 0 failed on main 4fd0938e plus the repair."},
+    {"command": "exact PR #2818 migration admission probe", "exit_code": 0, "evidence": "The PR #2818 migration at head 93d3544538cb5c532053a97666c5aea52c68a298 was admitted and returned exactly function api.db_data_admin_scraped_properties."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": [
-    "Confirmed that the admission path writes only Git commit/ref evidence, the job gains no database credential, and PR #2849 and PR #2855 implementation paths are absent from this PR's own base-to-implementation diff."
-  ],
+  "assumptions_resolved": ["The exact #2818 pattern qualifies because it reads, mutates, and executes one definition variable in causal order.", "Muse reviews identified ordering, quoted-text spoof, dollar-quoted read, digit-tag, quoted-identifier, and wrong-variable gaps; all are repaired with focused positive and negative regressions.", "PR #2818 and unrelated active PRs were not changed."],
   "stop_conditions_hit": []
 }

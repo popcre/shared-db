@@ -36,14 +36,14 @@ export function checkProposalBody(body) {
     }
     if (current !== null) sections.set(current, sections.get(current) + line + '\n')
   }
-  const missing = []
+  const absent = []
   const empty = []
   for (const name of REQUIRED_HEADINGS) {
     const key = name.toLowerCase()
-    if (!sections.has(key)) missing.push(name)
+    if (!sections.has(key)) absent.push(name)
     else if (!sections.get(key).trim()) empty.push(name)
   }
-  return { ok: missing.length === 0 && empty.length === 0, missing, empty }
+  return { ok: absent.length === 0 && empty.length === 0, absent, empty }
 }
 
 export function isGuardedSqlPath(path) {

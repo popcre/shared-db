@@ -14,10 +14,10 @@ function run(argv, files = {}, diff = '') {
 
 test('complete checklist passes', () => assert.equal(checkProposalBody(complete).ok, true))
 
-test('missing heading fails and is named', () => {
+test('absent heading fails and is named', () => {
   const r = checkProposalBody(complete.replace('## Positive control', '## Something else'))
   assert.equal(r.ok, false)
-  assert.deepEqual(r.missing, ['Positive control'])
+  assert.deepEqual(r.absent, ['Positive control'])
 })
 
 test('heading left with only the template comment is empty', () => {
@@ -29,7 +29,7 @@ test('the shipped issue template has every heading but fails until filled', () =
   const template = readFileSync(new URL('../.github/ISSUE_TEMPLATE/destructive-proposal.md', import.meta.url), 'utf8')
   assert.match(template, /labels: destructive-proposal/)
   const r = checkProposalBody(template)
-  assert.deepEqual(r.missing, [])
+  assert.deepEqual(r.absent, [])
   assert.deepEqual(r.empty, REQUIRED_HEADINGS)
 })
 
@@ -37,7 +37,7 @@ test('CLI: unlabeled issue is not checked; labeled incomplete issue fails', () =
   assert.equal(run(['--issue-body-file', 'b', '--labels', 'db-work'], { b: '' }).code, 0)
   const r = run(['--issue-body-file', 'b', '--labels', 'db-work,destructive-proposal'], { b: '## Proposed action\ndrop x' })
   assert.equal(r.code, 1)
-  assert.match(r.err, /missing heading\(s\): Observation window/)
+  assert.match(r.err, /absent heading\(s\): Observation window/)
   assert.equal(run(['--issue-body-file', 'b', '--labels', 'Destructive-Proposal'], { b: complete }).code, 0)
 })
 

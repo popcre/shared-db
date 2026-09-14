@@ -21,7 +21,7 @@ export function main(argv, io = { readFile: (p) => readFileSync(p, 'utf8'), diff
     if (!labels.includes(PROPOSAL_LABEL)) { io.log(`Issue is not labeled ${PROPOSAL_LABEL}; checklist not required.`); return 0 }
     const result = checkProposalBody(io.readFile(bodyFile))
     if (result.ok) { io.log(`Destructive-proposal checklist complete: ${REQUIRED_HEADINGS.join(', ')}.`); return 0 }
-    if (result.missing.length) io.error(`ERROR: destructive-proposal issue body is missing heading(s): ${result.missing.join(', ')}`)
+    if (result.absent.length) io.error(`ERROR: destructive-proposal issue body is absent heading(s): ${result.absent.join(', ')}`)
     if (result.empty.length) io.error(`ERROR: destructive-proposal issue body leaves heading(s) empty: ${result.empty.join(', ')}`)
     io.error('Absence is not proof (#2437). Use .github/ISSUE_TEMPLATE/destructive-proposal.md and fill every section in the BODY, not a comment.')
     return 1

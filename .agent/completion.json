@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/2906/1",
   "contract_sha256": "8fcaee0c1b7a386ee78eba654ca3a5162832e1309ddd7576d41f16e78ec88633",
   "head_sha": "959dcc81bf0b83bc76adc38322816c318d2e4511",
-  "files_changed": [".github/live-proofs/2848.sql", ".github/workflows/shared-db-live-proof.yml", "scripts/shared_db_live_proof.py", "scripts/test_shared_db_live_proof.py"],
+  "files_changed": [".agent/completion.json", ".agent/contract.json", ".github/live-proofs/2848.sql", ".github/workflows/shared-db-live-proof.yml", "scripts/shared_db_live_proof.py", "scripts/test_shared_db_live_proof.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [

@@ -318,8 +318,7 @@
       "business_purpose": "Sample tracking",
       "disposition": "not_applicable_no_source_property_vocabulary",
       "table_prefixes": ["sample"],
-      "reason": "Application data.",
-      "absent_from_repo_migrations": "The plm.sample_* sample-tracking tables predate this repository's migration history, so the catalog derived from supabase/migrations cannot see them; they are present in the live catalog, where this family is still required to match."
+      "reason": "Application data."
     },
     {
       "family": "style_tracker",
@@ -352,14 +351,6 @@
       "disposition": "not_applicable_no_source_property_vocabulary",
       "table_names": ["deployment_environment", "grid_cell_notes", "reference_value"],
       "reason": "Application and platform data."
-    },
-    {
-      "family": "production_tracking_lead_time_templates",
-      "licensor": "POP Creations application data",
-      "business_purpose": "DesignFlow Production Tracking lead-time template assignment",
-      "disposition": "not_applicable_no_source_property_vocabulary",
-      "table_names": ["product_type_factory_time"],
-      "reason": "Application data (#2724): assigns a FactoryTime lead-time template to each product type; not a licensor portal Property vocabulary."
     }
   ]
 }

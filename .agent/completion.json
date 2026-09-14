@@ -1,20 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 2852,
+  "work_issue": 2865,
   "outcome": "ready-for-merge",
-  "pr": 2859,
+  "pr": 2864,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2852/8",
-  "contract_sha256": "5236f4cc0520c289a9e109927648ecd44b377af53622559d99ff68ee256d7048",
-  "head_sha": "07e19895547bc35a6b53272e74539ddf4babf0fa",
-  "files_changed": ["scripts/orchestrator-flow/admission-outcome.test.mjs", "scripts/orchestrator-flow/admission.mjs"],
+  "contract_ref": "refs/db-contracts/2865/1",
+  "contract_sha256": "8a7770e665167bbdfa1bb7edeecad0cbe912ac2db745195dfcd6a8e2f2c2e1d2",
+  "head_sha": "0f4649bf8dd48c56d26ef1792a3b95bb23e9cf31",
+  "files_changed": [
+    "tools/coldlion-landing-masters.test.mjs",
+    "tools/coldlion-landing/lib/db.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "607 tests passed, 0 failed on main 4fd0938e plus the repair."},
-    {"command": "exact PR #2818 migration admission probe", "exit_code": 0, "evidence": "The PR #2818 migration at head 93d3544538cb5c532053a97666c5aea52c68a298 was admitted and returned exactly function api.db_data_admin_scraped_properties."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 97, pass 97, fail 0, skipped 0, todo 0. Includes the two new cases: the script is passed with -f <temp file> and stdin ignored and the temp file is removed afterwards; a non-zero psql exit surfaces DATABASE_COMMAND_FAILED with the ERROR line rather than a spawn fault."
+    }
   ],
-  "assumptions_resolved": ["The exact #2818 pattern qualifies because it reads, mutates, and executes one definition variable in causal order.", "Muse reviews identified ordering, quoted-text spoof, dollar-quoted read, digit-tag, quoted-identifier, and wrong-variable gaps; all are repaired with focused positive and negative regressions.", "PR #2818 and unrelated active PRs were not changed."],
+  "assumptions_resolved": [
+    "Both failed runs (34685660524, 34751469115) reached the master write and failed with 'spawnSync psql EPIPE'; history reported 0 outstanding windows, so only the stdin pipe path was at fault."
+  ],
   "stop_conditions_hit": []
 }

@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generation": 7,
+  "generation": 8,
   "work_issue": 2694,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Complete scoped reviewer admission delivery while preserving parallel exact-head leases and truthful unknown provider capacity.",
-  "base_sha": "208ba30d0216d82874539c7c2649b1a45e297063",
-  "dispatcher": "Codex parent159 authorized maintenance programme",
-  "worker": "Codex programme_audit",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "dispatcher": "shared-db orchestrator marker #2893 (route local_d16c82f5-fb42-453c-9ee5-765977d79195)",
+  "worker": "Claude subagent for #2750 refresh",
   "branch": "codex/396-scoped-reviewer-admission",
-  "worktree": "C:/repos/shared-db-worktrees/396-scoped-reviewer-admission",
+  "worktree": "C:/Users/ahazan/AppData/Local/Temp/claude/C--repos-shared-db--claude-worktrees-mystifying-merkle-349616/a96084a6-3ccc-4c15-9a73-137b197a4097/scratchpad/wt2750",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
@@ -37,7 +37,8 @@
   "assumptions": [
     "Prospective delivery contract: existing implementation and review predate this publication; no retrospective publication claim.",
     "Installed ai-devops scoped preflight contract is a required merge prerequisite.",
-    "Generation7 adds the existing semantic inventory disposition for local admission validation after CI qualification."
+    "Generation7 adds the existing semantic inventory disposition for local admission validation after CI qualification.",
+    "Generation 8 refreshes from current main: merge conflicts resolved; truth audit re-derived at 285 call sites; stale ledger-drift site dropped."
   ],
   "stop_conditions": [
     "Refuse missing, malformed or mismatched admission evidence before assignment.",

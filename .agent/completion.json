@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2750,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2694/7",
-  "contract_sha256": "d93acf5713f11e17ec10f2871679537e8e76e711bc224abf2a9164e2ab846bc9",
-  "head_sha": "58b4beae83d341439d7844aa58e3c88926595a9d",
+  "contract_ref": "refs/db-contracts/2694/8",
+  "contract_sha256": "39c662d9a90649e1933204d4560362c8df2bae8f0accc82f3819dda1305198f2",
+  "head_sha": "45ec570d856bc3944d11aff2e92d9670341b36a5",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,7 +20,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "524 passed, zero failed, skipped, cancelled or todo; malformed and mismatch refusal, expired and unknown admission, parallel leases and crash recovery covered."
+      "evidence": "548 passed, zero failed, skipped, cancelled or todo after refreshing from current main."
     },
     {
       "command": "git diff --check",
@@ -30,7 +30,7 @@
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "275 semantically bound call sites match; the new admission diagnostic is a local-evidence validation, not a database absence claim."
+      "evidence": "truth audit OK: call_sites=285 against current main plus the admission diagnostic exclusion."
     }
   ],
   "assumptions_resolved": [

@@ -10,6 +10,8 @@
   "contract_sha256": "e89e503a2d0ecc50ffffafe2a63b7cc3feb44bf3cc828ef19681a4efd7623214",
   "head_sha": "01fe6aac82d8c1720ee300d3ad7c695b7476bc3c",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "supabase/migrations/20260911225108_revoke_api_role_grants_zero_policy_tables.sql"
   ],
   "db_reads": [

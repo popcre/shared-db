@@ -62,6 +62,29 @@ test('actual pull request files must contain a migration before reviewer or shar
   assert.deepEqual(assertPrCarriesStructuralChange([{filename:'supabase/migrations/20260911120000_example.sql',status:'modified',content:'create table core.example(id bigint);',patch:'@@ -2 +2 @@\n-old index\n+create index example_id_idx on core.example(id);'}]),['supabase/migrations/20260911120000_example.sql'])
 })
 
+test('catalog-derived do-block routine edits are structural and retain their collision key', () => {
+  const content=`do $migration$
+declare
+  v_definition text;
+begin
+  select pg_get_functiondef(
+    'api.db_data_admin_scraped_properties(text,text,integer)'::regprocedure
+  ) into v_definition;
+  v_definition:=replace(v_definition, 'old body', 'new body');
+  execute v_definition;
+end
+$migration$;`
+  const result=inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_example.sql',status:'added',content}])
+  assert.deepEqual(result.migrations,['supabase/migrations/20260911222514_example.sql'])
+  assert.deepEqual(result.objects,['function api.db_data_admin_scraped_properties'])
+  assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_comment.sql',status:'added',content:`do $$ begin
+    -- select pg_get_functiondef('api.f()'::regprocedure) into v_definition;
+    -- v_definition:=replace(v_definition,'a','b'); execute v_definition;
+    perform 1;
+  end $$;`}]),/actual change is not structural/)
+  assert.throws(()=>inspectPrStructuralChange([{filename:'supabase/migrations/20260911222514_unedited.sql',status:'added',content:content.replace("v_definition:=replace(v_definition, 'old body', 'new body');",'perform 1;')}]),/actual change is not structural/)
+})
+
 test('shared reviewer and merge routing admits deterministic repository maintenance without fabricated DDL',()=>{
   const head='a'.repeat(40),work=repoScopeBody()
   const io={

@@ -142,23 +142,39 @@ export function inspectPrStructuralChange(prFiles = []) {
 // `select pg_get_functiondef('schema.name(args)'::regprocedure) into v; ... execute v;`.
 // It carries no statement-leading DDL, yet its durable effect is CREATE OR REPLACE
 // FUNCTION on that exact object. Recognised only when the SAME variable read from
-// pg_get_functiondef of a schema-qualified regprocedure literal is later EXECUTEd
-// as a statement inside a do-block; any other do-block (row writes, reads, EXECUTE
-// of an unrelated string) earns nothing here. Admission-only: the shared collision
-// inventory is deliberately not widened.
+// pg_get_functiondef is mutated and later EXECUTEd inside the same do-block.
 function catalogFunctionRewrites(sql){
-  const text=String(sql).replace(/--[^\n]*/g,'')
-  if(!/(^|;|\n)\s*do\s+\$[A-Za-z_]*\$/i.test(text))return []
   const found=new Set()
-  const read=/pg_get_functiondef\(\s*'\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\.\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\([^')]*\)\s*'\s*::\s*regprocedure\s*\)\s*\)?\s*into\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/gi
-  for(const match of text.matchAll(read)){
-    const variable=match[3].toLowerCase()
-    const rest=text.slice(match.index+match[0].length)
-    if(!new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(rest))continue
-    const part=(value)=>value.startsWith('"')?value.slice(1,-1):value.toLowerCase()
-    found.add(`function ${part(match[1])}.${part(match[2])}`)
+  for(const block of String(sql).matchAll(/\bdo\s+\$([A-Za-z_]*)\$([\s\S]*?)\$\1\$\s*;/gi)){
+    const text=stripSqlComments(block[2])
+    const read=/pg_get_functiondef\(\s*'\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\.\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\([^')]*\)\s*'\s*::\s*regprocedure\s*\)\s*\)?\s*into\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/gi
+    for(const match of text.matchAll(read)){
+      const variable=match[3].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+      const mutates=new RegExp(`\\b${variable}\\s*:=\\s*(?:replace|regexp_replace)\\s*\\(\\s*${variable}\\b`,'i').test(text)
+      const executes=new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(text)
+      if(!mutates||!executes)continue
+      const part=(value)=>value.startsWith('"')?value.slice(1,-1):value.toLowerCase()
+      found.add(`function ${part(match[1])}.${part(match[2])}`)
+    }
   }
   return [...found]
+}
+
+function stripSqlComments(sql){
+  let out='',state='code'
+  for(let i=0;i<sql.length;i++){
+    const c=sql[i],next=sql[i+1]
+    if(state==='line'){if(c==='\n'){state='code';out+='\n'}continue}
+    if(state==='block'){if(c==='*'&&next==='/'){state='code';i++}continue}
+    if(state==='single'){out+=c;if(c==="'"&&next==="'"){out+=next;i++}else if(c==="'")state='code';continue}
+    if(state==='double'){out+=c;if(c==='"'&&next==='"'){out+=next;i++}else if(c==='"')state='code';continue}
+    if(c==='-'&&next==='-'){state='line';i++;continue}
+    if(c==='/'&&next==='*'){state='block';i++;continue}
+    if(c==="'")state='single'
+    else if(c==='"')state='double'
+    out+=c
+  }
+  return out
 }
 
 export function assertPrCarriesStructuralChange(prFiles = []) { return inspectPrStructuralChange(prFiles).migrations }

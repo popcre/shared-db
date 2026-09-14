@@ -150,9 +150,11 @@ function catalogFunctionRewrites(sql){
     const read=/pg_get_functiondef\(\s*'\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\.\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\([^')]*\)\s*'\s*::\s*regprocedure\s*\)\s*\)?\s*into\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/gi
     for(const match of text.matchAll(read)){
       const variable=match[3].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
-      const mutates=new RegExp(`\\b${variable}\\s*:=\\s*(?:replace|regexp_replace)\\s*\\(\\s*${variable}\\b`,'i').test(text)
-      const executes=new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(text)
-      if(!mutates||!executes)continue
+      const rest=stripSqlQuotedText(text.slice(match.index+match[0].length))
+      const mutation=new RegExp(`\\b${variable}\\s*:=\\s*(?:replace|regexp_replace)\\s*\\(\\s*${variable}\\b`,'i').exec(rest)
+      if(!mutation)continue
+      const afterMutation=rest.slice(mutation.index+mutation[0].length)
+      if(!new RegExp(`(^|;|\\n|\\bthen|\\bloop|\\bbegin)\\s*execute\\s+${variable}\\s*;`,'i').test(afterMutation))continue
       const part=(value)=>value.startsWith('"')?value.slice(1,-1):value.toLowerCase()
       found.add(`function ${part(match[1])}.${part(match[2])}`)
     }
@@ -175,6 +177,13 @@ function stripSqlComments(sql){
     out+=c
   }
   return out
+}
+
+function stripSqlQuotedText(sql){
+  return String(sql)
+    .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g,' ')
+    .replace(/'(?:[^']|'')*'/g,' ')
+    .replace(/"(?:[^"]|"")*"/g,' ')
 }
 
 export function assertPrCarriesStructuralChange(prFiles = []) { return inspectPrStructuralChange(prFiles).migrations }

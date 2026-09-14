@@ -1,21 +1,41 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
-  "generation": 4,
+  "work_issue": 2894,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Finish repairing the nightly ColdLion Landing Sync. After PR 2864 removed the EPIPE, runs 34803418431 and 34834257904 exposed the real psql error: item_detail_company_code_division_code_item_no_fkey. A live read of /items and /itemDetails on 2026-09-14 found 8 detail rows (4 items) with no item header. Withhold only those rows, report them visibly (log count, sync_run request_params, coldlion_sync_alert), and let the rest of the snapshot land.",
-  "base_sha": "cfbe5efcf789ff6b431108621ef0a8b691d45f2f",
-  "dispatcher": "Albert Hazan (owner) via chat: owner-authorized repo-maintenance repair of the ColdLion Landing Sync nightly",
-  "worker": "shared-db repo-maintenance Claude session in worktree upbeat-borg-d45c95",
-  "branch": "claude/coldlion-orphan-item-details",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/upbeat-borg-d45c95",
-  "allowed_paths": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "goal": "Owner ruling (marker #2893, 2026-09-14): remove any limit on concurrent agents/lanes and on using a reviewer multiple times. Retire the already-reviewed reviewer exclusion reason (new exclusions refused, legacy records never bar a draw); author lane cap already removed (#2775) and reviewer leases already concurrent.",
+  "base_sha": "9006b253769400c0be344c389d83c7a4257ef9df",
+  "dispatcher": "Albert Hazan (owner) via chat, relayed by shared-db orchestrator marker #2893",
+  "worker": "shared-db repo-maintenance Claude subagent in worktree limits-removal-20260914",
+  "branch": "claude/remove-throughput-caps",
+  "worktree": "C:/repos/shared-db-worktrees/limits-removal-20260914",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["No database structure change of any kind.", "Do not drop or relax the item_detail foreign key.", "Do not silently discard rows: every withheld row must be counted, named, and alerted.", "Do not weaken the existing identity, scope, shape, or duplicate-key checks."],
-  "required_checks": ["node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs"],
-  "assumptions": ["The orphan rows are a ColdLion source defect, not a loader fault: the same identity is absent from the full /items snapshot.", "Withholding a detail row whose header does not exist loses nothing the schema could store."],
-  "stop_conditions": ["Stop if the fix would require a database structure change.", "Stop if the withheld set grows beyond the rows that genuinely lack a header."]
+  "prohibited_actions": [
+    "No database structure change of any kind.",
+    "Do not weaken exact-object collision locks, version reservation, serial preview/merge/production, or the rule that the orchestrating/authoring engine never reviews its own work.",
+    "Do not delete or rewrite historical exclusion records."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs"
+  ],
+  "assumptions": [
+    "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review."
+  ],
+  "stop_conditions": [
+    "Stop if removing the cap would require weakening a safety rule listed in prohibited_actions."
+  ]
 }

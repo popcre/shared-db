@@ -1,19 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 2865,
+  "work_issue": 2894,
   "outcome": "ready-for-merge",
-  "pr": 2891,
+  "pr": 2896,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2865/4",
-  "contract_sha256": "cb817b08e79a4639a146a733d355cc5922ee97b87dd292ed99b276a795cad81c",
-  "head_sha": "71cd7ccf16eb67b00023f54ae3279d41e0a5ea50",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "tools/coldlion-landing/sync-masters.mjs", "tools/coldlion-landing/lib/load-masters.mjs", "tools/coldlion-landing-masters.test.mjs"],
+  "contract_ref": "refs/db-contracts/2894/1",
+  "contract_sha256": "5be8886dde800e05398e41cda591954e7b3a8cae5894b04930db7b76ad368647",
+  "head_sha": "5c9f380685e301fd32c199dd6bb9e02d122e3283",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs", "exit_code": 0, "evidence": "node --test tools/coldlion-landing*.test.mjs: tests 100, pass 100, fail 0, skipped 0. The unreviewed-field guard test fails (1 fail) with the full-fetch guard line removed."}
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs scripts/orchestrator-flow/*.test.mjs scripts/check-skill-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 732, pass 732, fail 0, skipped 0"
+    }
   ],
-  "notes": ["Real error from runs 34803418431 and 34834257904: item_detail_company_code_division_code_item_no_fkey.", "Read-only ColdLion pull 2026-09-14: /items 19411 rows, /itemDetails 26803 rows, 8 detail rows across 4 items with no header.", "No database, preview, production, migration, or workflow action was performed."],
-  "assumptions_resolved": ["The 4 orphan identities are absent from the full /items snapshot, so they are a source defect.", "Withheld rows are counted in the log, named on the sync_run, and alerted."],
-  "stop_conditions_hit": []
+  "assumptions_resolved": [
+    {
+      "assumption": "already-reviewed is only a reuse cap, not an independence guarantee; independence-conflict covers engine self-review.",
+      "resolution": "Confirmed: independence-conflict remains recordable, barring and non-reinstatable; the draw also filters the live orchestrator engine and slot-1 provider."
+    }
+  ],
+  "stop_conditions_hit": [],
+  "notes": [
+    "Author lane cap was already removed by PR #2777 (issue #2775); reviewer leases are already concurrent in production.",
+    "Kept: independence-conflict exclusion, slot 2 distinct from slot 1 on one head, collision locks, version reservation, serial preview/merge/production, GitHub API request budgets."
+  ]
 }

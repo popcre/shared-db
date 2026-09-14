@@ -1,34 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 2857,
+  "work_issue": 2851,
   "outcome": "ready-for-merge",
-  "pr": 2855,
+  "pr": 2856,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2857/2",
-  "contract_sha256": "924e502e190ee8007e60372038e4f0a52f78044baeddf1523a2385ee1c9fb439",
-  "head_sha": "1fc0399e2ca7cbeabb18842863a86730274cf53f",
+  "contract_ref": "refs/db-contracts/2851/6",
+  "contract_sha256": "ee0718faadfbe934e380847a24e5346c0ca65bc309a66fbf8835f8d651c62b05",
+  "head_sha": "77422573c9fe57cc0b8d11335911acbe67f0cdee",
   "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/test_production_owner_decision_evidence.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "python -m unittest scripts.test_production_owner_decision_evidence",
+      "exit_code": 0,
+      "evidence": "10 tests passed on main 62d31d71 plus this change. The test pins the automatic-production-promotion permission map, asserts no Supabase database credential is present, and retains ENGINEER ACTION REQUIRED."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_migration_guard",
+      "exit_code": 0,
+      "evidence": "250 tests passed; the top-level contents: read assertion and bounded migration manifest checks remain green."
+    },
+    {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 537, pass 537, fail 0, skipped 0 at implementation commit 1fc0399e on base bce5f2e0, including the new review_target_superseded test."
+      "evidence": "537 tests, 537 pass, 0 fail, 0 cancelled, 0 skipped on main 62d31d71 plus this change."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors between base bce5f2e0 and implementation commit 1fc0399e."
+      "evidence": "No whitespace errors between base 62d31d71 and implementation commit 77422573."
     }
   ],
   "assumptions_resolved": [
-    "Every consumer of the failure codes was read: terminal-failure validation, release (exact-head guard and its in-mutex recheck), replacement (the failed-on-this-head redraw set), the release-evidence parser, and the exclusion/reinstatement reason sets and quarantine list, which are not driven by failure codes. The new code is release-only, so the provider is never added to the failed set and no exclusion is written.",
-    "The exact-head release guard is unchanged for every other code; the new code instead must prove the recorded head is no longer the open PR head or that the PR is closed.",
-    "The stranded grok-4.6 lease for issue 2744 PR 2818 was not touched."
+    "Confirmed that the admission path writes only Git commit/ref evidence, the job gains no database credential, and PR #2849 and PR #2855 implementation paths are absent from this PR's own base-to-implementation diff."
   ],
   "stop_conditions_hit": []
 }

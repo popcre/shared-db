@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "work_issue": 2711,
-  "generation": 3,
+  "generation": 4,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Add a governed command that retires abandoned assignment-keyed reviewer leases (PR closed, head moved, or verdict recorded) under the review mutex with compare-and-swap, and make an over-long lease snapshot a determinate refusal instead of transient unreadability. About 64-80 stuck refs/db-review-active-v2 leases are blocking application sessions.",
-  "base_sha": "c40f587eb2669297fe6c58aa27661daaee4ba31c",
+  "base_sha": "865be9f13edfcaf5b2caa018ec4b23af4ea88932",
   "dispatcher": "Albert Hazan (owner) via chat 2026-09-14T15:20Z: clear issue 2711 as fast as possible",
   "worker": "shared-db repo-maintenance Claude session in scratchpad worktree wt2711",
   "branch": "claude/reap-abandoned-review-leases-2711",

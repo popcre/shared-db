@@ -386,6 +386,7 @@ If authentication or portal availability prevents a run, record a failure/due st
 14. Warner signed agreement plus countersigned Amendments 1-3 controls Warner entitlement membership; portal visibility is not entitlement. Private contract rows remain only in the authorized private source repository.
 15. Marvel submissions use Disney OPA from December 2025, while Marvel Creative Assets remain authoritative in ASGARD. OPA and ASGARD evidence retain separate provenance.
 16. OPA cannot distinguish Marvel from Disney within its `disney` branch. For that split, the signed contract schedule controls; Lucasfilm / Star Wars retains its direct OPA branch rule.
+17. Disney, Marvel, and Lucasfilm / Star Wars are three separate Licensors (Albert Hazan, 2026-09-14): Minimum Guarantees are not cross-collateralized, royalties are reported separately, and no data, presentation, royalty, or MG work may combine them. See `docs/business-rules/licensing-master-data.md`.
 
 ### Implementation choices fixed by this plan
 

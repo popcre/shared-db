@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 2815,
   "migration_versions": [
-    "20260914152608"
+    "20260914155226"
   ],
-  "contract_ref": "refs/db-contracts/2662/12",
-  "contract_sha256": "169f95a24831b85d13ac7fe6dc97448a9ac855e328cd25e00a55e74760b652b1",
-  "head_sha": "2e08af66715d4fcbe6e4b87afd5c9c471010777d",
+  "contract_ref": "refs/db-contracts/2662/13",
+  "contract_sha256": "efb048677c29473106ea1ddd1ad802df07be3c3b9c693aab09933c5e7294e2aa",
+  "head_sha": "2238b88a170183d89f487fcd285cbdf3bacf4bd5",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "supabase/migrations/20260914152608_revoke_api_role_grants_zero_policy_tables.sql"
+    "supabase/migrations/20260914155226_revoke_api_role_grants_zero_policy_tables.sql"
   ],
   "db_reads": [
     "catalog pg_class",
@@ -41,7 +41,8 @@
     "Refresh onto main c7465a75 (PR #2736 merged): merge-tree reported exactly two conflicting paths, .agent/completion.json and .agent/contract.json, which every lane writes at the repo root, so main carried the issue #2716 lane's pair. Both were resolved WHOLESALE to this lane's own evidence with no hunk-level merging, then re-sealed as contract generation 10. files_changed is now the single migration file, set-equal to git diff c7465a75..f6ab0b6a; the two .agent files are the only paths following the implementation head, as the evidence checker requires.",
     "DISCLOSURE: during this refresh a reset to the implementation commit briefly left main's foreign .agent pair in the tree, and one publish was issued from it, creating the stray ref refs/db-contracts/2716/10 on origin plus a corresponding comment on issue #2716. That ref belongs to the issue #2716 lane's namespace and is NOT this lane's contract; it was not deleted because ref deletion was outside this task's authority. The 2716 lane's real generations are 1 through 4 and none of them was altered or overwritten.",
     "Refresh onto main 9006b253: merge commit 01fe6aac. The only conflicts were the two .agent files, resolved wholesale to this lane's own pair and re-sealed as contract generation 11. The migration file is byte-identical to the approved head fb402efa; no function bodies are involved.",
-    "The guarded merge refused the old version as backdated (main's newest is 20260914075758). Claim #2812 was re-reserved through the governed --reversion-active-claim verb: 20260911225108 became 20260914152608 in commit 2e08af66, a pure rename with the SQL unchanged. Re-sealed as contract generation 12."
+    "The guarded merge refused the old version as backdated (main's newest is 20260914075758). Claim #2812 was re-reserved through the governed --reversion-active-claim verb: 20260911225108 became 20260914155226 in commit 2e08af66, a pure rename with the SQL unchanged. Re-sealed as contract generation 12.",
+    "Main landed 20260914152758 during review, so 20260914152608 was backdated again. Claim #2812 was re-reserved through --reversion-active-claim to 20260914155226 (pure rename), current main 19d2ff0f61bc2ffacaca297bc1b82335c5a3c853 was merged in with the .agent pair resolved wholesale to this lane's own, and the pair was re-sealed as contract generation 13 on implementation head 2238b88a170183d89f487fcd285cbdf3bacf4bd5."
   ],
   "stop_conditions_hit": []
 }

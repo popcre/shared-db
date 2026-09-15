@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { acquireAuthorLane, LaneError } from '../manage-migration-author-lanes.mjs'
@@ -18,6 +18,14 @@ const io = {
     catch(error){ if(error.code==='EEXIST')return false;throw error }
   },
   readRef: (ref) => existsSync(refPath(ref)) ? readFileSync(refPath(ref),'utf8') : null,
+  // #2301 Step 3: the lane guard asks for the retirement namespace once. This
+  // double stores refs as files, so list the directory rather than returning []
+  // unconditionally -- a hard-coded empty answer would make the double lie.
+  listRefs(prefix){
+    const dir=path.join(store,'refs')
+    if(!existsSync(dir))return []
+    return readdirSync(dir).map((name)=>decodeURIComponent(name)).filter((ref)=>ref===prefix||ref.startsWith(`${prefix}/`)).map((ref)=>({ref,sha:readFileSync(refPath(ref),'utf8')}))
+  },
   deleteRef: (ref) => unlinkSync(refPath(ref)),
   reserveVersion: () => ({ version: `20260814${String(170000 + Number(owner)).padStart(6,'0')}` }),
   createClaim(_title, body) {

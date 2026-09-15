@@ -2,18 +2,14 @@
   "schema_version": 1,
   "work_issue": 2729,
   "outcome": "ready-for-merge",
-  "pr": 2972,
+  "pr": 2979,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2729/3",
-  "contract_sha256": "ff0a85220694cc84bd0fc7ca3e8a622f1b3304642ce2dc1b1823414f02bec6ae",
-  "head_sha": "0aa3bb286e617b8715d7c4dc971515ce9f0d1209",
+  "contract_ref": "refs/db-contracts/2729/4",
+  "contract_sha256": "6f0e6de17c0411b1097394bec14eee6f69ca5e07a94e602499020d518665b419",
+  "head_sha": "4adfb3723444aac18af602f7fa0f0a5320fe9541",
   "files_changed": [
-    ".github/workflows/coldlion-promotion-contract-tests.yml",
-    ".github/workflows/queue-sensitive-aggregate.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/orchestrator-flow/runner-lanes.json",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -21,23 +17,22 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check passed against main 7b36259e at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e. Main was refreshed from c7e09db7 to 7b36259e; the only conflicts were the .agent pair, resolved to main's pair in the merge commit. The implementation commit is 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41."
+      "evidence": "git diff --check passed at implementation commit 4adfb3723444aac18af602f7fa0f0a5320fe9541 against base dcda2cd936fd0df717963e6f6dd4696c4ddd8861."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Run together with check-required-checks-preflight and update-required-checks tests: 104 tests passed, 0 failed, 0 skipped, 0 todo at 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41 and 110 passed, 0 failed, 0 skipped, 0 todo at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e, including negative tests for self-hosted and non-Ubuntu lanes, choice-option drift, paginated and partial check-run reads, and waiting on an unreported context."
+      "evidence": "567 tests, 567 passed, 0 failed, 0 skipped, 0 todo at 4adfb3723444aac18af602f7fa0f0a5320fe9541, including the claim-mode migration hash mismatch refusal that names the mismatched condition and unreadable-candidate refusals."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41 and at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e; no new call sites and no dispositions changed."
+      "evidence": "truth audit OK: call_sites=295 at 4adfb3723444aac18af602f7fa0f0a5320fe9541; no call sites added or changed."
     }
   ],
   "assumptions_resolved": [
-    "Five free standard lanes are declared: ubuntu-latest, ubuntu-24.04, ubuntu-22.04, ubuntu-24.04-arm, ubuntu-22.04-arm. GitHub documents standard hosted runners as free and unlimited on public repositories.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
-    "No run was dispatched and branch protection was not changed. The admin must add the required context 'Queue-sensitive checks (aggregate)' separately. Issue 2729 stays open."
+    "Acceptance logic is unchanged; every existing acceptance and refusal test still passes with its original expectation.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory."
   ],
   "stop_conditions_hit": []
 }

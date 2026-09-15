@@ -7468,7 +7468,11 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     return [...linked,...labelled]
   }))]
   const expected=[...versions].map(String).sort(),matches=[]
-  for(const runId of runIds){try{
+  // Every rejected candidate records the first condition it failed (#2729,
+  // #401 Step 6). Acceptance is unchanged: a rejection only explains a refusal.
+  const rejections=[]
+  const reject=(runId,lane,condition)=>{rejections.push(`run ${runId} (${lane}): ${condition}`)}
+  for(const runId of runIds){const lane='preview-apply';try{
     const {run,jobs,artifacts,logs}=io.previewApplyRun(runId)
     const jobRows=Array.isArray(jobs?.jobs)?jobs.jobs:[]
     const terminal=(name,conclusion)=>jobRows.filter((job)=>job?.name===name&&job?.status==='completed'&&job?.conclusion===conclusion).length===1
@@ -7477,11 +7481,20 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // when the complete job graph proves guards + preview succeeded, every
     // production job skipped, and the sole failure was the downstream dispatcher.
     const previewSucceededBeforeDownstreamFailure=run?.conclusion==='failure'&&Number(jobs?.total_count)===6&&jobRows.length===6&&terminal('SQL migration guards','success')&&terminal('preview','success')&&terminal('Automatic production qualification and dispatch','failure')&&terminal('Production apply review (immutable evidence + hard guards)','skipped')&&terminal('Production apply (automatic evidence gates)','skipped')&&terminal('production-dry-run','skipped')
-    if(String(run?.id)!==String(runId)||run?.path!=='.github/workflows/shared-supabase-migrations.yml'||run?.event!=='workflow_dispatch'||run?.status!=='completed'||(run?.conclusion!=='success'&&!previewSucceededBeforeDownstreamFailure)||run?.run_attempt!==1||!/^[0-9a-f]{40}$/i.test(String(run?.head_sha??'')))continue
+    if(String(run?.id)!==String(runId)){reject(runId,lane,`run id is ${run?.id}`);continue}
+    if(run?.path!=='.github/workflows/shared-supabase-migrations.yml'){reject(runId,lane,`workflow path is ${run?.path}`);continue}
+    if(run?.event!=='workflow_dispatch'){reject(runId,lane,`event is ${run?.event}`);continue}
+    if(run?.status!=='completed'){reject(runId,lane,`status is ${run?.status}`);continue}
+    if(run?.conclusion!=='success'&&!previewSucceededBeforeDownstreamFailure){reject(runId,lane,`conclusion is ${run?.conclusion} without a proven preview success before a sole downstream dispatcher failure`);continue}
+    if(run?.run_attempt!==1){reject(runId,lane,`run attempt is ${run?.run_attempt}, not 1`);continue}
+    if(!/^[0-9a-f]{40}$/i.test(String(run?.head_sha??''))){reject(runId,lane,'head sha is not a 40-hex commit');continue}
     const bindings=String(logs).split(/\r?\n/).flatMap((line)=>{const start=line.indexOf('{"allowlist"'),end=line.lastIndexOf('}');if(start<0||end<start)return[];try{return[JSON.parse(line.slice(start,end+1))]}catch{return[]}}).filter((row)=>row.schema==='shared-db-preview-instance-binding/v1')
-    if(bindings.length!==1)continue
+    if(bindings.length!==1){reject(runId,lane,`found ${bindings.length} preview instance bindings, not 1`);continue}
     const binding=bindings[0],allowlist=Array.isArray(binding.allowlist)?binding.allowlist.map(String).sort():[]
-    if(String(binding.runId)!==String(runId)||binding.previewProjectRef!==PROJECT_REFS.preview||!/^[0-9a-f]{40}$/i.test(String(binding.appliedCommit??''))||JSON.stringify(allowlist)!==JSON.stringify(expected))continue
+    if(String(binding.runId)!==String(runId)){reject(runId,lane,`binding run id is ${binding.runId}`);continue}
+    if(binding.previewProjectRef!==PROJECT_REFS.preview){reject(runId,lane,`binding preview project is ${binding.previewProjectRef}, not ${PROJECT_REFS.preview}`);continue}
+    if(!/^[0-9a-f]{40}$/i.test(String(binding.appliedCommit??''))){reject(runId,lane,'binding applied commit is not a 40-hex commit');continue}
+    if(JSON.stringify(allowlist)!==JSON.stringify(expected)){reject(runId,lane,`binding allowlist ${JSON.stringify(allowlist)} is not the expected versions ${JSON.stringify(expected)}`);continue}
     const mergedMainRehearsal=Boolean(mergeCommitSha&&binding.rehearsalMode==='merged-main-rehearsal'&&Number(binding.sourcePr)===Number(pr)&&String(binding.mergeCommitSha).toLowerCase()===String(mergeCommitSha).toLowerCase()&&binding.appliedCommit===run.head_sha)
     // A byte-pinned restoration may have one genuine ordinary claim apply that
     // predates its merge.  That immutable apply is the reason the restoration
@@ -7489,16 +7502,22 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // checkout only when every identity and the file now in the merge commit
     // exactly matches the restoration registry.  Unregistered claim runs retain
     // the old refusal, as do all malformed or partially pinned bundles.
-    let pinnedClaimApply=false
+    let pinnedClaimApply=false,claimRejection=null
     if(mergeCommitSha&&binding.rehearsalMode==='claim'){
       const records=expected.map((version)=>HISTORICAL_RESTORATIONS[version]).filter(Boolean)
-      pinnedClaimApply=records.length===expected.length&&records.length>0&&records.every((record)=>{
-        if(String(record.previewApplyRun)!==String(runId)||record.previewAppliedCommit!==binding.appliedCommit||record.previewProject!==binding.previewProjectRef)return false
-        try{return validateHistoricalRestorationFile(record.filename,io.getFileAt(record.filename,mergeCommitSha))===record}catch{return false}
-      })
+      if(records.length===0||records.length!==expected.length)claimRejection=`claim-mode apply has ${records.length} of ${expected.length} versions in the historical restoration registry`
+      else for(const record of records){
+        if(String(record.previewApplyRun)!==String(runId)){claimRejection=`claim-mode apply run is not the registered restoration run ${record.previewApplyRun}`;break}
+        if(record.previewAppliedCommit!==binding.appliedCommit){claimRejection=`claim-mode applied commit ${binding.appliedCommit} is not the registered ${record.previewAppliedCommit}`;break}
+        if(record.previewProject!==binding.previewProjectRef){claimRejection=`claim-mode preview project ${binding.previewProjectRef} is not the registered ${record.previewProject}`;break}
+        let validated
+        try{validated=validateHistoricalRestorationFile(record.filename,io.getFileAt(record.filename,mergeCommitSha))}catch(error){claimRejection=`claim-mode migration hash mismatch: ${record.filename} at merge commit ${mergeCommitSha} does not match the registered restoration (${error?.message??error})`;break}
+        if(validated!==record){claimRejection=`claim-mode migration hash mismatch: ${record.filename} at merge commit ${mergeCommitSha} resolves to a different restoration record`;break}
+      }
+      pinnedClaimApply=claimRejection===null
     }
-    if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply)continue
-    if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha)continue
+    if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply){reject(runId,lane,claimRejection??`binding is neither a merged-main rehearsal of pull request #${pr} at merge commit ${mergeCommitSha} with applied commit equal to the run head, nor a registered claim-mode apply (rehearsal mode ${binding.rehearsalMode})`);continue}
+    if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha){reject(runId,lane,`binding applied commit ${binding.appliedCommit} is not the run head ${run.head_sha}`);continue}
     const appliedCommit=pinnedClaimApply?binding.appliedCommit:run.head_sha
     const allRows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
     // The failed downstream dispatcher may upload exactly one extra artifact,
@@ -7508,7 +7527,12 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     const downstreamEvidence=allRows.filter((row)=>row?.name==='automatic-production-apply-review-evidence')
     const tolerated=previewSucceededBeforeDownstreamFailure&&Number(artifacts?.total_count)===2&&allRows.length===2&&downstreamEvidence.length===1&&String(downstreamEvidence[0].workflow_run?.id)===String(runId)&&downstreamEvidence[0].workflow_run?.head_sha===run.head_sha
     const rows=tolerated?allRows.filter((row)=>row!==downstreamEvidence[0]):allRows
-    if((tolerated?rows.length!==1:(Number(artifacts?.total_count)!==1||rows.length!==1))||rows[0].expired!==false||!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))||rows[0].name!==`preview-migration-apply-${appliedCommit}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
+    if(tolerated?rows.length!==1:(Number(artifacts?.total_count)!==1||rows.length!==1)){reject(runId,lane,`run has ${artifacts?.total_count} artifacts (${allRows.length} listed), not exactly one preview apply artifact`);continue}
+    if(rows[0].expired!==false){reject(runId,lane,'preview apply artifact is expired or its expiry is unknown');continue}
+    if(!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))){reject(runId,lane,'preview apply artifact has no sha256 digest');continue}
+    if(rows[0].name!==`preview-migration-apply-${appliedCommit}`){reject(runId,lane,`artifact name ${rows[0].name} is not preview-migration-apply-${appliedCommit}`);continue}
+    if(String(rows[0].workflow_run?.id)!==String(runId)){reject(runId,lane,`artifact belongs to run ${rows[0].workflow_run?.id}`);continue}
+    if(rows[0].workflow_run?.head_sha!==run.head_sha){reject(runId,lane,`artifact head ${rows[0].workflow_run?.head_sha} is not the run head ${run.head_sha}`);continue}
     const ledgerLines=String(logs).split(/\r?\n/).flatMap((line)=>{
       const fields=line.replace(/^\ufeff/,'').split('\t')
       if(fields.length<3||fields[1]!=='Report the preview ledger delta')return[]
@@ -7522,32 +7546,52 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
       const artifact=rows[0]
       const proof=io.verifyPreviewApplyArtifact({run,jobs,artifact,binding,versions:expected,previewProjectRef:PROJECT_REFS.preview,verificationCommit:mergeCommitSha??appliedCommit})
       if(proof?.verified===true&&proof.runId===run.id&&proof.artifactId===artifact.id&&proof.artifactDigest===artifact.digest&&JSON.stringify(proof.versions)===JSON.stringify(expected))matches.push({type:'preview-apply',run_id:String(runId)})
+      else reject(runId,lane,`archived artifact receipt did not verify (verified=${proof?.verified}, run ${proof?.runId}, artifact ${proof?.artifactId}, digest ${proof?.artifactDigest}, versions ${JSON.stringify(proof?.versions)})`)
       continue
     }
-    if(ledgerLines.filter((line)=>line==='### Preview ledger delta').length!==1)continue
+    if(ledgerLines.length===0){reject(runId,lane,'logs have no named preview ledger delta step and no archived artifact verifier is available');continue}
+    if(ledgerLines.filter((line)=>line==='### Preview ledger delta').length!==1){reject(runId,lane,'named ledger delta step does not hold exactly one ledger delta heading');continue}
     const ledgerAdded=ledgerLines.flatMap((line)=>{
       const match=/- added:\s+((?:\d{14})(?:,\s*\d{14})*)\s*$/.exec(line)
       return match?[match[1].split(',').map((value)=>value.trim()).sort()]:[]
     })
-    if(ledgerAdded.length!==1||JSON.stringify(ledgerAdded[0])!==JSON.stringify(expected)||ledgerLines.filter((line)=>/- removed:\s+\(none\)\s*$/.test(line)).length!==1)continue
+    if(ledgerAdded.length!==1||JSON.stringify(ledgerAdded[0])!==JSON.stringify(expected)){reject(runId,lane,`ledger delta added ${JSON.stringify(ledgerAdded)}, not exactly the expected versions ${JSON.stringify(expected)}`);continue}
+    if(ledgerLines.filter((line)=>/- removed:\s+\(none\)\s*$/.test(line)).length!==1){reject(runId,lane,'ledger delta does not record exactly one "removed: (none)"');continue}
     matches.push({type:'preview-apply',run_id:String(runId)})
-  }catch{/* An unreadable candidate cannot become evidence. */}}
-  for(const runId of runIds){try{
+  }catch(error){/* An unreadable candidate cannot become evidence. */reject(runId,lane,`unreadable candidate: ${error?.message??error}`)}}
+  for(const runId of runIds){const lane='preview-ledger-reconciliation';try{
+    if(expected.length!==1){reject(runId,lane,`reconciliation evidence covers exactly one version, not ${expected.length}`);continue}
     const {run,artifacts,logs}=io.previewApplyRun(runId)
-    if(expected.length!==1||String(run?.id)!==String(runId)||run?.path!=='.github/workflows/preview-ledger-orphan-reconciliation.yml'||run?.event!=='workflow_dispatch'||run?.status!=='completed'||run?.conclusion!=='success'||run?.run_attempt!==1||!/^[0-9a-f]{40}$/i.test(String(run?.head_sha??'')))continue
+    if(String(run?.id)!==String(runId)){reject(runId,lane,`run id is ${run?.id}`);continue}
+    if(run?.path!=='.github/workflows/preview-ledger-orphan-reconciliation.yml'){reject(runId,lane,`workflow path is ${run?.path}`);continue}
+    if(run?.event!=='workflow_dispatch'){reject(runId,lane,`event is ${run?.event}`);continue}
+    if(run?.status!=='completed'){reject(runId,lane,`status is ${run?.status}`);continue}
+    if(run?.conclusion!=='success'){reject(runId,lane,`conclusion is ${run?.conclusion}`);continue}
+    if(run?.run_attempt!==1){reject(runId,lane,`run attempt is ${run?.run_attempt}, not 1`);continue}
+    if(!/^[0-9a-f]{40}$/i.test(String(run?.head_sha??''))){reject(runId,lane,'head sha is not a 40-hex commit');continue}
     const applied=/PREVIEW LEDGER RECONCILIATION APPLY OK: removed=(\d{14}) replacement=(\d{14})/.exec(String(logs))
     // Only a true rename preserves already-applied status. A same-version
     // rehearsal reset deletes the ledger row so the migration can run again;
     // it is therefore the opposite of immutable no-replay evidence.
-    if(!applied||applied[1]===applied[2]||applied[2]!==expected[0])continue
+    if(!applied){reject(runId,lane,'logs have no reconciliation apply OK line');continue}
+    if(applied[1]===applied[2]){reject(runId,lane,`reconciliation is a same-version reset of ${applied[1]}, not a rename`);continue}
+    if(applied[2]!==expected[0]){reject(runId,lane,`replacement ${applied[2]} is not the expected version ${expected[0]}`);continue}
     const exact=(name,value)=>new RegExp(`(?:^|\\s)${name}:\\s+${String(value)}(?:\\s|$)`,'m').test(String(logs))
-    if(!exact('ISSUE',issue)||!exact('SOURCE_PR',pr)||!exact('ORPHAN',applied[1])||!exact('REPLACEMENT',applied[2]))continue
-    if(mergeCommitSha){const relation=io.compareCommits?.(mergeCommitSha,run.head_sha);if(!relation||!['ahead','identical'].includes(relation.status))continue}
+    const unrecorded=[['ISSUE',issue],['SOURCE_PR',pr],['ORPHAN',applied[1]],['REPLACEMENT',applied[2]]].find(([name,value])=>!exact(name,value))
+    if(unrecorded){reject(runId,lane,`logs do not record ${unrecorded[0]}: ${unrecorded[1]}`);continue}
+    if(mergeCommitSha){const relation=io.compareCommits?.(mergeCommitSha,run.head_sha);if(!relation||!['ahead','identical'].includes(relation.status)){reject(runId,lane,`run head ${run.head_sha} is not at or after merge commit ${mergeCommitSha} (comparison ${relation?.status??'unavailable'})`);continue}}
     const rows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
-    if(Number(artifacts?.total_count)!==1||rows.length!==1||rows[0].expired!==false||rows[0].name!==`preview-ledger-orphan-reconciliation-${applied[1]}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
+    if(Number(artifacts?.total_count)!==1||rows.length!==1){reject(runId,lane,`run has ${artifacts?.total_count} artifacts (${rows.length} listed), not exactly one`);continue}
+    if(rows[0].expired!==false){reject(runId,lane,'reconciliation artifact is expired or its expiry is unknown');continue}
+    if(rows[0].name!==`preview-ledger-orphan-reconciliation-${applied[1]}`){reject(runId,lane,`artifact name ${rows[0].name} is not preview-ledger-orphan-reconciliation-${applied[1]}`);continue}
+    if(String(rows[0].workflow_run?.id)!==String(runId)){reject(runId,lane,`artifact belongs to run ${rows[0].workflow_run?.id}`);continue}
+    if(rows[0].workflow_run?.head_sha!==run.head_sha){reject(runId,lane,`artifact head ${rows[0].workflow_run?.head_sha} is not the run head ${run.head_sha}`);continue}
     matches.push({type:'preview-ledger-reconciliation',run_id:String(runId),orphan_version:applied[1],replacement_version:applied[2]})
-  }catch{/* An unreadable candidate cannot become evidence. */}}
-  if(matches.length!==1)throw new LaneError(`already-applied versions require exactly one validated immutable preview apply or ledger-reconciliation run; found ${matches.length}`)
+  }catch(error){/* An unreadable candidate cannot become evidence. */reject(runId,lane,`unreadable candidate: ${error?.message??error}`)}}
+  if(matches.length!==1){
+    const detail=runIds.length===0?'no candidate run was linked from the issue':`rejected candidates: ${rejections.length?rejections.join('; '):'none'}`
+    throw new LaneError(`already-applied versions require exactly one validated immutable preview apply or ledger-reconciliation run; found ${matches.length}; ${detail}`)
+  }
   return matches[0]
 }
 

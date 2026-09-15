@@ -3582,6 +3582,15 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "create table n (id bigint);",
         ])
 
+    def test_creating_new_tables_is_not_reported_as_losing_production_data(self):
+        """Named in scripts/throughput-guard/false-alarm-corpus.test.mjs: brand-new
+        tables with their indexes and comments are not a business risk."""
+        self.assert_allowed([
+            "CREATE TABLE dflow.a (id bigint PRIMARY KEY, note text);\n"
+            "CREATE INDEX a_note_idx ON dflow.a (note);\n"
+            "COMMENT ON TABLE dflow.a IS 'x';",
+        ], [])
+
     def test_allowlist_entry_create_index_on_new_table(self):
         self.assert_allowed([
             "create table core.n(id bigint, v text);\ncreate unique index n_v_idx on core.n (v);",

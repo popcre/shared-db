@@ -4,13 +4,18 @@
   "outcome": "ready-for-merge",
   "pr": 2932,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2707/3",
-  "contract_sha256": "11985ae9a1319fe6a9320584f49998f8abca72042519d1d3e5b527e1a7d34226",
-  "head_sha": "dbe9ca70787015b4b728f55e6723202e391aff90",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
+  "contract_ref": "refs/db-contracts/2707/4",
+  "contract_sha256": "e2863b5bdfb0e8903de7bec4b80f4e42bcc1eee835bc8a8997b09f3ac64504f8",
+  "head_sha": "f33316d230ca01c3113a5225b7a757d453da203a",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "docs/verification/throughput-guard-truth-audit-20260828.json", "scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "The added reviewer startup wording is explicitly classified as a non-database diagnostic; all 286 semantic sites reconcile."
+    },
     {
       "command": "node --test scripts/run-governed-review.test.mjs",
       "exit_code": 0,

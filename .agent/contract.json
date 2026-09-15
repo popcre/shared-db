@@ -9,8 +9,8 @@
   "worker": "codex-394-terminal-consumer-20260914",
   "branch": "codex/394-terminal-consumer-20260914",
   "worktree": "C:/repos/shared-db-worktrees/394-terminal-consumer-20260914",
-  "allowed_paths": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "allowed_paths": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", "docs/verification/throughput-guard-truth-audit-20260828.json", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", "docs/verification/throughput-guard-truth-audit-20260828.json", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
@@ -19,7 +19,7 @@
     "Do not expose raw provider stderr, prompts, credentials, or private evidence in public output.",
     "Do not widen provider limits or retry historical failed paid turns."
   ],
-  "required_checks": ["node --test scripts/run-governed-review.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/run-governed-review.test.mjs", "node scripts/check-throughput-truth-audit.mjs", "git diff --check"],
   "assumptions": [
     "Toolkit #394 lands stable reason tokens for Qwen content inspection, Muse startup or management failure, and Grok provider cancellation versus turn-limit cancellation.",
     "DeepSeek send and reply accept the governed-verdict head contract already implemented by its wrapper.",
@@ -27,8 +27,8 @@
   ],
   "stop_conditions": [
     "Stop if the toolkit terminal tokens change before this consumer lands.",
-    "Stop if completion requires any file outside the two governed-review files and the evidence pair.",
+    "Stop if completion requires any file outside the two governed-review files, their semantic truth-audit inventory, and the evidence pair.",
     "Stop if tests cannot prove failed wrappers remain non-authorizing and raw diagnostics remain private."
   ],
-  "generation": 3
+  "generation": 4
 }

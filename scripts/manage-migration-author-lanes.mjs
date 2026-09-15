@@ -6853,7 +6853,7 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
     let files
     try{files=io.comparePullRequestFiles(baseSha,headSha)}catch(error){throw new LaneError(`repository-maintenance authorization cannot read the exact base-to-head comparison (${error.message})`)}
     const verdict=classifyLightweightMergePullRequestFiles(files)
-    if(!verdict.documentsOnly)throw new LaneError(`repository-maintenance authorization refused: ${verdict.reason}`)
+    if(!verdict.documentsOnly)throw Object.assign(new LaneError(`repository-maintenance authorization refused: ${verdict.reason}`),{notApplicable:true})
     const finalPr=io.getPr(prNumber)
     if(finalPr?.base?.sha!==baseSha||finalPr?.base?.ref!=='main'||finalPr?.base?.repo?.full_name!==REPO||finalPr?.head?.sha!==headSha)throw new LaneError('repository-maintenance authorization pull request moved during exact comparison')
     requireOwnedRef(MUTEX_REF,ownerSha,io)
@@ -6872,8 +6872,18 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
         }catch{statusHistoryUnreadable=true}
       }
       const refusalContext=options.revokeRequiredStatus||replacesLightweightSuccess||statusHistoryUnreadable?context:'Documents-only merge authorization'
-      try{io.postCommitStatus(headSha,{state:'failure',context:refusalContext,description:'Lightweight authorization refused; guarded code checks required',targetUrl})}
+      // #2838: an ordinary code PR is not a failure of this advisory check. Report it as
+      // not applicable (green) so red here always means a genuine refusal. Revocations of
+      // the required context above still post failure and still fail the job.
+      const notApplicable=error?.notApplicable===true&&refusalContext!==context
+      try{io.postCommitStatus(headSha,notApplicable
+        ?{state:'success',context:refusalContext,description:'Not applicable: code change; guarded code checks required',targetUrl}
+        :{state:'failure',context:refusalContext,description:'Lightweight authorization refused; guarded code checks required',targetUrl})}
       catch(statusError){throw new LaneError(`${error.message}; refusal status also failed: ${statusError.message}`)}
+      if(notApplicable){
+        operationError=null
+        return {pr:prNumber,headSha,context:refusalContext,documentsOnly:false,notApplicable:true,reason:error.message,coordinationRef:MUTEX_REF,structuralStage:null}
+      }
     }
     throw error
   }

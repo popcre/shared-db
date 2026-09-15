@@ -2784,6 +2784,25 @@ test('preview and merge are fixed exclusive refs and merge refuses during produc
   assert.throws(()=>acquireExclusive('production',{owner:'p',headSha:'main'},io),/guarded merge is active/)
 })
 
+test('issue 2958 open claims never depend on the GitHub labels= filtered listing', () => {
+  const requested=[]
+  const rows=[
+    {number:1,title:'claim',body:'b1',html_url:'u1',labels:[{name:'db-claim'}]},
+    {number:2,title:'work',body:'b2',html_url:'u2',labels:[{name:'db-work'}]},
+    {number:3,title:'pr',body:'b3',html_url:'u3',labels:[{name:'db-claim'}],pull_request:{}},
+    {number:4,title:'claim',body:'b4',html_url:'u4',labels:['db-claim']},
+  ]
+  const claims=githubIo.openClaims((endpoint)=>{requested.push(endpoint);return /labels=/.test(endpoint)?[]:rows})
+  assert.deepEqual(requested,['repos/u2giants/shared-db/issues?state=open&per_page=100'])
+  assert.deepEqual(claims.map((claim)=>claim.number),[1,4])
+})
+
+test('issue 2958 closed claim history fails closed when the labels= listing is empty', () => {
+  assert.throws(()=>githubIo.closedClaimsForWork(1769,()=>[]),/refusing to treat claim history as empty/)
+  assert.throws(()=>githubIo.closedClaimsForWork(1769,()=>null),/refusing to treat claim history as empty/)
+  assert.deepEqual(githubIo.closedClaimsForWork(1769,()=>[{number:5,title:'CLAIM: #12 other',body:'b',html_url:'u',state:'closed'}]),[])
+})
+
 test('issue 1688 routes non-migration pull requests through the guarded merge lane', () => {
   const io=memoryIo()
   io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})
@@ -2796,6 +2815,24 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
     ()=>acquireExclusive('merge',{owner:'migration-without-claim',pr:7,headSha:'docs-head'},io),
     /requires exactly one live author claim/,
   )
+  // #2958: a CI-only zero-match refusal must name what the lane actually saw.
+  io.openClaims=()=>[{number:44,title:'claim',body:body(['table public.x'],'44','2999-01-01T00:00:00.000Z')}]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic',pr:7,headSha:'docs-head'},io),
+    (error)=>/PR head branch compared: "codex\/docs"/.test(error.message)&&/open claims seen \(1\): #44 branch="codex\/44" active=true/.test(error.message),
+  )
+  io.openClaims=()=>[]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic-empty',pr:7,headSha:'docs-head'},io),
+    /open claims seen \(0\): none/,
+  )
+  const docsClaim=(version,object)=>claimBody({version,objects:[object],owner:'agent-docs',branch:'codex/docs',worktree:'C:/w/docs',expiresAt:new Date('2999-01-01T00:00:00.000Z')})
+  io.openClaims=()=>[{number:45,title:'claim',body:docsClaim('20260814200045','table public.x')},{number:46,title:'claim',body:docsClaim('20260814200046','table public.y')}]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic-multi',pr:7,headSha:'docs-head'},io),
+    (error)=>/requires at most one live author claim/.test(error.message)&&/PR head branch compared: "codex\/docs"/.test(error.message)&&/open claims seen \(2\): #45 branch="codex\/docs" active=true, #46 branch="codex\/docs" active=true/.test(error.message),
+  )
+  io.openClaims=()=>[]
   io.getPrFiles=()=>{throw new Error('GitHub unavailable')}
   assert.throws(
     ()=>acquireExclusive('merge',{owner:'unknown-files',pr:7,headSha:'docs-head'},io),

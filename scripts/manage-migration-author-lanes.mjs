@@ -1185,6 +1185,7 @@ export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.
   })
 }
 function gh(args,options) { return runGitHubCommand(args,options) }
+const hasLabel = (issue, name) => (issue?.labels ?? []).some((label) => (typeof label === 'string' ? label : label?.name) === name)
 
 export function createRefWithReadback(ref,sha,{run=gh,readRef}={}) {
   try{run(['api','-X','POST',`repos/${REPO}/git/refs`,'-f',`ref=${ref}`,'-f',`sha=${sha}`],{expectedFailure:EXPECTED_REF_PRESENCE,idempotentWrite:true});return true}
@@ -1647,10 +1648,17 @@ export const githubIo = {
   atomicReviewMutexRelease(ownerSha){
     return this.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
   },
-  openClaims() {
-    const rows = ghPaginated(`repos/${REPO}/issues?state=open&labels=db-claim&per_page=100`)
-    return rows.filter((x) => !x.pull_request).map((x) => ({ number: x.number, title: x.title, body: x.body, url: x.html_url }))
-  },closedClaimsForWork(issue,pager=ghPaginated){return pager(`repos/${REPO}/issues?state=closed&labels=db-claim&per_page=100`).filter((x)=>!x.pull_request&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].map((match)=>Number(match[1])).filter((number)=>number===Number(issue)).length===1&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].length===1).map((x)=>({number:x.number,title:x.title,body:x.body,url:x.html_url,state:x.state}))},
+  openClaims(pager = ghPaginated) {
+    // #2958: GitHub's `labels=` filtered listing returned [] while the same issues
+    // were open and labelled. List unfiltered and filter the label client-side.
+    const rows = pager(`repos/${REPO}/issues?state=open&per_page=100`)
+    return rows.filter((x) => !x.pull_request && hasLabel(x, 'db-claim')).map((x) => ({ number: x.number, title: x.title, body: x.body, url: x.html_url }))
+  },closedClaimsForWork(issue,pager=ghPaginated){const rows=pager(`repos/${REPO}/issues?state=closed&labels=db-claim&per_page=100`)
+    // #2958: GitHub's labels= listing has returned [] for labelled issues. Closed claim
+    // history only ever grows, so an empty or unreadable listing is a GitHub fault;
+    // treating it as "no history" could make a consumed version or object look free.
+    if(!Array.isArray(rows)||rows.length===0)throw new LaneError('closed db-claim history listing returned no rows; refusing to treat claim history as empty')
+    return rows.filter((x)=>!x.pull_request&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].map((match)=>Number(match[1])).filter((number)=>number===Number(issue)).length===1&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].length===1).map((x)=>({number:x.number,title:x.title,body:x.body,url:x.html_url,state:x.state}))},
   // EVERY open issue is audited, not just the ones somebody remembered to
   // label. Filtering on `labels=db-work` here is what let issues #1188, #1238,
   // #1242, #1266 and #1268 sit unlabelled and therefore invisible to the queue
@@ -6909,15 +6917,18 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
       const pr = io.getPr?.(metadata.pr)
       if (!pr?.head?.sha || pr.head.sha !== metadata.headSha) throw new LaneError('exclusive lane head SHA does not match the live pull request')
       const claims = io.openClaims()
-      const matching = claims.map((claim)=>({ ...claim, lease:parseAuthorLease(claim.body) })).filter((claim)=>!claim.lease.legacy && claim.lease.branch===pr.head.ref && claim.lease.active)
-      if (kind !== 'merge' && matching.length !== 1) throw new LaneError('exclusive lane requires exactly one live author claim for the pull-request branch')
-      if (kind === 'merge' && matching.length > 1) throw new LaneError('exclusive merge lane requires at most one live author claim for the pull-request branch')
+      const parsedClaims = claims.map((claim)=>({ ...claim, lease:parseAuthorLease(claim.body) }))
+      const matching = parsedClaims.filter((claim)=>!claim.lease.legacy && claim.lease.branch===pr.head.ref && claim.lease.active)
+      // Refusals name exactly what the lane saw, so a CI-only mismatch (#2958) is diagnosable from the log.
+      const claimsSeen = () => `; PR head branch compared: ${JSON.stringify(pr.head.ref ?? null)}; open claims seen (${parsedClaims.length}): ${parsedClaims.map((claim)=>`#${claim.number} branch=${JSON.stringify(claim.lease.branch ?? null)} active=${claim.lease.active}${claim.lease.legacy ? ' legacy' : ''}`).join(', ') || 'none'}`
+      if (kind !== 'merge' && matching.length !== 1) throw new LaneError(`exclusive lane requires exactly one live author claim for the pull-request branch${claimsSeen()}`)
+      if (kind === 'merge' && matching.length > 1) throw new LaneError(`exclusive merge lane requires at most one live author claim for the pull-request branch${claimsSeen()}`)
       if (kind === 'merge' && matching.length === 0) {
         let files
         try { files = io.getPrFiles?.(metadata.pr) } catch (error) { throw new LaneError(`exclusive merge lane cannot read pull request files (${error.message})`) }
         if (!Array.isArray(files)) throw new LaneError('exclusive merge lane cannot establish whether the pull request changes migrations')
         const changesMigration = files.some((file) => /^supabase\/migrations\/[^/]+\.sql$/.test(String(file?.path ?? file?.filename ?? '')))
-        if (changesMigration) throw new LaneError('exclusive merge lane requires exactly one live author claim for a pull request that changes migrations')
+        if (changesMigration) throw new LaneError(`exclusive merge lane requires exactly one live author claim for a pull request that changes migrations${claimsSeen()}`)
       }
       if (kind === 'merge' && pr.base?.sha !== io.mainSha?.()) throw new LaneError('pull request is not based on the current main tip')
       if (kind === 'merge' && io.readRef(EXCLUSIVE_REFS.production)) throw new LaneError('production promotion is active; merges are frozen')

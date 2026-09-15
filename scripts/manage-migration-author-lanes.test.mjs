@@ -3623,18 +3623,40 @@ test('stranded reviewer exclusion, reinstatement, release, reap and merged-claim
 // minted unrecoverable without this test failing.
 test('every owner-commit kind that acquires the author mutex is recoverable',async()=>{
   const {readFileSync}=await import('node:fs')
-  const lines=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8').split('\n')
+  const source=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8')
+  const lines=source.split('\n')
   const kinds=new Set()
+  // Holders whose kind is a label passed to the mutex wrapper.
+  for(const match of source.matchAll(/withAuthorMutex\('([a-z-]+)'/g))kinds.add(match[1])
+  // Exclusive lanes mint `db-coordination <kind> ...` through formatLeaseMessage.
+  for(const kind of Object.keys(EXCLUSIVE_REFS))kinds.add(kind)
+  // Literal owner commits, with const/let/plain assignment, ternary messages and
+  // one alias hop (`ownerSha=replacementSha`), acquired anywhere in 15 lines.
   lines.forEach((line,index)=>{
-    const match=/const (\w+)=io\.makeOwnerCommit\(`db-coordination ([a-z-]+)/.exec(line)
-    if(!match)return
-    const window=lines.slice(index,index+4).join('\n')
-    if(new RegExp(`acquire(?:Review)?Mutex\\(${match[1]}\\b`).test(window))kinds.add(match[2])
+    const assign=/(?:(?:const|let)\s+)?(\w+)\s*=\s*io\.makeOwnerCommit\(/.exec(line)
+    if(!assign)return
+    const statement=lines.slice(index,index+3).join('\n')
+    const literalKinds=[...statement.matchAll(/`db-coordination ([a-z-]+)[ `]/g)].map((m)=>m[1])
+    const window=lines.slice(index,index+15).join('\n')
+    const names=new Set([assign[1]])
+    for(const alias of window.matchAll(new RegExp(`(\\w+)=${assign[1]}\\b`,'g')))names.add(alias[1])
+    const acquires=[...names].some((name)=>new RegExp(`acquire(?:Review)?Mutex\\(${name}\\b`).test(window))
+    if(acquires)for(const kind of literalKinds)kinds.add(kind)
   })
-  assert.ok(kinds.size>=8,`scanner found only ${[...kinds]}`)
+  // The scanner must see every holder shape the #2991 review found it blind to.
+  for(const known of ['outcome-repair','admission','preview-rehearsal','reviewer-replacement-lock','reviewer-silence-release-lock','reviewer-abandoned-lease-reap-lock','reviewer-replacement','reviewer-failure-replacement','preview-ready-preparation'])assert.ok(kinds.has(known),`scanner missed ${known}`)
   for(const kind of kinds){
     const io=memoryIo();io.refs.set(MUTEX_REF,'4a69fbbc');io.getCommit=()=>({message:`db-coordination ${kind} x=1`,committer:{date:'2026-08-14T19:55:00Z'}})
     assert.equal(recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io).released,'4a69fbbc',`mutex kind ${kind} is not recoverable`)
+  }
+})
+
+// #2991 review: kinds that never hold the mutex must not ride a hyphen prefix.
+test('non-mutex record kinds that merely share a prefix are refused by mutex recovery',()=>{
+  for(const kind of ['reviewer-failure-release','reviewer-failure','preview-unknown','merge-queue','outcome-repairs']){
+    const io=memoryIo();io.refs.set(MUTEX_REF,'4a69fbbc');io.getCommit=()=>({message:`db-coordination ${kind} issue=1 pr=2`,committer:{date:'2026-08-14T19:55:00Z'}})
+    assert.throws(()=>recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io),/not a recognized coordination lock/,kind)
+    assert.equal(io.refs.get(MUTEX_REF),'4a69fbbc',kind)
   }
 })
 

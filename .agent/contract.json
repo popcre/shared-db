@@ -1,28 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 2967,
+  "work_issue": 2911,
   "generation": 1,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "branch": "claude/merge-lane-claim-read-fail-loud",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-merge-lane-claim-read-fail-loud-20260915",
-  "dispatcher": "Orchestrator (PR #2958 guarded merge run 34985444563 refused with open claims seen (0))",
-  "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
-  "goal": "Make the exclusive merge lane refuse loudly when its open-issue read has no non-PR rows or no claims that GitHub search contradicts, and report what the listing returned, so an empty CI read can never pass as no open claims.",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
-  "assumptions": [
-    "The open issue listing of this repository always contains non-PR issues, so a PR-only or empty listing is a read fault.",
-    "GitHub search for open db-claim issues is an independent read path whose total_count can confirm a genuine absence of claims."
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a nullable boolean column has_talent_likeness, with no default and no backfill, to public.style_guide_files so PopDAM/PopSG can persist the tri-state talent-likeness determination (same semantics as dam.style_guide_file.has_talent_likeness from #2802). Structure only.",
+  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
+  "dispatcher": "Claude shared-db orchestrator",
+  "worker": "claude-2911-author-20260915",
+  "branch": "claude/2911-talent-likeness-column",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-2911",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table dam.style_guide_file"
+  ],
+  "db_writes": [
+    "table public.style_guide_files"
   ],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, workflow or infrastructure write.",
-    "Do not weaken, skip or quarantine any test.",
-    "Do not touch PR #2958 or claim #2957."
+    "backfilling or otherwise writing any row value into has_talent_likeness; this intake authorizes structure only",
+    "inferring the value from a filename, path or folder",
+    "declaring the column NOT NULL or giving it a default",
+    "changing existing grants, RLS policies or other columns of public.style_guide_files",
+    "applying to preview before merge or running production DDL outside the governed promotion workflow"
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the lane script, its test and the evidence pair."]
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "public.style_guide_files is the live application table PopDAM's crawl upserts into, and no function or view depends on its column order.",
+    "NULL is a distinct third answer meaning the source exposed no determination, and is never to be read as FALSE."
+  ],
+  "stop_conditions": [
+    "the governed reviewer returns REVISE",
+    "any repository guard or required check fails and passing it would require weakening or bypassing the guard",
+    "the work would require writing row data rather than structure"
+  ]
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2963,
-  "generation": 1,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/merge-lane-claim-lookup",
@@ -10,8 +10,8 @@
   "dispatcher": "Orchestrator (PR #2958 guarded merge runs 34978196476, 34978397473, 34979303230 refused on claim lookup)",
   "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
   "goal": "Stop the guarded merge lane, the lease re-check and closed-claim history from trusting GitHub's labels= filtered issue listing: list open claims unfiltered with a client-side label filter, fail closed on an empty closed-claim history listing, and make the lane refusal name the claims it saw.",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "assumptions": [
@@ -24,5 +24,5 @@
     "Do not touch PR #2958's branch."
   ],
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the three scripts, the lane test and the evidence pair."]
+  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the three scripts, the lane and lease tests and the evidence pair."]
 }

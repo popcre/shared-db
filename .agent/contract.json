@@ -9,7 +9,7 @@
     "Authorization is issue 2459, dispatched by the coordinating Claude session acting as dispatcher for PR #2991; repo-maintenance only, no migration lane and no db claim.",
     "Only the stale-mutex recovery allowlist and its tests change; lock acquisition behaviour is untouched."
   ],
-  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "base_sha": "1f7dbe47039b0479390e31185f2d30c6b17bea61",
   "branch": "claude/2459-mutex-recovery-kinds",
   "db_reads": [],
   "db_writes": [],
@@ -20,10 +20,10 @@
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
+  "generation": 2,
   "goal": "Make every owner-commit kind that acquires the author mutex recoverable by stale-mutex recovery, with a structural test so a new lock kind cannot ship unrecoverable.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No reviewer assignment until PR #2992 merges.",
     "No hand deletion of refs; no workflow, repository setting or branch protection change."
   ],
   "required_checks": [

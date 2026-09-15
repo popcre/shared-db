@@ -1920,32 +1920,7 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         raw = matches[0].read_text(encoding="utf-8")
         reasons.update(_classify_statements(sql_top_level_statements(raw)))
-        reasons.update(_do_block_reasons(raw))
     return sorted(reasons)
-
-
-_DO_BLOCK = re.compile(r"\bdo\s+(?:language\s+\w+\s+)?(\$[a-z_0-9]*\$)(.*?)\1", re.S)
-
-
-def _do_block_reasons(raw: str) -> set[str]:
-    """A DO block executes at apply time but the tokenizer blanks its body, so scan
-    each body conservatively; dynamic EXECUTE counts as all three (PR #2970 review)."""
-    text = re.sub(r"--[^\n]*", " ", re.sub(r"/\*.*?\*/", " ", raw.lower(), flags=re.S))
-    reasons: set[str] = set()
-    for body in (m.group(2) for m in _DO_BLOCK.finditer(text)):
-        body = " ".join(body.split())
-        if re.search(r"\bexecute\b", body):
-            reasons.update(RISK_TEXT[k] for k in (
-                "permanent_data_rewrite_or_loss", "expected_downtime", "material_access_change"))
-            continue
-        if re.search(r"\b(?:update|delete|truncate|merge|call|copy)\b"
-                     r"|\bdrop (?!trigger if exists|policy if exists)", body):
-            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
-        if re.search(r"\b(?:alter table|lock|cluster|vacuum|reindex|create (?:unique )?index)\b", body):
-            reasons.add(RISK_TEXT["expected_downtime"])
-        if re.search(r"\b(?:grant|revoke|owner to|policy|row level security)\b", body):
-            reasons.add(RISK_TEXT["material_access_change"])
-    return reasons
 
 
 def _classify_statements(statements: list[str] | None) -> set[str]:
@@ -1981,6 +1956,11 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
     # is present no DROP is excused (PR #2970 review).
     has_do = any(re.match(r"^do\b", s) for s in statements)
     for s in statements:
+        # A DO block runs arbitrary code whose body (dollar- or string-quoted) is
+        # neutralised above; no keyword scan of it is sound, so it is every risk
+        # (PR #2970 review: DO 'BEGIN DELETE ... END' and DO $$ PERFORM ... $$).
+        if re.match(r"^do\b", s):
+            reasons.update((loss, downtime, access))
         alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
         on_new_table = bool(alter) and _canonical_name(alter.group(1)) in new_tables
         if (re.match(r"^(?:update|delete|truncate|merge|call|copy|create (?:or replace )?rule)\b", s)

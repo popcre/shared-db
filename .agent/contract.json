@@ -1,31 +1,46 @@
 {
   "schema_version": 1,
-  "work_issue": 2838,
-  "generation": 1,
+  "work_issue": 2969,
+  "generation": 15,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the advisory Documents-only merge authorization check report a green Not applicable status (and a green job) on ordinary code pull requests so red means a genuine refusal.",
-  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
-  "dispatcher": "Albert Hazan (repo-maintenance session request for issue #2838)",
-  "worker": "claude-issue-2838-docs-only-not-applicable",
-  "branch": "claude/issue-2838-docs-only-not-applicable",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ab1c5d8144af304e5",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "branch": "claude/risk-gate-drop-function",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
+  "worker": "agent-a1b90ddbccf740c3f",
+  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting; coordinator ordered an allowlist-only restructure after six review rounds",
+  "base_sha": "1a04fa83cfca2f7cdca23b31449089add29e9ca6",
+  "goal": "Make the production business-risk classifier allowlist-only: a migration reports no business risk only when every top-level statement fullmatches one entry of a single ALLOWLIST constant (create function in sql/plpgsql without security definer, set or argument defaults; drop function if exists without cascade; one nullable built-in-type add column; plain create table; create index on a table created earlier in the migration; comment on). Every other statement, including WITH, EXPLAIN, DO, SELECT and unparsed SQL, reports all three risks. The two refused production migrations give no finding.",
+  "allowed_paths": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not change branch protection or required status contexts.",
-    "Do not delete or weaken any other check; revocation of the required context must still post failure."
-  ],
-  "required_checks": ["node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "git diff --check"],
   "assumptions": [
-    "The Documents-only merge authorization context is advisory and not in main's required contexts.",
-    "A moved head, production freeze, unreadable comparison, or required-context revocation remains a red failure."
+    "Postgres refuses a non-CASCADE DROP FUNCTION while dependents exist, so it removes no rows.",
+    "A nullable ADD COLUMN of a built-in type with no default is a catalog-only change.",
+    "CREATE FUNCTION does not execute the routine body.",
+    "sql_top_level_statements removes comments and neutralises string and dollar-quoted bodies."
+  ],
+  "prohibited_actions": [
+    "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
+    "Do not change the preview-required check.",
+    "Do not weaken, skip or quarantine any test."
+  ],
+  "required_checks": [
+    "python -m pytest -q scripts/test_production_business_risk_gate.py",
+    "node --test scripts/throughput-guard/false-alarm-corpus.test.mjs",
+    "git diff --check"
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing branch protection.",
-    "Stop if completion requires any file outside the allowed paths."
+    "Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."
   ]
 }

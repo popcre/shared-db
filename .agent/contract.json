@@ -1,29 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 2959,
+  "work_issue": 2911,
   "generation": 1,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "branch": "claude/pass2-drop-survives-baseline",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-pass2-drop-survives-baseline-20260915",
-  "dispatcher": "Orchestrator (PR #2958 contract-test run 34973127156 failure after #2948)",
-  "base_sha": "26b6d8c1f0a366ebf59904f43ce1b78b6cd2930f",
-  "goal": "Make the pass-2 supersession repair replay a later applied routine drop unconditionally when no applied migration at or after the dropping file re-declares that routine, so the between-pass baseline cannot defeat the drop guard.",
-  "allowed_paths": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
-  "assumptions": [
-    "The captured pre-adoption baseline loads between pass 1 and pass 2 and can re-create a routine a pass-1 migration dropped.",
-    "The workflow already executes every row the script's snapshot query returns after the pass-2 migration, so no workflow change is needed."
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a nullable boolean column has_talent_likeness, with no default and no backfill, to public.style_guide_files so PopDAM/PopSG can persist the tri-state talent-likeness determination (same semantics as dam.style_guide_file.has_talent_likeness from #2802). Structure only.",
+  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
+  "dispatcher": "Claude shared-db orchestrator",
+  "worker": "claude-2911-author-20260915",
+  "branch": "claude/2911-talent-likeness-column",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-2911",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table dam.style_guide_file"
+  ],
+  "db_writes": [
+    "table public.style_guide_files"
   ],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not weaken, skip or quarantine any contract test.",
-    "Do not touch PR #2958's branch.",
-    "Do not replay a drop from a later migration that is not proven applied in the replay."
+    "backfilling or otherwise writing any row value into has_talent_likeness; this intake authorizes structure only",
+    "inferring the value from a filename, path or folder",
+    "declaring the column NOT NULL or giving it a default",
+    "changing existing grants, RLS policies or other columns of public.style_guide_files",
+    "applying to preview before merge or running production DDL outside the governed promotion workflow"
   ],
-  "required_checks": ["python -m unittest scripts/test_check_pass2_routine_supersession.py", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing the contract-test workflow, the baseline, or any file outside the script, its test and the evidence pair."]
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "public.style_guide_files is the live application table PopDAM's crawl upserts into, and no function or view depends on its column order.",
+    "NULL is a distinct third answer meaning the source exposed no determination, and is never to be read as FALSE."
+  ],
+  "stop_conditions": [
+    "the governed reviewer returns REVISE",
+    "any repository guard or required check fails and passing it would require weakening or bypassing the guard",
+    "the work would require writing row data rather than structure"
+  ]
 }

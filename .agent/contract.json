@@ -1,33 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 2934,
-  "generation": 5,
+  "work_issue": 2911,
+  "generation": 1,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
-  "goal": "Retire public.deactivate_stale_sg_files(text, uuid) by dropping it at reserved version 20260915130626 (claim #2957), removing its contract-test assertions and its generated type entry.",
-  "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
-  "dispatcher": "shared-db orchestrator (marker #2927)",
-  "worker": "agent-a80dae6ce76ef83a1",
-  "branch": "claude/2934-retire-deactivate-stale-sg-files-v2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a80dae6ce76ef83a1",
-  "allowed_paths": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
-  "db_writes": ["function public.deactivate_stale_sg_files"],
-  "prohibited_actions": [
-    "No production dispatch or production write.",
-    "No preview apply; the orchestrator runs preview and production.",
-    "Do not change public.reconcile_stale_sg_files_batch, public.preview_stale_sg_files, or their grants.",
-    "Do not remove any contract assertion about reconcile_stale_sg_files_batch or preview_stale_sg_files."
+  "goal": "Add a nullable boolean column has_talent_likeness, with no default and no backfill, to public.style_guide_files so PopDAM/PopSG can persist the tri-state talent-likeness determination (same semantics as dam.style_guide_file.has_talent_likeness from #2802). Structure only.",
+  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
+  "dispatcher": "Claude shared-db orchestrator",
+  "worker": "claude-2911-author-20260915",
+  "branch": "claude/2911-talent-likeness-column",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-2911",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
   ],
-  "required_checks": ["bash scripts/check-sql.sh", "python -m pytest -q scripts/test_migration_derivation.py", "git diff --check"],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table dam.style_guide_file"
+  ],
+  "db_writes": [
+    "table public.style_guide_files"
+  ],
+  "prohibited_actions": [
+    "backfilling or otherwise writing any row value into has_talent_likeness; this intake authorizes structure only",
+    "inferring the value from a filename, path or folder",
+    "declaring the column NOT NULL or giving it a default",
+    "changing existing grants, RLS policies or other columns of public.style_guide_files",
+    "applying to preview before merge or running production DDL outside the governed promotion workflow"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
   "assumptions": [
-    "The wrapper has no live caller: popdam3 calls reconcile_stale_sg_files_batch directly, no cron job calls it, and only shared-db contract tests referenced it (orchestrator check recorded on #2934).",
-    "Renumbered from burned version 20260915111317 (claim #2943, never applied anywhere) past main's 20260915111626 to satisfy the backdated-migration guard; PR #2944 closed as superseded.",
-    "Generation 5 rebases the evidence onto main 1ffb60a1, which carries the pass-2 replay fix (#2960) and the merge-lane claim lookup fix (#2964)."
+    "public.style_guide_files is the live application table PopDAM's crawl upserts into, and no function or view depends on its column order.",
+    "NULL is a distinct third answer meaning the source exposed no determination, and is never to be read as FALSE."
   ],
   "stop_conditions": [
-    "Stop if any live caller, view, or function depending on the wrapper is found.",
-    "Stop if the retirement requires changing any object other than the wrapper."
+    "the governed reviewer returns REVISE",
+    "any repository guard or required check fails and passing it would require weakening or bypassing the guard",
+    "the work would require writing row data rather than structure"
   ]
 }

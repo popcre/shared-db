@@ -2,39 +2,43 @@
   "schema_version": 1,
   "work_issue": 2729,
   "outcome": "ready-for-merge",
-  "pr": 2979,
+  "pr": 2981,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2729/5",
-  "contract_sha256": "1f4b734879751e53e88c9d0778e67d7f4e966bc7b30d9d73d2f5b7b0b29bb3e1",
-  "head_sha": "36c13fddbf7fca73dde97e04f0338a4f64af7f6e",
+  "contract_ref": "refs/db-contracts/2729/6",
+  "contract_sha256": "482ebec748d3e6411192cf5297e46bb6caa61b53a10f0eb6af9eee7dc5804e97",
+  "head_sha": "73b8081f0db02d5e8aaedd7a81ee7ed3b099fb25",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
+    ".github/workflows/shared-supabase-migrations.yml",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/migration-train.mjs",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "git diff --check",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/migration-train.test.mjs",
       "exit_code": 0,
-      "evidence": "git diff --check passed at implementation commit 04156915f4c00b494f27192ca1d3383e45a4c22c against base dae4becb79ae2684a246e3edd867ebabb68a712b."
-    },
-    {
-      "command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "567 tests, 567 passed, 0 failed, 0 skipped, 0 todo at 04156915f4c00b494f27192ca1d3383e45a4c22c, including the claim-mode migration hash mismatch refusal that names the mismatched condition and unreadable-candidate refusals."
+      "evidence": "581 tests, 581 pass, 0 fail, 0 skipped. New: a hash-bound claim-mode apply is accepted and the verifier receives the merge commit; a content mismatch, a receipt that binds another artifact, and an absent verifier each refuse with a named condition; the train CLI proposes, validates, authorizes, dispatches, verifies and closes one train and refuses a changed file hash, a stale main, a forged record, a superseded record, a wrong target, commit or allowlist, and a bad applied prefix; the workflow test pins the input and the validate-job verification step."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 04156915f4c00b494f27192ca1d3383e45a4c22c; no call sites added or changed."
+      "evidence": "truth audit OK: call_sites=295"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against origin/main 7c554120. Workflow check tests: 147 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Acceptance logic is unchanged; every existing acceptance and refusal test still passes with its original expectation.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory."
+    "The archived artifact verifier is run with the merge commit as the verification commit, so the migration sha256 in the artifact manifest must equal the merged files.",
+    "The migration_train_ref input is the 25th workflow_dispatch input.",
+    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
   ],
   "stop_conditions_hit": []
 }

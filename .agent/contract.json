@@ -1,1 +1,21 @@
-{"allowed_paths":["scripts/check-applied-migration-edit.mjs","scripts/check-applied-migration-edit.test.mjs","docs/verification/throughput-guard-truth-audit-20260828.json",".agent/contract.json",".agent/completion.json"],"assumptions":["The preview ledger statements column holds each applied statement trimmed without separators, as written by atomic_migration_apply.py and the Supabase CLI.","A migration version belongs to exactly one claim, so preview's ledger row for an added version is that PR's own pre-merge apply."],"base_sha":"ffa300c7918b30a54bb033267596c6a70e66c438","branch":"claude/applied-migration-preview-identical-exception","db_reads":[],"db_writes":[],"dispatcher":"Albert Hazan (owner, repository-maintenance authorization via the orchestrator session)","file_writes":["scripts/check-applied-migration-edit.mjs","scripts/check-applied-migration-edit.test.mjs","docs/verification/throughput-guard-truth-audit-20260828.json",".agent/contract.json",".agent/completion.json"],"generation":1,"goal":"Let the applied-migration edit guard allow an added migration applied only on preview when the file is proven identical to preview's ledger statements, failing closed on unknown evidence and keeping production-applied versions refused.","prohibited_actions":["No database write to preview or production.","Do not touch PR #2933, claim #2931, or issue #2792.","Do not weaken the refusal of edits to production-applied migrations (#2037).","Never delete a claim, lease, verdict, or coordination ref."],"required_checks":["git diff --check","node --test scripts/check-applied-migration-edit.test.mjs","node scripts/check-throughput-truth-audit.mjs"],"route":"repo-maintenance","schema_version":1,"stop_conditions":["Stop if completion would require editing any file outside allowed_paths.","Stop if the rules require touching PR #2933, claim #2931, issue #2792, preview or production."],"work_issue":2936,"work_type":"repo-maintenance","worker":"claude-repo-session-2936","worktree":"C:/repos/shared-db/.claude/worktrees/agent-aafa315b77ccff8b3"}
+{
+  "schema_version": 1,
+  "work_issue": 2792,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Bound public.preview_stale_sg_files and public.reconcile_stale_sg_files_batch in rows read and written so every call finishes well under the 8s production statement ceiling at ~216k-file PopSG volume, preserving guards, advisory serialization, reversible inactivation, deterministic continuation, search-document sync, counters, grants and signatures. Reissued at 20260915023506 (claim #2931). Retirement of stranded preview-only 20260915015414 moves to a follow-up PR; preview keeps an orphan ledger row for it until then.",
+  "base_sha": "4927a11430896e6179884fdd57228304c53fa6ce",
+  "dispatcher": "claude shared-db orchestrator (marker #2927)",
+  "worker": "author-2792b (claim #2931)",
+  "branch": "claude/2792-sg-reconcile-bounded-v2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-acbadde1414c85f87",
+  "allowed_paths": ["supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
+  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
+  "prohibited_actions": ["No production write and no Supabase MCP.", "No statement timeout increase.", "No row delete or replay.", "No change to claim_pdf_backfill_batch or count_pdf_backfill_remaining.", "No grant widening or signature change.", "No edit to the preview migration ledger."],
+  "required_checks": ["git diff --check", "database contract tests (supabase/tests/*.sql)", "python -m pytest scripts"],
+  "assumptions": ["idx_sgf_reconcile_root_active_run_id (root_label, crawl_run_id, id) WHERE is_active exists on preview and production."],
+  "stop_conditions": ["Stop if a bounded call cannot finish under 8s at clone volume without a timeout increase.", "Stop if the fix needs a new index or a change outside the two functions.", "Stop if a lane step refuses on the outcome ledger."],
+  "generation": 4
+}

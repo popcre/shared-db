@@ -1918,18 +1918,70 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
-        sql = migration_statements(matches[0].read_text(encoding="utf-8"))
-        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or any(
-                re.search(r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", statement)
-                and not NON_CASCADE_ROUTINE_DROP.fullmatch(statement)
-                for statement in sql.split(";")):
-            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
-        if re.search(r"\b(lock\s+table|alter\s+table)\b", sql) or re.search(
-                r"\bcreate\s+(?:unique\s+)?index\s+(?!concurrently|if\s+not\s+exists)", sql):
-            reasons.add(RISK_TEXT["expected_downtime"])
-        if re.search(r"\b(grant|revoke|create\s+policy|alter\s+policy|drop\s+policy|row\s+level\s+security)\b", sql):
-            reasons.add(RISK_TEXT["material_access_change"])
+        reasons.update(_classify_statements(sql_top_level_statements(
+            matches[0].read_text(encoding="utf-8"))))
     return sorted(reasons)
+
+
+def _classify_statements(statements: list[str] | None) -> set[str]:
+    """Business-risk classes of one migration, judged statement by statement.
+
+    Built on sql_top_level_statements, so comments are gone, string literals and
+    dollar-quoted bodies are neutralised, and a keyword inside a body or string
+    can neither hide a statement nor invent one. Unparseable SQL is every risk.
+    """
+    loss, downtime, access = (RISK_TEXT["permanent_data_rewrite_or_loss"],
+                              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"])
+    if statements is None:
+        return {loss, downtime, access}
+    reasons: set[str] = set()
+    path_changes = any(re.match(r"^(?:set|reset)\b", s) and "search_path" in s
+                       or "set_config" in s for s in statements)
+    # Tables this migration creates have no existing rows, users or grants.
+    new_tables = {
+        name for s in statements
+        if (m := re.match(rf"^create (?:unlogged )?table ({_NAME}) ?\(", s))
+        and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
+    }
+    # The repository's idempotent convention is CREATE TABLE IF NOT EXISTS then
+    # CREATE INDEX IF NOT EXISTS on it. The old rule excused every IF NOT EXISTS
+    # index; only an index on a table this migration also creates is excused now.
+    created_tables = new_tables | {
+        name for s in statements
+        if (m := re.match(rf"^create (?:unlogged )?table if not exists ({_NAME}) ?\(", s))
+        and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
+    }
+    # A DO block EXECUTES at apply time, but its body is neutralised, so while one
+    # is present no DROP is excused (PR #2970 review).
+    has_do = any(re.match(r"^do\b", s) for s in statements)
+    for s in statements:
+        alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
+        on_new_table = bool(alter) and _canonical_name(alter.group(1)) in new_tables
+        if (re.match(r"^(?:update|delete|truncate|merge|create (?:or replace )?rule)\b", s)
+                or re.match(r"^(?:with|explain)\b", s)
+                and re.search(r"\b(?:update|delete|truncate|merge|insert)\b", s)
+                or re.match(r"^insert\b", s) and re.search(r"\bon conflict\b.*\bdo update\b", s)
+                or re.search(r"\bdrop (?!trigger if exists|policy if exists)", s)
+                and not (not has_do and NON_CASCADE_ROUTINE_DROP.fullmatch(s))):
+            reasons.add(loss)
+        index = re.match(rf"^create (?:unique )?index (concurrently )?(?:if not exists )?"
+                         rf"(?:{_IDENT} )?on (?:only )?({_NAME})(?=[ (]|$)", s)
+        if (re.match(r"^(?:lock|cluster|vacuum|reindex|refresh materialized view)\b", s)
+                or index and not (index.group(1) or _canonical_name(index.group(2)) in created_tables)
+                or not index and re.match(r"^create (?:unique )?index\b", s)
+                or alter and not on_new_table and not all(
+                    _alter_table_action_is_low_risk(a, types_trusted=not path_changes)
+                    for a in _split_top_level_commas(alter.group(2)))):
+            reasons.add(downtime)
+        if re.search(r"\b(?:grant|revoke|create policy|alter policy|drop policy|row level security)\b", s):
+            policy = re.match(rf"^create policy {_IDENT} on ({_NAME})(?: |$)", s)
+            grant = re.fullmatch(rf"grant [^;]+? on (?:table )?({_NAME}(?: ?, ?{_NAME})*) to .+", s)
+            if not (on_new_table
+                    or policy and _canonical_name(policy.group(1)) in new_tables
+                    or grant and all(_canonical_name(n.strip()) in new_tables
+                                     for n in _split_top_level_commas(grant.group(1)))):
+                reasons.add(access)
+    return reasons
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:

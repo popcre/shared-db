@@ -2205,7 +2205,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             migrations.mkdir(parents=True)
             (migrations / "20260814000000_safe.sql").write_text("create table core.safe(id bigint); insert into core.safe values (1);")
             self.assertEqual(classify_sql(root, ["20260814000000"]), [])
-            (migrations / "20260814000001_risky.sql").write_text("alter table core.safe add column x text; revoke select on core.safe from anon;")
+            (migrations / "20260814000001_risky.sql").write_text("alter table core.safe alter column id type numeric; revoke select on core.safe from anon;")
             reasons = classify_sql(root, ["20260814000001"])
             self.assertIn("users may be interrupted", reasons)
             self.assertIn("access or permissions materially change", reasons)
@@ -3525,7 +3525,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             ("TRUNCATE dflow.a;", "permanent_data_rewrite_or_loss"),
             ("DELETE FROM dflow.a WHERE id > 0;", "permanent_data_rewrite_or_loss"),
             ("UPDATE dflow.a SET id = 1;", "permanent_data_rewrite_or_loss"),
-            ("ALTER TABLE dflow.a ADD COLUMN c text;", "expected_downtime"),
+            ("ALTER TABLE dflow.a ALTER COLUMN c TYPE bigint;", "expected_downtime"),
             ("LOCK TABLE dflow.a IN SHARE MODE;", "expected_downtime"),
             ("CREATE UNIQUE INDEX a_u ON dflow.a (id);", "expected_downtime"),
             ("GRANT SELECT ON dflow.a TO authenticated;", "material_access_change"),
@@ -3562,7 +3562,82 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "drop function public.f;",
             "drop function if exists public.f(text) /* x */ cascade;",
             "drop routine public.f(text);",
+            "DROP FUNCTION IF EXISTS public.f(text);\nDO $$ BEGIN DROP TABLE core.safe; END $$;",
+            "drop function public.f(text); do $$ begin delete from core.safe; end $$;",
+            "drop function public.f(text); DO LANGUAGE plpgsql $$ begin update core.safe set id = 1; end $$;",
             "drop table core.safe;",
+        ]:
+            with self.subTest(body=body):
+                self.assertIn(loss, self.classify(body))
+
+    def test_ordinary_additive_migrations_are_not_reported(self):
+        """Production run 34989644100 (#2911) was refused on the first body alone.
+
+        A nullable column of a built-in type with no default is a catalog-only
+        change on Postgres 11+; objects created in the same migration have no
+        existing users, rows or grants to disturb.
+        """
+        for body in [
+            "alter table public.style_guide_files\n  add column has_talent_likeness boolean null;",
+            "ALTER TABLE public.t ADD COLUMN IF NOT EXISTS note text, ADD COLUMN n integer;",
+            "create table core.n(id bigint primary key, v text);\n"
+            "create index n_v_idx on core.n (v);\n"
+            "alter table core.n enable row level security;\n"
+            "create policy n_read on core.n for select to authenticated using (true);\n"
+            "create policy n_write on core.n for update to authenticated using (true);\n"
+            "grant select, update on table core.n to authenticated;",
+            "create index concurrently if not exists t_v_idx on public.t (v);",
+        ]:
+            with self.subTest(body=body):
+                self.assertEqual(self.classify(body), [])
+
+    def test_blocking_or_rewriting_alters_are_still_reported(self):
+        downtime = RISK_TEXT["expected_downtime"]
+        for body in [
+            "alter table public.t add column c timestamptz default now();",
+            "alter table public.t add column c boolean default false;",
+            "alter table public.t add column c boolean not null;",
+            "alter table public.t add column c integer check (c > 0);",
+            "alter table public.t add column c bigint references public.u(id);",
+            "alter table public.t add column c serial;",
+            "alter table public.t add column c public.some_domain;",
+            "alter table public.t alter column c type bigint;",
+            "alter table public.t add column n text, alter column c set not null;",
+            "alter table public.t add constraint c_chk check (c > 0);",
+            "create index t_v_idx on public.t (v);",
+            "create index if not exists t_v_idx on public.t (v);",
+            "create unique index t_u on public.t (v);",
+            "lock table public.t in access exclusive mode;",
+            "set search_path = public, pg_catalog; alter table t add column c text;",
+            "alter table public.t add column c text; /* unterminated comment",
+        ]:
+            with self.subTest(body=body):
+                self.assertIn(downtime, self.classify(body))
+
+    def test_access_changes_on_existing_objects_are_still_reported(self):
+        access = RISK_TEXT["material_access_change"]
+        for body in [
+            "grant select on public.t to anon;",
+            "create table core.n(id bigint); grant select on core.n, public.t to anon;",
+            "revoke select on core.n from anon;",
+            "alter table public.t enable row level security;",
+            "create policy p on public.t for select using (true);",
+            "grant select on all tables in schema public to anon;",
+            "alter default privileges in schema public grant select on tables to anon;",
+        ]:
+            with self.subTest(body=body):
+                self.assertIn(access, self.classify(body))
+
+    def test_row_changing_statements_are_still_reported_wherever_they_sit(self):
+        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
+        for body in [
+            "update public.t set v = 1;",
+            "with gone as (delete from public.t returning id) select count(*) from gone;",
+            "insert into public.t(id, v) values (1, 'x') on conflict (id) do update set v = excluded.v;",
+            "merge into public.t using public.u on t.id = u.id when matched then delete;",
+            "alter table public.t drop column v;",
+            "create table core.n(id bigint); drop table public.t;",
+            "DO $x$ BEGIN DELETE FROM public.t; END $x$; drop function public.f(text);",
         ]:
             with self.subTest(body=body):
                 self.assertIn(loss, self.classify(body))

@@ -407,6 +407,13 @@
       "reason": "This call site reports independent evidence and preserves the existing refusal exit."
     },
     {
+      "site": "scripts/check-applied-migration-edit.mjs:48",
+      "semantic_key": "scripts/check-applied-migration-edit.mjs:e6719ff8d6382390495d51b24dc424affb58a8db4f2e8d505cafc4bef6debb09:1",
+      "line_sha256": "e6719ff8d6382390495d51b24dc424affb58a8db4f2e8d505cafc4bef6debb09",
+      "disposition": "excluded",
+      "reason": "This comment documents the preview-only exception's fail-closed refusal on absent or unreadable ledger evidence and makes no throughput or derivation claim."
+    },
+    {
       "site": "scripts/check-applied-migration-edit.mjs:35",
       "semantic_key": "scripts/check-applied-migration-edit.mjs:eea90ebb6704b333bda8c31dab907dc4d9d086fa20cd901465707c1aea303fb3:1",
       "line_sha256": "eea90ebb6704b333bda8c31dab907dc4d9d086fa20cd901465707c1aea303fb3",
@@ -2017,7 +2024,7 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     }
   ],
-  "call_site_count": 286,
-  "call_site_sha256": "f281572ba84b60cc2986bca5c9860c6639abe9b58bbd753179815557fe7d3ac4",
+  "call_site_count": 287,
+  "call_site_sha256": "b5fcc594e6635fafa481fb99f3f1ca28e80c1871e9066118fb350aa95ee4db37",
   "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."
 }

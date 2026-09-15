@@ -1,36 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 2707,
+  "work_issue": 2936,
   "outcome": "ready-for-merge",
-  "pr": 2932,
+  "pr": 2935,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2707/4",
-  "contract_sha256": "e2863b5bdfb0e8903de7bec4b80f4e42bcc1eee835bc8a8997b09f3ac64504f8",
-  "head_sha": "f33316d230ca01c3113a5225b7a757d453da203a",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "docs/verification/throughput-guard-truth-audit-20260828.json", "scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
+  "contract_ref": "refs/db-contracts/2936/1",
+  "contract_sha256": "30f8c7382a2dc01fec9c81cbb521047b71922f9790a87e452ddb0242c7fc5e1d",
+  "head_sha": "6b1d26d86ee8dcc6d4f5c32a23b79fb312ef0d51",
+  "files_changed": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-applied-migration-edit.mjs",
+    "scripts/check-applied-migration-edit.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "The added reviewer startup wording is explicitly classified as a non-database diagnostic; all 286 semantic sites reconcile."
-    },
-    {
-      "command": "node --test scripts/run-governed-review.test.mjs",
-      "exit_code": 0,
-      "evidence": "Current-main owning suite passed 52 tests with 0 failures, 0 cancelled, 0 skipped and 0 todo; the subsequent main integration changed only an unrelated handoff document."
-    },
-    {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors in the contracted implementation and evidence pair."
+      "evidence": "No whitespace errors between base ffa300c7 and implementation 6b1d26d8 (update from main)."
+    },
+    {
+      "command": "node --test scripts/check-applied-migration-edit.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 35, pass 35, fail 0; identical and CRLF bodies allowed, five modified bodies refused, production-applied and unknown evidence refused."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=287"
     }
   ],
   "assumptions_resolved": [
-    "The consumer maps exact toolkit tokens for turn-limit cancellation, provider cancellation, unknown terminal state, Muse startup refusal and Qwen content inspection while preserving raw stderr only in the wrapper's private evidence.",
-    "A nonzero wrapper result never publishes or records an approval, including when stdout contains a fake approval line.",
-    "DeepSeek send and reply receive the exact governed head; conflicting or duplicate governed-head arguments refuse before provider execution."
+    "Both appliers store trimmed statements without separators (split_sql strip in atomic_migration_apply.py); the matcher constrains only whitespace and semicolons between statements, and fails closed on absent, empty, padded, or non-string evidence."
   ],
   "stop_conditions_hit": []
 }

@@ -2,47 +2,34 @@
   "schema_version": 1,
   "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 2640,
+  "pr": 2996,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/5",
-  "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
-  "head_sha": "4762db3662c45095281a98e73cde3b363f5998d1",
+  "contract_ref": "refs/db-contracts/2301/6",
+  "contract_sha256": "388ff5aa673073fb6d495a6fa850d42fc3afffb88ac47937fa0f189141ab2a51",
+  "head_sha": "487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe",
   "files_changed": [
-    "plan_author_lane_abandonment_lifecycle.md",
-    "scripts/coordination-scenarios.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/capacity-state.test.mjs"
+    "plan_author_lane_abandonment_lifecycle.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "command": "node --test scripts/lib/documents-only-change.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 4762db3662c45095281a98e73cde3b363f5998d1 (main 37fb9be0b598a8ff94f4cccf51d7651a79aac11c merged): tests 630, pass 630, fail 0, cancelled 0, skipped 0, todo 0."
-    },
-    {
-      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
-      "exit_code": 0,
-      "evidence": "Run at 4762db3662c45095281a98e73cde3b363f5998d1: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
-    },
-    {
-      "command": "python scripts/test_production_migration_guard.py",
-      "exit_code": 0,
-      "evidence": "Run at 4762db3662c45095281a98e73cde3b363f5998d1: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
+      "evidence": "Run at implementation head 487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe (base main 7eac0c7110e597bb8380c75037f2f1b4730d6a9b): pass 22, fail 0, cancelled 0, skipped 0, todo 0. Confirms the classifier that treats plan_author_lane_abandonment_lifecycle.md as a rulebook file, never documents-only, is intact."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors reported for 37fb9be0b598a8ff94f4cccf51d7651a79aac11c..4762db3662c45095281a98e73cde3b363f5998d1."
+      "evidence": "No whitespace errors reported for 7eac0c7110e597bb8380c75037f2f1b4730d6a9b..487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe."
     }
   ],
   "assumptions_resolved": [
-    "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
-    "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
-    "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
-    "PR 2640 closes sub-issue 2994 and references parent 2301, matching the one-closing-issue reviewer rule; generation 5 rewords one prohibited action that tripped the cancelled-work guard (local check now OK).",
-    "Issue 2301 remains open for Phase B-D."
+    "Phase A landed as merge commit 7eac0c7110e597bb8380c75037f2f1b4730d6a9b; verified with git log and the merged state of PR 2640.",
+    "The guarded merge authorized head e7619dc3e391cefa016c5cfad8510d59b41d6cbe under governed APPROVE ref refs/db-review-verdicts/2994-2640-e7619dc3e391cefa016c5cfad8510d59b41d6cbe; sub-issue 2994 is closed as completed.",
+    "Only the plan document changes here; no script, test, workflow or configuration file is touched, and no check or guard is weakened.",
+    "plan_author_lane_abandonment_lifecycle.md is a rulebook file, so the documents-only exemption does not apply and this pull request carries the full evidence pair, governed review and guarded merge.",
+    "Issue 2301 remains open for Phases B-D."
   ],
   "stop_conditions_hit": []
 }

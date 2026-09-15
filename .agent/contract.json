@@ -1,27 +1,21 @@
 {
   "schema_version": 1,
-  "generation": 5,
+  "generation": 6,
   "work_issue": 2301,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement only Phase A Steps 1-2 of the author-lane abandonment lifecycle so capacity can be relinquished from any machine while all work authority remains protected and resume is recovery-gated.",
-  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
-  "dispatcher": "Claude shared-db coordinator (takeover of idle PR 2640, authorized 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Phase A repository-maintenance takeover worker",
-  "branch": "codex/issue-2301-phase-a",
+  "goal": "Record the Phase A landing evidence in the plan_author_lane_abandonment_lifecycle.md STATUS table so Steps 1-2 cite the merge commit, guarded merge head, governed approval ref and check results; no behaviour, schema or database change.",
+  "base_sha": "7eac0c7110e597bb8380c75037f2f1b4730d6a9b",
+  "dispatcher": "Claude shared-db coordinator (issue 2301 repo-maintenance, 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Phase A status-record worker",
+  "branch": "claude/2301-phase-a-status",
   "worktree": "C:/repos/shared-db/.claude/worktrees/disney-creative-unmapped-titles-7b4149",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/capacity-state.test.mjs",
-    "scripts/coordination-scenarios.test.mjs",
     "plan_author_lane_abandonment_lifecycle.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/capacity-state.test.mjs",
-    "scripts/coordination-scenarios.test.mjs",
     "plan_author_lane_abandonment_lifecycle.md",
     ".agent/contract.json",
     ".agent/completion.json"
@@ -31,27 +25,23 @@
   "prohibited_actions": [
     "No database, preview, production, or infrastructure action",
     "No claim, branch, pull request, worktree, or coordination-ref deletion",
-    "No live capacity transition merely to prove the feature",
+    "No change to any script, test, workflow, or configuration file",
     "No Phase B-D implementation in this pull request",
-    "No rewrite of the existing Phase A branch commits; update only by merge"
+    "No weakening of any existing check or guard"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
-    "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
-    "python scripts/test_production_migration_guard.py",
+    "node --test scripts/lib/documents-only-change.test.mjs",
     "git diff --check"
   ],
   "assumptions": [
     "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator",
-    "PR 2640 had no commits or comments after 2026-09-11T22:08Z; the coordinator authorized takeover on 2026-09-15 after verifying more than 24h idle",
-    "Generation 4 rebinds the unchanged generation-3 scope to main e317e92a after a merge (not a force-push); no path, database, or action scope is widened",
-    "The REVISE findings from the governed review at 8e94f114 were addressed at 1907f424; a fresh exact-head governed review is still required",
-    "Generation 5 only rewords one prohibited action that tripped the cancelled-work guard and binds PR 2640 to sub-issue 2994 (closes) with parent 2301 (refs); scope is unchanged"
+    "Phase A implementation landed as merge commit 7eac0c7110e597bb8380c75037f2f1b4730d6a9b (PR 2640, sub-issue 2994 closed); this pull request only records that fact in the plan STATUS table",
+    "plan_author_lane_abandonment_lifecycle.md is a rulebook file, so this change is never documents-only and takes the full contract, review and guarded-merge route",
+    "This pull request closes sub-issue 2997 and references parent 2301, matching the one-closing-issue reviewer rule"
   ],
   "stop_conditions": [
-    "Stop if implementing Phase A would release object or version protection",
-    "Stop if a safe result would require deleting or mutating a worktree or coordination ref",
-    "Stop if current main moves before the final exact-head review-to-merge cycle",
-    "Stop if Phase A cannot preserve existing fail-closed parser and collision behavior"
+    "Stop if recording the evidence would require editing any non-prose file",
+    "Stop if the cited merge commit, guarded merge head or verdict ref cannot be verified from git and the GitHub record",
+    "Stop if current main moves before the final exact-head review-to-merge cycle"
   ]
 }

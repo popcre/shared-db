@@ -5586,6 +5586,93 @@ test('the exact byte-pinned #2509 claim apply is valid immutable historical-rebi
   assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,versions:['20260907131729']},pinnedHistoricalClaimApplyIo()),/found 0/)
 })
 
+// #2729 / popcre/ai-devops#401 Step 6: a claim-mode apply outside the registry
+// is accepted only when its archived artifact binds the hash that merged.
+function hashBoundClaimApplyIo({verify='ok',appliedCommit='1'.repeat(40),rehearsalMode='claim',withVerifier=true}={}){
+  const runId=34922309051,dispatchHead='f'.repeat(40),version='20260910120000',calls=[]
+  const artifact={id:77,name:`preview-migration-apply-${appliedCommit}`,digest:`sha256:${'d'.repeat(64)}`,expired:false,workflow_run:{id:runId,head_sha:dispatchHead}}
+  const io={
+    calls,
+    issueComments:()=>[{body:`preview apply https://github.com/u2giants/shared-db/actions/runs/${runId}`}],
+    previewApplyRun:()=>({
+      run:{id:runId,path:'.github/workflows/shared-supabase-migrations.yml',event:'workflow_dispatch',status:'completed',conclusion:'success',run_attempt:1,head_sha:dispatchHead},
+      jobs:{total_count:0,jobs:[]},
+      artifacts:{total_count:1,artifacts:[artifact]},
+      logs:`Bounded apply ${JSON.stringify({allowlist:[version],appliedCommit,previewProjectRef:'mvpkijzfmfcxhnzqogzs',rehearsalMode,runId,schema:'shared-db-preview-instance-binding/v1'})}`,
+    }),
+  }
+  if(withVerifier)io.verifyPreviewApplyArtifact=(request)=>{
+    calls.push(request)
+    if(verify==='mismatch'){const error=new Error('Command failed');error.stderr=`REFUSED: migration content mismatch: ${version}\n`;throw error}
+    return {verified:true,runId:request.run.id,artifactId:verify==='wrong-artifact'?78:request.artifact.id,artifactDigest:request.artifact.digest,versions:request.versions}
+  }
+  return io
+}
+
+test('a pre-merge claim-mode apply whose artifact binds the merged migration hash is accepted',()=>{
+  const merge='c'.repeat(40),io=hashBoundClaimApplyIo()
+  assert.deepEqual(validateOriginalPreviewApplyEvidence({issue:2792,pr:2800,versions:['20260910120000'],mergeCommitSha:merge},io),{type:'preview-apply',run_id:'34922309051'})
+  assert.equal(io.calls.length,1)
+  assert.equal(io.calls[0].verificationCommit,merge)
+  assert.equal(io.calls[0].binding.appliedCommit,'1'.repeat(40))
+})
+
+test('a pre-merge claim-mode apply with a different migration hash refuses and names the condition',()=>{
+  const input={issue:2792,pr:2800,versions:['20260910120000'],mergeCommitSha:'c'.repeat(40)}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({verify:'mismatch'})),/found 0; rejected candidates: run 34922309051 \(preview-apply\): claim-mode archived artifact did not verify against merge commit c{40}: REFUSED: migration content mismatch: 20260910120000/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({verify:'wrong-artifact'})),/\(preview-apply\): claim-mode archived artifact receipt does not bind run 34922309051, artifact 77/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({withVerifier:false})),/\(preview-apply\): claim-mode apply outside the restoration registry needs the archived artifact verifier/)
+  // Without a merge commit, and for a non-claim binding, the general path never opens.
+  assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,mergeCommitSha:null},hashBoundClaimApplyIo()),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({rehearsalMode:'merged-main-rehearsal'})),/found 0/)
+})
+
+// #2729 / #401 Step 6: every rejected candidate names the condition it failed.
+test('a claim-mode apply whose merged migration hash differs refuses and names the mismatched condition',()=>{
+  const input={issue:2509,pr:2513,versions:['20260907131728'],mergeCommitSha:'c5f85ad3a98b7a5598e8c81a56735473d5bb5487'}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo({migrationBody:'select 1;\n'})),
+    /found 0; rejected candidates: run 34157812748 \(preview-apply\): claim-mode migration hash mismatch: supabase\/migrations\/20260907131728_popsg_preview_stats_indexed_categories\.sql at merge commit c5f85ad3/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo({appliedCommit:'a'.repeat(40)})),/run 34157812748 \(preview-apply\): claim-mode applied commit a{40} is not the registered bcc26039/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo({previewProject:'wrong-preview'})),/\(preview-apply\): binding preview project is wrong-preview/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,versions:['20260907131729']},pinnedHistoricalClaimApplyIo()),/binding allowlist \["20260907131728"\] is not the expected versions \["20260907131729"\]/)
+  // The same run is also judged, and rejected, as a reconciliation candidate.
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo({migrationBody:'select 1;\n'})),/run 34157812748 \(preview-ledger-reconciliation\): workflow path is \.github\/workflows\/shared-supabase-migrations\.yml/)
+})
+
+test('every rejected preview-evidence candidate reports its failed condition, unreadable ones included',()=>{
+  const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:'b'.repeat(40)}
+  const refusal=(io)=>{try{validateOriginalPreviewApplyEvidence(input,io)}catch(error){return error.message}assert.fail('expected a refusal')}
+  assert.match(refusal({...immutablePreviewApplyIo(),issueComments:()=>[]}),/found 0; no candidate run was linked from the issue$/)
+  assert.match(refusal(immutablePreviewApplyIo({artifactRunId:'33308168017'})),/run 33308168016 \(preview-apply\): artifact belongs to run 33308168017/)
+  assert.match(refusal(immutablePreviewApplyIo({mergeCommitSha:'c'.repeat(40)})),/run 33308168016 \(preview-apply\): binding is neither a merged-main rehearsal of pull request #1809/)
+  const noDigest=immutablePreviewApplyIo();noDigest.previewApplyRun=()=>{const evidence=immutablePreviewApplyIo().previewApplyRun();delete evidence.artifacts.artifacts[0].digest;return evidence}
+  assert.match(refusal(noDigest),/\(preview-apply\): preview apply artifact has no sha256 digest/)
+  const noDelta=immutablePreviewApplyIo();noDelta.previewApplyRun=()=>({...immutablePreviewApplyIo().previewApplyRun(),logs:immutablePreviewApplyIo().previewApplyRun().logs.replace('- added: 20260828232207','- added: (none)')})
+  assert.match(refusal(noDelta),/\(preview-apply\): ledger delta added \[\], not exactly the expected versions \["20260828232207"\]/)
+  const unreadable=immutablePreviewApplyIo();unreadable.previewApplyRun=()=>{throw new Error('HTTP 404 run not found')}
+  const message=refusal(unreadable)
+  assert.match(message,/run 33308168016 \(preview-apply\): unreadable candidate: HTTP 404 run not found/)
+  assert.match(message,/run 33308168016 \(preview-ledger-reconciliation\): unreadable candidate: HTTP 404 run not found/)
+  const failedDownstream=immutablePreviewApplyIo(),evidence=failedDownstream.previewApplyRun();evidence.run.conclusion='failure';evidence.jobs=downstreamPromotionFailureJobs({preview:'failure'})
+  assert.match(refusal({...failedDownstream,previewApplyRun:()=>evidence}),/\(preview-apply\): conclusion is failure without a proven preview success/)
+  const archived=immutablePreviewApplyIo(),archivedEvidence=archived.previewApplyRun();archivedEvidence.artifacts.artifacts[0].id=456;archivedEvidence.logs=archivedEvidence.logs.replaceAll('Report the preview ledger delta','UNKNOWN STEP')
+  assert.match(refusal({...archived,previewApplyRun:()=>archivedEvidence}),/\(preview-apply\): logs have no named preview ledger delta step and no archived artifact verifier is available/)
+  assert.match(refusal({...archived,previewApplyRun:()=>archivedEvidence,verifyPreviewApplyArtifact:(request)=>({verified:true,runId:request.run.id,artifactId:457,artifactDigest:request.artifact.digest,versions:request.versions})}),/\(preview-apply\): archived artifact receipt did not verify \(verified=true, run 33308168016, artifact 457/)
+  // A run linked twice is one candidate; acceptance is unchanged.
+  const twice=immutablePreviewApplyIo();twice.issueComments=()=>[{body:'https://github.com/u2giants/shared-db/actions/runs/33308168016 and - apply `33308168016` — success'}]
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,twice),{type:'preview-apply',run_id:'33308168016'})
+})
+
+test('rejected reconciliation candidates name the failed condition',()=>{
+  const input={issue:1722,pr:1748,versions:['20260830013942'],mergeCommitSha:'b'.repeat(40)}
+  const refusal=(io,given=input)=>{try{validateOriginalPreviewApplyEvidence(given,io)}catch(error){return error.message}assert.fail('expected a refusal')}
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,immutablePreviewReconciliationIo()),{type:'preview-ledger-reconciliation',run_id:'33307904277',orphan_version:'20260828113920',replacement_version:'20260830013942'})
+  assert.match(refusal(immutablePreviewReconciliationIo({sourcePr:9999})),/run 33307904277 \(preview-ledger-reconciliation\): logs do not record SOURCE_PR: 1748/)
+  assert.match(refusal(immutablePreviewReconciliationIo({relation:'behind'})),/\(preview-ledger-reconciliation\): run head 75a6e35e[0-9a-f]+ is not at or after merge commit b{40} \(comparison behind\)/)
+  assert.match(refusal(immutablePreviewReconciliationIo({replacement:'20260828113920'})),/\(preview-ledger-reconciliation\): reconciliation is a same-version reset of 20260828113920, not a rename/)
+  assert.match(refusal(immutablePreviewReconciliationIo(),{...input,versions:['20260830013942','20260830013943']}),/\(preview-ledger-reconciliation\): reconciliation evidence covers exactly one version, not 2/)
+})
+
 function historicalTerminalIo(overrides={}){
   const manifest={target:'preview',preview_allowlist:'20260907131728',claim_pr:'2513',claim_head_sha:'1be8f325dbf1ff035bd5039638dc47c14a3eb155',commit_sha:'c5f85ad3a98b7a5598e8c81a56735473d5bb5487',historical_preview_source_pr:'2513',historical_preview_original_run_map:'20260907131728:34157812748'}
   const readyInput={issue:2509,pr:2513,head_sha:manifest.claim_head_sha,bundle_id:'7e75bf09d81bc26fd310797c9db658629871b3ed186ee4788dfce4a6ac13b42b',route:'historical_rebind',route_context:manifest.commit_sha,manifest}

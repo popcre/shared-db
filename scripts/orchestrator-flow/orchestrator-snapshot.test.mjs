@@ -41,7 +41,7 @@ test('agents suppress progress chatter and report one terminal fact',()=>{
 test('snapshot and terminal check-in retries converge to one immutable event',()=>{
   const stored=new Map(),compareCreate=({key,record,event})=>{const value=record??event,prior=stored.get(key);if(prior){if(!record&&canonicalJson(prior)!==canonicalJson(value))throw new Error('collision');return{status:'existing',event_id:(record?record.notification:event).event_id}}stored.set(key,value);return{status:'created',event_id:(record?record.notification:event).event_id}}
   const first=buildOrchestratorSnapshot(input()),changed=input();changed.claims.push({issue:99,writes:['core.z']})
-  const readers={readPublished:(key)=>stored.get(key)},one=publishSnapshotTransition(changed,{previousSnapshot:first,publish:compareCreate,...readers}),two=publishSnapshotTransition(changed,{previousSnapshot:first,publish:compareCreate,...readers})
+  const readers={readPublished:(key)=>stored.get(key)},one=publishSnapshotTransition(changed,{previousSnapshot:first,capturedAt:'2026-09-11T17:00:00Z',publish:compareCreate,...readers}),two=publishSnapshotTransition(changed,{previousSnapshot:first,capturedAt:'2026-09-11T17:00:05Z',publish:compareCreate,...readers})
   assert.equal(one.notification.event_id,two.notification.event_id);assert.equal(stored.size,1)
   const check={status:'blocked',issue:99,evidence_id:'artifact:block-99'}
   const terminal={...readers,readTerminalOutcome:(issue)=>stored.get(`agent-terminal:${issue}`)};publishAgentCheckIn(check,{publish:compareCreate,...terminal});publishAgentCheckIn(check,{publish:compareCreate,...terminal})

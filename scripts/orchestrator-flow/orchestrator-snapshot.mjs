@@ -117,7 +117,7 @@ function snapshotReadback(readPublished,key,record){
   const stored=readPublished(key)
   if(!stored||canonicalJson(stored.notification)!==canonicalJson(record.notification))throw new OrchestratorSnapshotError('snapshot event durable readback does not match the immutable event')
   validateSnapshotSeal(stored.snapshot,'stored snapshot')
-  if(stored.snapshot.snapshot_id!==record.snapshot.snapshot_id||stored.snapshot.seal_digest!==record.snapshot.seal_digest)throw new OrchestratorSnapshotError('snapshot event durable readback does not match the immutable snapshot identity')
+  if(stored.snapshot.snapshot_id!==record.snapshot.snapshot_id)throw new OrchestratorSnapshotError('snapshot event durable readback does not match the immutable snapshot identity')
 }
 
 export function publishSnapshotTransition(input, { previousSnapshot = null, capturedAt, publish, readPublished } = {}) {

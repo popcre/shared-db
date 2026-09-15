@@ -1,56 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 2912,
+  "work_issue": 2911,
   "outcome": "ready-for-merge",
-  "pr": 2795,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2912/4",
-  "contract_sha256": "50373689e09612440c7bea59c123eda75bf2d98a7540adb9b31ceca88d3cbce6",
-  "head_sha": "cac9573d5bd16f771236316b0ad4936acb31e0c7",
+  "pr": 2966,
+  "migration_versions": [
+    "20260915143302"
+  ],
+  "contract_ref": "refs/db-contracts/2911/1",
+  "contract_sha256": "cc5936dfbf6c6f80f86fe2ef88c786d423e0a8f189355d4a9ba13c285e2a2b1e",
+  "head_sha": "5c6d8d11bd88bdcd7461d2247b5ba1214dbb15e9",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/qualify-change.mjs",
-    "scripts/orchestrator-flow/qualify-change.test.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/select-preview-route.test.mjs",
-    "scripts/test_production_business_risk_gate.py"
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table public.style_guide_files"
+  ],
   "checks": [
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "706 tests, 706 passed, 0 failed, 0 skipped, 0 cancelled after refreshing onto main 668360f4."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_business_risk_gate",
-      "exit_code": 0,
-      "evidence": "Ran 146 tests, OK, after refreshing onto main 668360f4."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=292 after refreshing onto main 668360f4."
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "231 files scanned, every GitHub call goes through the shared transport."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check origin/main HEAD reported nothing on the refreshed implementation."
+      "evidence": "Static checks passed at head e393303d with migration 20260915143302 (reserved by claim #2965)."
     }
   ],
   "assumptions_resolved": [
-    "Merged prerequisites #2750, #2901 and sender popcre/ai-devops#435 verified merged.",
-    "Refresh merge of main c82f2f04 took main's evidence pair in the merge commit; the only content conflict was the truth-audit inventory, resolved by carrying every semantic-key disposition from both sides and recomputing count and digest from discovery.",
-    "Immutable contract generation 4 is unchanged; its base 6934a535 remains an ancestor of the implementation head.",
-    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action."
+    "No migration defines a function returning public.style_guide_files rows, a %ROWTYPE use, or a positional insert-select on the table, so appending a column cannot break a dependent routine.",
+    "The column is nullable with no default and no backfill, so every existing row stays NULL. No database was read or written by this authoring work; db_reads is reported empty."
   ],
   "stop_conditions_hit": []
 }

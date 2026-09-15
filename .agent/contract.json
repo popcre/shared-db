@@ -1,62 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 2912,
-  "generation": 4,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Consume the sender-side database preview classification and make no-preview routing explicit, exact-input-bound, deterministic, target-bound, and fail closed before claim or review admission.",
-  "base_sha": "6934a53552e85cad54310433516808ed08781ee0",
-  "dispatcher": "Codex programme 401 repository-maintenance continuation",
-  "worker": "Codex receiver classification continuation",
-  "branch": "codex/433-no-db-preview",
-  "worktree": "C:/repos/shared-db-worktrees/401-2795-resume-20260914",
+  "work_issue": 2911,
+  "generation": 1,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add a nullable boolean column has_talent_likeness, with no default and no backfill, to public.style_guide_files so PopDAM/PopSG can persist the tri-state talent-likeness determination (same semantics as dam.style_guide_file.has_talent_likeness from #2802). Structure only.",
+  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
+  "dispatcher": "Claude shared-db orchestrator",
+  "worker": "claude-2911-author-20260915",
+  "branch": "claude/2911-talent-likeness-column",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-2911",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/qualify-change.mjs",
-    "scripts/orchestrator-flow/qualify-change.test.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/select-preview-route.test.mjs",
-    "scripts/test_production_business_risk_gate.py"
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/qualify-change.mjs",
-    "scripts/orchestrator-flow/qualify-change.test.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/select-preview-route.test.mjs",
-    "scripts/test_production_business_risk_gate.py"
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table dam.style_guide_file"
+  ],
+  "db_writes": [
+    "table public.style_guide_files"
+  ],
   "prohibited_actions": [
-    "No database, preview, production, migration, marker, issue #2714, or pull request #2738 mutation.",
-    "No trust in a self-declared no-preview decision without an independently supplied exact file set, target identity, and matching content digests."
+    "backfilling or otherwise writing any row value into has_talent_likeness; this intake authorizes structure only",
+    "inferring the value from a filename, path or folder",
+    "declaring the column NOT NULL or giving it a default",
+    "changing existing grants, RLS policies or other columns of public.style_guide_files",
+    "applying to preview before merge or running production DDL outside the governed promotion workflow"
   ],
   "required_checks": [
-    "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
-    "python -m unittest scripts.test_production_business_risk_gate",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "node scripts/check-github-transport-conformance.mjs",
-    "git diff --check"
+    "bash scripts/check-sql.sh"
   ],
   "assumptions": [
-    "The ai-devops sender contract is interface context only and remains owned by its existing worker.",
-    "NO_DATABASE_PREVIEW returns work to its natural owner before claim, review, or preview reads; all database-impacting or unverifiable classifications retain governed database admission.",
-    "Recovery contract after integration onto main 703c333847475d8adcb590904454a72dc27e0867; this does not claim prospective publication. Corrects old mistaken shared-db issue 433 to local receiver issue 2912; parent is popcre/ai-devops issue 433.",
-    "Generation 3 integrates merged PR #2901 and adds a receiver adapter for the actual landed sender schema. Sender digest, complete files, independent Git identity and impact are checked before binding repository-local identity; legacy receiver envelopes remain supported.",
-    "Generation 4 places the immutable recovery contract after the implementation head so Git evidence contains exactly the two permitted metadata files."
+    "public.style_guide_files is the live application table PopDAM's crawl upserts into, and no function or view depends on its column order.",
+    "NULL is a distinct third answer meaning the source exposed no determination, and is never to be read as FALSE."
   ],
   "stop_conditions": [
-    "Any required test fails.",
-    "Exact target, file-set, or content-digest binding cannot be independently verified.",
-    "The change would require any prohibited mutation or weaken an existing database safety gate."
+    "the governed reviewer returns REVISE",
+    "any repository guard or required check fails and passing it would require weakening or bypassing the guard",
+    "the work would require writing row data rather than structure"
   ]
 }

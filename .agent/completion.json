@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2390,
   "outcome": "ready-for-merge",
-  "pr": 2941,
+  "pr": 2950,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2942/1",
-  "contract_sha256": "e87838300f1d2946231d51472aa993809ef6bee8071331bbd273e486d7d380bf",
-  "head_sha": "1ccc446dda236d589878ff36061233b7044e76a9",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2390/1",
+  "contract_sha256": "9f1d759daf2c07b617db66d16ea924118a77cdc1587023f777b6bc8ec446e753",
+  "head_sha": "36855a9822894c8d77f142bba4a2f7ef27376f5d",
+  "files_changed": ["scripts/public-data-venue.test.mjs", ".github/workflows/public-data-venue-guard.yml"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "exit_code": 0, "evidence": "625 tests passed with zero failures, cancellations, skips or todo; the new regression test reproduces 'cannot advance outcome from dispatched to dispatched' without the fix and passes with it."},
+    {"command": "node --test scripts/public-data-venue.test.mjs", "exit_code": 0, "evidence": "4 tests passed with zero failures, cancellations, skips or todo; a planted tracked docs/planted-violation.csv made the repository test fail naming that file before it was removed."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
   ],
   "assumptions_resolved": [
-    "The dispatch advance is skipped only when the work issue's outcome history is valid and already at dispatched; any other state still advances and still refuses illegal transitions.",
-    "No database object, migration, claim or lease was written; claim #2931, claim #2937, issue #2792 and PR #2938 were untouched."
+    "The exception permits only foreign-keys, indexes, pg-stat-statements-topN and relation-stats CSVs directly inside docs/verification/database-efficiency/<timestamp>/runN/; the new narrowness test proves other names, depths, directories and formats stay flagged.",
+    "The advisor-security JSON publication question was not acted on and is reported to the owner; no database, claim or lease was written."
   ],
   "stop_conditions_hit": []
 }

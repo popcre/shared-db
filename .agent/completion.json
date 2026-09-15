@@ -8,8 +8,6 @@
   "contract_sha256": "bdc4866c4ac138c72bdf21bde653d17f905fb0b3d3120af646bf486cba99dbf3",
   "head_sha": "dc847a4349d08d3bbd6d6ed965368918ad4f67b6",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "scripts/check-orchestrator-marker.mjs",
     "scripts/check-orchestrator-marker.test.mjs"
   ],

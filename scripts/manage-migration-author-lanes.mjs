@@ -247,7 +247,7 @@ export const REVIEWERS = Object.freeze([
 // every historical GLM review recorded before this change still has to resolve to
 // a wrapper. One of those lookups is not null-guarded, so a missing name is a
 // crash, not a graceful miss. Retired names stay readable forever; only
-// ACTIVE_REVIEWERS receives new work -- the same pattern used to pause Qwen.
+// ACTIVE_REVIEWERS receives new work -- the same exclusion QUARANTINED_REVIEWERS applies.
 //
 // 'glm-5.3' occupies the SAME rotation slot 'glm-5.2' held, so no in-flight
 // sequence is reassigned out of order. It no longer keeps ACTIVE_REVIEWERS at the

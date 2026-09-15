@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2301/5",
   "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
-  "head_sha": "596a19899b800e836605d9d497cb46959ee4206a",
+  "head_sha": "ff5864fb813c153437cad772caebbf885c0e0cae",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -21,22 +21,22 @@
     {
       "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a (main e317e92a merged): tests 621, pass 621, fail 0, cancelled 0, skipped 0, todo 0."
+      "evidence": "Re-run at implementation head ff5864fb813c153437cad772caebbf885c0e0cae (main e5a2a449 merged): tests 621, pass 621, fail 0, cancelled 0, skipped 0, todo 0."
     },
     {
       "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
+      "evidence": "Re-run at implementation head ff5864fb813c153437cad772caebbf885c0e0cae: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
     },
     {
       "command": "python scripts/test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
+      "evidence": "Re-run at implementation head ff5864fb813c153437cad772caebbf885c0e0cae: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors were reported for e317e92ae6e28d7df8c16964d5b94b21f14bfcf9..596a19899b800e836605d9d497cb46959ee4206a."
+      "evidence": "No whitespace errors were reported for e5a2a44911f4c36a567a402000e006be7136bb62..ff5864fb813c153437cad772caebbf885c0e0cae."
     }
   ],
   "assumptions_resolved": [

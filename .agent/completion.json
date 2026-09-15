@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/13",
-  "contract_sha256": "d13f8adcebc394bc218385e204b2411965585fa6cf7b37e22ab37a78f7a67b76",
-  "head_sha": "821dfc1d451add31c7996cc51aa57a74035c3948",
+  "contract_ref": "refs/db-contracts/2969/14",
+  "contract_sha256": "1f8880eaf37c81e46a8892e809c4ef0531bb8f19eccc8f91a965c4ddd43d0757",
+  "head_sha": "339be06563d48fe4a1418771e093f88c114ff568",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -29,13 +29,13 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors against origin/main 8d241b2f."
+      "evidence": "No whitespace errors against origin/main dcda2cd9."
     }
   ],
   "assumptions_resolved": [
     "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
     "No database, preview, rehearsal, production, migration, claim or lease write or dispatch.",
-    "Branch refreshed by merge onto main 8d241b2f (#2974); main's only gate-script change is one PREVIEW_PRODUCER_PATHS entry, and the suite still gives 155 passed, 237 subtests."
+    "Branch refreshed by merge onto main dcda2cd9; main's changes since 8d241b2f do not touch the gate script or its tests, so the pull request diff is unchanged."
   ],
   "stop_conditions_hit": []
 }

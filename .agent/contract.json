@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "work_issue": 2969,
-  "generation": 13,
+  "generation": 14,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/risk-gate-drop-function",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
   "worker": "agent-a1b90ddbccf740c3f",
   "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting; coordinator ordered an allowlist-only restructure after six review rounds",
-  "base_sha": "8d241b2f9a0baa8237a5e9a2e588e465220180c9",
+  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
   "goal": "Make the production business-risk classifier allowlist-only: a migration reports no business risk only when every top-level statement fullmatches one entry of a single ALLOWLIST constant (create function in sql/plpgsql without security definer, set or argument defaults; drop function if exists without cascade; one nullable built-in-type add column; plain create table; create index on a table created earlier in the migration; comment on). Every other statement, including WITH, EXPLAIN, DO, SELECT and unparsed SQL, reports all three risks. The two refused production migrations give no finding.",
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",

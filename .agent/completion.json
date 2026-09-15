@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2459/1",
   "contract_sha256": "538e2e197622c06519706723f023d7ddbcc5eb6956be43efe272e83361360572",
-  "head_sha": "3ccd87cb5d136bb687f7e89cb4d11f7e6a6dc59c",
+  "head_sha": "b2ff0aba79b5a804ea36ff22f9be80d401ff5f7f",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -15,11 +15,11 @@
   "db_writes": [],
   "checks": [
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the two implementation files."},
-    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "571 tests, 571 pass, 0 fail, 0 skipped; the two new recovery tests fail 2 of 2 against the unfixed script."}
+    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "572 tests, 572 pass, 0 fail, 0 skipped at b2ff0aba, including the structural holder scan and the prefix-refusal test."}
   ],
   "assumptions_resolved": [
-    "The structural scan found every owner commit followed by acquireMutex or acquireReviewMutex; all are now recoverable, including two kinds the issue did not name.",
-    "Lock acquisition behaviour is unchanged; only the recovery allowlist and tests changed."
+    "Every mutex holder is recoverable: withAuthorMutex labels (including outcome-repair), exclusive lanes, literal owner commits (including reviewer-replacement and reviewer-failure-replacement); the structural test asserts the scanner sees each shape the #2991 review flagged.",
+    "Kinds now match exactly, so non-mutex kinds such as reviewer-failure-release are refused; lock acquisition behaviour is unchanged."
   ],
   "stop_conditions_hit": []
 }

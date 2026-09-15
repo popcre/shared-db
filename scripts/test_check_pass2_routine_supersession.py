@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from check_pass2_routine_supersession import (
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from check_pass2_routine_supersession import (  # noqa: E402
     broad_routine_revoke_schemas,
     classify_collisions,
     declared_routines,

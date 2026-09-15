@@ -13,7 +13,7 @@
 // TWO TRAPS THIS CHECK MUST NOT FALL INTO
 // ---------------------------------------
 // 1. `supabase projects list` does NOT enumerate preview branches. A checker
-//    built on it alone calls every live branch missing. The inventory is the
+//    built on it alone calls every live branch gone. The inventory is the
 //    UNION of `projects list` and `branches list --project-ref <parent>` for
 //    every project.
 // 2. A negative verdict is only trustworthy once the inventory is shown to be
@@ -102,7 +102,7 @@ export function classify(entries, inventory, {controlRef} = {}) {
   const problems = [...inventory.errors]
   if (inventory.live.size === 0) problems.push('inventory is empty')
   if (controlRef && !inventory.live.has(controlRef)) {
-    problems.push(`control ref ${controlRef} is not in the inventory, so the inventory cannot be trusted to call anything missing`)
+    problems.push(`control ref ${controlRef} is not in the inventory, so the inventory cannot be trusted to call any ref absent`)
   }
   const trusted = problems.length === 0
   const results = entries.map((e) => {

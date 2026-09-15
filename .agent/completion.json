@@ -1,22 +1,24 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2860,
   "outcome": "ready-for-merge",
-  "pr": 2941,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2942/1",
-  "contract_sha256": "e87838300f1d2946231d51472aa993809ef6bee8071331bbd273e486d7d380bf",
-  "head_sha": "1ccc446dda236d589878ff36061233b7044e76a9",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2946,
+  "migration_versions": ["20260915111626"],
+  "contract_ref": "refs/db-contracts/2860/1",
+  "contract_sha256": "2eb486fb3bd147a46af54d27ec8ca05b22ac8862d91e314d373aee55e5750114",
+  "head_sha": "beb2d4a37e2d7ecd2c838555fe000c976aa05968",
+  "files_changed": [".github/live-proofs/2860.sql", "scripts/production-verification-sidecars/20260915111626.json", "scripts/production_business_risk_gate.py", "scripts/production_catalog_verification.py", "scripts/test_production_catalog_verification.py", "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql", "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"],
+  "db_reads": ["table public.style_guide_search_documents", "table public.style_guide_files", "table public.style_guide_render_queue", "function public.has_app_access", "function auth.uid", "function auth.role"],
+  "db_writes": ["function public.search_style_guide_library_v2", "table public.style_guide_files"],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "exit_code": 0, "evidence": "625 tests passed with zero failures, cancellations, skips or todo; the new regression test reproduces 'cannot advance outcome from dispatched to dispatched' without the fix and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed for the added migration."},
+    {"command": "python3 scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "Ran 44 tests, OK."},
+    {"command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py", "exit_code": 0, "evidence": "202 passed and 146 passed, zero failures or skips."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 6fc54636 and implementation beb2d4a3."}
   ],
   "assumptions_resolved": [
-    "The dispatch advance is skipped only when the work issue's outcome history is valid and already at dispatched; any other state still advances and still refuses illegal transitions.",
-    "No database object, migration, claim or lease was written; claim #2931, claim #2937, issue #2792 and PR #2938 were untouched."
+    "Read-only production EXPLAIN ANALYZE of the extracted default bodies: Files about 6.3s before and 3.57s after; Guides over 8s before and 4.53s after, with the timeout unchanged.",
+    "Main had no newer change to the function, migrations or gates since base 6fc54636, so no re-derivation was needed."
   ],
   "stop_conditions_hit": []
 }

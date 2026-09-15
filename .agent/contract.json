@@ -11,9 +11,10 @@
   "assumptions": [
     "The owner account hit the 5,000 requests/hour GitHub limit twice this week; the fix removes wasted reads and adds no throttle, sleep or longer interval.",
     "scripts/manage-migration-author-lanes.mjs is owned by open PRs #2981 and #2640 and is not touched here.",
-    "check-exact-head-approval.mjs is unchanged: its ref names lead with the issue number, so matching-refs cannot be narrowed to one pull request."
+    "check-exact-head-approval.mjs is unchanged: its ref names lead with the issue number, so matching-refs cannot be narrowed to one pull request.",
+    "Generation 1 already exists for issue 2985; this contract is generation 2, republished after main (e317e92a) was merged so the evidence pair follows the implementation head."
   ],
-  "base_sha": "7c554120c7a8181207845665d6f2d1a25d58e0dd",
+  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
   "branch": "claude/github-request-waste-fix",
   "db_reads": [],
   "db_writes": [],
@@ -27,7 +28,7 @@
     "scripts/orchestrator-snapshot.test.mjs",
     "scripts/check-migration-pr-lease.mjs"
   ],
-  "generation": 1,
+  "generation": 2,
   "goal": "Remove wasted GitHub API reads in check-dispatch-collision, orchestrator-snapshot and check-migration-pr-lease while keeping every safety proof and output identical.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
@@ -47,5 +48,5 @@
   "work_issue": 2985,
   "work_type": "repo-maintenance",
   "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/coldlion-api-storage-6c5a79"
+  "worktree": "C:/repos/shared-db/.claude/worktrees/pr2984"
 }

@@ -1,24 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 2934,
+  "work_issue": 2911,
   "outcome": "ready-for-merge",
-  "pr": 2958,
-  "migration_versions": ["20260915130626"],
-  "contract_ref": "refs/db-contracts/2934/5",
-  "contract_sha256": "c343f5ba6ee34c7a5f9d4fad4cde222a276378718340b9844402f04e9d3408e7",
-  "head_sha": "3db83eb46ed84fdb868473e443a4dee2fcce26dc",
-  "files_changed": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts"],
-  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
-  "db_writes": ["function public.deactivate_stale_sg_files"],
+  "pr": 2966,
+  "migration_versions": [
+    "20260915143302"
+  ],
+  "contract_ref": "refs/db-contracts/2911/1",
+  "contract_sha256": "cc5936dfbf6c6f80f86fe2ef88c786d423e0a8f189355d4a9ba13c285e2a2b1e",
+  "head_sha": "5c6d8d11bd88bdcd7461d2247b5ba1214dbb15e9",
+  "files_changed": [
+    "supabase/migrations/20260915143302_public_style_guide_files_has_talent_likeness.sql",
+    "types/database.types.ts"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table public.style_guide_files"
+  ],
   "checks": [
-    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed on main 1ffb60a1 plus this branch, including the backdated-migration guard for 20260915130626."},
-    {"command": "python -m pytest -q scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "44 passed, 6 subtests passed; the migration declares derived-from: none."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 1ffb60a1 and implementation commit 3db83eb4."}
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at head e393303d with migration 20260915143302 (reserved by claim #2965)."
+    }
   ],
   "assumptions_resolved": [
-    "No live caller: the only non-migration references were the contract tests, now updated; only migration 20260905104802 defines the wrapper and no other function calls it.",
-    "Every assertion about reconcile_stale_sg_files_batch and preview_stale_sg_files is kept; contract 3 now asserts the wrapper no longer exists.",
-    "Version 20260915111317 (claim #2943) was released unapplied and stays burned; this change uses 20260915130626 (claim #2957)."
+    "No migration defines a function returning public.style_guide_files rows, a %ROWTYPE use, or a positional insert-select on the table, so appending a column cannot break a dependent routine.",
+    "The column is nullable with no default and no backfill, so every existing row stays NULL. No database was read or written by this authoring work; db_reads is reported empty."
   ],
   "stop_conditions_hit": []
 }

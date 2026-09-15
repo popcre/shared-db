@@ -3657,13 +3657,18 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             ("CREATE TABLE IF NOT EXISTS public.t (id bigint); CREATE INDEX t_v_idx ON public.t (v);", downtime),
             ("COPY public.t FROM '/tmp/x.csv';", loss),
             ("CALL public.p();", loss),
+            ("SELECT setval('public.my_seq', 1, false);", loss),
+            ("ALTER SEQUENCE public.my_seq RESTART WITH 1;", loss),
+            ("EXECUTE purge_old_rows;", loss),
+            ("select public.rebuild_everything();", downtime),
+            ("ALTER VIEW public.v RENAME TO w;", downtime),
         ]:
             with self.subTest(body=body):
                 self.assertIn(expected, self.classify(body))
 
     def test_drop_inside_a_comment_is_still_ignored(self):
         loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        self.assertNotIn(loss, self.classify("-- drop table core.safe;\n/* drop table core.x cascade; */\nselect 1;"))
+        self.assertNotIn(loss, self.classify("-- drop table core.safe;\n/* drop table core.x cascade; */\ncomment on table core.safe is 'x';"))
 
     def test_disclosed_risks_no_longer_block_promotion(self):
         """Owner ruling 2026-08-18: derived risks are DISCLOSED in the evidence,

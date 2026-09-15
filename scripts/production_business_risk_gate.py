@@ -2010,7 +2010,23 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
                     or grant and all(_canonical_name(n.strip()) in new_tables
                                      for n in _split_top_level_commas(grant.group(1)))):
                 reasons.add(access)
+        # Default-deny: a statement kind the rules above do not model (SELECT or
+        # EXECUTE of existing code, ALTER SEQUENCE/FUNCTION/VIEW/TYPE, CREATE ROLE,
+        # ...) may change data or lock users out, so it reports both (PR #2970 review).
+        if not re.match(_MODELLED_STATEMENT, s):
+            reasons.update((loss, downtime))
     return reasons
+
+
+_MODELLED_STATEMENT = re.compile(
+    r"^(?:comment on|grant|revoke|begin|commit|end|start transaction|notify"
+    r"|set (?:local )?(?:statement_timeout|lock_timeout|search_path|role|client_min_messages)\b"
+    r"|reset|alter table|drop|lock|cluster|vacuum|reindex|refresh materialized view"
+    r"|update|delete|truncate|merge|call|copy|with|explain|do"
+    r"|insert into [^ ]+ ?(?:\(|values|select|default values)"
+    r"|create (?:or replace )?(?:function|procedure|view|trigger|constraint trigger|rule)\b"
+    r"|create (?:unique )?index\b|create (?:unlogged |temporary |temp )?table\b"
+    r"|create (?:policy|schema|sequence|extension|type|materialized view)\b)")
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:

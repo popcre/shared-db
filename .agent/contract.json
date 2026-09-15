@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generation": 1,
   "work_issue": 2939,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Bind governed review authorization to the exact live repository, pull-request target, base, head, merge-base, changed-file set, packet digest and private source receipt.",

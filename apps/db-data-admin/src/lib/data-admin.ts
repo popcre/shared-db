@@ -315,3 +315,85 @@ export function groupScrapedProperties(rows: ScrapedPropertyRow[]) {
   }
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
+
+export type ScrapedInventoryKind = 'property' | 'character' | 'style_guide'
+
+export type ScrapedInventoryRow = AdminRow & {
+  row_key: string
+  entity_kind: ScrapedInventoryKind
+  licensor_key: string
+  licensor_name: string
+  licensor_group_key: string
+  licensor_group_name: string
+  source_purpose: 'Creative' | 'Submissions'
+  display_label: string
+  source_system: string
+  source_table: string
+  source_id: string
+  source_status: string | null
+  latest_seen_at: string | null
+  capture_marker: string | null
+  mapping_state?: 'mapped' | 'conflict' | 'unmapped' | null
+  mapping_display?: string
+  is_unmapped_creative?: boolean
+}
+
+export async function loadScrapedInventory(client: ApiClient, entityKind: ScrapedInventoryKind) {
+  const rows: ScrapedInventoryRow[] = []
+  let cursor: string | null = null
+  do {
+    const { data, error } = await client.rpc('db_data_admin_scraped_source_inventory', {
+      p_entity_kind: entityKind,
+      p_search: null,
+      p_cursor: cursor,
+      p_page_size: 1000,
+    })
+    if (error) throw error
+    const payload = (data ?? {}) as { rows?: ScrapedInventoryRow[]; next_cursor?: string | null }
+    rows.push(...(payload.rows ?? []).map(row => {
+      const isUnmapped = entityKind === 'property' && row.source_purpose === 'Creative' && row.mapping_state === 'unmapped'
+      return {
+        ...row,
+        id: row.row_key,
+        mapping_display: entityKind !== 'property' || row.source_purpose !== 'Creative'
+          ? '—'
+          : row.mapping_state === 'mapped' ? 'Mapped' : row.mapping_state === 'conflict' ? 'Conflict - review required' : 'Unmapped',
+        is_unmapped_creative: isUnmapped,
+      }
+    }))
+    cursor = payload.next_cursor ?? null
+  } while (cursor)
+  return rows
+}
+
+export const UNRESOLVED_LICENSOR_GROUP_KEY = 'unresolved'
+
+export function groupScrapedInventory(rows: ScrapedInventoryRow[]) {
+  const groups = new Map<string, {
+    key: string
+    name: string
+    creative: ScrapedInventoryRow[]
+    submissions: ScrapedInventoryRow[]
+  }>()
+  for (const row of rows) {
+    // The RPC emits one canonical licensor group per row across both purposes;
+    // rows with an unresolved or conflicting licensor share the 'unresolved' group.
+    const key = row.licensor_group_key || UNRESOLVED_LICENSOR_GROUP_KEY
+    const name = row.licensor_group_name || 'Licensor not yet determined'
+    const group = groups.get(key) ?? {
+      key,
+      name,
+      creative: [],
+      submissions: [],
+    }
+    if (row.source_purpose === 'Creative') group.creative.push(row)
+    else group.submissions.push(row)
+    groups.set(key, group)
+  }
+  return [...groups.values()].sort((a, b) => {
+    const aUnresolved = a.key === UNRESOLVED_LICENSOR_GROUP_KEY
+    const bUnresolved = b.key === UNRESOLVED_LICENSOR_GROUP_KEY
+    if (aUnresolved !== bUnresolved) return aUnresolved ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
+}

@@ -1,42 +1,56 @@
 {
   "schema_version": 1,
-  "work_issue": 2729,
+  "work_issue": 2912,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2795,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2729/1",
-  "contract_sha256": "ffd5d071c4618a5c232abdfdd9abf39158acfab06f14c8e5c50c1ba90ceecd07",
-  "head_sha": "5fbd0bb042d7e6f9de1a213340c305a4dba843d9",
+  "contract_ref": "refs/db-contracts/2912/4",
+  "contract_sha256": "50373689e09612440c7bea59c123eda75bf2d98a7540adb9b31ceca88d3cbce6",
+  "head_sha": "2a5f2a95d27314065783daf4c74f53e7b190481c",
   "files_changed": [
     "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "git diff --check",
+      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "git diff --check passed after inventory reconciliation."
+      "evidence": "706 tests, 706 passed, 0 failed, 0 skipped, 0 cancelled after refreshing onto main 82391382."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
       "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed/skipped/cancelled at 7a87003f5ffe13c45212a2edd8b4bdee0d840f26; subsequent implementation commit changes inventory metadata only."
+      "evidence": "Ran 146 tests, OK, after refreshing onto main 82391382."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "Checker discovery validates 287 entries. All 284 prior dispositions retained by semantic key; three new metadata/coordination refusals explicitly reviewed."
+      "evidence": "truth audit OK: call_sites=292 after refreshing onto main 82391382."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "231 files scanned, every GitHub call goes through the shared transport."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main HEAD reported nothing on the refreshed implementation."
     }
   ],
   "assumptions_resolved": [
-    "Exact Git changes are the four library/test files plus the verification inventory.",
-    "No production caller or live adapter activation is included; Steps 6-7 acceptance and issue 2729 remain pending.",
-    "Submitted evidence does not authorize merge: PR 2750 then 2795, exact-head review and required CI remain gates."
+    "Merged prerequisites #2750, #2901 and sender popcre/ai-devops#435 verified merged.",
+    "Refresh merge of main c82f2f04 took main's evidence pair in the merge commit; the only content conflict was the truth-audit inventory, resolved by carrying every semantic-key disposition from both sides and recomputing count and digest from discovery.",
+    "Immutable contract generation 4 is unchanged; its base 6934a535 remains an ancestor of the implementation head.",
+    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action."
   ],
   "stop_conditions_hit": []
 }

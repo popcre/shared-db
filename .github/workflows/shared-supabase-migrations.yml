@@ -25,6 +25,10 @@ on:
         description: "Production only: comma-separated exact migration versions"
         type: string
         required: false
+      derivation_override:
+        description: "Production only: recorded VERSION:BASE=NOTE override for an absent declared base"
+        type: string
+        required: false
       preview_allowlist:
         description: "Preview only: comma-separated exact migration versions. REQUIRED for both dry-run and apply."
         type: string
@@ -101,6 +105,10 @@ on:
         description: "Material-risk apply only: pinned owner-decision evidence artifact digest"
         type: string
         required: false
+      merged_pr_issue_binding:
+        description: "Only for a merged source PR with no GitHub closing link: PR:ISSUE. Verified against the PR body, completion record, migration versions and claim reservations; any mismatch refuses."
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -173,6 +181,10 @@ jobs:
       # preview/production identity contract.
       - name: Test that no workflow pins a preview project ref
         run: node --test scripts/check-workflow-preview-ref.test.mjs
+      # Issue #2429: the ref-config checker must call a live preview branch LIVE and a
+      # stale overlay ref a named failure, never "project deleted".
+      - name: Test the Supabase ref-config checker
+        run: node --test scripts/check-supabase-ref-config.test.mjs
       # Runs the post-merge rehearsal step's OWN map-parsing shell under a real
       # shell. The JavaScript lane tests could not have caught the 2026-08-21
       # one-iteration loop, because the defect was in this workflow's shell.
@@ -301,6 +313,7 @@ jobs:
       # asserted below: this job must never write to production.
       PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
       PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       # FIRST STEP ON PURPOSE, before any credential is used. A lane that can be
       # pointed at the wrong project is worse than no lane, so the ref this job
@@ -974,11 +987,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # write: admission creates a db-coordination commit object and ref via the
+      # Git data API. It grants no database credential; this job holds none.
+      contents: write
       actions: write
       checks: read
       issues: read
       pull-requests: read
+    env:
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1101,12 +1118,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
           SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}
         run: |
           set -euo pipefail
+          # actions/upload-artifact@v4 reports artifact-digest as bare hex, while
+          # the evidence verifier and the preview digest use sha256:<hex> (#2883).
+          if [[ "$REVIEW_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            REVIEW_DIGEST="sha256:${REVIEW_DIGEST}"
+          fi
           if ! [[ "$REVIEW_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::ENGINEER ACTION REQUIRED: automatic review evidence has no canonical artifact digest. Nothing was dispatched." >&2
             exit 2
@@ -1114,12 +1137,14 @@ jobs:
           jq -n \
             --arg sha "$MAIN_SHA" \
             --arg allowlist "$PRODUCTION_ALLOWLIST" \
+            --arg derivation_override "$DERIVATION_OVERRIDE" \
             --arg source_pr "$SOURCE_PR" \
             --arg work_issue "$WORK_ISSUE" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg review_digest "$REVIEW_DIGEST" \
             --arg preview_digest "$PREVIEW_DIGEST" \
-            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest}}' \
+            --arg binding "${SHARED_DB_MERGED_PR_ISSUE_BINDING:-}" \
+            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest,merged_pr_issue_binding:$binding}}' \
             > "$RUNNER_TEMP/automatic-production-dispatch.json"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \
@@ -1229,22 +1254,33 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py prepare \
             --repo "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/bounded-production" \
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Run and verify bounded dry-run
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
           cd "$RUNNER_TEMP/bounded-production"
           supabase link --project-ref "$PRODUCTION_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           set -o pipefail
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           # Re-prove the checkout is still bounded AT THE POINT OF USE, and keep
           # this the LAST command before the push so nothing can run in between.
           # The bound that makes --include-all safe below is the FILESYSTEM, not
@@ -1256,7 +1292,8 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
             --dir "$RUNNER_TEMP/bounded-production" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
           # --include-all is REQUIRED here, and only here. Most of the pending
           # production migrations sort BELOW the remote ledger head, and the CLI
           # refuses to insert those without it. AGENTS.md 5.1(4) licenses this
@@ -1427,11 +1464,17 @@ jobs:
       - name: Hard guard preflight
         env:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py preflight \
             --repo "$GITHUB_WORKSPACE" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Verify immutable production review evidence
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1549,6 +1592,7 @@ jobs:
     environment: production
     env:
       PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - name: Check exact confirmation
         env:
@@ -1771,30 +1815,42 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py prepare \
             --repo "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/bounded-production" \
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Fresh dry-run, then apply
         id: apply
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
           cd "$RUNNER_TEMP/bounded-production"
           supabase link --project-ref "$PRODUCTION_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           set -o pipefail
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           # Re-prove the bound AT THE POINT OF USE. What makes --include-all safe
           # is the FILESYSTEM (prepare kept exactly `remote-ledger | allowlist`),
           # never the flag. Keep this the last check before the push.
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
             --dir "$RUNNER_TEMP/bounded-production" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
           # A FRESH dry-run inside this same run, immediately before the real
           # push. The earlier production-dry-run job was a different run against a
           # different ledger snapshot; only this one describes the database we are

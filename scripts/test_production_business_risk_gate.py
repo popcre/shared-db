@@ -3530,6 +3530,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "create function public.g() returns void language c as 'lib', 'sym';",
             "create function public.g() returns void language plpgsql set search_path = public as $$ begin end $$;",
             "create function public.g(a int default nextval('s')) returns void language sql as 'select 1';",
+            "create function public.g(a int default 7) returns void language sql as $$ $$;",
             "create function g() returns void language sql as 'select 1';",
             "create procedure public.p() language sql as 'delete from public.t';",
         ])
@@ -3601,6 +3602,18 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "create index n_v_idx on core.n (v); create table core.n(id bigint, v text);",
             "create table if not exists core.n (id bigint); create index n_idx on core.n (id);",
             "create table core.n(id bigint); create index if not exists n_idx on core.n (id);",
+            "create table core.n(id bigint); create index concurrently on core.n (id);",
+        ])
+
+    def test_block_comments_end_where_postgres_ends_them(self):
+        """PostgreSQL block comments nest and end only at one or more asterisks then
+        a slash (scan.l xcstop); `*+/` is comment text. Checked on PostgreSQL 18.6."""
+        self.assert_allowed([
+            "/* open /* again */ UPDATE public.t SET x = 1; -- */\ncreate table core.n (a text);",
+            "/* start *+/ UPDATE public.t SET x = 1; -- */\ncreate table core.n (a text);",
+        ], [
+            "/* three **/ UPDATE public.t SET x = 1;",
+            "/* a /* b */ */ UPDATE public.t SET x = 1;",
         ])
 
     def test_allowlist_entry_comment_on(self):

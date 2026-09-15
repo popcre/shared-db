@@ -138,7 +138,7 @@ _BUILTIN_COLUMN_TYPE = (
 # string literal emptied to '' and every dollar-quoted body emptied to $$ $$.
 _ALLOW_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_]*)'
 _ALLOW_QUALIFIED = rf"{_ALLOW_IDENT}\.{_ALLOW_IDENT}"  # schema-qualified only
-_ALLOW_ARGS = r"\((?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no defaults
+_ALLOW_ARGS = r"\((?![^)]*\bdefault\b)(?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no DEFAULT
 _ALLOW_ROUTINE_OPTION = r"(?:language (?:sql|plpgsql)|immutable|stable|volatile|strict|security invoker)"
 ALLOWLIST = {
     # Defines a routine; its body is not executed by CREATE. Only SQL and
@@ -165,7 +165,7 @@ ALLOWLIST = {
         r"[^;]*\)"),
     # An index on a table created by an EARLIER statement of this migration.
     "create_index_on_new_table": re.compile(
-        rf"create (?:unique )?index (?:{_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
+        rf"create (?:unique )?index (?:(?!concurrently )(?!if )(?!on ){_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
     "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
 }
 

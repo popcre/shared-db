@@ -9,7 +9,7 @@
     "Authorization is issue 2467 (repo-maintenance route) dispatched by the Claude repo-maintenance session; no migration lane and no db claim.",
     "The supported option set is exactly the options runGovernedReview reads: issue, pr, head-sha, reviewer, wrapper, worktree, review-slot, replacement-sequence, assignment-id, skip-doctor."
   ],
-  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "base_sha": "1f7dbe47039b0479390e31185f2d30c6b17bea61",
   "branch": "claude/2467-governed-review-unknown-args",
   "db_reads": [],
   "db_writes": [],
@@ -20,7 +20,7 @@
     "scripts/run-governed-review.mjs",
     "scripts/run-governed-review.test.mjs"
   ],
-  "generation": 1,
+  "generation": 2,
   "goal": "Make run-governed-review.mjs refuse unknown arguments such as --slot instead of silently defaulting to review slot 1.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",

@@ -1,27 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 2459,
+  "work_issue": 2467,
   "outcome": "ready-for-merge",
-  "pr": 2991,
+  "pr": 2990,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2459/2",
-  "contract_sha256": "513ce1a7be7da6724ad182c04a24e370190eedcadba0ece998d6eac13931d726",
-  "head_sha": "73e7d83cb02374592a5cef5ca13cb5f3c8812522",
+  "contract_ref": "refs/db-contracts/2467/3",
+  "contract_sha256": "b9f6ad65110f9e563791104a262344936e3fda4fec6bd1990f7c04e41ee338c7",
+  "head_sha": "1fc55e0029367257b86b05aa43dd8139aa21af9b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the two implementation files."},
-    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "572 tests, 572 pass, 0 fail, 0 skipped at b2ff0aba and again at merge 73e7d83c, including the structural holder scan and the prefix-refusal test."}
+    {"command": "node --test --test-reporter=tap scripts/run-governed-review.test.mjs", "exit_code": 0, "evidence": "74 of 74 tests passed, 0 skipped; the new case proves --slot 2 and an unknown option refuse, the full supported set parses with --review-slot 2, and the slot still defaults to 1."}
   ],
   "assumptions_resolved": [
-    "Every mutex holder is recoverable: withAuthorMutex labels (including outcome-repair), exclusive lanes, literal owner commits (including reviewer-replacement and reviewer-failure-replacement); the structural test asserts the scanner sees each shape the #2991 review flagged.",
-    "Kinds now match exactly, so non-mutex kinds such as reviewer-failure-release are refused; lock acquisition behaviour is unchanged."
+    "Every documented invocation of run-governed-review.mjs uses only supported options; the only --slot mention is the handoff note recording this defect."
   ],
   "stop_conditions_hit": []
 }

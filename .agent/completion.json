@@ -1,22 +1,72 @@
 {
   "schema_version": 1,
-  "work_issue": 2429,
+  "work_issue": 2860,
   "outcome": "ready-for-merge",
-  "pr": 2953,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2429/1",
-  "contract_sha256": "caf79dd66b4cfc30cb7f4ac5b9ed4cf4dca310fdd3d2a0b5360f9046fdc170b1",
-  "head_sha": "a29ce641a9504ffaa39b766c63003a73610b05bb",
-  "files_changed": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml"],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2946,
+  "migration_versions": [
+    "20260915111626"
+  ],
+  "contract_ref": "refs/db-contracts/2860/3",
+  "contract_sha256": "404226ead8c5ff989881c3b199ebed189876aa97cc3bd041ce185058ae24eae7",
+  "head_sha": "4f0bbd7ecaedc13a218d72649572176f1f290e02",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2860.sql",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260915111626.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_files",
+    "table public.style_guide_render_queue",
+    "function public.has_app_access",
+    "function auth.uid",
+    "function auth.role"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2"
+  ],
   "checks": [
-    {"command": "node --test scripts/check-supabase-ref-config.test.mjs", "exit_code": 0, "evidence": "7 tests passed with zero failures, cancellations, skips or todo; with branch enumeration sabotaged 4 of them fail, proving the check distinguishes a stale ref from a live branch."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed for the added migration."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Ran 44 tests, OK."
+    },
+    {
+      "command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "202 passed and 146 passed, zero failures or skips."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors between base 6fc54636 and implementation beb2d4a3."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK, 54 sidecars, detector baseline hash matches."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "51 tests, 51 passed, 0 failed, 0 skipped."
+    }
   ],
   "assumptions_resolved": [
-    "A read-only live run against the account classified the deleted ref rjyboqwcdzcocqgmsyel as FAIL UNKNOWN (exit 1) and the rehearsal branch mvpkijzfmfcxhnzqogzs as LIVE; only projects list and branches list ran.",
-    "No database object, migration, claim, lease or Supabase resource was written."
+    "Read-only production EXPLAIN ANALYZE of the extracted default bodies: Files about 6.3s before and 3.57s after; Guides over 8s before and 4.53s after, with the timeout unchanged.",
+    "Main had no newer change to the function, migrations or gates since base 6fc54636, so no re-derivation was needed."
   ],
   "stop_conditions_hit": []
 }

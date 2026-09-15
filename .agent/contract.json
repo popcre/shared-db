@@ -1,46 +1,45 @@
 {
-  "schema_version": 1,
-  "work_issue": 2969,
-  "generation": 15,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "branch": "claude/risk-gate-drop-function",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
-  "worker": "agent-a1b90ddbccf740c3f",
-  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting; coordinator ordered an allowlist-only restructure after six review rounds",
-  "base_sha": "1a04fa83cfca2f7cdca23b31449089add29e9ca6",
-  "goal": "Make the production business-risk classifier allowlist-only: a migration reports no business risk only when every top-level statement fullmatches one entry of a single ALLOWLIST constant (create function in sql/plpgsql without security definer, set or argument defaults; drop function if exists without cascade; one nullable built-in-type add column; plain create table; create index on a table created earlier in the migration; comment on). Every other statement, including WITH, EXPLAIN, DO, SELECT and unparsed SQL, reports all three risks. The two refused production migrations give no finding.",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
+  "assumptions": [
+    "Plan popcre/ai-devops plan_shared-db-complete-throughput-repair.md Step 6 point 1: failed preview-evidence conditions are swallowed silently; every rejected candidate must report which condition failed, and a mismatched hash refuses and names the mismatched condition.",
+    "Generations 1-4 are already published for this issue; this contract is generation 5, rebased onto main dae4becb79ae2684a246e3edd867ebabb68a712b after PRs #2952 and #2970 merged.",
+    "Acceptance logic of validateOriginalPreviewApplyEvidence is unchanged; only refusal detail is added."
   ],
+  "base_sha": "dae4becb79ae2684a246e3edd867ebabb68a712b",
+  "branch": "claude/2729-evidence-rejection-reasons",
   "db_reads": [],
   "db_writes": [],
-  "assumptions": [
-    "Postgres refuses a non-CASCADE DROP FUNCTION while dependents exist, so it removes no rows.",
-    "A nullable ADD COLUMN of a built-in type with no default is a catalog-only change.",
-    "CREATE FUNCTION does not execute the routine body.",
-    "sql_top_level_statements removes comments and neutralises string and dollar-quoted bodies."
+  "dispatcher": "shared-db orchestrator marker #2927",
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
+  "generation": 5,
+  "goal": "Make every rejected preview-evidence candidate, unreadable ones included, report which condition failed, with tests including the claim-mode migration hash mismatch.",
   "prohibited_actions": [
-    "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
-    "Do not change the preview-required check.",
-    "Do not weaken, skip or quarantine any test."
+    "No database, migration, preview, production, claim or marker mutation.",
+    "No change to which candidates are accepted.",
+    "No edits to preflight or routine-rebuild code."
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/throughput-guard/false-alarm-corpus.test.mjs",
-    "git diff --check"
+    "git diff --check",
+    "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
   ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."
-  ]
+    "Stop if the fix would require changing acceptance logic."
+  ],
+  "work_issue": 2729,
+  "work_type": "repo-maintenance",
+  "worker": "Claude Opus 5 subagent",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5d5a34396c8c983d"
 }

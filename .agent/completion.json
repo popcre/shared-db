@@ -4,22 +4,25 @@
   "outcome": "ready-for-merge",
   "pr": 2992,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2987/1",
-  "contract_sha256": "3f2da2510e21f48b3b5185336265a9d536fd856f17ef319a4b363f5497f3392c",
-  "head_sha": "8e655a4383f08084f81f8f050bea745d6a7c5c7f",
+  "contract_ref": "refs/db-contracts/2987/2",
+  "contract_sha256": "1c6efaf759c45bc3ff6ec2d5d0805cb958eb45cb240f52250ca9e3da21d06dc6",
+  "head_sha": "d2ee5c7a4b00f86eea77b0a342ff74b2a2aac4c9",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base f73bd610 and implementation head 8e655a43."},
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs", "exit_code": 0, "evidence": "631 tests, 631 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo after merging main with #2991 and #2984; includes the five #2987 archive and ceiling-refusal tests and the #2991 recoverable-mutex-kind test covering reviewer-verdict-archive-lock."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the working tree before the d2ee5c7a implementation commit."},
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs", "exit_code": 0, "evidence": "632 tests, 632 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo at d2ee5c7a; includes the six #2987 archive tests (one new test pins the review's High finding: a PR closed unmerged at preview and merged with migrations before the mutex keeps its verdict) and the #2991 recoverable-mutex-kind test."}
   ],
   "assumptions_resolved": [
     "Live run archived 546 verdicts (519 merged PRs with no migration, 27 closed unmerged) under refs/db-review-archived-verdicts; 454 remain in the verdict namespace, under the 1000 ceiling.",
-    "Kept: 102 needed by active leases, 14 for open PRs, 338 for merged migration PRs that production promotion re-checks."
+    "Kept: 102 needed by active leases, 14 for open PRs, 338 for merged migration PRs that production promotion re-checks.",
+    "The governed review at f1c27105 (REVISE) raised one High finding, the pull request state map reused under the mutex; d2ee5c7a re-reads it inside the mutex."
   ],
   "stop_conditions_hit": []
 }

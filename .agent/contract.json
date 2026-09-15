@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2987,
-  "generation": 1,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Add a governed, recoverable archive command for old durable reviewer verdicts so the verdict namespace stays under its 1000-ref listing ceiling, and make reviewer assignment name the ceiling as the real cause instead of reporting leases as unreadable.",
@@ -35,7 +35,8 @@
   ],
   "assumptions": [
     "Verdicts of merged PRs that touched supabase/migrations must stay live because production promotion re-runs the exact-head approval check on the merged source PR.",
-    "Archiving moves a verdict ref under refs/db-review-archived-verdicts, so every archived verdict is recoverable."
+    "Archiving moves a verdict ref under refs/db-review-archived-verdicts, so every archived verdict is recoverable.",
+    "Generation 2 follows the governed review of PR #2992 at f1c27105 (REVISE, High: pull request states must be re-read under the mutex); the fix is a later implementation commit, so the evidence pair is republished after it."
   ],
   "stop_conditions": [
     "Stop if archiving would remove a verdict needed by an active reviewer lease, an open PR or a merged migration PR.",

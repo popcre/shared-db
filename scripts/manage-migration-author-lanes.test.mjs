@@ -2795,6 +2795,21 @@ test('issue 2958 open claims never depend on the GitHub labels= filtered listing
   const claims=githubIo.openClaims((endpoint)=>{requested.push(endpoint);return /labels=/.test(endpoint)?[]:rows})
   assert.deepEqual(requested,['repos/u2giants/shared-db/issues?state=open&per_page=100'])
   assert.deepEqual(claims.map((claim)=>claim.number),[1,4])
+  assert.match(claims.listing,/returned 4 rows \(1 pull requests, 1 issues without db-claim, 2 claims\)/)
+})
+
+test('issue 2958 run 34985444563 an empty or PR-only open issue read never passes as no open claims', () => {
+  const noSearch=()=>{throw new Error('search must not run when claims were read')}
+  const pr={number:3,title:'pr',body:'b',html_url:'u',labels:[{name:'db-claim'}],pull_request:{}}
+  assert.throws(()=>githubIo.openClaims(()=>[],noSearch),/returned 0 rows .*refusing to treat open claims as empty/)
+  assert.throws(()=>githubIo.openClaims(()=>[pr],noSearch),/returned 1 rows \(1 pull requests.*refusing to treat open claims as empty/)
+  assert.throws(()=>githubIo.openClaims(()=>null,noSearch),/unreadable; refusing/)
+  const work=[{number:2,title:'work',body:'b',html_url:'u',labels:[{name:'db-work'}]}]
+  const queries=[]
+  assert.throws(()=>githubIo.openClaims(()=>work,(q)=>{queries.push(q);return {total_count:1,items:[{number:2957}]}}),/0 claims\); but GitHub search reports 1 open db-claim issues \(#2957\)/)
+  assert.deepEqual(queries,['repo:u2giants/shared-db is:issue is:open label:db-claim'])
+  assert.throws(()=>githubIo.openClaims(()=>work,()=>({})),/cross-check was unreadable/)
+  assert.deepEqual(githubIo.openClaims(()=>work,()=>({total_count:0,items:[]})),[])
 })
 
 test('issue 2958 closed claim history fails closed when the labels= listing is empty', () => {

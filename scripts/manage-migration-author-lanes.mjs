@@ -1648,11 +1648,24 @@ export const githubIo = {
   atomicReviewMutexRelease(ownerSha){
     return this.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
   },
-  openClaims(pager = ghPaginated) {
+  openClaims(pager = ghPaginated, search = (query) => ghJson(['api', `search/issues?q=${encodeURIComponent(query)}&per_page=100`])) {
     // #2958: GitHub's `labels=` filtered listing returned [] while the same issues
     // were open and labelled. List unfiltered and filter the label client-side.
     const rows = pager(`repos/${REPO}/issues?state=open&per_page=100`)
-    return rows.filter((x) => !x.pull_request && hasLabel(x, 'db-claim')).map((x) => ({ number: x.number, title: x.title, body: x.body, url: x.html_url }))
+    if (!Array.isArray(rows)) throw new LaneError('open issue listing was unreadable; refusing to treat open claims as empty')
+    const issues = rows.filter((x) => !x.pull_request)
+    const claims = issues.filter((x) => hasLabel(x, 'db-claim')).map((x) => ({ number: x.number, title: x.title, body: x.body, url: x.html_url }))
+    const listing = `open issue listing returned ${rows.length} rows (${rows.length - issues.length} pull requests, ${issues.length - claims.length} issues without db-claim, ${claims.length} claims)`
+    // #2958 run 34985444563: the merge lane read ZERO claims in CI while the lease check
+    // in the same run, same token and same call, read #2957. An empty or PR-only read
+    // must never pass as "no open claims": refuse, or prove absence a second way.
+    if (issues.length === 0) throw new LaneError(`${listing}; no issues at all is not a readable answer, refusing to treat open claims as empty`)
+    if (claims.length === 0) {
+      const found = search(`repo:${REPO} is:issue is:open label:db-claim`)
+      if (!Number.isInteger(found?.total_count)) throw new LaneError(`${listing}; the db-claim search cross-check was unreadable, refusing to treat open claims as empty`)
+      if (found.total_count !== 0) throw new LaneError(`${listing}; but GitHub search reports ${found.total_count} open db-claim issues (${(found.items ?? []).map((x) => `#${x.number}`).join(', ')}); refusing to treat open claims as empty`)
+    }
+    return Object.defineProperty(claims, 'listing', { value: listing, enumerable: false })
   },closedClaimsForWork(issue,pager=ghPaginated){const rows=pager(`repos/${REPO}/issues?state=closed&labels=db-claim&per_page=100`)
     // #2958: GitHub's labels= listing has returned [] for labelled issues. Closed claim
     // history only ever grows, so an empty or unreadable listing is a GitHub fault;
@@ -6920,7 +6933,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
       const parsedClaims = claims.map((claim)=>({ ...claim, lease:parseAuthorLease(claim.body) }))
       const matching = parsedClaims.filter((claim)=>!claim.lease.legacy && claim.lease.branch===pr.head.ref && claim.lease.active)
       // Refusals name exactly what the lane saw, so a CI-only mismatch (#2958) is diagnosable from the log.
-      const claimsSeen = () => `; PR head branch compared: ${JSON.stringify(pr.head.ref ?? null)}; open claims seen (${parsedClaims.length}): ${parsedClaims.map((claim)=>`#${claim.number} branch=${JSON.stringify(claim.lease.branch ?? null)} active=${claim.lease.active}${claim.lease.legacy ? ' legacy' : ''}`).join(', ') || 'none'}`
+      const claimsSeen = () => `; PR head branch compared: ${JSON.stringify(pr.head.ref ?? null)}; open claims seen (${parsedClaims.length}): ${parsedClaims.map((claim)=>`#${claim.number} branch=${JSON.stringify(claim.lease.branch ?? null)} active=${claim.lease.active}${claim.lease.legacy ? ' legacy' : ''}`).join(', ') || 'none'}${claims.listing ? `; ${claims.listing}` : ''}`
       if (kind !== 'merge' && matching.length !== 1) throw new LaneError(`exclusive lane requires exactly one live author claim for the pull-request branch${claimsSeen()}`)
       if (kind === 'merge' && matching.length > 1) throw new LaneError(`exclusive merge lane requires at most one live author claim for the pull-request branch${claimsSeen()}`)
       if (kind === 'merge' && matching.length === 0) {

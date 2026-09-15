@@ -2,49 +2,42 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
-    "Generations 1-6 already exist for issue 2728; this contract is generation 7, republished after main (d91f2683) was merged so the evidence pair follows the implementation head.",
-    "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
+    "Authorization is issue 2459, dispatched by the coordinating Claude session acting as dispatcher for PR #2991; repo-maintenance only, no migration lane and no db claim.",
+    "Only the stale-mutex recovery allowlist and its tests change; lock acquisition behaviour is untouched."
   ],
-  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
-  "branch": "claude/2728-step5-preflight-routine-rebuild",
+  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "branch": "claude/2459-mutex-recovery-kinds",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Claude shared-db orchestrator marker #2927",
+  "dispatcher": "Claude coordinating session (dispatcher for PR #2991)",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "generation": 7,
-  "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
+  "goal": "Make every owner-commit kind that acquires the author mutex recoverable by stale-mutex recovery, with a structural test so a new lock kind cannot ship unrecoverable.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No edits to production_business_risk_gate.py, manage-migration-author-lanes.mjs, or any file owned by #2970 or #2729.",
-    "No workflow, repository setting or branch protection change."
+    "No reviewer assignment until PR #2992 merges.",
+    "No hand deletion of refs; no workflow, repository setting or branch protection change."
   ],
   "required_checks": [
     "git diff --check",
-    "python -m unittest scripts/test_check_pass2_routine_supersession.py",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
+    "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs"
   ],
   "route": "repo-maintenance",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop and report if the sidecar registry requires changing production_business_risk_gate.py.",
-    "Stop if the rebuild check blocks existing main migrations without a real rebuild defect."
+    "Stop if recovery would need to accept a commit kind that does not acquire the author mutex.",
+    "Stop if the full lanes test suite regresses."
   ],
-  "work_issue": 2728,
+  "work_issue": 2459,
   "work_type": "repo-maintenance",
   "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a2762539149f39f1a"
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa6c79212374b6e34"
 }

@@ -1,30 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 2728,
+  "work_issue": 2459,
   "outcome": "ready-for-merge",
-  "pr": 2980,
+  "pr": 2991,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2728/7",
-  "contract_sha256": "5ee2a195c4703f28f0f7052a895439fb1bfdf4517dc94829753518db5f111d1a",
-  "head_sha": "3aeb0cf8a0538b6632b9a07dbeed6d301b5f0df2",
+  "contract_ref": "refs/db-contracts/2459/1",
+  "contract_sha256": "538e2e197622c06519706723f023d7ddbcc5eb6956be43efe272e83361360572",
+  "head_sha": "3ccd87cb5d136bb687f7e89cb4d11f7e6a6dc59c",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the four implementation files."},
-    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "Ran 39 tests OK; the two named-parameter drop tests failed before the _lookup_signature fix, and the new rebuild tests prove a drop or replacement without a matching rebuild returns BLOCKED with exit 1."},
-    {"command": "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs", "exit_code": 0, "evidence": "31 of 31 tests passed, including a routine replacement undone by an older drop refusing before any gate runs and refusing the reviewer draw; lanes-manager preflight tests 12 of 12 also pass unchanged."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the two implementation files."},
+    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "571 tests, 571 pass, 0 fail, 0 skipped; the two new recovery tests fail 2 of 2 against the unfixed script."}
   ],
   "assumptions_resolved": [
-    "The rebuild check over the last 40 real main migrations blocked none, so it does not refuse existing migrations without a real defect.",
-    "The single sidecar declaration registry does not exist; production_business_risk_gate.py lists sidecars individually, so building it requires changing that file, which PR #2970 owns. It is reported, not implemented."
+    "The structural scan found every owner commit followed by acquireMutex or acquireReviewMutex; all are now recoverable, including two kinds the issue did not name.",
+    "Lock acquisition behaviour is unchanged; only the recovery allowlist and tests changed."
   ],
   "stop_conditions_hit": []
 }

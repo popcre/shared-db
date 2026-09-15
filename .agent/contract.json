@@ -1,33 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2934,
-  "generation": 4,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Retire public.deactivate_stale_sg_files(text, uuid) by dropping it at reserved version 20260915130626 (claim #2957), removing its contract-test assertions and its generated type entry.",
+  "work_issue": 2963,
+  "generation": 2,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "branch": "claude/merge-lane-claim-lookup",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
+  "worker": "claude-merge-lane-claim-lookup-20260915",
+  "dispatcher": "Orchestrator (PR #2958 guarded merge runs 34978196476, 34978397473, 34979303230 refused on claim lookup)",
   "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
-  "dispatcher": "shared-db orchestrator (marker #2927)",
-  "worker": "agent-a80dae6ce76ef83a1",
-  "branch": "claude/2934-retire-deactivate-stale-sg-files-v2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a80dae6ce76ef83a1",
-  "allowed_paths": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
-  "db_writes": ["function public.deactivate_stale_sg_files"],
-  "prohibited_actions": [
-    "No production dispatch or production write.",
-    "No preview apply; the orchestrator runs preview and production.",
-    "Do not change public.reconcile_stale_sg_files_batch, public.preview_stale_sg_files, or their grants.",
-    "Do not remove any contract assertion about reconcile_stale_sg_files_batch or preview_stale_sg_files."
-  ],
-  "required_checks": ["bash scripts/check-sql.sh", "python -m pytest -q scripts/test_migration_derivation.py", "git diff --check"],
+  "goal": "Stop the guarded merge lane, the lease re-check and closed-claim history from trusting GitHub's labels= filtered issue listing: list open claims unfiltered with a client-side label filter, fail closed on an empty closed-claim history listing, and make the lane refusal name the claims it saw.",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": [],
+  "db_writes": [],
   "assumptions": [
-    "The wrapper has no live caller: popdam3 calls reconcile_stale_sg_files_batch directly, no cron job calls it, and only shared-db contract tests referenced it (orchestrator check recorded on #2934).",
-    "Renumbered from burned version 20260915111317 (claim #2943, never applied anywhere) past main's 20260915111626 to satisfy the backdated-migration guard; PR #2944 closed as superseded.",
-    "Generation 4 rebases the evidence onto main 37f879d7, which carries the pass-2 replay fix from PR #2960."
+    "Closed db-claim history is never empty in this repository, so an empty labels= listing is a GitHub fault.",
+    "The unfiltered open-issue listing returns labels for every issue, so client-side filtering sees the same claims as the label filter should."
   ],
-  "stop_conditions": [
-    "Stop if any live caller, view, or function depending on the wrapper is found.",
-    "Stop if the retirement requires changing any object other than the wrapper."
-  ]
+  "prohibited_actions": [
+    "No database, preview, production, migration, claim, lease, or infrastructure write.",
+    "Do not weaken, skip or quarantine any test.",
+    "Do not touch PR #2958's branch."
+  ],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
+  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the three scripts, the lane and lease tests and the evidence pair."]
 }

@@ -2,49 +2,41 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
   "assumptions": [
-    "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
-    "Generations 1-6 already exist for issue 2728; this contract is generation 7, republished after main (d91f2683) was merged so the evidence pair follows the implementation head.",
-    "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
+    "Authorization is issue 2467 (repo-maintenance route) dispatched by the Claude repo-maintenance session; no migration lane and no db claim.",
+    "The supported option set is exactly the options runGovernedReview reads: issue, pr, head-sha, reviewer, wrapper, worktree, review-slot, replacement-sequence, assignment-id, skip-doctor."
   ],
-  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
-  "branch": "claude/2728-step5-preflight-routine-rebuild",
+  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "branch": "claude/2467-governed-review-unknown-args",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Claude shared-db orchestrator marker #2927",
+  "dispatcher": "Claude repo-maintenance session (issue #2467)",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
-  "generation": 7,
-  "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
+  "generation": 1,
+  "goal": "Make run-governed-review.mjs refuse unknown arguments such as --slot instead of silently defaulting to review slot 1.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No edits to production_business_risk_gate.py, manage-migration-author-lanes.mjs, or any file owned by #2970 or #2729.",
     "No workflow, repository setting or branch protection change."
   ],
   "required_checks": [
     "git diff --check",
-    "python -m unittest scripts/test_check_pass2_routine_supersession.py",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
+    "node --test --test-reporter=tap scripts/run-governed-review.test.mjs"
   ],
   "route": "repo-maintenance",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop and report if the sidecar registry requires changing production_business_risk_gate.py.",
-    "Stop if the rebuild check blocks existing main migrations without a real rebuild defect."
+    "Stop if a documented caller passes an option outside the supported set."
   ],
-  "work_issue": 2728,
+  "work_issue": 2467,
   "work_type": "repo-maintenance",
   "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a2762539149f39f1a"
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa49c1553dcbe5292"
 }

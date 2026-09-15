@@ -1,29 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2959,
+  "work_issue": 2963,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "branch": "claude/pass2-drop-survives-baseline",
+  "branch": "claude/merge-lane-claim-lookup",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-pass2-drop-survives-baseline-20260915",
-  "dispatcher": "Orchestrator (PR #2958 contract-test run 34973127156 failure after #2948)",
-  "base_sha": "26b6d8c1f0a366ebf59904f43ce1b78b6cd2930f",
-  "goal": "Make the pass-2 supersession repair replay a later applied routine drop unconditionally when no applied migration at or after the dropping file re-declares that routine, so the between-pass baseline cannot defeat the drop guard.",
-  "allowed_paths": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
+  "worker": "claude-merge-lane-claim-lookup-20260915",
+  "dispatcher": "Orchestrator (PR #2958 guarded merge runs 34978196476, 34978397473, 34979303230 refused on claim lookup)",
+  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
+  "goal": "Stop the guarded merge lane, the lease re-check and closed-claim history from trusting GitHub's labels= filtered issue listing: list open claims unfiltered with a client-side label filter, fail closed on an empty closed-claim history listing, and make the lane refusal name the claims it saw.",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "assumptions": [
-    "The captured pre-adoption baseline loads between pass 1 and pass 2 and can re-create a routine a pass-1 migration dropped.",
-    "The workflow already executes every row the script's snapshot query returns after the pass-2 migration, so no workflow change is needed."
+    "Closed db-claim history is never empty in this repository, so an empty labels= listing is a GitHub fault.",
+    "The unfiltered open-issue listing returns labels for every issue, so client-side filtering sees the same claims as the label filter should."
   ],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not weaken, skip or quarantine any contract test.",
-    "Do not touch PR #2958's branch.",
-    "Do not replay a drop from a later migration that is not proven applied in the replay."
+    "Do not weaken, skip or quarantine any test.",
+    "Do not touch PR #2958's branch."
   ],
-  "required_checks": ["python -m unittest scripts/test_check_pass2_routine_supersession.py", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing the contract-test workflow, the baseline, or any file outside the script, its test and the evidence pair."]
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
+  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the three scripts, the lane test and the evidence pair."]
 }

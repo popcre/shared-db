@@ -1,21 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2959,
+  "work_issue": 2963,
   "outcome": "ready-for-merge",
-  "pr": 2960,
+  "pr": 2964,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2959/1",
-  "contract_sha256": "d682db3e3a3682c7c41f5398bac58ac7fc73595e0e047338fc92603e6d2885bd",
-  "head_sha": "02f5e8638607dee3a6ff620fcc619877797b5a18",
-  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
+  "contract_ref": "refs/db-contracts/2963/1",
+  "contract_sha256": "6495e84eb556d40192dc95c4fbb2da46fa3a16f1f3e03c2b21da3a0e3dd69083",
+  "head_sha": "365b88c4fad89e3c4a8eb4b099d2b678c702f888",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "31 tests pass, including the throwaway-PostgreSQL catalog test test_baseline_recreated_between_passes_is_still_dropped, which applies a baseline CREATE between the passes (the run 34973127156 case) and asserts the wrapper is absent. Against origin/main the suite fails with ImportError: cannot import name 'redeclared_after_drop'; with the old guard-every-drop behaviour forced, 4 tests fail including that catalog test (True is not false)."},
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "557 tests, 557 pass, 0 fail, 0 skipped. New: 'issue 2958 open claims never depend on the GitHub labels= filtered listing' (a pager that returns [] for any labels= endpoint still yields claims #1 and #4 and only the unfiltered endpoint is requested), 'issue 2958 closed claim history fails closed when the labels= listing is empty', and the 1688 test now asserts the refusal names each claim seen and the head branch compared. The first new test failed while openClaims still called the labels= endpoint."},
+    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "15 tests, 15 pass, 0 fail, 0 skipped."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "The contract-test workflow loads the pre-adoption baseline between pass 1 and pass 2 and already runs every returned snapshot row after the pass-2 migration, so no workflow or baseline change is needed.",
+    "Live read 2026-09-15: issues?state=open&labels=db-claim returned [] while #2957 was open with label db-claim in both the unfiltered listing and search (8 open claims); closed-claim search reports 311, so an empty closed history is never genuine.",
     "No database object, migration, claim or lease was written, and PR #2958's branch was not touched."
   ],
   "stop_conditions_hit": []

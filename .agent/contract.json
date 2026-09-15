@@ -1,30 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2947,
-  "generation": 1,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Make the contract-test pass-2 supersession repair replay later applied DROP FUNCTION/PROCEDURE/ROUTINE statements so a routine retired by a later migration is not resurrected by an older pass-2 migration.",
-  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
-  "dispatcher": "Albert Hazan (session request; PR #2944 contract-test failure)",
-  "worker": "claude-pass2-honor-later-drops-20260915",
-  "branch": "claude/pass2-honor-later-drops",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "allowed_paths": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not weaken, skip or quarantine any contract test.",
-    "Do not replay a drop from a later migration that is not proven applied in the replay."
-  ],
-  "required_checks": ["python -m unittest scripts/test_check_pass2_routine_supersession.py", "git diff --check"],
-  "assumptions": [
-    "The workflow already executes every row the script's snapshot query returns after the pass-2 migration, so emitting drop rows needs no workflow change.",
-    "A later applied re-create of the same routine name after its drop means the routine must remain present."
-  ],
-  "stop_conditions": [
-    "Stop if the fix requires changing the contract-test workflow or any file outside the script, its test and the evidence pair."
-  ]
+  "work_issue": 2792,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Restore the retired preview-only migration 20260915015414 byte-identical to its preview apply (blob 133782d3) and pin it as retired and production-ineligible in the guard, restoration registry, derivation declarations and pinned tests, clearing preview's orphan ledger row. Claim #2937. No function body changes; #2933 (20260915023506) is the live definition.",
+  "base_sha": "050e9da4d2d5efe27dd76aba2b9d16ff07337730",
+  "dispatcher": "claude shared-db orchestrator (marker #2927)",
+  "worker": "author-2792b (claim #2937)",
+  "branch": "claude/2792-retire-20260915015414",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-acbadde1414c85f87",
+  "allowed_paths": ["supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql", "scripts/production_migration_guard.py", "scripts/test_production_migration_guard.py", "scripts/test_post_batch_app_verification.py", "scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", "scripts/migration_derivation.py", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql", "scripts/production_migration_guard.py", "scripts/test_production_migration_guard.py", "scripts/test_post_batch_app_verification.py", "scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", "scripts/migration_derivation.py", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
+  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
+  "prohibited_actions": ["No production write and no Supabase MCP.", "No edit to the preview migration ledger.", "No change to the restored file bytes.", "No change to 20260915023506 or any function body.", "No statement timeout increase and no row delete or replay."],
+  "required_checks": ["git diff --check", "python -m pytest scripts", "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs"],
+  "assumptions": ["Preview's ledger row for 20260915015414 was written by apply run 34920902290 from these exact bytes."],
+  "stop_conditions": ["Stop if the restored bytes differ from blob 133782d3.", "Stop if a lane step refuses on the outcome ledger or on claim #2937's title."],
+  "generation": 7
 }

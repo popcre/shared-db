@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2459/1",
   "contract_sha256": "538e2e197622c06519706723f023d7ddbcc5eb6956be43efe272e83361360572",
-  "head_sha": "b2ff0aba79b5a804ea36ff22f9be80d401ff5f7f",
+  "head_sha": "c213b1d8c9860a6daeaaaa3ad86ce960d02ec6c1",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -15,7 +15,7 @@
   "db_writes": [],
   "checks": [
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the two implementation files."},
-    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "572 tests, 572 pass, 0 fail, 0 skipped at b2ff0aba, including the structural holder scan and the prefix-refusal test."}
+    {"command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "572 tests, 572 pass, 0 fail, 0 skipped at b2ff0aba and again at merge c213b1d8, including the structural holder scan and the prefix-refusal test."}
   ],
   "assumptions_resolved": [
     "Every mutex holder is recoverable: withAuthorMutex labels (including outcome-repair), exclusive lanes, literal owner commits (including reviewer-replacement and reviewer-failure-replacement); the structural test asserts the scanner sees each shape the #2991 review flagged.",

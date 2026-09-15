@@ -243,11 +243,9 @@ def later_drops(
 
     Whether a later migration RE-CREATED that exact identity is not guessed from
     SQL text here (argument names, modes and defaults make identities unreliable
-    to compare statically). `snapshot_query` guards each drop on the catalog
-    itself, evaluated BEFORE the pass-2 file runs: the drop is replayed only if
-    that exact signature is absent at that moment. A same-identity re-create
-    therefore keeps the routine; a drop-then-new-signature still retires the old
-    identity. Only proven-applied later migrations count.
+    to compare statically). See `redeclared_after_drop` for which drops replay
+    unconditionally and which are guarded on the catalog. Only proven-applied
+    later migrations count.
     """
     current = declared_routines(migration)
     if not current:
@@ -262,14 +260,47 @@ def later_drops(
     return {name: stmts for name, stmts in pending.items() if stmts}
 
 
-def _drop_row(routine: str, stmt: str) -> str:
+def redeclared_after_drop(
+    migration: Path, migrations_dir: Path, applied: set[str]
+) -> set[str]:
+    """Routines with a later applied drop that a migration AT OR AFTER that drop re-declares.
+
+    THE CATALOG CANNOT ANSWER "WAS IT DROPPED" ON ITS OWN (issue #2959). The
+    captured pre-adoption baseline is loaded BETWEEN pass 1 and pass 2, so a
+    routine a pass-1 migration dropped can be back in the catalog before any
+    pass-2 file runs -- the baseline put it there, not a later migration. PR
+    #2958: 20260915130626 dropped public.deactivate_stale_sg_files(text, uuid)
+    in pass 1, the baseline re-created it, and a presence guard skipped the drop.
+
+    So a drop whose routine NO applied migration re-declares at or after the
+    dropping file replays unconditionally: the file history alone proves the
+    routine's final state is dropped. Only a routine re-declared from the dropping
+    file onward (same identity or a new overload -- not decidable from text) keeps
+    the catalog guard evaluated before the pass-2 file runs. That residual guard
+    can still be fooled by a baseline copy of the exact dropped identity; it is
+    the only case left undecided statically.
+    """
+    current = declared_routines(migration)
+    ordered = [
+        path for path in sorted(migrations_dir.glob("*.sql"))
+        if path.name > migration.name and path.name in applied
+    ]
+    redeclared: set[str] = set()
+    for index, later in enumerate(ordered):
+        dropped = {name for name, _ in routine_drops(later)} & current
+        if not dropped:
+            continue
+        for following in ordered[index:]:
+            redeclared |= dropped & declared_routines(following)
+    return redeclared
+
+
+def _drop_row(routine: str, stmt: str, guarded: bool = True) -> str:
     target = stmt.split(" if exists ", 1)[1].rstrip(";")
     lookup = "to_regprocedure" if "(" in target else "to_regproc"
     quote = lambda value: "'" + value.replace("'", "''") + "'"
-    return (
-        f"select 5 as ord, {quote(stmt)} as stmt, '' as s, {quote(routine)} as f, "
-        f"'' as a where {lookup}({quote(target)}) is null"
-    )
+    row = f"select 5 as ord, {quote(stmt)} as stmt, '' as s, {quote(routine)} as f, '' as a"
+    return f"{row} where {lookup}({quote(target)}) is null" if guarded else row
 
 
 def _literals(names: set[str] | dict[str, list[str]]) -> str:
@@ -282,17 +313,20 @@ def snapshot_query(
     collisions: dict[str, list[str]],
     privilege_routines: set[str] | None = None,
     drops: dict[str, list[str]] | None = None,
+    guarded: set[str] | None = None,
 ) -> str:
     """One query whose rows are the SQL statements that restore later truth.
 
-    Later drops are replayed last (ord 5), after bodies and grants, and only for
-    signatures absent from the catalog when this snapshot is taken.
+    Later drops are replayed last (ord 5), after bodies and grants. A routine in
+    `guarded` (default: every dropped routine) replays its drop only if the exact
+    signature is absent from the catalog when this snapshot is taken; any other
+    drop replays unconditionally (see `redeclared_after_drop`).
     """
     parts: list[str] = []
     if drops:
         for routine in sorted(drops):
             for stmt in drops[routine]:
-                parts.append(_drop_row(routine, stmt))
+                parts.append(_drop_row(routine, stmt, guarded is None or routine in guarded))
     if collisions:
         parts.append(
             "select x.ord, x.stmt, n.nspname as s, p.proname as f, "
@@ -411,7 +445,8 @@ def main() -> int:
         for routine in sorted(privilege_routines):
             print(f"  {routine}", file=sys.stderr)
 
-    print(snapshot_query(proven, privilege_routines, drops))
+    guarded = redeclared_after_drop(args.migration, args.migrations_dir, applied) if drops else set()
+    print(snapshot_query(proven, privilege_routines, drops, guarded))
     return 0
 
 

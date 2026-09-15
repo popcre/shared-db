@@ -181,6 +181,10 @@ jobs:
       # preview/production identity contract.
       - name: Test that no workflow pins a preview project ref
         run: node --test scripts/check-workflow-preview-ref.test.mjs
+      # Issue #2429: the ref-config checker must call a live preview branch LIVE and a
+      # stale overlay ref a named failure, never "project deleted".
+      - name: Test the Supabase ref-config checker
+        run: node --test scripts/check-supabase-ref-config.test.mjs
       # Runs the post-merge rehearsal step's OWN map-parsing shell under a real
       # shell. The JavaScript lane tests could not have caught the 2026-08-21
       # one-iteration loop, because the defect was in this workflow's shell.

@@ -699,6 +699,10 @@ PREVIEW_PRODUCER_PATHS = (
     # reused, so preview proof must bind their exact bytes.
     "config/orchestrator-evidence-schema-v1.json",
     "config/orchestrator-global-invalidators-v1.json",
+    # Issue #2728. Read from main by the pinned pr-content-equivalence.mjs to
+    # decide which stored script-hash re-pins may carry an approval forward, so
+    # its bytes change whether a prior review is reused for preview.
+    "config/review-carry-forward-stored-hashes-v1.json",
     # Governed preview-ledger reconciliation reads this reviewed manifest to
     # select the exact issue/claim/source/orphan/replacement tuple. Bind those
     # bytes to the same exact-main producer proof as the workflow and tool.

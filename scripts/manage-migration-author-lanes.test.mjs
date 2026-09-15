@@ -168,7 +168,7 @@ test('durable preview approval rejects an older slot verdict after replacement',
 test('#2758: durable approval at a prior head carries to a content-identical refreshed head',()=>{
   const fixture=durableApprovalFixture(),refreshed='c'.repeat(40),calls=[]
   assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,fixture.io))
-  const verdicts=assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,contentPreservingRefresh:(a,b)=>{calls.push([a,b]);return{ok:true}}})
+  const verdicts=assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,contentPreservingRefresh:(a,b)=>{calls.push([a,b]);return{ok:true,implementation_digest:'e'.repeat(64)}}})
   assert.equal(verdicts.filter((row)=>row.verdict==='APPROVE').length,3)
   assert.deepEqual(calls,[[fixture.headSha,refreshed]])
 })
@@ -181,13 +181,13 @@ test('POSITIVE CONTROL #2758: a refreshed head whose PR diff changed is not carr
 test('POSITIVE CONTROL #2758: a prior head known only by its verdict is inspected before any carry',()=>{
   const fixture=durableApprovalFixture(),refreshed='c'.repeat(40),orphan=`refs/db-review-verdicts/${fixture.issue}-${fixture.pr}-${'d'.repeat(40)}`
   const listRefs=(prefix)=>[...fixture.io.listRefs(prefix),...(orphan.startsWith(prefix)?[{ref:orphan,sha:'5'.repeat(40)}]:[])]
-  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,contentPreservingRefresh:()=>({ok:true})}),/could not be read|durable reviewer refusal/)
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,contentPreservingRefresh:()=>({ok:true,implementation_digest:'e'.repeat(64)})}),/could not be read|durable reviewer refusal/)
 })
 
 test('POSITIVE CONTROL #2758: a refreshed head with an assignment of its own is never carried past',()=>{
   const fixture=durableApprovalFixture(),refreshed='c'.repeat(40)
   const listRefs=(prefix)=>prefix===`${REVIEW_ASSIGNMENT_REF_PREFIX}/${fixture.issue}-${fixture.pr}-${refreshed}`?[{ref:prefix,sha:'1'.repeat(40)}]:fixture.io.listRefs(prefix)
-  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,contentPreservingRefresh:()=>({ok:true})}),/reviewer records of its own/)
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,contentPreservingRefresh:()=>({ok:true,implementation_digest:'e'.repeat(64)})}),/reviewer records of its own/)
 })
 
 test('POSITIVE CONTROL #2758: a refreshed head with a return of its own is never carried past',()=>{
@@ -195,7 +195,7 @@ test('POSITIVE CONTROL #2758: a refreshed head with a return of its own is never
   const returned='2'.repeat(40),returnSha='6'.repeat(40)
   const listRefs=(prefix)=>`${REVIEW_RETURN_REF_PREFIX}/${fixture.issue}-${fixture.pr}-${refreshed}`.startsWith(prefix)&&prefix.includes(refreshed)?[{ref:`${REVIEW_RETURN_REF_PREFIX}/${fixture.issue}-${fixture.pr}-${refreshed}-${returned}`,sha:returnSha}]:fixture.io.listRefs(prefix)
   const getCommit=(sha)=>sha===returnSha?{message:`db-coordination reviewer-return reviewer=kimi-k3 issue=${fixture.issue} pr=${fixture.pr} head=${refreshed} slot=1 assignment=${returned} sequence=1 reason=independence-conflict`}:fixture.io.getCommit(sha)
-  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,getCommit,contentPreservingRefresh:()=>({ok:true})}),/reviewer records of its own/)
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,listRefs,getCommit,contentPreservingRefresh:()=>({ok:true,implementation_digest:'e'.repeat(64)})}),/reviewer records of its own/)
 })
 
 // THE MULTI-SLOT RETURN HOLE (grok-4.6 review of PR #2077, high finding 2).
@@ -7885,4 +7885,55 @@ test('re-claim of an already dispatched work issue treats dispatch as satisfied'
   io.commentIssue=(_number,body)=>posted.push(body)
   const result=acquireAuthorLane({...opts,task:'#41',objects:['table core.example'],admitIssue:41,claim:true},NOW,io)
   assert.equal(result.claim,'https://github.test/issues/1');assert.equal(posted.length,0);assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
+test('DELIVERY PREFLIGHT (#2728): --assign-reviewer with a blocked preflight record refuses before any GitHub access', () => {
+  const dir=mkdtempSync(path.join(tmpdir(),'lane-preflight-'))
+  try {
+    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:'0'.repeat(64)}
+    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
+    const recordFile=path.join(dir,'record.json'),bundleFile=path.join(dir,'bundle.json')
+    writeFileSync(recordFile,JSON.stringify({schema_version:1,status:'BLOCKED',preflight_id:'c'.repeat(64),input_digest:'c'.repeat(64),input:{}}));writeFileSync(bundleFile,JSON.stringify(bundle))
+    const touched=[],io=new Proxy({},{get(_,key){touched.push(String(key));throw new Error(`io.${String(key)} touched`)}})
+    const errors=[],original=console.error;console.error=(line)=>errors.push(String(line))
+    let code;try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--delivery-preflight-record',recordFile,'--evidence-bundle',bundleFile],NOW,io)}finally{console.error=original}
+    assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/REFUSED: delivery preflight is BLOCKED/)
+    errors.length=0;console.error=(line)=>errors.push(String(line))
+    try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--evidence-bundle',bundleFile],NOW,io)}finally{console.error=original}
+    assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs both/)
+  } finally { rmSync(dir,{recursive:true,force:true}) }
+})
+
+test('DELIVERY PREFLIGHT (#2728): --delivery-preflight runs and registers a preflight without GitHub access, and refuses without its inputs', () => {
+  const dir=mkdtempSync(path.join(tmpdir(),'lane-delivery-preflight-'))
+  const priorRoot=process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT
+  try {
+    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:'0'.repeat(64)}
+    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
+    const names=['route','work_contract','object_collision','dependencies','sidecars','producers','migration_order','reviewer_capacity','runner_capacity']
+    const checks=Object.fromEntries(names.map((name)=>[name,{status:'PASS',evidence_id:`${name}-evidence`}]))
+    const registry=path.join(dir,'registry');mkdirSync(registry)
+    for(const kind of ['sidecars','producers']){
+      const registration={evidence_id:checks[kind].evidence_id,kind,issue:41,pr:7,head_sha:head,producer_id:`${kind}-producer`,artifact_digest:'d'.repeat(64)}
+      Object.assign(checks[kind],{producer_id:registration.producer_id,artifact_digest:registration.artifact_digest,registry_digest:sha256(canonicalJson(registration))})
+      writeFileSync(path.join(registry,`registration-${createHash('sha256').update(registration.evidence_id).digest('hex')}.json`),JSON.stringify(registration))
+    }
+    const inputFile=path.join(dir,'input.json'),bundleFile=path.join(dir,'bundle.json')
+    writeFileSync(inputFile,JSON.stringify({issue:41,pr:7,head_sha:head,checks}));writeFileSync(bundleFile,JSON.stringify(bundle))
+    process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=registry
+    const touched=[],io=new Proxy({},{get(_,key){touched.push(String(key));throw new Error(`io.${String(key)} touched`)}})
+    const out=[],errors=[],log=console.log,err=console.error;console.log=(line)=>out.push(String(line));console.error=(line)=>errors.push(String(line))
+    let code,refused,missing
+    try{
+      code=main(['--delivery-preflight','--evidence-bundle',bundleFile,'--preflight-input',inputFile],NOW,io)
+      refused=main(['--delivery-preflight','--evidence-bundle',bundleFile],NOW,io)
+      missing=main(['--delivery-preflight','--preflight-input',inputFile],NOW,io)
+    }finally{console.log=log;console.error=err}
+    assert.equal(code,0,errors.join('\n'));assert.deepEqual(touched,[])
+    const gate=JSON.parse(out.join('\n'))
+    assert.equal(gate.status,'PASS');assert.equal(gate.reused,false);assert.equal(gate.record.input.head_sha,head)
+    assert.deepEqual(gate.bundle.metadata.delivery_preflight,{preflight_id:gate.record.preflight_id,input_digest:gate.record.input_digest})
+    assert.equal(refused,2);assert.equal(missing,2)
+    assert.match(errors.join('\n'),/requires --preflight-input/);assert.match(errors.join('\n'),/requires --evidence-bundle/)
+  } finally { if(priorRoot===undefined)delete process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT;else process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=priorRoot;rmSync(dir,{recursive:true,force:true}) }
 })

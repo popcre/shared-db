@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +9,7 @@ from check_pass2_routine_supersession import (
     classify_collisions,
     declared_routines,
     later_collisions,
+    later_drops,
     later_only_routines,
     read_applied_migrations,
     snapshot_query,
@@ -303,6 +306,85 @@ class Pass2ProvenanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             with self.assertRaises(FileNotFoundError):
                 read_applied_migrations(Path(temp) / "nope.txt")
+
+
+class Pass2LaterDropTests(unittest.TestCase):
+    """PR #2944: 20260905104802 creates public.deactivate_stale_sg_files, fails in
+    pass 1; 20260915111317 drops it and applies; pass 2 re-runs 20260905104802
+    and resurrected the retired wrapper, failing its retirement contract."""
+
+    OLD = "20260905104802_popsg_bounded_reconcile.sql"
+    DROP = "20260915111317_popsg_retire_wrapper.sql"
+    CREATE = (
+        "create or replace function public.deactivate_stale_sg_files(\n"
+        "  p text, q uuid) returns void language sql as $$ select $$;\n"
+    )
+
+    def _replay(self, temp, drop_sql):
+        root = Path(temp)
+        (root / self.OLD).write_text(self.CREATE, encoding="utf-8")
+        (root / self.DROP).write_text(drop_sql, encoding="utf-8")
+        return root, root / self.OLD
+
+    def test_later_drop_is_replayed_so_routine_is_absent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp, "drop function if exists public.deactivate_stale_sg_files(text, uuid);\n"
+            )
+            drops = later_drops(old, root, {self.DROP})
+            self.assertEqual(
+                drops,
+                {
+                    "public.deactivate_stale_sg_files": [
+                        "drop function if exists public.deactivate_stale_sg_files(text, uuid);"
+                    ]
+                },
+            )
+            query = snapshot_query({}, set(), drops)
+            self.assertIn(
+                "drop function if exists public.deactivate_stale_sg_files(text, uuid);", query
+            )
+            # The CLI emits it too, so the workflow replays it after the pass-2 file.
+            record = root / "applied.txt"
+            record.write_text(self.DROP + "\n", encoding="utf-8")
+            out = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name("check_pass2_routine_supersession.py")),
+                 str(old), "--migrations-dir", str(root), "--applied-migrations", str(record)],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertIn("deactivate_stale_sg_files(text, uuid)", out)
+
+    def test_drop_then_later_recreate_leaves_routine_present(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp, "drop function public.deactivate_stale_sg_files(text, uuid);\n"
+            )
+            recreate = "20260916000000_recreate.sql"
+            (root / recreate).write_text(self.CREATE, encoding="utf-8")
+            self.assertEqual(later_drops(old, root, {self.DROP, recreate}), {})
+
+    def test_unapplied_later_drop_is_not_replayed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp, "drop function public.deactivate_stale_sg_files(text, uuid) cascade;\n"
+            )
+            self.assertEqual(later_drops(old, root, set()), {})
+
+    def test_multi_target_drop_keeps_exact_signatures_and_ignores_comments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp,
+                "-- drop function public.deactivate_stale_sg_files(int);\n"
+                "DROP ROUTINE public.other(int), public.deactivate_stale_sg_files(text, uuid);\n",
+            )
+            self.assertEqual(
+                later_drops(old, root, {self.DROP}),
+                {
+                    "public.deactivate_stale_sg_files": [
+                        "drop routine if exists public.deactivate_stale_sg_files(text, uuid);"
+                    ]
+                },
+            )
 
 
 if __name__ == "__main__":

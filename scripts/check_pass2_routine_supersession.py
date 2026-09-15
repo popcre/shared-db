@@ -174,6 +174,87 @@ def later_only_routines(migration: Path, migrations_dir: Path, schemas: set[str]
     }
 
 
+_DROP_ROUTINE = re.compile(
+    r"(?is)\bdrop[ \t\r\n]+(function|procedure|routine)[ \t\r\n]+"
+    r"(?:if[ \t\r\n]+exists[ \t\r\n]+)?([^;]*?)"
+    r"(?:[ \t\r\n]+(?:cascade|restrict))?[ \t\r\n]*;"
+)
+
+_CREATE_ROUTINE_ANYWHERE = re.compile(
+    r"(?is)\bcreate[ \t\r\n]+(?:or[ \t\r\n]+replace[ \t\r\n]+)?"
+    r"(?:function|procedure)[ \t\r\n]+"
+    rf"({IDENT}(?:[ \t]*\.[ \t]*{IDENT})?)[ \t\r\n]*\("
+)
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    items: list[str] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(text):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            items.append(text[start:index])
+            start = index + 1
+    items.append(text[start:])
+    return [item.strip() for item in items if item.strip()]
+
+
+def routine_events(path: Path) -> list[tuple[str, str, str]]:
+    """(event, routine name, statement) in file order; event is create or drop.
+
+    A drop keeps its exact target text -- `schema.name(arg types)` -- so replaying
+    it removes exactly the signature the later migration removed, never an
+    overload it left alone.
+    """
+    text = _strip_comments(path.read_text(encoding="utf-8"))
+    found: list[tuple[int, str, str, str]] = []
+    for match in _CREATE_ROUTINE_ANYWHERE.finditer(text):
+        found.append((match.start(), "create", _norm(match.group(1)), ""))
+    for match in _DROP_ROUTINE.finditer(text):
+        kind = match.group(1).lower()
+        for item in _split_top_level_commas(match.group(2)):
+            name = _norm(item.split("(", 1)[0])
+            target = re.sub(r"\s+", " ", item)
+            found.append(
+                (match.start(), "drop", name, f"drop {kind} if exists {target};")
+            )
+    return [(event, name, stmt) for _, event, name, stmt in sorted(found, key=lambda f: f[0])]
+
+
+def later_drops(
+    migration: Path, migrations_dir: Path, applied: set[str]
+) -> dict[str, list[str]]:
+    """Drops a pass-2 file would undo: routines it creates that a later APPLIED
+    migration dropped and no later applied migration re-created afterwards.
+
+    In a real database the later drop follows this file's create, so the routine
+    is gone. In the replay this file runs after the drop and resurrects it
+    (20260905104802 recreating public.deactivate_stale_sg_files after
+    20260915111317 retired it). Returns routine -> drop statements to replay.
+    Only proven-applied later migrations count, exactly as for definitions.
+    """
+    current = declared_routines(migration)
+    if not current:
+        return {}
+    pending: dict[str, list[str]] = {}
+    for later in sorted(migrations_dir.glob("*.sql")):
+        if later.name <= migration.name or later.name not in applied:
+            continue
+        for event, name, stmt in routine_events(later):
+            if name not in current:
+                continue
+            if event == "create":
+                # Re-created after the drop: the later body is truth, not absence.
+                pending.pop(name, None)
+            elif stmt not in pending.setdefault(name, []):
+                pending[name].append(stmt)
+    return {name: stmts for name, stmts in pending.items() if stmts}
+
+
 def _literals(names: set[str] | dict[str, list[str]]) -> str:
     return ", ".join(
         "'" + name.replace('"', "").replace("'", "''") + "'" for name in sorted(names)
@@ -183,9 +264,23 @@ def _literals(names: set[str] | dict[str, list[str]]) -> str:
 def snapshot_query(
     collisions: dict[str, list[str]],
     privilege_routines: set[str] | None = None,
+    drops: dict[str, list[str]] | None = None,
 ) -> str:
-    """One query whose rows are the SQL statements that restore later truth."""
+    """One query whose rows are the SQL statements that restore later truth.
+
+    Later drops are replayed last (ord 5), after bodies and grants.
+    """
     parts: list[str] = []
+    if drops:
+        for routine in sorted(drops):
+            for stmt in drops[routine]:
+                parts.append(
+                    "select 5 as ord, "
+                    + "'" + stmt.replace("'", "''") + "'"
+                    + " as stmt, '' as s, "
+                    + "'" + routine.replace("'", "''") + "'"
+                    + " as f, '' as a"
+                )
     if collisions:
         parts.append(
             "select x.ord, x.stmt, n.nspname as s, p.proname as f, "
@@ -271,8 +366,19 @@ def main() -> int:
         for routine, files in sorted(unproven.items()):
             print(f"  {routine}: unproven later file(s) {', '.join(files)}", file=sys.stderr)
 
-    if not proven and not privilege_routines:
+    drops = later_drops(args.migration, args.migrations_dir, applied)
+
+    if not proven and not privilege_routines and not drops:
         return 0
+
+    if drops:
+        print(
+            f"PASS-2 ORDER REPAIR: {args.migration.name} re-creates routines that "
+            "later APPLIED migrations dropped. The drops are replayed after it:",
+            file=sys.stderr,
+        )
+        for routine, stmts in sorted(drops.items()):
+            print(f"  {routine}: {' '.join(stmts)}", file=sys.stderr)
 
     if proven:
         print(
@@ -293,7 +399,7 @@ def main() -> int:
         for routine in sorted(privilege_routines):
             print(f"  {routine}", file=sys.stderr)
 
-    print(snapshot_query(proven, privilege_routines))
+    print(snapshot_query(proven, privilege_routines, drops))
     return 0
 
 

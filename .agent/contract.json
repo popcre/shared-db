@@ -1,1 +1,31 @@
-{"allowed_paths":[".agent/contract.json",".agent/completion.json","config/review-carry-forward-stored-hashes-v1.json","scripts/check-exact-head-approval.mjs","scripts/check-exact-head-approval.test.mjs","scripts/lib/pr-content-equivalence.mjs","scripts/lib/pr-content-equivalence.test.mjs","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/delivery-preflight-gate.mjs","scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","scripts/production_business_risk_gate.py"],"assumptions":["Delivery preflight review enforcement is opt-in on --assign-reviewer in this PR; making it mandatory is a later programme step.","The pass-2 rebuild and the sidecar registry are out of scope."],"base_sha":"89ec62d2f1fe5a27c42c2f8ffb71c9a7900cc5b2","branch":"claude/2728-preflight-carry-forward","db_reads":[],"db_writes":[],"dispatcher":"Claude programme 401 Step 5 repository-maintenance owner","file_writes":[".agent/contract.json",".agent/completion.json","config/review-carry-forward-stored-hashes-v1.json","scripts/check-exact-head-approval.mjs","scripts/check-exact-head-approval.test.mjs","scripts/lib/pr-content-equivalence.mjs","scripts/lib/pr-content-equivalence.test.mjs","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/delivery-preflight-gate.mjs","scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","scripts/production_business_risk_gate.py"],"generation":4,"goal":"Wire delivery preflight into the lane manager with invalidation-gated reuse, and carry review approval across evidence-only commits, verified stored script-hash re-pins and diff-identical main merges, recording the approved implementation digest.","prohibited_actions":["No database, migration, claim, preview, production, marker or infrastructure mutation.","Do not edit orchestrator-snapshot, start-reroute or migration-train scripts.","Do not draw reviewers or merge."],"required_checks":["git diff --check","node --test scripts/lib/pr-content-equivalence.test.mjs scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","node scripts/check-throughput-truth-audit.mjs","python -m unittest scripts.test_production_business_risk_gate"],"route":"repo-maintenance","schema_version":1,"stop_conditions":["Stop once the PR is open with a validated evidence pair and CI running.","Stop on any required check failure or lane refusal."],"work_issue":2728,"work_type":"repo-maintenance","worker":"Claude programme 401 Step 5","worktree":"C:/repos/shared-db/.claude/worktrees/agent-a715cf7fba38620b3"}
+{
+  "schema_version": 1,
+  "work_issue": 2838,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make the advisory Documents-only merge authorization check report a green Not applicable status (and a green job) on ordinary code pull requests so red means a genuine refusal.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (repo-maintenance session request for issue #2838)",
+  "worker": "claude-issue-2838-docs-only-not-applicable",
+  "branch": "claude/issue-2838-docs-only-not-applicable",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ab1c5d8144af304e5",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, preview, production, migration, claim, lease, or infrastructure write.",
+    "Do not change branch protection or required status contexts.",
+    "Do not delete or weaken any other check; revocation of the required context must still post failure."
+  ],
+  "required_checks": ["node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "git diff --check"],
+  "assumptions": [
+    "The Documents-only merge authorization context is advisory and not in main's required contexts.",
+    "A moved head, production freeze, unreadable comparison, or required-context revocation remains a red failure."
+  ],
+  "stop_conditions": [
+    "Stop if the fix would require changing branch protection.",
+    "Stop if completion requires any file outside the allowed paths."
+  ]
+}

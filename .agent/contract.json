@@ -2,49 +2,45 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/check-orchestrator-marker.test.mjs"
   ],
   "assumptions": [
-    "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
-    "Generations 1-6 already exist for issue 2728; this contract is generation 7, republished after main (d91f2683) was merged so the evidence pair follows the implementation head.",
-    "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
+    "Authorization is issue 2350 (repo-maintenance route, non-orchestrator), delegated by Albert's Claude session; no migration lane and no db claim.",
+    "Marker #2330 named in the issue is closed, so its stale session id needs no correction; only the resolver output is changed.",
+    "A liveness probe is not possible from this repository (no session API), so the fix makes the JSON state the address is unverified."
   ],
-  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
-  "branch": "claude/2728-step5-preflight-routine-rebuild",
+  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "branch": "claude/2350-resolve-json-unverified",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Claude shared-db orchestrator marker #2927",
+  "dispatcher": "Albert's Claude session (repo-maintenance, non-orchestrator)",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py",
-    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
-    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/check-orchestrator-marker.test.mjs"
   ],
-  "generation": 7,
-  "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
+  "generation": 1,
+  "goal": "Make check-orchestrator-marker --resolve --json state that a declared target's reachability is unverified, so exit 0 is not read as a working route.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No edits to production_business_risk_gate.py, manage-migration-author-lanes.mjs, or any file owned by #2970 or #2729.",
+    "No change to exit codes or the state field consumed by manage-migration-author-lanes.mjs.",
     "No workflow, repository setting or branch protection change."
   ],
   "required_checks": [
     "git diff --check",
-    "python -m unittest scripts/test_check_pass2_routine_supersession.py",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
+    "node --test --test-reporter=tap scripts/check-orchestrator-marker.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "route": "repo-maintenance",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop and report if the sidecar registry requires changing production_business_risk_gate.py.",
-    "Stop if the rebuild check blocks existing main migrations without a real rebuild defect."
+    "Stop if the change would alter exit codes or the state field.",
+    "Stop if any marker or lanes-manager test fails."
   ],
-  "work_issue": 2728,
+  "work_issue": 2350,
   "work_type": "repo-maintenance",
   "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a2762539149f39f1a"
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a04d2b47ad3b8f225"
 }

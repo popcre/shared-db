@@ -3609,6 +3609,35 @@ test('stranded duplicate-claim-release mutex is recognized and safely recoverabl
   assert.equal(result.released,'4a69fbbc');assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
+// ISSUE #2459. Five lock kinds that take MUTEX_REF were missing from the
+// recovery allowlist; a crash while holding any of them wedged every lane.
+test('stranded reviewer exclusion, reinstatement, release, reap and merged-claim reissue mutexes are recoverable',()=>{
+  for(const kind of ['reviewer-exclusion-lock','reviewer-reinstatement-lock','reviewer-release-lock','reviewer-abandoned-lease-reap-lock','merged-claim-reissue-lock']){
+    const io=memoryIo();io.refs.set(MUTEX_REF,'4a69fbbc');io.getCommit=()=>({message:`db-coordination ${kind} issue=1 pr=2`,committer:{date:'2026-08-14T19:55:00Z'}})
+    assert.equal(recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io).released,'4a69fbbc',kind)
+    assert.equal(io.refs.has(MUTEX_REF),false,kind)
+  }
+})
+// Structural guard (#2459): every owner commit that is followed by a mutex
+// acquisition must be a kind recovery recognizes, so a new lock kind cannot be
+// minted unrecoverable without this test failing.
+test('every owner-commit kind that acquires the author mutex is recoverable',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const lines=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8').split('\n')
+  const kinds=new Set()
+  lines.forEach((line,index)=>{
+    const match=/const (\w+)=io\.makeOwnerCommit\(`db-coordination ([a-z-]+)/.exec(line)
+    if(!match)return
+    const window=lines.slice(index,index+4).join('\n')
+    if(new RegExp(`acquire(?:Review)?Mutex\\(${match[1]}\\b`).test(window))kinds.add(match[2])
+  })
+  assert.ok(kinds.size>=8,`scanner found only ${[...kinds]}`)
+  for(const kind of kinds){
+    const io=memoryIo();io.refs.set(MUTEX_REF,'4a69fbbc');io.getCommit=()=>({message:`db-coordination ${kind} x=1`,committer:{date:'2026-08-14T19:55:00Z'}})
+    assert.equal(recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io).released,'4a69fbbc',`mutex kind ${kind} is not recoverable`)
+  }
+})
+
 test('stranded repository-maintenance authorization mutex is recognized and safely recoverable',()=>{
   const io=memoryIo();io.refs.set(MUTEX_REF,'4a69fbbc');io.getCommit=()=>({message:`db-coordination repository-maintenance-authorization pr=2715 head=${'a'.repeat(40)}`,committer:{date:'2026-08-14T19:55:00Z'}})
   const result=recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io)

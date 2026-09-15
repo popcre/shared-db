@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2860,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Natural service-role and signed-in default Files and Guides calls to public.search_style_guide_library_v2 finish within the unchanged 8s statement timeout while keeping exact totals, facets, filters, states and authorization.",
@@ -10,12 +10,62 @@
   "worker": "claude-agent-ad1eb72dddc85d529",
   "branch": "claude/2860-popsg-v2-default-timeout",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad1eb72dddc85d529",
-  "allowed_paths": ["supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql", "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql", "scripts/production-verification-sidecars/20260915111626.json", "scripts/production_business_risk_gate.py", "scripts/production_catalog_verification.py", "scripts/test_production_catalog_verification.py", ".github/live-proofs/2860.sql", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql", "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql", "scripts/production-verification-sidecars/20260915111626.json", "scripts/production_business_risk_gate.py", "scripts/production_catalog_verification.py", "scripts/test_production_catalog_verification.py", ".github/live-proofs/2860.sql", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": ["table public.style_guide_search_documents", "table public.style_guide_files", "table public.style_guide_render_queue", "function public.has_app_access", "function auth.uid", "function auth.role"],
-  "db_writes": ["function public.search_style_guide_library_v2", "table public.style_guide_files"],
-  "prohibited_actions": ["Do not raise any statement timeout or weaken filters, facets, grants or RLS", "Do not edit applied migration 20260911213429", "Do not delete or replay application rows", "Do not dispatch production", "Do not touch the scope of issue #2911"],
-  "required_checks": ["bash scripts/check-sql.sh", "python3 scripts/test_migration_derivation.py", "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py", "git diff --check"],
-  "assumptions": ["Claim #2945 reserves version 20260915111626 for the function and table writes", "Read-only production EXPLAIN ANALYZE of the extracted default bodies measured Files 3.57s and Guides 4.53s at work_mem 64MB, against about 6.3s and over 8s before", "The ephemeral database contract suite proves unchanged result and facet semantics"],
-  "stop_conditions": ["Claim #2945 ownership changes", "A needed change lies outside the declared function and table", "An optimization changes result or facet semantics", "A gate refuses; do not bypass it or raise a timeout"]
+  "allowed_paths": [
+    "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/production-verification-sidecars/20260915111626.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    ".github/live-proofs/2860.sql",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/production-verification-sidecars/20260915111626.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    ".github/live-proofs/2860.sql",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_files",
+    "table public.style_guide_render_queue",
+    "function public.has_app_access",
+    "function auth.uid",
+    "function auth.role"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2"
+  ],
+  "prohibited_actions": [
+    "Do not raise any statement timeout or weaken filters, facets, grants or RLS",
+    "Do not edit applied migration 20260911213429",
+    "Do not delete or replay application rows",
+    "Do not dispatch production",
+    "Do not touch the scope of issue #2911"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python3 scripts/test_migration_derivation.py",
+    "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Claim #2945 reserves version 20260915111626 for the function and table writes",
+    "Read-only production EXPLAIN ANALYZE of the extracted default bodies measured Files 3.57s and Guides 4.53s at work_mem 64MB, against about 6.3s and over 8s before",
+    "The ephemeral database contract suite proves unchanged result and facet semantics",
+    "Generation 2 follows the orchestrator scope change: public.style_guide_files is a read, not a write."
+  ],
+  "stop_conditions": [
+    "Claim #2945 ownership changes",
+    "A needed change lies outside the declared function and table",
+    "An optimization changes result or facet semantics",
+    "A gate refuses; do not bypass it or raise a timeout"
+  ]
 }

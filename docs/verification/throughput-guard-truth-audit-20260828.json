@@ -848,6 +848,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": "scripts/manage-migration-author-lanes.mjs:486",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:10203ad02cbf2b582359cb072ce142147e2970c7b9c0aee6318b80c1daf3c1f0:1",
+      "line_sha256": "10203ad02cbf2b582359cb072ce142147e2970c7b9c0aee6318b80c1daf3c1f0",
+      "disposition": "excluded",
+      "reason": "Excluded: validates local reviewer admission evidence before assignment; missing or malformed admission is not a database absence claim."
+    },
+    {
       "site": "scripts/manage-migration-author-lanes.mjs:5412",
       "semantic_key": "scripts/manage-migration-author-lanes.mjs:1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7:1",
       "line_sha256": "1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7",
@@ -1147,6 +1154,13 @@
       "line_sha256": "a4d9f0d6075ce9b08a596f917d0e0836491cf991bf5d22003c0dabb84ed1050a",
       "disposition": "excluded",
       "reason": "New Phase 2 fail-closed diagnostic or explicit unknown-state handling; it does not infer that a database object was never created or is absent."
+    },
+    {
+      "site": "scripts/orchestrator-flow/outcome-lifecycle.mjs:239",
+      "semantic_key": "scripts/orchestrator-flow/outcome-lifecycle.mjs:866d38a6ecd2df3cf81a8b3ce887f22a433904af7da5d4ec7c92be4054413e23:1",
+      "line_sha256": "866d38a6ecd2df3cf81a8b3ce887f22a433904af7da5d4ec7c92be4054413e23",
+      "disposition": "excluded",
+      "reason": "This refusal message names a missing coordination lifecycle event in the outcome ledger, not a missing or unapplied database object, so it is outside the migration throughput truth audit it is discovered by."
     },
     {
       "site": "scripts/orchestrator-flow/outcome-lifecycle.mjs:274",
@@ -1709,6 +1723,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": "scripts/production_migration_guard.py:2093",
+      "semantic_key": "scripts/production_migration_guard.py:50799e3f2862268507b004d60991c5c99a0c3324c03f871a8dbf0ceb31fa398d:1",
+      "line_sha256": "50799e3f2862268507b004d60991c5c99a0c3324c03f871a8dbf0ceb31fa398d",
+      "disposition": "excluded",
+      "reason": "#2809. This line is explanatory comment prose quoting the guard refusal text it fixes; it performs no missing-object detection and changes no refusal behaviour, so it carries no enrichment obligation."
+    },
+    {
       "site": "scripts/production_migration_guard.py:1929",
       "semantic_key": "scripts/production_migration_guard.py:53055ed217811b2cc1cb297c0e4d58f51dba471f55f5a4de156e715e0b1d95b6:1",
       "line_sha256": "53055ed217811b2cc1cb297c0e4d58f51dba471f55f5a4de156e715e0b1d95b6",
@@ -1933,6 +1954,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": "scripts/run-governed-review.mjs:212",
+      "semantic_key": "scripts/run-governed-review.mjs:cdfdffef2201e7c3b5985ec28b75de846cf7c3d911aef01c34dd8c03169a8260:1",
+      "line_sha256": "cdfdffef2201e7c3b5985ec28b75de846cf7c3d911aef01c34dd8c03169a8260",
+      "disposition": "excluded",
+      "reason": "This wording classifies a private reviewer startup diagnostic; it does not assert that a database object or migration is missing."
+    },
+    {
       "site": "scripts/scan_apply_time_ddl.py:107",
       "semantic_key": "scripts/scan_apply_time_ddl.py:e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255:1",
       "line_sha256": "e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255",
@@ -1987,30 +2015,9 @@
       "line_sha256": "c306e35745386b717b583be41a182e378d17ce899e352842a4d0cfbae51ccc3c",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/production_migration_guard.py:2093",
-      "semantic_key": "scripts/production_migration_guard.py:50799e3f2862268507b004d60991c5c99a0c3324c03f871a8dbf0ceb31fa398d:1",
-      "line_sha256": "50799e3f2862268507b004d60991c5c99a0c3324c03f871a8dbf0ceb31fa398d",
-      "disposition": "excluded",
-      "reason": "#2809. This line is explanatory comment prose quoting the guard refusal text it fixes; it performs no missing-object detection and changes no refusal behaviour, so it carries no enrichment obligation."
-    },
-    {
-      "site": "scripts/orchestrator-flow/outcome-lifecycle.mjs:239",
-      "semantic_key": "scripts/orchestrator-flow/outcome-lifecycle.mjs:866d38a6ecd2df3cf81a8b3ce887f22a433904af7da5d4ec7c92be4054413e23:1",
-      "line_sha256": "866d38a6ecd2df3cf81a8b3ce887f22a433904af7da5d4ec7c92be4054413e23",
-      "disposition": "excluded",
-      "reason": "This refusal message names a missing coordination lifecycle event in the outcome ledger, not a missing or unapplied database object, so it is outside the migration throughput truth audit it is discovered by."
-    },
-    {
-      "site": "scripts/manage-migration-author-lanes.mjs:486",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:10203ad02cbf2b582359cb072ce142147e2970c7b9c0aee6318b80c1daf3c1f0:1",
-      "line_sha256": "10203ad02cbf2b582359cb072ce142147e2970c7b9c0aee6318b80c1daf3c1f0",
-      "disposition": "excluded",
-      "reason": "Excluded: validates local reviewer admission evidence before assignment; missing or malformed admission is not a database absence claim."
     }
   ],
-  "call_site_count": 285,
-  "call_site_sha256": "969616f89bce8be4c6552c6adc09f12ffe56782ad37182c44c906177765eb242",
+  "call_site_count": 286,
+  "call_site_sha256": "f281572ba84b60cc2986bca5c9860c6639abe9b58bbd753179815557fe7d3ac4",
   "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."
 }

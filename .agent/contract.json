@@ -1,30 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 2947,
-  "generation": 1,
+  "work_issue": 2361,
+  "generation": 7,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the contract-test pass-2 supersession repair replay later applied DROP FUNCTION/PROCEDURE/ROUTINE statements so a routine retired by a later migration is not resurrected by an older pass-2 migration.",
-  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
-  "dispatcher": "Albert Hazan (session request; PR #2944 contract-test failure)",
-  "worker": "claude-pass2-honor-later-drops-20260915",
-  "branch": "claude/pass2-honor-later-drops",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "allowed_paths": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Correct two stale Qwen wording nits deferred from PR #2346 so neither implies Qwen's quarantine never existed nor uses the retired 'pause' vocabulary.",
+  "base_sha": "7c314992615fcb9f3fc5ccc45133a929f63b1617",
+  "dispatcher": "Albert Hazan (session request)",
+  "worker": "claude-qwen-wording-2361-20260915",
+  "branch": "claude/qwen-wording-2361",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5903b6b3f380df01",
+  "allowed_paths": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not weaken, skip or quarantine any contract test.",
-    "Do not replay a drop from a later migration that is not proven applied in the replay."
+    "No behaviour change: the script edit is a single comment line.",
+    "Do not edit plan_orchestrator_throughput_phase_2.md line 27 (dated audit record)."
   ],
-  "required_checks": ["python -m unittest scripts/test_check_pass2_routine_supersession.py", "git diff --check"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
   "assumptions": [
-    "The workflow already executes every row the script's snapshot query returns after the pass-2 migration, so emitting drop rows needs no workflow change.",
-    "A later applied re-create of the same routine name after its drop means the routine must remain present."
+    "Current state was verified, not inferred: QUARANTINED_REVIEWERS is empty on main since commit 58a447ae (2026-09-07), which returned qwen-3.8-max to the active rotation after a passing live qualification."
   ],
-  "stop_conditions": [
-    "Stop if the fix requires changing the contract-test workflow or any file outside the script, its test and the evidence pair."
-  ]
+  "stop_conditions": ["Any change beyond wording in the two named files."]
 }

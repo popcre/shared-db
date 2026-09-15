@@ -1,19 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2956,
+  "work_issue": 2361,
   "outcome": "ready-for-merge",
-  "pr": 2955,
+  "pr": 2949,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2956/2",
-  "contract_sha256": "0428f2d5a1fa5b0a52f410115d42bdab61f9dc280660b9610d97dc66fcb5c9cd",
-  "head_sha": "5ff4bb4a78c1bab8e5fb70d945196794edad253a",
-  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs"],
+  "contract_ref": "refs/db-contracts/2361/6",
+  "contract_sha256": "88020006752950a1ccd23739f537fc25d0cd3038aa9dfc2562191330530c6b84",
+  "head_sha": "174b2c34790e39288d5a3ed8efe0f132f5dd67de",
+  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between refreshed base 6ae4ddcf and merge head 5ff4bb4a."},
-    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "Rerun on merge head 5ff4bb4a: 52 tests, 52 passed, 0 failed."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the refresh merged only main's files and the PR's own diff is unchanged."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": ["Run 34922309051's instance-binding line names appliedCommit 0c7ebecf1d8ffb5e0980a279d7e32b9d14a343f4, allowlist 20260915023506 and preview project mvpkijzfmfcxhnzqogzs; the registry hashes are validated against the file bytes on main by the pinned test. Main was refreshed from 2ad5f56f to 6ae4ddcf; it touched only its own guard workflow, its test and the .agent pair, which the merge commit takes from main."],
+  "assumptions_resolved": [
+    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
+    "The script edit is one comment line; no behaviour changed. Muse APPROVE recorded at refs/db-review-verdicts/2361-2949-a171c743...; main refreshed to 15cc715a by merge with main's .agent pair."
+  ],
   "stop_conditions_hit": []
 }

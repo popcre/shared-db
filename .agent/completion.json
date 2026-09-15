@@ -1,22 +1,24 @@
 {
   "schema_version": 1,
-  "work_issue": 2959,
+  "work_issue": 2934,
   "outcome": "ready-for-merge",
-  "pr": 2960,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2959/1",
-  "contract_sha256": "d682db3e3a3682c7c41f5398bac58ac7fc73595e0e047338fc92603e6d2885bd",
-  "head_sha": "02f5e8638607dee3a6ff620fcc619877797b5a18",
-  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2958,
+  "migration_versions": ["20260915130626"],
+  "contract_ref": "refs/db-contracts/2934/4",
+  "contract_sha256": "d9c10062d550368edcc4a271b176c933466a1adc4a88b1f9fd9c57c8df7e54bc",
+  "head_sha": "7da96fb31b911af2832b22ab6910a44df8ffa550",
+  "files_changed": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts"],
+  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
+  "db_writes": ["function public.deactivate_stale_sg_files"],
   "checks": [
-    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "31 tests pass, including the throwaway-PostgreSQL catalog test test_baseline_recreated_between_passes_is_still_dropped, which applies a baseline CREATE between the passes (the run 34973127156 case) and asserts the wrapper is absent. Against origin/main the suite fails with ImportError: cannot import name 'redeclared_after_drop'; with the old guard-every-drop behaviour forced, 4 tests fail including that catalog test (True is not false)."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed on main 37f879d7 plus this branch, including the backdated-migration guard for 20260915130626."},
+    {"command": "python -m pytest -q scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "44 passed, 6 subtests passed; the migration declares derived-from: none."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 37f879d7 and implementation commit 7da96fb3."}
   ],
   "assumptions_resolved": [
-    "The contract-test workflow loads the pre-adoption baseline between pass 1 and pass 2 and already runs every returned snapshot row after the pass-2 migration, so no workflow or baseline change is needed.",
-    "No database object, migration, claim or lease was written, and PR #2958's branch was not touched."
+    "No live caller: the only non-migration references were the contract tests, now updated; only migration 20260905104802 defines the wrapper and no other function calls it.",
+    "Every assertion about reconcile_stale_sg_files_batch and preview_stale_sg_files is kept; contract 3 now asserts the wrapper no longer exists.",
+    "Version 20260915111317 (claim #2943) was released unapplied and stays burned; this change uses 20260915130626 (claim #2957)."
   ],
   "stop_conditions_hit": []
 }

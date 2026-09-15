@@ -54,8 +54,6 @@ declare
   v_total integer;
   v_iterations integer;
   v_ok boolean;
-  v_sqlstate text;
-  v_claim record;
   v_claim_count integer;
   v_identity text;
   v_result jsonb;
@@ -63,7 +61,6 @@ declare
   v_page2 jsonb;
   v_page3 jsonb;
   v_ids uuid[];
-  v_text text;
 begin
 
   -- =========================================================================

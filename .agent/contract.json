@@ -1,27 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
-  "generation": 5,
+  "work_issue": 2956,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Correct two stale Qwen wording nits deferred from PR #2346 so neither implies Qwen's quarantine never existed nor uses the retired 'pause' vocabulary.",
+  "goal": "Pin 20260915023506 in the historical restoration registry with complete production provenance (preview run 34922309051, dispatch ffa300c7, applied 0c7ebecf, source PR #2933 merge ae295b65) and a pinned test, for #2792. Registry and test only; no migration file, function body or database object changes.",
   "base_sha": "6ae4ddcfbf82dd95347a15e5190637e9a4226a5e",
-  "dispatcher": "Albert Hazan (session request)",
-  "worker": "claude-qwen-wording-2361-20260915",
-  "branch": "claude/qwen-wording-2361",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5903b6b3f380df01",
-  "allowed_paths": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "dispatcher": "claude shared-db orchestrator (marker #2927)",
+  "worker": "author-2792b",
+  "branch": "claude/2792-pin-20260915023506-provenance",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-acbadde1414c85f87",
+  "allowed_paths": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "No behaviour change: the script edit is a single comment line.",
-    "Do not edit plan_orchestrator_throughput_phase_2.md line 27 (dated audit record)."
-  ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
-  "assumptions": [
-    "Current state was verified, not inferred: QUARANTINED_REVIEWERS is empty on main since commit 58a447ae (2026-09-07), which returned qwen-3.8-max to the active rotation after a passing live qualification."
-  ],
-  "stop_conditions": ["Any change beyond wording in the two named files."]
+  "prohibited_actions": ["No production write and no Supabase MCP.", "No edit to the preview migration ledger.", "No change to any migration file or function body.", "No statement timeout increase and no row delete or replay."],
+  "required_checks": ["git diff --check", "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs"],
+  "assumptions": ["Preview run 34922309051's instance-binding line names appliedCommit 0c7ebecf and allowlist 20260915023506; the file blob at 0c7ebecf is unchanged on main."],
+  "stop_conditions": ["Stop if the registry hashes differ from the file on main.", "Stop if a lane step refuses in a way that cannot be routed."],
+  "generation": 2
 }

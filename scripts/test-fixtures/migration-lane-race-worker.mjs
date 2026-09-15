@@ -14,8 +14,20 @@ const io = {
   prSources: () => [],
   makeOwnerCommit: () => randomUUID(),
   createRef(ref, sha) {
-    try { const fd=openSync(refPath(ref),'wx');writeFileSync(fd,sha);closeSync(fd);return true }
-    catch(error){ if(error.code==='EEXIST')return false;throw error }
+    // Windows reports EPERM -- not EEXIST -- when a racing process still holds
+    // this path open with a delete pending. That is transient contention, not an
+    // answer: reporting false would claim another owner holds the ref and would
+    // refuse an author who is entitled to it, so retry briefly and only then
+    // fail loudly. EEXIST remains the real "someone else won" verdict.
+    for(let attempt=0;attempt<100;attempt++){
+      try { const fd=openSync(refPath(ref),'wx');writeFileSync(fd,sha);closeSync(fd);return true }
+      catch(error){
+        if(error.code==='EEXIST')return false
+        if(error.code!=='EPERM')throw error
+        const until=Date.now()+2;while(Date.now()<until);
+      }
+    }
+    throw new Error(`createRef never settled contention for ${ref}`)
   },
   readRef: (ref) => existsSync(refPath(ref)) ? readFileSync(refPath(ref),'utf8') : null,
   // #2301 Step 3: the lane guard asks for the retirement namespace once. This

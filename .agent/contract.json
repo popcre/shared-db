@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "work_issue": 2969,
-  "generation": 3,
+  "generation": 4,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/risk-gate-drop-function",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
   "worker": "agent-a1b90ddbccf740c3f",
   "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting",
-  "base_sha": "585a9d2bba30fb53c25b4dff28e1effe01642e53",
-  "goal": "Stop the production business-risk gate refusing ordinary additive migrations: exempt DO-free non-CASCADE DROP FUNCTION/PROCEDURE with signatures from data loss, and treat nullable no-default ADD COLUMN, new-table indexes/RLS/policies/grants and CREATE INDEX CONCURRENTLY as non-interrupting, while defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables, every other DROP and row-changing statements stay reported. DO block bodies, CALL, COPY, OWNER TO and a plain index after CREATE TABLE IF NOT EXISTS are reported.",
+  "base_sha": "6a238c7a39c09dad414260d2918a7b5b8222abbc",
+  "goal": "Stop the production business-risk gate refusing ordinary additive migrations: exempt DO-free non-CASCADE DROP FUNCTION/PROCEDURE with signatures from data loss, and treat nullable no-default ADD COLUMN, new-table indexes/RLS/policies/grants and CREATE INDEX CONCURRENTLY as non-interrupting, while defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables, every other DROP and row-changing statements stay reported. DO block bodies, CALL, COPY, OWNER TO and a plain index after CREATE TABLE IF NOT EXISTS are reported. Statement kinds the rules do not model (SELECT/EXECUTE of code, ALTER SEQUENCE/VIEW/FUNCTION/TYPE, CREATE ROLE and similar) report data loss and interruption by default.",
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",

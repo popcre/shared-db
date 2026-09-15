@@ -4,15 +4,28 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/3",
-  "contract_sha256": "58dfe277d62ff58173c819db8c708b7bbe27801475ce09bf0c882033265efb59",
-  "head_sha": "612fd73bc2c8bd77cc68a467f90a2f69b815d5bd",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py"],
+  "contract_ref": "refs/db-contracts/2969/4",
+  "contract_sha256": "730886672c42a2e2dfc72d118cad9d46058c3d680197fda4a07d27f5ebb80526",
+  "head_sha": "f608bd94236a9da2543af00088d6382245dd2036",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m pytest -q scripts/test_production_business_risk_gate.py", "exit_code": 0, "evidence": "154 passed, 0 skipped, 215 subtests passed. Second review: DO bodies, CALL, COPY, OWNER TO and a plain index after CREATE TABLE IF NOT EXISTS are now reported (they passed on the previous head). Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding; CASCADE, DROP TABLE, drops alongside DO blocks, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables and row-changing statements stay reported; drops in comments stay ignored. Both no-finding tests failed on the old gate first."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "154 passed, 0 skipped, 220 subtests passed. Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding. Reported: CASCADE and other drops, DO bodies, CALL, COPY, OWNER TO, SELECT setval, EXECUTE, ALTER SEQUENCE/VIEW, unmodelled statement kinds, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables and row-changing statements. Each new reported shape passed silently on the previous head; both no-finding tests failed on the old gate first."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
   ],
   "assumptions_resolved": [
     "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",

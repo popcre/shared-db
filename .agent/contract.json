@@ -1,28 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2967,
-  "generation": 1,
+  "work_issue": 2961,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "branch": "claude/merge-lane-claim-read-fail-loud",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-merge-lane-claim-read-fail-loud-20260915",
-  "dispatcher": "Orchestrator (PR #2958 guarded merge run 34985444563 refused with open claims seen (0))",
-  "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
-  "goal": "Make the exclusive merge lane refuse loudly when its open-issue read has no non-PR rows or no claims that GitHub search contradicts, and report what the listing returned, so an empty CI read can never pass as no open claims.",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Deliver freshness-sealed event snapshot and composed delivery preflight foundations with exact-head evidence; live programme acceptance remains separate.",
+  "base_sha": "cdbc00b2ecab051c5be58cbad6b8e62717bbbe8f",
+  "dispatcher": "shared-db orchestrator marker 2927",
+  "worker": "Claude repo-maintenance landing agent",
+  "branch": "codex/issue-2728-events-preflight-repair",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1c70ff22484ad3cc",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "assumptions": [
-    "The open issue listing of this repository always contains non-PR issues, so a PR-only or empty listing is a read fault.",
-    "GitHub search for open db-claim issues is an independent read path whose total_count can confirm a genuine absence of claims."
-  ],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, workflow or infrastructure write.",
-    "Do not weaken, skip or quarantine any test.",
-    "Do not touch PR #2958 or claim #2957."
+    "No database, preview, production, marker, migration or infrastructure mutation."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the lane script, its test and the evidence pair."]
+  "required_checks": [
+    "git diff --check",
+    "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs"
+  ],
+  "assumptions": [
+    "Tracking issue 2961 lands the PR 2861 library foundations stacked on PR 2795; parent issue 2728 stays open for production caller integration and live acceptance.",
+    "Implementation files are unchanged from 020bff7931f3bcf4ad61c546ffd055655d74c843; the refresh merges the PR 2795 branch only."
+  ],
+  "stop_conditions": [
+    "Stop before merging while PR 2795 remains unlanded.",
+    "Stop on unresolved exact-head review or required check failure."
+  ],
+  "generation": 1
 }

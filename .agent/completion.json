@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2838,
   "outcome": "ready-for-merge",
-  "pr": 2941,
+  "pr": 2952,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2942/1",
-  "contract_sha256": "e87838300f1d2946231d51472aa993809ef6bee8071331bbd273e486d7d380bf",
-  "head_sha": "1ccc446dda236d589878ff36061233b7044e76a9",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2838/1",
+  "contract_sha256": "1f84247c3ba754a59a5f8ca9f8e04b2dbb27e609b056a6b6353823790d6b5f79",
+  "head_sha": "6067b44545ca8bbe41bb44fb645b4f6c017a12b3",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "exit_code": 0, "evidence": "625 tests passed with zero failures, cancellations, skips or todo; the new regression test reproduces 'cannot advance outcome from dispatched to dispatched' without the fix and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "93 tests passed, 0 failed, 0 skipped; the new #2838 regression test failed before the fix (pass 8, fail 1) and passes with it."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "The dispatch advance is skipped only when the work issue's outcome history is valid and already at dispatched; any other state still advances and still refuses illegal transitions.",
-    "No database object, migration, claim or lease was written; claim #2931, claim #2937, issue #2792 and PR #2938 were untouched."
+    "Documents-only merge authorization is not in main's required contexts (read live from branch protection); branch protection was not changed.",
+    "Moved head, production freeze, unreadable comparison and required-context revocation still post failure."
   ],
   "stop_conditions_hit": []
 }

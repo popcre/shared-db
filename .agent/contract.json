@@ -1,31 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2838,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Let a re-claim of a work issue whose outcome history is already dispatched treat dispatch as satisfied instead of refusing the dispatch readback.",
-  "base_sha": "91de3134fa5d5c7b3bfb6d537822e3b4211e5f4b",
-  "dispatcher": "Albert Hazan (session request; orchestrator marker #2927 continuation)",
-  "worker": "claude-redispatch-readback-20260915",
-  "branch": "claude/redispatch-readback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/nifty-boyd-5c003d",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Make the advisory Documents-only merge authorization check report a green Not applicable status (and a green job) on ordinary code pull requests so red means a genuine refusal.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (repo-maintenance session request for issue #2838)",
+  "worker": "claude-issue-2838-docs-only-not-applicable",
+  "branch": "claude/issue-2838-docs-only-not-applicable",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ab1c5d8144af304e5",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not touch claim #2931, claim #2937, issue #2792, or PR #2938.",
-    "Do not skip the dispatch advance when the outcome history is invalid or in any state other than dispatched."
+    "Do not change branch protection or required status contexts.",
+    "Do not delete or weaken any other check; revocation of the required context must still post failure."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "git diff --check"],
   "assumptions": [
-    "A valid outcome history already at dispatched means a previous claim dispatched this work issue and was released.",
-    "The change requires no database object or migration-author route."
+    "The Documents-only merge authorization context is advisory and not in main's required contexts.",
+    "A moved head, production freeze, unreadable comparison, or required-context revocation remains a red failure."
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing the outcome lifecycle transitions themselves.",
-    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
+    "Stop if the fix would require changing branch protection.",
+    "Stop if completion requires any file outside the allowed paths."
   ]
 }

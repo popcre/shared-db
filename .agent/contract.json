@@ -1,49 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2961,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prepare immutable migration train and start-reroute libraries with reviewed verification inventory; live adapters and programme acceptance remain pending.",
-  "base_sha": "585a9d2bba30fb53c25b4dff28e1effe01642e53",
+  "goal": "Deliver freshness-sealed event snapshot and composed delivery preflight foundations with exact-head evidence; live programme acceptance remains separate.",
+  "base_sha": "cdbc00b2ecab051c5be58cbad6b8e62717bbbe8f",
   "dispatcher": "shared-db orchestrator marker 2927",
   "worker": "Claude repo-maintenance landing agent",
-  "branch": "codex/issue-2729-train-reroute",
+  "branch": "codex/issue-2728-events-preflight-repair",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1c70ff22484ad3cc",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database, preview, production, marker, migration, infrastructure or live reroute action."
+    "No database, preview, production, marker, migration or infrastructure mutation."
   ],
   "required_checks": [
     "git diff --check",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
+    "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs"
   ],
   "assumptions": [
-    "Tracking issue 2962 lands the PR 2862 library foundations refreshed onto main 585a9d2b after PR 2795 landed; parent issue 2729 stays open for live adapters, production caller integration and acceptance.",
-    "Implementation files are unchanged from the PR 2862 branch; the refresh merges main and unions the truth inventory by semantic key."
+    "Tracking issue 2961 lands the PR 2861 library foundations stacked on PR 2795; parent issue 2728 stays open for production caller integration and live acceptance.",
+    "Implementation files are unchanged from 020bff7931f3bcf4ad61c546ffd055655d74c843; the refresh merges the PR 2795 branch only."
   ],
   "stop_conditions": [
-    "Stop before merging while PR 2795 or PR 2861 remains unlanded.",
+    "Stop before merging while PR 2795 remains unlanded.",
     "Stop on unresolved exact-head review or required check failure."
   ],
-  "generation": 2
+  "generation": 1
 }

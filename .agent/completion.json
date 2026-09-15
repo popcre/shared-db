@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2961,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2861,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2962/2",
-  "contract_sha256": "fe4fe361ecde0a701eb258633a6227b685bb8fa819fd2c1b5b8ee25798c6093a",
-  "head_sha": "7c31ed1366155d9dc0bf4cdf991eee63f274cbe8",
+  "contract_ref": "refs/db-contracts/2961/1",
+  "contract_sha256": "acfdb40bdf0119103c28ee400c1583616f34d2e08c18ca1329944241c4d07c24",
+  "head_sha": "1bbdb21b7d6708724e3a6b084d7716f11b7ad41d",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -20,23 +20,18 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check against main 6a238c7a passed at 7c31ed1366155d9dc0bf4cdf991eee63f274cbe8."
+      "evidence": "git diff --check against main 6a238c7a passed at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs",
       "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 7c31ed1366155d9dc0bf4cdf991eee63f274cbe8."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 7c31ed1366155d9dc0bf4cdf991eee63f274cbe8; inventory unioned by semantic key with no dispositions dropped."
+      "evidence": "42 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
     }
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main 6a238c7a after PR 2968 landed; stops before merge while PR 2861 is unlanded, at 7c31ed1366155d9dc0bf4cdf991eee63f274cbe8.",
+    "Implementation is the five declared files refreshed onto main 6a238c7a after PR 2968 landed, with the capture time bound into the snapshot seal and idempotent retries with a later capture time accepted, and passing records with blocked inner checks refused, at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d.",
     "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Live adapters, caller integration and programme acceptance remain pending under issue 2729, which this merge does not close."
+    "Caller integration and live programme acceptance remain pending under issue 2728, which this merge does not close."
   ],
   "stop_conditions_hit": []
 }

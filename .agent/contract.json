@@ -1,51 +1,50 @@
 {
-  "schema_version": 1,
-  "work_issue": 2729,
-  "generation":  6,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "branch": "claude/2729-step6-remaining-gaps",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a61b1b762ee60c5ab",
-  "worker": "agent-a61b1b762ee60c5ab",
-  "dispatcher": "Orchestrator coordinator: close the two remaining gaps of #2729 (popcre/ai-devops#401 Steps 6-7) as a follow-up to #2972; generation 5 belongs to PR #2979",
-  "base_sha": "dae4becb79ae2684a246e3edd867ebabb68a712b",
-  "goal": "(a) Accept a pre-merge claim-mode preview apply outside the historical restoration registry only when its archived artifact verifies against the exact merge commit, fail-closed, with every rejected candidate naming its condition; the registry path keeps working. (b) Wire the approved-migration train into manager commands (propose, validate, authorize, dispatch, close, verify dispatch) with immutable create-only records, and make the Shared Supabase Migrations workflow refuse a train dispatch that is not the exact recorded train.",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
-  "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".agent/contract.json",
-    ".agent/completion.json"
+  "assumptions": [
+    "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
+    "Generations 1-6 already exist for issue 2728; this contract is generation 7, republished after main (d91f2683) was merged so the evidence pair follows the implementation head.",
+    "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
   ],
+  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
+  "branch": "claude/2728-step5-preflight-routine-rebuild",
   "db_reads": [],
   "db_writes": [],
-  "assumptions": [
-    "The archived preview artifact manifest records each migration file sha256, and scripts/verify_preview_apply_artifact.py compares it with the files at the verification commit.",
-    "workflow_dispatch accepts at most 25 inputs; the train ref is the 25th.",
-    "PR #2979 remains open and is not required by this change."
+  "dispatcher": "Claude shared-db orchestrator marker #2927",
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
+  "generation": 7,
+  "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
   "prohibited_actions": [
-    "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
-    "Do not change preflight or routine-rebuild code.",
-    "Do not weaken, skip or quarantine any test."
+    "No database, migration, preview, production, claim or marker mutation.",
+    "No edits to production_business_risk_gate.py, manage-migration-author-lanes.mjs, or any file owned by #2970 or #2729.",
+    "No workflow, repository setting or branch protection change."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/migration-train.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "git diff --check"
+    "git diff --check",
+    "python -m unittest scripts/test_check_pass2_routine_supersession.py",
+    "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
   ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if the fix requires changing any file outside the allowed paths."
-  ]
+    "Stop and report if the sidecar registry requires changing production_business_risk_gate.py.",
+    "Stop if the rebuild check blocks existing main migrations without a real rebuild defect."
+  ],
+  "work_issue": 2728,
+  "work_type": "repo-maintenance",
+  "worker": "Claude Opus 5 subagent",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a2762539149f39f1a"
 }

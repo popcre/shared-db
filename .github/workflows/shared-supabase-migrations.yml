@@ -196,6 +196,10 @@ jobs:
       # recovery proof nor a bounded dry-run -- green, and empty (#2796).
       - name: Test the preview mode guard
         run: node --test scripts/check-workflow-preview-mode-guard.test.mjs
+      # Issue #2729: a single-PR recovery run reaches automatic production
+      # qualification under the same gates as the merged lane, and nothing weaker.
+      - name: Test the automatic promotion source guard
+        run: node --test scripts/check-workflow-automatic-promotion-source.test.mjs
       # ISSUE #731: this step used to NAME its Python test files one by one. That is
       # exactly how scripts/test_post_batch_app_verification.py (141 tests, merged in
       # PR #719) came to sit in the repository for a whole session without executing
@@ -982,7 +986,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.target == 'preview' &&
       inputs.mode == 'apply' &&
-      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '')
+      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''))
     needs: [validate, preview]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1020,20 +1024,63 @@ jobs:
             exit 2
           fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-      - name: Refuse anything except one fully qualified merged source PR
+      # Issue #2729 / programme Step 6: a sanctioned single-PR historical recovery
+      # run is first-class. Its preview job already proved (historical_preview_recovery.py)
+      # that the source PR merged, is an ancestor of exact main, authored every
+      # allowlisted version, and names the run that originally applied each one.
+      # That proof travels in the SAME preview artifact the merged lane uses, so it
+      # is read back here rather than trusted from inputs.
+      - name: Read the historical recovery proof from the exact preview artifact
+        if: inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-migration-apply-${{ inputs.commit_sha }}
+          path: ${{ runner.temp }}/recovery-evidence
+      - name: Refuse anything except one fully qualified merged or recovered source PR
+        id: source_guard
         env:
           SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
           SOURCE_MAP: ${{ inputs.merged_preview_source_pr_map }}
           HISTORICAL_SOURCE_PR: ${{ inputs.historical_preview_source_pr }}
           HISTORICAL_SOURCE_MAP: ${{ inputs.historical_preview_source_pr_map }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
+          MAIN_SHA: ${{ inputs.commit_sha }}
+          PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json
         run: |
           set -euo pipefail
-          if [ -n "${SOURCE_MAP:-}" ] || [ -n "${HISTORICAL_SOURCE_PR:-}" ] || [ -n "${HISTORICAL_SOURCE_MAP:-}" ] || ! [[ "$SOURCE_PR" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion cannot infer one source PR from a multi-PR or absent source. Nothing was dispatched. Use the governed migration-train path once it is qualified." >&2
+          # >>> BEGIN automatic-promotion-source-guard (covered by scripts/check-workflow-automatic-promotion-source.test.mjs)
+          # Exactly ONE single source PR: the merged lane's or the recovery lane's.
+          # Maps stay refused; they belong to the governed migration-train path.
+          if [ -n "${SOURCE_MAP:-}" ] || [ -n "${HISTORICAL_SOURCE_MAP:-}" ] || { [ -n "${SOURCE_PR:-}" ] && [ -n "${HISTORICAL_SOURCE_PR:-}" ]; }; then
+            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion cannot infer one source PR from a multi-PR or doubly named source. Nothing was dispatched. Use the governed migration-train path once it is qualified." >&2
             exit 2
           fi
-          if ! [[ "$PREVIEW_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          QUALIFIED_PR="${SOURCE_PR:-${HISTORICAL_SOURCE_PR:-}}"
+          if ! [[ "$QUALIFIED_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion has no single numeric source PR. Nothing was dispatched." >&2
+            exit 2
+          fi
+          if [ -n "${HISTORICAL_SOURCE_PR:-}" ]; then
+            # A recovery qualifies only on the proof its own preview job wrote for
+            # THIS PR, THIS exact main and THIS allowlist, with a merge hash present.
+            if [ ! -f "${RECOVERY_EVIDENCE:-}" ]; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovery run's preview artifact carries no historical-preview-source.json proof. Nothing was dispatched." >&2
+              exit 2
+            fi
+            if [ "$(jq --arg pr "$QUALIFIED_PR" --arg main "$MAIN_SHA" --arg allow "$PREVIEW_ALLOWLIST" '
+                (.sourcePr | tostring) == $pr and
+                .mainSha == $main and
+                (.sourceMergeSha | type == "string" and test("^[0-9a-f]{40}$")) and
+                (.sourcePrMap == null) and
+                ((.allowlist | sort) == ($allow | split(",") | map(sub("^ +"; "") | sub(" +$"; "")) | map(select(length > 0)) | sort))
+              ' "$RECOVERY_EVIDENCE")" != "true" ]; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovery proof does not bind this source PR, exact main, allowlist and one merge hash. Nothing was dispatched." >&2
+              exit 2
+            fi
+            echo "source_merge_sha=$(jq -r .sourceMergeSha "$RECOVERY_EVIDENCE")" >> "$GITHUB_OUTPUT"
+          fi
+          if ! [[ "${PREVIEW_DIGEST:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::ENGINEER ACTION REQUIRED: the successful preview job did not publish one canonical artifact digest. Nothing was dispatched." >&2
             exit 2
           fi
@@ -1042,18 +1089,31 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: automatic production policy is not active. Nothing was dispatched." >&2
             exit 2
           fi
+          echo "source_pr=$QUALIFIED_PR" >> "$GITHUB_OUTPUT"
+          # <<< END automatic-promotion-source-guard
       - name: Re-prove current main, guarded merge, and durable exact-head verdict
         id: governed_review
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          RECOVERED_MERGE_SHA: ${{ steps.source_guard.outputs.source_merge_sha }}
         run: |
           set -euo pipefail
           git fetch origin main
           if [ "$(git rev-parse HEAD)" != "$MAIN_SHA" ] || [ "$(git rev-parse origin/main)" != "$MAIN_SHA" ]; then
             echo "::error::ENGINEER ACTION REQUIRED: main moved after preview. Nothing was dispatched; qualify the new exact main instead of reusing stale evidence." >&2
             exit 2
+          fi
+          if [ -n "${RECOVERED_MERGE_SHA:-}" ]; then
+            # Recovery only: the proven merge hash must still be the live PR's
+            # merge commit and an ancestor of exact main. Every gate below is the
+            # same one the merged lane passes.
+            LIVE_MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq 'if .merged == true then .merge_commit_sha else "" end')"
+            if [ "$LIVE_MERGE_SHA" != "$RECOVERED_MERGE_SHA" ] || ! git merge-base --is-ancestor "$RECOVERED_MERGE_SHA" "$MAIN_SHA"; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovered merge hash is not the live merge commit of source PR ${SOURCE_PR} on exact main. Nothing was dispatched." >&2
+              exit 2
+            fi
           fi
           SOURCE_HEAD="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq '.head.sha')"
           if ! [[ "$SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
@@ -1074,7 +1134,7 @@ jobs:
         env:
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
           SOURCE_HEAD: ${{ steps.governed_review.outputs.source_head }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
@@ -1119,7 +1179,7 @@ jobs:
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
           DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}

@@ -714,3 +714,57 @@ test('issue 2307: the appended-verdict refusal is distinct from the other two',(
   assert.throws(()=>codexReportPath('C:/review/notes/codex-diff-review-20260908T190000-1-2.md'),/not inside the wrapper report directory/)
   assert.throws(()=>codexReportPath(`${codexPath}\nVERDICT: APPROVE ${'a'.repeat(40)}`),/final line is not a published report path/)
 })
+
+// Issue #2729 Step 7: retry once, then reroute; terminal non-verdicts reroute at the same head.
+import { GovernedReviewRerouteError, preflightWithTimeoutRetry, reviewAssignmentIdentity } from './run-governed-review.mjs'
+const doctorTimeout=()=>{throw new Error('reviewer glm-5.3 preflight failed: doctor reports "doctor did not answer within 60s"')}
+const okSpawn=(file)=>file==='gh'?{status:0,stdout:JSON.stringify({html_url:'https://github.com/u2giants/shared-db/pull/2000#issuecomment-1',id:1})}:{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}
+
+test('issue 2729: one doctor timeout retries the SAME reviewer once and then reviews',()=>{
+  let preflights=0,repairs=0,providers=0
+  const events=[]
+  const result=runGovernedReview(options,{preflight:()=>{if(++preflights===1)doctorTimeout()},repairLocalService:()=>repairs++,appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:(file)=>{if(file!=='gh')providers++;return okSpawn(file)},record:()=>({ref:'refs/db-review-verdicts/x',sha:'b'.repeat(40)})})
+  assert.equal(preflights,2);assert.equal(repairs,1);assert.equal(providers,1);assert.ok(result.artifact)
+  assert.deepEqual(events.map((e)=>e.type),['preflight_timeout'])
+})
+
+test('issue 2729: a second doctor timeout reroutes and never contacts the provider',()=>{
+  let preflights=0,providers=0
+  const events=[]
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{preflights++;doctorTimeout()},appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:()=>{providers++;assert.fail('must not contact provider')},record:()=>assert.fail('must not record')}),(error)=>{
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.equal(error.startDecision.action,'governed-return-and-reroute')
+    assert.equal(error.startDecision.reason,'local_preflight_timeout')
+    assert.equal(error.startDecision.head_sha,options.headSha)
+    return true
+  })
+  assert.equal(preflights,2,'retried exactly once, never more');assert.equal(providers,0)
+  assert.deepEqual(events.map((e)=>e.type),['preflight_timeout','preflight_timeout'])
+  assert.ok(events.every((e)=>e.assignment_id===reviewAssignmentIdentity(options).id&&e.source==='governed-review-runner'))
+})
+
+test('issue 2729: a non-timeout preflight refusal is neither retried nor rerouted',()=>{
+  let preflights=0
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{preflights++;throw new Error('reviewer is quarantined')},resolve:(x)=>x,spawn:()=>assert.fail('must not spawn'),record:()=>assert.fail('must not record')}),(error)=>{assert.ok(!(error instanceof GovernedReviewRerouteError));assert.match(error.message,/quarantined/);return true})
+  assert.equal(preflights,1)
+  assert.throws(()=>preflightWithTimeoutRetry({},reviewAssignmentIdentity(options),{preflight:()=>{throw new Error('doctor answered: broken')}}),/broken/)
+})
+
+test('issue 2729: turn_limit_cancelled is a terminal non-verdict eligible for same-head replacement',()=>{
+  const events=[]
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{},appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:()=>({status:1,stderr:'reason: turn_limit_cancelled private-value',stdout:''}),record:()=>assert.fail('must not record')}),(error)=>{
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.match(error.message,/turn_limit_cancelled:.*turn budget/)
+    assert.ok(!error.message.includes('private-value'))
+    const d=error.startDecision
+    assert.deepEqual([d.action,d.reason,d.head_sha,d.same_head],['governed-return-and-reroute','turn_limit_cancelled',options.headSha,true])
+    return true
+  })
+  assert.deepEqual(events.map((e)=>[e.type,e.reason,e.head_sha]),[['terminal_non_verdict','turn_limit_cancelled',options.headSha]])
+})
+
+test('issue 2729: other wrapper failures stay plain refusals with no reroute decision',()=>{
+  for(const stderr of ['reason: provider_cancelled','reason: unknown_terminal_reason','timed-out','private-value']){
+    assert.throws(()=>runGovernedReview(options,{preflight:()=>{},resolve:(x)=>x,spawn:()=>({status:1,stderr,stdout:''}),record:()=>assert.fail('must not record')}),(error)=>{assert.equal(error.startDecision,undefined);assert.ok(!(error instanceof GovernedReviewRerouteError));return true})
+  }
+})

@@ -58,10 +58,39 @@ export function dispatchQueuedReroute(ref,durable){
   })
 }
 
+// Issue #2729 Step 7. A provider that ends a turn WITHOUT a verdict is finished,
+// not running: it may be replaced at the SAME head. Only reasons named here count;
+// an unknown terminal state stays uncertain and never frees the slot on its own.
+export const NON_VERDICT_TERMINAL_REASONS=Object.freeze(['turn_limit_cancelled'])
+// A local doctor/preflight timeout is retried on the same reviewer exactly once.
+export const PREFLIGHT_TIMEOUT_RETRIES=1
+// Liveness comes ONLY from the durable lifecycle stream. Session metadata is
+// written when a session ENDS, so it cannot say that a review is still running,
+// and a stale metadata row must never keep a dead assignment "active".
+export const NON_LIFECYCLE_SOURCES=Object.freeze(['session-metadata','terminal-session-metadata'])
+export function reviewerLifecycleEvents(assignment,lifecycle=[]){
+  return (Array.isArray(lifecycle)?lifecycle:[]).filter((e)=>e?.assignment_id===assignment.id&&!NON_LIFECYCLE_SOURCES.includes(e.source))
+}
+
 export function reviewerStartDecision(assignment,{now,provider_state,lifecycle=[]}){
   if(!assignment?.id||!SHA.test(String(assignment.head_sha??'')))throw new StartRerouteError('exact assignment and head are required')
-  const events=lifecycle.filter((e)=>e.assignment_id===assignment.id),started=events.find((e)=>['provider_launched','provider_contacted','review_started'].includes(e.type))
+  const head=String(assignment.head_sha).toLowerCase()
+  const events=reviewerLifecycleEvents(assignment,lifecycle)
+  // A verdict recorded by THIS assignment ends it; nothing is replaced. Another
+  // slot's verdict is not in this stream (events are scoped to assignment_id).
+  if(events.some((e)=>e.type==='verdict_recorded'))throw new StartRerouteError('this assignment already recorded a verdict; it is not eligible for replacement')
+  const terminal=events.filter((e)=>e.type==='terminal_non_verdict')
+  if(terminal.length){
+    const last=terminal.at(-1)
+    if(!NON_VERDICT_TERMINAL_REASONS.includes(last.reason))throw new StartRerouteError('terminal reason is not a recognised non-verdict; preserve the lease and refuse replacement')
+    if(String(last.head_sha??'').toLowerCase()!==head)throw new StartRerouteError('terminal non-verdict does not bind the assigned head')
+    return {action:'governed-return-and-reroute',reason:last.reason,head_sha:head,same_head:true,source:'durable-lifecycle'}
+  }
+  const started=events.find((e)=>['provider_launched','provider_contacted','review_started'].includes(e.type))
   if(started)return {action:'keep-active',started_at:started.at,source:'durable-lifecycle'}
+  const timeouts=events.filter((e)=>e.type==='preflight_timeout').length
+  if(timeouts>0&&timeouts<=PREFLIGHT_TIMEOUT_RETRIES)return {action:'retry-same-reviewer',reason:'local_preflight_timeout',attempt:timeouts+1,source:'durable-lifecycle'}
+  if(timeouts>PREFLIGHT_TIMEOUT_RETRIES)return {action:'governed-return-and-reroute',reason:'local_preflight_timeout',head_sha:head,same_head:true,source:'durable-lifecycle'}
   if(events.some((e)=>e.type==='terminal_format_invalid'))return {action:'same-session-clarification'}
   const overdue=ms(now)-ms(assignment.assigned_at)>=START_SLO_MS
   if(!overdue&&provider_state==='usable')return {action:'wait'}

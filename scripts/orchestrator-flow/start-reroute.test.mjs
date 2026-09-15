@@ -23,3 +23,43 @@ test('lost dispatch acknowledgement retries idempotently without duplicate exter
 const sealedResult=(reservation,assertionRows=[{name:'sql',result:'passed'},{name:'contract',result:'passed'}])=>{const identity={attempt_id:'run2',supersedes_attempt_id:'run1',reroute_id:reservation.reroute_id,workflow:'contract',lane:'fallback',head_sha:h,assertions:[...assertionRows].sort((a,b)=>a.name.localeCompare(b.name))};return{...identity,result_digest:sha256(canonicalJson(identity))}}
 test('accepted result binds exact requirements and supersession chain',()=>{const s=store(),decision=runnerStartDecision(attempt,{now:late,qualified_lanes:lanes}),reservation=reserveRunnerReroute(attempt,decision,{id:'run2'},s.io),result=sealedResult(reservation);assert.equal(acceptRunnerResult(result,attempt,s.io).accepted,true);assert.equal(acceptRunnerResult(result,attempt,s.io).accepted,true);assert.throws(()=>acceptRunnerResult({...result,attempt_id:'foreign'},attempt,s.io),/immutable reroute/);assert.throws(()=>acceptRunnerResult({...result,workflow:'foreign'},attempt,s.io),/original workflow/);assert.throws(()=>acceptRunnerResult(sealedResult(reservation,[{name:'sql',result:'passed'}]),attempt,s.io),/exact original assertion set/);assert.throws(()=>acceptRunnerResult(sealedResult(reservation,[...result.assertions,{name:'bonus',result:'passed'}]),attempt,s.io),/exact original assertion set/);assert.throws(()=>acceptRunnerResult({...result,supersedes_attempt_id:'other'},attempt,s.io),/original workflow/);assert.throws(()=>acceptRunnerResult({...result,lane:'foreign'},attempt,s.io),/immutable reroute/);assert.throws(()=>acceptRunnerResult({...result,result_digest:'c'.repeat(64)},attempt,s.io),/canonical digest/)})
 test('failing and duplicate assertion results refuse',()=>{const s=store(),decision=runnerStartDecision(attempt,{now:late,qualified_lanes:lanes}),reservation=reserveRunnerReroute(attempt,decision,{id:'run2'},s.io);assert.throws(()=>acceptRunnerResult(sealedResult(reservation,[{name:'sql',result:'failed'},{name:'contract',result:'passed'}]),attempt,s.io),/exact original assertion set/);assert.throws(()=>acceptRunnerResult(sealedResult(reservation,[{name:'sql',result:'passed'},{name:'sql',result:'passed'}]),attempt,s.io),/exact original assertion set/)})
+
+// Issue #2729 Step 7.
+import { NON_VERDICT_TERMINAL_REASONS, PREFLIGHT_TIMEOUT_RETRIES, reviewerLifecycleEvents } from './start-reroute.mjs'
+const early='2026-09-11T10:01:00Z'
+test('turn_limit_cancelled is a terminal non-verdict that reroutes at the same head even after the provider launched',()=>{
+  assert.deepEqual(NON_VERDICT_TERMINAL_REASONS,['turn_limit_cancelled'])
+  const lifecycle=[{assignment_id:'r1',type:'provider_launched',at},{assignment_id:'r1',type:'terminal_non_verdict',reason:'turn_limit_cancelled',head_sha:h,at:early}]
+  assert.deepEqual(reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle}),{action:'governed-return-and-reroute',reason:'turn_limit_cancelled',head_sha:h,same_head:true,source:'durable-lifecycle'})
+})
+test('another slot verdict at the head does not block replacing a non-verdict terminal, but this assignment verdict does',()=>{
+  const lifecycle=[{assignment_id:'r0-slot1',type:'verdict_recorded',head_sha:h,at},{assignment_id:'r1',type:'terminal_non_verdict',reason:'turn_limit_cancelled',head_sha:h,at:early}]
+  assert.equal(reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle}).action,'governed-return-and-reroute')
+  assert.throws(()=>reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:[...lifecycle,{assignment_id:'r1',type:'verdict_recorded',head_sha:h,at:early}]}),/already recorded a verdict/)
+})
+test('unrecognised terminals and a foreign head never free the slot',()=>{
+  for(const reason of ['unknown_terminal_reason','provider_cancelled',undefined])assert.throws(()=>reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:[{assignment_id:'r1',type:'terminal_non_verdict',reason,head_sha:h,at}]}),/not a recognised non-verdict/)
+  assert.throws(()=>reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:[{assignment_id:'r1',type:'terminal_non_verdict',reason:'turn_limit_cancelled',head_sha:'b'.repeat(40),at}]}),/does not bind the assigned head/)
+})
+test('a preflight timeout retries the same reviewer once, then reroutes',()=>{
+  assert.equal(PREFLIGHT_TIMEOUT_RETRIES,1)
+  const one=[{assignment_id:'r1',type:'preflight_timeout',at:early}]
+  assert.deepEqual(reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:one}),{action:'retry-same-reviewer',reason:'local_preflight_timeout',attempt:2,source:'durable-lifecycle'})
+  const decision=reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:[...one,{assignment_id:'r1',type:'preflight_timeout',at:early}]})
+  assert.equal(decision.action,'governed-return-and-reroute');assert.equal(decision.reason,'local_preflight_timeout');assert.equal(decision.head_sha,h)
+})
+test('liveness comes from the lifecycle stream, never terminal-only session metadata',()=>{
+  const metadata=[{assignment_id:'r1',type:'review_started',source:'session-metadata',at:early},{assignment_id:'r1',type:'provider_contacted',source:'terminal-session-metadata',at:early}]
+  assert.deepEqual(reviewerLifecycleEvents(assignment,metadata),[])
+  assert.equal(reviewerStartDecision(assignment,{now:late,provider_state:'unusable',lifecycle:metadata}).action,'governed-return-and-reroute')
+  assert.equal(reviewerStartDecision(assignment,{now:late,provider_state:'unusable',lifecycle:[{...metadata[0],source:'provider-lifecycle'}]}).action,'keep-active')
+})
+test('a same-head non-verdict replacement reserves through the fenced adapter and re-derives inside the fence',()=>{
+  const s=store(),terminal={assignment_id:'r1',type:'terminal_non_verdict',reason:'turn_limit_cancelled',head_sha:h,at:early}
+  s.live.reviewer={now:early,provider_state:'usable',lifecycle:[terminal]}
+  const decision=reviewerStartDecision(assignment,{now:early,provider_state:'usable',lifecycle:[terminal]})
+  const reserved=reserveReviewerReroute(assignment,decision,{id:'r2',provider:'muse'},s.io)
+  assert.equal(reserved.status,'queued');assert.equal(s.durable.readPair(reserved.ref).record.head_sha,h);assert.equal(s.dispatches.size,0)
+  const s2=store();s2.live.reviewer={now:early,provider_state:'usable',lifecycle:[terminal,{assignment_id:'r1',type:'verdict_recorded',head_sha:h,at:early}]}
+  assert.throws(()=>reserveReviewerReroute(assignment,decision,{id:'r2',provider:'muse'},s2.io),/already recorded a verdict/);assert.equal(s2.refs.size,0)
+})

@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "work_issue": 2788,
-  "generation": 1,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Make --prepare-preview-dispatch refuse with a clear message instead of crashing when the work issue has no db-work-scope block.",
-  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "base_sha": "26b6d8c1f0a366ebf59904f43ce1b78b6cd2930f",
   "dispatcher": "Albert Hazan (session request to resolve issue #2788)",
   "worker": "claude-issue-2788-no-scope-guard-20260915",
   "branch": "claude/top-shared-db-issues-6bc111",

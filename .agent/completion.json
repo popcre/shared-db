@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2729/6",
   "contract_sha256": "482ebec748d3e6411192cf5297e46bb6caa61b53a10f0eb6af9eee7dc5804e97",
-  "head_sha": "52978f5df8a5a93b217eecf4376cd26eec55db33",
+  "head_sha": "616dffe6e9ba2908e05a270a5e3fcf3893f7d633",
   "files_changed": [
     ".github/workflows/shared-supabase-migrations.yml",
     "scripts/manage-migration-author-lanes.mjs",

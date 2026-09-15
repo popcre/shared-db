@@ -1,27 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
-  "generation": 4,
+  "work_issue": 2390,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Correct two stale Qwen wording nits deferred from PR #2346 so neither implies Qwen's quarantine never existed nor uses the retired 'pause' vocabulary.",
-  "base_sha": "2ad5f56fece2af7c0709d8dc5e401506fd3588f2",
-  "dispatcher": "Albert Hazan (session request)",
-  "worker": "claude-qwen-wording-2361-20260915",
-  "branch": "claude/qwen-wording-2361",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5903b6b3f380df01",
-  "allowed_paths": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Run the public data venue guard in CI (#2390) and resolve the eight flagged structural-statistics CSVs (#2391) with a narrowly scoped, tested exception instead of weakening the guard.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (session request to resolve issues #2390 and #2391)",
+  "worker": "claude-public-data-venue-guard-20260915",
+  "branch": "claude/public-data-venue-guard",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abd3fd34ef75d018f",
+  "allowed_paths": ["scripts/public-data-venue.test.mjs", ".github/workflows/public-data-venue-guard.yml", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/public-data-venue.test.mjs", ".github/workflows/public-data-venue-guard.yml", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "No behaviour change: the script edit is a single comment line.",
-    "Do not edit plan_orchestrator_throughput_phase_2.md line 27 (dated audit record)."
+    "Do not broaden the venue guard beyond the four structural-statistics capture file names under timestamped database-efficiency run directories.",
+    "Do not move, delete, or rewrite the flagged files or the advisor JSON files."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/public-data-venue.test.mjs", "git diff --check"],
   "assumptions": [
-    "Current state was verified, not inferred: QUARANTINED_REVIEWERS is empty on main since commit 58a447ae (2026-09-07), which returned qwen-3.8-max to the active rotation after a passing live qualification."
+    "The 2026-09-05 independent assessment recorded in #2391 is correct that the flagged CSVs hold catalog statistics only.",
+    "The advisor-security JSON publication question in #2391 is a separate security decision left to the owner."
   ],
-  "stop_conditions": ["Any change beyond wording in the two named files."]
+  "stop_conditions": [
+    "Stop if the exception would need to cover any file other than the four structural-statistics capture names.",
+    "Stop if completion requires any file outside the guard test, its workflow and the evidence pair."
+  ]
 }

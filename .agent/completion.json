@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2728/5",
   "contract_sha256": "4a03de88511c656530378a0f8f352cdd0cb43ac46b27633089be83f8839ec875",
-  "head_sha": "a5f36a97e21a68310532eadc44467ce658851f5b",
+  "head_sha": "cb3b87b339c19cbd6ad1487dda2335cbe54becd8",
   "files_changed": [
     "scripts/check_pass2_routine_supersession.py",
     "scripts/test_check_pass2_routine_supersession.py",

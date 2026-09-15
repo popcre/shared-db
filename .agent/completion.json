@@ -8,8 +8,6 @@
   "contract_sha256": "c7c4c942090a082502d2cfe9c4a32f064c3f7ad7c59e7828a203bd37982e3b87",
   "head_sha": "b8e66ed9c355038676fda6ce7899c00b7827c4f3",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "scripts/check-dispatch-collision.mjs",
     "scripts/check-dispatch-collision.test.mjs",
     "scripts/check-migration-pr-lease.mjs",

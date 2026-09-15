@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
+  "work_issue": 2947,
   "outcome": "ready-for-merge",
-  "pr": 2949,
+  "pr": 2948,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2361/6",
-  "contract_sha256": "88020006752950a1ccd23739f537fc25d0cd3038aa9dfc2562191330530c6b84",
-  "head_sha": "174b2c34790e39288d5a3ed8efe0f132f5dd67de",
-  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
+  "contract_ref": "refs/db-contracts/2947/1",
+  "contract_sha256": "e941b64bceef395b90f7912209d1559f91b8924ee750facb0a36f9a8b0520342",
+  "head_sha": "f8af68e483f00bbef4471d1981d12b00a489cf46",
+  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the refresh merged only main's files and the PR's own diff is unchanged."},
+    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "27 tests pass, including three that replay on a throwaway PostgreSQL cluster and assert the catalog: early create + later drop => absent; drop then same-signature re-create => present; drop then new signature => old identity absent, new present. Against origin/main the suite fails with ImportError: cannot import name 'later_drops'; against first-round head 0de489c0 three tests fail, including the new-identity catalog test reproducing the governed review's High finding."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
-    "The script edit is one comment line; no behaviour changed. Muse APPROVE recorded at refs/db-review-verdicts/2361-2949-a171c743...; main refreshed to 15cc715a by merge with main's .agent pair."
+    "The contract-test workflow already runs every returned snapshot row after the pass-2 migration, so the drop rows (ord 5, after bodies and grants) need no workflow change.",
+    "No database object, migration, test file, claim or lease was written."
   ],
   "stop_conditions_hit": []
 }

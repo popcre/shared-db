@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2707/3",
   "contract_sha256": "11985ae9a1319fe6a9320584f49998f8abca72042519d1d3e5b527e1a7d34226",
-  "head_sha": "964d3c5bbb9b36e945ac5f821dbaaecfb6438193",
+  "head_sha": "dbe9ca70787015b4b728f55e6723202e391aff90",
   "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
   "db_reads": [],
   "db_writes": [],

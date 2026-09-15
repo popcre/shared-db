@@ -1,26 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2350,
+  "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 2989,
+  "pr": 2640,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2350/1",
-  "contract_sha256": "bdc4866c4ac138c72bdf21bde653d17f905fb0b3d3120af646bf486cba99dbf3",
-  "head_sha": "dc847a4349d08d3bbd6d6ed965368918ad4f67b6",
+  "contract_ref": "refs/db-contracts/2301/5",
+  "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
+  "head_sha": "26106e21bf5c20d2b77d52c3033605758f6cd38e",
   "files_changed": [
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-orchestrator-marker.test.mjs"
+    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation commit."},
-    {"command": "node --test --test-reporter=tap scripts/check-orchestrator-marker.test.mjs", "exit_code": 0, "evidence": "43 of 43 tests passed, including the new test that a declared target carries reachability unverified and the NOT PROVEN text."},
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "569 of 569 tests passed; the resolver consumer reads only state, which is unchanged."}
+    {
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head ff5864fb (code identical to implementation head 26106e21bf5c20d2b77d52c3033605758f6cd38e) (main e5a2a449 merged): tests 621, pass 621, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head ff5864fb (code identical to implementation head 26106e21bf5c20d2b77d52c3033605758f6cd38e): tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "python scripts/test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head ff5864fb (code identical to implementation head 26106e21bf5c20d2b77d52c3033605758f6cd38e): Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors were reported for e5a2a44911f4c36a567a402000e006be7136bb62..ff5864fb (code identical to implementation head 26106e21bf5c20d2b77d52c3033605758f6cd38e)."
+    }
   ],
   "assumptions_resolved": [
-    "Marker #2330 is closed, so the stale session id in the issue is obsolete.",
-    "Exit codes and the state field are unchanged; only reachability and notProven fields were added."
+    "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
+    "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
+    "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
+    "PR 2640 closes sub-issue 2994 and references parent 2301, matching the one-closing-issue reviewer rule; generation 5 rewords one prohibited action that tripped the cancelled-work guard (local check now OK).",
+    "Issue 2301 remains open for Phase B-D."
   ],
   "stop_conditions_hit": []
 }

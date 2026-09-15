@@ -1,46 +1,57 @@
 {
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-orchestrator-marker.test.mjs"
-  ],
-  "assumptions": [
-    "Authorization is issue 2350 (repo-maintenance route, non-orchestrator), delegated by Albert's Claude session; no migration lane and no db claim.",
-    "Marker #2330 named in the issue is closed, so its stale session id needs no correction; only the resolver output is changed.",
-    "A liveness probe is not possible from this repository (no session API), so the fix makes the JSON state the address is unverified."
-  ],
+  "schema_version": 1,
+  "generation": 5,
+  "work_issue": 2301,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement only Phase A Steps 1-2 of the author-lane abandonment lifecycle so capacity can be relinquished from any machine while all work authority remains protected and resume is recovery-gated.",
   "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
-  "branch": "claude/2350-resolve-json-unverified",
+  "dispatcher": "Claude shared-db coordinator (takeover of idle PR 2640, authorized 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Phase A repository-maintenance takeover worker",
+  "branch": "codex/issue-2301-phase-a",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/disney-creative-unmapped-titles-7b4149",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "plan_author_lane_abandonment_lifecycle.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "plan_author_lane_abandonment_lifecycle.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Albert's Claude session (repo-maintenance, non-orchestrator)",
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-orchestrator-marker.test.mjs"
-  ],
-  "generation": 1,
-  "goal": "Make check-orchestrator-marker --resolve --json state that a declared target's reachability is unverified, so exit 0 is not read as a working route.",
   "prohibited_actions": [
-    "No database, migration, preview, production, claim or marker mutation.",
-    "No change to exit codes or the state field consumed by manage-migration-author-lanes.mjs.",
-    "No workflow, repository setting or branch protection change."
+    "No database, preview, production, or infrastructure action",
+    "No claim, branch, pull request, worktree, or coordination-ref deletion",
+    "No live capacity transition merely to prove the feature",
+    "No Phase B-D implementation in this pull request",
+    "No rewrite of the existing Phase A branch commits; update only by merge"
   ],
   "required_checks": [
-    "git diff --check",
-    "node --test --test-reporter=tap scripts/check-orchestrator-marker.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+    "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+    "python scripts/test_production_migration_guard.py",
+    "git diff --check"
   ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
+  "assumptions": [
+    "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator",
+    "PR 2640 had no commits or comments after 2026-09-11T22:08Z; the coordinator authorized takeover on 2026-09-15 after verifying more than 24h idle",
+    "Generation 4 rebinds the unchanged generation-3 scope to main e317e92a after a merge (not a force-push); no path, database, or action scope is widened",
+    "The REVISE findings from the governed review at 8e94f114 were addressed at 1907f424; a fresh exact-head governed review is still required",
+    "Generation 5 only rewords one prohibited action that tripped the cancelled-work guard and binds PR 2640 to sub-issue 2994 (closes) with parent 2301 (refs); scope is unchanged"
+  ],
   "stop_conditions": [
-    "Stop if the change would alter exit codes or the state field.",
-    "Stop if any marker or lanes-manager test fails."
-  ],
-  "work_issue": 2350,
-  "work_type": "repo-maintenance",
-  "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a04d2b47ad3b8f225"
+    "Stop if implementing Phase A would release object or version protection",
+    "Stop if a safe result would require deleting or mutating a worktree or coordination ref",
+    "Stop if current main moves before the final exact-head review-to-merge cycle",
+    "Stop if Phase A cannot preserve existing fail-closed parser and collision behavior"
+  ]
 }

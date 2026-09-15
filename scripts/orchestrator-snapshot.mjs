@@ -181,7 +181,7 @@ export const defaultIo = {
   // One GraphQL read for every owned issue's comments instead of one paginated
   // REST read per issue. An issue whose comments do not fit one page, or that
   // GraphQL cannot resolve, falls back to the REST reader so nothing is dropped
-  // and a missing issue still refuses exactly as before.
+  // and an unresolvable issue still refuses exactly as before.
   issueCommentsMany(repo, issues) {
     const [owner, name] = repo.split('/')
     const result = new Map()

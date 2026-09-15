@@ -6,12 +6,12 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2947/1",
   "contract_sha256": "e941b64bceef395b90f7912209d1559f91b8924ee750facb0a36f9a8b0520342",
-  "head_sha": "0de489c0349751db1dc0e642076057bac909b16b",
+  "head_sha": "188907190f6f292fb2a990ca2142e102ebbb4cea",
   "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "22 tests pass. Against the origin/main script the new suite fails with ImportError: cannot import name 'later_drops'; with the fix a later applied drop is replayed (routine absent) and a drop followed by a later re-create is not (routine present)."},
+    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "27 tests pass, including three that replay on a throwaway PostgreSQL cluster and assert the catalog: early create + later drop => absent; drop then same-signature re-create => present; drop then new signature => old identity absent, new present. Against origin/main the suite fails with ImportError: cannot import name 'later_drops'; against first-round head 0de489c0 three tests fail, including the new-identity catalog test reproducing the governed review's High finding."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [

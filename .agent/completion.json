@@ -1,26 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2921,
+  "work_issue": 2707,
   "outcome": "ready-for-merge",
-  "pr": 2922,
+  "pr": 2932,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2921/4",
-  "contract_sha256": "5f8cb34848dd2c574bc7f3a04fa6fe89470b19c4f71dde922d8ac712625f11ea",
-  "head_sha": "cfbf0df5487443fb51a5615299c4811a2b86628d",
-  "files_changed": [
-    ".github/live-proofs/2506.sql"
-  ],
+  "contract_ref": "refs/db-contracts/2707/3",
+  "contract_sha256": "11985ae9a1319fe6a9320584f49998f8abca72042519d1d3e5b527e1a7d34226",
+  "head_sha": "a21d3770a3b3850f97baa2ed04b150fe8e0c257c",
+  "files_changed": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Current-main owning suite passed 52 tests with 0 failures, 0 cancelled, 0 skipped and 0 todo."
+    },
+    {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors between base 477b8633 and implementation cfbf0df5."
+      "evidence": "No whitespace errors in the contracted implementation and evidence pair."
     }
   ],
   "assumptions_resolved": [
-    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
+    "The consumer maps exact toolkit tokens for turn-limit cancellation, provider cancellation, unknown terminal state, Muse startup refusal and Qwen content inspection while preserving raw stderr only in the wrapper's private evidence.",
+    "A nonzero wrapper result never publishes or records an approval, including when stdout contains a fake approval line.",
+    "DeepSeek send and reply receive the exact governed head; conflicting or duplicate governed-head arguments refuse before provider execution."
   ],
   "stop_conditions_hit": []
 }

@@ -1,20 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2792,
+  "work_issue": 2361,
   "outcome": "ready-for-merge",
-  "pr": 2938,
-  "migration_versions": ["20260915015414"],
-  "contract_ref": "refs/db-contracts/2792/7",
-  "contract_sha256": "855221f868d4fdc5f90b2ea3f25e10072015366b78888ed8e0a08c468c378bcd",
-  "head_sha": "9b4639146294b05ea6e1b59a5d228058ed007ea2",
-  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", "scripts/migration_derivation.py", "scripts/production_migration_guard.py", "scripts/test_post_batch_app_verification.py", "scripts/test_production_migration_guard.py", "supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql"],
-  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
-  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
+  "pr": 2949,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2361/4",
+  "contract_sha256": "5d0d94a77f70d3f2670fe8b92fb295b0366b76e6a44023aa275a679e59b8999b",
+  "head_sha": "cce8f5eb60bd74ef9a7e8ca9428d463923ff9d28",
+  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between refreshed base 050e9da4 and merge head 9b463914."},
-    {"command": "python -m pytest scripts", "exit_code": 0, "evidence": "1156 passed, 8 skipped, 753 subtests passed before the main refresh; the refresh merged only main's files with no conflicts outside the .agent pair, and CI reruns this suite on the merge head. 9 local failures are confined to test_production_review_source_pr_preflight.py, where bash resolves to WSL with no installed distro on this Windows machine; that file is untouched here."},
-    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "Rerun on merge head 9b463914: 51 tests, 51 passed, 0 failed."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the change is one comment line and one prose paragraph, re-applied unchanged over main 2ad5f56f."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
-  "assumptions_resolved": ["The restored file hashes to blob 133782d3c5932455f3f4e9ec669f54a94f2b55fc, identical to commit a119760e that preview apply run 34920902290 applied. Preview's orphan ledger row for 20260915015414 now has its matching file. Main was refreshed from ae295b65 to 050e9da4; the only conflicts were the .agent pair, resolved to main's pair in the merge commit."],
+  "assumptions_resolved": [
+    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
+    "The script edit is one comment line; no behaviour changed and plan_orchestrator_throughput_phase_2.md was not touched."
+  ],
   "stop_conditions_hit": []
 }

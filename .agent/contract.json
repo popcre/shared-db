@@ -1,1 +1,44 @@
-{"allowed_paths":[".agent/contract.json",".agent/completion.json","config/review-carry-forward-stored-hashes-v1.json","scripts/check-exact-head-approval.mjs","scripts/check-exact-head-approval.test.mjs","scripts/lib/pr-content-equivalence.mjs","scripts/lib/pr-content-equivalence.test.mjs","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/delivery-preflight-gate.mjs","scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","scripts/production_business_risk_gate.py"],"assumptions":["Delivery preflight review enforcement is opt-in on --assign-reviewer in this PR; making it mandatory is a later programme step.","The pass-2 rebuild and the sidecar registry are out of scope."],"base_sha":"89ec62d2f1fe5a27c42c2f8ffb71c9a7900cc5b2","branch":"claude/2728-preflight-carry-forward","db_reads":[],"db_writes":[],"dispatcher":"Claude programme 401 Step 5 repository-maintenance owner","file_writes":[".agent/contract.json",".agent/completion.json","config/review-carry-forward-stored-hashes-v1.json","scripts/check-exact-head-approval.mjs","scripts/check-exact-head-approval.test.mjs","scripts/lib/pr-content-equivalence.mjs","scripts/lib/pr-content-equivalence.test.mjs","scripts/manage-migration-author-lanes.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/delivery-preflight-gate.mjs","scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","scripts/production_business_risk_gate.py"],"generation":4,"goal":"Wire delivery preflight into the lane manager with invalidation-gated reuse, and carry review approval across evidence-only commits, verified stored script-hash re-pins and diff-identical main merges, recording the approved implementation digest.","prohibited_actions":["No database, migration, claim, preview, production, marker or infrastructure mutation.","Do not edit orchestrator-snapshot, start-reroute or migration-train scripts.","Do not draw reviewers or merge."],"required_checks":["git diff --check","node --test scripts/lib/pr-content-equivalence.test.mjs scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/delivery-preflight-gate.test.mjs","node scripts/check-throughput-truth-audit.mjs","python -m unittest scripts.test_production_business_risk_gate"],"route":"repo-maintenance","schema_version":1,"stop_conditions":["Stop once the PR is open with a validated evidence pair and CI running.","Stop on any required check failure or lane refusal."],"work_issue":2728,"work_type":"repo-maintenance","worker":"Claude programme 401 Step 5","worktree":"C:/repos/shared-db/.claude/worktrees/agent-a715cf7fba38620b3"}
+{
+  "schema_version": 1,
+  "work_issue": 2728,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add the read-only --orchestrator-snapshot production caller with stalled_outcomes, zero-closures alarm and transition-only durable reports (programme 401 Step 4); live programme acceptance and the canonical skill rule remain separate.",
+  "base_sha": "89ec62d2f1fe5a27c42c2f8ffb71c9a7900cc5b2",
+  "dispatcher": "shared-db orchestrator marker 2927",
+  "worker": "Claude repo-maintenance agent",
+  "branch": "claude/2728-orchestrator-snapshot",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ae0e43c867f72142f",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, preview, production, marker, migration, claim, reviewer or infrastructure mutation.",
+    "No edits to manage-migration-author-lanes.mjs, run-governed-review.mjs or workflows."
+  ],
+  "required_checks": [
+    "git diff --check",
+    "node --test --test-reporter=tap scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/orchestrator-snapshot.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "The canonical shared-db-orchestrator skill lives in popcre/ai-devops, so the transition-only reporting rule is noted there rather than edited here.",
+    "Issue 2728 stays open for live programme acceptance; this PR does not close it."
+  ],
+  "stop_conditions": [
+    "Stop once the PR is open with a validated evidence pair and CI running; no reviewer draw and no merge.",
+    "Stop on required check failure."
+  ],
+  "generation": 2
+}

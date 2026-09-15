@@ -104,11 +104,29 @@ function blobAt(commit, file, gitRunner) {
   return String(gitRunner(['show', `${commit}:${file}`]))
 }
 
+// The tree entry at one path, read with `git ls-tree` so its type and mode are
+// known. The text comparison alone cannot see a mode-only change, and `git show`
+// happily prints a tree or a submodule commit where a file was expected.
+function treeEntryAt(commit, file, gitRunner) {
+  const raw = String(gitRunner(['ls-tree', '-z', '--full-tree', commit, '--', file]))
+  const rows = raw.split('\0').filter(Boolean).map((row) => /^(\d{6}) (\w+) ([0-9a-f]{40,64})\t([\s\S]*)$/.exec(row))
+  if (rows.some((row) => !row)) throw new Error(`could not parse the tree entry for ${file} at ${commit}`)
+  const exact = rows.filter((row) => row[4] === file)
+  if (exact.length > 1) throw new Error(`the tree at ${commit} lists ${file} more than once`)
+  return exact.length ? { mode: exact[0][1], type: exact[0][2] } : null
+}
+const REGULAR_FILE_MODES = new Set(['100644', '100755'])
+
 // The file at one commit with only a VERIFIED pinned value replaced by a marker.
+// The entry must be a regular file blob; its mode is part of the result, so a
+// mode-only change at a stored-hash path is a change.
 export function normalizedStoredHashFile(commit, file, entries, { gitRunner = defaultGit } = {}) {
+  const entry = treeEntryAt(commit, file, gitRunner)
+  if (entry === null) return '<absent>'
+  if (entry.type !== 'blob' || !REGULAR_FILE_MODES.has(entry.mode)) throw new Error(`${file} at ${commit} is not a regular file (${entry.mode} ${entry.type})`)
   const text = blobAt(commit, file, gitRunner)
-  if (text === null) return '<absent>'
-  let out = text
+  if (text === null) throw new Error(`${file} at ${commit} is listed but unreadable`)
+  let out = `<mode ${entry.mode}>\n${text}`
   for (const entry of entries.filter((row) => row.file === file)) {
     const source = blobAt(commit, entry.source, gitRunner)
     if (source === null) continue

@@ -50,7 +50,8 @@ test('unrelated doc movement reuses the sealed preflight without rerunning any g
   assert.deepEqual(calls, [])
   assert.equal(second.carried_from, HEAD_A)
   assert.equal(second.bundle.metadata.integration_sha, HEAD_B)
-  assert.equal(assertDeliveryPreflightBeforeReview({ record: second.record, bundle: second.bundle, issue: 2728, pr: 2800, headSha: HEAD_B }, adaptersFor(HEAD_B)).ok, true)
+  const carried = assertDeliveryPreflightBeforeReview({ record: second.record, bundle: second.bundle, issue: 2728, pr: 2800, headSha: HEAD_B, priorBundle: first.bundle, changedFiles: ['docs/notes.md'], integration: facts(HEAD_B) }, adaptersFor(HEAD_B))
+  assert.equal(carried.ok, true); assert.equal(carried.carried_from, HEAD_A)
 })
 
 test('POSITIVE CONTROL: a changed bundle reruns the gates', () => {
@@ -77,4 +78,26 @@ test('a blocked preflight refuses, and review refuses a blocked or absent record
   assert.throws(() => assertDeliveryPreflightBeforeReview({ record: first.record, bundle: bundleAt(HEAD_A), issue: 2728, pr: 2800, headSha: HEAD_A }, adaptersFor(HEAD_A)), /does not register/)
   assert.throws(() => assertDeliveryPreflightBeforeReview({ record: first.record, bundle: first.bundle, issue: 2728, pr: 2800, headSha: HEAD_B }, adaptersFor(HEAD_A)), /not bound to head/)
   assert.equal(assertDeliveryPreflightBeforeReview({ record: first.record, bundle: first.bundle, issue: 2728, pr: 2800, headSha: HEAD_A }, adaptersFor(HEAD_A)).ok, true)
+})
+
+test('POSITIVE CONTROL: review refuses a PASS record sealed at another head unless the carry is re-proven', () => {
+  const { first } = priorRun()
+  const second = runDeliveryPreflightGate({ currentBundle: bundleAt(HEAD_B), priorBundle: first.bundle, priorRecord: first.record, changedFiles: ['docs/notes.md'], integration: facts(HEAD_B) }, adaptersFor(HEAD_B))
+  assert.equal(second.reused, true)
+  // The bundle at HEAD_B registers the record, but the record was sealed at HEAD_A.
+  assert.throws(() => assertDeliveryPreflightBeforeReview({ record: second.record, bundle: second.bundle, issue: 2728, pr: 2800, headSha: HEAD_B }, adaptersFor(HEAD_B)), /sealed at head a{40}, not c{40}/)
+  // A prior bundle that did not seal the record is not a carry proof.
+  assert.throws(() => assertDeliveryPreflightBeforeReview({ record: second.record, bundle: second.bundle, issue: 2728, pr: 2800, headSha: HEAD_B, priorBundle: bundleAt(HEAD_A), changedFiles: [], integration: facts(HEAD_B) }, adaptersFor(HEAD_B)), /does not carry.*does not register/)
+})
+
+test('POSITIVE CONTROL: review refuses a stale PASS record re-registered in a bundle with a different identity', () => {
+  const { first } = priorRun()
+  const otherIdentity = { ...identity, claims: { writes: ['public.thing', 'public.other'], reads: [] } }
+  const stale = { ...bundleAt(HEAD_B, otherIdentity) }
+  stale.metadata = { ...stale.metadata, delivery_preflight: { preflight_id: first.record.preflight_id, input_digest: first.record.input_digest } }
+  assert.throws(() => assertDeliveryPreflightBeforeReview({ record: first.record, bundle: stale, issue: 2728, pr: 2800, headSha: HEAD_B, priorBundle: first.bundle, changedFiles: ['supabase/migrations/x.sql'], integration: facts(HEAD_B) }, adaptersFor(HEAD_A)), /does not carry.*CONTENT_INVALIDATED/)
+  // Same head, different identity: the sealing bundle is supplied and the classification refuses it too.
+  const sameHead = { ...bundleAt(HEAD_A, otherIdentity) }
+  sameHead.metadata = { ...sameHead.metadata, delivery_preflight: { preflight_id: first.record.preflight_id, input_digest: first.record.input_digest } }
+  assert.throws(() => assertDeliveryPreflightBeforeReview({ record: first.record, bundle: sameHead, issue: 2728, pr: 2800, headSha: HEAD_A, priorBundle: first.bundle, changedFiles: [], integration: facts(HEAD_A) }, adaptersFor(HEAD_A)), /CONTENT_INVALIDATED/)
 })

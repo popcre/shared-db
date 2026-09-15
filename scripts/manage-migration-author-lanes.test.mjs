@@ -7903,3 +7903,37 @@ test('DELIVERY PREFLIGHT (#2728): --assign-reviewer with a blocked preflight rec
     assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs both/)
   } finally { rmSync(dir,{recursive:true,force:true}) }
 })
+
+test('DELIVERY PREFLIGHT (#2728): --delivery-preflight runs and registers a preflight without GitHub access, and refuses without its inputs', () => {
+  const dir=mkdtempSync(path.join(tmpdir(),'lane-delivery-preflight-'))
+  const priorRoot=process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT
+  try {
+    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:'0'.repeat(64)}
+    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
+    const names=['route','work_contract','object_collision','dependencies','sidecars','producers','migration_order','reviewer_capacity','runner_capacity']
+    const checks=Object.fromEntries(names.map((name)=>[name,{status:'PASS',evidence_id:`${name}-evidence`}]))
+    const registry=path.join(dir,'registry');mkdirSync(registry)
+    for(const kind of ['sidecars','producers']){
+      const registration={evidence_id:checks[kind].evidence_id,kind,issue:41,pr:7,head_sha:head,producer_id:`${kind}-producer`,artifact_digest:'d'.repeat(64)}
+      Object.assign(checks[kind],{producer_id:registration.producer_id,artifact_digest:registration.artifact_digest,registry_digest:sha256(canonicalJson(registration))})
+      writeFileSync(path.join(registry,`registration-${createHash('sha256').update(registration.evidence_id).digest('hex')}.json`),JSON.stringify(registration))
+    }
+    const inputFile=path.join(dir,'input.json'),bundleFile=path.join(dir,'bundle.json')
+    writeFileSync(inputFile,JSON.stringify({issue:41,pr:7,head_sha:head,checks}));writeFileSync(bundleFile,JSON.stringify(bundle))
+    process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=registry
+    const touched=[],io=new Proxy({},{get(_,key){touched.push(String(key));throw new Error(`io.${String(key)} touched`)}})
+    const out=[],errors=[],log=console.log,err=console.error;console.log=(line)=>out.push(String(line));console.error=(line)=>errors.push(String(line))
+    let code,refused,missing
+    try{
+      code=main(['--delivery-preflight','--evidence-bundle',bundleFile,'--preflight-input',inputFile],NOW,io)
+      refused=main(['--delivery-preflight','--evidence-bundle',bundleFile],NOW,io)
+      missing=main(['--delivery-preflight','--preflight-input',inputFile],NOW,io)
+    }finally{console.log=log;console.error=err}
+    assert.equal(code,0,errors.join('\n'));assert.deepEqual(touched,[])
+    const gate=JSON.parse(out.join('\n'))
+    assert.equal(gate.status,'PASS');assert.equal(gate.reused,false);assert.equal(gate.record.input.head_sha,head)
+    assert.deepEqual(gate.bundle.metadata.delivery_preflight,{preflight_id:gate.record.preflight_id,input_digest:gate.record.input_digest})
+    assert.equal(refused,2);assert.equal(missing,2)
+    assert.match(errors.join('\n'),/requires --preflight-input/);assert.match(errors.join('\n'),/requires --evidence-bundle/)
+  } finally { if(priorRoot===undefined)delete process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT;else process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=priorRoot;rmSync(dir,{recursive:true,force:true}) }
+})

@@ -76,8 +76,12 @@ export function runDeliveryPreflightGate({ currentBundle, priorBundle = null, pr
 }
 
 // The review gate: no reviewer is drawn without a passing, registered preflight
-// whose bundle is bound to the exact head being reviewed.
-export function assertDeliveryPreflightBeforeReview({ record, bundle, issue, pr, headSha }, adapters = {}) {
+// whose bundle is bound to the exact head being reviewed. The record itself must
+// be sealed at that head. A record sealed at an earlier head stands only when the
+// caller supplies the bundle it was sealed against and the invalidation
+// classification is re-run and says INTEGRATION_REFRESH_ONLY, so a stale PASS
+// re-registered in a bundle with a different identity is refused.
+export function assertDeliveryPreflightBeforeReview({ record, bundle, issue, pr, headSha, priorBundle = null, changedFiles = [], integration = null }, adapters = {}) {
   if (!record) throw new DeliveryPreflightError('no delivery preflight record; run --delivery-preflight before drawing a reviewer')
   if (record.status !== 'PASS') throw new DeliveryPreflightError(`delivery preflight is ${String(record.status ?? 'unreadable')}; a reviewer is not drawn`)
   validateDeliveryPreflight(record, adapters)
@@ -85,5 +89,10 @@ export function assertDeliveryPreflightBeforeReview({ record, bundle, issue, pr,
   if (!registers(bundle, record)) throw new DeliveryPreflightError('the evidence bundle does not register this delivery preflight')
   if (Number(record.input.issue) !== Number(issue) || Number(record.input.pr) !== Number(pr) || Number(bundle.metadata.issue) !== Number(issue) || Number(bundle.metadata.pr) !== Number(pr)) throw new DeliveryPreflightError('delivery preflight belongs to another issue or pull request')
   if (!SHA.test(String(headSha ?? '')) || String(bundle.metadata.integration_sha).toLowerCase() !== String(headSha).toLowerCase()) throw new DeliveryPreflightError(`the evidence bundle is not bound to head ${headSha}`)
-  return { ok: true, preflight_id: record.preflight_id, head_sha: String(headSha).toLowerCase() }
+  const head = String(headSha).toLowerCase(), sealedAt = String(record.input?.head_sha ?? '').toLowerCase()
+  if (sealedAt === head && !priorBundle) return { ok: true, preflight_id: record.preflight_id, head_sha: head, carried_from: null }
+  if (!priorBundle) throw new DeliveryPreflightError(`delivery preflight was sealed at head ${sealedAt || 'unknown'}, not ${head}; supply the bundle it was sealed against to prove the carry`)
+  const plan = planDeliveryPreflight({ currentBundle: bundle, priorBundle, priorRecord: record, changedFiles, integration })
+  if (!plan.reuse) throw new DeliveryPreflightError(`delivery preflight sealed at ${sealedAt || 'unknown'} does not carry to head ${head}: ${plan.reason}`)
+  return { ok: true, preflight_id: record.preflight_id, head_sha: head, carried_from: sealedAt }
 }

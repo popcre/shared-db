@@ -177,3 +177,23 @@ test('POSITIVE CONTROL: a malformed registry on main fails closed', () => {
     const proof = check(repo, approved, refreshed); assert.equal(proof.ok, false); assert.match(proof.reason, /registry/)
   } finally { rmSync(repo, { recursive: true, force: true }) }
 })
+
+test('POSITIVE CONTROL: a mode-only change to a stored-hash file voids the approval', () => {
+  const { repo, approved, refreshed } = storedFixture()
+  try {
+    assert.equal(check(repo, approved, refreshed).ok, true)
+    git(repo, ['update-index', '--chmod=+x', 'docs/baseline.json']); git(repo, ['commit', '-q', '-m', 'mode only'])
+    const moded = git(repo, ['rev-parse', 'HEAD']).trim()
+    assert.equal(git(repo, ['diff', '--name-only', refreshed, moded]).trim(), 'docs/baseline.json')
+    const proof = check(repo, approved, moded); assert.equal(proof.ok, false); assert.match(proof.reason, /pins a script hash/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('POSITIVE CONTROL: a non-blob at a stored-hash path fails closed', () => {
+  const { repo, approved, refreshed } = storedFixture()
+  try {
+    git(repo, ['update-index', '--cacheinfo', `160000,${refreshed},docs/baseline.json`]); git(repo, ['commit', '-q', '-m', 'gitlink'])
+    const linked = git(repo, ['rev-parse', 'HEAD']).trim()
+    const proof = check(repo, approved, linked); assert.equal(proof.ok, false); assert.match(proof.reason, /not a regular file \(160000 commit\)/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})

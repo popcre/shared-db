@@ -701,3 +701,11 @@ test('an unvalidated verdict object cannot cross the documents-only boundary (#2
     verdicts: [{ pr: DOC_PR, head_sha: DOC_HEAD, verdict: 'REVISE', ref: 'fake', reviewer: 'grok-4.6', validated: true }],
   }), /without artifact validation/)
 })
+
+test('POSITIVE CONTROL #2728: an equivalence proof without implementation_digest carries nothing', () => {
+  const input = refreshedInput()
+  const calls = []
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: (a, b) => { calls.push([a, b]); return { ok: true } } }), ApprovalCheckError)
+  assert.ok(calls.length > 0, 'the proof must have been consulted')
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'not-a-digest' }) }), ApprovalCheckError)
+})

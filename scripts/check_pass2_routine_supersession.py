@@ -180,19 +180,28 @@ _DROP_ROUTINE = re.compile(
     r"(?:[ \t\r\n]+(?:cascade|restrict))?[ \t\r\n]*;"
 )
 
-_CREATE_ROUTINE_ANYWHERE = re.compile(
-    r"(?is)\bcreate[ \t\r\n]+(?:or[ \t\r\n]+replace[ \t\r\n]+)?"
-    r"(?:function|procedure)[ \t\r\n]+"
-    rf"({IDENT}(?:[ \t]*\.[ \t]*{IDENT})?)[ \t\r\n]*\("
-)
+def _strip_literals(text: str) -> str:
+    """Blank out dollar-quoted bodies and single-quoted strings.
+
+    A drop written as data -- `select apply('drop function f(int)');` or inside a
+    function body -- is not a top-level drop; parsing it would emit a broken row.
+    Such drops are simply not replayed, which is the pre-existing behaviour.
+    """
+    text = re.sub(r"(?s)(\$[A-Za-z_0-9]*\$).*?\1", " ", text)
+    return re.sub(r"(?s)'(?:[^']|'')*'", "''", text)
 
 
 def _split_top_level_commas(text: str) -> list[str]:
     items: list[str] = []
     depth = 0
     start = 0
+    quoted = False
     for index, char in enumerate(text):
-        if char == "(":
+        if char == '"':
+            quoted = not quoted
+        elif quoted:
+            continue
+        elif char == "(":
             depth += 1
         elif char == ")":
             depth -= 1
@@ -203,39 +212,42 @@ def _split_top_level_commas(text: str) -> list[str]:
     return [item.strip() for item in items if item.strip()]
 
 
-def routine_events(path: Path) -> list[tuple[str, str, str]]:
-    """(event, routine name, statement) in file order; event is create or drop.
+def routine_drops(path: Path) -> list[tuple[str, str]]:
+    """(routine name, statement) for every top-level routine drop, in file order.
 
     A drop keeps its exact target text -- `schema.name(arg types)` -- so replaying
     it removes exactly the signature the later migration removed, never an
     overload it left alone.
     """
-    text = _strip_comments(path.read_text(encoding="utf-8"))
-    found: list[tuple[int, str, str, str]] = []
-    for match in _CREATE_ROUTINE_ANYWHERE.finditer(text):
-        found.append((match.start(), "create", _norm(match.group(1)), ""))
+    text = _strip_literals(_strip_comments(path.read_text(encoding="utf-8")))
+    found: list[tuple[str, str]] = []
     for match in _DROP_ROUTINE.finditer(text):
         kind = match.group(1).lower()
         for item in _split_top_level_commas(match.group(2)):
             name = _norm(item.split("(", 1)[0])
             target = re.sub(r"\s+", " ", item)
-            found.append(
-                (match.start(), "drop", name, f"drop {kind} if exists {target};")
-            )
-    return [(event, name, stmt) for _, event, name, stmt in sorted(found, key=lambda f: f[0])]
+            found.append((name, f"drop {kind} if exists {target};"))
+    return found
 
 
 def later_drops(
     migration: Path, migrations_dir: Path, applied: set[str]
 ) -> dict[str, list[str]]:
-    """Drops a pass-2 file would undo: routines it creates that a later APPLIED
-    migration dropped and no later applied migration re-created afterwards.
+    """Drops a pass-2 file could undo: routines it creates that a later APPLIED
+    migration dropped.
 
     In a real database the later drop follows this file's create, so the routine
     is gone. In the replay this file runs after the drop and resurrects it
     (20260905104802 recreating public.deactivate_stale_sg_files after
-    20260915111317 retired it). Returns routine -> drop statements to replay.
-    Only proven-applied later migrations count, exactly as for definitions.
+    20260915111317 retired it). Returns routine -> drop statements.
+
+    Whether a later migration RE-CREATED that exact identity is not guessed from
+    SQL text here (argument names, modes and defaults make identities unreliable
+    to compare statically). `snapshot_query` guards each drop on the catalog
+    itself, evaluated BEFORE the pass-2 file runs: the drop is replayed only if
+    that exact signature is absent at that moment. A same-identity re-create
+    therefore keeps the routine; a drop-then-new-signature still retires the old
+    identity. Only proven-applied later migrations count.
     """
     current = declared_routines(migration)
     if not current:
@@ -244,15 +256,20 @@ def later_drops(
     for later in sorted(migrations_dir.glob("*.sql")):
         if later.name <= migration.name or later.name not in applied:
             continue
-        for event, name, stmt in routine_events(later):
-            if name not in current:
-                continue
-            if event == "create":
-                # Re-created after the drop: the later body is truth, not absence.
-                pending.pop(name, None)
-            elif stmt not in pending.setdefault(name, []):
+        for name, stmt in routine_drops(later):
+            if name in current and stmt not in pending.setdefault(name, []):
                 pending[name].append(stmt)
     return {name: stmts for name, stmts in pending.items() if stmts}
+
+
+def _drop_row(routine: str, stmt: str) -> str:
+    target = stmt.split(" if exists ", 1)[1].rstrip(";")
+    lookup = "to_regprocedure" if "(" in target else "to_regproc"
+    quote = lambda value: "'" + value.replace("'", "''") + "'"
+    return (
+        f"select 5 as ord, {quote(stmt)} as stmt, '' as s, {quote(routine)} as f, "
+        f"'' as a where {lookup}({quote(target)}) is null"
+    )
 
 
 def _literals(names: set[str] | dict[str, list[str]]) -> str:
@@ -268,19 +285,14 @@ def snapshot_query(
 ) -> str:
     """One query whose rows are the SQL statements that restore later truth.
 
-    Later drops are replayed last (ord 5), after bodies and grants.
+    Later drops are replayed last (ord 5), after bodies and grants, and only for
+    signatures absent from the catalog when this snapshot is taken.
     """
     parts: list[str] = []
     if drops:
         for routine in sorted(drops):
             for stmt in drops[routine]:
-                parts.append(
-                    "select 5 as ord, "
-                    + "'" + stmt.replace("'", "''") + "'"
-                    + " as stmt, '' as s, "
-                    + "'" + routine.replace("'", "''") + "'"
-                    + " as f, '' as a"
-                )
+                parts.append(_drop_row(routine, stmt))
     if collisions:
         parts.append(
             "select x.ord, x.stmt, n.nspname as s, p.proname as f, "

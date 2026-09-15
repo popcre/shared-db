@@ -1,3 +1,5 @@
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -354,14 +356,47 @@ class Pass2LaterDropTests(unittest.TestCase):
             ).stdout
             self.assertIn("deactivate_stale_sg_files(text, uuid)", out)
 
-    def test_drop_then_later_recreate_leaves_routine_present(self):
+    def test_every_drop_row_is_guarded_on_the_exact_signature_being_absent(self):
         with tempfile.TemporaryDirectory() as temp:
             root, old = self._replay(
-                temp, "drop function public.deactivate_stale_sg_files(text, uuid);\n"
+                temp, "drop function public.deactivate_stale_sg_files(text, uuid) cascade;\n"
+                "DROP PROCEDURE \"public\".\"deactivate_stale_sg_files\";\n"
             )
-            recreate = "20260916000000_recreate.sql"
-            (root / recreate).write_text(self.CREATE, encoding="utf-8")
-            self.assertEqual(later_drops(old, root, {self.DROP, recreate}), {})
+            drops = later_drops(old, root, {self.DROP})
+            self.assertEqual(
+                drops["public.deactivate_stale_sg_files"],
+                [
+                    "drop function if exists public.deactivate_stale_sg_files(text, uuid);",
+                    'drop procedure if exists "public"."deactivate_stale_sg_files";',
+                ],
+            )
+            query = snapshot_query({}, set(), drops)
+            self.assertIn(
+                "to_regprocedure('public.deactivate_stale_sg_files(text, uuid)') is null", query
+            )
+            self.assertIn("to_regproc('\"public\".\"deactivate_stale_sg_files\"') is null", query)
+
+    def test_drop_text_inside_a_string_or_body_is_not_a_drop(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp,
+                "select pg_temp.apply('drop function if exists public.deactivate_stale_sg_files(int)');\n"
+                "create function public.x() returns void language plpgsql as $b$ begin\n"
+                "  drop function public.deactivate_stale_sg_files(text, uuid);\nend $b$;\n",
+            )
+            self.assertEqual(later_drops(old, root, {self.DROP}), {})
+
+    def test_quoted_identifier_with_comma_is_not_split(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, old = self._replay(
+                temp, 'drop function "a,b".f(int), public.deactivate_stale_sg_files(text, uuid);\n'
+            )
+            self.assertEqual(
+                later_drops(old, root, {self.DROP}),
+                {"public.deactivate_stale_sg_files": [
+                    "drop function if exists public.deactivate_stale_sg_files(text, uuid);"
+                ]},
+            )
 
     def test_unapplied_later_drop_is_not_replayed(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -385,6 +420,84 @@ class Pass2LaterDropTests(unittest.TestCase):
                     ]
                 },
             )
+
+
+@unittest.skipUnless(shutil.which("initdb") and shutil.which("pg_ctl") and shutil.which("psql"),
+                     "PostgreSQL server binaries are not installed")
+class Pass2LaterDropCatalogTests(unittest.TestCase):
+    """The replay itself, on a throwaway PostgreSQL cluster: later migrations
+    apply, the snapshot is taken, the older pass-2 file runs, the snapshot rows
+    run -- then the CATALOG is asserted, not emitted text."""
+
+    OLD = Pass2LaterDropTests.OLD
+    CREATE = Pass2LaterDropTests.CREATE
+    OLD_SIG = "public.deactivate_stale_sg_files(text, uuid)"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        data = Path(cls.tmp.name) / "data"
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            cls.port = str(sock.getsockname()[1])
+        subprocess.run(["initdb", "-A", "trust", "-U", "postgres", "-D", str(data)],
+                       check=True, capture_output=True)
+        subprocess.run(["pg_ctl", "-D", str(data), "-l", str(Path(cls.tmp.name) / "log"), "-w",
+                        "-o", f"-p {cls.port} -h 127.0.0.1 -k \"\"", "start"],
+                       # The server inherits these handles; a captured pipe never
+                       # reaches EOF while it runs, so pg_ctl would never return.
+                       check=True, stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.data = data
+
+    @classmethod
+    def tearDownClass(cls):
+        subprocess.run(["pg_ctl", "-D", str(cls.data), "-m", "immediate", "-w", "stop"],
+                       capture_output=True)
+        cls.tmp.cleanup()
+
+    def psql(self, sql, db="postgres"):
+        return subprocess.run(
+            ["psql", "-h", "127.0.0.1", "-p", self.port, "-U", "postgres", "-d", db, "-At",
+             "--no-psqlrc", "-v", "ON_ERROR_STOP=1", "-c", sql],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    def replay(self, later_sql):
+        db = "r" + next(tempfile._get_candidate_names()).lower().replace("_", "")
+        self.psql(f"create database {db}")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / self.OLD).write_text(self.CREATE, encoding="utf-8")
+            later = "20260915111317_later.sql"
+            (root / later).write_text(later_sql, encoding="utf-8")
+            # Pass 1: the older file is deferred; the later file applies.
+            self.psql(later_sql, db)
+            query = snapshot_query({}, set(), later_drops(root / self.OLD, root, {later}))
+            rows = self.psql(query, db) if query else ""
+            # Pass 2: the older file re-runs, then the snapshot rows run.
+            self.psql(self.CREATE, db)
+            if rows:
+                self.psql(rows, db)
+        return db
+
+    def exists(self, db, signature):
+        return self.psql(f"select to_regprocedure('{signature}') is not null", db) == "t"
+
+    def test_early_create_later_drop_leaves_routine_absent(self):
+        db = self.replay(f"drop function if exists {self.OLD_SIG};\n")
+        self.assertFalse(self.exists(db, self.OLD_SIG))
+
+    def test_drop_then_same_identity_recreate_leaves_routine_present(self):
+        db = self.replay(f"drop function if exists {self.OLD_SIG};\n" + self.CREATE)
+        self.assertTrue(self.exists(db, self.OLD_SIG))
+
+    def test_drop_then_new_identity_retires_the_old_identity_only(self):
+        new = ("create or replace function public.deactivate_stale_sg_files(p text, q uuid, r int)"
+               " returns void language sql as $$ select $$;\n")
+        db = self.replay(f"drop function if exists {self.OLD_SIG};\n" + new)
+        self.assertFalse(self.exists(db, self.OLD_SIG))
+        self.assertTrue(self.exists(db, "public.deactivate_stale_sg_files(text, uuid, integer)"))
 
 
 if __name__ == "__main__":

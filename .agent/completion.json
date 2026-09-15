@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2640,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/3",
-  "contract_sha256": "c116551d0a1b126e51e3e017a581410a48a446b2936767c9a34f30cb01b96ded",
-  "head_sha": "86ff7f45133a873653123d28c75b8281e75d1eb6",
+  "contract_ref": "refs/db-contracts/2301/4",
+  "contract_sha256": "f595c2c47a9fd856be1ec79b9c9fe6626c92d363a079e2a5ba42792c12d17dfc",
+  "head_sha": "596a19899b800e836605d9d497cb46959ee4206a",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -21,31 +21,29 @@
     {
       "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 86ff7f45133a873653123d28c75b8281e75d1eb6 (main 5eaebe7c merged): tests 562, pass 562, fail 0, cancelled 0, skipped 0, todo 0."
+      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a (main e317e92a merged): tests 621, pass 621, fail 0, cancelled 0, skipped 0, todo 0."
     },
     {
       "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 86ff7f45133a873653123d28c75b8281e75d1eb6: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
+      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
     },
     {
       "command": "python scripts/test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 86ff7f45133a873653123d28c75b8281e75d1eb6: Ran 239 tests, OK, plus both BOUNDED OK migration manifest controls."
+      "evidence": "Re-run at implementation head 596a19899b800e836605d9d497cb46959ee4206a: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors were reported for 5eaebe7c09683aef77bdef92aec454af5dddf2cb..86ff7f45133a873653123d28c75b8281e75d1eb6."
+      "evidence": "No whitespace errors were reported for e317e92ae6e28d7df8c16964d5b94b21f14bfcf9..596a19899b800e836605d9d497cb46959ee4206a."
     }
   ],
   "assumptions_resolved": [
-    "The live pre-parser census inspected seven open claims and found zero fences declaring expired-unconfirmed; the privacy-safe count and claim numbers are recorded on issue 2301.",
-    "Claim 2574 records C:/repos/shared-db-worktrees/issue-2503-bootstrap and that exact EDGE-DEV path was absent; the implementation requires an explicit absent declaration and does not treat absence alone as authorization.",
-    "Governed review at head 8e94f1148d6946aef87cf8424188d6e169638c5a returned REVISE with three High findings. Head 1907f42489019f78ea563bdeb61258eb6fc61f5c addresses them in code: recovery artifacts are dereferenced through githubIo.verifyArtifact rather than shape-checked, resumeAuthorLease re-verifies a stored artifact and lets an unreadable worktree observation throw, and remote relinquishment always requires a recovery artifact. No exact-head verdict exists yet for this fix; fresh review is required.",
-    "Merge of main 5eaebe7c09683aef77bdef92aec454af5dddf2cb resolved one lane-manager conflict by uniting the argument list (main's --target-url and --description plus the branch's --worktree-state and --recovery-artifact); no behaviour outside Phase A changed.",
-    "Blocking stop condition PR 2634 is merged (ecfe38ac39956fe45f5ec6fdc2b00029e39f0d05).",
-    "Issue 2301 remains open for Phase B-D. Fresh exact-head checks and approvals are required before PR 2640 may merge."
+    "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
+    "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
+    "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
+    "Issue 2301 remains open for Phase B-D."
   ],
   "stop_conditions_hit": []
 }

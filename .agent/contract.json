@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 2301,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Implement only Phase A Steps 1-2 of the author-lane abandonment lifecycle so capacity can be relinquished from any machine while all work authority remains protected and resume is recovery-gated.",
-  "base_sha": "5eaebe7c09683aef77bdef92aec454af5dddf2cb",
-  "dispatcher": "codex shared-db.orch route 01a085f2-a84f-7963-b474-e5770b149ecd",
-  "worker": "codex issue-2301 Phase A repository-maintenance worker",
+  "base_sha": "e317e92ae6e28d7df8c16964d5b94b21f14bfcf9",
+  "dispatcher": "Claude shared-db coordinator (takeover of idle PR 2640, authorized 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Phase A repository-maintenance takeover worker",
   "branch": "codex/issue-2301-phase-a",
-  "worktree": "C:/repos/shared-db-worktrees/cl2-2640",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/disney-creative-unmapped-titles-7b4149",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/orchestrator-flow/capacity-state.test.mjs",
@@ -32,8 +32,8 @@
     "No database, preview, production, or infrastructure action",
     "No claim, branch, pull request, worktree, or coordination-ref deletion",
     "No live capacity transition merely to prove the feature",
-    "No Phase B-D implementation in this session",
-    "No merge while issue 2466 pull request 2634 owns main"
+    "No Phase B-D implementation in this pull request",
+    "No force-push over the existing Phase A branch history"
   ],
   "required_checks": [
     "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
@@ -42,10 +42,10 @@
     "git diff --check"
   ],
   "assumptions": [
-    "The parent orchestrator explicitly dispatched this repository-maintenance phase to a fresh isolated worker outside its own context",
-    "Issue 2301 was prematurely closed as planning-only work and was reopened because its checked-in Definition of Done requires implementation Steps 1-7",
-    "The immutable contract is being published after the initial implementation because enforced CI first exposed the required evidence pair; it records the original dispatch scope without widening it",
-    "Generation 3 rebinds the unchanged scope to main 5eaebe7c after the idle Phase A branch was taken over by the shared-db orchestrator sub-agent (route local_ceb221ac-1746-4836-9306-6839c18dbced); no path, database, or action scope is widened"
+    "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator",
+    "PR 2640 had no commits or comments after 2026-09-11T22:08Z; the coordinator authorized takeover on 2026-09-15 after verifying more than 24h idle",
+    "Generation 4 rebinds the unchanged generation-3 scope to main e317e92a after a merge (not a force-push); no path, database, or action scope is widened",
+    "The REVISE findings from the governed review at 8e94f114 were addressed at 1907f424; a fresh exact-head governed review is still required"
   ],
   "stop_conditions": [
     "Stop if implementing Phase A would release object or version protection",

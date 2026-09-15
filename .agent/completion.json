@@ -1,22 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 2838,
+  "work_issue": 2728,
   "outcome": "ready-for-merge",
-  "pr": 2952,
+  "pr": 2971,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2838/1",
-  "contract_sha256": "1f84247c3ba754a59a5f8ca9f8e04b2dbb27e609b056a6b6353823790d6b5f79",
-  "head_sha": "a1120893a8f0c2c03ae2b32b9806b16ab38c1355",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md"],
+  "contract_ref": "refs/db-contracts/2728/2",
+  "contract_sha256": "0190686752e1a6da3c92c6865fc606881ee5c0c24f7cee7db23d44b8ea5eaf53",
+  "head_sha": "a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b",
+  "files_changed": [
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "93 tests passed, 0 failed, 0 skipped; the new #2838 regression test failed before the fix (pass 8, fail 1) and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check against main 89ec62d2 passed at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b."
+    },
+    {
+      "command": "node --test --test-reporter=tap scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/orchestrator-snapshot.test.mjs",
+      "exit_code": 0,
+      "evidence": "scripts/orchestrator-snapshot.test.mjs with scripts/orchestrator-flow/orchestrator-snapshot.test.mjs: 31 tests passed, 0 failed, 0 skipped, 0 cancelled at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=295 at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b; no inventory change needed."
+    }
   ],
   "assumptions_resolved": [
-    "Documents-only merge authorization is not in main's required contexts (read live from branch protection); branch protection was not changed.",
-    "Moved head, production freeze, unreadable comparison and required-context revocation still post failure."
+    "The canonical shared-db-orchestrator skill lives in popcre/ai-devops; the reporting rule is noted for ai-devops, not edited here.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory; issue 2728 stays open for live programme acceptance."
   ],
   "stop_conditions_hit": []
 }

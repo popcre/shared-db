@@ -1,18 +1,23 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2728,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2974,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2962/2",
-  "contract_sha256": "fe4fe361ecde0a701eb258633a6227b685bb8fa819fd2c1b5b8ee25798c6093a",
-  "head_sha": "27f5e1e1c9cdd9316eb100cc905d18181684549f",
+  "contract_ref": "refs/db-contracts/2728/4",
+  "contract_sha256": "b6b4d712c4e086908a69002304a8fa847b17c08c27c772744842c2e34bcba75d",
+  "head_sha": "0857e3ebfdfedf27bead6ea5760eff6d133d8483",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "config/review-carry-forward-stored-hashes-v1.json",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -20,23 +25,28 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check against main c7c9a7a2 passed at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
+      "evidence": "git diff --check against main 89ec62d2 passed at 0857e3ebfdfedf27bead6ea5760eff6d133d8483."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --test scripts/lib/pr-content-equivalence.test.mjs scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
       "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
+      "evidence": "636 tests passed, 0 failed, 0 skipped, 0 cancelled; the full manager suite with scripts/orchestrator-flow/*.test.mjs passed 1245 of 1245. The only change since is one pinned path in production_business_risk_gate.py."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 27f5e1e1c9cdd9316eb100cc905d18181684549f; inventory unioned by semantic key with no dispositions dropped."
+      "evidence": "truth audit OK: call_sites=295."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "Ran 146 tests, OK at 0857e3ebfdfedf27bead6ea5760eff6d133d8483; test_preview_producer_paths_cover_runtime_read_data_files passes with the new registry pinned in PREVIEW_PRODUCER_PATHS."
     }
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main c7c9a7a2 after PR 2861 landed, at 27f5e1e1c9cdd9316eb100cc905d18181684549f.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Live adapters, caller integration and programme acceptance remain pending under issue 2729, which this merge does not close."
+    "Review-time delivery preflight enforcement is opt-in on --assign-reviewer in this PR.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
+    "The pass-2 rebuild and the sidecar registry remain out of scope under issue 2728."
   ],
   "stop_conditions_hit": []
 }

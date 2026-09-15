@@ -14,6 +14,7 @@ from check_pass2_routine_supersession import (
     later_drops,
     later_only_routines,
     read_applied_migrations,
+    redeclared_after_drop,
     snapshot_query,
 )
 
@@ -463,7 +464,7 @@ class Pass2LaterDropCatalogTests(unittest.TestCase):
             check=True, capture_output=True, text=True,
         ).stdout.strip()
 
-    def replay(self, later_sql):
+    def replay(self, later_sql, baseline_sql=""):
         db = "r" + next(tempfile._get_candidate_names()).lower().replace("_", "")
         self.psql(f"create database {db}")
         with tempfile.TemporaryDirectory() as temp:
@@ -473,7 +474,13 @@ class Pass2LaterDropCatalogTests(unittest.TestCase):
             (root / later).write_text(later_sql, encoding="utf-8")
             # Pass 1: the older file is deferred; the later file applies.
             self.psql(later_sql, db)
-            query = snapshot_query({}, set(), later_drops(root / self.OLD, root, {later}))
+            # The captured baseline loads between the passes (never a migration).
+            if baseline_sql:
+                self.psql(baseline_sql, db)
+            query = snapshot_query(
+                {}, set(), later_drops(root / self.OLD, root, {later}),
+                redeclared_after_drop(root / self.OLD, root, {later}),
+            )
             rows = self.psql(query, db) if query else ""
             # Pass 2: the older file re-runs, then the snapshot rows run.
             self.psql(self.CREATE, db)
@@ -498,6 +505,66 @@ class Pass2LaterDropCatalogTests(unittest.TestCase):
         db = self.replay(f"drop function if exists {self.OLD_SIG};\n" + new)
         self.assertFalse(self.exists(db, self.OLD_SIG))
         self.assertTrue(self.exists(db, "public.deactivate_stale_sg_files(text, uuid, integer)"))
+
+    def test_baseline_recreated_between_passes_is_still_dropped(self):
+        # PR #2958 run 34973127156: 20260915130626 drops the wrapper in pass 1,
+        # the between-pass baseline re-creates it, 20260905104802 re-runs in
+        # pass 2. A presence guard skipped the drop; the retired wrapper survived.
+        db = self.replay(f"drop function if exists {self.OLD_SIG};\n", baseline_sql=self.CREATE)
+        self.assertFalse(self.exists(db, self.OLD_SIG))
+
+
+class Pass2DropSurvivesBaselineTests(unittest.TestCase):
+    """Issue #2959: which later drops replay unconditionally."""
+
+    OLD = Pass2LaterDropTests.OLD
+    CREATE = Pass2LaterDropTests.CREATE
+    STMT = "drop function if exists public.deactivate_stale_sg_files(text, uuid);"
+
+    def _dir(self, temp, files):
+        root = Path(temp)
+        (root / self.OLD).write_text(self.CREATE, encoding="utf-8")
+        for name, sql in files.items():
+            (root / name).write_text(sql, encoding="utf-8")
+        return root
+
+    def test_drop_nobody_redeclares_is_unguarded_in_the_cli_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            later = "20260915130626_retire.sql"
+            root = self._dir(temp, {later: self.STMT + "\n"})
+            self.assertEqual(redeclared_after_drop(root / self.OLD, root, {later}), set())
+            record = root / "applied.txt"
+            record.write_text(later + "\n", encoding="utf-8")
+            out = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name("check_pass2_routine_supersession.py")),
+                 str(root / self.OLD), "--migrations-dir", str(root), "--applied-migrations", str(record)],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertIn(self.STMT, out)
+            self.assertNotIn("to_regproc", out)
+
+    def test_redeclared_in_the_dropping_file_or_later_keeps_the_guard(self):
+        with tempfile.TemporaryDirectory() as temp:
+            same, after = "20260915130626_drop_and_recreate.sql", "20260915140000_recreate.sql"
+            root = self._dir(temp, {same: self.STMT + "\n" + self.CREATE})
+            self.assertEqual(redeclared_after_drop(root / self.OLD, root, {same}),
+                             {"public.deactivate_stale_sg_files"})
+            root2 = Path(temp) / "b"
+            root2.mkdir()
+            self._dir(root2, {same: self.STMT + "\n", after: self.CREATE})
+            self.assertEqual(redeclared_after_drop(root2 / self.OLD, root2, {same, after}),
+                             {"public.deactivate_stale_sg_files"})
+            # An unapplied later re-create proves nothing: the drop stays unguarded.
+            self.assertEqual(redeclared_after_drop(root2 / self.OLD, root2, {same}), set())
+
+    def test_declaration_before_the_drop_does_not_guard_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            before, drop = "20260915015414_redefine.sql", "20260915130626_retire.sql"
+            root = self._dir(temp, {before: self.CREATE, drop: self.STMT + "\n"})
+            self.assertEqual(redeclared_after_drop(root / self.OLD, root, {before, drop}), set())
+            query = snapshot_query({}, set(), later_drops(root / self.OLD, root, {before, drop}), set())
+            self.assertIn(self.STMT, query)
+            self.assertNotIn("to_regproc", query)
 
 
 if __name__ == "__main__":

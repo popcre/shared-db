@@ -5,6 +5,75 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const HISTORICAL_RESTORATIONS = Object.freeze({
+  // #2792. Preview applied these exact bytes in claim-mode run 34920902290,
+  // dispatched at and applied from unmerged PR #2930 head a119760e (claim
+  // #2929). The PR was then closed unmerged after a derived-from header changed
+  // the bytes, so the version is RETIRED (production_migration_guard
+  // HARD_BLOCKED / RETIRED_VERSION_REASONS) and reissued as 20260915023506
+  // under claim #2931. This pin exists only so the historical file can live on
+  // main (preview holds the version) without being mistaken for an edit.
+  // Production producer provenance is deliberately NOT registered: no
+  // `sourcePr`/`sourceMergeCommit`, so it can never be promoted.
+  '20260915015414': Object.freeze({
+    filename: 'supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34920902290',
+    previewDispatchCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    previewAppliedCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    statementBytes: 15745,
+    statementSha256: 'c60313fac7fa4d5bffdbd6bc2c681d491ca49bf71e8f898f9a7e22ca698e34f5',
+    fileSha256: '1ab60ae6cde98e4d2127cc3615cc76bfb1480b4f537b85d2d6a73959dcd50e02',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
+  // #2792. Preview applied these exact bytes in claim-mode run 34922309051,
+  // dispatched at ffa300c7 and bound (instance-binding appliedCommit) to PR
+  // #2933 commit 0c7ebecf before the PR merged. The migration blob 3f1f8874 is
+  // unchanged on main. Producer provenance is complete because this exact
+  // version merged from PR #2933 as ae295b65.
+  '20260915023506': Object.freeze({
+    filename: 'supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34922309051',
+    previewDispatchCommit: 'ffa300c7918b30a54bb033267596c6a70e66c438',
+    previewAppliedCommit: '0c7ebecf1d8ffb5e0980a279d7e32b9d14a343f4',
+    sourcePr: 2933,
+    sourceMergeCommit: 'ae295b6541e4429b8ac61d8b04a5ae7c22a836b4',
+    statementBytes: 15780,
+    statementSha256: 'ded20c542b4d7498f4925fe8e169aa3846f21a5b8fe0f16f84e958d08c00083b',
+    fileSha256: '6e2c22ecb99464d2584cfc2823b053a300cc59044f3354a634ece0eb40c9d27d',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
+  // #2879 / #2885 / #2889. Preview applied these exact successor bytes in
+  // post-merge rehearsal run 34827941186 at PR #2886 head ce7eff73. The later
+  // workflow-only repair #2887 changed the evidence-producing workflow, so the
+  // immutable original apply must be rebound through the historical no-write
+  // path rather than replayed. Producer provenance is complete because this
+  // exact version merged from PR #2886 as c0a36970.
+  '20260914075758': Object.freeze({
+    filename: 'supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql',
+    name: 'reissue_dcp_inventory_families',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34827941186',
+    previewDispatchCommit: 'ce7eff73a2f68ba9309b2b2da4a411f8fef042ae',
+    previewAppliedCommit: 'ce7eff73a2f68ba9309b2b2da4a411f8fef042ae',
+    sourcePr: 2886,
+    sourceMergeCommit: 'c0a369705480a29e64ae6ff22d162022c09e7a7e',
+    statementBytes: 38131,
+    statementSha256: '00872d31763e3ec3a01ace3fe7dca02bb0cfb07f4b60767e8ddedcb0d010cda5',
+    fileSha256: '51dd41075554c1af6896d7e9b1a532313f1bb1aa97e2692dd02afabb8f741f2b',
+    objects: Object.freeze([
+      'function api.source_capture_inventory_exact',
+      'view api.source_capture_inventory',
+    ]),
+  }),
   // #2797 / #2817. Preview applied these exact bytes in claim-mode run
   // 34655606553, dispatched at and applied from PR #2808 commit
   // 916b8005f4588ece389f1f137faf651bd78ef0a2 before the PR merged, because that

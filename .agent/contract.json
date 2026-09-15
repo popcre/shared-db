@@ -1,28 +1,33 @@
 {
   "schema_version": 1,
-  "work_issue": 2967,
-  "generation": 1,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "branch": "claude/merge-lane-claim-read-fail-loud",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-merge-lane-claim-read-fail-loud-20260915",
-  "dispatcher": "Orchestrator (PR #2958 guarded merge run 34985444563 refused with open claims seen (0))",
+  "work_issue": 2934,
+  "generation": 5,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Retire public.deactivate_stale_sg_files(text, uuid) by dropping it at reserved version 20260915130626 (claim #2957), removing its contract-test assertions and its generated type entry.",
   "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
-  "goal": "Make the exclusive merge lane refuse loudly when its open-issue read has no non-PR rows or no claims that GitHub search contradicts, and report what the listing returned, so an empty CI read can never pass as no open claims.",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
-  "assumptions": [
-    "The open issue listing of this repository always contains non-PR issues, so a PR-only or empty listing is a read fault.",
-    "GitHub search for open db-claim issues is an independent read path whose total_count can confirm a genuine absence of claims."
-  ],
+  "dispatcher": "shared-db orchestrator (marker #2927)",
+  "worker": "agent-a80dae6ce76ef83a1",
+  "branch": "claude/2934-retire-deactivate-stale-sg-files-v2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a80dae6ce76ef83a1",
+  "allowed_paths": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
+  "db_writes": ["function public.deactivate_stale_sg_files"],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, workflow or infrastructure write.",
-    "Do not weaken, skip or quarantine any test.",
-    "Do not touch PR #2958 or claim #2957."
+    "No production dispatch or production write.",
+    "No preview apply; the orchestrator runs preview and production.",
+    "Do not change public.reconcile_stale_sg_files_batch, public.preview_stale_sg_files, or their grants.",
+    "Do not remove any contract assertion about reconcile_stale_sg_files_batch or preview_stale_sg_files."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the lane script, its test and the evidence pair."]
+  "required_checks": ["bash scripts/check-sql.sh", "python -m pytest -q scripts/test_migration_derivation.py", "git diff --check"],
+  "assumptions": [
+    "The wrapper has no live caller: popdam3 calls reconcile_stale_sg_files_batch directly, no cron job calls it, and only shared-db contract tests referenced it (orchestrator check recorded on #2934).",
+    "Renumbered from burned version 20260915111317 (claim #2943, never applied anywhere) past main's 20260915111626 to satisfy the backdated-migration guard; PR #2944 closed as superseded.",
+    "Generation 5 rebases the evidence onto main 1ffb60a1, which carries the pass-2 replay fix (#2960) and the merge-lane claim lookup fix (#2964)."
+  ],
+  "stop_conditions": [
+    "Stop if any live caller, view, or function depending on the wrapper is found.",
+    "Stop if the retirement requires changing any object other than the wrapper."
+  ]
 }

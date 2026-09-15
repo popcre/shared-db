@@ -3616,6 +3616,19 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "/* a /* b */ */ UPDATE public.t SET x = 1;",
         ])
 
+    def test_a_dollar_inside_an_identifier_opens_no_quote(self):
+        """PostgreSQL ident_cont includes `$`, so `a$$$` is one identifier and no
+        dollar-quote opens. Checked on PostgreSQL 18.6: the middle DROP runs."""
+        self.assert_allowed([
+            "comment on table core.a$$$ is null;",
+            "create table core.n (a$b text, c$$ text);",
+        ], [
+            "comment on table core.a$$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.a$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.é$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.a$e'\\' is null; drop table core.character; comment on table core.b$e'\\' is null;",
+        ])
+
     def test_allowlist_entry_comment_on(self):
         self.assert_allowed([
             "-- drop table core.safe;\n/* drop table core.x cascade; */\ncomment on table core.safe is 'x';",

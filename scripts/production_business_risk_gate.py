@@ -2118,7 +2118,7 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             current.append(" ")
             continue
         if ch == "'":
-            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] == "_"))
+            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] in "_$" or ord(raw[i - 2]) >= 0x80))
             j = i + 1
             while True:
                 if j >= n:
@@ -2144,7 +2144,10 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             continue
         if ch == "$":
             tag = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", raw[i:])
-            if tag and not (i > 0 and (raw[i - 1].isalnum() or raw[i - 1] == "_")):
+            # PostgreSQL ident_cont is [A-Za-z\200-\377_0-9$]: a "$" glued to an
+            # identifier (including after another "$", as in a$$$) never opens a quote.
+            prev = raw[i - 1] if i > 0 else ""
+            if tag and not (prev and (prev.isalnum() or prev in "_$" or ord(prev) >= 0x80)):
                 end = raw.find(tag.group(0), i + len(tag.group(0)))
                 if end == -1:
                     return None

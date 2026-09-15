@@ -1,26 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 2350,
+  "work_issue": 2985,
   "outcome": "ready-for-merge",
-  "pr": 2989,
+  "pr": 2984,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2350/1",
-  "contract_sha256": "bdc4866c4ac138c72bdf21bde653d17f905fb0b3d3120af646bf486cba99dbf3",
-  "head_sha": "dc847a4349d08d3bbd6d6ed965368918ad4f67b6",
+  "contract_ref": "refs/db-contracts/2985/3",
+  "contract_sha256": "426d3e7c15400c1e37898c27c45e89d2d20052ca8a29ff06068cf596a2c2e64a",
+  "head_sha": "83569ec5c654aa6917065c96236b56e169b99cc8",
   "files_changed": [
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-orchestrator-marker.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-dispatch-collision.test.mjs",
+    "scripts/check-migration-pr-lease.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation commit."},
-    {"command": "node --test --test-reporter=tap scripts/check-orchestrator-marker.test.mjs", "exit_code": 0, "evidence": "43 of 43 tests passed, including the new test that a declared target carries reachability unverified and the NOT PROVEN text."},
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "569 of 569 tests passed; the resolver consumer reads only state, which is unchanged."}
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check passed at implementation commit 83569ec5c654aa6917065c96236b56e169b99cc8 against base e5a2a44911f4c36a567a402000e006be7136bb62."
+    },
+    {
+      "command": "node --test --test-reporter=tap scripts/check-dispatch-collision.test.mjs scripts/orchestrator-snapshot.test.mjs scripts/check-migration-pr-lease.test.mjs scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "164 tests, 164 passed, 0 failed, 0 skipped, 0 todo at 83569ec5c654aa6917065c96236b56e169b99cc8 (after merging main e5a2a449)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=295 at 83569ec5c654aa6917065c96236b56e169b99cc8; no call sites added or changed."
+    }
   ],
   "assumptions_resolved": [
-    "Marker #2330 is closed, so the stale session id in the issue is obsolete.",
-    "Exit codes and the state field are unchanged; only reachability and notProven fields were added."
+    "Every safety proof is kept: the changed_files count check and the 3000-file ceiling still run on embedded files, and any truncated listing falls back to the original per-item read.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory."
   ],
   "stop_conditions_hit": []
 }

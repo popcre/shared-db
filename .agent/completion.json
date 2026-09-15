@@ -6,14 +6,14 @@
   "migration_versions": ["20260915111317"],
   "contract_ref": "refs/db-contracts/2934/1",
   "contract_sha256": "516e85f9854fea8f8384818d9ebea93c143c9befaff36f2577be0fb2f2a05bae",
-  "head_sha": "a5500960918cdbd5c718029576198048d7affabd",
+  "head_sha": "fe756baeb6484cecf7afd2d3949be7985ff194e0",
   "files_changed": ["supabase/migrations/20260915111317_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts"],
   "db_reads": ["function public.reconcile_stale_sg_files_batch"],
   "db_writes": ["function public.deactivate_stale_sg_files"],
   "checks": [
     {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed, including the duplicate-version, expected-count, verify-cost and EOL reference guards for the one added migration."},
     {"command": "python -m pytest -q scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "44 passed, 6 subtests passed; the new migration declares derived-from: none."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between origin/main 6fc54636 and implementation commit a5500960."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between origin/main 6fc54636 and implementation commit fe756bae."}
   ],
   "assumptions_resolved": [
     "No live caller: the only non-migration references were the contract tests, now updated; only migration 20260905104802 defines the wrapper and no other function calls it.",

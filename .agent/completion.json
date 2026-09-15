@@ -1,26 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2987,
+  "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 2992,
+  "pr": 2640,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2987/2",
-  "contract_sha256": "1c6efaf759c45bc3ff6ec2d5d0805cb958eb45cb240f52250ca9e3da21d06dc6",
-  "head_sha": "9857ef6a816ab13dfcb7224a4ace39dd0b0cf97f",
+  "contract_ref": "refs/db-contracts/2301/5",
+  "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
+  "head_sha": "4762db3662c45095281a98e73cde3b363f5998d1",
   "files_changed": [
+    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/coordination-scenarios.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "scripts/orchestrator-flow/capacity-state.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between main 0fd9963b and merge head 9857ef6a."},
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs", "exit_code": 0, "evidence": "632 tests, 632 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo at merge head 9857ef6a (main 0fd9963b merged in); includes the six #2987 archive tests and the #2991 recoverable-mutex-kind test."}
+    {
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 4762db3662c45095281a98e73cde3b363f5998d1 (main 37fb9be0b598a8ff94f4cccf51d7651a79aac11c merged): tests 630, pass 630, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at 4762db3662c45095281a98e73cde3b363f5998d1: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "python scripts/test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "Run at 4762db3662c45095281a98e73cde3b363f5998d1: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors reported for 37fb9be0b598a8ff94f4cccf51d7651a79aac11c..4762db3662c45095281a98e73cde3b363f5998d1."
+    }
   ],
   "assumptions_resolved": [
-    "Live run archived 546 verdicts (519 merged PRs with no migration, 27 closed unmerged) under refs/db-review-archived-verdicts; 454 remain in the verdict namespace, under the 1000 ceiling.",
-    "Kept: 102 needed by active leases, 14 for open PRs, 338 for merged migration PRs that production promotion re-checks.",
-    "Governed review at f1c27105 raised one High finding (pull request states reused under the mutex), fixed in d2ee5c7a; governed review at 86bed503 recorded an approving verdict with no Critical or High findings. 9857ef6a only merges main 0fd9963b, whose overlap with this branch is the .agent pair."
+    "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
+    "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
+    "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
+    "PR 2640 closes sub-issue 2994 and references parent 2301, matching the one-closing-issue reviewer rule; generation 5 rewords one prohibited action that tripped the cancelled-work guard (local check now OK).",
+    "Issue 2301 remains open for Phase B-D."
   ],
   "stop_conditions_hit": []
 }

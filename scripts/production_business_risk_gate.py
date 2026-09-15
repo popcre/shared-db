@@ -1918,9 +1918,34 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
-        reasons.update(_classify_statements(sql_top_level_statements(
-            matches[0].read_text(encoding="utf-8"))))
+        raw = matches[0].read_text(encoding="utf-8")
+        reasons.update(_classify_statements(sql_top_level_statements(raw)))
+        reasons.update(_do_block_reasons(raw))
     return sorted(reasons)
+
+
+_DO_BLOCK = re.compile(r"\bdo\s+(?:language\s+\w+\s+)?(\$[a-z_0-9]*\$)(.*?)\1", re.S)
+
+
+def _do_block_reasons(raw: str) -> set[str]:
+    """A DO block executes at apply time but the tokenizer blanks its body, so scan
+    each body conservatively; dynamic EXECUTE counts as all three (PR #2970 review)."""
+    text = re.sub(r"--[^\n]*", " ", re.sub(r"/\*.*?\*/", " ", raw.lower(), flags=re.S))
+    reasons: set[str] = set()
+    for body in (m.group(2) for m in _DO_BLOCK.finditer(text)):
+        body = " ".join(body.split())
+        if re.search(r"\bexecute\b", body):
+            reasons.update(RISK_TEXT[k] for k in (
+                "permanent_data_rewrite_or_loss", "expected_downtime", "material_access_change"))
+            continue
+        if re.search(r"\b(?:update|delete|truncate|merge|call|copy)\b"
+                     r"|\bdrop (?!trigger if exists|policy if exists)", body):
+            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
+        if re.search(r"\b(?:alter table|lock|cluster|vacuum|reindex|create (?:unique )?index)\b", body):
+            reasons.add(RISK_TEXT["expected_downtime"])
+        if re.search(r"\b(?:grant|revoke|owner to|policy|row level security)\b", body):
+            reasons.add(RISK_TEXT["material_access_change"])
+    return reasons
 
 
 def _classify_statements(statements: list[str] | None) -> set[str]:
@@ -1944,9 +1969,10 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
     }
     # The repository's idempotent convention is CREATE TABLE IF NOT EXISTS then
-    # CREATE INDEX IF NOT EXISTS on it. The old rule excused every IF NOT EXISTS
-    # index; only an index on a table this migration also creates is excused now.
-    created_tables = new_tables | {
+    # CREATE INDEX IF NOT EXISTS on it (the old rule excused every IF NOT EXISTS
+    # index). CREATE TABLE IF NOT EXISTS may name a table that already holds rows,
+    # so it excuses only an IF NOT EXISTS index, never a plain one (PR #2970 review).
+    idempotent_tables = new_tables | {
         name for s in statements
         if (m := re.match(rf"^create (?:unlogged )?table if not exists ({_NAME}) ?\(", s))
         and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
@@ -1957,23 +1983,26 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
     for s in statements:
         alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
         on_new_table = bool(alter) and _canonical_name(alter.group(1)) in new_tables
-        if (re.match(r"^(?:update|delete|truncate|merge|create (?:or replace )?rule)\b", s)
+        if (re.match(r"^(?:update|delete|truncate|merge|call|copy|create (?:or replace )?rule)\b", s)
                 or re.match(r"^(?:with|explain)\b", s)
                 and re.search(r"\b(?:update|delete|truncate|merge|insert)\b", s)
                 or re.match(r"^insert\b", s) and re.search(r"\bon conflict\b.*\bdo update\b", s)
                 or re.search(r"\bdrop (?!trigger if exists|policy if exists)", s)
                 and not (not has_do and NON_CASCADE_ROUTINE_DROP.fullmatch(s))):
             reasons.add(loss)
-        index = re.match(rf"^create (?:unique )?index (concurrently )?(?:if not exists )?"
+        index = re.match(rf"^create (?:unique )?index (concurrently )?(if not exists )?"
                          rf"(?:{_IDENT} )?on (?:only )?({_NAME})(?=[ (]|$)", s)
         if (re.match(r"^(?:lock|cluster|vacuum|reindex|refresh materialized view)\b", s)
-                or index and not (index.group(1) or _canonical_name(index.group(2)) in created_tables)
+                or index and not (
+                    index.group(1)
+                    or _canonical_name(index.group(3)) in new_tables
+                    or index.group(2) and _canonical_name(index.group(3)) in idempotent_tables)
                 or not index and re.match(r"^create (?:unique )?index\b", s)
                 or alter and not on_new_table and not all(
                     _alter_table_action_is_low_risk(a, types_trusted=not path_changes)
                     for a in _split_top_level_commas(alter.group(2)))):
             reasons.add(downtime)
-        if re.search(r"\b(?:grant|revoke|create policy|alter policy|drop policy|row level security)\b", s):
+        if re.search(r"\b(?:grant|revoke|owner to|create policy|alter policy|drop policy|row level security)\b", s):
             policy = re.match(rf"^create policy {_IDENT} on ({_NAME})(?: |$)", s)
             grant = re.fullmatch(rf"grant [^;]+? on (?:table )?({_NAME}(?: ?, ?{_NAME})*) to .+", s)
             if not (on_new_table

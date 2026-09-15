@@ -3642,6 +3642,25 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertIn(loss, self.classify(body))
 
+    def test_second_review_bypass_shapes_are_reported(self):
+        """PR #2970 second review: shapes that executed risk yet produced no finding."""
+        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
+        downtime = RISK_TEXT["expected_downtime"]
+        access = RISK_TEXT["material_access_change"]
+        for body, expected in [
+            ("DO $$ BEGIN DELETE FROM public.t; END $$;", loss),
+            ("do $body$ begin update public.t set v = 1; end $body$;", loss),
+            ("DO $$ BEGIN EXECUTE 'truncate public.t'; END $$;", loss),
+            ("DO $$ BEGIN ALTER TABLE public.t ADD COLUMN v int NOT NULL DEFAULT 0; END $$;", downtime),
+            ("DO $$ BEGIN GRANT SELECT ON public.t TO anon; END $$;", access),
+            ("ALTER TABLE public.t OWNER TO app_owner;", access),
+            ("CREATE TABLE IF NOT EXISTS public.t (id bigint); CREATE INDEX t_v_idx ON public.t (v);", downtime),
+            ("COPY public.t FROM '/tmp/x.csv';", loss),
+            ("CALL public.p();", loss),
+        ]:
+            with self.subTest(body=body):
+                self.assertIn(expected, self.classify(body))
+
     def test_drop_inside_a_comment_is_still_ignored(self):
         loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
         self.assertNotIn(loss, self.classify("-- drop table core.safe;\n/* drop table core.x cascade; */\nselect 1;"))

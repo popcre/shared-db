@@ -1,22 +1,23 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2934,
   "outcome": "ready-for-merge",
-  "pr": 2941,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2942/1",
-  "contract_sha256": "e87838300f1d2946231d51472aa993809ef6bee8071331bbd273e486d7d380bf",
-  "head_sha": "1ccc446dda236d589878ff36061233b7044e76a9",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2944,
+  "migration_versions": ["20260915111317"],
+  "contract_ref": "refs/db-contracts/2934/1",
+  "contract_sha256": "516e85f9854fea8f8384818d9ebea93c143c9befaff36f2577be0fb2f2a05bae",
+  "head_sha": "a5500960918cdbd5c718029576198048d7affabd",
+  "files_changed": ["supabase/migrations/20260915111317_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts"],
+  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
+  "db_writes": ["function public.deactivate_stale_sg_files"],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "exit_code": 0, "evidence": "625 tests passed with zero failures, cancellations, skips or todo; the new regression test reproduces 'cannot advance outcome from dispatched to dispatched' without the fix and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed, including the duplicate-version, expected-count, verify-cost and EOL reference guards for the one added migration."},
+    {"command": "python -m pytest -q scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "44 passed, 6 subtests passed; the new migration declares derived-from: none."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between origin/main 6fc54636 and implementation commit a5500960."}
   ],
   "assumptions_resolved": [
-    "The dispatch advance is skipped only when the work issue's outcome history is valid and already at dispatched; any other state still advances and still refuses illegal transitions.",
-    "No database object, migration, claim or lease was written; claim #2931, claim #2937, issue #2792 and PR #2938 were untouched."
+    "No live caller: the only non-migration references were the contract tests, now updated; only migration 20260905104802 defines the wrapper and no other function calls it.",
+    "Every assertion about reconcile_stale_sg_files_batch and preview_stale_sg_files is kept; contract 3 now asserts the wrapper no longer exists."
   ],
   "stop_conditions_hit": []
 }

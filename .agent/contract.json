@@ -1,31 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2934,
   "generation": 1,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Let a re-claim of a work issue whose outcome history is already dispatched treat dispatch as satisfied instead of refusing the dispatch readback.",
-  "base_sha": "91de3134fa5d5c7b3bfb6d537822e3b4211e5f4b",
-  "dispatcher": "Albert Hazan (session request; orchestrator marker #2927 continuation)",
-  "worker": "claude-redispatch-readback-20260915",
-  "branch": "claude/redispatch-readback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/nifty-boyd-5c003d",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": [],
-  "db_writes": [],
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Retire public.deactivate_stale_sg_files(text, uuid) by dropping it at reserved version 20260915111317, removing its contract-test assertions and its generated type entry.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "shared-db orchestrator (marker #2927)",
+  "worker": "agent-a80dae6ce76ef83a1",
+  "branch": "claude/2934-retire-deactivate-stale-sg-files",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a80dae6ce76ef83a1",
+  "allowed_paths": ["supabase/migrations/20260915111317_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260915111317_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
+  "db_writes": ["function public.deactivate_stale_sg_files"],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not touch claim #2931, claim #2937, issue #2792, or PR #2938.",
-    "Do not skip the dispatch advance when the outcome history is invalid or in any state other than dispatched."
+    "No production dispatch or production write.",
+    "Do not change public.reconcile_stale_sg_files_batch, public.preview_stale_sg_files, or their grants.",
+    "Do not remove any contract assertion about reconcile_stale_sg_files_batch or preview_stale_sg_files."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "git diff --check"],
+  "required_checks": ["bash scripts/check-sql.sh", "python -m pytest -q scripts/test_migration_derivation.py", "git diff --check"],
   "assumptions": [
-    "A valid outcome history already at dispatched means a previous claim dispatched this work issue and was released.",
-    "The change requires no database object or migration-author route."
+    "The wrapper has no live caller: popdam3 calls reconcile_stale_sg_files_batch directly, no cron job calls it, and only shared-db contract tests referenced it (orchestrator check recorded on #2934)."
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing the outcome lifecycle transitions themselves.",
-    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
+    "Stop if any live caller, view, or function depending on the wrapper is found.",
+    "Stop if the retirement requires changing any object other than the wrapper."
   ]
 }

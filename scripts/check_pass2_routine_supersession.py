@@ -453,7 +453,7 @@ def rebuild_mismatches(
     `changed` names the migrations a pull request adds or edits. Only routines
     those files drop or create are judged. `repair(migration, dir, applied)`
     returns routine -> drop statements to replay (default: `later_drops`), so a
-    test can prove a missing repair is caught.
+    test can prove an absent repair is caught.
     """
     repair = repair or later_drops
     ordered = sorted(migrations_dir.glob("*.sql"))

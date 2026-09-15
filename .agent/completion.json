@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2729/4",
   "contract_sha256": "6f0e6de17c0411b1097394bec14eee6f69ca5e07a94e602499020d518665b419",
-  "head_sha": "c0eee7e92c5b581c365e0e83d021a76db2fe84f6",
+  "head_sha": "04156915f4c00b494f27192ca1d3383e45a4c22c",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -17,17 +17,17 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check passed at implementation commit c0eee7e92c5b581c365e0e83d021a76db2fe84f6 against base dcda2cd936fd0df717963e6f6dd4696c4ddd8861."
+      "evidence": "git diff --check passed at implementation commit 04156915f4c00b494f27192ca1d3383e45a4c22c against base dcda2cd936fd0df717963e6f6dd4696c4ddd8861."
     },
     {
       "command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "567 tests, 567 passed, 0 failed, 0 skipped, 0 todo at c0eee7e92c5b581c365e0e83d021a76db2fe84f6, including the claim-mode migration hash mismatch refusal that names the mismatched condition and unreadable-candidate refusals."
+      "evidence": "567 tests, 567 passed, 0 failed, 0 skipped, 0 todo at 04156915f4c00b494f27192ca1d3383e45a4c22c, including the claim-mode migration hash mismatch refusal that names the mismatched condition and unreadable-candidate refusals."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at c0eee7e92c5b581c365e0e83d021a76db2fe84f6; no call sites added or changed."
+      "evidence": "truth audit OK: call_sites=295 at 04156915f4c00b494f27192ca1d3383e45a4c22c; no call sites added or changed."
     }
   ],
   "assumptions_resolved": [

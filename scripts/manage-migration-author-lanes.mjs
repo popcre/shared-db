@@ -5970,7 +5970,12 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const expectedDispatch=io.enforceAdmission===true?outcomeEvent(dispatchArgs):null
     try {
       requireOwnedRef(MUTEX_REF,ownerSha,io)
-      if(io.enforceAdmission===true)advanceOutcome(dispatchArgs,io)
+      // A re-claim after a released claim (e.g. its PR closed unmerged) finds the
+      // work issue already dispatched; dispatch is satisfied, not an illegal advance.
+      if(io.enforceAdmission===true){
+        const prior=outcomeHistory(io.issueComments(Number(options.admitIssue)),Number(options.admitIssue))
+        if(!(prior.valid&&prior.state==='dispatched'))advanceOutcome(dispatchArgs,io)
+      }
     }
     catch(error) {
       if(io.readRef(MUTEX_REF)!==ownerSha)throw new LaneError(`lost mutex ownership after claim creation; claim ${url} remains protected for explicit recovery: ${error.message}`)

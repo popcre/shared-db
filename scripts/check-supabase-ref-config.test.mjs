@@ -78,6 +78,13 @@ test('quoted values with trailing comments yield the value, not the commented-ou
   assert.deepEqual(extractRefEntries(text, 'f').map((e) => `${e.key}=${e.ref}`), [`PREVIEW_PROJECT_REF=${LIVE_BRANCH}`, `OTHER_REF=${LIVE_BRANCH}`])
 })
 
+test('a parent project cannot serve as the control: empty branch listing stays untrusted', () => {
+  const r = run(['--config', 'o', '--control-ref', PARENT], {o: `PREVIEW_PROJECT_REF=${LIVE_BRANCH}`}, {projects, branchesFor: () => []})
+  assert.equal(r.code, 2, r.out)
+  assert.match(r.out, /UNKNOWN bbbb/)
+  assert.match(r.out, /INVENTORY UNTRUSTED: control ref/)
+})
+
 test('the check can fail: swapping the live ref for the stale one flips exit 0 to 1', () => {
   const ok = run(['--config', 'o', '--control-ref', LIVE_BRANCH], {o: `K_REF=${LIVE_BRANCH}`})
   const bad = run(['--config', 'o', '--control-ref', LIVE_BRANCH], {o: `K_REF=${DELETED}`})

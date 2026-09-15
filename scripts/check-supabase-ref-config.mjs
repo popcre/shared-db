@@ -32,7 +32,8 @@
 // Usage:
 //   node scripts/check-supabase-ref-config.mjs --config <file> [--config <file> ...]
 //        [--env] --control-ref <live-branch-ref> [--json]
-// Without --control-ref the inventory is never trusted and the run exits 2.
+// Without --control-ref, or when it is not seen as a preview BRANCH (a parent
+// project does not count), the inventory is never trusted and the run exits 2.
 // Config files may be JSON (nested objects allowed) or KEY=VALUE lines.
 // Exit: 0 all active keys LIVE; 1 a key is RETIRED/UNKNOWN; 2 inventory untrusted or usage error.
 import {readFileSync} from 'node:fs'
@@ -86,13 +87,17 @@ export function extractRefEntries(text, source) {
 // projects: array of {ref,...}; branchesFor(ref) -> array of {project_ref,...} or throws.
 export function buildInventory(projects, branchesFor) {
   const live = new Map()
+  const branches = new Set() // refs observed through `branches list` only
   const errors = []
   for (const p of projects) live.set(p.ref ?? p.id, `project ${p.name ?? ''} (${p.status ?? '?'})`.trim())
   for (const p of projects) {
     const parent = p.ref ?? p.id
     try {
       for (const b of branchesFor(parent)) {
-        if (b.project_ref) live.set(b.project_ref, `branch ${b.name ?? ''} of ${parent} (${b.status ?? '?'})`)
+        if (b.project_ref) {
+          live.set(b.project_ref, `branch ${b.name ?? ''} of ${parent} (${b.status ?? '?'})`)
+          branches.add(b.project_ref)
+        }
       }
     } catch (error) {
       // A project with branching disabled is a complete answer, not a failure.
@@ -101,7 +106,7 @@ export function buildInventory(projects, branchesFor) {
       errors.push(`branches list for ${parent} failed: ${String(error?.message ?? error).split('\n')[0]}`)
     }
   }
-  return {live, errors}
+  return {live, branches, errors}
 }
 
 export function classify(entries, inventory, {controlRef} = {}) {
@@ -110,7 +115,9 @@ export function classify(entries, inventory, {controlRef} = {}) {
   if (inventory.live.size === 0) problems.push('inventory is empty')
   if (!controlRef) {
     problems.push('no --control-ref given, so nothing proves the inventory includes preview branches')
-  } else if (!inventory.live.has(controlRef)) {
+  } else if (!inventory.branches?.has(controlRef)) {
+    // A parent project is always in `projects list`, so only a ref seen through
+    // `branches list` proves branch enumeration actually worked.
     problems.push(`control ref ${controlRef} is not in the inventory, so the inventory cannot be trusted to call any ref absent`)
   }
   const trusted = problems.length === 0

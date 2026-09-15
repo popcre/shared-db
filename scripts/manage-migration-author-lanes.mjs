@@ -4373,8 +4373,11 @@ export function archiveOldReviewVerdicts(options={},now=new Date(),io=githubIo){
     acquireReviewMutex(ownerSha,io);acquired=true;requireOwnedRef(MUTEX_REF,ownerSha,io)
     // Re-prove under the mutex: a reopened pull request, a new active lease, or a
     // verdict ref that moved since the preview is skipped, never archived.
+    // The pull request state map is re-read here, never reused from the preview:
+    // a PR closed unmerged before the lock can be reopened and merged with
+    // migrations before it, and its verdict is then promotion evidence (#2992 review).
     const reopened=new Set((typeof io.openPulls==='function'?io.openPulls():[]).map((row)=>Number(row.number)))
-    const fresh=new Map([...pulls].map(([pr,row])=>[pr,reopened.has(pr)?{...row,state:'open'}:row]))
+    const fresh=new Map([...readPullStateMap(io)].map(([pr,row])=>[pr,reopened.has(pr)?{...row,state:'open'}:row]))
     const confirmed=new Map(verdictArchiveScan(io,fresh).candidates.map((row)=>[row.ref,row]))
     const move=scan.candidates.filter((row)=>confirmed.get(row.ref)?.sha===row.sha)
     const archived=[]

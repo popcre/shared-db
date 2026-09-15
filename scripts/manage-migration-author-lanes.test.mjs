@@ -8124,6 +8124,20 @@ test('#2987 verdict archive skips a pull request reopened before the mutex was h
   assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
+// #2992 review (High): the state map must be re-read under the mutex. A PR closed
+// unmerged at preview time, then reopened and merged with migrations before the
+// lock, is no longer open, so only a fresh state read keeps its promotion evidence.
+test('#2987 verdict archive keeps a closed PR that merged with migrations before the mutex was held',()=>{
+  const {io,prs,pull}=verdictArchiveIo()
+  pull(32);const ref=giveVerdict(io,{issue:1,pr:32,headSha:'c'.repeat(40)})
+  const create=io.createRef.bind(io)
+  io.createRef=(target,sha)=>{if(target===MUTEX_REF)pull(32,{merged:true,migration:true});return create(target,sha)}
+  const result=archiveOldReviewVerdicts({applyRecovery:true},new Date(),io)
+  assert.equal(result.candidates,1,'the preview saw a closed unmerged PR')
+  assert.equal(result.archived,0);assert.equal(result.skippedChanged,1);assert.ok(io.refs.has(ref),'promotion evidence is kept')
+  assert.equal(prs.get(32).merged,true);assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
 test('#2987 verdict archive refuses while another operation holds the review mutex',()=>{
   const {io,pull}=verdictArchiveIo()
   pull(41);const ref=giveVerdict(io,{issue:1,pr:41,headSha:'c'.repeat(40)})

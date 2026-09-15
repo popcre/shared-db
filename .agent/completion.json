@@ -1,24 +1,56 @@
 {
   "schema_version": 1,
-  "work_issue": 2963,
+  "work_issue": 2912,
   "outcome": "ready-for-merge",
-  "pr": 2964,
+  "pr": 2795,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2963/2",
-  "contract_sha256": "ecd37ab4bb75a9018c3b023759b0af07ca4937011f02fe081e2951136d289abe",
-  "head_sha": "88cee4b2ffb323c1f2c9bfbc8f57113d958dae30",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs"],
+  "contract_ref": "refs/db-contracts/2912/4",
+  "contract_sha256": "50373689e09612440c7bea59c123eda75bf2d98a7540adb9b31ceca88d3cbce6",
+  "head_sha": "c15702721a7946b65e77a841de7e9e26587cf62e",
+  "files_changed": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "557 tests, 557 pass, 0 fail, 0 skipped at 88cee4b2. New: 'issue 2958 open claims never depend on the GitHub labels= filtered listing', 'issue 2958 closed claim history fails closed when the labels= listing is empty', and the 1688 test asserts the claims-seen diagnostic on the zero-match, empty and more-than-one-claim merge refusals. The first new test failed while openClaims still called the labels= endpoint."},
-    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "16 tests, 16 pass, 0 fail, 0 skipped at 88cee4b2, including the new direct test that the lease re-check keeps only non-PR issues labelled exactly db-claim and never uses the labels= listing."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "706 tests, 706 passed, 0 failed, 0 skipped, 0 cancelled after refreshing onto main 1ffb60a1."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "Ran 146 tests, OK, after refreshing onto main 1ffb60a1."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=292 after refreshing onto main 1ffb60a1."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "231 files scanned, every GitHub call goes through the shared transport."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main HEAD reported nothing on the refreshed implementation."
+    }
   ],
   "assumptions_resolved": [
-    "Live read 2026-09-15: issues?state=open&labels=db-claim returned [] while #2957 was open with label db-claim in both the unfiltered listing and search (8 open claims); closed-claim search reports 311, so an empty closed history is never genuine.",
-    "Muse review REVISE at 82fb3a6d: the merge multi-match refusal and the untested lease filter were fixed in 88cee4b2; a partial non-empty closed listing remains undetectable client-side and is recorded as a residual risk.",
-    "No database object, migration, claim or lease was written, and PR #2958's branch was not touched."
+    "Merged prerequisites #2750, #2901 and sender popcre/ai-devops#435 verified merged.",
+    "Refresh merge of main c82f2f04 took main's evidence pair in the merge commit; the only content conflict was the truth-audit inventory, resolved by carrying every semantic-key disposition from both sides and recomputing count and digest from discovery.",
+    "Immutable contract generation 4 is unchanged; its base 6934a535 remains an ancestor of the implementation head.",
+    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action."
   ],
   "stop_conditions_hit": []
 }

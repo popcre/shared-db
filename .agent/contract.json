@@ -1,28 +1,62 @@
 {
   "schema_version": 1,
-  "work_issue": 2963,
-  "generation": 2,
+  "work_issue": 2912,
+  "generation": 4,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "branch": "claude/merge-lane-claim-lookup",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
-  "worker": "claude-merge-lane-claim-lookup-20260915",
-  "dispatcher": "Orchestrator (PR #2958 guarded merge runs 34978196476, 34978397473, 34979303230 refused on claim lookup)",
-  "base_sha": "37f879d78050f8bf97d9d4ce5a40e9a034647cc7",
-  "goal": "Stop the guarded merge lane, the lease re-check and closed-claim history from trusting GitHub's labels= filtered issue listing: list open claims unfiltered with a client-side label filter, fail closed on an empty closed-claim history listing, and make the lane refusal name the claims it saw.",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Consume the sender-side database preview classification and make no-preview routing explicit, exact-input-bound, deterministic, target-bound, and fail closed before claim or review admission.",
+  "base_sha": "6934a53552e85cad54310433516808ed08781ee0",
+  "dispatcher": "Codex programme 401 repository-maintenance continuation",
+  "worker": "Codex receiver classification continuation",
+  "branch": "codex/433-no-db-preview",
+  "worktree": "C:/repos/shared-db-worktrees/401-2795-resume-20260914",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "assumptions": [
-    "Closed db-claim history is never empty in this repository, so an empty labels= listing is a GitHub fault.",
-    "The unfiltered open-issue listing returns labels for every issue, so client-side filtering sees the same claims as the label filter should."
-  ],
   "prohibited_actions": [
-    "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not weaken, skip or quarantine any test.",
-    "Do not touch PR #2958's branch."
+    "No database, preview, production, migration, marker, issue #2714, or pull request #2738 mutation.",
+    "No trust in a self-declared no-preview decision without an independently supplied exact file set, target identity, and matching content digests."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the three scripts, the lane and lease tests and the evidence pair."]
+  "required_checks": [
+    "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "python -m unittest scripts.test_production_business_risk_gate",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The ai-devops sender contract is interface context only and remains owned by its existing worker.",
+    "NO_DATABASE_PREVIEW returns work to its natural owner before claim, review, or preview reads; all database-impacting or unverifiable classifications retain governed database admission.",
+    "Recovery contract after integration onto main 703c333847475d8adcb590904454a72dc27e0867; this does not claim prospective publication. Corrects old mistaken shared-db issue 433 to local receiver issue 2912; parent is popcre/ai-devops issue 433.",
+    "Generation 3 integrates merged PR #2901 and adds a receiver adapter for the actual landed sender schema. Sender digest, complete files, independent Git identity and impact are checked before binding repository-local identity; legacy receiver envelopes remain supported.",
+    "Generation 4 places the immutable recovery contract after the implementation head so Git evidence contains exactly the two permitted metadata files."
+  ],
+  "stop_conditions": [
+    "Any required test fails.",
+    "Exact target, file-set, or content-digest binding cannot be independently verified.",
+    "The change would require any prohibited mutation or weaken an existing database safety gate."
+  ]
 }

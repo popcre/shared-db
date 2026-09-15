@@ -74,6 +74,8 @@ export function runDeliveryPreflight(input,{readEvidenceRegistration}={}) {
 export function validateDeliveryPreflight(record,adapters) {
   if(!record||record.schema_version!==DELIVERY_PREFLIGHT_SCHEMA_VERSION||record.status!=='PASS')throw new DeliveryPreflightError('passing preflight record is unreadable')
   const normalized=deliveryPreflightInputs(record.input)
+  const blocked=DELIVERY_CHECKS.filter((name)=>normalized.checks[name].status!=='PASS')
+  if(blocked.length)throw new DeliveryPreflightError(`passing preflight record carries blocked checks: ${blocked.join(', ')}`)
   const digest=sha256(canonicalJson(normalized))
   if(record.preflight_id!==digest||record.input_digest!==digest)throw new DeliveryPreflightError('preflight seal does not match its canonical input')
   validateRegistryEvidence(normalized,adapters?.readEvidenceRegistration)

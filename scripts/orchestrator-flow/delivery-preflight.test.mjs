@@ -50,6 +50,16 @@ for (const name of DELIVERY_CHECKS) test(`missing or blocked ${name} refuses ear
   assert.throws(() => run(missing), DeliveryPreflightError)
 })
 
+test('a self-consistent outer PASS over a blocked inner check is refused and never reused', () => {
+  const blocked = input()
+  blocked.checks.runner_capacity.status = 'BLOCKED'
+  const normalized = { issue: blocked.issue, pr: blocked.pr, head_sha: blocked.head_sha, checks: blocked.checks }
+  const digest = sha256(canonicalJson(normalized))
+  const forged = { schema_version: run(input()).schema_version, preflight_id: digest, input_digest: digest, status: 'PASS', input: normalized }
+  assert.throws(() => validateDeliveryPreflight(forged, registry(blocked)), /blocked checks: runner_capacity/)
+  assert.equal(reuseDeliveryPreflight(forged, blocked, registry(blocked)), null)
+})
+
 test('changed head, evidence, or status invalidates reuse', () => {
   const original = input()
   const result = run(original)

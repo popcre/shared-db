@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/2963/2",
   "contract_sha256": "ecd37ab4bb75a9018c3b023759b0af07ca4937011f02fe081e2951136d289abe",
   "head_sha": "88cee4b2ffb323c1f2c9bfbc8f57113d958dae30",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs"],
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", "scripts/check-migration-pr-lease.mjs", "scripts/check-migration-pr-lease.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [

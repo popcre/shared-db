@@ -7,10 +7,10 @@
   ],
   "assumptions": [
     "Plan popcre/ai-devops plan_shared-db-complete-throughput-repair.md Step 6 point 1: failed preview-evidence conditions are swallowed silently; every rejected candidate must report which condition failed, and a mismatched hash refuses and names the mismatched condition.",
-    "Generations 1-3 are already published for this issue; this contract is generation 4.",
+    "Generations 1-4 are already published for this issue; this contract is generation 5, rebased onto main dae4becb79ae2684a246e3edd867ebabb68a712b after PRs #2952 and #2970 merged.",
     "Acceptance logic of validateOriginalPreviewApplyEvidence is unchanged; only refusal detail is added."
   ],
-  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
+  "base_sha": "dae4becb79ae2684a246e3edd867ebabb68a712b",
   "branch": "claude/2729-evidence-rejection-reasons",
   "db_reads": [],
   "db_writes": [],
@@ -21,7 +21,7 @@
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "generation": 4,
+  "generation": 5,
   "goal": "Make every rejected preview-evidence candidate, unreadable ones included, report which condition failed, with tests including the claim-mode migration hash mismatch.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",

@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2979,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2729/4",
-  "contract_sha256": "6f0e6de17c0411b1097394bec14eee6f69ca5e07a94e602499020d518665b419",
-  "head_sha": "04156915f4c00b494f27192ca1d3383e45a4c22c",
+  "contract_ref": "refs/db-contracts/2729/5",
+  "contract_sha256": "1f4b734879751e53e88c9d0778e67d7f4e966bc7b30d9d73d2f5b7b0b29bb3e1",
+  "head_sha": "36c13fddbf7fca73dde97e04f0338a4f64af7f6e",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,7 +19,7 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check passed at implementation commit 04156915f4c00b494f27192ca1d3383e45a4c22c against base dcda2cd936fd0df717963e6f6dd4696c4ddd8861."
+      "evidence": "git diff --check passed at implementation commit 04156915f4c00b494f27192ca1d3383e45a4c22c against base dae4becb79ae2684a246e3edd867ebabb68a712b."
     },
     {
       "command": "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs",

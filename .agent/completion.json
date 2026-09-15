@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2947/1",
   "contract_sha256": "e941b64bceef395b90f7912209d1559f91b8924ee750facb0a36f9a8b0520342",
-  "head_sha": "188907190f6f292fb2a990ca2142e102ebbb4cea",
-  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
+  "head_sha": "da7a012227bf216ba0181ec9f7b25b4094e09cf7",
+  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [

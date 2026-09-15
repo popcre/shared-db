@@ -1,23 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2934,
+  "work_issue": 2947,
   "outcome": "ready-for-merge",
-  "pr": 2944,
-  "migration_versions": ["20260915111317"],
-  "contract_ref": "refs/db-contracts/2934/1",
-  "contract_sha256": "516e85f9854fea8f8384818d9ebea93c143c9befaff36f2577be0fb2f2a05bae",
-  "head_sha": "fe756baeb6484cecf7afd2d3949be7985ff194e0",
-  "files_changed": ["supabase/migrations/20260915111317_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts"],
-  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
-  "db_writes": ["function public.deactivate_stale_sg_files"],
+  "pr": 2948,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2947/1",
+  "contract_sha256": "e941b64bceef395b90f7912209d1559f91b8924ee750facb0a36f9a8b0520342",
+  "head_sha": "f8af68e483f00bbef4471d1981d12b00a489cf46",
+  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
-    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed, including the duplicate-version, expected-count, verify-cost and EOL reference guards for the one added migration."},
-    {"command": "python -m pytest -q scripts/test_migration_derivation.py", "exit_code": 0, "evidence": "44 passed, 6 subtests passed; the new migration declares derived-from: none."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between origin/main 6fc54636 and implementation commit fe756bae."}
+    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "27 tests pass, including three that replay on a throwaway PostgreSQL cluster and assert the catalog: early create + later drop => absent; drop then same-signature re-create => present; drop then new signature => old identity absent, new present. Against origin/main the suite fails with ImportError: cannot import name 'later_drops'; against first-round head 0de489c0 three tests fail, including the new-identity catalog test reproducing the governed review's High finding."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "No live caller: the only non-migration references were the contract tests, now updated; only migration 20260905104802 defines the wrapper and no other function calls it.",
-    "Every assertion about reconcile_stale_sg_files_batch and preview_stale_sg_files is kept; contract 3 now asserts the wrapper no longer exists."
+    "The contract-test workflow already runs every returned snapshot row after the pass-2 migration, so the drop rows (ord 5, after bodies and grants) need no workflow change.",
+    "No database object, migration, test file, claim or lease was written."
   ],
   "stop_conditions_hit": []
 }

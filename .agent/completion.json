@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2959,
+  "work_issue": 2788,
   "outcome": "ready-for-merge",
-  "pr": 2960,
+  "pr": 2951,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2959/1",
-  "contract_sha256": "d682db3e3a3682c7c41f5398bac58ac7fc73595e0e047338fc92603e6d2885bd",
-  "head_sha": "983fc3aa2d22f635e764436cdbe31c5d3ee59ec8",
-  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
+  "contract_ref": "refs/db-contracts/2788/2",
+  "contract_sha256": "85398ffde262d21804a26d05aa8c02400f467aadde7be5c9a30451e754bf013e",
+  "head_sha": "e74e9f3c192fc4d973502d10e40a8d3d3eb2772f",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "31 tests pass, including the throwaway-PostgreSQL catalog test test_baseline_recreated_between_passes_is_still_dropped, which applies a baseline CREATE between the passes (the run 34973127156 case) and asserts the wrapper is absent. Against origin/main the suite fails with ImportError: cannot import name 'redeclared_after_drop'; with the old guard-every-drop behaviour forced, 4 tests fail including that catalog test (True is not false)."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, skips or todo; the new regression assertion reproduced \"Cannot read properties of null (reading 'dependencies')\" without the fix and passes with it."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
   ],
   "assumptions_resolved": [
-    "The contract-test workflow loads the pre-adoption baseline between pass 1 and pass 2 and already runs every returned snapshot row after the pass-2 migration, so no workflow or baseline change is needed.",
-    "No database object, migration, claim or lease was written, and PR #2958's branch was not touched."
+    "deriveLivePreviewCandidate now refuses with a LaneError naming the issue when parseQueueScope returns null; issues with a db-work-scope block follow the unchanged path.",
+    "No database object, migration, claim or lease was written."
   ],
   "stop_conditions_hit": []
 }

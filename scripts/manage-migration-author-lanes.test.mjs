@@ -2783,6 +2783,19 @@ test('preview and merge are fixed exclusive refs and merge refuses during produc
   assert.throws(()=>acquireExclusive('production',{owner:'p',headSha:'main'},io),/guarded merge is active/)
 })
 
+test('issue 2958 open claims never depend on the GitHub labels= filtered listing', () => {
+  const requested=[]
+  const rows=[
+    {number:1,title:'claim',body:'b1',html_url:'u1',labels:[{name:'db-claim'}]},
+    {number:2,title:'work',body:'b2',html_url:'u2',labels:[{name:'db-work'}]},
+    {number:3,title:'pr',body:'b3',html_url:'u3',labels:[{name:'db-claim'}],pull_request:{}},
+    {number:4,title:'claim',body:'b4',html_url:'u4',labels:['db-claim']},
+  ]
+  const claims=githubIo.openClaims((endpoint)=>{requested.push(endpoint);return /labels=/.test(endpoint)?[]:rows})
+  assert.deepEqual(requested,['repos/u2giants/shared-db/issues?state=open&per_page=100'])
+  assert.deepEqual(claims.map((claim)=>claim.number),[1,4])
+})
+
 test('issue 1688 routes non-migration pull requests through the guarded merge lane', () => {
   const io=memoryIo()
   io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})
@@ -2794,6 +2807,17 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
   assert.throws(
     ()=>acquireExclusive('merge',{owner:'migration-without-claim',pr:7,headSha:'docs-head'},io),
     /requires exactly one live author claim/,
+  )
+  // #2958: a CI-only zero-match refusal must name what the lane actually saw.
+  io.openClaims=()=>[{number:44,title:'claim',body:body(['table public.x'],'44','2999-01-01T00:00:00.000Z')}]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic',pr:7,headSha:'docs-head'},io),
+    (error)=>/PR head branch compared: "codex\/docs"/.test(error.message)&&/open claims seen \(1\): #44 branch="codex\/44" active=true/.test(error.message),
+  )
+  io.openClaims=()=>[]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic-empty',pr:7,headSha:'docs-head'},io),
+    /open claims seen \(0\): none/,
   )
   io.getPrFiles=()=>{throw new Error('GitHub unavailable')}
   assert.throws(

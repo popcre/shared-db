@@ -1,6 +1,8 @@
 -- Issue #2792 -- PopSG stale-file reconciliation must finish under the ordinary
 -- production statement ceiling.
 --
+-- derived-from: 20260905104802
+--
 -- WHY THIS EXISTS
 -- ---------------
 -- Production nightly PopSG crawls (~216k accepted files) ended with

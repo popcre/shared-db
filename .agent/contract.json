@@ -1,44 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2728,
+  "work_issue": 2838,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add the read-only --orchestrator-snapshot production caller with stalled_outcomes, zero-closures alarm and transition-only durable reports (programme 401 Step 4); live programme acceptance and the canonical skill rule remain separate.",
-  "base_sha": "89ec62d2f1fe5a27c42c2f8ffb71c9a7900cc5b2",
-  "dispatcher": "shared-db orchestrator marker 2927",
-  "worker": "Claude repo-maintenance agent",
-  "branch": "claude/2728-orchestrator-snapshot",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ae0e43c867f72142f",
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
-  ],
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
-  ],
+  "goal": "Make the advisory Documents-only merge authorization check report a green Not applicable status (and a green job) on ordinary code pull requests so red means a genuine refusal.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (repo-maintenance session request for issue #2838)",
+  "worker": "claude-issue-2838-docs-only-not-applicable",
+  "branch": "claude/issue-2838-docs-only-not-applicable",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ab1c5d8144af304e5",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database, preview, production, marker, migration, claim, reviewer or infrastructure mutation.",
-    "No edits to manage-migration-author-lanes.mjs, run-governed-review.mjs or workflows."
+    "No database, preview, production, migration, claim, lease, or infrastructure write.",
+    "Do not change branch protection or required status contexts.",
+    "Do not delete or weaken any other check; revocation of the required context must still post failure."
   ],
-  "required_checks": [
-    "git diff --check",
-    "node --test --test-reporter=tap scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/orchestrator-snapshot.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
-  ],
+  "required_checks": ["node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "git diff --check"],
   "assumptions": [
-    "The canonical shared-db-orchestrator skill lives in popcre/ai-devops, so the transition-only reporting rule is noted there rather than edited here.",
-    "Issue 2728 stays open for live programme acceptance; this PR does not close it."
+    "The Documents-only merge authorization context is advisory and not in main's required contexts.",
+    "A moved head, production freeze, unreadable comparison, or required-context revocation remains a red failure."
   ],
   "stop_conditions": [
-    "Stop once the PR is open with a validated evidence pair and CI running; no reviewer draw and no merge.",
-    "Stop on required check failure."
-  ],
-  "generation": 2
+    "Stop if the fix would require changing branch protection.",
+    "Stop if completion requires any file outside the allowed paths."
+  ]
 }

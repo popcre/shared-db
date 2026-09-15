@@ -5503,6 +5503,27 @@ test('a completed preview remains evidence when only its downstream automatic pr
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
 })
 
+test('a failed downstream dispatcher may leave only its own review-evidence artifact',()=>{
+  const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:'b'.repeat(40)}
+  const fixture=immutablePreviewApplyIo(), evidence=fixture.previewApplyRun()
+  const preview=evidence.artifacts.artifacts[0],head=evidence.run.head_sha
+  const extra=(over={})=>({name:'automatic-production-apply-review-evidence',digest:`sha256:${'e'.repeat(64)}`,expired:false,workflow_run:{id:evidence.run.id,head_sha:head},...over})
+  evidence.run.conclusion='failure'
+  evidence.jobs=downstreamPromotionFailureJobs()
+  evidence.artifacts={total_count:2,artifacts:[extra(),preview]}
+  const io={...fixture,previewApplyRun:()=>evidence}
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,io),{type:'preview-apply',run_id:'33308168016'})
+  evidence.artifacts={total_count:2,artifacts:[extra({name:'something-else'}),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:2,artifacts:[extra({workflow_run:{id:1,head_sha:head}}),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:3,artifacts:[extra(),extra(),preview]}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+  evidence.artifacts={total_count:2,artifacts:[extra(),preview]}
+  evidence.run.conclusion='success'
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
+})
+
 test('the exact byte-pinned #2509 claim apply is valid immutable historical-rebind evidence',()=>{
   const input={issue:2509,pr:2513,versions:['20260907131728'],mergeCommitSha:'c5f85ad3a98b7a5598e8c81a56735473d5bb5487'}
   assert.deepEqual(validateOriginalPreviewApplyEvidence(input,pinnedHistoricalClaimApplyIo()),{type:'preview-apply',run_id:'34157812748'})
@@ -5573,6 +5594,7 @@ test('preview preparation classifies migration SQL, not filenames, and binds it 
   assert.throws(()=>deriveLivePreviewCandidate(1769,mergedRehearsalIo({migrationBody:'insert into plm.wwe_property values (1);'}).io),/not structural/)
   assert.throws(()=>deriveLivePreviewCandidate(1769,mergedRehearsalIo({migrationBody:'create table plm.wwe_property();\ncreate table plm.undeclared();'}).io),/do not exactly match claim #1805 writes/)
   assert.equal(deriveLivePreviewCandidate(1769,mergedRehearsalIo().io).pr,1809)
+  { const noScope=mergedRehearsalIo().io; noScope.getIssue=()=>({body:'no scope fence here'}); assert.throws(()=>deriveLivePreviewCandidate(1769,noScope),/issue #1769 has no db-work-scope block; add exactly one before preparing preview dispatch/) }
 })
 
 test('an already-applied merged claim receives validated evidence before route selection',()=>{
@@ -7797,4 +7819,18 @@ test('an over-long lease snapshot is a determinate refusal, not transient unread
   io.readActiveReviewLeases=()=>{throw markReviewRefListingRefusal(new LaneError('snapshot of 900 refs exceeds the process argument limit'),{cause:'command-size'})}
   assert.throws(()=>findBusyReviewers(io),/cannot be listed: .*process argument limit/)
   assert.notEqual(main(['--reap-abandoned-review-leases','--reviewer-capacity'],new Date(),io),0,'reap is its own primary operation')
+})
+
+// Observed 2026-09-15 (work issue #2792): a re-claim after a released claim found the
+// work issue already `dispatched` and refused "cannot advance outcome from dispatched to
+// dispatched", leaving a fresh claim protected for recovery. Dispatch is already satisfied.
+test('re-claim of an already dispatched work issue treats dispatch as satisfied',async()=>{
+  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {formatEventComment}=await import('./db-coordination-events.mjs')
+  const {io}=admittedReviewIo(),posted=[]
+  const history=['entered','classified','dispatched'].map((state,index)=>({author_association:'OWNER',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
+  io.issueComments=()=>history
+  io.commentIssue=(_number,body)=>posted.push(body)
+  const result=acquireAuthorLane({...opts,task:'#41',objects:['table core.example'],admitIssue:41,claim:true},NOW,io)
+  assert.equal(result.claim,'https://github.test/issues/1');assert.equal(posted.length,0);assert.equal(io.refs.has(MUTEX_REF),false)
 })

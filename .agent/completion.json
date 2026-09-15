@@ -1,59 +1,23 @@
 {
   "schema_version": 1,
-  "work_issue": 2912,
+  "work_issue": 2429,
   "outcome": "ready-for-merge",
-  "pr": 2795,
+  "pr": 2953,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2912/4",
-  "contract_sha256": "50373689e09612440c7bea59c123eda75bf2d98a7540adb9b31ceca88d3cbce6",
-  "head_sha": "0d0ad3f7cdc506d8136889cf369dec503f26e582",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/qualify-change.mjs",
-    "scripts/orchestrator-flow/qualify-change.test.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/select-preview-route.test.mjs",
-    "scripts/test_production_business_risk_gate.py"
-  ],
+  "contract_ref": "refs/db-contracts/2429/1",
+  "contract_sha256": "caf79dd66b4cfc30cb7f4ac5b9ed4cf4dca310fdd3d2a0b5360f9046fdc170b1",
+  "head_sha": "774b374540076de8ffd5b0cd307a5a69440539d2",
+  "files_changed": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "707 passed, 0 failed, 0 skipped after integrating merged PR #2901 and sender compatibility repair."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_business_risk_gate",
-      "exit_code": 0,
-      "evidence": "146 Python tests passed."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "286 discovered call sites; all dispositions carried by semantic key from current main or the existing reviewed PR inventory."
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "224 files scanned; every governed GitHub call uses shared transport."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check passed on combined implementation."
-    }
+    {"command": "node --test scripts/check-supabase-ref-config.test.mjs", "exit_code": 0, "evidence": "11 tests passed with zero failures, cancellations, skips or todo; with branch enumeration sabotaged 5 of them fail, proving the check distinguishes a stale ref from a live branch. Covers the review findings: an absent control ref or a control seen only as a parent project is untrusted, only the explicit branching-off error is ignored, quoted/commented values parse correctly."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."},
+    {"command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=291; two comment/message lines were reworded so the checker adds no refusal call sites."}
   ],
   "assumptions_resolved": [
-    "Merged prerequisites #2750 and sender popcre/ai-devops#435 verified live.",
-    "Conflict resolution retains current main live-proof helpers, all current imports, evidence option and primary-operation validation before adding preview classification.",
-    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action.",
-    "Real sender previously failed target binding; the receiver now validates its original digest and independent complete Git evidence before creating a target-bound envelope. The new adversarial test refuses modified bytes, mode, impact, deletion state, file set, digest and head. Existing Python inputs are unchanged since the 146 passing tests.",
-    "Merged PR #2901 was integrated from current main 6934a53552e85cad54310433516808ed08781ee0; its issue-binding workflows and tests remain intact and pass with receiver classification."
+    "A read-only live run against the account classified the deleted ref rjyboqwcdzcocqgmsyel as FAIL UNKNOWN (exit 1) and the rehearsal branch mvpkijzfmfcxhnzqogzs as LIVE; only projects list and branches list ran.",
+    "No database object, migration, claim, lease or Supabase resource was written."
   ],
   "stop_conditions_hit": []
 }

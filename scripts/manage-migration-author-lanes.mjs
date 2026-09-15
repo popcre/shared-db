@@ -247,7 +247,7 @@ export const REVIEWERS = Object.freeze([
 // every historical GLM review recorded before this change still has to resolve to
 // a wrapper. One of those lookups is not null-guarded, so a missing name is a
 // crash, not a graceful miss. Retired names stay readable forever; only
-// ACTIVE_REVIEWERS receives new work -- the same pattern used to pause Qwen.
+// ACTIVE_REVIEWERS receives new work -- the same exclusion QUARANTINED_REVIEWERS applies.
 //
 // 'glm-5.3' occupies the SAME rotation slot 'glm-5.2' held, so no in-flight
 // sequence is reassigned out of order. It no longer keeps ACTIVE_REVIEWERS at the
@@ -2237,7 +2237,9 @@ export function deriveLivePreviewCandidate(issue,io,{claimNumber=null}={}){
   const structural=inspectPrStructuralChange(prFiles.filter((file)=>migrations.includes(file.filename)).map((file)=>({...file,content:contents.get(file.filename)}))),leaseWrites=[...(lease.writes??[])].sort()
   if(structural.objects.length!==leaseWrites.length||structural.objects.some((value,index)=>value!==leaseWrites[index]))throw new LaneError(`pull request #${pr.number} structural objects do not exactly match claim #${claim.number} writes; preview preparation refused`)
   const bundle=buildEvidenceBundle({migrations,focusedFiles:changed.filter((file)=>file.startsWith('supabase/tests/')),verificationFiles:changed.filter((file)=>file.startsWith('scripts/production-verification-sidecars/')),writes:lease.writes,reads:lease.reads,migrationOrderDigest:sha256(canonicalJson(order)),issue,pr:pr.number,claim:claim.number,baseMainSha:pr.base.sha,integrationSha:head},{isClean:()=>true,fileExists:(file)=>contents.has(file),readFile:(file)=>contents.get(file)})
-  const work=io.getIssue(issue),scope=parseQueueScope(work?.body??''),gate=io.previewGateProof(issue,pr.number,head,bundle.bundle_id,scope.dependencies)
+  const work=io.getIssue(issue),scope=parseQueueScope(work?.body??'')
+  if(!scope)throw new LaneError(`issue #${issue} has no db-work-scope block; add exactly one before preparing preview dispatch`)
+  const gate=io.previewGateProof(issue,pr.number,head,bundle.bundle_id,scope.dependencies)
   const main=io.mainSha(),mainVersions=io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)),preview=io.previewLedger?.()??livePreviewLedger(),originalApplyEvidence=versions.every((version)=>preview.versions.includes(version))?validateOriginalPreviewApplyEvidence({issue,pr:pr.number,versions,mergeCommitSha:merged?pr.merge_commit_sha:null},io):null
   const claimRows=claims.map((row)=>{const linked=io.openPulls().find((p)=>p.head?.ref===row.lease.branch);return{issue:claimTitleWorkIssue(row.claim),pr:linked?.number??0,versions:[row.lease.version],merged:false}}).filter((row)=>row.pr&&row.issue!==null)
   const databasePreview=databasePreviewRequiredFromEvidenceBundle(bundle)
@@ -2620,7 +2622,7 @@ export function recordReviewVerdict(options,io=githubIo){
   // hold THIS assignment SHA is left exactly as it is.
   const finish=(validated)=>({...validated,lease_ref:activeRef,lease_released:releaseRecordedVerdictLease(activeRef,assignmentSha,io)})
   const live=io.getPr(pr)
-  if(String(live?.state??'').toLowerCase()!=='open'||String(live?.head?.sha??'').toLowerCase()!==headSha)throw new LaneError('review target is no longer the exact open PR head')
+  if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw new LaneError('review target is no longer the exact open PR head')
   const ref=verdictRef({issue,pr,headSha,slot,replacementSequence})
   const existing=io.readRef(ref)
   // #2710. IDEMPOTENCY OUTLIVES THE LEASE, SO THE STANDING ARTIFACT IS READ
@@ -5875,9 +5877,7 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
   const base=io.closingIssuesForPr.bind(io)
   let verified=null
   const bound=Object.create(io)
-  bound.closingIssuesForPr=(number)=>{
-    const linked=base(number)
-    if(Number(number)!==binding.pr||!Array.isArray(linked))return linked
+  const apply=(linked)=>{
     if(linked.length){
       if(linked.length!==1||Number(linked[0]?.number)!==binding.issue)throw new LaneError(`merged PR issue binding refused: pull request #${binding.pr} already closes ${linked.map((item)=>`#${item?.number}`).join(',')}`)
       return linked
@@ -5888,7 +5888,40 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
     }
     return [{number:binding.issue,state:verified.state,bound:true}]
   }
+  bound.closingIssuesForPr=(number)=>{
+    const linked=base(number)
+    if(Number(number)!==binding.pr||!Array.isArray(linked))return linked
+    return apply(linked)
+  }
+  // Reviewer assignment and verdict recording read one GraphQL snapshot instead of
+  // closingIssuesForPr. The same verified binding, with the same refusals, fills that
+  // snapshot's empty closing-link set; a real link that disagrees still refuses.
+  if(typeof io.readReviewerOperationRoute==='function'){
+    const baseRoute=io.readReviewerOperationRoute.bind(io)
+    bound.readReviewerOperationRoute=(number)=>{
+      const snapshot=baseRoute(number)
+      if(Number(number)!==binding.pr||!Array.isArray(snapshot?.linkedIssues))return snapshot
+      const linked=apply(snapshot.linkedIssues)
+      return linked===snapshot.linkedIssues?snapshot:{...snapshot,linkedIssues:linked}
+    }
+  }
+  // Verdict recording on a merged PR: only the bound PR and issue, and only after the
+  // same verification (merged, body, completion record, claims, open issue) passes.
+  bound.mergedPrReviewTarget=(number,issue)=>{
+    if(Number(number)!==binding.pr||Number(issue)!==binding.issue)return false
+    return apply([]).length===1
+  }
   return bound
+}
+
+// An open PR at the exact head is recordable, as before. A merged PR at the exact head
+// is recordable only through a verified merged-PR issue binding for that PR and issue.
+export function reviewTargetIsRecordable(live,{pr,issue,headSha},io=githubIo){
+  if(String(live?.head?.sha??'').toLowerCase()!==String(headSha).toLowerCase())return false
+  const state=String(live?.state??'').toLowerCase()
+  if(state==='open')return true
+  if(!live?.merged_at||typeof io?.mergedPrReviewTarget!=='function')return false
+  return io.mergedPrReviewTarget(pr,issue)===true
 }
 
 export function resolveAdmittedIssueForPr(pr, io = githubIo) {
@@ -6032,7 +6065,12 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const expectedDispatch=io.enforceAdmission===true?outcomeEvent(dispatchArgs):null
     try {
       requireOwnedRef(MUTEX_REF,ownerSha,io)
-      if(io.enforceAdmission===true)advanceOutcome(dispatchArgs,io)
+      // A re-claim after a released claim (e.g. its PR closed unmerged) finds the
+      // work issue already dispatched; dispatch is satisfied, not an illegal advance.
+      if(io.enforceAdmission===true){
+        const prior=outcomeHistory(io.issueComments(Number(options.admitIssue)),Number(options.admitIssue))
+        if(!(prior.valid&&prior.state==='dispatched'))advanceOutcome(dispatchArgs,io)
+      }
     }
     catch(error) {
       if(io.readRef(MUTEX_REF)!==ownerSha)throw new LaneError(`lost mutex ownership after claim creation; claim ${url} remains protected for explicit recovery: ${error.message}`)
@@ -7419,8 +7457,15 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply)continue
     if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha)continue
     const appliedCommit=pinnedClaimApply?binding.appliedCommit:run.head_sha
-    const rows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
-    if(Number(artifacts?.total_count)!==1||rows.length!==1||rows[0].expired!==false||!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))||rows[0].name!==`preview-migration-apply-${appliedCommit}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
+    const allRows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
+    // The failed downstream dispatcher may upload exactly one extra artifact,
+    // its own review-evidence file, from the same run. Admit that single known
+    // artifact only when the job graph proves the dispatcher was the sole
+    // failure; every other extra artifact still refuses.
+    const downstreamEvidence=allRows.filter((row)=>row?.name==='automatic-production-apply-review-evidence')
+    const tolerated=previewSucceededBeforeDownstreamFailure&&Number(artifacts?.total_count)===2&&allRows.length===2&&downstreamEvidence.length===1&&String(downstreamEvidence[0].workflow_run?.id)===String(runId)&&downstreamEvidence[0].workflow_run?.head_sha===run.head_sha
+    const rows=tolerated?allRows.filter((row)=>row!==downstreamEvidence[0]):allRows
+    if((tolerated?rows.length!==1:(Number(artifacts?.total_count)!==1||rows.length!==1))||rows[0].expired!==false||!/^sha256:[0-9a-f]{64}$/i.test(String(rows[0].digest??''))||rows[0].name!==`preview-migration-apply-${appliedCommit}`||String(rows[0].workflow_run?.id)!==String(runId)||rows[0].workflow_run?.head_sha!==run.head_sha)continue
     const ledgerLines=String(logs).split(/\r?\n/).flatMap((line)=>{
       const fields=line.replace(/^\ufeff/,'').split('\t')
       if(fields.length<3||fields[1]!=='Report the preview ledger delta')return[]

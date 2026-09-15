@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
+  "work_issue": 2788,
   "outcome": "ready-for-merge",
-  "pr": 2949,
+  "pr": 2951,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2361/7",
-  "contract_sha256": "e52884abea5af1fdda2c7384b6e78d37b5d77d625fcb8c851b7ccae0d13cf4d4",
-  "head_sha": "ca0d074a1947bb8ea44b40c8ef9a63fa4156512d",
-  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
+  "contract_ref": "refs/db-contracts/2788/2",
+  "contract_sha256": "85398ffde262d21804a26d05aa8c02400f467aadde7be5c9a30451e754bf013e",
+  "head_sha": "e74e9f3c192fc4d973502d10e40a8d3d3eb2772f",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the refresh merged only main's files and the PR's own diff is unchanged."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, skips or todo; the new regression assertion reproduced \"Cannot read properties of null (reading 'dependencies')\" without the fix and passes with it."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
   ],
   "assumptions_resolved": [
-    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
-    "The script edit is one comment line; no behaviour changed. Muse APPROVE recorded at refs/db-review-verdicts/2361-2949-a171c743...; main refreshed to 7c314992 by merge with main's .agent pair."
+    "deriveLivePreviewCandidate now refuses with a LaneError naming the issue when parseQueueScope returns null; issues with a db-work-scope block follow the unchanged path.",
+    "No database object, migration, claim or lease was written."
   ],
   "stop_conditions_hit": []
 }

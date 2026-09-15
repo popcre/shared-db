@@ -1,27 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
-  "generation": 7,
+  "work_issue": 2788,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Correct two stale Qwen wording nits deferred from PR #2346 so neither implies Qwen's quarantine never existed nor uses the retired 'pause' vocabulary.",
-  "base_sha": "7c314992615fcb9f3fc5ccc45133a929f63b1617",
-  "dispatcher": "Albert Hazan (session request)",
-  "worker": "claude-qwen-wording-2361-20260915",
-  "branch": "claude/qwen-wording-2361",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5903b6b3f380df01",
-  "allowed_paths": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Make --prepare-preview-dispatch refuse with a clear message instead of crashing when the work issue has no db-work-scope block.",
+  "base_sha": "26b6d8c1f0a366ebf59904f43ce1b78b6cd2930f",
+  "dispatcher": "Albert Hazan (session request to resolve issue #2788)",
+  "worker": "claude-issue-2788-no-scope-guard-20260915",
+  "branch": "claude/top-shared-db-issues-6bc111",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3ec8eaebb016fc77",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "No behaviour change: the script edit is a single comment line.",
-    "Do not edit plan_orchestrator_throughput_phase_2.md line 27 (dated audit record)."
+    "Do not change preview gate proof, dependency or evidence bundle semantics for issues that do have a db-work-scope block."
   ],
   "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
   "assumptions": [
-    "Current state was verified, not inferred: QUARANTINED_REVIEWERS is empty on main since commit 58a447ae (2026-09-07), which returned qwen-3.8-max to the active rotation after a passing live qualification."
+    "parseQueueScope returns null only when the issue body has no db-work-scope fence.",
+    "The change requires no database object or migration-author route."
   ],
-  "stop_conditions": ["Any change beyond wording in the two named files."]
+  "stop_conditions": [
+    "Stop if the fix would require changing parseQueueScope itself.",
+    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
+  ]
 }

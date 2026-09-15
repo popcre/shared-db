@@ -1,49 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2967,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prepare immutable migration train and start-reroute libraries with reviewed verification inventory; live adapters and programme acceptance remain pending.",
-  "base_sha": "585a9d2bba30fb53c25b4dff28e1effe01642e53",
-  "dispatcher": "shared-db orchestrator marker 2927",
-  "worker": "Claude repo-maintenance landing agent",
-  "branch": "codex/issue-2729-train-reroute",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1c70ff22484ad3cc",
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
-  ],
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
-  ],
+  "branch": "claude/merge-lane-claim-read-fail-loud",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
+  "worker": "claude-merge-lane-claim-read-fail-loud-20260915",
+  "dispatcher": "Orchestrator (PR #2958 guarded merge run 34985444563 refused with open claims seen (0))",
+  "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
+  "goal": "Make the exclusive merge lane refuse loudly when its open-issue read has no non-PR rows or no claims that GitHub search contradicts, and report what the listing returned, so an empty CI read can never pass as no open claims.",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database, preview, production, marker, migration, infrastructure or live reroute action."
-  ],
-  "required_checks": [
-    "git diff --check",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
-  ],
   "assumptions": [
-    "Tracking issue 2962 lands the PR 2862 library foundations refreshed onto main 585a9d2b after PR 2795 landed; parent issue 2729 stays open for live adapters, production caller integration and acceptance.",
-    "Implementation files are unchanged from the PR 2862 branch; the refresh merges main and unions the truth inventory by semantic key."
+    "The open issue listing of this repository always contains non-PR issues, so a PR-only or empty listing is a read fault.",
+    "GitHub search for open db-claim issues is an independent read path whose total_count can confirm a genuine absence of claims."
   ],
-  "stop_conditions": [
-    "Stop before merging while PR 2795 or PR 2861 remains unlanded.",
-    "Stop on unresolved exact-head review or required check failure."
+  "prohibited_actions": [
+    "No database, preview, production, migration, claim, lease, workflow or infrastructure write.",
+    "Do not weaken, skip or quarantine any test.",
+    "Do not touch PR #2958 or claim #2957."
   ],
-  "generation": 2
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "node --test scripts/check-migration-pr-lease.test.mjs", "git diff --check"],
+  "stop_conditions": ["Stop if the fix requires changing a workflow or any file outside the lane script, its test and the evidence pair."]
 }

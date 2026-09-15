@@ -1,23 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2429,
+  "work_issue": 2959,
   "outcome": "ready-for-merge",
-  "pr": 2953,
+  "pr": 2960,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2429/1",
-  "contract_sha256": "caf79dd66b4cfc30cb7f4ac5b9ed4cf4dca310fdd3d2a0b5360f9046fdc170b1",
-  "head_sha": "774b374540076de8ffd5b0cd307a5a69440539d2",
-  "files_changed": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml"],
+  "contract_ref": "refs/db-contracts/2959/1",
+  "contract_sha256": "d682db3e3a3682c7c41f5398bac58ac7fc73595e0e047338fc92603e6d2885bd",
+  "head_sha": "02f5e8638607dee3a6ff620fcc619877797b5a18",
+  "files_changed": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/check-supabase-ref-config.test.mjs", "exit_code": 0, "evidence": "11 tests passed with zero failures, cancellations, skips or todo; with branch enumeration sabotaged 5 of them fail, proving the check distinguishes a stale ref from a live branch. Covers the review findings: an absent control ref or a control seen only as a parent project is untrusted, only the explicit branching-off error is ignored, quoted/commented values parse correctly."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."},
-    {"command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=291; two comment/message lines were reworded so the checker adds no refusal call sites."}
+    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "31 tests pass, including the throwaway-PostgreSQL catalog test test_baseline_recreated_between_passes_is_still_dropped, which applies a baseline CREATE between the passes (the run 34973127156 case) and asserts the wrapper is absent. Against origin/main the suite fails with ImportError: cannot import name 'redeclared_after_drop'; with the old guard-every-drop behaviour forced, 4 tests fail including that catalog test (True is not false)."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "A read-only live run against the account classified the deleted ref rjyboqwcdzcocqgmsyel as FAIL UNKNOWN (exit 1) and the rehearsal branch mvpkijzfmfcxhnzqogzs as LIVE; only projects list and branches list ran.",
-    "No database object, migration, claim, lease or Supabase resource was written."
+    "The contract-test workflow loads the pre-adoption baseline between pass 1 and pass 2 and already runs every returned snapshot row after the pass-2 migration, so no workflow or baseline change is needed.",
+    "No database object, migration, claim or lease was written, and PR #2958's branch was not touched."
   ],
   "stop_conditions_hit": []
 }

@@ -1,37 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 2961,
+  "work_issue": 2969,
   "outcome": "ready-for-merge",
-  "pr": 2861,
+  "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2961/1",
-  "contract_sha256": "acfdb40bdf0119103c28ee400c1583616f34d2e08c18ca1329944241c4d07c24",
-  "head_sha": "1bbdb21b7d6708724e3a6b084d7716f11b7ad41d",
+  "contract_ref": "refs/db-contracts/2969/8",
+  "contract_sha256": "45c114eaa42b7af561bb15b2317d56da86ae0e59cc3e43e91cdc74d29c416359",
+  "head_sha": "5ad055dba432925f89b8cc4a18658da006588439",
   "files_changed": [
-    "scripts/orchestrator-flow/delivery-preflight.mjs",
-    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
-    "scripts/orchestrator-flow/evidence-bundle.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "git diff --check",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "git diff --check against main 6a238c7a passed at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
+      "evidence": "152 passed, 0 skipped, 224 subtests passed. The classifier is allowlist-only: one ALLOWLIST constant of six full-statement entries, one test per entry (allowed and near-miss refused shapes) plus a test that unknown statements (SELECT, WITH, EXPLAIN, DO, INSERT, SET, BEGIN, GRANT, DROP TABLE, CALL, COPY, EXECUTE, LOCK, unparsed SQL) report all three risks. Against the previous head's gate, 60 of the new subtests failed first. Migrations 20260915130626 (non-CASCADE DROP FUNCTION) and 20260915143302 (nullable ADD COLUMN) give no finding."
     },
     {
-      "command": "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "42 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
+      "evidence": "No whitespace errors against origin/main c7c9a7a2."
     }
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main 6a238c7a after PR 2968 landed, with the capture time bound into the snapshot seal and idempotent retries with a later capture time accepted, and passing records with blocked inner checks refused, at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Caller integration and live programme acceptance remain pending under issue 2728, which this merge does not close."
+    "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
+    "Branch refreshed onto main c7c9a7a2 (#2861) before reviewer draws.",
+    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
   ],
   "stop_conditions_hit": []
 }

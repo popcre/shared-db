@@ -1,48 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 2961,
+  "work_issue": 2969,
+  "generation": 8,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Deliver freshness-sealed event snapshot and composed delivery preflight foundations with exact-head evidence; live programme acceptance remains separate.",
-  "base_sha": "cdbc00b2ecab051c5be58cbad6b8e62717bbbe8f",
-  "dispatcher": "shared-db orchestrator marker 2927",
-  "worker": "Claude repo-maintenance landing agent",
-  "branch": "codex/issue-2728-events-preflight-repair",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1c70ff22484ad3cc",
+  "branch": "claude/risk-gate-drop-function",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
+  "worker": "agent-a1b90ddbccf740c3f",
+  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting; coordinator ordered an allowlist-only restructure after six review rounds",
+  "base_sha": "c7c9a7a2b3405bbca08e85762994c0a924b15ae5",
+  "goal": "Make the production business-risk classifier allowlist-only: a migration reports no business risk only when every top-level statement fullmatches one entry of a single ALLOWLIST constant (create function in sql/plpgsql without security definer, set or argument defaults; drop function if exists without cascade; one nullable built-in-type add column; plain create table; create index on a table created earlier in the migration; comment on). Every other statement, including WITH, EXPLAIN, DO, SELECT and unparsed SQL, reports all three risks. The two refused production migrations give no finding.",
   "allowed_paths": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-flow/delivery-preflight.mjs",
-    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
-    "scripts/orchestrator-flow/evidence-bundle.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-flow/delivery-preflight.mjs",
-    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
-    "scripts/orchestrator-flow/evidence-bundle.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
+  "assumptions": [
+    "Postgres refuses a non-CASCADE DROP FUNCTION while dependents exist, so it removes no rows.",
+    "A nullable ADD COLUMN of a built-in type with no default is a catalog-only change.",
+    "CREATE FUNCTION does not execute the routine body.",
+    "sql_top_level_statements removes comments and neutralises string and dollar-quoted bodies."
+  ],
   "prohibited_actions": [
-    "No database, preview, production, marker, migration or infrastructure mutation."
+    "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
+    "Do not change the preview-required check.",
+    "Do not weaken, skip or quarantine any test."
   ],
   "required_checks": [
-    "git diff --check",
-    "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs"
-  ],
-  "assumptions": [
-    "Tracking issue 2961 lands the PR 2861 library foundations stacked on PR 2795; parent issue 2728 stays open for production caller integration and live acceptance.",
-    "Implementation files are unchanged from 020bff7931f3bcf4ad61c546ffd055655d74c843; the refresh merges the PR 2795 branch only."
+    "python -m pytest -q scripts/test_production_business_risk_gate.py",
+    "git diff --check"
   ],
   "stop_conditions": [
-    "Stop before merging while PR 2795 remains unlanded.",
-    "Stop on unresolved exact-head review or required check failure."
-  ],
-  "generation": 1
+    "Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."
+  ]
 }

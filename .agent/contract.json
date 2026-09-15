@@ -1,33 +1,62 @@
 {
   "schema_version": 1,
-  "work_issue": 2934,
-  "generation": 5,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Retire public.deactivate_stale_sg_files(text, uuid) by dropping it at reserved version 20260915130626 (claim #2957), removing its contract-test assertions and its generated type entry.",
-  "base_sha": "1ffb60a1fa042bb4892894a41298846822779e06",
-  "dispatcher": "shared-db orchestrator (marker #2927)",
-  "worker": "agent-a80dae6ce76ef83a1",
-  "branch": "claude/2934-retire-deactivate-stale-sg-files-v2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a80dae6ce76ef83a1",
-  "allowed_paths": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260915130626_popsg_retire_deactivate_stale_sg_files_wrapper.sql", "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql", "types/database.types.ts", ".agent/contract.json", ".agent/completion.json"],
-  "db_reads": ["function public.reconcile_stale_sg_files_batch"],
-  "db_writes": ["function public.deactivate_stale_sg_files"],
-  "prohibited_actions": [
-    "No production dispatch or production write.",
-    "No preview apply; the orchestrator runs preview and production.",
-    "Do not change public.reconcile_stale_sg_files_batch, public.preview_stale_sg_files, or their grants.",
-    "Do not remove any contract assertion about reconcile_stale_sg_files_batch or preview_stale_sg_files."
+  "work_issue": 2912,
+  "generation": 4,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Consume the sender-side database preview classification and make no-preview routing explicit, exact-input-bound, deterministic, target-bound, and fail closed before claim or review admission.",
+  "base_sha": "6934a53552e85cad54310433516808ed08781ee0",
+  "dispatcher": "Codex programme 401 repository-maintenance continuation",
+  "worker": "Codex receiver classification continuation",
+  "branch": "codex/433-no-db-preview",
+  "worktree": "C:/repos/shared-db-worktrees/401-2795-resume-20260914",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
   ],
-  "required_checks": ["bash scripts/check-sql.sh", "python -m pytest -q scripts/test_migration_derivation.py", "git diff --check"],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/select-preview-route.test.mjs",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, preview, production, migration, marker, issue #2714, or pull request #2738 mutation.",
+    "No trust in a self-declared no-preview decision without an independently supplied exact file set, target identity, and matching content digests."
+  ],
+  "required_checks": [
+    "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "python -m unittest scripts.test_production_business_risk_gate",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "git diff --check"
+  ],
   "assumptions": [
-    "The wrapper has no live caller: popdam3 calls reconcile_stale_sg_files_batch directly, no cron job calls it, and only shared-db contract tests referenced it (orchestrator check recorded on #2934).",
-    "Renumbered from burned version 20260915111317 (claim #2943, never applied anywhere) past main's 20260915111626 to satisfy the backdated-migration guard; PR #2944 closed as superseded.",
-    "Generation 5 rebases the evidence onto main 1ffb60a1, which carries the pass-2 replay fix (#2960) and the merge-lane claim lookup fix (#2964)."
+    "The ai-devops sender contract is interface context only and remains owned by its existing worker.",
+    "NO_DATABASE_PREVIEW returns work to its natural owner before claim, review, or preview reads; all database-impacting or unverifiable classifications retain governed database admission.",
+    "Recovery contract after integration onto main 703c333847475d8adcb590904454a72dc27e0867; this does not claim prospective publication. Corrects old mistaken shared-db issue 433 to local receiver issue 2912; parent is popcre/ai-devops issue 433.",
+    "Generation 3 integrates merged PR #2901 and adds a receiver adapter for the actual landed sender schema. Sender digest, complete files, independent Git identity and impact are checked before binding repository-local identity; legacy receiver envelopes remain supported.",
+    "Generation 4 places the immutable recovery contract after the implementation head so Git evidence contains exactly the two permitted metadata files."
   ],
   "stop_conditions": [
-    "Stop if any live caller, view, or function depending on the wrapper is found.",
-    "Stop if the retirement requires changing any object other than the wrapper."
+    "Any required test fails.",
+    "Exact target, file-set, or content-digest binding cannot be independently verified.",
+    "The change would require any prohibited mutation or weaken an existing database safety gate."
   ]
 }

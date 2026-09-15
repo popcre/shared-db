@@ -5586,6 +5586,47 @@ test('the exact byte-pinned #2509 claim apply is valid immutable historical-rebi
   assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,versions:['20260907131729']},pinnedHistoricalClaimApplyIo()),/found 0/)
 })
 
+// #2729 / popcre/ai-devops#401 Step 6: a claim-mode apply outside the registry
+// is accepted only when its archived artifact binds the hash that merged.
+function hashBoundClaimApplyIo({verify='ok',appliedCommit='1'.repeat(40),rehearsalMode='claim',withVerifier=true}={}){
+  const runId=34922309051,dispatchHead='f'.repeat(40),version='20260910120000',calls=[]
+  const artifact={id:77,name:`preview-migration-apply-${appliedCommit}`,digest:`sha256:${'d'.repeat(64)}`,expired:false,workflow_run:{id:runId,head_sha:dispatchHead}}
+  const io={
+    calls,
+    issueComments:()=>[{body:`preview apply https://github.com/u2giants/shared-db/actions/runs/${runId}`}],
+    previewApplyRun:()=>({
+      run:{id:runId,path:'.github/workflows/shared-supabase-migrations.yml',event:'workflow_dispatch',status:'completed',conclusion:'success',run_attempt:1,head_sha:dispatchHead},
+      jobs:{total_count:0,jobs:[]},
+      artifacts:{total_count:1,artifacts:[artifact]},
+      logs:`Bounded apply ${JSON.stringify({allowlist:[version],appliedCommit,previewProjectRef:'mvpkijzfmfcxhnzqogzs',rehearsalMode,runId,schema:'shared-db-preview-instance-binding/v1'})}`,
+    }),
+  }
+  if(withVerifier)io.verifyPreviewApplyArtifact=(request)=>{
+    calls.push(request)
+    if(verify==='mismatch'){const error=new Error('Command failed');error.stderr=`REFUSED: migration content mismatch: ${version}\n`;throw error}
+    return {verified:true,runId:request.run.id,artifactId:verify==='wrong-artifact'?78:request.artifact.id,artifactDigest:request.artifact.digest,versions:request.versions}
+  }
+  return io
+}
+
+test('a pre-merge claim-mode apply whose artifact binds the merged migration hash is accepted',()=>{
+  const merge='c'.repeat(40),io=hashBoundClaimApplyIo()
+  assert.deepEqual(validateOriginalPreviewApplyEvidence({issue:2792,pr:2800,versions:['20260910120000'],mergeCommitSha:merge},io),{type:'preview-apply',run_id:'34922309051'})
+  assert.equal(io.calls.length,1)
+  assert.equal(io.calls[0].verificationCommit,merge)
+  assert.equal(io.calls[0].binding.appliedCommit,'1'.repeat(40))
+})
+
+test('a pre-merge claim-mode apply with a different migration hash refuses and names the condition',()=>{
+  const input={issue:2792,pr:2800,versions:['20260910120000'],mergeCommitSha:'c'.repeat(40)}
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({verify:'mismatch'})),/found 0; rejected candidates: run 34922309051 \(preview-apply\): claim-mode archived artifact did not verify against merge commit c{40}: REFUSED: migration content mismatch: 20260910120000/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({verify:'wrong-artifact'})),/\(preview-apply\): claim-mode archived artifact receipt does not bind run 34922309051, artifact 77/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({withVerifier:false})),/\(preview-apply\): claim-mode apply outside the restoration registry needs the archived artifact verifier/)
+  // Without a merge commit, and for a non-claim binding, the general path never opens.
+  assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,mergeCommitSha:null},hashBoundClaimApplyIo()),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,hashBoundClaimApplyIo({rehearsalMode:'merged-main-rehearsal'})),/found 0/)
+})
+
 // #2729 / #401 Step 6: every rejected candidate names the condition it failed.
 test('a claim-mode apply whose merged migration hash differs refuses and names the mismatched condition',()=>{
   const input={issue:2509,pr:2513,versions:['20260907131728'],mergeCommitSha:'c5f85ad3a98b7a5598e8c81a56735473d5bb5487'}

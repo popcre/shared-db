@@ -109,6 +109,10 @@ on:
         description: "Only for a merged source PR with no GitHub closing link: PR:ISSUE. Verified against the PR body, completion record, migration versions and claim reservations; any mismatch refuses."
         type: string
         required: false
+      migration_train_ref:
+        description: "Approved-migration train dispatch only: the exact refs/db-migration-trains/<id>/<generation>-dispatched record. Its target, main commit and exact version list must equal this run's inputs, or the run refuses before any job."
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -139,6 +143,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # Issue #2729 (popcre/ai-devops#401 Step 6). A train dispatch runs only the
+      # exact immutable dispatched record: same target, same main commit, same
+      # version list, and no later record. Every other job needs this job, so a
+      # refusal here stops preview and production before they start.
+      - name: Refuse a migration-train dispatch that is not the exact recorded train
+        if: github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
+          TRAIN_TARGET: ${{ inputs.target }}
+          TRAIN_COMMIT: ${{ inputs.commit_sha }}
+          TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
+        run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
+      - name: Test the migration-train manifest and manager commands
+        run: node --test scripts/orchestrator-flow/migration-train.test.mjs
       - name: Run SQL checks
         run: bash scripts/check-sql.sh
       - name: Validate hash-bound production verification sidecars

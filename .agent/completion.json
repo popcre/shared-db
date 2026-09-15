@@ -1,56 +1,24 @@
 {
   "schema_version": 1,
-  "work_issue": 2912,
+  "work_issue": 2967,
   "outcome": "ready-for-merge",
-  "pr": 2795,
+  "pr": 2968,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2912/4",
-  "contract_sha256": "50373689e09612440c7bea59c123eda75bf2d98a7540adb9b31ceca88d3cbce6",
-  "head_sha": "2a5f2a95d27314065783daf4c74f53e7b190481c",
-  "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/qualify-change.mjs",
-    "scripts/orchestrator-flow/qualify-change.test.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/select-preview-route.test.mjs",
-    "scripts/test_production_business_risk_gate.py"
-  ],
+  "contract_ref": "refs/db-contracts/2967/1",
+  "contract_sha256": "f9fa8f03acdcb58e325efd33d23724402d7d4a934e34cd0751a7a672157a629b",
+  "head_sha": "f91f06b1ec2f5f392a8f18508cfb4ac53cc264ce",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/*.test.mjs scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "706 tests, 706 passed, 0 failed, 0 skipped, 0 cancelled after refreshing onto main 82391382."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_business_risk_gate",
-      "exit_code": 0,
-      "evidence": "Ran 146 tests, OK, after refreshing onto main 82391382."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=292 after refreshing onto main 82391382."
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "231 files scanned, every GitHub call goes through the shared transport."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check origin/main HEAD reported nothing on the refreshed implementation."
-    }
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "562 tests, 562 pass, 0 fail, 0 skipped at f91f06b1 (after merging #2795 from main). New: 'issue 2958 run 34985444563 an empty or PR-only open issue read never passes as no open claims' covers an empty, PR-only and unreadable listing, a zero-claim read contradicted by search, an unreadable search, and a confirmed absence; the existing labels= test now asserts the listing counts."},
+    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "16 tests, 16 pass, 0 fail, 0 skipped at f91f06b1."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "Merged prerequisites #2750, #2901 and sender popcre/ai-devops#435 verified merged.",
-    "Refresh merge of main c82f2f04 took main's evidence pair in the merge commit; the only content conflict was the truth-audit inventory, resolved by carrying every semantic-key disposition from both sides and recomputing count and digest from discovery.",
-    "Immutable contract generation 4 is unchanged; its base 6934a535 remains an ancestor of the implementation head.",
-    "Exact-head independent review, CI and guarded merge remain required. No database, preview, production or marker action."
+    "Live read 2026-09-15: the open issue listing holds 135 issues and 15 pull requests, so a listing with no non-PR rows is never genuine; search reports 9 open db-claim issues.",
+    "Write-blocked local run of main --acquire-merge --pr 2958 at 38958822 code, admission included, read all 9 open claims; the CI-only zero read is not reproduced and the new refusal records what the listing returned.",
+    "No database object, migration, claim, lease or workflow was written, and PR #2958 and claim #2957 were not touched."
   ],
   "stop_conditions_hit": []
 }

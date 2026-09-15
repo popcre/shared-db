@@ -1,22 +1,23 @@
 {
   "schema_version": 1,
-  "work_issue": 2788,
+  "work_issue": 2429,
   "outcome": "ready-for-merge",
-  "pr": 2951,
+  "pr": 2953,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2788/2",
-  "contract_sha256": "85398ffde262d21804a26d05aa8c02400f467aadde7be5c9a30451e754bf013e",
-  "head_sha": "e74e9f3c192fc4d973502d10e40a8d3d3eb2772f",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2429/1",
+  "contract_sha256": "caf79dd66b4cfc30cb7f4ac5b9ed4cf4dca310fdd3d2a0b5360f9046fdc170b1",
+  "head_sha": "774b374540076de8ffd5b0cd307a5a69440539d2",
+  "files_changed": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, skips or todo; the new regression assertion reproduced \"Cannot read properties of null (reading 'dependencies')\" without the fix and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "node --test scripts/check-supabase-ref-config.test.mjs", "exit_code": 0, "evidence": "11 tests passed with zero failures, cancellations, skips or todo; with branch enumeration sabotaged 5 of them fail, proving the check distinguishes a stale ref from a live branch. Covers the review findings: an absent control ref or a control seen only as a parent project is untrusted, only the explicit branching-off error is ignored, quoted/commented values parse correctly."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."},
+    {"command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=291; two comment/message lines were reworded so the checker adds no refusal call sites."}
   ],
   "assumptions_resolved": [
-    "deriveLivePreviewCandidate now refuses with a LaneError naming the issue when parseQueueScope returns null; issues with a db-work-scope block follow the unchanged path.",
-    "No database object, migration, claim or lease was written."
+    "A read-only live run against the account classified the deleted ref rjyboqwcdzcocqgmsyel as FAIL UNKNOWN (exit 1) and the rehearsal branch mvpkijzfmfcxhnzqogzs as LIVE; only projects list and branches list ran.",
+    "No database object, migration, claim, lease or Supabase resource was written."
   ],
   "stop_conditions_hit": []
 }

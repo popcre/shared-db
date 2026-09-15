@@ -9,7 +9,7 @@
   ],
   "assumptions": [
     "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
-    "Generations 1-5 already exist for issue 2728; this contract is generation 6, republished after main was merged so the evidence pair follows the implementation head.",
+    "Generations 1-6 already exist for issue 2728; this contract is generation 7, republished after main (d91f2683) was merged so the evidence pair follows the implementation head.",
     "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
   ],
   "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
@@ -25,7 +25,7 @@
     "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
     "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
-  "generation": 6,
+  "generation": 7,
   "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",

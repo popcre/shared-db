@@ -8,6 +8,8 @@ import { REPO, recordReviewVerdict, reviewerExecutionPreflight, resolveCommandPa
 import { lineOpensWithVerdictWord, isVerdictFor } from './lib/review-verdict.mjs'
 // Issue #2342: one shared transport owns the never-replay-a-write policy.
 import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
+// Issue #2729 Step 7: one lifecycle source of truth decides retry versus reroute.
+import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './orchestrator-flow/start-reroute.mjs'
 
 export function parseArgs(argv){
   const split=argv.indexOf('--'),own=split<0?argv:argv.slice(0,split),wrapperArgs=split<0?[]:argv.slice(split+1),out={wrapperArgs,slot:1}
@@ -369,12 +371,53 @@ export function wrapperFailureReason(run){
   if(/already active|already in progress|held for reconciliation|retained/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
   return reasons.join('; ')||(stderr?'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session':'the wrapper supplied no recognized diagnostic')
 }
+// ISSUE #2729 STEP 7 -- RETRY ONCE, THEN REROUTE, DECIDED BY THE LIFECYCLE.
+// The manager's preflight throws `doctor did not answer within 60s` when the local
+// reviewer service hangs. That says nothing about the provider, so the SAME reviewer
+// is retried once (after an optional local repair hook). A second timeout is handed
+// to `reviewerStartDecision`, which returns a governed return-and-reroute. A wrapper
+// that ends with a recognised non-verdict terminal (turn_limit_cancelled) is also
+// handed over: the assignment is finished without a verdict and may be replaced at
+// the same head. The runner never draws or releases a reviewer itself; it attaches
+// the decision to its refusal so the lane manager can act on it.
+export const DOCTOR_TIMEOUT=/doctor did not answer within/i
+export class GovernedReviewRerouteError extends Error{
+  constructor(message,{startDecision,lifecycle}){super(message);this.name='GovernedReviewRerouteError';this.startDecision=startDecision;this.lifecycle=lifecycle}
+}
+export function reviewAssignmentIdentity(options){
+  const head=String(options.headSha??'').toLowerCase()
+  return {id:String(options.assignmentId??`review-${Number(options.issue)}-${Number(options.pr)}-slot${Number(options.slot??1)}-${head.slice(0,12)}`),head_sha:head}
+}
+const nowOf=(deps)=>(deps.now??(()=>new Date().toISOString()))()
+function lifecycleEvent(deps,assignment,type,extra={}){
+  const event={assignment_id:assignment.id,type,at:nowOf(deps),source:'governed-review-runner',...extra}
+  deps.appendLifecycle?.(event)
+  return event
+}
+function startDecisionFor(assignment,lifecycle,deps){
+  const at=nowOf(deps)
+  return reviewerStartDecision({...assignment,assigned_at:at},{now:at,provider_state:'confirmed-not-started',lifecycle})
+}
+export function preflightWithTimeoutRetry(args,assignment,deps,lifecycle=[]){
+  for(;;){
+    try{deps.preflight(args);return lifecycle}
+    catch(error){
+      if(!DOCTOR_TIMEOUT.test(String(error?.message??'')))throw error
+      lifecycle.push(lifecycleEvent(deps,assignment,'preflight_timeout'))
+      const decision=startDecisionFor(assignment,lifecycle,deps)
+      if(decision.action==='retry-same-reviewer'){deps.repairLocalService?.(args);continue}
+      const count=lifecycle.filter((e)=>e.type==='preflight_timeout').length
+      throw new GovernedReviewRerouteError(`reviewer preflight timed out ${count} times at ${assignment.head_sha}; the same reviewer was retried once and this assignment must now be returned and rerouted (${sanitizeVoidReason(error.message)})`,{startDecision:decision,lifecycle:[...lifecycle]})
+    }
+  }
+}
 export function runGovernedReview(options,deps={spawn:spawnSync,preflight:reviewerExecutionPreflight,record:recordReviewVerdict,resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8')}){
   const resolveSource=deps.sourceResolver??resolveReviewSource
   const sourceIdentity=resolveSource(options)
   const wrapperArgs=wrapperSourceContractArgs(options.wrapper,wrapperVerdictContractArgs(options.wrapper,options.wrapperArgs,options.headSha),sourceIdentity)
   const skipDoctor=options.skipDoctor===true||options.skipDoctor==='true'
-  deps.preflight({reviewer:options.reviewer,wrapper:options.wrapper,worktree:options.worktree,headSha:options.headSha,skipDoctor})
+  const assignment=reviewAssignmentIdentity(options),lifecycle=[]
+  preflightWithTimeoutRetry({reviewer:options.reviewer,wrapper:options.wrapper,worktree:options.worktree,headSha:options.headSha,skipDoctor},assignment,deps,lifecycle)
   const resolved=(deps.resolve??resolveCommandPath)(options.wrapper)
   if(!resolved)throw new Error(`review wrapper ${options.wrapper} is not executable`)
   const receipt=(deps.receiptFactory??reserveReviewReceipt)(options)
@@ -393,7 +436,15 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
     }catch(error){throw new Error(`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${sanitizeVoidReason(error.message)}`)}
   }
   const verdict=verdictFromOutput(rawBody,options.headSha)
-  if(run.error||run.status!==0||!verdict)throw new Error(`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${wrapperFailureReason(run)}`)
+  if(run.error||run.status!==0||!verdict){
+    const reason=wrapperFailureReason(run),message=`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${reason}`
+    const terminal=NON_VERDICT_TERMINAL_REASONS.find((code)=>reason.split('; ').some((part)=>part.startsWith(`${code}:`)))
+    if(terminal){
+      lifecycle.push(lifecycleEvent(deps,assignment,'terminal_non_verdict',{reason:terminal,head_sha:assignment.head_sha}))
+      throw new GovernedReviewRerouteError(`${message}; this is a terminal non-verdict, so the assignment is eligible for a same-head replacement`,{startDecision:startDecisionFor(assignment,lifecycle,deps),lifecycle:[...lifecycle]})
+    }
+    throw new Error(message)
+  }
   if(JSON.stringify(resolveSource(options))!==JSON.stringify(sourceIdentity))throw new Error('pull request source changed during review; no verdict was published or recorded')
   const sourceEvidence=validateSourceReceipt(receipt.read(),sourceIdentity,options.worktree,deps.sourcePathOptions)
   sourceEvidence.receiptPath=receipt.path
@@ -534,6 +585,6 @@ export function governedReviewDeps(env=process.env){
   return {spawn:spawnSync,preflight:(o)=>reviewerExecutionPreflight(o,io),record:(o)=>recordReviewVerdict(o,io),resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8'),io}
 }
 export function main(argv=process.argv.slice(2)){
-  try{const result=runGovernedReview(parseArgs(argv),governedReviewDeps());process.stdout.write(`${result.body}\n\nDURABLE VERDICT: ${result.artifact.ref} ${result.artifact.sha}\nSOURCE EVIDENCE: ${JSON.stringify(result.sourceEvidence)}\n`);return 0}catch(error){process.stderr.write(`REFUSED: ${error.message}\n`);return 2}
+  try{const result=runGovernedReview(parseArgs(argv),governedReviewDeps());process.stdout.write(`${result.body}\n\nDURABLE VERDICT: ${result.artifact.ref} ${result.artifact.sha}\nSOURCE EVIDENCE: ${JSON.stringify(result.sourceEvidence)}\n`);return 0}catch(error){if(error?.startDecision)process.stderr.write(`REROUTE: ${JSON.stringify(error.startDecision)}\n`);process.stderr.write(`REFUSED: ${error.message}\n`);return 2}
 }
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href)process.exitCode=main()

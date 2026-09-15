@@ -2,14 +2,22 @@
   "schema_version": 1,
   "work_issue": 2728,
   "outcome": "ready-for-merge",
-  "pr": 2971,
+  "pr": 2974,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2728/2",
-  "contract_sha256": "0190686752e1a6da3c92c6865fc606881ee5c0c24f7cee7db23d44b8ea5eaf53",
-  "head_sha": "a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b",
+  "contract_ref": "refs/db-contracts/2728/4",
+  "contract_sha256": "b6b4d712c4e086908a69002304a8fa847b17c08c27c772744842c2e34bcba75d",
+  "head_sha": "d6da5204e0b659078522043c9772e8d8ffe36330",
   "files_changed": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "config/review-carry-forward-stored-hashes-v1.json",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -17,22 +25,29 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check against main 89ec62d2 passed at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b."
+      "evidence": "git diff --check passed before the implementation commit d6da5204e0b659078522043c9772e8d8ffe36330, which sits on a merge of main c7e09db7."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/orchestrator-snapshot.test.mjs",
+      "command": "node --test scripts/lib/pr-content-equivalence.test.mjs scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
       "exit_code": 0,
-      "evidence": "scripts/orchestrator-snapshot.test.mjs with scripts/orchestrator-flow/orchestrator-snapshot.test.mjs: 31 tests passed, 0 failed, 0 skipped, 0 cancelled at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b."
+      "evidence": "642 tests passed, 0 failed, 0 skipped, 0 cancelled at d6da5204e0b659078522043c9772e8d8ffe36330, including the new review-gate head and bundle-identity refusals, the pin-file mode and non-blob refusals, the digest-less proof refusal and the --delivery-preflight CLI path; scripts/orchestrator-flow/*.test.mjs passed 214 of 214."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at a96f1e61ca3a64975c9fa91d86fd9d32bb34de6b; no inventory change needed."
+      "evidence": "truth audit OK: call_sites=295."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "Ran 146 tests, OK at d6da5204e0b659078522043c9772e8d8ffe36330."
     }
   ],
   "assumptions_resolved": [
-    "The canonical shared-db-orchestrator skill lives in popcre/ai-devops; the reporting rule is noted for ai-devops, not edited here.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory; issue 2728 stays open for live programme acceptance."
+    "Review-time delivery preflight enforcement is opt-in on --assign-reviewer in this PR.",
+    "A preflight record sealed at an earlier head is accepted at review only with the bundle it was sealed against and an INTEGRATION_REFRESH_ONLY classification re-run at review.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
+    "The pass-2 rebuild and the sidecar registry remain out of scope under issue 2728."
   ],
   "stop_conditions_hit": []
 }

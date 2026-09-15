@@ -1,27 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
-  "generation": 7,
+  "work_issue": 2429,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Correct two stale Qwen wording nits deferred from PR #2346 so neither implies Qwen's quarantine never existed nor uses the retired 'pause' vocabulary.",
-  "base_sha": "7c314992615fcb9f3fc5ccc45133a929f63b1617",
-  "dispatcher": "Albert Hazan (session request)",
-  "worker": "claude-qwen-wording-2361-20260915",
-  "branch": "claude/qwen-wording-2361",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a5903b6b3f380df01",
-  "allowed_paths": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Add a read-only checker that verifies Supabase project/branch refs named in config sources against the account's real project and branch lists, reporting LIVE, RETIRED or UNKNOWN, with a positive control so a stale ref can never read as a deleted project.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (session request to resolve issue #2429)",
+  "worker": "claude-supabase-ref-config-20260915",
+  "branch": "claude/supabase-ref-config-check",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a35007c1b2c25fded",
+  "allowed_paths": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "No behaviour change: the script edit is a single comment line.",
-    "Do not edit plan_orchestrator_throughput_phase_2.md line 27 (dated audit record)."
+    "Never mutate any Supabase project or branch; only the projects list and branches list read commands may run.",
+    "Never read or print a secret."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/check-supabase-ref-config.test.mjs", "git diff --check"],
   "assumptions": [
-    "Current state was verified, not inferred: QUARANTINED_REVIEWERS is empty on main since commit 58a447ae (2026-09-07), which returned qwen-3.8-max to the active rotation after a passing live qualification."
+    "The checker runs on demand with the Supabase CLI already authenticated; CI runs its offline tests, not a live account listing, because CI holds no account token for this job.",
+    "The change requires no database object or migration-author route."
   ],
-  "stop_conditions": ["Any change beyond wording in the two named files."]
+  "stop_conditions": [
+    "Stop if the check would need a database credential or any write to Supabase.",
+    "Stop if completion requires any file outside the allowed paths."
+  ]
 }

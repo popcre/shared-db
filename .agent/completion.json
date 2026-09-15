@@ -1,22 +1,23 @@
 {
   "schema_version": 1,
-  "work_issue": 2361,
+  "work_issue": 2429,
   "outcome": "ready-for-merge",
-  "pr": 2949,
+  "pr": 2953,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2361/7",
-  "contract_sha256": "e52884abea5af1fdda2c7384b6e78d37b5d77d625fcb8c851b7ccae0d13cf4d4",
-  "head_sha": "ca0d074a1947bb8ea44b40c8ef9a63fa4156512d",
-  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
+  "contract_ref": "refs/db-contracts/2429/1",
+  "contract_sha256": "caf79dd66b4cfc30cb7f4ac5b9ed4cf4dca310fdd3d2a0b5360f9046fdc170b1",
+  "head_sha": "5a3268a978d17368762d66c42af352c8670f08ba",
+  "files_changed": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the refresh merged only main's files and the PR's own diff is unchanged."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {"command": "node --test scripts/check-supabase-ref-config.test.mjs", "exit_code": 0, "evidence": "11 tests passed with zero failures, cancellations, skips or todo; with branch enumeration sabotaged 5 of them fail, proving the check distinguishes a stale ref from a live branch. Covers the review findings: an absent control ref or a control seen only as a parent project is untrusted, only the explicit branching-off error is ignored, quoted/commented values parse correctly."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."},
+    {"command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=291; two comment/message lines were reworded so the checker adds no refusal call sites."}
   ],
   "assumptions_resolved": [
-    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
-    "The script edit is one comment line; no behaviour changed. Muse APPROVE recorded at refs/db-review-verdicts/2361-2949-a171c743...; main refreshed to 7c314992 by merge with main's .agent pair."
+    "A read-only live run against the account classified the deleted ref rjyboqwcdzcocqgmsyel as FAIL UNKNOWN (exit 1) and the rehearsal branch mvpkijzfmfcxhnzqogzs as LIVE; only projects list and branches list ran.",
+    "No database object, migration, claim, lease or Supabase resource was written."
   ],
   "stop_conditions_hit": []
 }

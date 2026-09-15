@@ -110,7 +110,7 @@ function readReviewSourceDigest(worktree){
   if(result.error||result.status!==0)throw new Error('trusted review source digest is unavailable')
   return String(result.stdout??'').trim()
 }
-export function resolveReviewSource(options,{git=spawnSync,github=spawnGitHub,digest=readReviewSourceDigest}={}){
+export function resolveReviewSource(options,{git=spawnSync,github=(args)=>spawnGitHub(args,{executor:spawnSync}),digest=readReviewSourceDigest}={}){
   if(!Number.isSafeInteger(Number(options.pr))||Number(options.pr)<1)throw new Error('source identity requires a pull request number')
   const head=String(options.headSha??'').toLowerCase()
   if(!/^[0-9a-f]{40}$/.test(head)||!options.worktree)throw new Error('source identity requires an exact head and worktree')

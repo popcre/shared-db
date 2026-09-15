@@ -31,7 +31,8 @@
 //
 // Usage:
 //   node scripts/check-supabase-ref-config.mjs --config <file> [--config <file> ...]
-//        [--env] [--control-ref <ref>] [--json]
+//        [--env] --control-ref <live-branch-ref> [--json]
+// Without --control-ref the inventory is never trusted and the run exits 2.
 // Config files may be JSON (nested objects allowed) or KEY=VALUE lines.
 // Exit: 0 all active keys LIVE; 1 a key is RETIRED/UNKNOWN; 2 inventory untrusted or usage error.
 import {readFileSync} from 'node:fs'
@@ -70,8 +71,13 @@ export function extractRefEntries(text, source) {
     return entries
   }
   for (const line of text.split(/\r?\n/)) {
-    const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*[=:]\s*["']?(.*?)["']?\s*$/)
-    if (m && !line.trim().startsWith('#')) push(m[1], m[2])
+    if (line.trim().startsWith('#')) continue
+    const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*[=:]\s*(.*)$/)
+    if (!m) continue
+    const raw = m[2].trim()
+    // A quoted value ends at its closing quote; an unquoted one at a ` #` comment.
+    const quoted = raw.match(/^(["'])(.*?)\1/)
+    push(m[1], quoted ? quoted[2] : raw.replace(/\s+#.*$/, ''))
   }
   return entries
 }
@@ -90,7 +96,8 @@ export function buildInventory(projects, branchesFor) {
       }
     } catch (error) {
       // A project with branching disabled is a complete answer, not a failure.
-      if (/not enabled|no branches|branching is disabled/i.test(String(error?.message))) continue
+      // Only the explicit branching-off wording is accepted; any other error is an inventory gap.
+      if (/\bbranching (?:is )?(?:not enabled|disabled)\b/i.test(String(error?.message))) continue
       errors.push(`branches list for ${parent} failed: ${String(error?.message ?? error).split('\n')[0]}`)
     }
   }
@@ -101,7 +108,9 @@ export function classify(entries, inventory, {controlRef} = {}) {
   const retired = new Set(entries.filter((e) => isRetiredKey(e.key)).map((e) => e.ref))
   const problems = [...inventory.errors]
   if (inventory.live.size === 0) problems.push('inventory is empty')
-  if (controlRef && !inventory.live.has(controlRef)) {
+  if (!controlRef) {
+    problems.push('no --control-ref given, so nothing proves the inventory includes preview branches')
+  } else if (!inventory.live.has(controlRef)) {
     problems.push(`control ref ${controlRef} is not in the inventory, so the inventory cannot be trusted to call any ref absent`)
   }
   const trusted = problems.length === 0

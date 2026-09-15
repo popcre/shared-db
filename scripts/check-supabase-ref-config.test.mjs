@@ -60,6 +60,24 @@ test('a failed branch listing makes the inventory untrusted rather than declarin
   assert.equal(report.results[0].verdict, 'UNKNOWN')
 })
 
+test('without a control ref no negative verdict is trusted, even with branch enumeration removed', () => {
+  const r = run(['--config', 'o'], {o: `PREVIEW_PROJECT_REF=${LIVE_BRANCH}`}, {projects, branchesFor: () => []})
+  assert.equal(r.code, 2, r.out)
+  assert.match(r.out, /INVENTORY UNTRUSTED: no --control-ref/)
+})
+
+test('only the explicit branching-off error is ignored; other "not enabled" errors are inventory gaps', () => {
+  const off = buildInventory(projects, () => { throw new Error('Branching is not enabled for this project') })
+  assert.deepEqual(off.errors, [])
+  const auth = buildInventory(projects, () => { throw new Error('Access token not enabled for this organization') })
+  assert.equal(auth.errors.length, 1)
+})
+
+test('quoted values with trailing comments yield the value, not the commented-out ref', () => {
+  const text = `PREVIEW_PROJECT_REF="${LIVE_BRANCH}" # was ${DELETED}\nOTHER_REF=${LIVE_BRANCH} # was ${DELETED}`
+  assert.deepEqual(extractRefEntries(text, 'f').map((e) => `${e.key}=${e.ref}`), [`PREVIEW_PROJECT_REF=${LIVE_BRANCH}`, `OTHER_REF=${LIVE_BRANCH}`])
+})
+
 test('the check can fail: swapping the live ref for the stale one flips exit 0 to 1', () => {
   const ok = run(['--config', 'o', '--control-ref', LIVE_BRANCH], {o: `K_REF=${LIVE_BRANCH}`})
   const bad = run(['--config', 'o', '--control-ref', LIVE_BRANCH], {o: `K_REF=${DELETED}`})

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { runGovernedReview, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
+import { runGovernedReview, wrapperFailureReason, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
 import { anyVerdictFor } from './lib/review-verdict.mjs'
 
 const options={issue:1824,pr:2000,headSha:'a'.repeat(40),reviewer:'glm-5.3',wrapper:'ai-glm',worktree:'C:/review',slot:1,wrapperArgs:['review']}
@@ -9,6 +9,15 @@ test('wrapper failure preserves a safe cause without publishing a verdict or raw
   for(const [stderr,expected] of [
     ["unknown option '--review-kind'; token=private-value",/unsupported option/],
     ['ai-grok-review: Grok cancelled without a final answer. private-value',/provider cancelled/],
+    ['reason: provider_cancelled private-value',/provider_cancelled:.*cancelled/],
+    ['reason: turn_limit_cancelled private-value',/turn_limit_cancelled:.*turn budget/],
+    ['ai-muse: error: start_failed: caller_identity_missing private-value',/start_failed:.*caller identity/],
+    ['ai-muse: error: start_failed: invalid_caller_identity private-value',/start_failed:.*caller identity/],
+    ['ai-muse: error: start_failed: private-value',/start_failed:.*before the provider turn started/],
+    ['reason: unknown_terminal_reason private-value',/unknown_terminal_reason:.*unrecognized/],
+    ['terminal reason: content-filter private-value',/provider_unavailable: content-filter/],
+    ['[API Error: 400 InternalError.Algo.DataInspectionFailed: private-value]',/provider_unavailable: content-filter/],
+    ['provider-unavailable: private-value',/provider_unavailable/],
     ['timed-out private-value',/reported a timeout/],
     ['private-value',/reason was not recognized/],
   ]){
@@ -20,6 +29,32 @@ test('wrapper failure preserves a safe cause without publishing a verdict or raw
     })
     assert.equal(calls,1,'failed wrappers never publish to GitHub')
   }
+})
+
+test('typed terminal reasons require complete tokens rather than diagnostic substrings',()=>{
+  for(const reason of ['provider_cancelled','turn_limit_cancelled','unknown_terminal_reason','start_failed','content-filter','DataInspectionFailed','provider-unavailable']){
+    for(const stderr of [`prefix${reason}`,`${reason}_suffix`,`not-${reason}`,`${reason}-suffix`]){
+      assert.equal(wrapperFailureReason({stderr}),'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session')
+    }
+  }
+  assert.equal(wrapperFailureReason({stderr:'start_failed: not-caller_identity_missing'}),'start_failed: the wrapper refused before the provider turn started')
+})
+
+test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
+  const reason=wrapperFailureReason({stderr:'turn_limit_cancelled: Grok cancelled without a final answer. provider_cancelled'})
+  assert.equal(reason,'turn_limit_cancelled: the provider exhausted its declared turn budget')
+})
+
+test('DeepSeek receives the exact governed terminal head without changing advisory mode',()=>{
+  const head=options.headSha,other='f'.repeat(40)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent',['send','review this','--review'],head),['send','--governed-verdict',head,'review this','--review'])
+  assert.deepEqual(wrapperVerdictContractArgs('C:\\tools\\ai-deepseek-agent.cmd',['reply','session','followup','--review'],head),['reply','session','--governed-verdict',head,'followup','--review'])
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent',['send',`--governed-verdict=${head}`,'review this','--review'],head),['send',`--governed-verdict=${head}`,'review this','--review'])
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['send','--governed-verdict',other,'review this','--review'],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['reply','session',`--governed-verdict=${other}`,'followup','--review'],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['send','--governed-verdict',head,'review this','--governed-verdict',other],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['doctor'],head),/send or reply subcommand/)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent-other',['send','x'],head),['send','x'])
 })
 
 test('adapter with real process payload shapes posts findings and records before returning output',()=>{

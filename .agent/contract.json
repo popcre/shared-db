@@ -1,1 +1,34 @@
-{"allowed_paths":[".github/live-proofs/2506.sql",".agent/contract.json",".agent/completion.json"],"assumptions":["Issue #2506 migration 20260911213429 (PR #2726) is applied on production by run 34898171486; the Shared DB Live Proof workflow is on main."],"base_sha":"477b8633b42c0d17ece1915e2959eb728e398aa8","branch":"claude/live-proof-probe-2506","db_reads":[],"db_writes":[],"dispatcher":"Albert Hazan (owner, repository-maintenance authorization via orchestrator marker #2893)","file_writes":[".github/live-proofs/2506.sql",".agent/contract.json",".agent/completion.json"],"generation":4,"goal":"Add the committed read-only live-proof probe for outcome #2506 so the Shared DB Live Proof workflow can produce the artifact --complete-outcome re-derives.","prohibited_actions":["No database write; the probe runs with read_only true.","No change to the lane script, the live-proof workflow, or its shared modules.","No hand-written ledger events and no retry of a read-back refusal.","Never delete a claim, lease, verdict, or coordination ref."],"required_checks":["git diff --check"],"route":"repo-maintenance","schema_version":1,"stop_conditions":["Stop if completion would require editing any file other than the probe and the evidence pair.","Stop if the probe does not pass on production."],"work_issue":2921,"work_type":"repo-maintenance","worker":"claude-repo-session-2921","worktree":"C:/tmp/wt-probe2506"}
+{
+  "schema_version": 1,
+  "work_issue": 2707,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make the governed review consumer preserve precise terminal failure reasons, reject fake approval from failed wrappers, and pass the exact governed head to DeepSeek without changing database state.",
+  "base_sha": "9bbd28812bfc521af488e2bf8ca345663a810f45",
+  "dispatcher": "Albert Hazan (owner approval in the active #159 continuation)",
+  "worker": "codex-394-terminal-consumer-20260914",
+  "branch": "codex/394-terminal-consumer-20260914",
+  "worktree": "C:/repos/shared-db-worktrees/394-terminal-consumer-20260914",
+  "allowed_paths": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, preview, production, migration, claim, lease, or reviewer-assignment write.",
+    "Do not accept APPROVE output from a wrapper whose process failed.",
+    "Do not expose raw provider stderr, prompts, credentials, or private evidence in public output.",
+    "Do not widen provider limits or retry historical failed paid turns."
+  ],
+  "required_checks": ["node --test scripts/run-governed-review.test.mjs", "git diff --check"],
+  "assumptions": [
+    "Toolkit #394 lands stable reason tokens for Qwen content inspection, Muse startup or management failure, and Grok provider cancellation versus turn-limit cancellation.",
+    "DeepSeek send and reply accept the governed-verdict head contract already implemented by its wrapper.",
+    "This repository-maintenance change owns no database object and requires no migration-author route."
+  ],
+  "stop_conditions": [
+    "Stop if the toolkit terminal tokens change before this consumer lands.",
+    "Stop if completion requires any file outside the two governed-review files and the evidence pair.",
+    "Stop if tests cannot prove failed wrappers remain non-authorizing and raw diagnostics remain private."
+  ],
+  "generation": 3
+}

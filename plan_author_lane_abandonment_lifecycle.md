@@ -8,8 +8,8 @@ This is repository-maintenance work. It authorizes no database migration, databa
 
 | Step | Deliverable | State | Evidence |
 |---|---|---|---|
-| 1 | Extend relinquished-claim metadata and fail-closed parsing | ✅ complete | Phase A PR #2640; implementation commit `c039ca46e21528ef4d2ded2e7f8b5137dfd0aadf`; pre-cut census recorded on issue #2301; 528 focused manager/reconcile/lease tests passed |
-| 2 | Make capacity relinquishment machine-independent and recovery-gated | ✅ complete | Phase A PR #2640; clean/dirty/absent/remote and recovery/rollback scenarios passed; recovery artifacts are dereferenced, not shape-checked; 533 lane/capacity tests, 57 exclusive-lease/scenario tests and 239 production-guard tests passed |
+| 1 | Extend relinquished-claim metadata and fail-closed parsing | ✅ complete | Phase A PR #2640 merged 2026-09-15 as `7eac0c7110e597bb8380c75037f2f1b4730d6a9b` (guarded merge at head `e7619dc3e391cefa016c5cfad8510d59b41d6cbe`, governed APPROVE ref `refs/db-review-verdicts/2994-2640-e7619dc3e391cefa016c5cfad8510d59b41d6cbe`, sub-issue #2994 closed); implementation commit `c039ca46e21528ef4d2ded2e7f8b5137dfd0aadf`; pre-cut census recorded on issue #2301; 528 focused manager/reconcile/lease tests passed |
+| 2 | Make capacity relinquishment machine-independent and recovery-gated | ✅ complete | Phase A PR #2640 merged 2026-09-15 as `7eac0c7110e597bb8380c75037f2f1b4730d6a9b`; at that exact head 630/630 lane/capacity, 57/57 exclusive-lease and scenario, and 252 production-guard tests passed; clean/dirty/absent/remote and recovery/rollback scenarios passed; recovery artifacts are dereferenced, not shape-checked; 533 lane/capacity tests, 57 exclusive-lease/scenario tests and 239 production-guard tests passed |
 | 3 | Add immutable terminal-retirement tombstones and resurrection guards | ⬜ open | Not implemented |
 | 4 | Separate capacity reconciliation from preview readiness | ⬜ open | Not implemented |
 | 5 | Add hourly and dispatch-time read-only detection | ⬜ open | Not implemented |

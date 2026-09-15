@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 2640,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/4",
-  "contract_sha256": "f595c2c47a9fd856be1ec79b9c9fe6626c92d363a079e2a5ba42792c12d17dfc",
+  "contract_ref": "refs/db-contracts/2301/5",
+  "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
   "head_sha": "596a19899b800e836605d9d497cb46959ee4206a",
   "files_changed": [
     ".agent/completion.json",
@@ -43,6 +43,7 @@
     "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
     "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
     "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
+    "PR 2640 closes sub-issue 2994 and references parent 2301, matching the one-closing-issue reviewer rule; generation 5 rewords one prohibited action that tripped the cancelled-work guard (local check now OK).",
     "Issue 2301 remains open for Phase B-D."
   ],
   "stop_conditions_hit": []

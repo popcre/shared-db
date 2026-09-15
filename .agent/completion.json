@@ -1,43 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 2985,
+  "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 2984,
+  "pr": 2640,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2985/3",
-  "contract_sha256": "426d3e7c15400c1e37898c27c45e89d2d20052ca8a29ff06068cf596a2c2e64a",
-  "head_sha": "83569ec5c654aa6917065c96236b56e169b99cc8",
+  "contract_ref": "refs/db-contracts/2301/5",
+  "contract_sha256": "57f64da19a233c0113ff51367d43e7ba958d0a53b3b39b6b88d818e453fb3bd6",
+  "head_sha": "d6e55492c7dcea6dadb33aad031b9826a8c001ba",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/check-dispatch-collision.mjs",
-    "scripts/check-dispatch-collision.test.mjs",
-    "scripts/check-migration-pr-lease.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head d6e55492c7dcea6dadb33aad031b9826a8c001ba (main 1f7dbe47039b0479390e31185f2d30c6b17bea61 merged): tests 621, pass 621, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at d6e55492c7dcea6dadb33aad031b9826a8c001ba: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "python scripts/test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "Run at d6e55492c7dcea6dadb33aad031b9826a8c001ba: Ran 252 tests, OK, plus both BOUNDED OK migration manifest controls."
+    },
+    {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check passed at implementation commit 83569ec5c654aa6917065c96236b56e169b99cc8 against base e5a2a44911f4c36a567a402000e006be7136bb62."
-    },
-    {
-      "command": "node --test --test-reporter=tap scripts/check-dispatch-collision.test.mjs scripts/orchestrator-snapshot.test.mjs scripts/check-migration-pr-lease.test.mjs scripts/check-exact-head-approval.test.mjs",
-      "exit_code": 0,
-      "evidence": "164 tests, 164 passed, 0 failed, 0 skipped, 0 todo at 83569ec5c654aa6917065c96236b56e169b99cc8 (after merging main e5a2a449)."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 83569ec5c654aa6917065c96236b56e169b99cc8; no call sites added or changed."
+      "evidence": "No whitespace errors reported for 1f7dbe47039b0479390e31185f2d30c6b17bea61..d6e55492c7dcea6dadb33aad031b9826a8c001ba."
     }
   ],
   "assumptions_resolved": [
-    "Every safety proof is kept: the changed_files count check and the 3000-file ceiling still run on embedded files, and any truncated listing falls back to the original per-item read.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory."
+    "Takeover verified PR 2640 and its branch had no commits or comments after 2026-09-11T22:08Z (more than 24h idle) before any change.",
+    "Main e317e92a was merged (no force-push); the single lane-manager conflict was resolved by uniting main's --evidence and --database-preview-classification-file with the branch's --worktree-state and --recovery-artifact. No behaviour outside Phase A changed.",
+    "The governed REVISE at head 8e94f114 was addressed at 1907f424; a fresh exact-head governed review is required on this head before merge.",
+    "PR 2640 closes sub-issue 2994 and references parent 2301, matching the one-closing-issue reviewer rule; generation 5 rewords one prohibited action that tripped the cancelled-work guard (local check now OK).",
+    "Issue 2301 remains open for Phase B-D."
   ],
   "stop_conditions_hit": []
 }

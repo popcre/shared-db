@@ -1,26 +1,21 @@
 {
   "schema_version": 1,
-  "work_issue": 2921,
+  "work_issue": 2792,
   "outcome": "ready-for-merge",
-  "pr": 2922,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2921/4",
-  "contract_sha256": "5f8cb34848dd2c574bc7f3a04fa6fe89470b19c4f71dde922d8ac712625f11ea",
-  "head_sha": "cfbf0df5487443fb51a5615299c4811a2b86628d",
-  "files_changed": [
-    ".github/live-proofs/2506.sql"
-  ],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2933,
+  "migration_versions": ["20260915023506"],
+  "contract_ref": "refs/db-contracts/2792/2",
+  "contract_sha256": "bc82ba76291026c4c0523ae2fa26ba087378ed7e5d9e3f7b97923136f88ac46d",
+  "head_sha": "1c3a57550629d1844028b9053de373c72d7ca76f",
+  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/migration_derivation.py", "scripts/production_migration_guard.py", "scripts/test_post_batch_app_verification.py", "scripts/test_production_migration_guard.py", "supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql"],
+  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
+  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
   "checks": [
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors between base 477b8633 and implementation cfbf0df5."
-    }
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base ffa300c7 and implementation 1c3a5755."},
+    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "popsg_reconcile_bounded_ceiling_contracts.sql (unchanged from #2930) passed all checks on preview in a rolled-back transaction with the identical function bodies; CI database-contract-tests runs every supabase/tests/*.sql on PR #2933."},
+    {"command": "python -m pytest scripts/test_production_migration_guard.py scripts/test_post_batch_app_verification.py scripts/test_migration_derivation.py scripts/test_issue_853_safe_forward.py", "exit_code": 0, "evidence": "443 passed, 364 subtests passed, 0 skipped."},
+    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "43 tests, 43 pass, 0 fail, 0 skipped."}
   ],
-  "assumptions_resolved": [
-    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
-  ],
+  "assumptions_resolved": ["idx_sgf_reconcile_root_active_run_id exists on preview; a rolled-back clone rehearsal (217,193 active, 4,137 stale) drained in 7 calls of <=2.6s each with 0 re-seen rows inactivated. The retired 20260915015414 file on main is byte-identical to the preview-applied blob 133782d3 from a119760e."],
   "stop_conditions_hit": []
 }

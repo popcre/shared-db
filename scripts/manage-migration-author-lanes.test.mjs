@@ -2796,6 +2796,12 @@ test('issue 2958 open claims never depend on the GitHub labels= filtered listing
   assert.deepEqual(claims.map((claim)=>claim.number),[1,4])
 })
 
+test('issue 2958 closed claim history fails closed when the labels= listing is empty', () => {
+  assert.throws(()=>githubIo.closedClaimsForWork(1769,()=>[]),/refusing to treat claim history as empty/)
+  assert.throws(()=>githubIo.closedClaimsForWork(1769,()=>null),/refusing to treat claim history as empty/)
+  assert.deepEqual(githubIo.closedClaimsForWork(1769,()=>[{number:5,title:'CLAIM: #12 other',body:'b',html_url:'u',state:'closed'}]),[])
+})
+
 test('issue 1688 routes non-migration pull requests through the guarded merge lane', () => {
   const io=memoryIo()
   io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})

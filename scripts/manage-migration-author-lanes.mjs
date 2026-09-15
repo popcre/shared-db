@@ -1622,7 +1622,12 @@ export const githubIo = {
     // were open and labelled. List unfiltered and filter the label client-side.
     const rows = pager(`repos/${REPO}/issues?state=open&per_page=100`)
     return rows.filter((x) => !x.pull_request && hasLabel(x, 'db-claim')).map((x) => ({ number: x.number, title: x.title, body: x.body, url: x.html_url }))
-  },closedClaimsForWork(issue,pager=ghPaginated){return pager(`repos/${REPO}/issues?state=closed&labels=db-claim&per_page=100`).filter((x)=>!x.pull_request&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].map((match)=>Number(match[1])).filter((number)=>number===Number(issue)).length===1&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].length===1).map((x)=>({number:x.number,title:x.title,body:x.body,url:x.html_url,state:x.state}))},
+  },closedClaimsForWork(issue,pager=ghPaginated){const rows=pager(`repos/${REPO}/issues?state=closed&labels=db-claim&per_page=100`)
+    // #2958: GitHub's labels= listing has returned [] for labelled issues. Closed claim
+    // history only ever grows, so an empty or unreadable listing is a GitHub fault;
+    // treating it as "no history" could make a consumed version or object look free.
+    if(!Array.isArray(rows)||rows.length===0)throw new LaneError('closed db-claim history listing returned no rows; refusing to treat claim history as empty')
+    return rows.filter((x)=>!x.pull_request&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].map((match)=>Number(match[1])).filter((number)=>number===Number(issue)).length===1&&[...String(x.title??'').matchAll(/#(\d+)\b/g)].length===1).map((x)=>({number:x.number,title:x.title,body:x.body,url:x.html_url,state:x.state}))},
   // EVERY open issue is audited, not just the ones somebody remembered to
   // label. Filtering on `labels=db-work` here is what let issues #1188, #1238,
   // #1242, #1266 and #1268 sit unlabelled and therefore invisible to the queue

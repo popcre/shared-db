@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2390,
+  "work_issue": 2361,
   "outcome": "ready-for-merge",
-  "pr": 2950,
+  "pr": 2949,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2390/1",
-  "contract_sha256": "9f1d759daf2c07b617db66d16ea924118a77cdc1587023f777b6bc8ec446e753",
-  "head_sha": "47d10a29fe7fda55d56725dc502c423ca91f2583",
-  "files_changed": ["scripts/public-data-venue.test.mjs", ".github/workflows/public-data-venue-guard.yml"],
+  "contract_ref": "refs/db-contracts/2361/5",
+  "contract_sha256": "a3f4f2f9689a04bf526dfb26425b19a63db64e2a9cc868d92c3ed5a1d61467a9",
+  "head_sha": "00a3206b5aae6f8a27bbfb9c796ce78f271549cd",
+  "files_changed": ["plan_author_lane_capacity_five_to_eight.md", "scripts/manage-migration-author-lanes.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/public-data-venue.test.mjs", "exit_code": 0, "evidence": "4 tests passed with zero failures, cancellations, skips or todo; a planted tracked docs/planted-violation.csv made the repository test fail naming that file before it was removed."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, cancellations, skips or todo; the refresh merged only main's files and the PR's own diff is unchanged."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "The exception permits only foreign-keys, indexes, pg-stat-statements-topN and relation-stats CSVs directly inside docs/verification/database-efficiency/<timestamp>/runN/; the new narrowness test proves other names, depths, directories and formats stay flagged.",
-    "The advisor-security JSON publication question was not acted on and is reported to the owner; no database, claim or lease was written."
+    "QUARANTINED_REVIEWERS is empty on main since commit 58a447ae, so the plan now records the 2026-09-04 quarantine and the 2026-09-07 return rather than implying no quarantine existed.",
+    "The script edit is one comment line; no behaviour changed. Muse APPROVE recorded at refs/db-review-verdicts/2361-2949-a171c743...; main refreshed to 6ae4ddcf by merge with main's .agent pair."
   ],
   "stop_conditions_hit": []
 }

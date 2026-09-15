@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/9",
-  "contract_sha256": "c06648a2fd990209b837ccebf6c79ff080fe89dc00bcef950d5e5e8c9115d9fa",
-  "head_sha": "9cb0250138ab01971b205ab6a6e943f826126c3e",
+  "contract_ref": "refs/db-contracts/2969/10",
+  "contract_sha256": "8c7e7126caf1691f03c8f53d042c9f869da9da42c09d7df28b8d93a9fbd7a4fe",
+  "head_sha": "7e34b4f28ee5eebc4630a43bcdc0e2f9aa1f866f",
   "files_changed": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py"
@@ -17,7 +17,7 @@
     {
       "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "153 passed, 0 skipped, 225 subtests passed. The classifier is allowlist-only: one ALLOWLIST constant of six full-statement entries, one test per entry (allowed and near-miss refused shapes) plus a test that unknown statements (SELECT, WITH, EXPLAIN, DO, INSERT, SET, BEGIN, GRANT, DROP TABLE, CALL, COPY, EXECUTE, LOCK, unparsed SQL) report all three risks. Against the previous head's gate, 60 of the new subtests failed first. Migrations 20260915130626 (non-CASCADE DROP FUNCTION) and 20260915143302 (nullable ADD COLUMN) give no finding."
+      "evidence": "154 passed, 0 skipped, 231 subtests passed. Reviewer follow-ups: argument DEFAULT clauses and CREATE INDEX CONCURRENTLY are refused, and test_block_comments_end_where_postgres_ends_them pins nested comments and the xcstop terminator (checked on a local PostgreSQL 18.6: *+/ is comment text, **/ ends a comment).The classifier is allowlist-only: one ALLOWLIST constant of six full-statement entries, one test per entry (allowed and near-miss refused shapes) plus a test that unknown statements (SELECT, WITH, EXPLAIN, DO, INSERT, SET, BEGIN, GRANT, DROP TABLE, CALL, COPY, EXECUTE, LOCK, unparsed SQL) report all three risks. Against the previous head's gate, 60 of the new subtests failed first. Migrations 20260915130626 (non-CASCADE DROP FUNCTION) and 20260915143302 (nullable ADD COLUMN) give no finding."
     },
     {
       "command": "node --test scripts/throughput-guard/false-alarm-corpus.test.mjs",

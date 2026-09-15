@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/12",
-  "contract_sha256": "d66bc5ff04c7ef84bff6d51f6b5785a21fd14e3e1ed0351b097289af2f45e0f5",
-  "head_sha": "ac8202d60f3af2835531c3411f592a6f0480bf33",
+  "contract_ref": "refs/db-contracts/2969/13",
+  "contract_sha256": "d13f8adcebc394bc218385e204b2411965585fa6cf7b37e22ab37a78f7a67b76",
+  "head_sha": "821dfc1d451add31c7996cc51aa57a74035c3948",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -29,13 +29,13 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors against origin/main 89ec62d2."
+      "evidence": "No whitespace errors against origin/main 8d241b2f."
     }
   ],
   "assumptions_resolved": [
     "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
-    "Branch refreshed onto main 89ec62d2 (#2862) before reviewer draws.",
-    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
+    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch.",
+    "Branch refreshed by merge onto main 8d241b2f (#2974); main's only gate-script change is one PREVIEW_PRODUCER_PATHS entry, and the suite still gives 155 passed, 237 subtests."
   ],
   "stop_conditions_hit": []
 }

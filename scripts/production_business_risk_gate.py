@@ -1943,15 +1943,9 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         if (m := re.match(rf"^create (?:unlogged )?table ({_NAME}) ?\(", s))
         and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
     }
-    # The repository's idempotent convention is CREATE TABLE IF NOT EXISTS then
-    # CREATE INDEX IF NOT EXISTS on it (the old rule excused every IF NOT EXISTS
-    # index). CREATE TABLE IF NOT EXISTS may name a table that already holds rows,
-    # so it excuses only an IF NOT EXISTS index, never a plain one (PR #2970 review).
-    idempotent_tables = new_tables | {
-        name for s in statements
-        if (m := re.match(rf"^create (?:unlogged )?table if not exists ({_NAME}) ?\(", s))
-        and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
-    }
+    # CREATE TABLE IF NOT EXISTS may name a table that already holds rows, so an
+    # index on it -- IF NOT EXISTS or not -- can build over existing data and is
+    # reported (PR #2970 reviews).
     # A DO block EXECUTES at apply time, but its body is neutralised, so while one
     # is present no DROP is excused (PR #2970 review).
     has_do = any(re.match(r"^do\b", s) for s in statements)
@@ -1967,6 +1961,7 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
                 or re.match(r"^(?:with|explain)\b", s)
                 and re.search(r"\b(?:update|delete|truncate|merge|insert)\b", s)
                 or re.match(r"^insert\b", s) and re.search(r"\bon conflict\b.*\bdo update\b", s)
+                or re.match(r"^drop (?:trigger|policy)\b", s) and re.search(r"\bcascade\b", s)
                 or re.search(r"\bdrop (?!trigger if exists|policy if exists)", s)
                 and not (not has_do and NON_CASCADE_ROUTINE_DROP.fullmatch(s))):
             reasons.add(loss)
@@ -1975,8 +1970,7 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         if (re.match(r"^(?:lock|cluster|vacuum|reindex|refresh materialized view)\b", s)
                 or index and not (
                     index.group(1)
-                    or _canonical_name(index.group(3)) in new_tables
-                    or index.group(2) and _canonical_name(index.group(3)) in idempotent_tables)
+                    or _canonical_name(index.group(3)) in new_tables)
                 or not index and re.match(r"^create (?:unique )?index\b", s)
                 or alter and not on_new_table and not all(
                     _alter_table_action_is_low_risk(a, types_trusted=not path_changes)

@@ -3510,7 +3510,11 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         ]) + ";"
         reasons = self.classify(sql)
         self.assertNotIn(RISK_TEXT["permanent_data_rewrite_or_loss"], reasons)
-        self.assertNotIn(RISK_TEXT["expected_downtime"], reasons)
+        # CREATE TABLE IF NOT EXISTS may name a table that already holds rows, so
+        # the index on it is reported as downtime (PR #2970 review).
+        self.assertIn(RISK_TEXT["expected_downtime"], reasons)
+        self.assertNotIn(RISK_TEXT["expected_downtime"],
+                         self.classify(sql.replace("CREATE TABLE IF NOT EXISTS", "CREATE TABLE")))
 
     def test_a_function_body_does_not_make_the_migration_destructive(self):
         """A trigger body describes runtime behaviour, not the apply-time effect."""
@@ -3653,6 +3657,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             ("DO $$ BEGIN EXECUTE 'truncate public.t'; END $$;", loss),
             ("DO $$ BEGIN ALTER TABLE public.t ADD COLUMN v int NOT NULL DEFAULT 0; END $$;", downtime),
             ("DO $$ BEGIN GRANT SELECT ON public.t TO anon; END $$;", access),
+            ("CREATE TABLE IF NOT EXISTS public.t (id bigint); CREATE INDEX IF NOT EXISTS t_v_idx ON public.t (v);", downtime),
+            ("DROP TRIGGER IF EXISTS trg ON public.t CASCADE;", loss),
+            ("DROP POLICY IF EXISTS p ON public.t CASCADE;", loss),
             ("DO 'BEGIN DELETE FROM public.style_tracker_rows; END';", loss),
             ("DO 'BEGIN DROP TABLE core.character; END';", loss),
             ("DO LANGUAGE plpgsql 'BEGIN GRANT SELECT ON public.assets TO anon; END';", access),

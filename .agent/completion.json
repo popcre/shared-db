@@ -6,7 +6,7 @@
   "migration_versions": ["20260915015414"],
   "contract_ref": "refs/db-contracts/2792/1",
   "contract_sha256": "871c408f6faa1c2679205a53ad7db487faaeec29fa3ffb526bd449550df85583",
-  "head_sha": "a3601b3a40b06fcc987db7d3a7dd30c4ae61262d",
+  "head_sha": "25ce49f81bc9b8348449df5bbcb9edc64d89c4a2",
   "files_changed": ["supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql"],
   "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
   "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],

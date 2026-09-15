@@ -115,6 +115,61 @@ RISK_TEXT = {
 }
 
 
+# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
+# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
+# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
+# scans the table, so it is refused (#2771).
+_BUILTIN_COLUMN_TYPE = (
+    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
+    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
+    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
+    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
+    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
+    r"(?: ?\[ ?\])*"
+)
+
+
+# The ONLY statements that report no business risk (#2969, PR #2970). The design
+# is allowlist-only: every top-level statement must fullmatch one entry, with no
+# trailing clause, or the migration reports all three risks. Anything else --
+# WITH, EXPLAIN, DO, SELECT, INSERT, SET, BEGIN, GRANT, an unparsed file -- is
+# never modelled and never excused. Patterns run on sql_top_level_statements
+# output: comments removed, whitespace folded, unquoted text lower-cased, every
+# string literal emptied to '' and every dollar-quoted body emptied to $$ $$.
+_ALLOW_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_]*)'
+_ALLOW_QUALIFIED = rf"{_ALLOW_IDENT}\.{_ALLOW_IDENT}"  # schema-qualified only
+_ALLOW_ARGS = r"\((?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no defaults
+_ALLOW_ROUTINE_OPTION = r"(?:language (?:sql|plpgsql)|immutable|stable|volatile|strict|security invoker)"
+ALLOWLIST = {
+    # Defines a routine; its body is not executed by CREATE. Only SQL and
+    # PL/pgSQL, only a quoted body, no SECURITY DEFINER, SET, or argument default.
+    "create_function": re.compile(
+        rf"create (?:or replace )?function {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS} "
+        rf"returns (?:setof )?(?:trigger|{_BUILTIN_COLUMN_TYPE}|void) "
+        rf"(?:{_ALLOW_ROUTINE_OPTION} )*as (?:\$\$ \$\$|'')(?: {_ALLOW_ROUTINE_OPTION})*"),
+    # Without CASCADE, Postgres refuses the drop while anything depends on it.
+    "drop_function_if_exists": re.compile(
+        rf"drop function if exists {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+        rf"(?: ?, ?{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS})*"),
+    # One nullable column of a built-in type, no default, constraint, reference,
+    # collation, or generated/identity clause: a catalog-only change.
+    "add_nullable_column": re.compile(
+        rf"alter table (?:only )?{_ALLOW_QUALIFIED} add column (?:if not exists )?"
+        rf"{_ALLOW_IDENT} {_BUILTIN_COLUMN_TYPE}(?: null)?"),
+    # A brand-new table: no IF NOT EXISTS, AS SELECT/EXECUTE/VALUES, LIKE, OF,
+    # INHERITS, PARTITION, WITH, TABLESPACE, or REFERENCES (a foreign key locks
+    # the referenced existing table).
+    "create_table": re.compile(
+        rf"create table ({_ALLOW_QUALIFIED}) ?\("
+        r"(?!.*\b(?:references|like|of|inherits|partition|with|tablespace|using|select|execute|values)\b)"
+        r"[^;]*\)"),
+    # An index on a table created by an EARLIER statement of this migration.
+    "create_index_on_new_table": re.compile(
+        rf"create (?:unique )?index (?:{_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
+    "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
+}
+
+
 class RiskGateError(ValueError):
     """Governed evidence is missing, inconsistent, forged, or stale."""
 
@@ -1900,18 +1955,6 @@ def prove_pr_and_checks(
     return head, str(merge_commit_sha)
 
 
-# A whole statement dropping only explicitly-signed functions/procedures, without
-# CASCADE. Postgres refuses such a drop while any trigger, default, view, policy or
-# constraint depends on the routine, so it removes no rows (#2969, run 34987389408).
-# Deliberately narrow: quoted names, name-only drops, nested parentheses, DROP
-# ROUTINE and any CASCADE stay reported.
-_ROUTINE_IDENT = r"[a-z_][a-z0-9_$]*"
-_ROUTINE_SIGNATURE = rf"{_ROUTINE_IDENT}(?:\s*\.\s*{_ROUTINE_IDENT})?\s*\([a-z0-9_$\s,.\[\]]*\)"
-NON_CASCADE_ROUTINE_DROP = re.compile(
-    rf"\s*drop\s+(?:function|procedure)\s+(?:if\s+exists\s+)?"
-    rf"{_ROUTINE_SIGNATURE}(?:\s*,\s*{_ROUTINE_SIGNATURE})*\s*(?:restrict\s*)?")
-
-
 def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
     reasons: set[str] = set()
     for version in allowlist:
@@ -1923,82 +1966,29 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
     return sorted(reasons)
 
 
+def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
+    """The ALLOWLIST entry this statement fullmatches, or None."""
+    for name, pattern in ALLOWLIST.items():
+        m = pattern.fullmatch(statement)
+        if m and (name != "create_index_on_new_table" or m.group(1) in new_tables):
+            return name
+    return None
+
+
 def _classify_statements(statements: list[str] | None) -> set[str]:
-    """Business-risk classes of one migration, judged statement by statement.
-
-    Built on sql_top_level_statements, so comments are gone, string literals and
-    dollar-quoted bodies are neutralised, and a keyword inside a body or string
-    can neither hide a statement nor invent one. Unparseable SQL is every risk.
-    """
-    loss, downtime, access = (RISK_TEXT["permanent_data_rewrite_or_loss"],
-                              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"])
+    """All three risks unless EVERY statement is on ALLOWLIST. Unparsed is all."""
+    every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
+             RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
     if statements is None:
-        return {loss, downtime, access}
-    reasons: set[str] = set()
-    path_changes = any(re.match(r"^(?:set|reset)\b", s) and "search_path" in s
-                       or "set_config" in s for s in statements)
-    # Tables this migration creates have no existing rows, users or grants.
-    new_tables = {
-        name for s in statements
-        if (m := re.match(rf"^create (?:unlogged )?table ({_NAME}) ?\(", s))
-        and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
-    }
-    # CREATE TABLE IF NOT EXISTS may name a table that already holds rows, so an
-    # index on it -- IF NOT EXISTS or not -- can build over existing data and is
-    # reported (PR #2970 reviews).
-    # A DO block EXECUTES at apply time, but its body is neutralised, so while one
-    # is present no DROP is excused (PR #2970 review).
-    has_do = any(re.match(r"^do\b", s) for s in statements)
+        return every
+    new_tables: set[str] = set()
     for s in statements:
-        # A DO block runs arbitrary code whose body (dollar- or string-quoted) is
-        # neutralised above; no keyword scan of it is sound, so it is every risk
-        # (PR #2970 review: DO 'BEGIN DELETE ... END' and DO $$ PERFORM ... $$).
-        if re.match(r"^do\b", s):
-            reasons.update((loss, downtime, access))
-        alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
-        on_new_table = bool(alter) and _canonical_name(alter.group(1)) in new_tables
-        if (re.match(r"^(?:update|delete|truncate|merge|call|copy|create (?:or replace )?rule)\b", s)
-                or re.match(r"^insert\b", s) and re.search(r"\bon conflict\b.*\bdo update\b", s)
-                or re.match(r"^drop (?:trigger|policy)\b", s) and re.search(r"\bcascade\b", s)
-                or re.search(r"\bdrop (?!trigger if exists|policy if exists)", s)
-                and not (not has_do and NON_CASCADE_ROUTINE_DROP.fullmatch(s))):
-            reasons.add(loss)
-        index = re.match(rf"^create (?:unique )?index (concurrently )?(if not exists )?"
-                         rf"(?:{_IDENT} )?on (?:only )?({_NAME})(?=[ (]|$)", s)
-        if (re.match(r"^(?:lock|cluster|vacuum|reindex|refresh materialized view)\b", s)
-                or index and not (
-                    index.group(1)
-                    or _canonical_name(index.group(3)) in new_tables)
-                or not index and re.match(r"^create (?:unique )?index\b", s)
-                or alter and not on_new_table and not all(
-                    _alter_table_action_is_low_risk(a, types_trusted=not path_changes)
-                    for a in _split_top_level_commas(alter.group(2)))):
-            reasons.add(downtime)
-        if re.search(r"\b(?:grant|revoke|owner to|create policy|alter policy|drop policy|row level security)\b", s):
-            policy = re.match(rf"^create policy {_IDENT} on ({_NAME})(?: |$)", s)
-            grant = re.fullmatch(rf"grant [^;]+? on (?:table )?({_NAME}(?: ?, ?{_NAME})*) to .+", s)
-            if not (on_new_table
-                    or policy and _canonical_name(policy.group(1)) in new_tables
-                    or grant and all(_canonical_name(n.strip()) in new_tables
-                                     for n in _split_top_level_commas(grant.group(1)))):
-                reasons.add(access)
-        # Default-deny: a statement kind the rules above do not model (SELECT or
-        # EXECUTE of existing code, ALTER SEQUENCE/FUNCTION/VIEW/TYPE, CREATE ROLE,
-        # ...) may change data or lock users out, so it reports both (PR #2970 review).
-        if not re.match(_MODELLED_STATEMENT, s):
-            reasons.update((loss, downtime))
-    return reasons
-
-
-_MODELLED_STATEMENT = re.compile(
-    r"^(?:comment on|grant|revoke|begin|commit|end|start transaction|notify"
-    r"|set (?:local )?(?:statement_timeout|lock_timeout|search_path|role|client_min_messages)\b"
-    r"|reset|alter table|drop|lock|cluster|vacuum|reindex|refresh materialized view"
-    r"|update|delete|truncate|merge|call|copy|do"
-    r"|insert into [^ ]+ ?(?:\(|values|select|default values)"
-    r"|create (?:or replace )?(?:function|procedure|view|trigger|constraint trigger|rule)\b"
-    r"|create (?:unique )?index\b|create (?:unlogged |temporary |temp )?table\b"
-    r"|create (?:policy|schema|sequence|extension|type|materialized view)\b)")
+        entry = allowlist_entry(s, new_tables)
+        if entry is None:
+            return every
+        if entry == "create_table":
+            new_tables.add(ALLOWLIST["create_table"].fullmatch(s).group(1))
+    return set()
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:
@@ -2194,20 +2184,6 @@ def _canonical_name(name: str) -> tuple[str, ...]:
     """
     return tuple(m.group(1) if m.group(1) is not None else m.group(2)
                  for m in re.finditer(r'"([^"]*)"|([^."]+)', name))
-
-
-# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
-# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
-# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
-# scans the table, so it is refused (#2771).
-_BUILTIN_COLUMN_TYPE = (
-    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
-    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
-    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
-    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
-    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
-    r"(?: ?\[ ?\])*"
-)
 
 
 def _binds_on(statement: str, pattern: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:

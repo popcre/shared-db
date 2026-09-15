@@ -2203,7 +2203,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             root = Path(temp)
             migrations = root / "supabase/migrations"
             migrations.mkdir(parents=True)
-            (migrations / "20260814000000_safe.sql").write_text("create table core.safe(id bigint); insert into core.safe values (1);")
+            (migrations / "20260814000000_safe.sql").write_text("create table core.safe(id bigint);")
             self.assertEqual(classify_sql(root, ["20260814000000"]), [])
             (migrations / "20260814000001_risky.sql").write_text("alter table core.safe alter column id type numeric; revoke select on core.safe from anon;")
             reasons = classify_sql(root, ["20260814000001"])
@@ -3495,197 +3495,138 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             (root / "supabase/migrations/20260814000000_x.sql").write_text(body, encoding="utf-8")
             return classify_sql(root, ["20260814000000"])
 
-    def test_creating_new_tables_is_not_reported_as_losing_production_data(self):
-        """The false alarm that turned the owner-decision block into a rubber stamp.
+    EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
+                         RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
 
-        Every clause here is ordinary idempotent table creation. None of it touches
-        existing data, and the classifier used to report data loss AND downtime for
-        all of it. That is what was being escalated to a non-programmer for sign-off.
-        """
-        sql = "; ".join([
-            "CREATE TABLE IF NOT EXISTS dflow.a (id bigint PRIMARY KEY, b_fk integer REFERENCES dflow.b(id) ON UPDATE CASCADE ON DELETE RESTRICT)",
-            "CREATE INDEX IF NOT EXISTS a_idx ON dflow.a (id)",
-            "DROP TRIGGER IF EXISTS t ON dflow.a",
-            "CREATE TRIGGER t BEFORE UPDATE ON dflow.a FOR EACH ROW EXECUTE FUNCTION dflow.f()",
-        ]) + ";"
-        reasons = self.classify(sql)
-        self.assertNotIn(RISK_TEXT["permanent_data_rewrite_or_loss"], reasons)
-        # CREATE TABLE IF NOT EXISTS may name a table that already holds rows, so
-        # the index on it is reported as downtime (PR #2970 review).
-        self.assertIn(RISK_TEXT["expected_downtime"], reasons)
-        self.assertNotIn(RISK_TEXT["expected_downtime"],
-                         self.classify(sql.replace("CREATE TABLE IF NOT EXISTS", "CREATE TABLE")))
-
-    def test_a_function_body_does_not_make_the_migration_destructive(self):
-        """A trigger body describes runtime behaviour, not the apply-time effect."""
-        sql = ("CREATE OR REPLACE FUNCTION dflow.f() RETURNS trigger LANGUAGE plpgsql AS $$ "
-               "BEGIN UPDATE dflow.a SET id = id; DELETE FROM dflow.b; RETURN NEW; END; $$;")
-        self.assertNotIn(RISK_TEXT["permanent_data_rewrite_or_loss"], self.classify(sql))
-
-    def test_genuinely_destructive_statements_are_still_reported(self):
-        """Narrowing must not blind it. These are real and must still be seen."""
-        for body, risk in [
-            ("DROP TABLE dflow.a;", "permanent_data_rewrite_or_loss"),
-            ("TRUNCATE dflow.a;", "permanent_data_rewrite_or_loss"),
-            ("DELETE FROM dflow.a WHERE id > 0;", "permanent_data_rewrite_or_loss"),
-            ("UPDATE dflow.a SET id = 1;", "permanent_data_rewrite_or_loss"),
-            ("ALTER TABLE dflow.a ALTER COLUMN c TYPE bigint;", "expected_downtime"),
-            ("LOCK TABLE dflow.a IN SHARE MODE;", "expected_downtime"),
-            ("CREATE UNIQUE INDEX a_u ON dflow.a (id);", "expected_downtime"),
-            ("GRANT SELECT ON dflow.a TO authenticated;", "material_access_change"),
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(RISK_TEXT[risk], self.classify(body))
-
-    def test_non_cascade_drop_function_is_not_reported_as_data_loss(self):
-        """Production run 34987389408 (#2934, PR #2958) was refused on this alone.
-
-        Without CASCADE, Postgres refuses to drop a function or procedure that any
-        trigger, default, view, policy or constraint depends on, so the statement
-        removes no rows.
-        """
-        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        for body in [
-            "drop function if exists public.deactivate_stale_sg_files(text, uuid);",
-            "DROP FUNCTION public.f(integer) RESTRICT;",
-            "DROP PROCEDURE IF EXISTS dflow.p(text, uuid), dflow.q();",
-            "create table core.safe(id bigint);\ndrop function if exists public.f(text);\n"
-            "-- drop table core.safe cascade;\n",
-        ]:
-            with self.subTest(body=body):
-                self.assertNotIn(loss, self.classify(body))
-
-    def test_risky_drop_function_shapes_are_still_reported(self):
-        """CASCADE removes dependents, which can include columns and their data."""
-        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        for body in [
-            "drop function if exists public.deactivate_stale_sg_files(text, uuid) cascade;",
-            "DROP FUNCTION public.f(text), public.g(uuid) CASCADE;",
-            "drop procedure dflow.p() cascade;",
-            "drop function if exists public.f(text); drop table core.safe;",
-            "drop function public.f;",
-            "drop function if exists public.f(text) /* x */ cascade;",
-            "drop routine public.f(text);",
-            "DROP FUNCTION IF EXISTS public.f(text);\nDO $$ BEGIN DROP TABLE core.safe; END $$;",
-            "drop function public.f(text); do $$ begin delete from core.safe; end $$;",
-            "drop function public.f(text); DO LANGUAGE plpgsql $$ begin update core.safe set id = 1; end $$;",
-            "drop table core.safe;",
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(loss, self.classify(body))
-
-    def test_ordinary_additive_migrations_are_not_reported(self):
-        """Production run 34989644100 (#2911) was refused on the first body alone.
-
-        A nullable column of a built-in type with no default is a catalog-only
-        change on Postgres 11+; objects created in the same migration have no
-        existing users, rows or grants to disturb.
-        """
-        for body in [
-            "alter table public.style_guide_files\n  add column has_talent_likeness boolean null;",
-            "ALTER TABLE public.t ADD COLUMN IF NOT EXISTS note text, ADD COLUMN n integer;",
-            "create table core.n(id bigint primary key, v text);\n"
-            "create index n_v_idx on core.n (v);\n"
-            "alter table core.n enable row level security;\n"
-            "create policy n_read on core.n for select to authenticated using (true);\n"
-            "create policy n_write on core.n for update to authenticated using (true);\n"
-            "grant select, update on table core.n to authenticated;",
-            "create index concurrently if not exists t_v_idx on public.t (v);",
-        ]:
-            with self.subTest(body=body):
+    def assert_allowed(self, allowed, refused):
+        for body in allowed:
+            with self.subTest(allowed=body):
                 self.assertEqual(self.classify(body), [])
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
 
-    def test_blocking_or_rewriting_alters_are_still_reported(self):
-        downtime = RISK_TEXT["expected_downtime"]
-        for body in [
+    def test_the_allowlist_is_one_finite_constant(self):
+        """PR #2970: exemption is allowlist-only. Adding an entry must add a test here."""
+        from production_business_risk_gate import ALLOWLIST
+        self.assertEqual(set(ALLOWLIST), {
+            "create_function", "drop_function_if_exists", "add_nullable_column",
+            "create_table", "create_index_on_new_table", "comment_on"})
+
+    def test_the_two_refused_production_migrations_are_allowed(self):
+        """Runs 34987389408 (#2934, PR #2958) and 34989644100 (#2911) were refused."""
+        self.assert_allowed([
+            "drop function if exists public.deactivate_stale_sg_files(text, uuid);",
+            "alter table public.style_guide_files\n  add column has_talent_likeness boolean null;",
+        ], [])
+
+    def test_allowlist_entry_create_function(self):
+        self.assert_allowed([
+            "CREATE OR REPLACE FUNCTION dflow.f() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN UPDATE dflow.a SET id = id; DELETE FROM dflow.b; RETURN NEW; END; $$;",
+            "create function public.g(text, uuid) returns boolean language sql stable as $b$ select true $b$;",
+        ], [
+            "create function public.g() returns void language plpgsql security definer as $$ begin end $$;",
+            "create function public.g() returns void language c as 'lib', 'sym';",
+            "create function public.g() returns void language plpgsql set search_path = public as $$ begin end $$;",
+            "create function public.g(a int default nextval('s')) returns void language sql as 'select 1';",
+            "create function g() returns void language sql as 'select 1';",
+            "create procedure public.p() language sql as 'delete from public.t';",
+        ])
+
+    def test_allowlist_entry_drop_function_if_exists(self):
+        self.assert_allowed([
+            "DROP FUNCTION IF EXISTS public.f(integer), public.g();",
+        ], [
+            "drop function if exists public.f(text) cascade;",
+            "drop function if exists public.f(text) /* x */ cascade;",
+            "drop function public.f(text);",
+            "drop function if exists public.f;",
+            "drop procedure if exists public.p();",
+            "drop routine if exists public.f(text);",
+            "drop function if exists public.f(text); drop table core.safe;",
+        ])
+
+    def test_allowlist_entry_add_nullable_column(self):
+        self.assert_allowed([
+            "ALTER TABLE public.t ADD COLUMN IF NOT EXISTS note text;",
+            "alter table only public.t add column n numeric(10,2);",
+        ], [
             "alter table public.t add column c timestamptz default now();",
-            "alter table public.t add column c boolean default false;",
             "alter table public.t add column c boolean not null;",
             "alter table public.t add column c integer check (c > 0);",
             "alter table public.t add column c bigint references public.u(id);",
             "alter table public.t add column c serial;",
             "alter table public.t add column c public.some_domain;",
-            "alter table public.t alter column c type bigint;",
+            "alter table public.t add column c text collate \"C\";",
+            "alter table public.t add column c int generated always as identity;",
+            "alter table public.t add column n text, add column m text;",
             "alter table public.t add column n text, alter column c set not null;",
-            "alter table public.t add constraint c_chk check (c > 0);",
-            "create index t_v_idx on public.t (v);",
-            "create index if not exists t_v_idx on public.t (v);",
-            "create unique index t_u on public.t (v);",
-            "lock table public.t in access exclusive mode;",
-            "set search_path = public, pg_catalog; alter table t add column c text;",
+            "alter table public.t owner to app_owner;",
+            "alter table t add column c text;",
             "alter table public.t add column c text; /* unterminated comment",
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(downtime, self.classify(body))
+        ])
 
-    def test_access_changes_on_existing_objects_are_still_reported(self):
-        access = RISK_TEXT["material_access_change"]
-        for body in [
-            "grant select on public.t to anon;",
-            "create table core.n(id bigint); grant select on core.n, public.t to anon;",
-            "revoke select on core.n from anon;",
-            "alter table public.t enable row level security;",
-            "create policy p on public.t for select using (true);",
-            "grant select on all tables in schema public to anon;",
-            "alter default privileges in schema public grant select on tables to anon;",
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(access, self.classify(body))
+    def test_allowlist_entry_create_table(self):
+        self.assert_allowed([
+            "create table core.n(id bigint primary key, v text not null default 'a' check (v <> ''));",
+        ], [
+            "create table if not exists core.n (id bigint);",
+            "create table core.n (id bigint references core.x(id));",
+            "create table core.n (like core.x including all);",
+            "create table core.n (id bigint) inherits (core.x);",
+            "create table core.n partition of core.x for values in (1);",
+            "create table core.n (id bigint) with (fillfactor = 70);",
+            "create table core.n as select * from core.x;",
+            "create unlogged table core.n (id bigint);",
+            "create table n (id bigint);",
+        ])
 
-    def test_row_changing_statements_are_still_reported_wherever_they_sit(self):
-        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        for body in [
+    def test_allowlist_entry_create_index_on_new_table(self):
+        self.assert_allowed([
+            "create table core.n(id bigint, v text);\ncreate unique index n_v_idx on core.n (v);",
+            "create table core.n(id bigint, v text); create index on core.n using btree (v);",
+        ], [
+            "create index t_v_idx on public.t (v);",
+            "create index concurrently if not exists t_v_idx on public.t (v);",
+            "create index n_v_idx on core.n (v); create table core.n(id bigint, v text);",
+            "create table if not exists core.n (id bigint); create index n_idx on core.n (id);",
+            "create table core.n(id bigint); create index if not exists n_idx on core.n (id);",
+        ])
+
+    def test_allowlist_entry_comment_on(self):
+        self.assert_allowed([
+            "-- drop table core.safe;\n/* drop table core.x cascade; */\ncomment on table core.safe is 'x';",
+            "COMMENT ON COLUMN public.t.c IS NULL;",
+        ], [])
+
+    def test_an_unknown_statement_reports_every_risk(self):
+        """Nothing outside ALLOWLIST is modelled, so nothing outside it is excused."""
+        self.assert_allowed([], [
+            "select 1;",
+            "select public.rebuild_everything();",
+            "SELECT setval('public.my_seq', 1, false);",
+            "WITH x AS (SELECT nextval('public.my_seq')) SELECT * FROM x;",
+            "EXPLAIN ANALYZE SELECT * FROM public.style_guide_files;",
+            "DO $$ BEGIN DELETE FROM public.t; END $$;",
+            "DO 'BEGIN DROP TABLE core.character; END';",
+            "create table core.n(id bigint); insert into core.n values (1);",
+            "create table core.n(id bigint); grant select on core.n to authenticated;",
+            "create table core.n(id bigint); alter table core.n enable row level security;",
+            "begin; comment on table core.safe is 'x'; commit;",
+            "set search_path = public; comment on table core.safe is 'x';",
             "update public.t set v = 1;",
-            "with gone as (delete from public.t returning id) select count(*) from gone;",
-            "insert into public.t(id, v) values (1, 'x') on conflict (id) do update set v = excluded.v;",
-            "merge into public.t using public.u on t.id = u.id when matched then delete;",
-            "alter table public.t drop column v;",
-            "create table core.n(id bigint); drop table public.t;",
-            "DO $x$ BEGIN DELETE FROM public.t; END $x$; drop function public.f(text);",
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(loss, self.classify(body))
-
-    def test_second_review_bypass_shapes_are_reported(self):
-        """PR #2970 second review: shapes that executed risk yet produced no finding."""
-        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        downtime = RISK_TEXT["expected_downtime"]
-        access = RISK_TEXT["material_access_change"]
-        for body, expected in [
-            ("DO $$ BEGIN DELETE FROM public.t; END $$;", loss),
-            ("do $body$ begin update public.t set v = 1; end $body$;", loss),
-            ("DO $$ BEGIN EXECUTE 'truncate public.t'; END $$;", loss),
-            ("DO $$ BEGIN ALTER TABLE public.t ADD COLUMN v int NOT NULL DEFAULT 0; END $$;", downtime),
-            ("DO $$ BEGIN GRANT SELECT ON public.t TO anon; END $$;", access),
-            ("CREATE TABLE IF NOT EXISTS public.t (id bigint); CREATE INDEX IF NOT EXISTS t_v_idx ON public.t (v);", downtime),
-            ("DROP TRIGGER IF EXISTS trg ON public.t CASCADE;", loss),
-            ("WITH x AS (SELECT nextval('public.my_seq')) SELECT * FROM x;", loss),
-            ("WITH x AS (SELECT public.legacy_cleanup()) SELECT * FROM x;", loss),
-            ("EXPLAIN ANALYZE SELECT * FROM public.style_guide_files;", downtime),
-            ("DROP POLICY IF EXISTS p ON public.t CASCADE;", loss),
-            ("DO 'BEGIN DELETE FROM public.style_tracker_rows; END';", loss),
-            ("DO 'BEGIN DROP TABLE core.character; END';", loss),
-            ("DO LANGUAGE plpgsql 'BEGIN GRANT SELECT ON public.assets TO anon; END';", access),
-            ("DO $$ BEGIN PERFORM public.wipe_table(); END $$;", loss),
-            ("DO $$ BEGIN ALTER SEQUENCE public.my_seq RESTART WITH 1; END $$;", loss),
-            ("DO $$ BEGIN CREATE ROLE tmp_admin; END $$;", access),
-            ("DO $$ BEGIN RAISE NOTICE '/*'; DELETE FROM public.t; RAISE NOTICE '*/'; END $$;", loss),
-            ("ALTER TABLE public.t OWNER TO app_owner;", access),
-            ("CREATE TABLE IF NOT EXISTS public.t (id bigint); CREATE INDEX t_v_idx ON public.t (v);", downtime),
-            ("COPY public.t FROM '/tmp/x.csv';", loss),
-            ("CALL public.p();", loss),
-            ("SELECT setval('public.my_seq', 1, false);", loss),
-            ("ALTER SEQUENCE public.my_seq RESTART WITH 1;", loss),
-            ("EXECUTE purge_old_rows;", loss),
-            ("select public.rebuild_everything();", downtime),
-            ("ALTER VIEW public.v RENAME TO w;", downtime),
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(expected, self.classify(body))
-
-    def test_drop_inside_a_comment_is_still_ignored(self):
-        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
-        self.assertNotIn(loss, self.classify("-- drop table core.safe;\n/* drop table core.x cascade; */\ncomment on table core.safe is 'x';"))
+            "truncate public.t;",
+            "drop table core.safe;",
+            "DROP TRIGGER IF EXISTS trg ON public.t;",
+            "CALL public.p();",
+            "COPY public.t FROM '/tmp/x.csv';",
+            "EXECUTE purge_old_rows;",
+            "ALTER SEQUENCE public.my_seq RESTART WITH 1;",
+            "LOCK TABLE public.t IN SHARE MODE;",
+            "create extension if not exists pg_trgm;",
+            "comment on table core.safe is 'x'; /* unterminated",
+        ])
 
     def test_disclosed_risks_no_longer_block_promotion(self):
         """Owner ruling 2026-08-18: derived risks are DISCLOSED in the evidence,

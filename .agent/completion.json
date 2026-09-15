@@ -1,26 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2921,
+  "work_issue": 2792,
   "outcome": "ready-for-merge",
-  "pr": 2922,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2921/4",
-  "contract_sha256": "5f8cb34848dd2c574bc7f3a04fa6fe89470b19c4f71dde922d8ac712625f11ea",
-  "head_sha": "cfbf0df5487443fb51a5615299c4811a2b86628d",
-  "files_changed": [
-    ".github/live-proofs/2506.sql"
-  ],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2930,
+  "migration_versions": ["20260915015414"],
+  "contract_ref": "refs/db-contracts/2792/1",
+  "contract_sha256": "871c408f6faa1c2679205a53ad7db487faaeec29fa3ffb526bd449550df85583",
+  "head_sha": "a3601b3a40b06fcc987db7d3a7dd30c4ae61262d",
+  "files_changed": ["supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql"],
+  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
+  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
   "checks": [
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors between base 477b8633 and implementation cfbf0df5."
-    }
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base ffa300c7 and implementation a3601b3a."},
+    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "popsg_reconcile_bounded_ceiling_contracts.sql passed all checks on preview in a rolled-back transaction with the new bodies; the #2212 suite passed contracts 1-10 (its contract 11, PDF text claim, fails identically on preview without this change). CI database-contract-tests runs every supabase/tests/*.sql on PR #2930."}
   ],
-  "assumptions_resolved": [
-    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
-  ],
+  "assumptions_resolved": ["idx_sgf_reconcile_root_active_run_id exists on preview; a rolled-back clone rehearsal (217,193 active, 4,137 stale) drained in 7 calls of <=2.6s each with 0 re-seen rows inactivated."],
   "stop_conditions_hit": []
 }

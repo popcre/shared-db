@@ -33284,6 +33284,7 @@ export type Database = {
           directory_path: string
           file_extension: string | null
           filename: string
+          has_talent_likeness: boolean | null
           id: string
           is_active: boolean
           last_seen_at: string
@@ -33308,6 +33309,7 @@ export type Database = {
           directory_path: string
           file_extension?: string | null
           filename: string
+          has_talent_likeness?: boolean | null
           id?: string
           is_active?: boolean
           last_seen_at?: string
@@ -33332,6 +33334,7 @@ export type Database = {
           directory_path?: string
           file_extension?: string | null
           filename?: string
+          has_talent_likeness?: boolean | null
           id?: string
           is_active?: boolean
           last_seen_at?: string

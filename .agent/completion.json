@@ -1,22 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 2838,
+  "work_issue": 2728,
   "outcome": "ready-for-merge",
-  "pr": 2952,
+  "pr": 2974,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2838/1",
-  "contract_sha256": "1f84247c3ba754a59a5f8ca9f8e04b2dbb27e609b056a6b6353823790d6b5f79",
-  "head_sha": "0a2e06df53215c6966f8a6c1bc495f70cfa06fd5",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md"],
+  "contract_ref": "refs/db-contracts/2728/4",
+  "contract_sha256": "b6b4d712c4e086908a69002304a8fa847b17c08c27c772744842c2e34bcba75d",
+  "head_sha": "4312db62ec33a7a924132413e086d0e225dde9e6",
+  "files_changed": [
+    "config/review-carry-forward-stored-hashes-v1.json",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/production_business_risk_gate.py"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "93 tests passed, 0 failed, 0 skipped; the new #2838 regression test failed before the fix (pass 8, fail 1) and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check passed before the implementation commit d6da5204e0b659078522043c9772e8d8ffe36330, which sits on a merge of main c7e09db7."
+    },
+    {
+      "command": "node --test scripts/lib/pr-content-equivalence.test.mjs scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+      "exit_code": 0,
+      "evidence": "642 tests passed, 0 failed, 0 skipped, 0 cancelled at d6da5204e0b659078522043c9772e8d8ffe36330, including the new review-gate head and bundle-identity refusals, the pin-file mode and non-blob refusals, the digest-less proof refusal and the --delivery-preflight CLI path; scripts/orchestrator-flow/*.test.mjs passed 214 of 214."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=295."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "Ran 146 tests, OK at d6da5204e0b659078522043c9772e8d8ffe36330."
+    }
   ],
   "assumptions_resolved": [
-    "Documents-only merge authorization is not in main's required contexts (read live from branch protection); branch protection was not changed.",
-    "Moved head, production freeze, unreadable comparison and required-context revocation still post failure."
+    "Review-time delivery preflight enforcement is opt-in on --assign-reviewer in this PR.",
+    "A preflight record sealed at an earlier head is accepted at review only with the bundle it was sealed against and an INTEGRATION_REFRESH_ONLY classification re-run at review.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
+    "The pass-2 rebuild and the sidecar registry remain out of scope under issue 2728."
   ],
   "stop_conditions_hit": []
 }

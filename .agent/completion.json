@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2788,
+  "work_issue": 2838,
   "outcome": "ready-for-merge",
-  "pr": 2951,
+  "pr": 2952,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2788/2",
-  "contract_sha256": "85398ffde262d21804a26d05aa8c02400f467aadde7be5c9a30451e754bf013e",
-  "head_sha": "e74e9f3c192fc4d973502d10e40a8d3d3eb2772f",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2838/1",
+  "contract_sha256": "1f84247c3ba754a59a5f8ca9f8e04b2dbb27e609b056a6b6353823790d6b5f79",
+  "head_sha": "53ecf9132e141e48d8eb40a85d521adc1d10299d",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "555 tests passed with zero failures, skips or todo; the new regression assertion reproduced \"Cannot read properties of null (reading 'dependencies')\" without the fix and passes with it."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "93 tests passed, 0 failed, 0 skipped; the new #2838 regression test failed before the fix (pass 8, fail 1) and passes with it."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "deriveLivePreviewCandidate now refuses with a LaneError naming the issue when parseQueueScope returns null; issues with a db-work-scope block follow the unchanged path.",
-    "No database object, migration, claim or lease was written."
+    "Documents-only merge authorization is not in main's required contexts (read live from branch protection); branch protection was not changed.",
+    "Moved head, production freeze, unreadable comparison and required-context revocation still post failure."
   ],
   "stop_conditions_hit": []
 }

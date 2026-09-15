@@ -1900,6 +1900,18 @@ def prove_pr_and_checks(
     return head, str(merge_commit_sha)
 
 
+# A whole statement dropping only explicitly-signed functions/procedures, without
+# CASCADE. Postgres refuses such a drop while any trigger, default, view, policy or
+# constraint depends on the routine, so it removes no rows (#2969, run 34987389408).
+# Deliberately narrow: quoted names, name-only drops, nested parentheses, DROP
+# ROUTINE and any CASCADE stay reported.
+_ROUTINE_IDENT = r"[a-z_][a-z0-9_$]*"
+_ROUTINE_SIGNATURE = rf"{_ROUTINE_IDENT}(?:\s*\.\s*{_ROUTINE_IDENT})?\s*\([a-z0-9_$\s,.\[\]]*\)"
+NON_CASCADE_ROUTINE_DROP = re.compile(
+    rf"\s*drop\s+(?:function|procedure)\s+(?:if\s+exists\s+)?"
+    rf"{_ROUTINE_SIGNATURE}(?:\s*,\s*{_ROUTINE_SIGNATURE})*\s*(?:restrict\s*)?")
+
+
 def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
     reasons: set[str] = set()
     for version in allowlist:
@@ -1907,8 +1919,10 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         sql = migration_statements(matches[0].read_text(encoding="utf-8"))
-        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or re.search(
-                r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", sql):
+        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or any(
+                re.search(r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", statement)
+                and not NON_CASCADE_ROUTINE_DROP.fullmatch(statement)
+                for statement in sql.split(";")):
             reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
         if re.search(r"\b(lock\s+table|alter\s+table)\b", sql) or re.search(
                 r"\bcreate\s+(?:unique\s+)?index\s+(?!concurrently|if\s+not\s+exists)", sql):

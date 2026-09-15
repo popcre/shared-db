@@ -3533,6 +3533,44 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertIn(RISK_TEXT[risk], self.classify(body))
 
+    def test_non_cascade_drop_function_is_not_reported_as_data_loss(self):
+        """Production run 34987389408 (#2934, PR #2958) was refused on this alone.
+
+        Without CASCADE, Postgres refuses to drop a function or procedure that any
+        trigger, default, view, policy or constraint depends on, so the statement
+        removes no rows.
+        """
+        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
+        for body in [
+            "drop function if exists public.deactivate_stale_sg_files(text, uuid);",
+            "DROP FUNCTION public.f(integer) RESTRICT;",
+            "DROP PROCEDURE IF EXISTS dflow.p(text, uuid), dflow.q();",
+            "create table core.safe(id bigint);\ndrop function if exists public.f(text);\n"
+            "-- drop table core.safe cascade;\n",
+        ]:
+            with self.subTest(body=body):
+                self.assertNotIn(loss, self.classify(body))
+
+    def test_risky_drop_function_shapes_are_still_reported(self):
+        """CASCADE removes dependents, which can include columns and their data."""
+        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
+        for body in [
+            "drop function if exists public.deactivate_stale_sg_files(text, uuid) cascade;",
+            "DROP FUNCTION public.f(text), public.g(uuid) CASCADE;",
+            "drop procedure dflow.p() cascade;",
+            "drop function if exists public.f(text); drop table core.safe;",
+            "drop function public.f;",
+            "drop function if exists public.f(text) /* x */ cascade;",
+            "drop routine public.f(text);",
+            "drop table core.safe;",
+        ]:
+            with self.subTest(body=body):
+                self.assertIn(loss, self.classify(body))
+
+    def test_drop_inside_a_comment_is_still_ignored(self):
+        loss = RISK_TEXT["permanent_data_rewrite_or_loss"]
+        self.assertNotIn(loss, self.classify("-- drop table core.safe;\n/* drop table core.x cascade; */\nselect 1;"))
+
     def test_disclosed_risks_no_longer_block_promotion(self):
         """Owner ruling 2026-08-18: derived risks are DISCLOSED in the evidence,
         not used to demand a signature from someone who cannot evaluate them."""

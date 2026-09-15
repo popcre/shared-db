@@ -1958,8 +1958,6 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
         on_new_table = bool(alter) and _canonical_name(alter.group(1)) in new_tables
         if (re.match(r"^(?:update|delete|truncate|merge|call|copy|create (?:or replace )?rule)\b", s)
-                or re.match(r"^(?:with|explain)\b", s)
-                and re.search(r"\b(?:update|delete|truncate|merge|insert)\b", s)
                 or re.match(r"^insert\b", s) and re.search(r"\bon conflict\b.*\bdo update\b", s)
                 or re.match(r"^drop (?:trigger|policy)\b", s) and re.search(r"\bcascade\b", s)
                 or re.search(r"\bdrop (?!trigger if exists|policy if exists)", s)
@@ -1996,7 +1994,7 @@ _MODELLED_STATEMENT = re.compile(
     r"^(?:comment on|grant|revoke|begin|commit|end|start transaction|notify"
     r"|set (?:local )?(?:statement_timeout|lock_timeout|search_path|role|client_min_messages)\b"
     r"|reset|alter table|drop|lock|cluster|vacuum|reindex|refresh materialized view"
-    r"|update|delete|truncate|merge|call|copy|with|explain|do"
+    r"|update|delete|truncate|merge|call|copy|do"
     r"|insert into [^ ]+ ?(?:\(|values|select|default values)"
     r"|create (?:or replace )?(?:function|procedure|view|trigger|constraint trigger|rule)\b"
     r"|create (?:unique )?index\b|create (?:unlogged |temporary |temp )?table\b"

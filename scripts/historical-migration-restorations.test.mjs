@@ -4,6 +4,54 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { HISTORICAL_RESTORATIONS, validateHistoricalProductionProvenance, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
 
+test('pins the issue 2792 reissue preview apply with complete production provenance',()=>{
+  const row=HISTORICAL_RESTORATIONS['20260915023506']
+  const raw=readFileSync(row.filename,'utf8')
+  assert.deepEqual(row,{
+    filename:'supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name:'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject:'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun:'34922309051',
+    previewDispatchCommit:'ffa300c7918b30a54bb033267596c6a70e66c438',
+    previewAppliedCommit:'0c7ebecf1d8ffb5e0980a279d7e32b9d14a343f4',
+    sourcePr:2933,
+    sourceMergeCommit:'ae295b6541e4429b8ac61d8b04a5ae7c22a836b4',
+    statementBytes:15780,
+    statementSha256:'ded20c542b4d7498f4925fe8e169aa3846f21a5b8fe0f16f84e958d08c00083b',
+    fileSha256:'6e2c22ecb99464d2584cfc2823b053a300cc59044f3354a634ece0eb40c9d27d',
+    objects:['function public.preview_stale_sg_files','function public.reconcile_stale_sg_files_batch'],
+  })
+  assert.equal(Object.isFrozen(row),true)
+  assert.equal(Object.isFrozen(row.objects),true)
+  assert.equal(validateHistoricalRestorationFile(row.filename,raw),row)
+  const evidence={
+    version:'20260915023506',
+    previewApplyRun:row.previewApplyRun,
+    previewDispatchCommit:row.previewDispatchCommit,
+    previewAppliedCommit:row.previewAppliedCommit,
+    sourcePr:row.sourcePr,
+    sourceMergeCommit:row.sourceMergeCommit,
+    artifactFileSha256:row.fileSha256,
+  }
+  assert.equal(validateHistoricalProductionProvenance(row.filename,raw,evidence),row)
+  for(const [key,value] of [
+    ['version','20260915023507'],
+    ['previewApplyRun','34922309050'],
+    ['previewDispatchCommit','d'.repeat(40)],
+    ['previewAppliedCommit','a'.repeat(40)],
+    ['sourcePr',2932],
+    ['sourceMergeCommit','b'.repeat(40)],
+    ['artifactFileSha256','c'.repeat(64)],
+  ])assert.throws(
+    ()=>validateHistoricalProductionProvenance(row.filename,raw,{...evidence,[key]:value}),
+    new RegExp(`mismatch for ${key}`),
+  )
+  assert.throws(
+    ()=>validateHistoricalRestorationFile(row.filename,raw+'-- changed bytes\n'),
+    /historical restoration file hash mismatch for 20260915023506/,
+  )
+})
+
 test('pins the issue 2879 successor preview apply with complete production provenance',()=>{
   const row=HISTORICAL_RESTORATIONS['20260914075758']
   const raw=readFileSync(row.filename,'utf8')

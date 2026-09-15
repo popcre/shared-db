@@ -410,12 +410,22 @@ code — but an orchestrator that leaves items standing in it is carrying other 
 The block prints **before** the refill line, not after it, so a queue that has dispatchable work
 cannot hide it — that ordering is deliberate.
 
+Every live claim, reviewer assignment, preview, merge, and production acquisition must also pass
+`--admit-issue <work-issue>`. Admission independently reads the issue and the proposed PR change:
+only actual shared-database structure work proceeds. A sender's label never admits documentation,
+application code or data, CI, reviewer/workflow work, or repository maintenance. Rejection is
+recorded as a typed `rejected_non_structural` event without consuming any lane or shared stage.
+
 ### Queue priority
 
-Among eligible structural issues, work that releases the largest number of other open issues is
-first. The count includes direct and chained `depends_on` relationships. If two issues release the
-same number, the older issue is first. The numeric `priority:` field remains required for scope
-compatibility but does not override blocker impact or age.
+Among eligible structural issues, service class orders urgent application work before standard
+application work and maintenance. Already-started work nearest direct live verification finishes
+before new work; work that releases the largest number of direct and chained blockers follows,
+then older creation time and issue number. An urgent item never preempts a started claim or bypasses
+the eight-author/shared-stage gates. `urgent-application` additionally requires a structured impact
+block proving one of: a live outage, a blocked application release, a security exposure, or an
+owner-declared business deadline. The numeric `priority:` field remains required for compatibility but does
+not override this order.
 
 An issue with **no** `db-work-scope` block at all is `unclassified`: it is not admitted, it is not
 worked, and it already blocks an empty-lane claim. Classify it or send it back.
@@ -701,6 +711,7 @@ rules below are the operative summary.
 
    ```bash
    node scripts/manage-migration-author-lanes.mjs --claim \
+     --admit-issue <work-issue> \
      --task "<issue and outcome>" --owner "<agent/session>" \
      --branch "<branch>" --worktree "<absolute isolated worktree>" \
      --objects "<every exact object written, comma-separated>"
@@ -888,8 +899,19 @@ Merge a `shared-db` PR **only when every item is true**:
 5. The change is additive, or any removal was explicitly approved.
 
 Then: merge to `main` (this auto-syncs the `shared-db/` folder into all apps) and
-promote to **production only in an approved window**. Docs-only PRs (no schema
-change) need just items 1 and "it reads correctly" — merge them promptly.
+run the governed merged-main preview rehearsal. For one source PR, a successful
+rehearsal automatically qualifies and dispatches the existing serial production
+lane. No session or owner names migration versions or artifact IDs for that
+ordinary path. Missing, stale, multi-source, failed, or ambiguous evidence stops
+before dispatch with **ENGINEER ACTION REQUIRED**. The production job still
+re-proves current main, the durable exact-head verdict, guarded merge, immutable
+preview evidence, the one open independently admitted structural work issue linked
+by GitHub to the source PR, exact target, bounded allowlist, fresh dry-run,
+all five machine-derived business-risk conclusions clear, exclusive lock, and
+post-apply ledger/catalog result. This narrow path authorizes no manual
+production command, manual workflow dispatch, other repository, or bypass.
+Docs-only PRs (no schema change) need just items 1 and "it reads correctly" —
+merge them promptly.
 
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 
@@ -1712,10 +1734,11 @@ have already happened in this repo, more than once.
     `scripts/check-documents-only-merge-authorization.mjs` separately permits plan files and
     declarative routing pointers in AGENTS, task-router, and skill files. It inspects the actual
     changed hunks and accepts only link-only list/table rows whose labels literally name the local
-    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. A
-    fail-closed refusal posts a separate visible diagnostic that directs the pull request to guarded
-    code checks without competing for the required context. Ordinary mixed/code pull requests write
-    only that diagnostic; if the same commit already carries this workflow's lightweight success, or
+    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. An
+    ordinary mixed/code pull request gets a separate, green `Not applicable` diagnostic (and a green
+    job) that directs it to guarded code checks without competing for the required context (#2838:
+    a routine red trained everyone to ignore this check). Red on that diagnostic now means a genuine
+    refusal: a moved head, a production freeze, or an unreadable comparison. If the same commit already carries this workflow's lightweight success, or
     if its base is retargeted, the command explicitly revokes that required status before guarded
     checks re-authorize the new comparison. Thus an unreadable,
     over-ceiling, retargeted, or non-prose comparison cannot strand an absent or stale-green result. The

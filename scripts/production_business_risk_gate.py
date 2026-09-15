@@ -76,12 +76,97 @@ GOVERNED_ORIGINAL_RECONCILIATION = {
     "preview_artifact_digest": "sha256:2a466d1a0163a276a937e28f9af5eff710096e62ec9e7ddf7dda38fac41ef49a",
     "project_ref": "mvpkijzfmfcxhnzqogzs",
 }
+
+PREVIEW_FAILURE_JOB_CONCLUSIONS = {
+    "SQL migration guards": "success",
+    "preview": "success",
+    "Automatic production qualification and dispatch": "failure",
+    "Production apply review (immutable evidence + hard guards)": "skipped",
+    "Production apply (automatic evidence gates)": "skipped",
+    "production-dry-run": "skipped",
+}
+
+
+def preview_run_has_immutable_apply(run: Any, jobs: Any = None) -> bool:
+    """Accept success, or the exact graph where only downstream promotion failed."""
+    if not isinstance(run, dict) or run.get("status") != "completed":
+        return False
+    if run.get("conclusion") == "success":
+        return True
+    if run.get("conclusion") != "failure" or not isinstance(jobs, dict):
+        return False
+    rows = jobs.get("jobs")
+    if jobs.get("total_count") != 6 or not isinstance(rows, list) or len(rows) != 6:
+        return False
+    return all(
+        sum(
+            1 for job in rows
+            if isinstance(job, dict) and job.get("name") == name
+            and job.get("status") == "completed" and job.get("conclusion") == conclusion
+        ) == 1
+        for name, conclusion in PREVIEW_FAILURE_JOB_CONCLUSIONS.items()
+    )
 RISK_TEXT = {
     "permanent_data_rewrite_or_loss": "existing production data may be lost or permanently altered",
     "expected_downtime": "users may be interrupted",
     "material_access_change": "access or permissions materially change",
     "recovery_unproven": "recovery is uncertain",
     "unresolved_material_objection": "the reviewers have an unresolved material disagreement",
+}
+
+
+# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
+# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
+# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
+# scans the table, so it is refused (#2771).
+_BUILTIN_COLUMN_TYPE = (
+    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
+    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
+    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
+    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
+    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
+    r"(?: ?\[ ?\])*"
+)
+
+
+# The ONLY statements that report no business risk (#2969, PR #2970). The design
+# is allowlist-only: every top-level statement must fullmatch one entry, with no
+# trailing clause, or the migration reports all three risks. Anything else --
+# WITH, EXPLAIN, DO, SELECT, INSERT, SET, BEGIN, GRANT, an unparsed file -- is
+# never modelled and never excused. Patterns run on sql_top_level_statements
+# output: comments removed, whitespace folded, unquoted text lower-cased, every
+# string literal emptied to '' and every dollar-quoted body emptied to $$ $$.
+_ALLOW_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_]*)'
+_ALLOW_QUALIFIED = rf"{_ALLOW_IDENT}\.{_ALLOW_IDENT}"  # schema-qualified only
+_ALLOW_ARGS = r"\((?![^)]*\bdefault\b)(?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no DEFAULT
+_ALLOW_ROUTINE_OPTION = r"(?:language (?:sql|plpgsql)|immutable|stable|volatile|strict|security invoker)"
+ALLOWLIST = {
+    # Defines a routine; its body is not executed by CREATE. Only SQL and
+    # PL/pgSQL, only a quoted body, no SECURITY DEFINER, SET, or argument default.
+    "create_function": re.compile(
+        rf"create (?:or replace )?function {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS} "
+        rf"returns (?:setof )?(?:trigger|{_BUILTIN_COLUMN_TYPE}|void) "
+        rf"(?:{_ALLOW_ROUTINE_OPTION} )*as (?:\$\$ \$\$|'')(?: {_ALLOW_ROUTINE_OPTION})*"),
+    # Without CASCADE, Postgres refuses the drop while anything depends on it.
+    "drop_function_if_exists": re.compile(
+        rf"drop function if exists {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+        rf"(?: ?, ?{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS})*"),
+    # One nullable column of a built-in type, no default, constraint, reference,
+    # collation, or generated/identity clause: a catalog-only change.
+    "add_nullable_column": re.compile(
+        rf"alter table (?:only )?{_ALLOW_QUALIFIED} add column (?:if not exists )?"
+        rf"{_ALLOW_IDENT} {_BUILTIN_COLUMN_TYPE}(?: null)?"),
+    # A brand-new table: no IF NOT EXISTS, AS SELECT/EXECUTE/VALUES, LIKE, OF,
+    # INHERITS, PARTITION, WITH, TABLESPACE, or REFERENCES (a foreign key locks
+    # the referenced existing table).
+    "create_table": re.compile(
+        rf"create table ({_ALLOW_QUALIFIED}) ?\("
+        r"(?!.*\b(?:references|like|of|inherits|partition|with|tablespace|using|select|execute|values)\b)"
+        r"[^;]*\)"),
+    # An index on a table created by an EARLIER statement of this migration.
+    "create_index_on_new_table": re.compile(
+        rf"create (?:unique )?index (?:(?!concurrently )(?!if )(?!on ){_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
+    "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
 }
 
 
@@ -614,6 +699,10 @@ PREVIEW_PRODUCER_PATHS = (
     # reused, so preview proof must bind their exact bytes.
     "config/orchestrator-evidence-schema-v1.json",
     "config/orchestrator-global-invalidators-v1.json",
+    # Issue #2728. Read from main by the pinned pr-content-equivalence.mjs to
+    # decide which stored script-hash re-pins may carry an approval forward, so
+    # its bytes change whether a prior review is reused for preview.
+    "config/review-carry-forward-stored-hashes-v1.json",
     # Governed preview-ledger reconciliation reads this reviewed manifest to
     # select the exact issue/claim/source/orphan/replacement tuple. Bind those
     # bytes to the same exact-main producer proof as the workflow and tool.
@@ -1480,13 +1569,18 @@ def prove_historical_original_apply_runs(
             repo_root=repo_root, main_sha=main_sha, api=api, downloader=downloader,
         ):
             continue
-        expected = {
-            "status": "completed", "conclusion": "success", "event": "workflow_dispatch",
-            "path": PREVIEW_WORKFLOW,
-        }
+        jobs = None
+        if isinstance(run, dict) and run.get("conclusion") == "failure":
+            try:
+                jobs = api(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100")
+            except Exception as exc:  # noqa: BLE001 - unreadable job proof fails closed
+                raise RiskGateError(f"original apply run {run_id} jobs are unreadable") from exc
+        expected = {"status": "completed", "event": "workflow_dispatch", "path": PREVIEW_WORKFLOW}
         for key, value in expected.items():
             if not isinstance(run, dict) or run.get(key) != value:
                 raise RiskGateError(f"original apply run {run_id} for {version} has wrong {key}")
+        if not preview_run_has_immutable_apply(run, jobs):
+            raise RiskGateError(f"original apply run {run_id} for {version} has wrong conclusion")
         artifact, original_commit = preview_applied_commit(
             api(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?per_page=100"), run_id
         )
@@ -1639,10 +1733,13 @@ def prove_preview(
     downloader: Callable[[int, Path], None], repo_root: Path,
 ) -> None:
     run = api(f"repos/{REPOSITORY}/actions/runs/{run_id}")
-    expected = {
-        "status": "completed", "conclusion": "success", "event": "workflow_dispatch",
-        "path": PREVIEW_WORKFLOW,
-    }
+    jobs = None
+    if isinstance(run, dict) and run.get("conclusion") == "failure":
+        try:
+            jobs = api(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100")
+        except Exception as exc:  # noqa: BLE001 - unreadable job proof fails closed
+            raise RiskGateError("preview run jobs are unreadable") from exc
+    expected = {"status": "completed", "event": "workflow_dispatch", "path": PREVIEW_WORKFLOW}
     for key, value in expected.items():
         # `isinstance` FIRST, as the twin loop in
         # `prove_historical_original_apply_runs` already does. Without it a
@@ -1654,6 +1751,8 @@ def prove_preview(
         # (#1213 round 9, author's per-condition hunt.)
         if not isinstance(run, dict) or run.get(key) != value:
             raise RiskGateError(f"preview run has wrong {key}")
+    if not preview_run_has_immutable_apply(run, jobs):
+        raise RiskGateError("preview run has wrong conclusion")
     # THE COMMIT THAT ACTUALLY RAN, not the ref the workflow file was read from.
     # `run["head_sha"]` is the latter, and on a post-merge rehearsal dispatched
     # against main the two are different commits. Pinning provenance and the
@@ -1843,6 +1942,20 @@ def prove_pr_and_checks(
         missing = [name for name in missing if name != "Migration author lease"]
     if missing:
         raise RiskGateError(f"required exact-head checks are not successful: {', '.join(missing)}")
+    status_endpoint = f"repos/{REPOSITORY}/commits/{head}/status"
+    statuses = api_sublist(api_object(api, status_endpoint), "statuses", status_endpoint)
+    guarded = next(
+        (
+            row for row in statuses
+            if isinstance(row, dict)
+            and row.get("context") == "Migration guarded merge authorization"
+        ),
+        None,
+    )
+    if not isinstance(guarded, dict) or guarded.get("state") != "success":
+        raise RiskGateError(
+            "the latest Migration guarded merge authorization is not successful at the exact PR head"
+        )
     return head, str(merge_commit_sha)
 
 
@@ -1852,16 +1965,34 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
-        sql = migration_statements(matches[0].read_text(encoding="utf-8"))
-        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or re.search(
-                r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", sql):
-            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
-        if re.search(r"\b(lock\s+table|alter\s+table)\b", sql) or re.search(
-                r"\bcreate\s+(?:unique\s+)?index\s+(?!concurrently|if\s+not\s+exists)", sql):
-            reasons.add(RISK_TEXT["expected_downtime"])
-        if re.search(r"\b(grant|revoke|create\s+policy|alter\s+policy|drop\s+policy|row\s+level\s+security)\b", sql):
-            reasons.add(RISK_TEXT["material_access_change"])
+        raw = matches[0].read_text(encoding="utf-8")
+        reasons.update(_classify_statements(sql_top_level_statements(raw)))
     return sorted(reasons)
+
+
+def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
+    """The ALLOWLIST entry this statement fullmatches, or None."""
+    for name, pattern in ALLOWLIST.items():
+        m = pattern.fullmatch(statement)
+        if m and (name != "create_index_on_new_table" or m.group(1) in new_tables):
+            return name
+    return None
+
+
+def _classify_statements(statements: list[str] | None) -> set[str]:
+    """All three risks unless EVERY statement is on ALLOWLIST. Unparsed is all."""
+    every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
+             RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
+    if statements is None:
+        return every
+    new_tables: set[str] = set()
+    for s in statements:
+        entry = allowlist_entry(s, new_tables)
+        if entry is None:
+            return every
+        if entry == "create_table":
+            new_tables.add(ALLOWLIST["create_table"].fullmatch(s).group(1))
+    return set()
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:
@@ -1991,7 +2122,7 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             current.append(" ")
             continue
         if ch == "'":
-            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] == "_"))
+            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] in "_$" or ord(raw[i - 2]) >= 0x80))
             j = i + 1
             while True:
                 if j >= n:
@@ -2017,7 +2148,10 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             continue
         if ch == "$":
             tag = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", raw[i:])
-            if tag and not (i > 0 and (raw[i - 1].isalnum() or raw[i - 1] == "_")):
+            # PostgreSQL ident_cont is [A-Za-z\200-\377_0-9$]: a "$" glued to an
+            # identifier (including after another "$", as in a$$$) never opens a quote.
+            prev = raw[i - 1] if i > 0 else ""
+            if tag and not (prev and (prev.isalnum() or prev in "_$" or ord(prev) >= 0x80)):
                 end = raw.find(tag.group(0), i + len(tag.group(0)))
                 if end == -1:
                     return None
@@ -2057,20 +2191,6 @@ def _canonical_name(name: str) -> tuple[str, ...]:
     """
     return tuple(m.group(1) if m.group(1) is not None else m.group(2)
                  for m in re.finditer(r'"([^"]*)"|([^."]+)', name))
-
-
-# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
-# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
-# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
-# scans the table, so it is refused (#2771).
-_BUILTIN_COLUMN_TYPE = (
-    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
-    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
-    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
-    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
-    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
-    r"(?: ?\[ ?\])*"
-)
 
 
 def _binds_on(statement: str, pattern: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
@@ -2331,6 +2451,19 @@ def optional_text(value: Any) -> str | None:
     return text or None
 
 
+def enforce_automatic_risk_decision(review: dict[str, Any], decision: dict[str, Any]) -> None:
+    """An automatic v2 verdict may proceed only when every risk class is clear."""
+    if (
+        review.get("schema_version") == "shared-db-production-apply-review/v2"
+        and decision.get("automaticPromotionAllowed") is not True
+    ):
+        reasons = decision.get("ownerDecisionReasons") or ["business-risk decision is not clear"]
+        raise RiskGateError(
+            "ENGINEER ACTION REQUIRED: automatic production promotion is not fully "
+            f"machine-qualified: {'; '.join(str(reason) for reason in reasons)}"
+        )
+
+
 def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifact) -> dict[str, Any]:
     repo_root = args.repo.resolve()
     allowlist = normalize_review_allowlist(args.allowlist)
@@ -2353,6 +2486,18 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
         review = json.loads(review_path.read_text(encoding="utf-8"))
     if review.get("verdict") != "APPROVE":
         return {"automaticPromotionAllowed": False, "ownerDecisionReasons": [RISK_TEXT["unresolved_material_objection"]]}
+    if review.get("schema_version") == "shared-db-production-apply-review/v2":
+        if review.get("source_pr") != args.pr or review.get("source_pr_head") != pr_head:
+            raise RiskGateError(
+                "automatic review evidence is not bound to the promoted source PR and exact head"
+            )
+        if review.get("work_issue") != args.work_issue:
+            raise RiskGateError("automatic review evidence names a different admitted structural work issue")
+        if not ephemeral_text:
+            if review.get("preview_run_id") != int(preview_run_text):
+                raise RiskGateError("automatic review evidence names a different preview run")
+            if review.get("preview_artifact_digest") != preview_digest:
+                raise RiskGateError("automatic review evidence names a different preview artifact digest")
     ephemeral_evidence = None
     if ephemeral_text:
         high_risk = preview_required_reasons(repo_root, allowlist)
@@ -2374,10 +2519,13 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
             api=api, downloader=downloader, repo_root=repo_root,
         )
     decision = decide_business_risk(classify_sql(repo_root, allowlist), recovery_proven=True, review_approved=True)
-    # OWNER RULING 2026-08-18: the machine-readable owner-decision block is RETIRED
-    # as a blocking requirement. It is still verified when supplied, and the
+    enforce_automatic_risk_decision(review, decision)
+    # OWNER RULING 2026-08-18: the machine-readable owner-decision block remains
+    # retired as a mandatory technical rubber stamp. The five independently
     # derived risks are still recorded in the evidence below, but a missing block
-    # no longer stops a promotion.
+    # no longer stops the legacy/manual recovery path. The automatic v2 path has no
+    # human dispatch boundary, so it instead fails to an engineer whenever any
+    # one of the five derived risk conclusions is not clear.
     #
     # WHY, in the owner's own terms: he is not a programmer, cannot evaluate the
     # SQL a risk flag refers to, and was being asked to paste a JSON block whose
@@ -2397,9 +2545,8 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     # project proof immediately before every write, single-writer locks, and
     # post-apply verification. Those are checks a machine can actually perform.
     #
-    # WHAT IS GENUINELY GIVEN UP: there is no longer a human stop between a green
-    # evidence chain and a production write. Recorded here, and in the incident
-    # ledger, so nobody later mistakes this for an oversight.
+    # #2716 therefore removes transcription, not judgement: only an exact v2
+    # evidence chain whose machine-derived risk decision is fully clear can pass.
     owner_evidence = None
     if decision["ownerDecisionReasons"] and args.owner_decision_run_id and args.owner_decision_digest:
         owner_evidence = verify_owner_decision(
@@ -2411,13 +2558,13 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
             raise RiskGateError("owner decision does not accept exactly the risks derived from governed evidence")
     return {
         **decision,
-        # Derived risks are DISCLOSED in this evidence, not used to block. See the
-        # owner ruling above. Everything that can be machine-verified has already
-        # been verified by the time this line is reached.
+        # Legacy/manual evidence preserves the earlier disclosure path. Automatic
+        # v2 evidence reached this line only after every derived risk class cleared.
         "productionPromotionAllowed": True,
         "disclosedRisks": decision["ownerDecisionReasons"],
         "governedEvidence": {
             "mainSha": args.main_sha, "sourcePr": args.pr, "sourcePrHead": pr_head,
+            "workIssue": args.work_issue,
             "reviewRun": args.review_run_id,
             "promotionRoute": "ephemeral-ci" if ephemeral_evidence else "preview",
             "previewRun": None if ephemeral_evidence else int(preview_run_text),
@@ -2436,6 +2583,7 @@ def main() -> int:
     parser.add_argument("--main-sha", required=True)
     parser.add_argument("--allowlist", required=True)
     parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--work-issue", type=int, required=True)
     parser.add_argument("--review-run-id", type=int, required=True)
     parser.add_argument("--review-digest", required=True)
     # EXACTLY ONE ROUTE (#2758): preview evidence (--preview-run-id, --preview-digest,
@@ -2495,6 +2643,8 @@ PREVIEW_PRODUCER_PATHS += (
     "scripts/production-verification-sidecars/20260911081204.json",
     "config/db-data-admin-property-source-coverage.json",
     "scripts/production-verification-sidecars/20260908214749.json",
+    "scripts/production-verification-sidecars/20260911213429.json",
+    "scripts/production-verification-sidecars/20260915111626.json",
     "scripts/production-verification-sidecars/20260909084253.json",
     "scripts/production-verification-sidecars/20260910123636.json",
     "scripts/production-verification-sidecars/20260830013942.json",
@@ -2526,6 +2676,9 @@ PREVIEW_PRODUCER_PATHS += (
     "scripts/production-verification-sidecars/20260907030418.json",
     "scripts/production-verification-sidecars/20260907051735.json",
     "scripts/production-verification-sidecars/20260911045438.json",
+    "scripts/production-verification-sidecars/20260911222514.json",
+    "scripts/production-verification-sidecars/20260914061331.json",
+    "scripts/production-verification-sidecars/20260914075758.json",
     # Invoked by check-sql.sh during preview; pin the reviewed parser so the
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",

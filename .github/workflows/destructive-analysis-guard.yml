@@ -1,0 +1,69 @@
+# Issue #2437: absence is not proof. Gate the ANALYSIS path.
+#
+# - On issues: an issue labeled `destructive-proposal` must carry every checklist
+#   heading from .github/ISSUE_TEMPLATE/destructive-proposal.md in its BODY.
+# - On pull requests: SQL added outside migrations/test fixtures may not introduce
+#   DROP / TRUNCATE / VACUUM FULL / DELETE without WHERE unless marked with
+#   `-- destructive-proposal: #<issue>`.
+#
+# No `paths:` filter (a filtered guard reports a stale green), unique check names,
+# no secrets, no database contact.
+name: Destructive Analysis Guard
+
+on:
+  issues:
+    types: [opened, edited, labeled, reopened]
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  # Read-only: verify every `-- destructive-proposal: #<n>` marker names a real,
+  # labeled issue with a complete checklist.
+  issues: read
+
+concurrency:
+  group: destructive-analysis-guard-${{ github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proposal-checklist:
+    name: Destructive proposal checklist
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require the checklist headings in the issue body
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          body_file="$(mktemp)"
+          printf '%s' "$ISSUE_BODY" > "$body_file"
+          node scripts/check-destructive-analysis.mjs --issue-body-file "$body_file" --labels "$ISSUE_LABELS"
+
+  destructive-sql:
+    name: Destructive SQL outside migrations
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prove the guard can fail
+        run: node --test scripts/check-destructive-analysis.test.mjs
+      - name: Scan SQL added by this change
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"

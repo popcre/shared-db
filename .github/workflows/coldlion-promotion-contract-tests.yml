@@ -32,21 +32,47 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    # Replacement lane for a run no runner picked up (#2729). Leave empty for the default lane.
+    # Options must equal scripts/orchestrator-flow/runner-lanes.json (enforced by its tests).
+    inputs:
+      lane:
+        description: Free standard GitHub-hosted runner lane for a replacement run
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-24.04-arm
+          - ubuntu-22.04-arm
 
 permissions:
   contents: read
 
 concurrency:
-  group: coldlion-promotion-contract-tests-${{ github.ref }}
+  group: coldlion-promotion-contract-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}
   cancel-in-progress: true
 
 jobs:
   contract-tests:
-    name: Promotion contract tests (offline)
-    runs-on: ubuntu-latest
+    # The default name stays the stable required context; a lane run reports a distinct name
+    # that the "Queue-sensitive checks (aggregate)" job counts exactly once.
+    name: ${{ inputs.lane && format('Promotion contract tests (offline) [lane {0}]', inputs.lane) || 'Promotion contract tests (offline)' }}
+    runs-on: ${{ inputs.lane || 'ubuntu-latest' }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
+      - name: Refuse an unregistered runner lane
+        # Defence in depth beyond the choice list: the lane must be one registered in runner-lanes.json.
+        env:
+          LANE: ${{ inputs.lane }}
+        run: |
+          case "$LANE" in
+            ''|ubuntu-latest|ubuntu-24.04|ubuntu-22.04|ubuntu-24.04-arm|ubuntu-22.04-arm) ;;
+            *) echo "::error::Unregistered runner lane: $LANE"; exit 1 ;;
+          esac
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

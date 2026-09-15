@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "generation": 1,
   "work_issue": 2939,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -29,6 +30,5 @@
     "Stop if the toolkit receipt schema or source flags changed after its installed checkpoint.",
     "Stop if a successful wrapper can authorize after source movement, receipt mismatch, incomplete comparison, or changed-file mismatch.",
     "Stop if completion requires any file outside the governed runner, its owning test, semantic truth audit and evidence pair."
-  ],
-  "generation": 1
+  ]
 }

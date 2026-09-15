@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2939/1",
   "contract_sha256": "52bdf8941d256000f96b2d67af7ccec4d31fd05ea19057b96865b2947dc9d3fd",
-  "head_sha": "7d94f75167e4db0fb26867fff31a819bb5dce034",
+  "head_sha": "7bb0d5b54ca43b43d0c85a2a53dba42b3861226f",
   "files_changed": [".agent/completion.json", ".agent/contract.json", "docs/verification/throughput-guard-truth-audit-20260828.json", "scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs"],
   "db_reads": [],
   "db_writes": [],

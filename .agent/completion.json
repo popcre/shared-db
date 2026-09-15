@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "work_issue": 2792,
+  "work_issue": 2956,
   "outcome": "ready-for-merge",
   "pr": 2955,
-  "migration_versions": ["20260915023506"],
-  "contract_ref": "refs/db-contracts/2792/8",
-  "contract_sha256": "00731f02ecba666deef8dcbc331e07698efda3927593b19ec3e67ec95a5ea779",
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2956/1",
+  "contract_sha256": "b35996dda1710e0f7a9c8f8b62a3d8fd9588fd0ba30a709a17754daa15d235c1",
   "head_sha": "9b4e73768cf85101636ed95bab8398c86cfe4669",
   "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs"],
-  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
-  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base 2ad5f56f and implementation head 9b4e7376."},
     {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "52 tests, 52 passed, 0 failed on 9b4e7376."}

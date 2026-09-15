@@ -374,6 +374,50 @@ test('pins the issue 2744 preview restoration without granting production eligib
   )
 })
 
+test('pins the retired issue 2792 preview restoration without granting production eligibility',()=>{
+  const row=HISTORICAL_RESTORATIONS['20260915015414']
+  assert.deepEqual(row,{
+    filename:'supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name:'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject:'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun:'34920902290',
+    previewDispatchCommit:'a119760ec139c2d738c23b39c20d94fada2313ae',
+    previewAppliedCommit:'a119760ec139c2d738c23b39c20d94fada2313ae',
+    statementBytes:15745,
+    statementSha256:'c60313fac7fa4d5bffdbd6bc2c681d491ca49bf71e8f898f9a7e22ca698e34f5',
+    fileSha256:'1ab60ae6cde98e4d2127cc3615cc76bfb1480b4f537b85d2d6a73959dcd50e02',
+    objects:['function public.preview_stale_sg_files','function public.reconcile_stale_sg_files_batch'],
+  })
+  assert.equal(Object.isFrozen(row),true)
+  assert.equal(Object.isFrozen(row.objects),true)
+  // Retired: production producer provenance must stay unregistered.
+  assert.equal(row.sourcePr,undefined)
+  assert.equal(row.sourceMergeCommit,undefined)
+  const sources=[]
+  if(existsSync(row.filename))sources.push(readFileSync(row.filename,'utf8'))
+  try{sources.push(execFileSync('git',['show',`${row.previewAppliedCommit}:${row.filename}`],{encoding:'utf8',stdio:['ignore','pipe','ignore'],maxBuffer:1<<24}))}catch{}
+  assert.ok(sources.length>0)
+  for(const raw of sources){
+    assert.equal(validateHistoricalRestorationFile(row.filename,raw),row)
+    assert.throws(
+      ()=>validateHistoricalRestorationFile(row.filename,raw+'-- changed'+String.fromCharCode(10)),
+      /historical restoration file hash mismatch for 20260915015414/,
+    )
+    assert.throws(
+      ()=>validateHistoricalProductionProvenance(row.filename,raw,{
+        version:'20260915015414',
+        previewApplyRun:row.previewApplyRun,
+        previewDispatchCommit:row.previewDispatchCommit,
+        previewAppliedCommit:row.previewAppliedCommit,
+        sourcePr:2930,
+        sourceMergeCommit:row.previewAppliedCommit,
+        artifactFileSha256:row.fileSha256,
+      }),
+      /not registered for production producer provenance/,
+    )
+  }
+})
+
 test('pins the issue 2797 preview restoration without granting production eligibility',()=>{
   const row=HISTORICAL_RESTORATIONS['20260911221304']
   assert.equal(row.filename,'supabase/migrations/20260911221304_db_data_admin_scraped_source_inventory.sql')

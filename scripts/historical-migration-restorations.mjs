@@ -5,6 +5,30 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const HISTORICAL_RESTORATIONS = Object.freeze({
+  // #2792. Preview applied these exact bytes in claim-mode run 34920902290,
+  // dispatched at and applied from unmerged PR #2930 head a119760e (claim
+  // #2929). The PR was then closed unmerged after a derived-from header changed
+  // the bytes, so the version is RETIRED (production_migration_guard
+  // HARD_BLOCKED / RETIRED_VERSION_REASONS) and reissued as 20260915023506
+  // under claim #2931. This pin exists only so the historical file can live on
+  // main (preview holds the version) without being mistaken for an edit.
+  // Production producer provenance is deliberately NOT registered: no
+  // `sourcePr`/`sourceMergeCommit`, so it can never be promoted.
+  '20260915015414': Object.freeze({
+    filename: 'supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34920902290',
+    previewDispatchCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    previewAppliedCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    statementBytes: 15745,
+    statementSha256: 'c60313fac7fa4d5bffdbd6bc2c681d491ca49bf71e8f898f9a7e22ca698e34f5',
+    fileSha256: '1ab60ae6cde98e4d2127cc3615cc76bfb1480b4f537b85d2d6a73959dcd50e02',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
   // #2879 / #2885 / #2889. Preview applied these exact successor bytes in
   // post-merge rehearsal run 34827941186 at PR #2886 head ce7eff73. The later
   // workflow-only repair #2887 changed the evidence-producing workflow, so the

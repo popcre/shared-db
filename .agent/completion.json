@@ -1,22 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 2390,
+  "work_issue": 2792,
   "outcome": "ready-for-merge",
-  "pr": 2950,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2390/1",
-  "contract_sha256": "9f1d759daf2c07b617db66d16ea924118a77cdc1587023f777b6bc8ec446e753",
-  "head_sha": "a84dabc52976e348e56b9058c940f1e323ac1042",
-  "files_changed": ["scripts/public-data-venue.test.mjs", ".github/workflows/public-data-venue-guard.yml"],
-  "db_reads": [],
-  "db_writes": [],
+  "pr": 2938,
+  "migration_versions": ["20260915015414"],
+  "contract_ref": "refs/db-contracts/2792/7",
+  "contract_sha256": "855221f868d4fdc5f90b2ea3f25e10072015366b78888ed8e0a08c468c378bcd",
+  "head_sha": "9b4639146294b05ea6e1b59a5d228058ed007ea2",
+  "files_changed": ["scripts/historical-migration-restorations.mjs", "scripts/historical-migration-restorations.test.mjs", "scripts/migration_derivation.py", "scripts/production_migration_guard.py", "scripts/test_post_batch_app_verification.py", "scripts/test_production_migration_guard.py", "supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql"],
+  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
+  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
   "checks": [
-    {"command": "node --test scripts/public-data-venue.test.mjs", "exit_code": 0, "evidence": "4 tests passed with zero failures, cancellations, skips or todo; a planted tracked docs/planted-violation.csv made the repository test fail naming that file before it was removed."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the implementation and evidence pair."}
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between refreshed base 050e9da4 and merge head 9b463914."},
+    {"command": "python -m pytest scripts", "exit_code": 0, "evidence": "1156 passed, 8 skipped, 753 subtests passed before the main refresh; the refresh merged only main's files with no conflicts outside the .agent pair, and CI reruns this suite on the merge head. 9 local failures are confined to test_production_review_source_pr_preflight.py, where bash resolves to WSL with no installed distro on this Windows machine; that file is untouched here."},
+    {"command": "node --test scripts/historical-migration-restorations.test.mjs scripts/check-applied-migration-edit.test.mjs", "exit_code": 0, "evidence": "Rerun on merge head 9b463914: 51 tests, 51 passed, 0 failed."}
   ],
-  "assumptions_resolved": [
-    "The exception permits only foreign-keys, indexes, pg-stat-statements-topN and relation-stats CSVs directly inside docs/verification/database-efficiency/<timestamp>/runN/; the new narrowness test proves other names, depths, directories and formats stay flagged.",
-    "The advisor-security JSON publication question was not acted on and is reported to the owner; no database, claim or lease was written."
-  ],
+  "assumptions_resolved": ["The restored file hashes to blob 133782d3c5932455f3f4e9ec669f54a94f2b55fc, identical to commit a119760e that preview apply run 34920902290 applied. Preview's orphan ledger row for 20260915015414 now has its matching file. Main was refreshed from ae295b65 to 050e9da4; the only conflicts were the .agent pair, resolved to main's pair in the merge commit."],
   "stop_conditions_hit": []
 }

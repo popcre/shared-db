@@ -1,31 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 2838,
-  "generation": 1,
+  "work_issue": 2788,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the advisory Documents-only merge authorization check report a green Not applicable status (and a green job) on ordinary code pull requests so red means a genuine refusal.",
-  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
-  "dispatcher": "Albert Hazan (repo-maintenance session request for issue #2838)",
-  "worker": "claude-issue-2838-docs-only-not-applicable",
-  "branch": "claude/issue-2838-docs-only-not-applicable",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ab1c5d8144af304e5",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Make --prepare-preview-dispatch refuse with a clear message instead of crashing when the work issue has no db-work-scope block.",
+  "base_sha": "26b6d8c1f0a366ebf59904f43ce1b78b6cd2930f",
+  "dispatcher": "Albert Hazan (session request to resolve issue #2788)",
+  "worker": "claude-issue-2788-no-scope-guard-20260915",
+  "branch": "claude/top-shared-db-issues-6bc111",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3ec8eaebb016fc77",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not change branch protection or required status contexts.",
-    "Do not delete or weaken any other check; revocation of the required context must still post failure."
+    "Do not change preview gate proof, dependency or evidence bundle semantics for issues that do have a db-work-scope block."
   ],
-  "required_checks": ["node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs", "git diff --check"],
   "assumptions": [
-    "The Documents-only merge authorization context is advisory and not in main's required contexts.",
-    "A moved head, production freeze, unreadable comparison, or required-context revocation remains a red failure."
+    "parseQueueScope returns null only when the issue body has no db-work-scope fence.",
+    "The change requires no database object or migration-author route."
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing branch protection.",
-    "Stop if completion requires any file outside the allowed paths."
+    "Stop if the fix would require changing parseQueueScope itself.",
+    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
   ]
 }

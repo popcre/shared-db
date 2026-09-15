@@ -29,6 +29,28 @@ export const HISTORICAL_RESTORATIONS = Object.freeze({
       'function public.reconcile_stale_sg_files_batch',
     ]),
   }),
+  // #2792. Preview applied these exact bytes in claim-mode run 34922309051,
+  // dispatched at ffa300c7 and bound (instance-binding appliedCommit) to PR
+  // #2933 commit 0c7ebecf before the PR merged. The migration blob 3f1f8874 is
+  // unchanged on main. Producer provenance is complete because this exact
+  // version merged from PR #2933 as ae295b65.
+  '20260915023506': Object.freeze({
+    filename: 'supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34922309051',
+    previewDispatchCommit: 'ffa300c7918b30a54bb033267596c6a70e66c438',
+    previewAppliedCommit: '0c7ebecf1d8ffb5e0980a279d7e32b9d14a343f4',
+    sourcePr: 2933,
+    sourceMergeCommit: 'ae295b6541e4429b8ac61d8b04a5ae7c22a836b4',
+    statementBytes: 15780,
+    statementSha256: 'ded20c542b4d7498f4925fe8e169aa3846f21a5b8fe0f16f84e958d08c00083b',
+    fileSha256: '6e2c22ecb99464d2584cfc2823b053a300cc59044f3354a634ece0eb40c9d27d',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
   // #2879 / #2885 / #2889. Preview applied these exact successor bytes in
   // post-merge rehearsal run 34827941186 at PR #2886 head ce7eff73. The later
   // workflow-only repair #2887 changed the evidence-producing workflow, so the

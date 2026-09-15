@@ -1,31 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2429,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Let a re-claim of a work issue whose outcome history is already dispatched treat dispatch as satisfied instead of refusing the dispatch readback.",
-  "base_sha": "91de3134fa5d5c7b3bfb6d537822e3b4211e5f4b",
-  "dispatcher": "Albert Hazan (session request; orchestrator marker #2927 continuation)",
-  "worker": "claude-redispatch-readback-20260915",
-  "branch": "claude/redispatch-readback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/nifty-boyd-5c003d",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Add a read-only checker that verifies Supabase project/branch refs named in config sources against the account's real project and branch lists, reporting LIVE, RETIRED or UNKNOWN, with a positive control so a stale ref can never read as a deleted project.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (session request to resolve issue #2429)",
+  "worker": "claude-supabase-ref-config-20260915",
+  "branch": "claude/supabase-ref-config-check",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a35007c1b2c25fded",
+  "allowed_paths": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/check-supabase-ref-config.mjs", "scripts/check-supabase-ref-config.test.mjs", ".github/workflows/shared-supabase-migrations.yml", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not touch claim #2931, claim #2937, issue #2792, or PR #2938.",
-    "Do not skip the dispatch advance when the outcome history is invalid or in any state other than dispatched."
+    "Never mutate any Supabase project or branch; only the projects list and branches list read commands may run.",
+    "Never read or print a secret."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/check-supabase-ref-config.test.mjs", "git diff --check"],
   "assumptions": [
-    "A valid outcome history already at dispatched means a previous claim dispatched this work issue and was released.",
+    "The checker runs on demand with the Supabase CLI already authenticated; CI runs its offline tests, not a live account listing, because CI holds no account token for this job.",
     "The change requires no database object or migration-author route."
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing the outcome lifecycle transitions themselves.",
-    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
+    "Stop if the check would need a database credential or any write to Supabase.",
+    "Stop if completion requires any file outside the allowed paths."
   ]
 }

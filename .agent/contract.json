@@ -1,46 +1,51 @@
 {
   "schema_version": 1,
-  "work_issue": 2969,
-  "generation": 15,
+  "work_issue": 2729,
+  "generation": 6,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "branch": "claude/risk-gate-drop-function",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
-  "worker": "agent-a1b90ddbccf740c3f",
-  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting; coordinator ordered an allowlist-only restructure after six review rounds",
-  "base_sha": "1a04fa83cfca2f7cdca23b31449089add29e9ca6",
-  "goal": "Make the production business-risk classifier allowlist-only: a migration reports no business risk only when every top-level statement fullmatches one entry of a single ALLOWLIST constant (create function in sql/plpgsql without security definer, set or argument defaults; drop function if exists without cascade; one nullable built-in-type add column; plain create table; create index on a table created earlier in the migration; comment on). Every other statement, including WITH, EXPLAIN, DO, SELECT and unparsed SQL, reports all three risks. The two refused production migrations give no finding.",
+  "branch": "claude/2729-step6-remaining-gaps",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a61b1b762ee60c5ab",
+  "worker": "agent-a61b1b762ee60c5ab",
+  "dispatcher": "Orchestrator coordinator: close the two remaining gaps of #2729 (popcre/ai-devops#401 Steps 6-7) as a follow-up to #2972; generation 5 belongs to PR #2979",
+  "base_sha": "dae4becb79ae2684a246e3edd867ebabb68a712b",
+  "goal": "(a) Accept a pre-merge claim-mode preview apply outside the historical restoration registry only when its archived artifact verifies against the exact merge commit, fail-closed, with every rejected candidate naming its condition; the registry path keeps working. (b) Wire the approved-migration train into manager commands (propose, validate, authorize, dispatch, close, verify dispatch) with immutable create-only records, and make the Shared Supabase Migrations workflow refuse a train dispatch that is not the exact recorded train.",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/migration-train.mjs",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/migration-train.mjs",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "assumptions": [
-    "Postgres refuses a non-CASCADE DROP FUNCTION while dependents exist, so it removes no rows.",
-    "A nullable ADD COLUMN of a built-in type with no default is a catalog-only change.",
-    "CREATE FUNCTION does not execute the routine body.",
-    "sql_top_level_statements removes comments and neutralises string and dollar-quoted bodies."
+    "The archived preview artifact manifest records each migration file sha256, and scripts/verify_preview_apply_artifact.py compares it with the files at the verification commit.",
+    "workflow_dispatch accepts at most 25 inputs; the train ref is the 25th.",
+    "PR #2979 remains open and is not required by this change."
   ],
   "prohibited_actions": [
     "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
-    "Do not change the preview-required check.",
+    "Do not change preflight or routine-rebuild code.",
     "Do not weaken, skip or quarantine any test."
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/throughput-guard/false-alarm-corpus.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/migration-train.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
     "git diff --check"
   ],
   "stop_conditions": [
-    "Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."
+    "Stop if the fix requires changing any file outside the allowed paths."
   ]
 }

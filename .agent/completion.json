@@ -1,42 +1,22 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2838,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2952,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2962/2",
-  "contract_sha256": "fe4fe361ecde0a701eb258633a6227b685bb8fa819fd2c1b5b8ee25798c6093a",
-  "head_sha": "27f5e1e1c9cdd9316eb100cc905d18181684549f",
-  "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/2838/1",
+  "contract_sha256": "1f84247c3ba754a59a5f8ca9f8e04b2dbb27e609b056a6b6353823790d6b5f79",
+  "head_sha": "a1120893a8f0c2c03ae2b32b9806b16ab38c1355",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/repository-maintenance-authorization.test.mjs", "AGENTS.md"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check against main c7c9a7a2 passed at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
-    },
-    {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-      "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 27f5e1e1c9cdd9316eb100cc905d18181684549f; inventory unioned by semantic key with no dispositions dropped."
-    }
+    {"command": "node --test scripts/lib/documents-only-change.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "93 tests passed, 0 failed, 0 skipped; the new #2838 regression test failed before the fix (pass 8, fail 1) and passes with it."},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main c7c9a7a2 after PR 2861 landed, at 27f5e1e1c9cdd9316eb100cc905d18181684549f.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Live adapters, caller integration and programme acceptance remain pending under issue 2729, which this merge does not close."
+    "Documents-only merge authorization is not in main's required contexts (read live from branch protection); branch protection was not changed.",
+    "Moved head, production freeze, unreadable comparison and required-context revocation still post failure."
   ],
   "stop_conditions_hit": []
 }

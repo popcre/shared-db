@@ -1,43 +1,44 @@
 {
+  "schema_version": 1,
+  "work_issue": 2987,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add a governed, recoverable archive command for old durable reviewer verdicts so the verdict namespace stays under its 1000-ref listing ceiling, and make reviewer assignment name the ceiling as the real cause instead of reporting leases as unreadable.",
+  "base_sha": "f73bd61037050a310c6634f36470a345bc6a96a3",
+  "dispatcher": "Claude shared-db coordinator session for issue 2987",
+  "worker": "Claude Opus 5 subagent",
+  "branch": "claude/2987-archive-old-review-verdicts",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/sweet-taussig-0796f5",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "assumptions": [
-    "Authorization is issue 2459, dispatched by the coordinating Claude session acting as dispatcher for PR #2991; repo-maintenance only, no migration lane and no db claim.",
-    "Only the stale-mutex recovery allowlist and its tests change; lock acquisition behaviour is untouched."
-  ],
-  "base_sha": "1f7dbe47039b0479390e31185f2d30c6b17bea61",
-  "branch": "claude/2459-mutex-recovery-kinds",
-  "db_reads": [],
-  "db_writes": [],
-  "dispatcher": "Claude coordinating session (dispatcher for PR #2991)",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
-  "generation": 2,
-  "goal": "Make every owner-commit kind that acquires the author mutex recoverable by stale-mutex recovery, with a structural test so a new lock kind cannot ship unrecoverable.",
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No hand deletion of refs; no workflow, repository setting or branch protection change."
+    "No hand deletion of verdict refs and no bypass of the review mutex.",
+    "No edits to scripts/check-dispatch-collision.mjs, scripts/orchestrator-snapshot.mjs or scripts/check-migration-pr-lease.mjs."
   ],
   "required_checks": [
     "git diff --check",
-    "node --test --test-reporter=tap scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/check-exact-head-approval.test.mjs"
   ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
+  "assumptions": [
+    "Verdicts of merged PRs that touched supabase/migrations must stay live because production promotion re-runs the exact-head approval check on the merged source PR.",
+    "Archiving moves a verdict ref under refs/db-review-archived-verdicts, so every archived verdict is recoverable."
+  ],
   "stop_conditions": [
-    "Stop if recovery would need to accept a commit kind that does not acquire the author mutex.",
-    "Stop if the full lanes test suite regresses."
-  ],
-  "work_issue": 2459,
-  "work_type": "repo-maintenance",
-  "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa6c79212374b6e34"
+    "Stop if archiving would remove a verdict needed by an active reviewer lease, an open PR or a merged migration PR.",
+    "Stop if the archive cannot run under the review mutex with compare-and-swap readback."
+  ]
 }

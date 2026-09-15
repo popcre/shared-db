@@ -1,28 +1,44 @@
 {
   "schema_version": 1,
   "work_issue": 2969,
-  "generation": 1,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/risk-gate-drop-function",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1b90ddbccf740c3f",
   "worker": "agent-a1b90ddbccf740c3f",
-  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION)",
-  "base_sha": "668360f48a3a31a0b83054b405905799e973a6ab",
-  "goal": "Narrow the production business-risk gate's data-loss rule so a per-statement DROP FUNCTION/PROCEDURE [IF EXISTS] with explicit signatures and no CASCADE is not reported, keeping CASCADE, name-only, DROP ROUTINE and every other DROP reported.",
-  "allowed_paths": ["scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py", ".agent/contract.json", ".agent/completion.json"],
+  "dispatcher": "Orchestrator (production run 34987389408 for 20260915130626 refused by classify_sql on a non-CASCADE DROP FUNCTION); production run 34989644100 for 20260915143302 (#2911) refused a nullable ADD COLUMN as interrupting",
+  "base_sha": "585a9d2bba30fb53c25b4dff28e1effe01642e53",
+  "goal": "Stop the production business-risk gate refusing ordinary additive migrations: exempt DO-free non-CASCADE DROP FUNCTION/PROCEDURE with signatures from data loss, and treat nullable no-default ADD COLUMN, new-table indexes/RLS/policies/grants and CREATE INDEX CONCURRENTLY as non-interrupting, while defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables, every other DROP and row-changing statements stay reported.",
+  "allowed_paths": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
   "assumptions": [
-    "Postgres refuses a DROP FUNCTION/PROCEDURE without CASCADE while any dependent object exists, so such a statement removes no rows.",
-    "Comments and $$ bodies are already removed by migration_statements before classification."
+    "Postgres refuses a non-CASCADE DROP FUNCTION/PROCEDURE while dependents exist, so it removes no rows.",
+    "A nullable ADD COLUMN of a built-in type with no default is a catalog-only change.",
+    "sql_top_level_statements removes comments and dollar bodies; any DO block disables the drop exemption."
   ],
   "prohibited_actions": [
     "No database, preview, rehearsal, production, migration, claim, lease, or infrastructure write or dispatch.",
-    "Do not change the preview-required check or any other risk rule.",
+    "Do not change the preview-required check.",
     "Do not weaken, skip or quarantine any test."
   ],
-  "required_checks": ["python -m pytest -q scripts/test_production_business_risk_gate.py", "git diff --check"],
-  "stop_conditions": ["Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."]
+  "required_checks": [
+    "python -m pytest -q scripts/test_production_business_risk_gate.py",
+    "git diff --check"
+  ],
+  "stop_conditions": [
+    "Stop if the fix requires changing any file outside the gate script, its test file and the evidence pair."
+  ]
 }

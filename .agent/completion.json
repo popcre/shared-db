@@ -4,18 +4,19 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/1",
-  "contract_sha256": "c1a8a1b48be1e200eeaea9842b4634034b0ef711128aa2bf3667996d083b21e0",
-  "head_sha": "53a2b04f36be6ab37aa16731f9cad7b58f8fc741",
-  "files_changed": ["scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py"],
+  "contract_ref": "refs/db-contracts/2969/2",
+  "contract_sha256": "98177fe675b93eafb7ea226a2a38cce98aad09cdaeb1d6e49c49ee400543f751",
+  "head_sha": "c8816cc991313f889ef48e1f4693d229e854448e",
+  "files_changed": [".agent/completion.json", ".agent/contract.json", "scripts/production_business_risk_gate.py", "scripts/test_production_business_risk_gate.py"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "python -m pytest -q scripts/test_production_business_risk_gate.py", "exit_code": 0, "evidence": "149 passed, 0 skipped, 169 subtests passed. New: non-CASCADE DROP FUNCTION/PROCEDURE shapes (including the #2958 statement) give no data-loss finding; CASCADE, name-only, DROP ROUTINE, multi-statement with DROP TABLE, and DROP TABLE stay reported; drops inside comments stay ignored. The no-finding test failed in 4 subtests on the old rule before the change."},
+    {"command": "python -m pytest -q scripts/test_production_business_risk_gate.py", "exit_code": 0, "evidence": "153 passed, 0 skipped, 206 subtests passed. Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding; CASCADE, DROP TABLE, drops alongside DO blocks, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing tables and row-changing statements stay reported; drops in comments stay ignored. Both no-finding tests failed on the old gate first."},
     {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
   ],
   "assumptions_resolved": [
-    "classify_sql on the real migration 20260915130626 now returns [] (it returned the data-loss finding before).",
+    "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
+    "A sweep of all repository migrations found every no-longer-flagged data-loss case was a keyword inside a grant, revoke, trigger, policy or a non-CASCADE routine drop.",
     "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
   ],
   "stop_conditions_hit": []

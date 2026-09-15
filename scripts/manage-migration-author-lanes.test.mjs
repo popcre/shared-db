@@ -7759,3 +7759,17 @@ test('an over-long lease snapshot is a determinate refusal, not transient unread
   assert.throws(()=>findBusyReviewers(io),/cannot be listed: .*process argument limit/)
   assert.notEqual(main(['--reap-abandoned-review-leases','--reviewer-capacity'],new Date(),io),0,'reap is its own primary operation')
 })
+
+// Observed 2026-09-15 (work issue #2792): a re-claim after a released claim found the
+// work issue already `dispatched` and refused "cannot advance outcome from dispatched to
+// dispatched", leaving a fresh claim protected for recovery. Dispatch is already satisfied.
+test('re-claim of an already dispatched work issue treats dispatch as satisfied',async()=>{
+  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {formatEventComment}=await import('./db-coordination-events.mjs')
+  const {io}=admittedReviewIo(),posted=[]
+  const history=['entered','classified','dispatched'].map((state,index)=>({author_association:'OWNER',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
+  io.issueComments=()=>history
+  io.commentIssue=(_number,body)=>posted.push(body)
+  const result=acquireAuthorLane({...opts,task:'#41',objects:['table core.example'],admitIssue:41,claim:true},NOW,io)
+  assert.equal(result.claim,'https://github.test/issues/1');assert.equal(posted.length,0);assert.equal(io.refs.has(MUTEX_REF),false)
+})

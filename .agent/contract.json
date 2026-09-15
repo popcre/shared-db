@@ -1,34 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2939,
+  "work_issue": 2942,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Bind governed review authorization to the exact live repository, pull-request target, base, head, merge-base, changed-file set, packet digest and private source receipt.",
-  "base_sha": "ae295b6541e4429b8ac61d8b04a5ae7c22a836b4",
-  "dispatcher": "Albert Hazan (approved #159 continuation through ai-devops #393)",
-  "worker": "codex-393-source-consumer-20260914",
-  "branch": "codex/393-source-consumer-20260914",
-  "worktree": "C:/repos/shared-db-worktrees/393-source-consumer-20260914",
-  "allowed_paths": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", "docs/verification/throughput-guard-truth-audit-20260828.json", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/run-governed-review.mjs", "scripts/run-governed-review.test.mjs", "docs/verification/throughput-guard-truth-audit-20260828.json", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Let a re-claim of a work issue whose outcome history is already dispatched treat dispatch as satisfied instead of refusing the dispatch readback.",
+  "base_sha": "91de3134fa5d5c7b3bfb6d537822e3b4211e5f4b",
+  "dispatcher": "Albert Hazan (session request; orchestrator marker #2927 continuation)",
+  "worker": "claude-redispatch-readback-20260915",
+  "branch": "claude/redispatch-readback",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/nifty-boyd-5c003d",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not authorize a verdict when live pull-request source identity, packet evidence, or the private receipt is missing or mismatched.",
-    "Do not expose private receipt contents, provider bodies, credentials, or raw diagnostics in public failure output.",
-    "Do not merge the obsolete combined PR 2749 over current source or terminal work."
+    "Do not touch claim #2931, claim #2937, issue #2792, or PR #2938.",
+    "Do not skip the dispatch advance when the outcome history is invalid or in any state other than dispatched."
   ],
-  "required_checks": ["node --test scripts/run-governed-review.test.mjs", "node scripts/check-throughput-truth-audit.mjs", "git diff --check"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "git diff --check"],
   "assumptions": [
-    "The nine installed ai-devops reviewers accept the immutable source arguments and publish a create-only receipt under the original repository.",
-    "GitHub compare evidence below 300 files is complete for this governed synthetic acceptance boundary.",
-    "This consumer owns authorization metadata only and requires no database object or migration-author route."
+    "A valid outcome history already at dispatched means a previous claim dispatched this work issue and was released.",
+    "The change requires no database object or migration-author route."
   ],
   "stop_conditions": [
-    "Stop if the toolkit receipt schema or source flags changed after its installed checkpoint.",
-    "Stop if a successful wrapper can authorize after source movement, receipt mismatch, incomplete comparison, or changed-file mismatch.",
-    "Stop if completion requires any file outside the governed runner, its owning test, semantic truth audit and evidence pair."
+    "Stop if the fix would require changing the outcome lifecycle transitions themselves.",
+    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
   ]
 }

@@ -1,20 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 2792,
+  "work_issue": 2936,
   "outcome": "ready-for-merge",
-  "pr": 2933,
-  "migration_versions": ["20260915023506"],
-  "contract_ref": "refs/db-contracts/2792/3",
-  "contract_sha256": "8287d99c95efb29d242d85b7c632439d0ffaf7c9b94f89a5bac75c70f9e88b29",
-  "head_sha": "5cebb3dc216c4a426bcac7b4d46ca3acfa966515",
-  "files_changed": ["supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql"],
-  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
-  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
-  "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base ffa300c7 and implementation 5cebb3dc."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "popsg_reconcile_bounded_ceiling_contracts.sql passed all checks on preview in a rolled-back transaction with the identical function bodies; CI database-contract-tests runs every supabase/tests/*.sql on PR #2933."},
-    {"command": "python -m pytest scripts", "exit_code": 0, "evidence": "1158 passed, 8 skipped (pre-existing environment skips), 760 subtests passed."}
+  "pr": 2935,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2936/1",
+  "contract_sha256": "30f8c7382a2dc01fec9c81cbb521047b71922f9790a87e452ddb0242c7fc5e1d",
+  "head_sha": "6b1d26d86ee8dcc6d4f5c32a23b79fb312ef0d51",
+  "files_changed": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-applied-migration-edit.mjs",
+    "scripts/check-applied-migration-edit.test.mjs"
   ],
-  "assumptions_resolved": ["idx_sgf_reconcile_root_active_run_id exists on preview; a rolled-back clone rehearsal (217,193 active, 4,137 stale) drained in 7 calls of <=2.6s each with 0 re-seen rows inactivated. Preview keeps an orphan ledger row for retired 20260915015414 until the follow-up PR lands; dry-run 34922134833 and apply 34922309051 succeeded with that row present."],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors between base ffa300c7 and implementation 6b1d26d8 (update from main)."
+    },
+    {
+      "command": "node --test scripts/check-applied-migration-edit.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 35, pass 35, fail 0; identical and CRLF bodies allowed, five modified bodies refused, production-applied and unknown evidence refused."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=287"
+    }
+  ],
+  "assumptions_resolved": [
+    "Both appliers store trimmed statements without separators (split_sql strip in atomic_migration_apply.py); the matcher constrains only whitespace and semicolons between statements, and fails closed on absent, empty, padded, or non-string evidence."
+  ],
   "stop_conditions_hit": []
 }

@@ -1961,6 +1961,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": "scripts/run-governed-review.mjs:212",
+      "semantic_key": "scripts/run-governed-review.mjs:cdfdffef2201e7c3b5985ec28b75de846cf7c3d911aef01c34dd8c03169a8260:1",
+      "line_sha256": "cdfdffef2201e7c3b5985ec28b75de846cf7c3d911aef01c34dd8c03169a8260",
+      "disposition": "excluded",
+      "reason": "This wording classifies a private reviewer startup diagnostic; it does not assert that a database object or migration is missing."
+    },
+    {
       "site": "scripts/scan_apply_time_ddl.py:107",
       "semantic_key": "scripts/scan_apply_time_ddl.py:e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255:1",
       "line_sha256": "e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255",
@@ -2017,7 +2024,7 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     }
   ],
-  "call_site_count": 286,
-  "call_site_sha256": "d9d9dee4aa44021232cc4a12436a540ecb14d0a0a236791a53a8ade260d31cc6",
+  "call_site_count": 287,
+  "call_site_sha256": "b5fcc594e6635fafa481fb99f3f1ca28e80c1871e9066118fb350aa95ee4db37",
   "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."
 }

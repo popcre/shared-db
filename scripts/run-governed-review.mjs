@@ -169,7 +169,7 @@ export function codexGovernedBody(report,headSha,reportName='the codex report'){
 
 export function wrapperVerdictContractArgs(wrapper,args,headSha){
   const name=wrapperBaseName(wrapper)
-  if(!['ai-gemini','ai-qwen'].includes(name))return args
+  if(!['ai-gemini','ai-qwen','ai-deepseek-agent'].includes(name))return args
   const list=[...args],head=String(headSha??'').toLowerCase()
   // EVERY spelling of the flag is checked, not the first one found: `--x value`,
   // `--x=value`, and a repeat later in the argument list. A single unchecked
@@ -186,8 +186,9 @@ export function wrapperVerdictContractArgs(wrapper,args,headSha){
     supplied=true
   }
   if(supplied)return list
-  if(!['new','ask'].includes(String(list[0]??'')))throw new Error(`${name} governed reviews must start with the new or ask subcommand`)
-  list.splice(1,0,'--governed-verdict',String(headSha))
+  const commands=name==='ai-deepseek-agent'?['send','reply']:['new','ask']
+  if(!commands.includes(String(list[0]??'')))throw new Error(`${name} governed reviews must start with the ${commands.join(' or ')} subcommand`)
+  list.splice(name==='ai-deepseek-agent'&&list[0]==='reply'?2:1,0,'--governed-verdict',String(headSha))
   return list
 }
 export function wrapperSpawnPlan(resolved,args,platform=process.platform){
@@ -199,13 +200,23 @@ export function wrapperSpawnPlan(resolved,args,platform=process.platform){
 export function wrapperFailureReason(run){
   const stderr=String(run.stderr??'')
   const reasons=[]
+  const hasReason=(reason)=>new RegExp(`(?:^|[^A-Za-z0-9_-])${reason}(?=$|[^A-Za-z0-9_-])`,'i').test(stderr)
   if(run.error)reasons.push('the wrapper process could not complete')
   if(run.signal)reasons.push('the wrapper process was terminated by a signal')
   if(/unknown option/i.test(stderr))reasons.push('the wrapper rejected an unsupported option; check its --help')
-  if(/cancelled without a final answer/i.test(stderr))reasons.push('the provider cancelled without a final answer')
+  if(hasReason('turn_limit_cancelled'))reasons.push('turn_limit_cancelled: the provider exhausted its declared turn budget')
+  else if(hasReason('provider_cancelled')||/cancelled without a final answer/i.test(stderr))reasons.push('provider_cancelled: the provider cancelled without a final answer')
+  if(hasReason('unknown_terminal_reason'))reasons.push('unknown_terminal_reason: the provider returned an unrecognized terminal state')
+  if(hasReason('start_failed')){
+    reasons.push(hasReason('caller_identity_missing')||hasReason('invalid_caller_identity')
+      ?'start_failed: the wrapper caller identity is missing or invalid'
+      :'start_failed: the wrapper refused before the provider turn started')
+  }
   if(/timed-out|timed out|deadline|time limit/i.test(stderr))reasons.push('the wrapper reported a timeout')
   if(/local_dependency_unavailable/i.test(stderr))reasons.push('a local reviewer dependency is unavailable')
   if(/execution-context-denied/i.test(stderr))reasons.push('the wrapper reported execution-context-denied')
+  if(hasReason('content-filter')||hasReason('DataInspectionFailed'))reasons.push('provider_unavailable: content-filter rejected the request')
+  else if(hasReason('provider-unavailable'))reasons.push('provider_unavailable: the provider refused the request')
   if(/usage-limit|insufficient.quota|quota exceeded|usage limit/i.test(stderr))reasons.push('the wrapper reported a usage limit')
   if(/already active|already in progress|held for reconciliation|retained/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
   return reasons.join('; ')||(stderr?'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session':'the wrapper supplied no recognized diagnostic')

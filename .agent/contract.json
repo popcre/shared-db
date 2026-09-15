@@ -2,54 +2,49 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/workflows/coldlion-promotion-contract-tests.yml",
-    ".github/workflows/queue-sensitive-aggregate.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/orchestrator-flow/runner-lanes.json",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs"
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
   "assumptions": [
-    "Authorization is issue 2729 comment 5684812877: five independent compatible runner lanes for queue-sensitive jobs plus a stable aggregate required check; scope is runner lanes only.",
-    "Generation 2 is reserved for the parallel branch claude/2729-reroute-recovery; this contract is generation 3.",
-    "Lanes are free standard GitHub-hosted labels for this public repository; no larger or paid runners. No run is dispatched and branch protection is not changed."
+    "Authorization is issue 2728 (popcre/ai-devops#401 Steps 4-5) dispatched by the shared-db orchestrator marker #2927; repo-maintenance only, no migration lane and no db claim.",
+    "Generations 1-4 already exist for issue 2728; this contract is generation 5.",
+    "The single sidecar declaration registry is owned by production_business_risk_gate.py, which PR #2970 is changing; it is reported, not implemented, here."
   ],
-  "base_sha": "89ec62d2f1fe5a27c42c2f8ffb71c9a7900cc5b2",
-  "branch": "claude/2729-runner-lanes",
+  "base_sha": "dcda2cd936fd0df717963e6f6dd4696c4ddd8861",
+  "branch": "claude/2728-step5-preflight-routine-rebuild",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Claude programme 401 Step 7 runner-half dispatcher",
+  "dispatcher": "Claude shared-db orchestrator marker #2927",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/workflows/coldlion-promotion-contract-tests.yml",
-    ".github/workflows/queue-sensitive-aggregate.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/orchestrator-flow/runner-lanes.json",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs"
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
-  "generation": 3,
-  "goal": "Add a declarative five-lane runner registry read by start-reroute qualified_lanes, a lane input for replacement runs of the queue-sensitive required checks, and a fail-closed stable aggregate check.",
+  "generation": 5,
+  "goal": "Run the pass-2 routine rebuild check inside the delivery preflight for any change that drops or replaces a routine, and make later drops that name parameters replay with a correct catalog guard.",
   "prohibited_actions": [
     "No database, migration, preview, production, claim or marker mutation.",
-    "No workflow_dispatch run, repository setting or branch protection change.",
-    "No edits to shared-supabase-migrations.yml, manage-migration-author-lanes.mjs, run-governed-review.mjs, orchestrator-snapshot.mjs, delivery-preflight or evidence-bundle.",
-    "No reviewer draw and no merge."
+    "No edits to production_business_risk_gate.py, manage-migration-author-lanes.mjs, or any file owned by #2970 or #2729.",
+    "No workflow, repository setting or branch protection change."
   ],
   "required_checks": [
     "git diff --check",
-    "node --test --test-reporter=tap scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
+    "python -m unittest scripts/test_check_pass2_routine_supersession.py",
+    "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
   ],
   "route": "repo-maintenance",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop once the PR is open with a validated evidence pair and CI running.",
-    "Stop if fewer than five free compatible runner labels exist."
+    "Stop and report if the sidecar registry requires changing production_business_risk_gate.py.",
+    "Stop if the rebuild check blocks existing main migrations without a real rebuild defect."
   ],
-  "work_issue": 2729,
+  "work_issue": 2728,
   "work_type": "repo-maintenance",
   "worker": "Claude Opus 5 subagent",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-add29a24be010c885"
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a2762539149f39f1a"
 }

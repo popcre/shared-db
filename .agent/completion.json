@@ -1,43 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2729,
+  "work_issue": 2728,
   "outcome": "ready-for-merge",
-  "pr": 2972,
+  "pr": 2980,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2729/3",
-  "contract_sha256": "ff0a85220694cc84bd0fc7ca3e8a622f1b3304642ce2dc1b1823414f02bec6ae",
-  "head_sha": "0aa3bb286e617b8715d7c4dc971515ce9f0d1209",
+  "contract_ref": "refs/db-contracts/2728/5",
+  "contract_sha256": "4a03de88511c656530378a0f8f352cdd0cb43ac46b27633089be83f8839ec875",
+  "head_sha": "a5f36a97e21a68310532eadc44467ce658851f5b",
   "files_changed": [
-    ".github/workflows/coldlion-promotion-contract-tests.yml",
-    ".github/workflows/queue-sensitive-aggregate.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/orchestrator-flow/runner-lanes.json",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs"
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check passed against main 7b36259e at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e. Main was refreshed from c7e09db7 to 7b36259e; the only conflicts were the .agent pair, resolved to main's pair in the merge commit. The implementation commit is 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41."
-    },
-    {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-      "exit_code": 0,
-      "evidence": "Run together with check-required-checks-preflight and update-required-checks tests: 104 tests passed, 0 failed, 0 skipped, 0 todo at 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41 and 110 passed, 0 failed, 0 skipped, 0 todo at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e, including negative tests for self-hosted and non-Ubuntu lanes, choice-option drift, paginated and partial check-run reads, and waiting on an unreported context."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 320e0a9a736bd221dd0f3ce6e5ff8c10a9adee41 and at merge head 69fcdecca57b2d71533e93d4bbf7fb95244ccb7e; no new call sites and no dispositions changed."
-    }
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors in the four implementation files."},
+    {"command": "python -m unittest scripts/test_check_pass2_routine_supersession.py", "exit_code": 0, "evidence": "Ran 39 tests OK; the two named-parameter drop tests failed before the _lookup_signature fix, and the new rebuild tests prove a drop or replacement without a matching rebuild returns BLOCKED with exit 1."},
+    {"command": "node --test --test-reporter=tap scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs", "exit_code": 0, "evidence": "31 of 31 tests passed, including a routine replacement undone by an older drop refusing before any gate runs and refusing the reviewer draw; lanes-manager preflight tests 12 of 12 also pass unchanged."}
   ],
   "assumptions_resolved": [
-    "Five free standard lanes are declared: ubuntu-latest, ubuntu-24.04, ubuntu-22.04, ubuntu-24.04-arm, ubuntu-22.04-arm. GitHub documents standard hosted runners as free and unlimited on public repositories.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
-    "No run was dispatched and branch protection was not changed. The admin must add the required context 'Queue-sensitive checks (aggregate)' separately. Issue 2729 stays open."
+    "The rebuild check over the last 40 real main migrations blocked none, so it does not refuse existing migrations without a real defect.",
+    "The single sidecar declaration registry does not exist; production_business_risk_gate.py lists sidecars individually, so building it requires changing that file, which PR #2970 owns. It is reported, not implemented."
   ],
   "stop_conditions_hit": []
 }

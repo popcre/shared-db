@@ -105,6 +105,14 @@ test('forged equal previous snapshot id cannot suppress a real transition', () =
 
 test('snapshot verification requires trusted current state and a bounded fresh capture',()=>{const snapshot=buildOrchestratorSnapshot(input(),{capturedAt:'2020-01-01T00:00:00Z'});assert.throws(()=>verifyOrchestratorSnapshot(snapshot),/trusted current-state reader/);assert.throws(()=>verifyOrchestratorSnapshot(snapshot,{readCurrent:input,now:'2026-09-11T00:00:00Z'}),/freshness window/)})
 
+test('a rewritten capture time on an expired snapshot refuses as an invalid seal', () => {
+  const snapshot = buildOrchestratorSnapshot(input(), { capturedAt: '2020-01-01T00:00:00Z' })
+  snapshot.captured_at = '2026-09-11T17:00:00Z'
+  assert.throws(() => verifyOrchestratorSnapshot(snapshot, { readCurrent: input, now: '2026-09-11T17:01:00Z' }), /snapshot seal is invalid/)
+  delete snapshot.seal_digest
+  assert.throws(() => verifyOrchestratorSnapshot(snapshot, { readCurrent: input, now: '2026-09-11T17:01:00Z' }), /snapshot seal is invalid/)
+})
+
 test('contradictory terminal outcomes contend on one issue key',()=>{const completed=agentCheckInNotification({status:'completed',issue:7,evidence_id:'artifact:done'});assert.throws(()=>publishAgentCheckIn({status:'blocked',issue:7,evidence_id:'artifact:block'},{publish:()=>assert.fail('must not publish'),readTerminalOutcome:()=>completed,readPublished:()=>completed}),/conflicting terminal outcome/)})
 
 test('a conflicting terminal race is rejected after compare-and-create',()=>{const completed=agentCheckInNotification({status:'completed',issue:7,evidence_id:'artifact:done'});assert.throws(()=>publishAgentCheckIn({status:'blocked',issue:7,evidence_id:'artifact:block'},{readTerminalOutcome:()=>null,publish:({event})=>({status:'existing',event_id:event.event_id}),readPublished:()=>completed}),/durable readback/)})

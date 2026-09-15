@@ -88,8 +88,10 @@ export function gatherPrInput(env=process.env){
   if(apiFiles.length>=3000)throw new LeaseCheckError('GitHub REST file limit reached; collision coverage is incomplete')
   const files=apiFiles.map(f=>({...f,sql:f.status==='removed'||!f.filename?.endsWith('.sql')?'':rawFile(f.filename,pr.head.sha)}))
   // #2958: the `labels=` filtered listing returned [] for open, labelled claims; filter client-side.
-  const issues=pages(`repos/${REPO}/issues?state=open&per_page=100`)
-  return {claims:openClaimIssues(issues),branch:pr.head.ref,files,reservationExists:(version)=>{try{return Boolean(json(['api',`repos/${REPO}/git/ref/db-claims/${version}`])?.object?.sha)}catch{return false}}}
+  // The claim list is read only when the PR changes a migration: without one the
+  // validator returns before it looks at claims, so the full issue listing was wasted.
+  const claims=files.some(f=>f.filename?.startsWith('supabase/migrations/')&&f.filename.endsWith('.sql')&&f.status!=='removed')?openClaimIssues(pages(`repos/${REPO}/issues?state=open&per_page=100`)):[]
+  return {claims,branch:pr.head.ref,files,reservationExists:(version)=>{try{return Boolean(json(['api',`repos/${REPO}/git/ref/db-claims/${version}`])?.object?.sha)}catch{return false}}}
 }
 
 export function main(env=process.env){try{const result=validateMigrationLease(gatherPrInput(env));console.log(result.relevant?`Migration claim verified: #${result.claim}, version ${result.version}.`:result.historicalCodeTruth?'Migration code-truth restoration verified; claim check is not applicable.':'No migration files changed; claim check is not applicable.');return 0}catch(e){console.error(`REFUSED: ${e.message}`);return 2}}

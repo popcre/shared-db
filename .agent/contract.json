@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2729,
-  "generation": 6,
+  "generation":  6,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/2729-step6-remaining-gaps",

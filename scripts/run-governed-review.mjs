@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, mkdirSync, lstatSync, realpathSync, writeFileSync } from 'node:fs'
 import { join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { REPO, recordReviewVerdict, reviewerExecutionPreflight, resolveCommandPath, githubIo, withMergedPrIssueBinding } from './manage-migration-author-lanes.mjs'
 import { lineOpensWithVerdictWord, isVerdictFor } from './lib/review-verdict.mjs'
 // Issue #2342: one shared transport owns the never-replay-a-write policy.
-import { spawnGitHub } from './lib/github-transport.mjs'
+import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
 
 export function parseArgs(argv){
   const split=argv.indexOf('--'),own=split<0?argv:argv.slice(0,split),wrapperArgs=split<0?[]:argv.slice(split+1),out={wrapperArgs,slot:1}
@@ -110,7 +110,11 @@ function readReviewSourceDigest(worktree){
   if(result.error||result.status!==0)throw new Error('trusted review source digest is unavailable')
   return String(result.stdout??'').trim()
 }
-export function resolveReviewSource(options,{git=spawnSync,github=(args)=>spawnGitHub(args,{executor:spawnSync}),digest=readReviewSourceDigest}={}){
+function readGitHub(args){
+  try{return {status:0,stdout:runGitHubCommand(args,{executor:execFileSync})}}
+  catch(error){return {status:1,error,stderr:String(error?.stderr??'')}}
+}
+export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,digest=readReviewSourceDigest}={}){
   if(!Number.isSafeInteger(Number(options.pr))||Number(options.pr)<1)throw new Error('source identity requires a pull request number')
   const head=String(options.headSha??'').toLowerCase()
   if(!/^[0-9a-f]{40}$/.test(head)||!options.worktree)throw new Error('source identity requires an exact head and worktree')

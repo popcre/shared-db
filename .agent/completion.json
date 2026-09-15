@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2729,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2972,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2962/2",
-  "contract_sha256": "fe4fe361ecde0a701eb258633a6227b685bb8fa819fd2c1b5b8ee25798c6093a",
-  "head_sha": "27f5e1e1c9cdd9316eb100cc905d18181684549f",
+  "contract_ref": "refs/db-contracts/2729/3",
+  "contract_sha256": "ff0a85220694cc84bd0fc7ca3e8a622f1b3304642ce2dc1b1823414f02bec6ae",
+  "head_sha": "ae32be32ed4cb5e8ef2850fd070a8305ba7c416f",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/orchestrator-flow/runner-lanes.json",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -20,23 +21,23 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check against main c7c9a7a2 passed at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
+      "evidence": "git diff --check passed against main 89ec62d2 at ae32be32ed4cb5e8ef2850fd070a8305ba7c416f."
     },
     {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
       "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
+      "evidence": "Run together with check-required-checks-preflight and update-required-checks tests: 100 tests passed, 0 failed, 0 skipped, 0 todo at ae32be32ed4cb5e8ef2850fd070a8305ba7c416f."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 27f5e1e1c9cdd9316eb100cc905d18181684549f; inventory unioned by semantic key with no dispositions dropped."
+      "evidence": "truth audit OK: call_sites=295 at ae32be32ed4cb5e8ef2850fd070a8305ba7c416f; no new call sites and no dispositions changed."
     }
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main c7c9a7a2 after PR 2861 landed, at 27f5e1e1c9cdd9316eb100cc905d18181684549f.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Live adapters, caller integration and programme acceptance remain pending under issue 2729, which this merge does not close."
+    "Five free standard lanes are declared: ubuntu-latest, ubuntu-24.04, ubuntu-22.04, ubuntu-24.04-arm, ubuntu-22.04-arm. GitHub documents standard hosted runners as free and unlimited on public repositories.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review and required CI remain mandatory.",
+    "No run was dispatched and branch protection was not changed. The admin must add the required context 'Queue-sensitive checks (aggregate)' separately. Issue 2729 stays open."
   ],
   "stop_conditions_hit": []
 }

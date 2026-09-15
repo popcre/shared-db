@@ -1,24 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 2967,
+  "work_issue": 2961,
   "outcome": "ready-for-merge",
-  "pr": 2968,
+  "pr": 2861,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2967/1",
-  "contract_sha256": "f9fa8f03acdcb58e325efd33d23724402d7d4a934e34cd0751a7a672157a629b",
-  "head_sha": "f91f06b1ec2f5f392a8f18508cfb4ac53cc264ce",
-  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "contract_ref": "refs/db-contracts/2961/1",
+  "contract_sha256": "acfdb40bdf0119103c28ee400c1583616f34d2e08c18ca1329944241c4d07c24",
+  "head_sha": "1bbdb21b7d6708724e3a6b084d7716f11b7ad41d",
+  "files_changed": [
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "562 tests, 562 pass, 0 fail, 0 skipped at f91f06b1 (after merging #2795 from main). New: 'issue 2958 run 34985444563 an empty or PR-only open issue read never passes as no open claims' covers an empty, PR-only and unreadable listing, a zero-claim read contradicted by search, an unreadable search, and a confirmed absence; the existing labels= test now asserts the listing counts."},
-    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "16 tests, 16 pass, 0 fail, 0 skipped at f91f06b1."},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors."}
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check against main 6a238c7a passed at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "exit_code": 0,
+      "evidence": "42 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
+    }
   ],
   "assumptions_resolved": [
-    "Live read 2026-09-15: the open issue listing holds 135 issues and 15 pull requests, so a listing with no non-PR rows is never genuine; search reports 9 open db-claim issues.",
-    "Write-blocked local run of main --acquire-merge --pr 2958 at 38958822 code, admission included, read all 9 open claims; the CI-only zero read is not reproduced and the new refusal records what the listing returned.",
-    "No database object, migration, claim, lease or workflow was written, and PR #2958 and claim #2957 were not touched."
+    "Implementation is the five declared files refreshed onto main 6a238c7a after PR 2968 landed, with the capture time bound into the snapshot seal and idempotent retries with a later capture time accepted, and passing records with blocked inner checks refused, at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
+    "Caller integration and live programme acceptance remain pending under issue 2728, which this merge does not close."
   ],
   "stop_conditions_hit": []
 }

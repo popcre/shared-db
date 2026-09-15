@@ -1,36 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 2969,
+  "work_issue": 2961,
   "outcome": "ready-for-merge",
-  "pr": 2970,
+  "pr": 2861,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/7",
-  "contract_sha256": "5ae478f18377f006eb30245b016a7e1ac20e7fb3eb14ae0abd826545b4497704",
-  "head_sha": "5175cf90d87421699ef89505b2f6ec1529aeb465",
+  "contract_ref": "refs/db-contracts/2961/1",
+  "contract_sha256": "acfdb40bdf0119103c28ee400c1583616f34d2e08c18ca1329944241c4d07c24",
+  "head_sha": "1bbdb21b7d6708724e3a6b084d7716f11b7ad41d",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/orchestrator-flow/delivery-preflight.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-flow/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
-      "exit_code": 0,
-      "evidence": "154 passed, 0 skipped, 233 subtests passed. Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding. Reported: CASCADE and other drops, every DO block (dollar- or string-quoted) as all three risks, CALL, COPY, OWNER TO, SELECT setval, EXECUTE, ALTER SEQUENCE/VIEW, unmodelled statement kinds, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing or IF NOT EXISTS tables, cascading trigger or policy drops, WITH and EXPLAIN statements and row-changing statements. Each new reported shape passed silently on the previous head; both no-finding tests failed on the old gate first."
-    },
-    {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors."
+      "evidence": "git diff --check against main 6a238c7a passed at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "exit_code": 0,
+      "evidence": "42 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d."
     }
   ],
   "assumptions_resolved": [
-    "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
-    "A sweep of all repository migrations found every no-longer-flagged data-loss case was a keyword inside a grant, revoke, trigger, policy or a non-CASCADE routine drop.",
-    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
+    "Implementation is the five declared files refreshed onto main 6a238c7a after PR 2968 landed, with the capture time bound into the snapshot seal and idempotent retries with a later capture time accepted, and passing records with blocked inner checks refused, at 1bbdb21b7d6708724e3a6b084d7716f11b7ad41d.",
+    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
+    "Caller integration and live programme acceptance remain pending under issue 2728, which this merge does not close."
   ],
   "stop_conditions_hit": []
 }

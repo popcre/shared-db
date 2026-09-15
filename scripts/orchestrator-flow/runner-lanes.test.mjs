@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { loadRegistry, validateRegistry, qualifiedLanesFor, replacementDispatchInputs, aggregateVerdict, laneCheckName, workflowLaneConformance, runAggregate, RunnerLaneError } from './runner-lanes.mjs'
+import { loadRegistry, validateRegistry, qualifiedLanesFor, replacementDispatchInputs, aggregateVerdict, laneCheckName, workflowLaneConformance, runAggregate, fetchCheckRuns, RunnerLaneError } from './runner-lanes.mjs'
 import { runnerStartDecision, reserveRunnerReroute, acceptRunnerResult, createDurableStartRerouteAdapter, dispatchQueuedReroute } from './start-reroute.mjs'
 import { canonicalJson, sha256 } from './evidence-bundle.mjs'
 
@@ -158,4 +158,77 @@ test('aggregate truth: missing, duplicate and failed assertions all refuse; pend
   const timedOut = runAggregate({ repo: 'u2giants/shared-db', headSha: h, registry, fetchRuns: () => [ok(T), { name: P, status: 'queued' }], sleep: (ms) => { clock += ms }, now: () => clock, timeoutMs: 60000, log: () => {} })
   assert.equal(timedOut.verdict, 'refuse')
   assert.throws(() => runAggregate({ repo: 'x', headSha: 'nope', registry, fetchRuns: () => [], sleep: () => {}, timeoutMs: 1 }), /40-hex/)
+})
+
+test('registry validation refuses self-hosted, non-Ubuntu and custom runner labels', () => {
+  const lanes = registry.lanes
+  const withLane = (label) => ({ ...registry, lanes: [...lanes.slice(0, 4), { ...lanes[4], name: label, label }] })
+  for (const label of ['self-hosted', 'windows-latest', 'windows-2022', 'macos-14', 'macos-latest', 'linux', 'x64', 'ubuntu', 'ubuntu-latest-custom', 'my-runner-group', 'ubuntu-24.04-arm64', 'ubuntu-2404']) {
+    assert.throws(() => validateRegistry(withLane(label)), /not a GitHub-hosted standard Ubuntu label/, label)
+  }
+  for (const label of ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04-arm']) assert.doesNotThrow(() => validateRegistry({ ...registry, lanes: [...lanes.filter((l) => l.label !== label).slice(0, 4), { ...lanes[4], name: label, label }] }), label)
+})
+
+test('workflow conformance refuses any extra, missing or non-Ubuntu choice option', () => {
+  for (const job of registry.queue_sensitive_jobs) {
+    const text = fs.readFileSync(path.join(ROOT, '.github/workflows', job.workflow), 'utf8').replace(/\r\n/g, '\n')
+    assert.deepEqual(workflowLaneConformance(registry, text, job), [], job.workflow)
+    const last = '          - ubuntu-22.04-arm\n'
+    assert.ok(text.includes(last), `${job.workflow} lists ubuntu-22.04-arm`)
+    const drifts = [
+      [last, `${last}          - self-hosted\n`],
+      [last, `${last}          - windows-latest\n`],
+      ["          - ''\n", "          - ''\n          - macos-14\n"],
+      [last, `${last}          - [self-hosted, linux]\n`],
+      ["          - ''\n", ''],
+      [last, ''],
+      ['          - ubuntu-24.04\n', '          - self-hosted\n'],
+      ['        options:\n', '        choices:\n'],
+    ]
+    for (const [from, to] of drifts) {
+      const problems = workflowLaneConformance(registry, text.replace(from, to), job)
+      assert.ok(problems.some((p) => /lane choice options/.test(p)), `${job.workflow}: ${JSON.stringify(to)} gave ${JSON.stringify(problems)}`)
+    }
+  }
+})
+
+test('live check-run listing paginates, keeps queued runs, takes the newest re-run and refuses partial reads', () => {
+  const T = 'Tools offline tests', P = 'Promotion contract tests (offline)'
+  const run = (id, name, status = 'completed', conclusion = 'success') => ({ id, name, status, conclusion })
+  let seenArgs
+  const reader = (payload) => ({ readJson: (args) => { seenArgs = args; return payload } })
+  const filler = Array.from({ length: 100 }, (_, i) => run(1000 + i, `Other check ${i}`))
+  const pages = [{ total_count: 103, check_runs: filler }, { total_count: 103, check_runs: [run(1, T, 'completed', 'failure'), run(2, T), run(3, P, 'queued', null)] }]
+  const rows = fetchCheckRuns('u2giants/shared-db', h, reader(pages))
+  assert.deepEqual(seenArgs.slice(0, 3), ['api', '--paginate', '--slurp'])
+  assert.match(seenArgs[3], /per_page=100&filter=all$/)
+  assert.deepEqual(rows.find((r) => r.name === T), { name: T, status: 'completed', conclusion: 'success' }, 'newest re-run wins')
+  assert.deepEqual(rows.find((r) => r.name === P), { name: P, status: 'queued', conclusion: null }, 'a queued run is not dropped')
+  assert.equal(rows.length, 102)
+  assert.equal(aggregateVerdict(registry, rows).verdict, 'pending')
+  const refuse = (payload, pattern) => assert.throws(() => fetchCheckRuns('u2giants/shared-db', h, reader(payload)), pattern, JSON.stringify(payload).slice(0, 80))
+  refuse([pages[0]], /incomplete \(100 of 103\)/)
+  refuse([{ total_count: 103, check_runs: filler }, { total_count: 104, check_runs: pages[1].check_runs }], /incomplete/)
+  refuse([pages[0], { total_count: 103 }], /no check_runs list/)
+  refuse([pages[0], { check_runs: pages[1].check_runs }], /no total_count/)
+  refuse({ total_count: 1, check_runs: [run(2, T)] }, /did not return pages/)
+  refuse([], /did not return pages/)
+  refuse([{ total_count: 2, check_runs: [run(2, T), run(2, T)] }], /repeated run 2/)
+  refuse([{ total_count: 1, check_runs: [{ name: T, status: 'completed', conclusion: 'success' }] }], /without a name or id/)
+})
+
+test('aggregate waits for a context that has not reported yet, and refuses it at the deadline', () => {
+  const T = 'Tools offline tests', P = 'Promotion contract tests (offline)'
+  let clock = 0, calls = 0
+  const sleep = (ms) => { clock += ms }
+  const late = runAggregate({ repo: 'u2giants/shared-db', headSha: h, registry, fetchRuns: () => (++calls < 3 ? [ok(T)] : [ok(T), ok(P)]), sleep, now: () => clock, timeoutMs: 600000, log: () => {} })
+  assert.equal(late.verdict, 'pass'); assert.equal(calls, 3)
+  clock = 0
+  const never = runAggregate({ repo: 'u2giants/shared-db', headSha: h, registry, fetchRuns: () => [ok(T)], sleep, now: () => clock, timeoutMs: 60000, log: () => {} })
+  assert.equal(never.verdict, 'refuse'); assert.match(never.refusals.join(), /still not finished at deadline: Promotion contract tests \(offline\)/)
+  let slept = false
+  const failedNow = runAggregate({ repo: 'u2giants/shared-db', headSha: h, registry, fetchRuns: () => [{ name: T, status: 'completed', conclusion: 'failure' }], sleep: () => { slept = true }, now: () => 0, timeoutMs: 60000, log: () => {} })
+  assert.equal(failedNow.verdict, 'refuse'); assert.equal(slept, false, 'a real failure never waits for an unreported context')
+  const cancelledOnly = runAggregate({ repo: 'u2giants/shared-db', headSha: h, registry, fetchRuns: () => [ok(T), { name: P, status: 'completed', conclusion: 'cancelled' }], sleep: () => { slept = true }, now: () => 0, timeoutMs: 60000, log: () => {} })
+  assert.equal(cancelledOnly.verdict, 'refuse'); assert.equal(slept, false, 'a context whose only run was cancelled refuses at once')
 })

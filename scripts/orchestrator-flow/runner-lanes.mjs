@@ -16,7 +16,7 @@ import { ghJson } from '../lib/github-transport.mjs'
 export class RunnerLaneError extends Error {}
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const REGISTRY_PATH = path.join(HERE, 'runner-lanes.json')
-const LABEL = /^[a-z0-9][a-z0-9.-]*$/, TOKEN = /^[A-Za-z0-9._-]+$/, SHA = /^[0-9a-f]{40}$/i
+const LABEL = /^[a-z0-9][a-z0-9.-]*$/, HOSTED_UBUNTU = /^ubuntu-(?:latest|\d{2}\.\d{2})(?:-arm)?$/, TOKEN = /^[A-Za-z0-9._-]+$/, SHA = /^[0-9a-f]{40}$/i
 const FAILED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure', 'stale'])
 const IGNORED = new Set(['cancelled', 'skipped', 'neutral'])
 
@@ -30,6 +30,9 @@ export function validateRegistry(registry) {
     if (!LABEL.test(String(lane?.label ?? '')) || lane.name !== lane.label) throw new RunnerLaneError(`lane label is unsafe: ${lane?.label}`)
     if (lane.class !== 'standard') throw new RunnerLaneError(`lane ${lane.label} is not a free standard runner`)
     if (/large|cores|gpu|xl/i.test(lane.label)) throw new RunnerLaneError(`lane ${lane.label} looks like a larger paid runner`)
+    // Allowlist, not a denylist: only GitHub-hosted standard Ubuntu image labels. `self-hosted`,
+    // windows-*, macos-* and any custom runner-group label are refused even though they are well-formed.
+    if (!HOSTED_UBUNTU.test(lane.label)) throw new RunnerLaneError(`lane ${lane.label} is not a GitHub-hosted standard Ubuntu label`)
     if (names.has(lane.label)) throw new RunnerLaneError(`duplicate lane ${lane.label}`)
     names.add(lane.label)
   }
@@ -99,7 +102,7 @@ export function aggregateVerdict(registry, checkRuns) {
     }
     byJob.get(parsed.job.context).push(run)
   }
-  const passed = [], pending = []
+  const passed = [], pending = [], unreported = []
   for (const job of registry.queue_sensitive_jobs) {
     const runs = byJob.get(job.context)
     const failed = runs.filter((r) => r.status === 'completed' && FAILED.has(r.conclusion))
@@ -111,9 +114,12 @@ export function aggregateVerdict(registry, checkRuns) {
     else if (succeeded.length > 1) refusals.push(`${job.context}: duplicate assertion (${succeeded.map((r) => r.name).join(', ')})`)
     else if (open.length) pending.push(`${job.context}: ${open.map((r) => `${r.name}=${r.status}`).join(', ')}`)
     else if (succeeded.length === 1) passed.push(...job.assertions)
-    else refusals.push(`${job.context}: assertion never ran successfully`)
+    else if (runs.length) refusals.push(`${job.context}: assertion never ran successfully`)
+    else unreported.push(`${job.context}: assertion never ran successfully (no run reported yet)`)
   }
-  if (refusals.length) return { verdict: 'refuse', refusals, pending }
+  // A context with no run at all is still a refusal for a one-shot verdict; runAggregate alone
+  // may keep waiting on it until its deadline, because the job may simply not have been queued yet.
+  if (refusals.length || unreported.length) return { verdict: 'refuse', refusals: [...refusals, ...unreported], pending, unreported }
   if (pending.length) return { verdict: 'pending', pending }
   const required = registry.queue_sensitive_jobs.flatMap((job) => job.assertions).sort()
   if (JSON.stringify([...passed].sort()) !== JSON.stringify(required)) return { verdict: 'refuse', refusals: ['accepted assertions do not equal the required set'] }
@@ -123,10 +129,16 @@ export function aggregateVerdict(registry, checkRuns) {
 // Workflow YAML must expose exactly the registry's lanes and keep the stable default context.
 export function workflowLaneConformance(registry, rawWorkflowText, job) {
   const problems = [], workflowText = String(rawWorkflowText).replace(/\r\n/g, '\n')
-  const options = [...workflowText.matchAll(/^\s+- (ubuntu-[a-z0-9.-]+)\s*$/gm)].map((m) => m[1])
   const labels = registry.lanes.map((lane) => lane.label)
-  if (JSON.stringify(options) !== JSON.stringify(labels)) problems.push(`lane choice options ${JSON.stringify(options)} differ from registry ${JSON.stringify(labels)}`)
   const input = /^ {6}lane:\n((?: {8}.*\n| {10}.*\n)+)/m.exec(workflowText)?.[1] ?? ''
+  // Every line of the options block is read, whatever its value: a drifted `self-hosted` or
+  // `windows-latest` option must fail here because runs-on is bound before the step guard runs.
+  const optionsBlock = /^ {8}options:\n((?: {10}.*\n)*)/m.exec(input)?.[1]
+  const options = optionsBlock === undefined ? null : optionsBlock.split('\n').filter(Boolean).map((line) => {
+    const m = /^ {10}- (.*?)\s*$/.exec(line)
+    return m ? (m[1] === "''" ? '' : m[1]) : `<unparsed: ${line.trim()}>`
+  })
+  if (JSON.stringify(options) !== JSON.stringify(['', ...labels])) problems.push(`lane choice options ${JSON.stringify(options)} differ from registry ${JSON.stringify(['', ...labels])}`)
   if (!/^ {8}type: choice$/m.test(input)) problems.push('lane input type is not choice')
   if (!/^ {8}default: ''$/m.test(input)) problems.push("lane input default is not ''")
   if (!/^ {8}required: false$/m.test(input)) problems.push('lane input required flag is not false')
@@ -148,17 +160,39 @@ export function runAggregate({ repo, headSha, registry = loadRegistry(), fetchRu
   const deadline = now() + timeoutMs
   for (;;) {
     const result = aggregateVerdict(registry, fetchRuns(repo, headSha))
-    if (result.verdict !== 'pending') return result
-    if (now() >= deadline) return { verdict: 'refuse', refusals: result.pending.map((p) => `still not finished at deadline: ${p}`) }
-    log(`waiting: ${result.pending.join('; ')}`)
+    const onlyWaiting = result.verdict === 'pending' || (result.verdict === 'refuse' && result.unreported?.length && result.refusals.length === result.unreported.length)
+    if (!onlyWaiting) return result
+    const waiting = [...(result.pending ?? []), ...(result.unreported ?? [])]
+    if (now() >= deadline) return { verdict: 'refuse', refusals: waiting.map((p) => `still not finished at deadline: ${p}`) }
+    log(`waiting: ${waiting.join('; ')}`)
     sleep(intervalMs)
   }
 }
 
-function fetchCheckRuns(repo, sha) {
-  const body = ghJson(['api', `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=latest`])
-  if (!Array.isArray(body?.check_runs) || body.total_count > body.check_runs.length) throw new RunnerLaneError('check-run listing is incomplete; refusing rather than judging a partial page')
-  return body.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion }))
+// Every page of every check run for the head (#2274: this repository passes 100 reports on a head).
+// filter=all, not filter=latest: `latest` selects by completed_at and can omit queued or in-progress
+// runs, and its total_count semantics are not pinned. The newest run per name (highest id) is kept,
+// which is what a re-run means, while queued runs stay visible so the verdict waits for them.
+export function fetchCheckRuns(repo, sha, { readJson = ghJson } = {}) {
+  const payload = readJson(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=all`])
+  const pages = Array.isArray(payload) ? payload : null
+  if (!pages || !pages.length) throw new RunnerLaneError('check-run listing did not return pages; refusing rather than judging a partial read')
+  const rows = []
+  for (const page of pages) {
+    if (!Array.isArray(page?.check_runs)) throw new RunnerLaneError('check-run listing returned a page with no check_runs list')
+    if (!Number.isInteger(page.total_count)) throw new RunnerLaneError('check-run listing returned a page with no total_count')
+    rows.push(...page.check_runs)
+  }
+  const total = pages[0].total_count
+  if (pages.some((page) => page.total_count !== total) || rows.length !== total) throw new RunnerLaneError(`check-run listing is incomplete (${rows.length} of ${total}); refusing rather than judging a partial read`)
+  const newest = new Map()
+  for (const r of rows) {
+    if (typeof r?.name !== 'string' || !Number.isSafeInteger(r.id)) throw new RunnerLaneError('check-run listing returned a run without a name or id')
+    const seen = newest.get(r.name)
+    if (seen && seen.id === r.id) throw new RunnerLaneError(`check-run listing repeated run ${r.id}; refusing rather than judging an unstable read`)
+    if (!seen || r.id > seen.id) newest.set(r.name, r)
+  }
+  return [...newest.values()].map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion }))
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

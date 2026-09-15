@@ -1,42 +1,39 @@
 {
   "schema_version": 1,
-  "work_issue": 2962,
+  "work_issue": 2969,
   "outcome": "ready-for-merge",
-  "pr": 2862,
+  "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2962/2",
-  "contract_sha256": "fe4fe361ecde0a701eb258633a6227b685bb8fa819fd2c1b5b8ee25798c6093a",
-  "head_sha": "27f5e1e1c9cdd9316eb100cc905d18181684549f",
+  "contract_ref": "refs/db-contracts/2969/9",
+  "contract_sha256": "c06648a2fd990209b837ccebf6c79ff080fe89dc00bcef950d5e5e8c9115d9fa",
+  "head_sha": "9cb0250138ab01971b205ab6a6e943f826126c3e",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/start-reroute.mjs",
-    "scripts/orchestrator-flow/start-reroute.test.mjs"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "153 passed, 0 skipped, 225 subtests passed. The classifier is allowlist-only: one ALLOWLIST constant of six full-statement entries, one test per entry (allowed and near-miss refused shapes) plus a test that unknown statements (SELECT, WITH, EXPLAIN, DO, INSERT, SET, BEGIN, GRANT, DROP TABLE, CALL, COPY, EXECUTE, LOCK, unparsed SQL) report all three risks. Against the previous head's gate, 60 of the new subtests failed first. Migrations 20260915130626 (non-CASCADE DROP FUNCTION) and 20260915143302 (nullable ADD COLUMN) give no finding."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/false-alarm-corpus.test.mjs",
+      "exit_code": 0,
+      "evidence": "1 passed, 0 failed; the corpus-indexed test name is kept."
+    },
+    {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check against main c7c9a7a2 passed at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
-    },
-    {
-      "command": "node --test --test-reporter=tap scripts/orchestrator-flow/migration-train.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-      "exit_code": 0,
-      "evidence": "26 tests passed, 0 failed, 0 skipped, 0 cancelled; local execution at 27f5e1e1c9cdd9316eb100cc905d18181684549f."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 27f5e1e1c9cdd9316eb100cc905d18181684549f; inventory unioned by semantic key with no dispositions dropped."
+      "evidence": "No whitespace errors against origin/main 89ec62d2."
     }
   ],
   "assumptions_resolved": [
-    "Implementation is the five declared files refreshed onto main c7c9a7a2 after PR 2861 landed, at 27f5e1e1c9cdd9316eb100cc905d18181684549f.",
-    "This outcome denotes submitted implementation evidence, not merge authorization. Exact-head review, required CI and landing order remain mandatory.",
-    "Live adapters, caller integration and programme acceptance remain pending under issue 2729, which this merge does not close."
+    "classify_sql returns [] for migrations 20260915130626 and 20260915143302.",
+    "Branch refreshed onto main 89ec62d2 (#2862) before reviewer draws.",
+    "No database, preview, rehearsal, production, migration, claim or lease write or dispatch."
   ],
   "stop_conditions_hit": []
 }

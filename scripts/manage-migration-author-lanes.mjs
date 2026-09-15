@@ -6829,7 +6829,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
       // Refusals name exactly what the lane saw, so a CI-only mismatch (#2958) is diagnosable from the log.
       const claimsSeen = () => `; PR head branch compared: ${JSON.stringify(pr.head.ref ?? null)}; open claims seen (${parsedClaims.length}): ${parsedClaims.map((claim)=>`#${claim.number} branch=${JSON.stringify(claim.lease.branch ?? null)} active=${claim.lease.active}${claim.lease.legacy ? ' legacy' : ''}`).join(', ') || 'none'}`
       if (kind !== 'merge' && matching.length !== 1) throw new LaneError(`exclusive lane requires exactly one live author claim for the pull-request branch${claimsSeen()}`)
-      if (kind === 'merge' && matching.length > 1) throw new LaneError('exclusive merge lane requires at most one live author claim for the pull-request branch')
+      if (kind === 'merge' && matching.length > 1) throw new LaneError(`exclusive merge lane requires at most one live author claim for the pull-request branch${claimsSeen()}`)
       if (kind === 'merge' && matching.length === 0) {
         let files
         try { files = io.getPrFiles?.(metadata.pr) } catch (error) { throw new LaneError(`exclusive merge lane cannot read pull request files (${error.message})`) }

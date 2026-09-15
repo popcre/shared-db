@@ -2825,6 +2825,13 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
     ()=>acquireExclusive('merge',{owner:'diagnostic-empty',pr:7,headSha:'docs-head'},io),
     /open claims seen \(0\): none/,
   )
+  const docsClaim=(version,object)=>claimBody({version,objects:[object],owner:'agent-docs',branch:'codex/docs',worktree:'C:/w/docs',expiresAt:new Date('2999-01-01T00:00:00.000Z')})
+  io.openClaims=()=>[{number:45,title:'claim',body:docsClaim('20260814200045','table public.x')},{number:46,title:'claim',body:docsClaim('20260814200046','table public.y')}]
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'diagnostic-multi',pr:7,headSha:'docs-head'},io),
+    (error)=>/requires at most one live author claim/.test(error.message)&&/PR head branch compared: "codex\/docs"/.test(error.message)&&/open claims seen \(2\): #45 branch="codex\/docs" active=true, #46 branch="codex\/docs" active=true/.test(error.message),
+  )
+  io.openClaims=()=>[]
   io.getPrFiles=()=>{throw new Error('GitHub unavailable')}
   assert.throws(
     ()=>acquireExclusive('merge',{owner:'unknown-files',pr:7,headSha:'docs-head'},io),

@@ -1,31 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 2942,
+  "work_issue": 2947,
   "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Let a re-claim of a work issue whose outcome history is already dispatched treat dispatch as satisfied instead of refusing the dispatch readback.",
-  "base_sha": "91de3134fa5d5c7b3bfb6d537822e3b4211e5f4b",
-  "dispatcher": "Albert Hazan (session request; orchestrator marker #2927 continuation)",
-  "worker": "claude-redispatch-readback-20260915",
-  "branch": "claude/redispatch-readback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/nifty-boyd-5c003d",
-  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Make the contract-test pass-2 supersession repair replay later applied DROP FUNCTION/PROCEDURE/ROUTINE statements so a routine retired by a later migration is not resurrected by an older pass-2 migration.",
+  "base_sha": "6fc54636cba5101702b6fe13ff28de5554cfd729",
+  "dispatcher": "Albert Hazan (session request; PR #2944 contract-test failure)",
+  "worker": "claude-pass2-honor-later-drops-20260915",
+  "branch": "claude/pass2-honor-later-drops",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad82ae622065b5387",
+  "allowed_paths": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["scripts/check_pass2_routine_supersession.py", "scripts/test_check_pass2_routine_supersession.py", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, migration, claim, lease, or infrastructure write.",
-    "Do not touch claim #2931, claim #2937, issue #2792, or PR #2938.",
-    "Do not skip the dispatch advance when the outcome history is invalid or in any state other than dispatched."
+    "Do not weaken, skip or quarantine any contract test.",
+    "Do not replay a drop from a later migration that is not proven applied in the replay."
   ],
-  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs", "git diff --check"],
+  "required_checks": ["python -m unittest scripts/test_check_pass2_routine_supersession.py", "git diff --check"],
   "assumptions": [
-    "A valid outcome history already at dispatched means a previous claim dispatched this work issue and was released.",
-    "The change requires no database object or migration-author route."
+    "The workflow already executes every row the script's snapshot query returns after the pass-2 migration, so emitting drop rows needs no workflow change.",
+    "A later applied re-create of the same routine name after its drop means the routine must remain present."
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing the outcome lifecycle transitions themselves.",
-    "Stop if completion requires any file outside the lane script, its test and the evidence pair."
+    "Stop if the fix requires changing the contract-test workflow or any file outside the script, its test and the evidence pair."
   ]
 }

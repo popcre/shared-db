@@ -1,20 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 2792,
+  "work_issue": 2921,
   "outcome": "ready-for-merge",
-  "pr": 2933,
-  "migration_versions": ["20260915023506"],
-  "contract_ref": "refs/db-contracts/2792/3",
-  "contract_sha256": "8287d99c95efb29d242d85b7c632439d0ffaf7c9b94f89a5bac75c70f9e88b29",
-  "head_sha": "1272d57f661d00d4aff422adb0f345f5a4c6fb41",
-  "files_changed": ["supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql", "supabase/tests/popsg_reconcile_bounded_ceiling_contracts.sql"],
-  "db_reads": ["public.style_guide_files", "public.style_guide_crawl_runs", "public.style_guide_search_documents"],
-  "db_writes": ["function public.preview_stale_sg_files", "function public.reconcile_stale_sg_files_batch"],
-  "checks": [
-    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors between base ffa300c7 and implementation 1272d57f."},
-    {"command": "database contract tests (supabase/tests/*.sql)", "exit_code": 0, "evidence": "popsg_reconcile_bounded_ceiling_contracts.sql passed all checks on preview in a rolled-back transaction with the identical function bodies; CI database-contract-tests runs every supabase/tests/*.sql on PR #2933."},
-    {"command": "python -m pytest scripts", "exit_code": 0, "evidence": "1158 passed, 8 skipped (pre-existing environment skips), 760 subtests passed."}
+  "pr": 2922,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2921/4",
+  "contract_sha256": "5f8cb34848dd2c574bc7f3a04fa6fe89470b19c4f71dde922d8ac712625f11ea",
+  "head_sha": "cfbf0df5487443fb51a5615299c4811a2b86628d",
+  "files_changed": [
+    ".github/live-proofs/2506.sql"
   ],
-  "assumptions_resolved": ["idx_sgf_reconcile_root_active_run_id exists on preview; a rolled-back clone rehearsal (217,193 active, 4,137 stale) drained in 7 calls of <=2.6s each with 0 re-seen rows inactivated. Preview keeps an orphan ledger row for retired 20260915015414 until the follow-up PR lands; dry-run 34922134833 and apply 34922309051 succeeded with that row present."],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors between base 477b8633 and implementation cfbf0df5."
+    }
+  ],
+  "assumptions_resolved": [
+    "Production has 20260911213429 (run 34898171486); the exact-match probe at 7a42e035 (index definitions, SECURITY DEFINER, STABLE, search_path array, jsonb result, body md5 83b8190b equal to the migration file's $function$ body) returned [{\"passed\":true}] on production (qsllyeztdwjgirsysgai) read-only, and a variant expecting search_path pg_catalog, auth, public returned [{\"passed\":false}]."
+  ],
   "stop_conditions_hit": []
 }

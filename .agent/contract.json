@@ -28,8 +28,7 @@
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [], "db_writes": [],
   "assumptions": [
     "The archived preview artifact manifest records each migration file sha256, and scripts/verify_preview_apply_artifact.py compares it with the files at the verification commit.",
     "workflow_dispatch accepts at most 25 inputs; the train ref is the 25th.",

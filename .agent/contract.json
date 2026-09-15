@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 2969,
-  "generation": 6,
+  "generation": 7,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "branch": "claude/risk-gate-drop-function",

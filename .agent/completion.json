@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 2970,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2969/6",
-  "contract_sha256": "152825edc67f1593264ada8399c979a4499e9559189ac1c5870ce7c5e7f46e3d",
-  "head_sha": "a52f8993fe926e3b52a83d9cbbee9abdb06576b7",
+  "contract_ref": "refs/db-contracts/2969/7",
+  "contract_sha256": "5ae478f18377f006eb30245b016a7e1ac20e7fb3eb14ae0abd826545b4497704",
+  "head_sha": "5175cf90d87421699ef89505b2f6ec1529aeb465",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,7 +19,7 @@
     {
       "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "154 passed, 0 skipped, 230 subtests passed. Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding. Reported: CASCADE and other drops, every DO block (dollar- or string-quoted) as all three risks, CALL, COPY, OWNER TO, SELECT setval, EXECUTE, ALTER SEQUENCE/VIEW, unmodelled statement kinds, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing or IF NOT EXISTS tables, cascading trigger or policy drops and row-changing statements. Each new reported shape passed silently on the previous head; both no-finding tests failed on the old gate first."
+      "evidence": "154 passed, 0 skipped, 233 subtests passed. Non-CASCADE DROP FUNCTION (#2958) and nullable ADD COLUMN (#2911) give no finding. Reported: CASCADE and other drops, every DO block (dollar- or string-quoted) as all three risks, CALL, COPY, OWNER TO, SELECT setval, EXECUTE, ALTER SEQUENCE/VIEW, unmodelled statement kinds, defaults, NOT NULL, CHECK, FK, type changes, non-concurrent indexes on existing or IF NOT EXISTS tables, cascading trigger or policy drops, WITH and EXPLAIN statements and row-changing statements. Each new reported shape passed silently on the previous head; both no-finding tests failed on the old gate first."
     },
     {
       "command": "git diff --check",

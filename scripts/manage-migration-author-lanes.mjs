@@ -12,7 +12,7 @@ import { gatherOpenPrObjects, normalizeObject, parseClaimBlock } from './check-d
 import { classifyDependencies, findCompletionRecord, findDependencyCycles, validateCompletionRecord, validateDependencyDeclaration, COMPLETION_FENCE, DependencyError } from './lib/work-dependencies.mjs'
 import { assertLease, evaluateRecovery, formatLeaseMessage, parseLeaseMessage, recoveredLeaseMetadata, LeaseError } from './lib/exclusive-lease.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment, auditTimeline, renderTimeline } from './db-coordination-events.mjs'
-import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE } from './orchestrator-flow/reconcile.mjs'
+import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit } from './orchestrator-flow/reconcile.mjs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 // `Migration guarded merge authorization` is posted by the guarded merge ITSELF,
@@ -2413,9 +2413,80 @@ export const githubIo = {
     return orchestratorEngineFromResolution(readOrchestratorResolution(()=>runOrchestratorResolver()))
   },
   orchestratorFlowAdapter(claimNumber,admissionOptions=null){ return githubFlowAdapter(this,claimNumber,admissionOptions) },
-  flowSnapshot(){
-    return {issues:this.openClaims().map((claim)=>{const lease=parseAuthorLease(claim.body),issue=claimWorkIssue(claim),work=this.getIssue(issue),declared=/^blocked_on:\s*(issue:#\d+|artifact:[^\s]+)\s*$/m.exec(work?.body??'')?.[1]??null,reference=declared??lease.blockedOn,resolved=reference?.startsWith('issue:#')?this.getIssue(Number(reference.slice(7)))?.state==='closed':false;let preview_edge_satisfied=false,preview_error=null;try{deriveLivePreviewCandidate(issue,this);preview_edge_satisfied=true}catch(error){preview_error=error.message}return{issue,claim:claim.number,owner:lease.owner,capacity_state:lease.capacityState,blocker:reference?{durable:true,resolved,reference}:null,preview_edge_satisfied,preview_error}})}
+  flowSnapshot(now=new Date()){
+    const claims=this.openClaims()
+    // QUEUED-BEHIND IS COMPUTED ONCE, AND ONLY IF SOMETHING IS ACTUALLY EXPIRED.
+    // It is the count the report exists to show -- how many tasks are waiting on
+    // a lane whose lease ran out -- and it comes from the same pure queue builder
+    // the audit uses, not from a second guess at what a lane holds.
+    let queuedBehind=null
+    const queuedBehindFor=(claimNumber)=>{
+      if(queuedBehind===null){
+        queuedBehind=new Map()
+        try{
+          for(const lane of buildDynamicQueues(this.openWorkIssues(),claims,now,this.openIssueNumbers()).queues)
+            if(lane.active)queuedBehind.set(Number(lane.active),lane.queued.length)
+        }catch{/* an unreadable queue leaves the count unknown rather than zero */}
+      }
+      return queuedBehind.has(Number(claimNumber))?queuedBehind.get(Number(claimNumber)):null
+    }
+    return {issues:claims.map((claim)=>{
+      const issue=claimWorkIssue(claim)
+      // THE TWO DOMAINS ARE DERIVED INDEPENDENTLY AND FAIL INDEPENDENTLY. A throw
+      // while reading capacity evidence must not blank the preview answer, and a
+      // preview edge that cannot be derived must not make capacity look unreadable.
+      // Each leg therefore carries its own try/catch and its own error field.
+      let capacity=null,capacity_error=null
+      try{capacity=flowCapacityFacts(claim,issue,now,this,queuedBehindFor)}catch(error){capacity_error=error.message}
+      let preview_edge_satisfied=false,preview_error=null
+      try{deriveLivePreviewCandidate(issue,this);preview_edge_satisfied=true}catch(error){preview_error=error.message}
+      return {issue,claim:claim.number,...(capacity??{}),capacity_error,preview_edge_satisfied,preview_error}
+    })}
   },
+}
+
+// THE CAPACITY HALF OF ONE FLOW SNAPSHOT ROW (issue #2301 Step 4). It is a named
+// function rather than an expression inside the snapshot because it now reads
+// three separate sources -- the claim's own lease, the work issue's declared
+// blocker, and the blocker issue itself -- and a reader has to be able to see
+// which fact came from where before trusting a relinquish suggestion built on it.
+export function flowCapacityFacts(claim,issue,now,io,queuedBehindFor=()=>null){
+  const lease=parseAuthorLease(claim.body,now)
+  const work=io.getIssue(issue)
+  const declared=/^blocked_on:\s*(issue:#\d+|artifact:[^\s]+)\s*$/m.exec(work?.body??'')?.[1]??null
+  const reference=declared??lease.blockedOn
+  let blocker=null
+  if(reference){
+    blocker={durable:true,reference,resolved:false,state:null,work_type:null,audit:null}
+    const number=/^issue:#(\d+)$/.exec(reference)?.[1]
+    if(number){
+      const blockerIssue=io.getIssue(Number(number))
+      blocker.state=blockerIssue?.state??null
+      blocker.resolved=blockerIssue?.state==='closed'
+      // A blocker's work_type comes from its OWN scope fence. An absent or
+      // unreadable fence leaves this null, and null is not `repo-maintenance`,
+      // so an unparseable blocker can never be read as abandonment evidence.
+      try{blocker.work_type=parseQueueScope(blockerIssue?.body??'')?.workType??null}catch{blocker.work_type=null}
+      blocker.audit=parseAbandonmentAudit(blockerIssue?.body??'')
+    }
+  }
+  const facts={owner:lease.owner,capacity_state:lease.capacityState,blocker,expired_claim:null}
+  if(lease.capacityState!=='expired-unconfirmed')return facts
+  // Only an EXPIRED lane pays for the pull-request lookup, so the cost of the
+  // report is bounded by the number of expired lanes, not by every open claim.
+  const pulls=io.branchPulls?.(lease.branch)??[]
+  const live=pulls.find((pull)=>pull.state==='open')??pulls.find((pull)=>pull.merged_at)??pulls[0]??null
+  const expiresAt=lease.expiresAt instanceof Date?lease.expiresAt:lease.expiresAt?new Date(lease.expiresAt):null
+  facts.expired_claim={
+    claim:Number(claim.number),owner:lease.owner,branch:lease.branch,
+    expires_at:expiresAt?expiresAt.toISOString():null,
+    expired_for_seconds:expiresAt?Math.max(0,Math.round((now.getTime()-expiresAt.getTime())/1000)):null,
+    pr:live?Number(live.number):null,
+    pr_state:live?(live.state==='open'?'open':live.merged_at?'merged':'closed-unmerged'):'none',
+    head_sha:live?(String(live.head?.sha??'').toLowerCase()||null):null,
+    queued_behind:queuedBehindFor(claim.number),
+  }
+  return facts
 }
 
 function githubFlowAdapter(io,claimNumber=null,admissionOptions=null){
@@ -6661,6 +6732,43 @@ function publishCapacityEvents({ workIssue, claim, eventTypes, actor, detail }, 
   }
 }
 
+// ACTING ON SOMEBODY ELSE'S ABANDONMENT IS A DIFFERENT ACT (issue #2301 Step 4).
+// When the blocker is an ordinary durable work dependency, this command means
+// "the work is blocked, hand the capacity back" and behaves exactly as it always
+// has. When the blocker is an abandonment-audit issue, it means "this author is
+// gone, take the lane from them" -- a third party mutating a claim they do not
+// own -- and that is the case where the evidence has to be re-proved at the
+// moment of the write rather than trusted from whenever the audit was filed.
+//
+// Returns null for an ordinary blocker, so the ordinary path stays untouched,
+// and throws rather than degrading whenever the evidence is present but wrong:
+// a stale head, a renumbered pull request, a reclassified or closed audit issue
+// and a mismatched owner are each a refusal, never a warning.
+export function assertAbandonmentEvidence(options, lease, blocker, io) {
+  const number=/^issue:#(\d+)$/.exec(String(blocker??''))?.[1]
+  if(!number)return null
+  const blockerIssue=io.getIssue(Number(number))
+  const audit=parseAbandonmentAudit(blockerIssue?.body??'')
+  if(!audit)return null
+  if(blockerIssue?.state!=='open')throw new LaneError(`abandonment-audit issue #${number} is not open`)
+  let workType=null
+  try{workType=parseQueueScope(blockerIssue?.body??'')?.workType??null}catch{workType=null}
+  if(workType!=='repo-maintenance')throw new LaneError(`abandonment-audit issue #${number} must be classified repo-maintenance work, not ${workType??'unclassified'}`)
+  if(Number(audit.claim)!==Number(options.claim))throw new LaneError(`abandonment-audit issue #${number} names claim #${audit.claim}, not claim #${options.claim}`)
+  if(String(audit.owner)!==String(lease.owner))throw new LaneError(`abandonment-audit issue #${number} names owner ${audit.owner}, but claim #${options.claim} is held by ${lease.owner}`)
+  const pulls=io.branchPulls?.(lease.branch)??[]
+  const named=pulls.find((pull)=>Number(pull.number)===Number(audit.pr))
+  if(!named)throw new LaneError(`abandonment-audit issue #${number} names pull request #${audit.pr}, which is not a pull request for branch ${lease.branch}`)
+  const head=String(named.head?.sha??'').toLowerCase()
+  if(head!==audit.head_sha)throw new LaneError(`abandonment-audit issue #${number} names head ${audit.head_sha}, but pull request #${audit.pr} is now at ${head||'an unreadable head'}`)
+  // The worktree observation is the operator's own, stated explicitly. Inferring
+  // it here would let a stale audit decide what the disk currently looks like.
+  if(!options.worktreeState)throw new LaneError('acting on abandonment evidence requires an explicit --worktree-state')
+  const marker=typeof io.orchestratorFlowAdapter==='function'?io.orchestratorFlowAdapter().resolveMarker():null
+  if(!marker?.live||marker.calling_task!==marker.task)throw new LaneError('acting on abandonment evidence requires a matching live sole-orchestrator marker')
+  return audit
+}
+
 export function relinquishAuthorLease(options, now = new Date(), io = githubIo) {
   for(const key of ['claim','owner','blockedOn'])if(!options[key])throw new LaneError(`author-capacity relinquishment requires ${key}`)
   const ownerSha=io.makeOwnerCommit(`db-coordination author-capacity-relinquish claim=${options.claim}`)
@@ -6675,6 +6783,7 @@ export function relinquishAuthorLease(options, now = new Date(), io = githubIo) 
     if(lease.legacy)throw new LaneError('legacy claim capacity cannot be relinquished')
     if(lease.owner!==options.owner)throw new LaneError('claim belongs to a different owner')
     const blocker=validateCapacityBlocker(options.blockedOn,io)
+    const evidence=assertAbandonmentEvidence(options,lease,blocker,io)
     const recoveryArtifact=options.recoveryArtifact?requireDereferenceableRecoveryArtifact(options.recoveryArtifact,io):null
     if(lease.capacityState==='relinquished'){
       const replayState=requestedWorktreeState(options.worktreeState)??(lease.worktreeState==='clean'?'clean':null)
@@ -6691,6 +6800,13 @@ export function relinquishAuthorLease(options, now = new Date(), io = githubIo) 
     }
     const currentBlocker=validateCapacityBlocker(options.blockedOn,io)
     if(currentBlocker!==blocker)throw new LaneError('capacity blocker changed concurrently before relinquishment')
+    // TOCTOU. The evidence was proved once before the worktree was observed and
+    // the exclusive stages were checked; between those reads the audit issue can
+    // be closed, reclassified, or edited to name a different head. Re-proving it
+    // here, and requiring the SAME record, is what stops a window in which stale
+    // evidence authorizes a write that its current state would refuse.
+    const currentEvidence=assertAbandonmentEvidence(options,lease,currentBlocker,io)
+    if(JSON.stringify(currentEvidence)!==JSON.stringify(evidence))throw new LaneError('abandonment evidence changed concurrently before relinquishment')
     const expected=replaceCapacityState(before.body,'relinquished',blocker,worktreeState,recoveryArtifact)
     requireOwnedRef(MUTEX_REF,ownerSha,io);changed=true;io.updateIssue(options.claim,{body:expected})
     requireOwnedRef(MUTEX_REF,ownerSha,io)
@@ -7742,7 +7858,14 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.recoverMutex){console.log(JSON.stringify(recoverStaleAuthorMutex({expectedSha:o.expectedSha,confirmStale:o.confirmStale,serializedRecovery:process.env.GITHUB_ACTIONS==='true'&&process.env.AUTHOR_MUTEX_RECOVERY_SERIALIZED==='true',now},io),null,2));return 0}
     if(o.reconcileFlow){
       if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
-      const result=reconcileFlow(io.flowSnapshot(),io.orchestratorFlowAdapter());console.log(JSON.stringify(result,null,2));return result.status==='UNVERIFIABLE'?2:0
+      const result=reconcileFlow(io.flowSnapshot(now),io.orchestratorFlowAdapter());console.log(JSON.stringify(result,null,2))
+      // PER DOMAIN, DETERMINISTICALLY. Exit 2 means "some domain's evidence was
+      // absent or unreadable" -- either domain on its own is enough, and neither
+      // can be masked by the other being fine. Written as an explicit scan of the
+      // domain statuses rather than a test of the aggregate word, so that adding a
+      // third domain later cannot quietly start exiting 0 on its failures.
+      const domains=[result.capacity?.status,result.preview?.status]
+      return domains.includes('UNVERIFIABLE')?2:0
     }
     if(o.preparePreviewDispatch){
       if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('preview preparation runtime adapter is unavailable')

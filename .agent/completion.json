@@ -2,83 +2,79 @@
   "schema_version": 1,
   "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 3000,
+  "pr": 3010,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/9",
-  "contract_sha256": "c4c76cc5c320e8262106944434e68224c826e0e2c619da7641c52622f403dade",
-  "head_sha": "43c14f8d96895a945679d1a6d769ae16121097c1",
+  "contract_ref": "refs/db-contracts/2301/12",
+  "contract_sha256": "caa4e83d68e66ad3b4d79920b01112a71d7675c8b6e7196f586048be3365fbbe",
+  "head_sha": "c922c0c99219cbdfba14f356bf6aa84b28947a98",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/check-migration-pr-lease.mjs",
-    "scripts/check-migration-pr-lease.test.mjs",
-    "scripts/coordination-scenarios.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/migration-retirement-tombstones.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/capacity-state.test.mjs",
-    "scripts/test-fixtures/migration-lane-race-worker.mjs"
+    "scripts/orchestrator-flow/reconcile.mjs",
+    "scripts/orchestrator-flow/reconcile.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/orchestrator-flow/reconcile.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 28, pass 28, fail 0, cancelled 0, skipped 0, todo 0. Fourteen pre-existing tests plus fourteen new ones covering every Step 4 verification gate: capacity survives an unreadable preview edge and preview survives an unreadable capacity row, expiry without evidence reports only, an unreadable queued-behind count reports null rather than zero, an exact audit yields only the suggested command under a live marker, nine separate ways of being the wrong evidence each refuse, the audit fence is parsed whole or not at all, the two worktree-state lists agree, exit codes are deterministic per domain, the guarded command re-proves the whole tuple, evidence that changes between the two reads refuses without writing, the printed suggested command is split into argv and run through the real CLI end to end, automatic reconciliation refuses for want of an operator observation, and capacity facts are derived from the claim, the work issue and the blocker rather than assumed."
+    },
+    {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 578, pass 578, fail 0, cancelled 0, skipped 0, todo 0. Unchanged from the pre-change count of 578, so adding the guard to three further mutation paths weakened no existing refusal and broke no existing double. The Windows EPERM race-fixture repair recorded in generation 8 is untouched here; its 30 consecutive clean race runs were measured then and are not re-asserted for this head."
-    },
-    {
-      "command": "node --test scripts/migration-retirement-tombstones.test.mjs",
-      "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 30, pass 30, fail 0. The count is unchanged because the reactivation-wiring test was rewritten in place rather than added to: it no longer enumerates five named functions but discovers claim-mutating exports from the module and requires each to consult the retirement guard. That rewritten test fails against the previous head, naming recoverExpiredClaimFromPr, supersedeActiveClaimVersion, reversionActiveClaim and reissueMergedStrandedClaim as unguarded."
-    },
-    {
-      "command": "node --test scripts/check-migration-pr-lease.test.mjs",
-      "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 19, pass 19, fail 0. Includes the merge refusal for a terminally retired migration version and its fail-closed behaviour on an unreadable retirement ref."
-    },
-    {
-      "command": "node --test scripts/coordination-scenarios.test.mjs",
-      "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 31, pass 31, fail 0. The abandoned-absent scenario still refuses a resume without recovery evidence with the retirement guard in place."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors reported for 921fef3a0e47f01bc5af73a667f2932d7a33d988..43c14f8d96895a945679d1a6d769ae16121097c1."
-    },
-    {
-      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
-      "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 70, pass 70, fail 0. These doubles previously lacked the ref listing the retirement guard asks for; each now answers from its own ref map instead of a hard-coded empty list."
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 578, pass 578, fail 0. Unchanged from the Step 3 count of 578, so rewriting flowSnapshot and adding the abandonment-evidence guard to relinquishAuthorLease weakened no existing refusal and broke no existing double."
     },
     {
       "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 22, pass 22, fail 0. Same fixture gap and same repair: the shared memoryIo factory lists its real refs rather than reporting that nothing is retired without being asked."
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 22, pass 22, fail 0. This is the suite that exercises the ORDINARY relinquish and resume path, and it is untouched because assertAbandonmentEvidence returns null for a blocker that carries no abandonment-audit fence."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 70, pass 70, fail 0."
+    },
+    {
+      "command": "node --test scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 31, pass 31, fail 0. The abandoned-absent scenario still refuses a resume without recovery evidence."
+    },
+    {
+      "command": "node --test scripts/migration-retirement-tombstones.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 30, pass 30, fail 0. Step 3's discovery-based wiring test still holds relinquishAuthorLease to its written exemption; adding an evidence guard to it did not turn it into a claim-reactivation path."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors reported for 1dcf196ea9b506ec14feb55e8465b53d9faf1706..c922c0c99219cbdfba14f356bf6aa84b28947a98."
     },
     {
       "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 6, pass 6, fail 0. The recorded inventory of 296 call sites is unchanged by this fix, which adds guard CALLS rather than new refusal messages, so no disposition needed rewriting."
+      "evidence": "Run at implementation head c922c0c99219cbdfba14f356bf6aa84b28947a98: tests 6, pass 6, fail 0. node scripts/check-throughput-truth-audit.mjs separately reports \"truth audit OK: call_sites=296\", the same count recorded in the inventory, so the reworded comments introduced no new discovered call site and the inventory file itself is untouched by this pull request."
     }
   ],
   "assumptions_resolved": [
-    "Base is 921fef3a0e47f01bc5af73a667f2932d7a33d988, the merged Phase A plan STATUS record; this branch was rebased onto it before the pull request was opened, so the guarded merge cannot refuse it as behind.",
-    "No other open pull request touches any of the five shared scripts changed here; PRs 2877, 2872, 2869, 2846, 2835, 2823, 2821 and 2607 were each checked file by file, so the single-ready-PR collision rule is satisfied rather than bypassed.",
-    "Retirement is opt-in and the existing --release-claim behaviour is unchanged without --retire; a test asserts an ordinary release writes no tombstone.",
-    "Test doubles that the retirement guard now questions gained a real ref listing rather than a hard-coded empty one, because a double that answers \"nothing is retired\" without being asked would hide the exact failure this step exists to catch.",
-    "No retirement ref is ever deleted; a test asserts deleteRef is never called across create, conflicting retry, rollback and refusal paths.",
-    "plan_author_lane_abandonment_lifecycle.md is deliberately untouched here; recording Step 3 in its STATUS table is Step 6 work.",
-    "This pull request closes sub-issue 2999 and leaves parent 2301 open for Steps 4 to 7.",
-    "The 25-process race test failed roughly one run in twenty-five with a Windows EPERM crash inside the fixture's createRef, not with the assertion under test: Windows reports EPERM rather than EEXIST while a racing process holds the mutex path open with a delete pending. The fixture now retries that transient contention briefly; reporting false instead would have claimed another owner held the ref and refused an author entitled to it.",
-    "The race-test flake was measured at the base commit 921fef3a0e47f01bc5af73a667f2932d7a33d988 in an isolated scratch clone before being attributed: 2 of 40 baseline runs failed with the identical EPERM at migration-lane-race-worker.mjs createRef, so the defect pre-dates this work and the repair here fixes a latent platform bug rather than one introduced by Step 3.",
-    "files_changed lists the nine implementation paths only. The evidence gate compares that list against the change set from the pull request base to report.head_sha, the implementation commit, and separately verifies that the two .agent evidence files are the only paths permitted to follow that head. Naming them in files_changed as well counts them twice and is refused.",
-    "A governed review of head 9551b9be54a25c0456ff0d91cca749571871a03f returned a revision request, recorded durably at refs/db-review-verdicts/2999-3000-9551b9be54a25c0456ff0d91cca749571871a03f, sha 98e477baf353e0726289c4ee8ea87d4d7f275a07. It passed the merge-gate, fixture-honesty and audit-visibility checks and found one gap: recoverExpiredClaimFromPr carried no call to the version guard, so a claim reopened over a tombstoned version could still be mutated through the expired-recovery entry while neighbouring entries stopped it. That finding was confirmed independently against the source before being acted on, not adopted on the reviewer's word.",
-    "The finding was wider than reported. Discovery over the module's own exports found three unguarded paths that re-point or extend a claim, not one: recoverExpiredClaimFromPr, supersedeActiveClaimVersion together with its alias reversionActiveClaim (line 5287 exports the same function under both names), and reissueMergedStrandedClaim. All three now consult the guard. The reissue entry stays unreachable today because it needs a merged pull request the merge gate would have stopped, but an entry that is unreachable by one route is not an entry that may skip the refusal.",
-    "The wiring test that existed to catch this class of defect passed while the three holes were open, because it enumerated the five functions that already carried the guard. An allowlist of the guarded can never catch the unguarded. It now derives the population from the module and holds it to a floor of eight, so a discovery that silently matches nothing fails instead of passing.",
-    "main and relinquishAuthorLease are exempt from that discovery, each with its reason recorded in the test itself. main performs the retirement close and would refuse its own --release-claim --retire; relinquishing hands capacity back without re-pointing or extending a lease, and guarding it would strand a retired claim rather than protect it. Both were read before being exempted: relinquishAuthorLease sets capacity state only and touches no version, branch, worktree or expiry.",
-    "No behavioural fixture was added for the three newly guarded paths, and this is a deliberate limit rather than an oversight. Each guard sits behind preconditions -- an exact claim title, an expired lease, a merged source pull request -- that a double must satisfy before reaching the refusal, and a double that failed a precondition would read as coverage while proving nothing. The rewritten discovery test fails without this fix and names all three paths, which is the property being asserted.",
-    "The fix is a new implementation commit rather than an amendment of the evidence commit. Committing it on top of the old evidence commit would have put the two .agent files inside base..head_sha and been refused by the evidence gate, so the history was re-ordered to implementation commit 43c14f8d96895a945679d1a6d769ae16121097c1 followed by this evidence commit alone."
+    "Base is 1dcf196ea9b506ec14feb55e8465b53d9faf1706, the merged Step 3 head; this branch was cut from it, so the guarded merge cannot refuse it as behind.",
+    "No other open non-draft pull request touches any of the files changed here. PRs 3008, 3007, 2877, 2872, 2869, 2846, 2835, 2823, 2821 and 2607 were each checked file by file, so the single-ready-PR collision rule is satisfied rather than bypassed.",
+    "The top-level status is unchanged in meaning. It reads UNVERIFIABLE when either domain is unverifiable, RECONCILED when the marker is live, and REPORT_ONLY otherwise -- exactly as before. The only new route into UNVERIFIABLE is capacity_error, which no previous run could have carried because the field did not exist.",
+    "Action ordering is preserved, so the existing assertion that a live marker produces relinquish, then resume, then ready remains a statement about the code rather than a test rewritten to match new output.",
+    "queued_behind of null means unknown and is never coerced to zero, because an empty queue is a reason not to act on an expired lane while an unreadable queue is not.",
+    "The queued-behind map is built lazily and once per snapshot, so a run with no expired lane never pays for openWorkIssues() or buildDynamicQueues().",
+    "assertAbandonmentEvidence returns null for any blocker without an abandonment-audit fence, which is why the ordinary relinquishment path and its 22 capacity-state tests are untouched by the new marker and worktree-state requirements. A test asserts both the ordinary path still succeeds and the audit path refuses without an explicit observation.",
+    "The flow adapter's relinquishCapacity passes no worktree state, so automatic reconciliation of an abandonment-audit blocker now refuses. This is deliberate and is pinned by a test: no automated caller can observe another agent's disk, and the plan requires that reconciliation never automatically transitions an expired claim. The same test then supplies the observation and asserts the identical evidence is accepted, so the refusal is proved to be about the missing observation and not about the evidence being unusable.",
+    "The abandonment tuple is re-proved inside the mutex at the existing TOCTOU re-validation point and the re-proved record is compared for equality with the first, because between the two reads the audit issue can be closed, reclassified, or edited to name a different head.",
+    "RELINQUISH_WORKTREE_STATES is duplicated across a module boundary rather than imported, and a test asserts it equals WORKTREE_STATES; a drifted list would print an operator a command whose own validation refuses the value it was told to use.",
+    "plan_author_lane_abandonment_lifecycle.md is deliberately untouched here; recording Step 4 in its STATUS table is Step 6 work.",
+    "This pull request leaves #2301 open for Steps 5 to 7.",
+    "files_changed lists the three implementation paths only. The evidence gate compares that list against the change set from the pull request base to report.head_sha, the implementation commit, and separately verifies that the two .agent evidence files are the only paths permitted to follow that head; naming them in files_changed as well counts them twice and is refused.",
+    "The first push of this branch failed the Tools offline tests step with \"truth-audit semantic inventory drift: re-review changed call sites (found 299, recorded 296)\", and the queue-sensitive aggregate refused solely because that check failed. Three new prose comments used the word \"missing\", which the truth audit discovers as call sites. Recording three excluded dispositions would have put this pull request on docs/verification/throughput-guard-truth-audit-20260828.json, which open pull requests 2823 and 2821 already hold; the single-ready-PR collision rule is a rule to wait behind, not to bypass. The comments were reworded to \"absent\", \"unreadable\" and \"omits\" instead. Their meaning is unchanged, none of them ever described a database object that was never created, the inventory file is left exactly as base has it, the audit still reports call_sites=296 and its own suite still passes. Nothing was weakened and no count was hand-edited.",
+    "Contract generation 12 supersedes 11 by removing the audit inventory from allowed_paths and file_writes again, since the reword means this pull request never writes that file. Generations 10 and 11 remain immutable at their refs. The inventory suite stays in required_checks because it is the proof that the reword left the audit whole.",
+    "Round 1 of the governed review (GLM 5.3, head 0af03faa00d31ac07cbde4f377f774022699b19b) returned REVISE on one blocking defect and it was real: the suggested guarded command printed \"--claim 41\", but the lane CLI parses --claim as a BOOLEAN (it is the flag that claims a lane) and the value flag is --claim-number, so the one artifact Step 4 exists to print could not be run verbatim. It failed closed at the parser rather than mutating anything. The emitter now prints --claim-number, and the test that enshrined the defect by matching a regex was replaced by one that splits the printed command into argv and runs it through the real CLI end to end, so a string that does not execute can never pass again.",
+    "The same review noted that the concurrent-evidence equality check had no test. It now has one: the audit issue is swapped between the two reads for a record that is still well formed, still names this claim and owner, and still names a pull request on this branch -- the only case no individual check can catch -- and the relinquishment refuses without writing. The swap is tied to the worktree observation that happens between the two reads rather than to a read count, so the test cannot drift into passing vacuously.",
+    "The review also corrected an inaccuracy in this record: the split is fourteen pre-existing tests plus fourteen new ones, not twelve plus fourteen. The totals and pass counts were always right; the evidence line above now states the split correctly at 28 tests."
   ],
   "stop_conditions_hit": []
 }

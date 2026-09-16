@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3027,
+  "work_issue": 3045,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Tooling for programme popcre/ai-devops#401 Steps 2A, 4 and 7 under issue 3027: a report-only no-database-preview route decision in the documents-only workflow, a scheduled two-hour no-progress alarm with successor resume, and a dispatch-only start-reroute staging hook with its harness. Scripts, tests and workflows only; no schema, migration, database claim or database access.",
+  "goal": "Tooling for programme popcre/ai-devops#401 Steps 2A, 4 and 7 under issue 3045 (tracked in 3027): a report-only no-database-preview route decision in the documents-only workflow, a scheduled two-hour no-progress alarm with successor resume, and a dispatch-only start-reroute staging hook with its harness. Scripts, tests and workflows only; no schema, migration, database claim or database access.",
   "base_sha": "9561942901a369194e83c99a753a1f5f6453f0cd",
   "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
   "worker": "Claude Opus 5 #3027 blocked-steps maintainer",

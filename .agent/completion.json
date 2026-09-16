@@ -1,15 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 3062,
+  "work_issue": 3069,
   "outcome": "ready-for-merge",
-  "pr": 3063,
+  "pr": 3070,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3062/1",
-  "contract_sha256": "6bc2caeedc71abe0c968ad1c5a1fd1c153603fec0d0a99f3735fa10b208696d6",
-  "head_sha": "2b1e6a395e07ce3587c82a3d0ef9677531a52d5e",
+  "contract_ref": "refs/db-contracts/3069/1",
+  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
+  "head_sha": "c2de78cc89bec57ecadacf577504e1043b2a8611",
   "files_changed": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    ".github/workflows/migration-author-lease.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -17,16 +22,16 @@
     {
       "command": "node --test on every changed scripts test file",
       "exit_code": 0,
-      "evidence": "run-governed-review 77/77 pass, 0 fail, 0 skipped at 2b1e6a39; check-throughput-truth-audit OK."
+      "evidence": "check-required-checks-preflight, refresh-code-pr-branch, dispatch-production-apply 57/57 pass, 0 fail, 0 skipped at c2de78cc against origin/main 7ae12aad; truth audit and GitHub transport conformance OK."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 2b1e6a39."
+      "evidence": "Exit 0 with no output at c2de78cc."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: only the review runner's pre-start checks and prompt copy changed; every existing refusal condition is unchanged."
+    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
   ],
   "stop_conditions_hit": []
 }

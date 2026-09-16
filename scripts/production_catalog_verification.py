@@ -4466,35 +4466,62 @@ DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT = (
     " and position('core.customer' in pg_get_viewdef(c.oid,true))=0"
     " and position('core.factory' in pg_get_viewdef(c.oid,true))=0"
     " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    # The roles that read this view today must still be able to read it. The
+    # first shape of this repair raised insufficient_privilege from a joined
+    # SECURITY DEFINER helper, which a LEFT JOIN does not swallow, so
+    # service_role and every no-JWT session got 42501 instead of rows. Nothing
+    # in the catalog caught that, so it is pinned here.
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
     " and not has_table_privilege('anon',c.oid,'SELECT'))"
-    " and exists (select 1 from pg_proc p"
-    " where p.oid=to_regprocedure('dam.dam_order_list_customer_directory()')"
-    " and p.prosecdef and p.provolatile='s' and p.proretset"
-    # A definer function is only as safe as its owner and its search_path.
-    " and p.proowner::regrole::text='postgres'"
-    " and p.proconfig @> array['search_path=pg_catalog, auth']::text[]"
-    # It must stay a two-column (id, name) directory and nothing wider.
-    " and pg_get_function_result(p.oid)"
-    "='TABLE(customer_id uuid, customer_name text)'"
-    " and has_function_privilege('authenticated',p.oid,'EXECUTE')"
-    " and not has_function_privilege('anon',p.oid,'EXECUTE'))"
-    " and exists (select 1 from pg_proc p"
-    " where p.oid=to_regprocedure('dam.dam_order_list_vendor_directory()')"
-    " and p.prosecdef and p.provolatile='s' and p.proretset"
-    " and p.proowner::regrole::text='postgres'"
-    " and p.proconfig @> array['search_path=pg_catalog, auth']::text[]"
-    " and pg_get_function_result(p.oid)"
-    "='TABLE(vendor_id uuid, vendor_name text)'"
-    " and has_function_privilege('authenticated',p.oid,'EXECUTE')"
-    " and not has_function_privilege('anon',p.oid,'EXECUTE'))"
-    # The repair must not have been bought by widening either source table:
-    # both keep exactly the two policies they carry today.
+    # Both directories are OWNER-evaluated views, never invoker views and never
+    # functions: a view cannot raise, so it cannot abort the order list.
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_customer_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('customer_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('customer_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_vendor_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('vendor_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('vendor_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # The owner reading is only safe while neither source table forces RLS on
+    # its owner, and the repair must not have been bought by widening either
+    # table: both keep exactly the two policies they carry today.
+    " and (select count(*) from pg_class c join pg_namespace n"
+    " on n.oid=c.relnamespace where n.nspname='core'"
+    " and c.relname in ('customer','factory')"
+    " and c.relrowsecurity and not c.relforcerowsecurity"
+    " and c.relowner::regrole::text='postgres')=2"
     " and (select count(*) from pg_policies where schemaname='core'"
     " and tablename in ('customer','factory')"
     " and policyname in ('shared_read','admin_write'))=4"
     " and not exists (select 1 from pg_policies where schemaname='core'"
     " and tablename in ('customer','factory')"
     " and policyname not in ('shared_read','admin_write'))"
+    # No SECURITY DEFINER helper of the abandoned first shape may survive.
+    " and to_regprocedure('dam.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('dam.dam_order_list_vendor_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_vendor_directory()') is null"
 )
 CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
     DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT

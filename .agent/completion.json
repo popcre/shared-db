@@ -1,41 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3045,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3042,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3045/8",
-  "contract_sha256": "ea9b09901e84ca0e47780adee3312f57db228de9734fcef470749cea2286040f",
-  "head_sha": "1cfc6e9e166e7c249bc172fa44e0163c4ea3b9d9",
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "0975d26807425415a1fbcfccd0318c0e2762d119",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/documents-only-merge-authorization.yml",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".github/workflows/start-reroute-canary.yml",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.test.mjs"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "49 pass, 0 fail, 0 skipped at implementation head 7576e32f (ea4c73f5 merged with main 3f5c2a23) rebased on origin/main 95619429."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
     },
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "python scripts/check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at ea4c73f5."
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "The documents-only route step carries continue-on-error: true and always exits 0, so it only reports and cannot change the merge authorization."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

@@ -112,8 +112,8 @@ export function assertNamedHold({ heldIssue, reason }, facts) {
     if (!shared.length) throw new HoldReasonError(`hold_reason claim:#${parsed.claim} shares no conflicting object with #${held}; ${UNRELATED_HOLD}`)
     return { kind: 'claim', holder: `claim #${parsed.claim}`, objects: shared }
   }
-  const missing = parsed.objects.filter((object) => !conflicting(object))
-  if (missing.length) throw new HoldReasonError(`hold_reason object:#${parsed.claim} names ${missing.join(', ')}, which #${held} and claim #${parsed.claim} do not conflict on; ${UNRELATED_HOLD}`)
+  const unshared = parsed.objects.filter((object) => !conflicting(object))
+  if (unshared.length) throw new HoldReasonError(`hold_reason object:#${parsed.claim} names ${unshared.join(', ')}, which #${held} and claim #${parsed.claim} do not conflict on; ${UNRELATED_HOLD}`)
   return { kind: 'object', holder: `claim #${parsed.claim}`, objects: parsed.objects }
 }
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3093,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -21,6 +21,7 @@
     "DB_Data_Admin.md",
     "docs/db-data-admin-deployment.md",
     "docs/db-data-admin-inventory.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -35,6 +36,7 @@
     "DB_Data_Admin.md",
     "docs/db-data-admin-deployment.md",
     "docs/db-data-admin-inventory.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],

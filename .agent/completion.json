@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3094,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3093/1",
-  "contract_sha256": "a937229d61fba4dfb238c8c033930f64f66c139559089bd76937d8c7e36ad110",
-  "head_sha": "88b0d71a9c69a381e508dbe7087cdac5a29cf889",
+  "contract_ref": "refs/db-contracts/3093/2",
+  "contract_sha256": "0119defc8b1a59a73d8e5ea800c98dd2c72a06dd4f47c9a6d48d444f1c152df6",
+  "head_sha": "fe6cd5c24078376bad04e10a43aac3e03ef65d6a",
   "files_changed": [
     ".github/workflows/db-data-admin.yml",
     ".github/workflows/domain-ownership.yml",
@@ -83,7 +83,14 @@
     "apps/db-data-admin/vite.config.ts",
     "docs/db-data-admin-deployment.md",
     "docs/db-data-admin-inventory.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/check-data-admin-launch-readiness.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     "scripts/tests/check-data-admin-launch-readiness.test.mjs"
   ],
   "db_reads": [],
@@ -92,7 +99,7 @@
     {
       "command": "node --test scripts/check-domain-ownership.test.mjs scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/public-data-venue.test.mjs scripts/lib/documents-only-change.test.mjs",
       "exit_code": 0,
-      "evidence": "5 + 19 + 4 + 22 tests passed, 0 failed at implementation head 88b0d71a."
+      "evidence": "5 + 19 + 4 + 22 tests passed, 0 failed at implementation head fe6cd5c2."
     },
     {
       "command": "node scripts/check-domain-ownership.mjs",
@@ -102,7 +109,7 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 88b0d71a on origin/main 135a71a1."
+      "evidence": "Exit 0 with no output at fe6cd5c2 on origin/main 135a71a1."
     }
   ],
   "assumptions_resolved": [

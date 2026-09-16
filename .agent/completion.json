@@ -1,54 +1,34 @@
 {
   "schema_version": 1,
-  "work_issue": 2870,
+  "work_issue": 3100,
   "outcome": "ready-for-merge",
-  "pr": 2872,
-  "migration_versions": ["20260914032423"],
-  "contract_ref": "refs/db-contracts/2870/4",
-  "contract_sha256": "38d8e482064dbbb54773bde0b9a945692884cd2c680b7546c9344a72539ae128",
-  "head_sha": "64d8be61095aeae82fd8b903e268add2bb09a09c",
+  "pr": 3101,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3100/2",
+  "contract_sha256": "01b833462d98b8dd6a6740068af4da0e95875723b68bdfb762d39a01f6b8a605",
+  "head_sha": "3e184f8b1d841b06de3f6c5a76c425be1f3e4c92",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production-verification-sidecars/20260914032423.json",
-    "scripts/production_business_risk_gate.py",
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
       "exit_code": 0,
-      "evidence": "All static SQL migration guards passed before the refresh; the new exact-head CI reruns them after push."
+      "evidence": "Run at implementation head aefc612c: tests 16, pass 16, fail 0, skipped 0; the new CI/sibling case fails on the pre-fix source."
     },
     {
-      "command": "ephemeral preview-equivalent database contract test",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "GitHub Actions job 103854539988 successfully replayed every migration and ran every SQL contract at reviewed head 58415d717d777ba06a13dc878258b70dca1f30e6; the refresh preserved the migration and test bytes, and exact-head CI reruns the suite."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
-      "exit_code": 0,
-      "evidence": "The sidecar validator returned status OK before refresh; the sidecar and migration bytes are unchanged and exact-head CI reruns it."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors were reported after the current-main refresh."
-    },
-    {
-      "command": "ai-task-gates check --before review",
-      "exit_code": 0,
-      "evidence": "The shared-db task declaration permits review and names the full protected gate set."
+      "evidence": "Run at implementation head aefc612c: tests 590, pass 590, fail 0, skipped 0 (run-governed-review 78/78, start-reroute 23/23, repair-voided-findings 11/11, transport conformance 268 files clean)."
     }
   ],
   "assumptions_resolved": [
-    "The ephemeral full-history replay proved both dflow_prod parent tables exist before migration 20260914032423 runs.",
-    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
-    "The migration performs DDL only and contains no application-row write.",
-    "Generated types remain required downstream: repository policy generates them from the post-migration preview database, so popcre/designflow-backend#94 must supply the durable generated-types acceptance artifact after preview rather than this author PR hand-editing stale types."
+    "Unstarted probe and reclaim fingerprint only PR state, head, draft and this slot's verdict; the plain silence path still refuses on PR activity (tested)"
   ],
   "stop_conditions_hit": []
 }

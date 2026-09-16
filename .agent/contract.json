@@ -1,58 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 2870,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
-  "base_sha": "6306532e35eb996b58d74b6fbbcfc6d7f63a9363",
-  "dispatcher": "Codex shared-db orchestrator",
-  "worker": "subagent:issue-2870-cutover-columns",
-  "branch": "codex/issue-2870-cutover-columns",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2870-cutover-columns/shared-db",
+  "generation": 2,
+  "work_issue": 3100,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "In unstarted mode judge each reviewer only by its own durable start marker; PR-wide CI or sibling-slot activity never counts as its start; unreadable evidence stays fail-closed.",
+  "base_sha": "9feeccab189aa05f30a6cbe467a3868641c8352e",
+  "dispatcher": "Claude #3027 Step 7 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 7 own-start-marker fix",
+  "branch": "claude/3027-start-watch-own-marker",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-own-marker",
   "allowed_paths": [
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260914032423.json",
-    "scripts/production_business_risk_gate.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260914032423.json",
-    "scripts/production_business_risk_gate.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "column dflow_prod.comments.app_comment_id",
-    "column dflow_prod.users.app_profile_id",
-    "table dflow_prod.comments",
-    "table dflow_prod.users"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "Do not write application rows.",
-    "Do not add foreign keys, defaults, indexes, or non-null constraints.",
-    "Do not preview, assign a reviewer, merge, deploy, or close the issue.",
-    "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."
+    "No database write of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "ephemeral preview-equivalent database contract test",
-    "node scripts/check-production-verification-sidecars.mjs",
-    "git diff --check"
+    "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "dflow_prod.users and dflow_prod.comments already exist in the preview and production-shaped schemas.",
-    "The two columns remain nullable UUIDs with no defaults and no foreign keys for exact cutover compatibility.",
-    "Generated types remain a required post-preview application-return artifact; shared-db cannot truthfully generate the dflow_prod contract before this migration reaches preview."
+    "The ordinary two-hour silence path keeps using PR activity"
   ],
   "stop_conditions": [
-    "Stop if either parent table is absent.",
-    "Stop if compatibility requires row writes or a foreign key.",
-    "Stop if the reserved migration version collides."
-  ],
-  "generation": 4
+    "Stop if the fix would need a database change"
+  ]
 }

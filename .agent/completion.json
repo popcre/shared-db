@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3080,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3079/1",
-  "contract_sha256": "27f4f328fb0ef86624279d097074dc6613c761e2d1ff27bdbdc5a33f38573f51",
-  "head_sha": "dd6f45f7571dc3af919193b282f150986ced143e",
+  "contract_ref": "refs/db-contracts/3079/2",
+  "contract_sha256": "ad956795df7911d6db1cfe20fa809eec21f6ee7da466014432a373d7420b78f3",
+  "head_sha": "95ed871c8a2010b4b4c691652ca1e699431bda5d",
   "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     "scripts/orchestrator-snapshot.mjs"
@@ -18,12 +20,12 @@
     {
       "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "2314 tests, 2314 pass, 0 fail, 0 skipped at implementation head dd6f45f7 against origin/main b682b524. The excluded file fails identically on clean main and is untouched by this PR."
+      "evidence": "2316 tests, 2316 pass, 0 fail, 0 skipped at implementation head 95ed871c against origin/main b682b524. The excluded file fails identically on clean main and is untouched by this PR."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at dd6f45f7."
+      "evidence": "Exit 0 with no output at 95ed871c."
     }
   ],
   "assumptions_resolved": [

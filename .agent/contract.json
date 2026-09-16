@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3079,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -11,6 +11,8 @@
   "branch": "claude/3027-alarm-fallback",
   "worktree": "C:/repos/shared-db/.claude/worktrees/3027-evidence-live",
   "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     "scripts/orchestrator-snapshot.mjs",
@@ -18,6 +20,8 @@
     ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     "scripts/orchestrator-snapshot.mjs",

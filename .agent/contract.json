@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3037,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Update plan_product_type_reader.md and its HANDOFF.d file (issue 3037) for the 2026-09-16 owner decision that product-type columns are locked in orchestrator issue 3036 and issue 3024 is repo-maintenance scope. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "4e290252bfc9528427d502a18ffcef3d617c7047",
+  "base_sha": "9561942901a369194e83c99a753a1f5f6453f0cd",
   "dispatcher": "Claude shared-db session (product-type reader plan update, 2026-09-16)",
   "worker": "Claude Opus 5 product-type reader plan editor",
   "branch": "claude/plan-3036-columns-locked",

@@ -1,44 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3091,
+  "work_issue": 3036,
   "outcome": "ready-for-merge",
-  "pr": 3110,
+  "pr": 3108,
   "migration_versions": [
-    "20260916231838"
+    "20260916231639"
   ],
-  "contract_ref": "refs/db-contracts/3091/2",
-  "contract_sha256": "216062d83e4bbcb02b2ce72dcb71c0d3f20334fe6360ce4f92f88835581553c1",
-  "head_sha": "2067fc62d926f6d946310f41f53537bc220952b2",
+  "contract_ref": "refs/db-contracts/3036/1",
+  "contract_sha256": "7502bdc2c3d2381412cf15b0e00b2367263fffb0bc0a1c67dc2cfdae307536f9",
+  "head_sha": "7fcb83d15fa197299d36a5aa6076531dd052105b",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json",
-    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
     "types/database.types.ts"
   ],
-  "db_reads": [
-    "table plm.\"FactoryTime\""
-  ],
+  "db_reads": [],
   "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
+    "column plm.item.product_construction",
+    "column plm.item.product_material",
+    "column plm.item.product_treatment",
+    "column plm.item.product_type",
+    "column plm.item.product_type_read_at",
+    "column plm.item.product_type_rules_version",
+    "column plm.item.product_type_status",
+    "table plm.item"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2067fc62: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "Run at implementation head 7fcb83d1: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916231838 has markers [] and needs no sidecar."
+      "evidence": "status OK; version 20260916231639 has markers [] and needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
+    "Governed Muse review found no triggers, column-level grants or dependent SELECT * on plm.item; table-level grants and RLS cover the new columns."
   ],
   "stop_conditions_hit": []
 }

@@ -4,7 +4,6 @@
 do $$
 declare
   header_id integer;
-  factory_id integer;
 begin
   if to_regclass('plm.prod_order_milestone_schedule') is null then
     raise exception 'plm.prod_order_milestone_schedule is missing';
@@ -36,13 +35,15 @@ begin
   end if;
 
   if has_table_privilege('anon', 'plm.prod_order_milestone_schedule', 'select')
-     or has_table_privilege('authenticated', 'plm.prod_order_milestone_schedule', 'select') then
-    raise exception 'browser roles must have no access';
+     or has_table_privilege('authenticated', 'plm.prod_order_milestone_schedule', 'select')
+     or has_table_privilege('service_role', 'plm.prod_order_milestone_schedule', 'select') then
+    raise exception 'anon, authenticated and service_role must have no access';
   end if;
 
-  -- Behaviour, when a production order exists to attach to.
-  select id into header_id from plm."ProdOrderHeader" limit 1;
-  if header_id is not null then
+  -- Behaviour, against a synthetic production order this file creates itself.
+  insert into plm."ProdOrderHeader"("prodOrderNo") values ('zztest-3091-milestone')
+  returning id into header_id;
+  begin
     insert into plm.prod_order_milestone_schedule(prod_order_header_id, stage_name, status, needed_date)
     values (header_id, 'zztest Mass Production Start', 'Pending', current_date)
     on conflict (prod_order_header_id, stage_name, sku)
@@ -62,5 +63,5 @@ begin
       raise exception 'blank stage name was accepted';
     exception when check_violation then null;
     end;
-  end if;
+  end;
 end $$;

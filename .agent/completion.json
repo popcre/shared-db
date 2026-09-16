@@ -1,35 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3043,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3046,
-  "migration_versions": [
-    "20260916120643"
-  ],
-  "contract_ref": "refs/db-contracts/3043/3",
-  "contract_sha256": "f201dee4ee003d96b4422bc465e76562a4fead5a2e0a80b8bcf6bd42cbd49126",
-  "head_sha": "6f13850050579b464d50c50c369d93b546cae302",
+  "pr": 3031,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "c34a06cfa7d8a1a5d0ea4ca9c61b13f55502672d",
   "files_changed": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Run at implementation head 6f138500 (refreshed from main 4e32da47), re-run: Static checks passed."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "python scripts/check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

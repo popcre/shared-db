@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,4 +70,35 @@ test('#507(b) a real conflict refuses and leaves the branch unchanged', () => {
     assert.equal(r.g(r.work, 'status', '--porcelain'), '')
     assert.throws(() => refresh({ issue: 9, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /conflicts|not #9/)
   } finally { rmSync(r.root, { recursive: true, force: true }) }
+})
+
+test('#507(b) a recorded assignment survives a stale-readback error (#2844); an unrecorded one refuses', () => {
+  for (const record of [true, false]) {
+    const r = repo()
+    try {
+      r.g(r.work, 'push', '-q', '-u', 'origin', 'feature')
+      moveMain(r, 'base.txt', '2\n')
+      const logs = []
+      const run = (file, args, opts) => {
+        if (file === 'node' && args[0] === 'scripts/manage-migration-author-lanes.mjs') {
+          const tip = args[args.indexOf('--head-sha') + 1]
+          if (record) {
+            const tree = r.g(r.work, 'rev-parse', 'HEAD^{tree}')
+            const c = execFileSync('git', ['commit-tree', tree, '-m', `db-coordination reviewer-cursor sequence=1 reviewer=glm-5.3 issue=7 pr=8 head=${tip}`], { cwd: r.work, encoding: 'utf8' }).trim()
+            r.g(r.work, 'push', '-q', 'origin', `${c}:refs/db-review-assignments/7-8-${tip}`)
+          }
+          return { status: 1, stdout: '', stderr: 'REFUSED: release could not be proved; RECOVERY REQUIRED' }
+        }
+        const env = { ...process.env }; delete env.NODE_TEST_CONTEXT
+        return spawnSync(file, args, { ...opts, env, encoding: 'utf8' })
+      }
+      const options = { issue: 7, pr: 8, worktree: r.work, push: true, assign: true }
+      if (record) {
+        assert.equal(refresh(options, { run, log: (l) => logs.push(l) }).reviewer, 'glm-5.3')
+        assert.match(logs.join('\n'), /records it, so it stands \(#2844\)/)
+      } else {
+        assert.throws(() => refresh(options, { run, log: () => {} }), /assigning a reviewer at the new head failed: REFUSED/)
+      }
+    } finally { rmSync(r.root, { recursive: true, force: true }) }
+  }
 })

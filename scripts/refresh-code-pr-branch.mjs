@@ -90,7 +90,19 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
   if (!options.push) return { head, tip, pushed: false }
   ok(git('push', '-q'), 'git push')
   if (!options.assign) return { head, tip, pushed: true }
-  const assigned = ok(run('node', ['scripts/manage-migration-author-lanes.mjs', '--assign-reviewer', '--issue', String(options.issue), '--pr', String(options.pr), '--head-sha', tip], { cwd }), 'assigning a reviewer at the new head')
+  const assign = run('node', ['scripts/manage-migration-author-lanes.mjs', '--assign-reviewer', '--issue', String(options.issue), '--pr', String(options.pr), '--head-sha', tip], { cwd })
+  let assigned = String(assign.stdout ?? '')
+  if (assign.status !== 0) {
+    // u2giants/shared-db#2844: a stale readback can report RECOVERY REQUIRED after the assignment
+    // was recorded. Accept only the recorded assignment ref for this exact head; otherwise refuse.
+    const ref = `refs/db-review-assignments/${options.issue}-${options.pr}-${tip}`
+    const fetched = git('fetch', '-q', 'origin', ref)
+    const message = fetched.status === 0 ? String(git('log', '-1', '--format=%B', 'FETCH_HEAD').stdout ?? '') : ''
+    const recorded = message.match(/reviewer=(\S+) issue=(\d+) pr=(\d+) head=([0-9a-f]{40})/)
+    if (!recorded || Number(recorded[2]) !== options.issue || Number(recorded[3]) !== options.pr || recorded[4] !== tip) ok(assign, 'assigning a reviewer at the new head')
+    log(`The reviewer assignment reported an error (${String(assign.stderr || assign.stdout).trim().split('\n').at(-1)}), but ${ref} records it, so it stands (#2844).`)
+    assigned = `"reviewer": "${recorded[1]}"`
+  }
   const reviewer = (assigned.match(/"reviewer":\s*"([^"]+)"/) ?? [])[1], wrapper = (assigned.match(/"wrapper":\s*"([^"]+)"/) ?? [])[1]
   log(`Reviewer assigned at ${tip}: ${reviewer ?? 'see output'} (${wrapper ?? '?'}). Next: node scripts/run-governed-review.mjs --issue ${options.issue} --pr ${options.pr} --reviewer ${reviewer} --wrapper ${wrapper} --worktree ${cwd} -- new <session> --prompt-file <brief>`)
   return { head, tip, pushed: true, reviewer, wrapper }

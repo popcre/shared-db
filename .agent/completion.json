@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3049,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/1",
-  "contract_sha256": "a5265fea3c1f062cd1ad1a5d91eb0d4cd02f9e1e0bf0331f5d6cd3a0d0f1e3c6",
-  "head_sha": "f45c62199f5a05c07ec75af173af4fc5994beb83",
+  "contract_ref": "refs/db-contracts/3048/2",
+  "contract_sha256": "24d4ccb9eef1506796cc8ef61d3c46b0a891daa1160f1383d4488b9149a16c19",
+  "head_sha": "a08a45616f52ba1ef3632546381f8c0f61dc3ce2",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -29,12 +29,12 @@
     {
       "command": "node --test on every scripts test file",
       "exit_code": 0,
-      "evidence": "2286 tests, 2286 pass, 0 fail, 0 skipped at implementation head f45c6219 against origin/main 9b6c26b0."
+      "evidence": "2286 tests, 2286 pass, 0 fail, 0 skipped at implementation head a08a4561 against origin/main 3f5c2a23."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at f45c6219."
+      "evidence": "Exit 0 with no output at a08a4561."
     }
   ],
   "assumptions_resolved": [

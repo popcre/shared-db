@@ -1,43 +1,55 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3037,
+  "generation": 1,
+  "work_issue": 3028,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Update plan_product_type_reader.md and its HANDOFF.d file (issue 3037) for the 2026-09-16 owner decision that product-type columns are locked in orchestrator issue 3036 and issue 3024 is repo-maintenance scope. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
-  "dispatcher": "Claude shared-db session (product-type reader plan update, 2026-09-16)",
-  "worker": "Claude Opus 5 product-type reader plan editor",
-  "branch": "claude/plan-3036-columns-locked",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/plan-3036",
+  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
+  "dispatcher": "Claude popcre/ai-devops#401 programme session",
+  "worker": "Claude Opus 5 issue-3028 sidecar registry",
+  "branch": "claude/3028-sidecar-registry",
+  "worktree": "C:/repos/shared-db-3028",
   "allowed_paths": [
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/**",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration, script, workflow, or configuration change",
-    "No work in a shared checkout or on another branch",
-    "No edit to AGENTS.md",
-    "Never close issue 3024 or 3036"
+    "No migration, schema change, db claim, or database read or write",
+    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
+    "No work in a shared checkout"
   ],
   "required_checks": [
-    "git diff --check origin/main...HEAD"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python scripts/check_production_verification_sidecars.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
   ],
   "assumptions": [
-    "The plan and handoff are prose only and change no executable behaviour"
+    "Every existing sidecar is declared with issue null because its originating issue is historical",
+    "The preview producer set is byte-identical to main apart from the added registry file"
   ],
   "stop_conditions": [
-    "Stop and report if the change set grows beyond the two prose files"
+    "Stop and report if the change needs a migration, schema change, or database write"
   ]
 }

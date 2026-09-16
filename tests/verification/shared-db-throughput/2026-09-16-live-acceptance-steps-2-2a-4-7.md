@@ -247,3 +247,7 @@ NO-PROGRESS ALARM FIRED: 2 outcomes stalled over 120 minutes: #2866 dispatched 3
 ```
 
 - This supersedes "Alarm installed — NOT PROVEN" and "LIVE RUN DID NOT FIRE" above. The scheduled `7,37 * * * *` trigger runs the same command, and later runs are deduped by alarm key until the stalled set changes.
+
+## 2026-09-16: Step 7 reviewer start watcher live proof (#3095)
+
+In progress.

@@ -1,55 +1,57 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3028,
+  "generation": 8,
+  "work_issue": 3045,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
-  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
-  "dispatcher": "Claude popcre/ai-devops#401 programme session",
-  "worker": "Claude Opus 5 issue-3028 sidecar registry",
-  "branch": "claude/3028-sidecar-registry",
-  "worktree": "C:/repos/shared-db-3028",
+  "goal": "Tooling for programme popcre/ai-devops#401 Steps 2A, 4 and 7 under issue 3045 (tracked in 3027): a report-only no-database-preview route decision in the documents-only workflow, a scheduled two-hour no-progress alarm with successor resume, and a dispatch-only start-reroute staging hook with its harness. Scripts, tests and workflows only; no schema, migration, database claim or database access.",
+  "base_sha": "8c4ce615bd6bfc7910e9351163a14336b709c4cd",
+  "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
+  "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
+  "branch": "claude/3027-blocked-steps-tooling",
+  "worktree": "C:/repos/shared-db-worktrees/3027-blocked-steps",
   "allowed_paths": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/check_production_verification_sidecars.py",
-    "scripts/test_check_production_verification_sidecars.py",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
-    ".github/workflows/**",
+    ".github/workflows/documents-only-merge-authorization.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    ".github/workflows/start-reroute-canary.yml",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/check_production_verification_sidecars.py",
-    "scripts/test_check_production_verification_sidecars.py",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/documents-only-merge-authorization.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    ".github/workflows/start-reroute-canary.yml",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No migration, schema change, db claim, or database read or write",
-    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
-    "No work in a shared checkout"
+    "No database read or write of any kind",
+    "No migration, schema, or database claim",
+    "No GitHub settings change",
+    "No cancellation of any run other than the staged non-start canary"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
-    "python scripts/check_production_verification_sidecars.py",
-    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
+    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "Every existing sidecar is declared with issue null because its originating issue is historical",
-    "The preview producer set is byte-identical to main apart from the added registry file"
+    "The documents-only route step is continue-on-error and report-only, so it cannot change a merge decision"
   ],
   "stop_conditions": [
-    "Stop and report if the change needs a migration, schema change, or database write"
+    "Stop and report if any step needs a schema, migration, database write, or settings change"
   ]
 }

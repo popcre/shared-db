@@ -18,6 +18,7 @@ test('#507(b) only re-run checks are restamped; any other check refuses', () => 
   assert.match(out.checks[0].evidence, /x 3\/3 pass at cccccccc/)
   assert.throws(() => rebindCompletion({ checks: [{ command: 'psql smoke' }] }, { head, testSummary: '' }), /cannot be re-run/)
   assert.deepEqual(summarizeNodeTest('ℹ pass 4\nℹ fail 0\nℹ skipped 1'), { pass: 4, fail: 0, skipped: 1 })
+  assert.deepEqual(summarizeNodeTest('# pass 2\n# fail 0'), { pass: 2, fail: 0, skipped: 0 })
   assert.throws(() => summarizeNodeTest('nothing'), RefreshError)
 })
 

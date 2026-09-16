@@ -45,7 +45,7 @@ export function rebindCompletion(report, { head, testSummary }) {
 }
 
 export function summarizeNodeTest(output) {
-  const count = (name) => Number((String(output).match(new RegExp(`^ℹ ${name} (\\d+)`, 'm')) ?? [])[1] ?? NaN)
+  const count = (name) => Number((String(output).match(new RegExp(`^(?:ℹ|#) ${name} (\\d+)`, 'm')) ?? [])[1] ?? NaN)
   const pass = count('pass'), fail = count('fail'), skipped = count('skipped')
   if (!Number.isInteger(pass) || !Number.isInteger(fail)) throw new RefreshError('node --test output had no pass/fail summary')
   return { pass, fail, skipped: Number.isInteger(skipped) ? skipped : 0 }
@@ -74,7 +74,7 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
   const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))
   let testSummary = 'no changed scripts test file'
   if (tests.length) {
-    const t = run('node', ['--test', ...tests], { cwd })
+    const t = run('node', ['--test', '--test-reporter=spec', ...tests], { cwd })
     const s = summarizeNodeTest(`${t.stdout}\n${t.stderr}`)
     if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); the implementation head ${head} is committed locally but nothing was pushed`)
     testSummary = `${tests.map((f) => f.replace(/^scripts\/|\.test\.mjs$/g, '')).join(', ')} ${s.pass}/${s.pass + s.fail} pass, ${s.fail} fail, ${s.skipped} skipped`

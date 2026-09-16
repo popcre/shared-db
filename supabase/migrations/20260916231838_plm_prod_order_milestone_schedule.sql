@@ -58,17 +58,7 @@ CREATE INDEX prod_order_milestone_schedule_status_needed_idx
   ON plm.prod_order_milestone_schedule (status, needed_date);
 
 COMMENT ON TABLE plm.prod_order_milestone_schedule IS
-  'Persisted Production Tracking milestone schedule: one row per production order, stage and SKU (empty SKU for order-level stages). Written by designflow-tracking (#3091).';
-COMMENT ON COLUMN plm.prod_order_milestone_schedule.sku IS
-  'SKU for licensing stages; empty string for order-level stages so the upsert key is plain columns.';
-COMMENT ON COLUMN plm.prod_order_milestone_schedule.factory_time_id IS
-  'Lead-time template used; null means no template applied.';
-COMMENT ON COLUMN plm.prod_order_milestone_schedule.template_source IS
-  'Human-readable template source text, or "no template".';
-COMMENT ON COLUMN plm.prod_order_milestone_schedule.computed_at IS
-  'Set on every upsert by the writer.';
-COMMENT ON COLUMN plm.prod_order_milestone_schedule.first_past_due_at IS
-  'Set once when the milestone first becomes past due; the writer never overwrites it.';
+  'Persisted Production Tracking milestone schedule, written by designflow-tracking (#3091). One row per production order, stage and SKU; sku is empty for order-level stages. factory_time_id null means no template; template_source is human text or "no template". computed_at is set on every upsert; first_past_due_at is set once and never overwritten by the writer.';
 
 -- Same access model as sibling plm tracking tables: the DesignFlow API connects
 -- as the table owner. No browser or service-role access.

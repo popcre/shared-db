@@ -188,34 +188,3 @@ test('refuses without the flag or a routable marker', () => {
   assert.equal(main(['--orchestrator-snapshot'], { io: { ...fakeIo(), resolveMarker: () => ({ state: 'none', marker: null }) }, stdout: () => {}, stderr: (l) => errors.push(l) }), 2)
   assert.match(errors[1], /REFUSED: no open routable orchestrator marker/)
 })
-
-test('issue 3027 --report-alarm fires once on the marker, stays silent while unchanged, and reports the clear once', async () => {
-  const { ALARM_EXIT } = await import('./orchestrator-snapshot.mjs')
-  const blocked = coordinationEvent({ eventType: 'blocked', workIssue: 800, actor: 'test', timestamp: minutesAgo(130), hold_reason: { kind: 'lease', stage: 'production', holder: 'production lease abc, PR #77', owner_sha: 'abc' } })
-  const comments = { 800: [ownerComment(event(800, 'dispatched', 200)), ownerComment(blocked)], 2927: [] }
-  const posted = []
-  const io = { ...fakeIo({ comments }), commentIssue: (_repo, issue, body) => { posted.push(body); comments[issue].push({ user: { login: 'github-actions[bot]' }, author_association: 'NONE', body }) } }
-  const run = (extra = []) => { const lines = []; const code = main(['--report-alarm', '--now', NOW, ...extra], { io, stdout: (l) => lines.push(l), stderr: (l) => lines.push(l) }); return { code, lines } }
-  const first = run()
-  assert.equal(first.code, ALARM_EXIT)
-  assert.match(first.lines[0], /^NO-PROGRESS ALARM FIRED: 1 outcomes stalled over 120 minutes: #800 blocked 130m \(waiting for production lease abc, PR #77\)/)
-  assert.equal(posted.length, 1)
-  assert.match(posted[0], /```orchestrator-no-progress-alarm/)
-  const second = run()
-  assert.equal(second.code, ALARM_EXIT); assert.equal(posted.length, 1); assert.match(second.lines[1], /nothing posted/)
-  comments[800].push(ownerComment(event(800, 'live_verified', 1)))
-  const cleared = run()
-  assert.equal(cleared.code, 0); assert.equal(posted.length, 2); assert.match(cleared.lines[0], /^NO-PROGRESS ALARM CLEAR/)
-  assert.equal(run().lines[1].includes('nothing posted'), true)
-})
-
-test('issue 3027 an alarm block from an untrusted commenter is not a dedupe record, and dry run posts nothing', async () => {
-  const { latestAlarmRecord } = await import('./orchestrator-snapshot.mjs')
-  const body = '```orchestrator-no-progress-alarm\n{"alarm_key":"forged"}\n```'
-  assert.equal(latestAlarmRecord([{ author_association: 'NONE', user: { login: 'someone' }, body }]), null)
-  assert.equal(latestAlarmRecord([{ author_association: 'OWNER', body }]).alarm_key, 'forged')
-  const io = { ...fakeIo({ comments: { 800: [ownerComment(event(800, 'dispatched', 200))] } }), commentIssue: () => { throw new Error('must not post') } }
-  const lines = []
-  assert.equal(main(['--report-alarm', '--dry-run', '--now', NOW], { io, stdout: (l) => lines.push(l), stderr: (l) => lines.push(l) }), 3)
-  assert.match(lines[1], /dry run: would report on marker issue #2927/)
-})

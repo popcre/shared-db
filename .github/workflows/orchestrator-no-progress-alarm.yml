@@ -1,34 +1,29 @@
-# Two-hour no-progress alarm (programme popcre/ai-devops#401 Step 4, issue #3027).
-#
-# WHY THIS WORKFLOW EXISTS
-# ------------------------
-# The alarm logic already existed in scripts/orchestrator-snapshot.mjs
-# (STALL_MINUTES = 120, zero closures in 4h) but only ran when an orchestrator
-# session remembered to run it. An orchestrator that stalls is exactly the one
-# that does not. This job runs it hourly, with no session involved.
-#
-# WHERE IT REPORTS, AND WHY ONLY ON A CHANGE
-# ------------------------------------------
-# The plan names the orchestrator marker issue as the durable place. The script
-# posts one comment there when the alarm fires, when the set of stalled outcomes
-# changes, and once when it clears. Each comment carries a fenced
-# orchestrator-no-progress-alarm JSON record whose alarm_key is the dedupe key,
-# so an hourly schedule cannot flood the marker. Each stalled outcome is named
-# with its state, minutes since its last transition, and its named hold.
-#
-# EXIT CODES: 0 no alarm, 3 alarm active (the run fails so it is visible), any
-# other code means the check COULD NOT RUN and proves nothing.
-#
-# No push/pull_request trigger: a stall is created by time passing.
+name: Orchestrator no-progress alarm
 
-name: Orchestrator No-Progress Alarm
-
+# Two-hour no-progress alarm (issue #3027, programme popcre/ai-devops#401 Step 4).
+# Every 30 minutes it reads the live orchestrator state and, when an owned outcome has had no
+# stage transition for more than 120 minutes or nothing closed in four hours, posts one comment
+# on the orchestrator marker naming each stuck outcome, its blocker and the unblock action, with
+# the sealed snapshot a successor resumes from. Transition-only: an alarm already posted on the
+# target issue is never reposted. It reads GitHub and writes one issue comment; nothing else.
 on:
   schedule:
-    - cron: "41 * * * *"
+    - cron: '7,37 * * * *'
   workflow_dispatch:
+    inputs:
+      post_issue:
+        description: 'Post to this issue instead of the orchestrator marker (canary). Empty = marker.'
+        required: false
+        default: ''
+      now:
+        description: 'Evaluate as of this ISO instant (a staged stall). Empty = the real current time.'
+        required: false
+        default: ''
+      staged_label:
+        description: 'Heading prefix that marks a canary or staged alarm, e.g. STAGED CANARY.'
+        required: false
+        default: ''
 
-# issues: write is needed only to post the transition comment on the marker issue.
 permissions:
   contents: read
   issues: write
@@ -45,34 +40,22 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Prove the alarm fires, dedupes and clears
-        run: node --test scripts/orchestrator-snapshot.test.mjs scripts/lib/hold-reason.test.mjs
-
-      - name: Check for stalled outcomes and report transitions on the marker
+          node-version: '22'
+      - name: Prove the alarm before trusting it
+        run: node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs
+      - name: Raise the alarm on a new stall
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          POST_ISSUE: ${{ inputs.post_issue }}
+          NOW: ${{ inputs.now }}
+          STAGED_LABEL: ${{ inputs.staged_label }}
         run: |
-          set -uo pipefail
-          set +e
-          node scripts/orchestrator-snapshot.mjs --report-alarm --repo "${GITHUB_REPOSITORY}" \
-            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" 2>&1 | tee /tmp/alarm.txt
-          CODE=${PIPESTATUS[0]}
-          set -e
-          {
-            echo "## Orchestrator no-progress alarm"
-            echo
-            echo '```text'
-            cat /tmp/alarm.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          case "$CODE" in
-            0) echo "No outcome has stalled over two hours." ;;
-            3) echo "::error::No-progress alarm fired. The marker issue names each stalled outcome and its hold." ;;
-            *) echo "::error::The no-progress alarm COULD NOT RUN (exit ${CODE}). Nothing was proven about progress." ;;
-          esac
-          exit "$CODE"
+          set -euo pipefail
+          args=(--alarm --repo "$GITHUB_REPOSITORY")
+          [ -n "${POST_ISSUE:-}" ] && args+=(--post-issue "$POST_ISSUE")
+          [ -n "${NOW:-}" ] && args+=(--now "$NOW")
+          [ -n "${STAGED_LABEL:-}" ] && args+=(--staged-label "$STAGED_LABEL")
+          node scripts/orchestrator-flow/no-progress-alarm.mjs "${args[@]}" | tee alarm.json
+          { echo '### No-progress alarm'; echo '```json'; grep -v '"body"' alarm.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

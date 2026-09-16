@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "migration_version": "20260916001944",
+  "migration_sha256": "4ff69de2a9be9dcd4353c81ddfd798225b621ef73bb39368d624e021f82e9704",
+  "checks": [
+    {
+      "id": "coldlion_unit_5b_landing",
+      "kind": "catalog_contract",
+      "contract": "coldlion_unit_5b_landing_v1",
+      "expected_count": 1
+    }
+  ]
+}

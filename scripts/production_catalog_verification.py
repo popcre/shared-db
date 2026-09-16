@@ -4453,5 +4453,53 @@ CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
 )
 
 
+
+# Issue #2863. ColdLion landing unit 5b: the /prepackDetail and /proddetails
+# detail tables.
+#
+# Structure only -- the migration loads no rows and creates no loader -- so what
+# is verified post-apply is the grain. Both keys were proven over a live 2026-09-15
+# sample with ZERO duplicate collapse (docs/coldlion-unit-5b-grain-proof-20260915.md),
+# and /proddetails proved TWO independent identities: the vendor row id pkey and
+# (prodOrderNo, prodLineSeq). Both are asserted here, because a production catalog
+# that carried only the primary key would let a future change drop the second one
+# silently and start collapsing two order lines into one.
+#
+# The landing layer is also unreachable by any application role, so the contract
+# asserts row level security on both tables and the absence of any anon or
+# authenticated grant -- the rule the whole coldlion schema depends on.
+COLDLION_UNIT_5B_LANDING_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    # The proven grain, stated exactly, on both tables.
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+    # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
+    # request-stamped company_code + 5 provenance. No field dropped, none invented.
+    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prepack_detail')=23"
+    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prod_detail')=27"
+    # ColdLion emits BOTH itemPrice and ItemPrice; folding them would lose a field.
+    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prepack_detail' and column_name in ('item_price','item_price_capitalized'))=2"
+    # No application role may reach the landing layer, and RLS is on.
+    + " and (select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='coldlion' and c.relname in ('prepack_detail','prod_detail'))"
+    + " and (select count(*) from information_schema.role_table_grants where table_schema='coldlion' and table_name in ('prepack_detail','prod_detail') and grantee in ('anon','authenticated','PUBLIC'))=0"
+    # D5: no per-row raw archive, and no FK out of the landing schema.
+    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name in ('prepack_detail','prod_detail') and column_name='raw')=0"
+    + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT
+)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

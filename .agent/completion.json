@@ -1,61 +1,57 @@
 {
   "schema_version": 1,
-  "work_issue": 2988,
+  "work_issue": 2863,
   "outcome": "ready-for-merge",
-  "pr": 3007,
-  "migration_versions": [
-    "20260916001923"
-  ],
-  "contract_ref": "refs/db-contracts/2988/1",
-  "contract_sha256": "aba95e600e68fa6e52554eddbfeadbcbcba801e42c26a5d44b53ead02ae33e0d",
-  "head_sha": "9ced08c27110a598b78e5d230cbdbb277cc77001",
+  "pr": 3008,
+  "migration_versions": ["20260916001944"],
+  "contract_ref": "refs/db-contracts/2863/1",
+  "contract_sha256": "852e4ac7dad5a6abec001cca2ef7555f3f8e3f27275a5acedb13023ab11715bc",
+  "head_sha": "0e143c8a6a49090eafa249f4daf1e44e7aeb88e7",
   "files_changed": [
+    "docs/coldlion-unit-5b-grain-proof-20260915.md",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916001923.json",
+    "scripts/production-verification-sidecars/20260916001944.json",
     "scripts/production_business_risk_gate.py",
     "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql"
+    "supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql",
+    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql"
   ],
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
-  "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
-  ],
+  "db_reads": [],
+  "db_writes": ["coldlion.prepack_detail", "coldlion.prod_detail"],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 3946f5413d50a67b3d2a70f72532fc50b1476137 (PR base 1dcf196ea9b506ec14feb55e8465b53d9faf1706): 'Static checks passed.' The issue #1235 expected-count guard, the verify-cost guard ('1 added migration(s) contain no prohibited verification read') and the issue #1684 EOL guard all passed."
+      "evidence": "Run at implementation head dee0c711f622ff543607bc2d60ec1ebd23c00386 (PR base 1dcf196ea9b506ec14feb55e8465b53d9faf1706): 'Static checks passed.' with the #1235 expected-count guard, the verify-cost guard over 1 added migration, and the #1684 EOL reference guard all reported passing."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "status OK over 55 sidecars; the scan for version 20260916001923 reports markers [] and sidecar true, so the reserved migration carries its hash-bound production verification sidecar and adds no dynamic execution marker."
+      "evidence": "Clean at the same head. The sidecar 20260916001944.json carries migration_sha256 c79374a85369589e3a5ed6e5f58b5ccf495e0ba1ad420f9e589b7bd1dba6aec9 and is pinned in PREVIEW_PRODUCER_PATHS; detector_source_sha256 in the reviewed throughput-guard baseline was refreshed to 7de7a844b2a6d66cb350b9045947e2727cb34a627f9dca9059ed83295f12d90a for the detector edit."
     },
     {
-      "command": "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
+      "command": "node --test scripts/check-sql.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 91, pass 91, fail 0, cancelled 0, skipped 0, todo 0. Confirms the applied-migration-edit guard still refuses edits to already-applied versions and that the SQL guards themselves are intact."
+      "evidence": "tests 56, pass 56, fail 0, cancelled 0, skipped 0, todo 0 at the same head. An earlier attempt in the same batch aborted on a transient MSYS fork error (cygheap read copy failed) before running; the rerun is the recorded result."
     },
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "357 passed, 305 subtests passed. Covers the PREVIEW_PRODUCER_PATHS pin for scripts/production-verification-sidecars/20260916001923.json and the registration of catalog contract dam_order_list_role_free_party_names_v1."
+      "evidence": "167 passed, 237 subtests passed at the same head."
+    },
+    {
+      "command": "python -m pytest -q scripts/test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "190 passed, 68 subtests passed at the same head."
     }
   ],
   "assumptions_resolved": [
-    "Root cause proven read-only on production qsllyeztdwjgirsysgai, not inferred: 826 evaluations of the core.customer shared_read qual under the reporting user's own JWT claims cost 5,373 ms and every one returned false; the same (id, name) pairs read with no policy evaluation cost 1.2 ms.",
-    "Mechanism: two narrow postgres-owned security_invoker=false directory views in the dam schema, which this project's PostgREST does not expose. api.dam_order_list stays security_invoker=true, so issue #2662 is untouched.",
-    "No timeout is raised, no full dataset is loaded, and no policy, grant or column on core.customer or core.factory changes.",
-    "Behaviour proved on a throwaway PostgreSQL 18 cluster because Docker is unavailable on this machine: a role-free authenticated principal reads its visible order lines with non-null customer and vendor names, service_role and an owner session with no JWT both read them, anon is refused on the directory views, and authenticated still reads zero rows from core.customer directly.",
-    "Residual, stated in the pull request body: because the outer view must stay invoker, the authenticated role holds SELECT on the two directories, so a direct Postgres session already holding that role could list all 826 customer and 93 factory (id, name) pairs. No PopDAM user has that route -- dam is absent from pgrst.db_schemas and authenticated and service_role are NOLOGIN.",
-    "Claim #3005 must be expanded to cover view dam.dam_order_list_customer_directory and view dam.dam_order_list_vendor_directory before the lease check will accept this migration; the coordinator holds that action.",
-    "Nothing was applied to preview or production and no pull request was merged."
+    "Both endpoints are enumerable, not paged: /prepackDetail over 120 sampled prepack codes returned 456 rows and /proddetails over 45 sampled production orders returned 166 rows, each a bare JSON array.",
+    "Grain proven with zero duplicate collapse: (company_code, prepack_code, sequence_no) for prepack_detail and (company_code, pkey) with a secondary unique (company_code, prod_order_no, prod_line_seq) for prod_detail. The rejected candidate prodOrderNo+itemPkey collapsed 166 rows to 158 across 4 duplicate groups, which is recorded as evidence the census discriminates.",
+    "docs/coldlion-field-decisions-20260819.csv covers neither feed, so the owner field disposition gap is documented explicitly in the grain proof rather than assumed.",
+    "Every catalog predicate in coldlion_unit_5b_landing_v1 was evaluated as supabase_read_only_user on a disposable local cluster and shown to fail on a deliberately wrong expectation and on a real injected defect, after the first version using information_schema proved unfalsifiable on that connection.",
+    "The branch was merged with origin/main at 1dcf196ea9b506ec14feb55e8465b53d9faf1706 so the PR base is an ancestor of this implementation head, as the git-evidence check requires.",
+    "Nothing was applied to preview or production and nothing was merged; the migration and its contract test were exercised only against a disposable local PostgreSQL cluster, which has since been removed."
   ],
   "stop_conditions_hit": []
 }

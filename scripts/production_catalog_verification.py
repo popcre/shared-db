@@ -4453,6 +4453,71 @@ CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
 )
 
 
+
+# Issue #2863. ColdLion landing unit 5b: the /prepackDetail and /proddetails
+# detail tables.
+#
+# Structure only -- the migration loads no rows and creates no loader -- so what
+# is verified post-apply is the grain. Both keys were proven over a live 2026-09-15
+# sample with ZERO duplicate collapse (docs/coldlion-unit-5b-grain-proof-20260915.md),
+# and /proddetails proved TWO independent identities: the vendor row id pkey and
+# (prodOrderNo, prodLineSeq). Both are asserted here, because a production catalog
+# that carried only the primary key would let a future change drop the second one
+# silently and start collapsing two order lines into one.
+#
+# The landing layer is also unreachable by any application role, so the contract
+# asserts row level security on both tables and the absence of any anon or
+# authenticated grant -- the rule the whole coldlion schema depends on.
+COLDLION_UNIT_5B_LANDING_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    # The proven grain, stated exactly, on both tables.
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+    # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
+    # request-stamped company_code + 5 provenance. No field dropped, none invented.
+    # information_schema views are role-filtered the same way role_table_grants is:
+    # under supabase_read_only_user they return nothing for coldlion, so a column
+    # census there would be unfalsifiable. pg_attribute is the unfiltered catalog.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped)=23"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prod_detail') and a.attnum>0 and not a.attisdropped)=27"
+    # ColdLion emits BOTH itemPrice and ItemPrice; folding them would lose a field.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped and a.attname in ('item_price','item_price_capitalized'))=2"
+    # No application role may reach the landing layer, and RLS is on.
+    #
+    # The grant half deliberately does NOT read information_schema.role_table_grants.
+    # That view is filtered to grants the CURRENT role granted or holds, and the
+    # governed verification connects as supabase_read_only_user, for which it returns
+    # no rows at all -- so a "no rows" test there would be unconditionally true and
+    # could never fail. has_table_privilege() is a catalog function with no such
+    # role-visibility filter and answers the real question on any connection.
+    #
+    # Checking anon and authenticated also covers PUBLIC: has_table_privilege() folds
+    # a privilege held via PUBLIC into every role's answer, and PUBLIC is not a role
+    # name the function accepts.
+    + " and (select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='coldlion' and c.relname in ('prepack_detail','prod_detail'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['coldlion.prepack_detail','coldlion.prod_detail']) t(n) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,t.n,p.v))=0"
+    # RLS with no policy is the second half of the lockdown: a policy added later
+    # would open a path the grant check alone does not describe.
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename in ('prepack_detail','prod_detail'))=0"
+    # D5: no per-row raw archive, and no FK out of the landing schema.
+    + " and (select count(*) from pg_attribute a where a.attrelid in (to_regclass('coldlion.prepack_detail'),to_regclass('coldlion.prod_detail')) and a.attnum>0 and not a.attisdropped and a.attname='raw')=0"
+    + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT
+)
+
+
 # Issue #2988. api.dam_order_list must keep invoker semantics while reading the
 # two party display names through narrow authenticated-only directories, so a
 # signed-in PopDAM user with no app.user_role row stops paying a per-row

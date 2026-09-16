@@ -1,70 +1,69 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2988,
+  "work_issue": 2863,
   "work_type": "structural",
-  "route": "migration",
-  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
+  "route": "shared-db-migration",
+  "goal": "Author the ColdLion landing tables coldlion.prepack_detail and coldlion.prod_detail at reserved migration version 20260916001944, with a documented grain proof per endpoint, a contract test file, and the mandatory production verification sidecar pinned in PREVIEW_PRODUCER_PATHS. Structure only: no row loads, no preview or production apply.",
   "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916001923)",
-  "worker": "Claude Opus 5 issue-2988 migration author",
-  "branch": "claude/issue-2988-orderlist-timeout",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988",
+  "dispatcher": "Claude shared-db orchestrator (claim 3006, marker issue 3004, 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2863 ColdLion detail landing author",
+  "branch": "claude/issue-2863-coldlion-detail-landing",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2863",
   "allowed_paths": [
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916001923.json",
+    "supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql",
+    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql",
+    "docs/coldlion-unit-5b-grain-proof-20260915.md",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260916001944.json",
     "scripts/production_business_risk_gate.py",
     "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916001923.json",
+    "supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql",
+    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql",
+    "docs/coldlion-unit-5b-grain-proof-20260915.md",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260916001944.json",
     "scripts/production_business_risk_gate.py",
     "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
+  "db_reads": [],
   "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
+    "coldlion.prepack_detail",
+    "coldlion.prod_detail"
   ],
   "prohibited_actions": [
-    "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
-    "No merge of this or any pull request",
-    "No edit to any migration other than reserved version 20260916001923",
-    "No claim of any database object beyond those declared in db_writes",
-    "No work in any other worktree or on any other branch",
-    "No raising of statement_timeout or lock_timeout",
-    "No change to core.customer or core.factory policies, grants or columns",
-    "No security_definer setting on api.dam_order_list without the issue #2662 security review"
+    "No apply to preview or production; Supabase MCP stays read-only",
+    "No merge of this or any other pull request",
+    "No use of any migration version other than the reserved 20260916001944",
+    "No database object outside the claimed coldlion.prepack_detail and coldlion.prod_detail",
+    "No row loads into the new tables",
+    "No work in another worktree or on another branch",
+    "No weakening of any existing check or guard"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
     "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-    "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
+    "node --test scripts/check-sql.test.mjs",
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python -m pytest -q scripts/test_production_catalog_verification.py"
   ],
   "assumptions": [
-    "Reserved migration version 20260916001923 is the only version this work may use",
-    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
-    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
-    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
+    "Migration version 20260916001944 is reserved for this claim and must be used exactly",
+    "Both ColdLion endpoints are enumerable rather than paged, so a live grain census is possible from a sampled key set",
+    "A fully static migration still requires a production verification sidecar, and every sidecar path must be individually pinned in PREVIEW_PRODUCER_PATHS",
+    "Adding a catalog_contract requires a CATALOG_CONTRACTS entry plus a refreshed detector_source_sha256 in the reviewed throughput-guard baseline",
+    "The governed verification connects as supabase_read_only_user, so every catalog predicate must be evaluated on that connection before it is trusted"
   ],
   "stop_conditions": [
-    "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
-    "Stop if the fix would require making api.dam_order_list security definer",
-    "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
-    "Stop if any required check cannot be run rather than reporting it as passed"
+    "Stop and report if the grain census shows a repeated group for either endpoint, rather than labelling a guessed key as natural",
+    "Stop if the ColdLion API cannot be reached, and say so explicitly rather than guessing a key",
+    "Stop if the work would require writing any database object outside the claim",
+    "Stop if a verification predicate cannot be shown to fail on a deliberately wrong expectation"
   ]
 }

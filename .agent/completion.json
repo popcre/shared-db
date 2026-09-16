@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3049,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/7",
-  "contract_sha256": "12cfa8b69238f5f37bd1b349e1740410fc333e6cc1c13f46f27c0b1ca212344f",
-  "head_sha": "5bbfb532e4a0a2f460f3a44e270c6533c26f0f2e",
+  "contract_ref": "refs/db-contracts/3048/8",
+  "contract_sha256": "09d68e9fd6288abe5673d913ca0f5d66c8ff2fd5c794704adbf2b88dac6d697d",
+  "head_sha": "5d54e352605ff1aabb370d4c8466370217efd6cd",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,7 +19,8 @@
     "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs"
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -27,7 +28,7 @@
     {
       "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "2310 tests, 2310 pass, 0 fail, 0 skipped at implementation head 5bbfb532 against origin/main 7ae12aad. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
+      "evidence": "2312 tests, 2312 pass, 0 fail, 0 skipped at implementation head 5d54e352 against origin/main 4cb2262e. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
     },
     {
       "command": "git diff --check origin/main...HEAD",

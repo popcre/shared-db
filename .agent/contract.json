@@ -1,49 +1,50 @@
 {
   "schema_version": 1,
-  "generation": 4,
-  "work_issue": 3079,
+  "generation": 7,
+  "work_issue": 3076,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the scheduled no-progress alarm evaluate stalled outcomes even when no orchestrator marker resolves, post to one stable fallback issue created once, and exit non-zero when it can neither evaluate nor post.",
-  "base_sha": "e7ece4f411d7ca0cc0746aef3759553c1909c942",
-  "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 alarm fallback author",
-  "branch": "claude/3027-alarm-fallback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-evidence-live",
+  "goal": "Let the production risk gate accept a validated migration train that binds each allowlisted version to its own merged authoring PR and its own preview evidence, with the single source_pr rule unchanged when no train ref is supplied (#3027 Step 6).",
+  "base_sha": "1dce1ca466ceb9abdf6f1c62d43bf7704322dda1",
+  "dispatcher": "Claude #3027 Step 6 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 6 train gate",
+  "branch": "claude/3027-train-per-entry-gate",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-train-gate",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    "scripts/orchestrator-flow/read-verified-train-record.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    "scripts/orchestrator-flow/read-verified-train-record.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration file change",
-    "No production command",
-    "No migration or preview workflow dispatch"
+    "No database write of any kind",
+    "No production workflow dispatch",
+    "No weakening of the single source_pr rule when no train ref is supplied"
   ],
   "required_checks": [
-    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
-    "git diff --check origin/main...HEAD"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
+    "node --test scripts/orchestrator-flow/migration-train.test.mjs"
   ],
   "assumptions": [
-    "No schema or structure change is needed; the alarm only reads GitHub and posts GitHub issue comments"
+    "A merged_preview_source_pr_map rehearsal files a per-PR preview instance binding for every authoring PR"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change or a database write"
+    "Stop if the fix would need a database change"
   ]
 }

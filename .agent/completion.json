@@ -1,37 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 3079,
+  "work_issue": 3076,
   "outcome": "ready-for-merge",
-  "pr": 3080,
+  "pr": 3075,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3079/4",
-  "contract_sha256": "4196a4d4cb9b7d9b5eada037cab0afcbdf7b293b6b7a8912909b71cb6acc82eb",
-  "head_sha": "8c7b4ec4e3f1ee60f18e029c4cc5f64625dcdbb8",
+  "contract_ref": "refs/db-contracts/3076/7",
+  "contract_sha256": "8c4be7f1140738c65de34c0bc15bb3aba331afad471747609f7524e0a7ecb973",
+  "head_sha": "6a2e0fb526394c02aa944168975a3bba34382d26",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    "scripts/orchestrator-flow/read-verified-train-record.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
       "exit_code": 0,
-      "evidence": "2319 tests, 2319 pass, 0 fail, 0 skipped at implementation head 8c7b4ec4 against origin/main e7ece4f4. The excluded file fails identically on clean main and is untouched by this PR. Truth audit OK at 296 call sites."
+      "evidence": "Run at implementation head 6a2e0fb5: 5 passed, 155 deselected. Full suite: 3 failed, 157 passed; the same 3 fail identically on base a160ca54 (3 failed, 152 passed)."
     },
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 8c7b4ec4."
+      "evidence": "Run at implementation head 6a2e0fb5: tests 13, pass 13, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: the alarm reads GitHub issues and posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
+    "preview_instance_text reads preview-instance-<pr>.json per authoring PR from a map rehearsal (#2140)"
   ],
   "stop_conditions_hit": []
 }

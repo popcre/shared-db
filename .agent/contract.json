@@ -1,43 +1,25 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3037,
+  "generation": 1,
+  "work_issue": 3035,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Update plan_product_type_reader.md and its HANDOFF.d file (issue 3037) for the 2026-09-16 owner decision that product-type columns are locked in orchestrator issue 3036 and issue 3024 is repo-maintenance scope. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
-  "dispatcher": "Claude shared-db session (product-type reader plan update, 2026-09-16)",
-  "worker": "Claude Opus 5 product-type reader plan editor",
-  "branch": "claude/plan-3036-columns-locked",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/plan-3036",
-  "allowed_paths": [
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
+  "goal": "Tighten the AGENTS.md top banner so the shared-db orchestrator takes only database-shape work (issue 3035, PR 3032). Prose rulebook change only; no code, migration, workflow, or database change.",
+  "base_sha": "4e290252bfc9528427d502a18ffcef3d617c7047",
+  "dispatcher": "Claude ai-devops session (orchestrator routing guidelines, 2026-09-16)",
+  "worker": "Claude Opus 5 orchestrator banner editor",
+  "branch": "claude/orchestrator-minimum-routing",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-minimum-routing",
+  "allowed_paths": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database read or write of any kind",
     "No migration, script, workflow, or configuration change",
-    "No work in a shared checkout or on another branch",
-    "No edit to AGENTS.md",
-    "Never close issue 3024 or 3036"
+    "No work in a shared checkout or on another branch"
   ],
-  "required_checks": [
-    "git diff --check origin/main...HEAD"
-  ],
-  "assumptions": [
-    "The plan and handoff are prose only and change no executable behaviour"
-  ],
-  "stop_conditions": [
-    "Stop and report if the change set grows beyond the two prose files"
-  ]
+  "required_checks": ["git diff --check origin/main...HEAD"],
+  "assumptions": ["The banner edit is prose only and changes no executable behaviour"],
+  "stop_conditions": ["Stop and report if the change set grows beyond AGENTS.md"]
 }

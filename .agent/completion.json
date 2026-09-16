@@ -1,26 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3054,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3055,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3054/6",
-  "contract_sha256": "0ec3baa02e69f645ff8b7eba7e5079becea27ace5f28971958b3c57b0bf623fe",
-  "head_sha": "811475d91a1f863ab396372d32bf7d6a34086525",
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "f89906ef85219d220d2a2196d90888407850cb55",
   "files_changed": [
-    ".github/live-proofs/3043.sql"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --version",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Run at implementation head 811475d9: v24.19.0. Probe query read-only; equivalent read on production returned column text nullable=YES and 1 row."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
+    },
+    {
+      "command": "python scripts/check_production_verification_sidecars.py",
+      "exit_code": 0,
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "Shared DB Live Proof runs the probe with read_only true."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

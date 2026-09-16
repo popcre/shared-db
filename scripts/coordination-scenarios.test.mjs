@@ -31,6 +31,10 @@ test('abandoned absent work frees only capacity and cannot resume without recove
   let serial=0
   const io={
     makeOwnerCommit:()=>`owner-${++serial}`,createRef:(name,sha)=>{if(refs.has(name))return false;refs.set(name,sha);return true},readRef:name=>refs.get(name)??null,deleteRef:name=>refs.delete(name),getCommitMessage:()=>'',
+    // #2301 Step 3: resuming asks the retirement namespace once. Answer from the
+    // fixture's own ref store rather than returning [] -- a hard-coded "nothing
+    // is retired" would make this scenario pass for the wrong reason.
+    listRefs:(prefix)=>[...refs].filter(([name])=>name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
     openClaims:()=>[structuredClone(claim)],getIssue:number=>structuredClone(issues.get(Number(number))),updateIssue:(number,{body})=>{issues.get(Number(number)).body=body;claim.body=body},
     localWorktreeState:()=>({state:'absent'}),prSources:()=>[],commentIssue:()=>{},
     // The recovery artifact must be DEREFERENCEABLE, not merely well-shaped;

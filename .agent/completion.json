@@ -1,14 +1,20 @@
 {
   "schema_version": 1,
-  "work_issue": 3035,
+  "work_issue": 3039,
   "outcome": "ready-for-merge",
-  "pr": 3032,
+  "pr": 3047,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3035/1",
-  "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
-  "head_sha": "52552d1d0bc2d4732893a64d226ea01690283c21",
+  "contract_ref": "refs/db-contracts/3039/3",
+  "contract_sha256": "8d739ffe2f84607c165116e5c95c069e86b9b46d2a4fe1b04eb19c5796060e0c",
+  "head_sha": "aa25c7504ad277a3ba7ded5c6352a24f27c7f0e5",
   "files_changed": [
-    "AGENTS.md"
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -16,11 +22,21 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head 52552d1d against origin/main 3f5c2a23; the implementation diff is AGENTS.md only (+8/-2)."
+      "evidence": "Exit 0 with no output at implementation head aa25c750."
+    },
+    {
+      "command": "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "Ran 166 tests, OK, at implementation head aa25c750; includes the verbatim #3039 producer-mismatch reproduction."
+    },
+    {
+      "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
+      "exit_code": 0,
+      "evidence": "pass 10, fail 0 at aa25c750; full node --test scripts/*.test.mjs also passed 1724/1724."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...52552d1d lists only AGENTS.md; no code, migration, workflow or configuration file changed."
+    "The production review job already accepts ephemeral_check_run_id and skips its preview_run_id checks for that route; the apply lane re-runs prove_ephemeral_ci_evidence itself."
   ],
   "stop_conditions_hit": []
 }

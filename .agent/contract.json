@@ -1,25 +1,49 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3035,
+  "work_issue": 3039,
+  "generation": 3,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Tighten the AGENTS.md top banner so the shared-db orchestrator takes only database-shape work (issue 3035, PR 3032). Prose rulebook change only; no code, migration, workflow, or database change.",
-  "base_sha": "4e290252bfc9528427d502a18ffcef3d617c7047",
-  "dispatcher": "Claude ai-devops session (orchestrator routing guidelines, 2026-09-16)",
-  "worker": "Claude Opus 5 orchestrator banner editor",
-  "branch": "claude/orchestrator-minimum-routing",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-minimum-routing",
-  "allowed_paths": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Make automatic production qualification ask the production gate's own evidence question before dispatch: run the unchanged historical original-apply proof, fall back to the gate's existing ephemeral-CI route only for non-high-risk migrations, and otherwise refuse without dispatching. No comparison is loosened.",
+  "base_sha": "268e453f29fa073e38fc16dcf7c60324b778b32e",
+  "dispatcher": "Claude shared-db session owning issue 3039",
+  "worker": "Claude Opus 5 subagent",
+  "branch": "claude/fix-3039-promotion-evidence",
+  "worktree": "C:/repos/shared-db-wt-3039",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration, script, workflow, or configuration change",
-    "No work in a shared checkout or on another branch"
+    "No schema, migration, database claim, preview or production database write.",
+    "No production workflow dispatch and no GitHub settings change.",
+    "No loosening of any production evidence comparison."
   ],
-  "required_checks": ["git diff --check origin/main...HEAD"],
-  "assumptions": ["The banner edit is prose only and changes no executable behaviour"],
-  "stop_conditions": ["Stop and report if the change set grows beyond AGENTS.md"]
+  "required_checks": [
+    "git diff --check origin/main...HEAD",
+    "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+    "node --test scripts/check-workflow-automatic-promotion-source.test.mjs"
+  ],
+  "assumptions": [
+    "The production apply lane already accepts ephemeral_check_run_id for non-high-risk migrations and re-runs every proof itself."
+  ],
+  "stop_conditions": [
+    "Stop if the fix would require changing prove_historical_original_apply_runs, preview_required_reasons or prove_ephemeral_ci_evidence."
+  ]
 }

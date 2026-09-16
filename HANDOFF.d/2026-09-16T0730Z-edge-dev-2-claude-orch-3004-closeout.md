@@ -1,5 +1,5 @@
 ---
-issue: 3004
+issue: 3026
 status: OPEN
 owner: claude/orch-3004-closeout
 ---

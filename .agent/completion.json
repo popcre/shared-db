@@ -4,14 +4,14 @@
   "outcome": "ready-for-merge",
   "pr": 3042,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3045/1",
-  "contract_sha256": "81c7e9d6f6a70149726da6398e2a9c4ab157bcfb3090c6a5448dc5daaed89555",
-  "head_sha": "ea4c73f5403bed153b77cd7d4164cb4d98249794",
+  "contract_ref": "refs/db-contracts/3045/2",
+  "contract_sha256": "db70a85b60a28a51e57e27e3168666da96557769ab93e3947eca2236138724ed",
+  "head_sha": "7576e32f04288a552fb1da573911d09acc9fb4e7",
   "files_changed": [".github/workflows/documents-only-merge-authorization.yml",".github/workflows/orchestrator-no-progress-alarm.yml",".github/workflows/start-reroute-canary.yml","scripts/orchestrator-flow/no-progress-alarm.mjs","scripts/orchestrator-flow/no-progress-alarm.test.mjs","scripts/orchestrator-flow/preview-route-canary.mjs","scripts/orchestrator-flow/preview-route-canary.test.mjs","scripts/orchestrator-flow/start-reroute-canary.mjs","scripts/orchestrator-flow/start-reroute-canary.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    { "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs", "exit_code": 0, "evidence": "49 pass, 0 fail, 0 skipped at implementation head ea4c73f5 rebased on origin/main 95619429." },
+    { "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs", "exit_code": 0, "evidence": "49 pass, 0 fail, 0 skipped at implementation head 7576e32f (ea4c73f5 merged with main 3f5c2a23) rebased on origin/main 95619429." },
     { "command": "git diff --check origin/main...HEAD", "exit_code": 0, "evidence": "Exit 0 with no output at ea4c73f5." }
   ],
   "assumptions_resolved": [

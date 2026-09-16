@@ -1,63 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2301,
+  "work_issue": 2988,
   "outcome": "ready-for-merge",
-  "pr": 3019,
+  "pr": 3021,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/15",
-  "contract_sha256": "ef932cbfce2c17b056403ccf1495811aa657d48d5aa671c235f9ff7b0e30a5a3",
-  "head_sha": "f3e1416fb0a568ad9b68ba534fac86860b4811b8",
+  "contract_ref": "refs/db-contracts/2988/5",
+  "contract_sha256": "282dae216b73d43dccfecdf78f316dff93b4279058c7a335de4a373370fa42e9",
+  "head_sha": "f399389fd36301a63d2379a7500bf8675f19f82a",
   "files_changed": [
-    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
-    "plan_author_lane_abandonment_lifecycle.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "docs/verification/issue-2988-historical-producer-restoration.md",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "command": "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d and re-run on the merged tree f3e1416f: tests 653, pass 653, fail 0, cancelled 0, skipped 0, todo 0. Two of those are new and each pins one of the defects that live verification found. The first builds a snapshot from two open claims whose titles name no single work issue -- one copied from the real live claim #2871, 'CLAIM: issue-2870-cutover-columns', and one ambiguous title naming two issues -- and asserts that both still appear as rows, that each row names the claim number an operator has to go and fix, that neither can ever be reported preview-ready, and that the capacity and preview domains report the same failure. Before the fix the identity read threw out of the map and the snapshot came back empty. The second drives the CLI itself: a missing runtime adapter and an unreadable snapshot both exit 3, a refusal on any other command still exits 2, and the REFUSED line is still printed in full each time, so the message an operator reads is unchanged and only the code it is filed under moves."
+      "evidence": "Run at implementation head 49760a34 with exactly the evidence object prove_registered_historical_restoration_provenance builds. Output: {\"version\":\"20260916033914\",\"fileSha256\":\"e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0\"}, which equals the run artifact's migration-content-manifest.json digest for this version. A negative control with the run id changed by one digit exited 2 with 'historical production provenance mismatch for previewApplyRun'."
     },
     {
-      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "command": "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d and re-run on the merged tree f3e1416f: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0. The coordination scenarios include the hermetic relinquish, resume and retired-refusal fixtures that demonstrate the lifecycle without touching a live lane."
+      "evidence": "Exit 0 with no output at the same head: the file on origin/main matches the registered filename, fileSha256, statementBytes 13874 and statementSha256 568e72b43a86a70cc1001a52331615b8b7d13b5310567d2f29657e77bcc93723."
     },
     {
-      "command": "python -m unittest scripts.test_production_migration_guard",
+      "command": "node --test scripts/historical-migration-restorations.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d and re-run on the merged tree f3e1416f: Ran 272 tests, OK. Unchanged by this step; run to prove the Step 6 rulebook agreement tests still hold against the prose as it now stands, including the exit-code paragraph this change makes true."
+      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at the same head; the two added tests pin the issue 2988 and issue 2863 entries field by field with negative controls."
     },
     {
-      "command": "node scripts/check-skill-drift.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "OK: checked 3 canonical skills in C:/repos/ai-devops against AGENTS.md; no contradictions."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d and re-run on the merged tree f3e1416f: truth audit OK: call_sites=296, unchanged. The new code adds no semantic call site, so the inventory file held by open pull requests 2823 and 2821 stays untouched."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d and re-run on the merged tree f3e1416f: no whitespace errors."
+      "evidence": "155 passed, 237 subtests passed in 32.88s at the same head."
     }
   ],
   "assumptions_resolved": [
-    "Live read-only verification, not the test suite, is what found both defects in this step. 980 tests passed over code that could not read the live lanes at all, because both failures need a real record written before the current conventions existed. That is the reason the plan requires a live gate as well as suites, and it is now the reason two new tests exist.",
-    "The exit-code change is a narrowing, not a relaxation. Exit 2 on --abandonment-audit is a factual claim that an expired author lane was found. A refusal never established that, so reporting it as 2 was a false positive with an operator cost: the scheduled run on 2026-09-16 at main head 3fdd16ef logged 'REFUSED: claim title must identify exactly one work issue for capacity transition events' and then '##[error]Expired author lane(s) detected', which is a report about lanes the instrument never read. Exit 3 already means unverifiable on this command and already outranks expiry. Every other command keeps the generic handler and keeps exiting 2, which the new test asserts directly.",
-    "Isolating the claim-identity read does not hide the unreadable claim. The row carries the claim number in both the capacity and the preview error, so the operator is told which claim to fix, and preview_edge_satisfied is forced false so an unreadable claim can never be counted as ready.",
-    "scripts/manage-migration-author-lanes.mjs is the repository's single protected coordination source. The nine open pull requests were checked against the rule in scripts/check-pr-source-collisions.mjs before it was edited and none of them touches that file, so there was no colliding pull request to wait behind. The rule was not bypassed.",
-    "Live proof at this head, all read-only: --abandonment-audit reports status UNVERIFIABLE with mutating false, zero actions carrying mutates true, all eight lanes described, capacity 8 issues / 7 actions / 1 unverifiable, six expired-unconfirmed-report actions, exit 3. That agrees with --queue-audit, which reports the same seven lanes without a live lease and one active lane. No database, preview, production or infrastructure write occurred, and no ref, branch or worktree was deleted.",
-    "The lifecycle was deliberately NOT applied to any live expired claim to demonstrate it. Six live lanes are reported as expired-unconfirmed; acting on any of them needs that claim's own current evidence and an authorised operator decision, and this plan is not that authority.",
-    "The definition-of-done boxes in section 13 are ticked against named artifacts -- merge commits, verdict refs, suite counts and the live run above -- rather than from memory.",
-    "An independent governed review of the previous head kept both code changes -- it confirmed the identity leg still reports the bad claim in both domains, that the exit-code remap is a hardening rather than a relaxation, that no other command's code moves, and that both new tests fail against the old code -- and refused the record. It was right: the definition-of-done list ticked boxes about the completion step's own review, checks, merge and issue closure, none of which a commit can establish about itself, and the plan's header still linked the handoff this change deletes. The list now states plainly that those boxes cover Steps 1-6, the #2301 closure box is left UNTICKED on purpose with the reason written next to it, the header records the handoff as retired instead of linking to it, and no code path was touched in the fix.",
-    "The plan's handoff is deleted in this pull request because this pull request closes its step issue #3018 and the plan it registers is finished. Nothing unfinished depends on it. The plan file itself stays as the durable record and now says plainly that it is complete and must not be restarted.",
-    "After the approving review at head 5b7d128191ed367a60ba8e9162197abfa06f5c6d, origin/main advanced to 86da2d44bcd390b3177f322f947b212c8dc9bbc9 and this pull request reported a conflict. origin/main was merged forward; the only conflicting paths were the two .agent evidence files. The merge commit takes main's evidence pair verbatim, so it changes only the four implementation paths against the new base, and this branch's own evidence pair is then written by the single evidence commit that follows it. No code, test or prose hunk was touched by the merge, and every check above was re-run on the merged tree with the same results."
+    "Run 35060692115 is a workflow_dispatch run on main, run_attempt 1, conclusion success, head_sha 3fdd16effbd154e1602c29aa5610161910138d68; its single unexpired artifact preview-migration-apply-bac58c5f49687c7911d013e1f392fcf5c356e626 carries preview-instance.json with appliedCommit bac58c5f49687c7911d013e1f392fcf5c356e626, previewProjectRef mvpkijzfmfcxhnzqogzs, rehearsalMode claim and allowlist [20260916033914]. Because that binding is claim mode, the gate's bound-mainline post-merge exception does not apply and the registry route is the correct remedy.",
+    "PR 3007 is merged at 86da2d44bcd390b3177f322f947b212c8dc9bbc9, which is the current origin/main, so producer provenance is complete and the entry carries sourcePr and sourceMergeCommit.",
+    "The migration on origin/main contains zero CRLF, so its raw digest and its newline-normalised digest are both e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0, identical to the artifact manifest digest the gate compares against.",
+    "The objects the migration creates are view dam.dam_order_list_customer_directory, view dam.dam_order_list_vendor_directory and view api.dam_order_list, plus idempotent drops of four abandoned function signatures.",
+    "No guard, gate, validator, or migration was edited; no workflow was dispatched and no database was read or written."
   ],
   "stop_conditions_hit": []
 }

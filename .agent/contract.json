@@ -1,62 +1,54 @@
 {
   "schema_version": 1,
-  "generation": 15,
-  "work_issue": 2301,
+  "generation": 5,
+  "work_issue": 2988,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement Step 7 of plan_author_lane_abandonment_lifecycle.md, the completion step: run the full section 10 suites, verify the finished lifecycle live and read-only, fix what that live verification finds, record the final STATUS and the definition of done, and retire the plan's handoff. Live verification found two real defects that the unit suites could not see. First, the claim-identity read ran outside the per-domain failing legs of the flow snapshot, so live claim #2871, titled CLAIM: issue-2870-cutover-columns with no issue number in it, threw out of the map and blanked the entire snapshot: the hourly audit described none of the other seven lanes. The identity read becomes its own failing leg, so one unreadable claim is one unreadable row, reported as unverifiable in both domains. Second, a refusal on --abandonment-audit fell through to the generic handler, which exits 2, and on this command 2 already means an expired author lane was found, so the scheduled run announced every read failure as an expiry report about lanes it never read. A refusal on this command now exits 3, because an instrument that could not read is exactly the unverifiable case and unverifiable outranks expiry. No schema, database or infrastructure change.",
-  "base_sha": "3fdd16effbd154e1602c29aa5610161910138d68",
-  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Step 7 completion worker",
-  "branch": "claude/2301-step7-completion",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
+  "goal": "Resolve the production-apply producer-mismatch refusal for migration 20260916033914 by registering its one exact historical restoration in scripts/historical-migration-restorations.mjs, with every value derived from the original preview apply run 35060692115, its artifact binding, PR 3007 and its merge commit, and the migration bytes on origin/main; pin the new entry and the issue 2863 entry in scripts/historical-migration-restorations.test.mjs; and record the evidence in a verification document. No guard is weakened, no workflow is dispatched, and no database is touched.",
+  "base_sha": "87b10ced4bea49564be400f196bb3cce5be0c551",
+  "dispatcher": "Claude shared-db orchestrator (issue 2988 production-apply refusal, 2026-09-16)",
+  "worker": "Claude Opus 5 issue-2988 historical restoration registrar",
+  "branch": "claude/2988-historical-restoration",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/w2988hr",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "plan_author_lane_abandonment_lifecycle.md",
-    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs",
+    "docs/verification/issue-2988-historical-producer-restoration.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "plan_author_lane_abandonment_lifecycle.md",
-    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs",
+    "docs/verification/issue-2988-historical-producer-restoration.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database, preview, production, or infrastructure action",
-    "No application of the abandonment lifecycle to any live expired claim; the lifecycle is proven by hermetic fixtures and by read-only reporting, never by acting on a real lane",
-    "No automatic transition of an expired author claim",
-    "No deletion of any coordination ref, claim, branch, pull request, or worktree",
-    "No weakening, skipping, or relaxing of any existing check, guard, refusal, or exit code; the exit-code change narrows one command from a wrong code to the stricter correct one and every other command is unchanged",
-    "No synthetic review verdict and no self-approval",
-    "No new feature; Step 7 is regression, live proof, the fixes that proof demands, and the record"
+    "No apply, dispatch, or promotion of any workflow, preview or production",
+    "No database read or write of any kind",
+    "No edit to any guard, gate, validator, or test to make the new entry pass",
+    "No change to any migration file, including 20260916033914",
+    "No merge of this or any other pull request",
+    "No edit to any existing registry entry",
+    "No work in a shared checkout or on another branch"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
-    "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
-    "python -m unittest scripts.test_production_migration_guard",
-    "node scripts/check-skill-drift.mjs",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "git diff --check"
+    "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
+    "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "node --test scripts/historical-migration-restorations.test.mjs",
+    "python -m pytest -q scripts/test_production_business_risk_gate.py"
   ],
   "assumptions": [
-    "A green unit suite is not proof that an instrument works. Both defects fixed here were invisible to 980 passing tests and visible within one live read-only run, because both need a real record that predates the current conventions. The plan's own live-verification gate is what found them, which is the reason that gate exists",
-    "Mapping a refusal on --abandonment-audit to exit 3 is a hardening, not a weakening. Exit 2 on this command is a factual claim that an expired author lane was found; a refusal never established that, and unverifiable already outranks expiry in this command's contract. The refusal message is still printed in full, and the generic handler that every other command uses is untouched",
-    "Isolating the claim-identity read does not hide the bad claim. It reports it in both domains with the claim number in the message, so an operator is told exactly which claim to go and fix, and the run can never report clean while a claim is unreadable",
-    "scripts/manage-migration-author-lanes.mjs is the repository's one protected coordination source. Before editing it, the nine open pull requests were checked against the collision rule in scripts/check-pr-source-collisions.mjs and none of them touches that file, so there is no colliding pull request to wait behind",
-    "The definition-of-done boxes are ticked against named artifacts rather than from memory, and the STATUS table holds the per-step commits, sub-issues, verdict refs and suite counts behind them",
-    "The plan's handoff is deleted in this pull request because this pull request closes #2301, which is what the handoff-contract rule requires; the plan file itself stays as the durable record"
+    "The registered historical restoration route is the repository's own sanctioned remedy for a producer mismatch on an immutable original apply",
+    "A migration that ships a new preview-producer sidecar can never rehearse on preview at a commit that already carries that sidecar on main, so run 35060692115 cannot be replayed and its evidence must be rebound rather than regenerated",
+    "The migration file on origin/main contains no CRLF, so the raw-byte artifact manifest digest and the newline-normalised registry digest are the same value the gate compares"
   ],
   "stop_conditions": [
-    "Stop if the live audit cannot be run read-only, or if any live run mutates anything",
-    "Stop if any definition-of-done box cannot be tied to a real artifact",
-    "Stop if current main moves before the final exact-head review-to-merge cycle",
-    "Stop rather than apply the lifecycle to a live expired claim to demonstrate it"
+    "Stop and report if any registry value cannot be pinned exactly from the run, its artifact, the pull request, or the file on origin/main",
+    "Stop and report if the sanctioned historical restoration route does not fit this fact pattern",
+    "Stop and report rather than weaken, bypass, or special-case any guard to make the entry validate"
   ]
 }

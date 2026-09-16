@@ -10,8 +10,6 @@
   "contract_sha256": "682ab4831a923e3659851407ff1bde56a06c768290a1ece5a33adf2c635f0df2",
   "head_sha": "13990fa54ad4a6da2c1737d2d064ed4d8ff0b92f",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql"
   ],
   "db_reads": [],

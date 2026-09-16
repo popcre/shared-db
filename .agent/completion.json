@@ -1,43 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3048,
+  "work_issue": 3065,
   "outcome": "ready-for-merge",
-  "pr": 3049,
+  "pr": 3066,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/9",
-  "contract_sha256": "5307c15ef6f48e2f47d424dd049ee791f3b0b0c44aa12a7bd31075335d6f969b",
-  "head_sha": "c41aa92e9ab00c65c6e5654580acc18d0b62eeda",
+  "contract_ref": "refs/db-contracts/3065/3",
+  "contract_sha256": "c5663e85877df159d11b98dc6b8ae35af7bef188db3faaffa68b70830530ac1d",
+  "head_sha": "dcbce882c1e55b835a2e25223b0df088f0b6bec5",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/db-coordination-events.mjs",
-    "scripts/db-coordination-events.test.mjs",
-    "scripts/lib/hold-reason.mjs",
-    "scripts/lib/hold-reason.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "scripts/orchestrator-flow/migration-train.mjs",
+    "scripts/orchestrator-flow/migration-train.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
       "exit_code": 0,
-      "evidence": "2312 tests, 2312 pass, 0 fail, 0 skipped at implementation head c41aa92e against origin/main a160ca54. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
-    },
-    {
-      "command": "git diff --check origin/main...HEAD",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output at 0bf963ec."
+      "evidence": "Run at implementation head dcbce882: tests 14, pass 14, fail 0, skipped 0 (manage-migration-author-lanes.test.mjs 584/584)."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: hold_reason is an optional field in a GitHub comment event, and the alarm posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
+    "grep found no consumer of production_assertions/--close-train/--validate-train outside migration-train.mjs and manage-migration-author-lanes.mjs"
   ],
   "stop_conditions_hit": []
 }

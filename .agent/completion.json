@@ -6,10 +6,12 @@
   "migration_versions": [
     "20260916160617"
   ],
-  "contract_ref": "refs/db-contracts/3071/2",
-  "contract_sha256": "09ac59208bf07290fce895599e6935c55baa53b8f0e32049a4f453de844bfa9a",
-  "head_sha": "a356c7f72613550b34b8e678d470474b0a04915e",
+  "contract_ref": "refs/db-contracts/3071/3",
+  "contract_sha256": "14731ac95c97a3c030d5a06cad68f53c2a4821e00b182ecc2ee66d9a2cc7ea2d",
+  "head_sha": "3178ac40f3c7b599e5b1ac17a7ce84b3c87d23b7",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql"
   ],
   "db_reads": [],
@@ -20,7 +22,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head a356c7f7: Static checks passed; verify-cost guard passed for 1 added migration."
+      "evidence": "Run at implementation head 3178ac40: Static checks passed; verify-cost guard passed for 1 added migration."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",

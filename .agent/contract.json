@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3071,
   "work_type": "structural",
   "route": "migration",
   "goal": "Live acceptance canary for #3027 Step 6, train entry a: one migration adding one nullable default-less text column step6_train_note_a to the no-op fully revoked canary table plm.production_lane_canary, promoted to production only as part of one governed migration train whose entries each come from their own merged authoring PR. No data, grant, RLS or application behaviour change.",
-  "base_sha": "a160ca54e5eeef992744aeceaaf0df26675a2374",
+  "base_sha": "c94ef25f1075e2dc7ee4031f5507fed19422e3ab",
   "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
   "worker": "Claude Opus 5 #3027 Step 6 canary author",
   "branch": "claude/3071-step6-train-canary",

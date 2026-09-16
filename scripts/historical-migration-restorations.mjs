@@ -5,6 +5,32 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const HISTORICAL_RESTORATIONS = Object.freeze({
+  // #2988. Preview applied these exact bytes in run 35060692115, dispatched at
+  // pre-merge main 3fdd16ef and applied from PR #3007 head bac58c5f before the
+  // pull request merged. The production apply was refused because the merge
+  // commit 86da2d44 carries a new preview-producer sidecar
+  // (scripts/production-verification-sidecars/20260916033914.json) that the
+  // dispatch commit could not have had, so the immutable original apply must be
+  // rebound through this registry rather than replayed. Producer provenance is
+  // complete because this exact version merged from PR #3007 as 86da2d44.
+  '20260916033914': Object.freeze({
+    filename: 'supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql',
+    name: 'dam_order_list_role_free_party_names',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '35060692115',
+    previewDispatchCommit: '3fdd16effbd154e1602c29aa5610161910138d68',
+    previewAppliedCommit: 'bac58c5f49687c7911d013e1f392fcf5c356e626',
+    sourcePr: 3007,
+    sourceMergeCommit: '86da2d44bcd390b3177f322f947b212c8dc9bbc9',
+    statementBytes: 13874,
+    statementSha256: '568e72b43a86a70cc1001a52331615b8b7d13b5310567d2f29657e77bcc93723',
+    fileSha256: 'e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0',
+    objects: Object.freeze([
+      'view dam.dam_order_list_customer_directory',
+      'view dam.dam_order_list_vendor_directory',
+      'view api.dam_order_list',
+    ]),
+  }),
   // #2863. Preview applied these exact bytes in claim-mode run 35047947727,
   // dispatched at main commit 0a11c42d and bound (instance-binding
   // appliedCommit) to PR #3008 commit 1595aec0 before the PR merged. The

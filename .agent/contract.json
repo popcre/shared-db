@@ -1,51 +1,54 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3036,
+  "generation": 2,
+  "work_issue": 3091,
   "work_type": "structural",
   "route": "migration",
-  "goal": "Add seven nullable product-type reader columns (with status check constraint and column comments) to plm.item and regenerate types. Additive; no data, grant or RLS change.",
-  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
+  "base_sha": "b4a39203fa55e5a11e15d5d01a8c097836e41bda",
   "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3036 migration author a7",
-  "branch": "claude/3036-product-type-cols-a7",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3036-product-type-cols-a7",
+  "worker": "Claude Opus 5 #3091 migration author a7f2",
+  "branch": "claude/3091-milestone-schedule-a7f2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
   "allowed_paths": [
-    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
+    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "config/db-data-admin-property-source-coverage.json",
     "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
+    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "config/db-data-admin-property-source-coverage.json",
     "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [],
+  "db_reads": [
+    "table plm.\"FactoryTime\""
+  ],
   "db_writes": [
-    "column plm.item.product_construction",
-    "column plm.item.product_material",
-    "column plm.item.product_treatment",
-    "column plm.item.product_type",
-    "column plm.item.product_type_read_at",
-    "column plm.item.product_type_rules_version",
-    "column plm.item.product_type_status",
-    "table plm.item"
+    "index plm.prod_order_header_id_key",
+    "index plm.prod_order_milestone_schedule_status_needed_idx",
+    "index plm.prod_order_milestone_schedule_upsert_key",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.prod_order_milestone_schedule"
   ],
   "prohibited_actions": [
     "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
-    "No data, grant or RLS change",
-    "No migration version other than claimed 20260916231639"
+    "No data change to existing tables",
+    "No migration version other than claimed 20260916231838"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
     "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "Table-level grants and RLS on plm.item cover new columns"
+    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the seven admitted columns"
+    "Stop if the change needs anything beyond the admitted objects"
   ]
 }

@@ -7,6 +7,13 @@
 -- core.factory as their owner. core.customer and core.factory are owned by
 -- postgres and do NOT have FORCE ROW LEVEL SECURITY, so the owner is not
 -- subject to their policies and the per-row qual below is never evaluated.
+-- Evidence, read read-only from production qsllyeztdwjgirsysgai on 2026-09-16:
+--   select relname, relowner::regrole::text, relrowsecurity, relforcerowsecurity
+--   from pg_class where oid in ('core.customer'::regclass,'core.factory'::regclass);
+--   -> (customer, postgres, t, f) and (factory, postgres, t, f).
+-- The production contract dam_order_list_role_free_party_names_v1 re-asserts
+-- exactly that pair of rows, so a change to it fails verification rather than
+-- silently invalidating this comment.
 --
 -- They are views, not SECURITY DEFINER functions, on purpose. A function that
 -- raises on a non-authenticated caller cannot be LEFT JOINed safely: a LEFT
@@ -17,12 +24,21 @@
 -- view has no such failure mode: every caller that may select it gets rows,
 -- and every caller that may not gets a plain permission error on the view.
 --
--- dam is not in this project's PostgREST exposure list
---   pgrst.db_schemas = public, graphql_public, api, crm, pim, core, app
--- so neither helper is reachable over the REST API, and the authenticated and
--- service_role database roles are NOLOGIN -- they are only ever assumed by the
--- authenticator role behind PostgREST. A PopDAM end user therefore has no route
--- to either helper except through api.dam_order_list itself.
+-- dam is not in this project's PostgREST exposure list. Evidence, read
+-- read-only from production qsllyeztdwjgirsysgai on 2026-09-16:
+--   select setconfig from pg_db_role_setting s
+--   join pg_roles r on r.oid = s.setrole where r.rolname = 'authenticator';
+--   -> pgrst.db_schemas=public, graphql_public, api, crm, pim, core, app
+--      (alongside statement_timeout=8s and lock_timeout=8s); `dam` is absent.
+--   select rolname, rolcanlogin from pg_roles
+--   where rolname in ('authenticated','service_role','anon','authenticator');
+--   -> authenticated f, service_role f, anon f, authenticator t.
+-- So neither helper is reachable over the REST API, and the roles that hold
+-- SELECT on them cannot log in -- they are only ever assumed by authenticator
+-- behind PostgREST. Both readings are role settings on the production project
+-- and are NOT verifiable from this file alone; they were observed at the date
+-- above and the second is what the NOLOGIN claim rests on. A PopDAM end user
+-- therefore has no route to either helper except through api.dam_order_list.
 --
 -- PRODUCTION DIAGNOSIS (read-only, 2026-09-15/16, qsllyeztdwjgirsysgai).
 --   api.dam_order_list is a security-invoker view that LEFT JOINs core.customer
@@ -59,6 +75,17 @@
 --     roles that may already select api.dam_order_list.
 --   * No timeout is raised, no dataset is loaded in full, and no index,
 --     materialized view or scheduled job is introduced.
+
+-- IDEMPOTENCE. An earlier shape of this migration created these four helpers as
+-- SECURITY DEFINER set-returning functions; that shape was abandoned because a
+-- raising function cannot be LEFT JOINed (see above). A function and a view
+-- cannot share a name in the same schema, so a re-run, or an environment where
+-- the first shape was partially applied, must drop them before the views are
+-- created. Dropping something that was never created is a no-op.
+drop function if exists dam.dam_order_list_customer_directory();
+drop function if exists dam.dam_order_list_vendor_directory();
+drop function if exists app.dam_order_list_customer_directory();
+drop function if exists app.dam_order_list_vendor_directory();
 
 create or replace view dam.dam_order_list_customer_directory as
 select

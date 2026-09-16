@@ -4455,3 +4455,41 @@ CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# Issue #2988. api.dam_order_list must keep invoker semantics while reading the
+# two party display names through narrow authenticated-only directories, so a
+# signed-in PopDAM user with no app.user_role row stops paying a per-row
+# core.customer / core.factory policy evaluation on every bounded page.
+DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT = (
+    "exists (select 1 from pg_class c where c.oid=to_regclass('api.dam_order_list')"
+    " and c.relkind='v'"
+    " and c.reloptions @> array['security_invoker=true']::text[]"
+    " and position('dam_order_list_customer_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('dam_order_list_vendor_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))=0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))=0"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_proc p"
+    " where p.oid=to_regprocedure('app.dam_order_list_customer_directory()')"
+    " and p.prosecdef and p.provolatile='s' and p.proretset"
+    " and has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and not has_function_privilege('anon',p.oid,'EXECUTE'))"
+    " and exists (select 1 from pg_proc p"
+    " where p.oid=to_regprocedure('app.dam_order_list_vendor_directory()')"
+    " and p.prosecdef and p.provolatile='s' and p.proretset"
+    " and has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and not has_function_privilege('anon',p.oid,'EXECUTE'))"
+    # The repair must not have been bought by widening either source table:
+    # both keep exactly the two policies they carry today.
+    " and (select count(*) from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname in ('shared_read','admin_write'))=4"
+    " and not exists (select 1 from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname not in ('shared_read','admin_write'))"
+)
+CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
+    DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT
+)

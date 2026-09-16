@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { FALLBACK_TITLE, alarmKey, findOrCreateFallback, latestSnapshotFromComments, main, postedKeys, runAlarm, runResume } from './no-progress-alarm.mjs'
+import { FALLBACK_LABEL, FALLBACK_TITLE, alarmKey, findOrCreateFallback, latestSnapshotFromComments, main, postedKeys, runAlarm, runResume } from './no-progress-alarm.mjs'
 import { gatherLiveInput } from '../orchestrator-snapshot.mjs'
 
 const T0 = '2026-09-16T08:00:00.000Z'
@@ -102,8 +102,10 @@ test('with no orchestrator marker the alarm still evaluates stalls and posts to 
 })
 
 test('the fallback issue is reused, created only when missing, and a failed create or unconfirmed post fails the run', () => {
-  const trusted = { author_association: 'OWNER' }
-  const existing = [{ number: 9, title: FALLBACK_TITLE, ...trusted }, { number: 7, title: FALLBACK_TITLE, ...trusted }, { number: 3, title: FALLBACK_TITLE, author_association: 'NONE', user: { login: 'x' } }]
+  const labels = [{ name: FALLBACK_LABEL }]
+  // The workflow token creates the issue, so production reuse rests on the github-actions[bot] shape.
+  const bot = { author_association: 'NONE', user: { login: 'github-actions[bot]' }, labels }
+  const existing = [{ number: 9, title: FALLBACK_TITLE, author_association: 'OWNER', labels }, { number: 7, title: FALLBACK_TITLE, ...bot }, { number: 3, title: FALLBACK_TITLE, author_association: 'NONE', user: { login: 'x' }, labels }, { number: 2, title: FALLBACK_TITLE, author_association: 'OWNER' }]
   assert.equal(findOrCreateFallback(existing, () => assert.fail('must not create')), 7)
   assert.equal(findOrCreateFallback([], () => ({ number: 50 })), 50)
   assert.throws(() => findOrCreateFallback([], () => ({})), /could not be created/)
@@ -124,4 +126,11 @@ test('only the alarm reads live state without a marker; other read failures stil
   const errors = []
   assert.equal(main(['--alarm'], { io: { ...io(), gatherLiveInput: () => { throw new Error('gh api failed') } }, stdout: () => {}, stderr: (l) => errors.push(l) }), 1)
   assert.match(errors[0], /gh api failed/)
+})
+
+test('resume names the missing orchestrator marker instead of a shape error', () => {
+  const fake = io()
+  runAlarm({ repo: 'r', now: '2026-09-16T10:30:00.000Z', postIssue: 5 }, fake)
+  const gone = { ...fake, gatherLiveInput: () => ({ input: { ...input(), marker: null }, sessionStarted: null }) }
+  assert.throws(() => runResume({ repo: 'r', issue: 5, now: '2026-09-16T10:31:00.000Z' }, gone), /no open routable orchestrator marker/)
 })

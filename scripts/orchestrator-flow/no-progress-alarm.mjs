@@ -26,6 +26,8 @@ import { OrchestratorSnapshotError, snapshotInputs, verifyOrchestratorSnapshot }
 import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes } from '../orchestrator-snapshot.mjs'
 
 export const FALLBACK_TITLE = 'Orchestrator no-progress alarm (no orchestrator marker)'
+// A coordination label, so the queue audit does not report the fallback issue as unlabelled work.
+export const FALLBACK_LABEL = 'orchestrator-alarm'
 
 export const ALARM_MARKER = 'db-no-progress-alarm'
 export const SNAPSHOT_LANG = 'db-orchestrator-snapshot'
@@ -97,9 +99,10 @@ export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryR
   return { status: 'posted', marker, alarm_key: key, target, comment_url: posted.html_url, stalled: output.stalled_outcomes.map((r) => r.work_issue), zero_closures_4h: output.zero_closures_4h }
 }
 
-/** The one stable fallback issue: the oldest open trusted issue titled FALLBACK_TITLE, created only when none exists. */
+/** The one stable fallback issue: the oldest open trusted issue with FALLBACK_TITLE and FALLBACK_LABEL, created only when none exists. */
 export function findOrCreateFallback(openIssues, create) {
-  const found = openIssues.filter((issue) => !issue.pull_request && issue.title === FALLBACK_TITLE && trustedComment(issue)).sort((x, y) => x.number - y.number)[0]
+  const labelled = (issue) => (issue.labels ?? []).some((label) => (label?.name ?? label) === FALLBACK_LABEL)
+  const found = openIssues.filter((issue) => !issue.pull_request && issue.title === FALLBACK_TITLE && labelled(issue) && trustedComment(issue)).sort((x, y) => x.number - y.number)[0]
   if (found) return found.number
   const created = create()
   if (!Number.isInteger(created?.number)) throw new Error('fallback alarm issue could not be created')
@@ -123,7 +126,11 @@ export function runResume({ repo, issue, now, maxAgeMinutes = 24 * 60 }, io) {
   if (!found) throw new OrchestratorSnapshotError(`no alarm snapshot on #${issue}`)
   const { snapshot } = found
   let live = null
-  const readCurrent = () => { live ??= io.gatherLiveInput(repo); return live.input }
+  const readCurrent = () => {
+    live ??= io.gatherLiveInput(repo)
+    if (!live.input.marker) throw new OrchestratorSnapshotError('no open routable orchestrator marker to resume against')
+    return live.input
+  }
   let currency
   try { currency = verifyOrchestratorSnapshot(snapshot, { readCurrent, now, maxAgeMs: maxAgeMinutes * 60000 }) } catch (error) {
     // The seal is always checked first; only freshness or drift may be reported and resumed past.
@@ -153,7 +160,7 @@ export const liveIo = {
     return findOrCreateFallback(defaultIo.openIssues(repo), () => {
       const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'alarm-')), 'issue.md')
       writeFileSync(file, 'Stable target for the no-progress alarm while no orchestrator marker resolves (ai-devops#401 Step 4). Created once by the alarm workflow; keep it open.')
-      return JSON.parse(gh(['api', '-X', 'POST', `repos/${repo}/issues`, '-f', `title=${FALLBACK_TITLE}`, '-F', `body=@${file}`]))
+      return JSON.parse(gh(['api', '-X', 'POST', `repos/${repo}/issues`, '-f', `title=${FALLBACK_TITLE}`, '-F', `body=@${file}`, '-f', `labels[]=${FALLBACK_LABEL}`]))
     })
   },
   issueComments: (repo, issue) => defaultIo.issueComments(repo, issue),

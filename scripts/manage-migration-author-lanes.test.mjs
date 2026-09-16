@@ -8257,3 +8257,9 @@ test('issue 3027 a claim hold is accepted only when the claim and held work shar
   assert.deepEqual(namedHold(50,'object:#60:table core.shared',io),{kind:'object',holder:'claim #60',objects:['table core.shared']})
   assert.throws(()=>namedHold(50,'object:#60:table core.theirs',io),/do not conflict on/)
 })
+
+test('the no-progress alarm fallback label is a coordination label the queue audit excludes', async () => {
+  const { COORDINATION_LABELS } = await import('./manage-migration-author-lanes.mjs')
+  const { FALLBACK_LABEL } = await import('./orchestrator-flow/no-progress-alarm.mjs')
+  assert.ok(COORDINATION_LABELS.has(FALLBACK_LABEL))
+})

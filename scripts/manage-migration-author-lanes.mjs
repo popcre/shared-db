@@ -811,7 +811,8 @@ export function parseQueueScope(body = '') {
   return { status, workType, route, priority, dependencies, returnTo, writes, reads, legacyObjects, objects: writes, serviceClass, changeType, applicationReturnTo, liveAssertion, generatedTypes, outcomeStage }
 }
 
-export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker'])
+// orchestrator-alarm marks the no-progress alarm's fallback issue (scripts/orchestrator-flow/no-progress-alarm.mjs).
+export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker','orchestrator-alarm'])
 export const WORK_LABEL = 'db-work'
 
 // The conflict matrix lives in ./lib/hold-reason.mjs so named holds and lane
@@ -1912,7 +1913,7 @@ export const githubIo = {
   // label. Filtering on `labels=db-work` here is what let issues #1188, #1238,
   // #1242, #1266 and #1268 sit unlabelled and therefore invisible to the queue
   // audit while carrying a valid db-work-scope block. Coordination issues
-  // (db-claim, orchestrator-marker) are the only exclusions; a missing db-work
+  // (db-claim, orchestrator-marker, orchestrator-alarm) are the only exclusions; a missing db-work
   // label on anything else is now a reported defect, never a silent skip.
   openWorkIssues(pager = ghPaginated) {
     const rows = pager(`repos/${REPO}/issues?state=open&per_page=100`)

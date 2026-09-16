@@ -94,7 +94,10 @@ test('#507(b) a recorded assignment survives a stale-readback error (#2844); an 
       }
       const options = { issue: 7, pr: 8, worktree: r.work, push: true, assign: true }
       if (record) {
-        assert.equal(refresh(options, { run, log: (l) => logs.push(l) }).reviewer, 'glm-5.3')
+        const done = refresh(options, { run, log: (l) => logs.push(l) })
+        assert.equal(done.reviewer, 'glm-5.3')
+        assert.equal(done.wrapper, 'ai-glm')
+        assert.match(logs.at(-1), /--reviewer glm-5.3 --wrapper ai-glm /)
         assert.match(logs.join('\n'), /records it, so it stands \(#2844\)/)
       } else {
         assert.throws(() => refresh(options, { run, log: () => {} }), /assigning a reviewer at the new head failed: REFUSED/)

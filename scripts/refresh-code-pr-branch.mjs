@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REVIEWERS } from './manage-migration-author-lanes.mjs'
 
 export class RefreshError extends Error {}
 const EVIDENCE = ['.agent/contract.json', '.agent/completion.json']
@@ -103,8 +104,8 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
     log(`The reviewer assignment reported an error (${String(assign.stderr || assign.stdout).trim().split('\n').at(-1)}), but ${ref} records it, so it stands (#2844).`)
     assigned = `"reviewer": "${recorded[1]}"`
   }
-  const reviewer = (assigned.match(/"reviewer":\s*"([^"]+)"/) ?? [])[1], wrapper = (assigned.match(/"wrapper":\s*"([^"]+)"/) ?? [])[1]
-  log(`Reviewer assigned at ${tip}: ${reviewer ?? 'see output'} (${wrapper ?? '?'}). Next: node scripts/run-governed-review.mjs --issue ${options.issue} --pr ${options.pr} --reviewer ${reviewer} --wrapper ${wrapper} --worktree ${cwd} -- new <session> --prompt-file <brief>`)
+  const reviewer = (assigned.match(/"reviewer":\s*"([^"]+)"/) ?? [])[1], wrapper = (assigned.match(/"wrapper":\s*"([^"]+)"/) ?? [])[1] ?? REVIEWERS.find((row) => row.name === reviewer)?.wrapper
+  log(`Reviewer assigned at ${tip}: ${reviewer ?? 'see output'} (${wrapper ?? '?'}). Next: node scripts/run-governed-review.mjs --issue ${options.issue} --pr ${options.pr} --reviewer ${reviewer} --wrapper ${wrapper ?? '<wrapper>'} --worktree ${cwd} -- new <session> --prompt-file <brief>`)
   return { head, tip, pushed: true, reviewer, wrapper }
 }
 

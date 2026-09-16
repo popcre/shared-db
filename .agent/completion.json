@@ -4,13 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3049,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/3",
-  "contract_sha256": "089d30d13c6f9152ef265bea7f6dfc16131e7ead60f59fca9ba9469aeb4218cd",
-  "head_sha": "b8395bc4338c3edf8dcbc46850a93d9a3d954ead",
+  "contract_ref": "refs/db-contracts/3048/4",
+  "contract_sha256": "8b0aec97eff777e785eede9a9fc6260ab17623f597af60b0554afc072768b3da",
+  "head_sha": "0bf963eca23dc4ec3d4227203acff39243c6d83b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
     "config/orchestrator-global-invalidators-v1.json",
     "scripts/db-coordination-events.mjs",
     "scripts/db-coordination-events.test.mjs",
@@ -20,21 +19,20 @@
     "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "scripts/orchestrator-snapshot.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
       "command": "node --test on every scripts test file",
-      "exit_code": 0,
-      "evidence": "2286 tests, 2286 pass, 0 fail, 0 skipped at implementation head b8395bc4 against origin/main 268e453f."
+      "exit_code": 1,
+      "evidence": "2311 tests, 2310 pass, 1 fail (pre-existing on main d53d4746: check-issue-505 stranded original test), 0 skipped at implementation head 0bf963ec against origin/main d53d4746."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at b8395bc4."
+      "evidence": "Exit 0 with no output at 0bf963ec."
     }
   ],
   "assumptions_resolved": [

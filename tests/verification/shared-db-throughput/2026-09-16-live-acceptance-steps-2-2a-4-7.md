@@ -195,3 +195,26 @@ NO-PROGRESS ALARM FIRED: 2 outcomes stalled over 120 minutes: #2866 dispatched 3
 
 - Governed review: APPROVE by muse-spark-1.3-contributor at 9b503ff3. The later head c80edd51 only merges main and rebinds the evidence pair.
 - Blocker: the `Cross-PR object collision` check fails because open PR #3031 (#3028) was ready first and also edits `scripts/manage-migration-author-lanes.mjs`. At 13:57Z #3031 had green checks but no verdict at its head. A workflow can only be dispatched after it is on main, so the live fired run waits for #3031 to merge and #3049 to be refreshed and merged.
+
+## 2026-09-16 16:30Z: Step 2 merged; Step 4 live dispatch
+
+### Step 2 named holds: MERGED
+
+- PR #3049 merged by guarded merge run 35121936737 as merge commit 35fda1f172ec5ca0a6db760aada102c755e2d54e (closes #3048).
+- Governed review: grok-4.6 returned REVISE at 1ef407b3 (queue-audit holds not structured, snapshot import unused, no positive claim-path test, duplicated conflict matrix). All four were fixed; muse-spark-1.3-contributor returned APPROVE at 58d3196f. The merged head 6983797d only merges documentation from main and rebinds the evidence pair (contract `refs/db-contracts/3048/9`).
+- Queue-audit `urgent_waiting_capacity` events now carry a structured `hold_reason`, stalled outcomes carry a formatted `hold` line, and one conflict matrix serves both lane placement and named holds.
+- Full suite at 5d54e352: 2312 tests, 2312 pass, 0 fail (the pre-existing main failure in `scripts/check-issue-505-licensor-code-forward-repair.test.mjs` is excluded; it fails identically on clean main).
+
+### Step 4 hourly no-progress alarm: LIVE RUN DID NOT FIRE
+
+- Correction to the section above: the duplicate `--report-alarm` workflow from #3049 was removed before merge. Main already carried `.github/workflows/orchestrator-no-progress-alarm.yml` (26542b40), which is the alarm used.
+- Live dispatch after the merge: https://github.com/u2giants/shared-db/actions/runs/35122166473 (workflow_dispatch, concluded `success`). Verbatim output:
+
+```
+{
+  "status": "no-orchestrator",
+  "detail": "orchestrator marker did not resolve (exit 3)"
+}
+```
+
+- Same result as the earlier dispatch 35108722305 (14:28Z). The run reports success but never evaluates stalls or comments on the marker, because the workflow cannot resolve an open orchestrator marker. Step 4 acceptance (a fired alarm on the marker issue) is not met.

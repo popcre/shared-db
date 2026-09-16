@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3024,
+  "work_issue": 3030,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Record the implementation plan for the product-type reader (issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
+  "goal": "Record the implementation plan for the product-type reader (issue 3030, tracked work issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
   "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
   "dispatcher": "Claude shared-db session (product-type reader planning, 2026-09-16)",
   "worker": "Claude Opus 5 product-type reader plan author",

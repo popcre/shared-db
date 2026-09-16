@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "work_issue": 3024,
+  "work_issue": 3030,
   "outcome": "ready-for-merge",
   "pr": 3025,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3024/1",
-  "contract_sha256": "0559be5b1addf694a86de9618e969c04d2136a2301ca026959852a2fbe0abcaf",
+  "contract_ref": "refs/db-contracts/3030/1",
+  "contract_sha256": "d1ced6e1a06d7b9caedbaeb1975c50a13e4e5d745fc69e57ac6350a724323828",
   "head_sha": "638a61ef15c7fc684be198bed543a7180ffababa",
   "files_changed": [
     "AGENTS.md",

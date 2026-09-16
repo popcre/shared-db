@@ -91,7 +91,8 @@ export function validateEvent(event) {
   }
   // A RECORDED HOLD NAMES ITS EXACT LEASE OR CONFLICT (Step 2, locked decision 15).
   // Optional so every historical event stays readable; new holds are required to
-  // carry it by the commands that record them (advanceOutcome, queue audit).
+  // carry it by the commands that record them (advanceOutcome blocked; queue audit
+  // urgent_waiting_capacity whenever the lane holder is known).
   if(event.hold_reason!==undefined){
     try{validateHoldReasonRecord(event.hold_reason)}catch(error){if(error instanceof HoldReasonError)throw new EventError(error.message);throw error}
   }

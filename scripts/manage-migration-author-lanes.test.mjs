@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { namedHold, urgentHoldDetail } from './manage-migration-author-lanes.mjs'
+import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migration-author-lanes.mjs'
+import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX } from './lib/review-verdict-artifact.mjs'
@@ -8239,6 +8240,20 @@ test('--abandonment-audit reports a refusal as unverifiable (3), not as an expir
 
 test('issue 3027 an urgent item waiting on capacity names the exact claims and objects it waits behind', () => {
   const result={queues:[{lane:1,active:12,protected:[14],queued:[30],objects:['table core.b','table core.a']}]}
-  assert.equal(urgentHoldDetail(result,30),'hold_reason claim #12, claim #14 on table core.a, table core.b; no active work was preempted')
+  assert.equal(urgentHoldDetail(result,30),'waiting for claim #12, claim #14 on table core.a, table core.b; no active work was preempted')
+  assert.deepEqual(urgentHoldReason(result,30),{kind:'claim',holder:'claim #12, claim #14',objects:['table core.a','table core.b']})
   assert.match(urgentHoldDetail(result,99),/holder not found/)
+  assert.doesNotThrow(()=>validateHoldReasonRecord(urgentHoldReason(result,30)),'the queue-audit hold is a valid recorded hold_reason')
+  assert.equal(urgentHoldReason(result,99),null)
+  assert.equal(urgentHoldReason({queues:[{lane:1,active:12,queued:[30],objects:[]}]},30),null,'a hold with no shared object is not a named hold')
+})
+
+test('issue 3027 a claim hold is accepted only when the claim and held work share a conflicting object', () => {
+  const io=memoryIo()
+  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','  - table core.shared','```'].join('\n')
+  io.getIssue=(n)=>Number(n)===50?{number:50,state:'open',body:scopeBody}:{number:Number(n),state:'open',body:''}
+  io.openClaims=()=>[{number:60,body:body(['table core.shared','table core.theirs'],'1','2099-01-01T00:00:00Z')}]
+  assert.deepEqual(namedHold(50,'claim:#60',io),{kind:'claim',holder:'claim #60',objects:['table core.shared']})
+  assert.deepEqual(namedHold(50,'object:#60:table core.shared',io),{kind:'object',holder:'claim #60',objects:['table core.shared']})
+  assert.throws(()=>namedHold(50,'object:#60:table core.theirs',io),/do not conflict on/)
 })

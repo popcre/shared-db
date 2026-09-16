@@ -89,7 +89,7 @@ export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallM
   const owned = ownedIssues ? new Set(ownedIssues.map(Number)) : null
   const outcomes = [...last.entries()]
     .filter(([issue, row]) => row.state !== TERMINAL_OUTCOME_STATE && (!owned || owned.has(issue)))
-    .map(([issue, row]) => ({ work_issue: issue, state: row.state, last_transition_at: new Date(row.at).toISOString(), minutes_since_transition: Math.max(0, Math.floor((nowMs - row.at) / MINUTE)), ...(row.hold_reason ? { hold_reason: row.hold_reason } : {}) }))
+    .map(([issue, row]) => ({ work_issue: issue, state: row.state, last_transition_at: new Date(row.at).toISOString(), minutes_since_transition: Math.max(0, Math.floor((nowMs - row.at) / MINUTE)), ...(row.hold_reason ? { hold_reason: row.hold_reason, hold: formatHoldReason(row.hold_reason) } : {}) }))
     .sort((a, b) => b.minutes_since_transition - a.minutes_since_transition || a.work_issue - b.work_issue)
   const closureIds = new Set()
   const closures = outcomeEvents.filter((event) => {

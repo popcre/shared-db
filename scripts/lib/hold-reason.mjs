@@ -20,6 +20,24 @@
 
 export class HoldReasonError extends Error {}
 
+// THE CONFLICT MATRIX (Step 2, issue #1366).
+//
+//              B reads   B writes
+//   A reads      no        YES
+//   A writes     YES       YES
+//
+// Read/read running in parallel is the entire point: two sessions may inspect the
+// same table at once. Anything involving a write serialises, in BOTH directions,
+// because a writer changing an object underneath a reader is exactly the silent
+// corruption these lanes exist to prevent.
+export function conflicts(a, b) {
+  const aWrites = new Set(a?.writes ?? []), bWrites = new Set(b?.writes ?? [])
+  for (const object of aWrites) if (bWrites.has(object)) return true
+  for (const object of (b?.reads ?? [])) if (aWrites.has(object)) return true
+  for (const object of (a?.reads ?? [])) if (bWrites.has(object)) return true
+  return false
+}
+
 export const HOLD_KINDS = Object.freeze(['lease', 'claim', 'object', 'dependency'])
 export const HOLD_STAGES = Object.freeze(['preview', 'merge', 'production'])
 
@@ -103,11 +121,10 @@ export function assertNamedHold({ heldIssue, reason }, facts) {
   }
   const claim = facts.claim(parsed.claim)
   if (!claim?.open) throw new HoldReasonError(`hold_reason names claim #${parsed.claim}, which is not an open author claim`)
-  // A conflict is a write on either side of a shared object; two reads never conflict.
-  const myWrites = new Set(lower(work.objects)), myReads = new Set(lower(work.reads))
-  const theirWrites = new Set(lower(claim.objects)), theirReads = new Set(lower(claim.reads))
-  const conflicting = (object) => (myWrites.has(object) && (theirWrites.has(object) || theirReads.has(object))) || (myReads.has(object) && theirWrites.has(object))
-  const shared = [...new Set([...myWrites, ...myReads])].filter(conflicting).sort()
+  // A conflict is the lane conflict matrix applied to one shared object.
+  const only = (list, object) => lower(list).filter((item) => item === object)
+  const conflicting = (object) => conflicts({ writes: only(work.objects, object), reads: only(work.reads, object) }, { writes: only(claim.objects, object), reads: only(claim.reads, object) })
+  const shared = [...new Set([...lower(work.objects), ...lower(work.reads)])].filter(conflicting).sort()
   if (parsed.kind === 'claim') {
     if (!shared.length) throw new HoldReasonError(`hold_reason claim:#${parsed.claim} shares no conflicting object with #${held}; ${UNRELATED_HOLD}`)
     return { kind: 'claim', holder: `claim #${parsed.claim}`, objects: shared }

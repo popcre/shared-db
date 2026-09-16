@@ -45,7 +45,7 @@ import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIE
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange } from './orchestrator-flow/admission.mjs'
-import { assertNamedHold, describeLeaseHolder, HoldReasonError } from './lib/hold-reason.mjs'
+import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
@@ -814,23 +814,9 @@ export function parseQueueScope(body = '') {
 export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker'])
 export const WORK_LABEL = 'db-work'
 
-// THE CONFLICT MATRIX (Step 2, issue #1366).
-//
-//              B reads   B writes
-//   A reads      no        YES
-//   A writes     YES       YES
-//
-// Read/read running in parallel is the entire point: two sessions may inspect the
-// same table at once. Anything involving a write serialises, in BOTH directions,
-// because a writer changing an object underneath a reader is exactly the silent
-// corruption these lanes exist to prevent.
-export function conflicts(a, b) {
-  const aWrites = new Set(a?.writes ?? []), bWrites = new Set(b?.writes ?? [])
-  for (const object of aWrites) if (bWrites.has(object)) return true
-  for (const object of (b?.reads ?? [])) if (aWrites.has(object)) return true
-  for (const object of (a?.reads ?? [])) if (bWrites.has(object)) return true
-  return false
-}
+// The conflict matrix lives in ./lib/hold-reason.mjs so named holds and lane
+// placement share one rule; re-exported here for existing callers.
+export { conflicts }
 
 // Two flat lists, compared as writes. Conservative on purpose: a caller that has
 // lost the read/write distinction must not be handed a weaker answer.
@@ -2834,12 +2820,16 @@ export function namedHold(heldIssue, reason, io = githubIo, now = new Date()) {
 
 // Names the exact claims (and their shared objects) an urgent item waits behind,
 // instead of a generic "capacity is occupied" line (#3027 named holds).
-export function urgentHoldDetail(result, issue) {
+export function urgentHoldReason(result, issue) {
   const lane=(result?.queues??[]).find((row)=>(row.queued??[]).includes(issue))
   const holders=[lane?.active,...(lane?.protected??[])].filter(Boolean).map((claim)=>`claim #${claim}`)
-  const objects=[...(lane?.objects??[])].sort()
-  const named=holders.length?`hold_reason ${holders.join(', ')} on ${objects.join(', ')||'the lane objects'}`:'hold_reason unavailable: lane holder not found'
-  return `${named}; no active work was preempted`
+  const objects=[...new Set(lane?.objects??[])].sort()
+  return holders.length&&objects.length?{kind:'claim',holder:holders.join(', '),objects}:null
+}
+
+export function urgentHoldDetail(result, issue) {
+  const record=urgentHoldReason(result,issue)
+  return `${record?formatHoldReason(record):'hold_reason unavailable: lane holder not found'}; no active work was preempted`
 }
 
 export function acquireRef(ref, ownerSha, io = githubIo) {
@@ -8089,7 +8079,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         const exists=(io.issueComments?.(issue)??[]).flatMap((comment)=>{try{return parseEventComment(comment?.body??'')}catch{return[]}})
           .some((event)=>event.event_type==='urgent_waiting_capacity'&&event.result==='succeeded')
         if(!exists&&io.commentIssue){
-          io.commentIssue(issue,formatEventComment(coordinationEvent({eventType:'urgent_waiting_capacity',workIssue:issue,actor:'queue-audit',timestamp:now.toISOString(),service_class:'urgent-application',detail:urgentHoldDetail(result,issue)})))
+          io.commentIssue(issue,formatEventComment(coordinationEvent({eventType:'urgent_waiting_capacity',workIssue:issue,actor:'queue-audit',timestamp:now.toISOString(),service_class:'urgent-application',...(urgentHoldReason(result,issue)?{hold_reason:urgentHoldReason(result,issue)}:{}),detail:urgentHoldDetail(result,issue)})))
         }
       }
       console.log(JSON.stringify(result,null,2))

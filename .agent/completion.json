@@ -1,43 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 3036,
+  "work_issue": 2870,
   "outcome": "ready-for-merge",
-  "pr": 3108,
+  "pr": 2872,
   "migration_versions": [
-    "20260916231639"
+    "20260916232835"
   ],
-  "contract_ref": "refs/db-contracts/3036/1",
-  "contract_sha256": "7502bdc2c3d2381412cf15b0e00b2367263fffb0bc0a1c67dc2cfdae307536f9",
-  "head_sha": "7fcb83d15fa197299d36a5aa6076531dd052105b",
+  "contract_ref": "refs/db-contracts/2870/7",
+  "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
+  "head_sha": "694813791d6d94596a2ca87aeada9d9f7a625774",
   "files_changed": [
-    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
-    "types/database.types.ts"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260916232835.json",
+    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
   ],
   "db_reads": [],
   "db_writes": [
-    "column plm.item.product_construction",
-    "column plm.item.product_material",
-    "column plm.item.product_treatment",
-    "column plm.item.product_type",
-    "column plm.item.product_type_read_at",
-    "column plm.item.product_type_rules_version",
-    "column plm.item.product_type_status",
-    "table plm.item"
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 7fcb83d1: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "Static checks passed at head 69481379 after the current-main refresh and version supersession to 20260916232835."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "ephemeral preview-equivalent database contract test",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916231639 has markers [] and needs no sidecar."
+      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Sidecar validator returned status OK with the sidecar declared in the registry."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against current main."
     }
   ],
   "assumptions_resolved": [
-    "Governed Muse review found no triggers, column-level grants or dependent SELECT * on plm.item; table-level grants and RLS cover the new columns."
+    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
+    "The migration performs DDL only and contains no application-row write.",
+    "Claim version 20260914032423 was superseded to 20260916232835 through the governed supersession tool because the old version sorted behind current main."
   ],
   "stop_conditions_hit": []
 }

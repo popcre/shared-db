@@ -1,26 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3054,
+  "work_issue": 3071,
   "outcome": "ready-for-merge",
-  "pr": 3055,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3054/9",
-  "contract_sha256": "2d83d0aef792f9ac49966b93e1c5408ced307795b09416f69e726f20a23fdea3",
-  "head_sha": "2e1a666b2a61746801e38af0d40e26794dcc9ebd",
+  "pr": 3073,
+  "migration_versions": [
+    "20260916160617"
+  ],
+  "contract_ref": "refs/db-contracts/3071/2",
+  "contract_sha256": "09ac59208bf07290fce895599e6935c55baa53b8f0e32049a4f453de844bfa9a",
+  "head_sha": "a356c7f72613550b34b8e678d470474b0a04915e",
   "files_changed": [
-    ".github/live-proofs/3043.sql"
+    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table plm.production_lane_canary"
+  ],
   "checks": [
     {
-      "command": "node --version",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2e1a666b: node v24.19.0. Probe file unchanged; read-only."
+      "evidence": "Run at implementation head a356c7f7: Static checks passed; verify-cost guard passed for 1 added migration."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK; version 20260916160617 has markers [] and needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "Shared DB Live Proof runs the probe with read_only true."
+    "plm.production_lane_canary is the #660 no-op canary table; production proof #3043 read it with exactly 1 row on 2026-09-16."
   ],
   "stop_conditions_hit": []
 }

@@ -37,7 +37,7 @@
 --      B2 below -- that is the case the shipped comments got wrong.
 --   C  api.dam_order_list is security_invoker=true AND base-table RLS demonstrably
 --      applies. The previous version asserted the reloption but only `raise notice`d the
---      row count; it is asserted here. Since 20260916001923 (issue #2988) section C also
+--      row count; it is asserted here. Since 20260916033914 (issue #2988) section C also
 --      asserts the NEW behaviour: a no-role principal resolves the full customer and
 --      vendor directories through the owner-evaluated dam views, while still reading
 --      zero rows from core.customer directly.
@@ -349,7 +349,7 @@ rollback;
 -- C. api.dam_order_list must be SECURITY INVOKER, base-table RLS must demonstrably apply
 --    through it, AND a no-role principal must still resolve customer/vendor names.
 --
---    CHANGED BY 20260916001923 (issue #2988). The view no longer reads core.customer and
+--    CHANGED BY 20260916033914 (issue #2988). The view no longer reads core.customer and
 --    core.factory directly; it reads two narrow postgres-owned security_invoker=false
 --    directory views in the non-PostgREST-exposed `dam` schema. That deliberately
 --    REVERSES the old expectation that a no-role authenticated principal reads zero rows
@@ -417,7 +417,7 @@ begin
   perform set_config('request.jwt.claims', null, true);
 
   -- ASSERTED, not merely reported: a no-role principal must not read the restricted base
-  -- table DIRECTLY. Unchanged by 20260916001923 -- it proves the core.customer policies
+  -- table DIRECTLY. Unchanged by 20260916033914 -- it proves the core.customer policies
   -- were not weakened to fix the timeout.
   if v_cust_noRole <> 0 then
     raise exception 'C FAILED: a no-role authenticated principal read % of % core.customer '

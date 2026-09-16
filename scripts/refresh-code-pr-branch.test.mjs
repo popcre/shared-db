@@ -68,7 +68,21 @@ test('#507(b) a real conflict refuses and leaves the branch unchanged', () => {
     assert.throws(() => refresh({ issue: 7, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /conflicts outside \.agent\/: scripts\/x\.test\.mjs/)
     assert.equal(r.g(r.work, 'rev-parse', 'HEAD'), before)
     assert.equal(r.g(r.work, 'status', '--porcelain'), '')
-    assert.throws(() => refresh({ issue: 9, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /conflicts|not #9/)
+    assert.throws(() => refresh({ issue: 9, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /not #9/)
+    assert.equal(r.g(r.work, 'status', '--porcelain'), '')
+  } finally { rmSync(r.root, { recursive: true, force: true }) }
+})
+test('#507(b) a merge that fails without a conflict is rolled back so a retry starts clean', () => {
+  const r = repo()
+  try {
+    moveMain(r, 'base.txt', '2\n')
+    const before = r.g(r.work, 'rev-parse', 'HEAD')
+    r.g(r.work, 'config', 'merge.ff', 'only')
+    assert.throws(() => refresh({ issue: 7, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /failed without a conflict.*unchanged/)
+    assert.equal(r.g(r.work, 'rev-parse', 'HEAD'), before)
+    assert.equal(r.g(r.work, 'status', '--porcelain'), '')
+    r.g(r.work, 'config', '--unset', 'merge.ff')
+    assert.equal(refresh({ issue: 7, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }).pushed, false)
   } finally { rmSync(r.root, { recursive: true, force: true }) }
 })
 

@@ -58,18 +58,27 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
   const ok = (r, what) => { if (r.status !== 0) throw new RefreshError(`${what} failed: ${String(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' | ')}`); return String(r.stdout ?? '').trim() }
   if (ok(git('status', '--porcelain'), 'git status')) throw new RefreshError('the worktree has uncommitted changes; commit or remove them first')
   const before = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
-  ok(git('fetch', '-q', 'origin', 'main'), 'git fetch origin main')
-  const merge = git('merge', '--no-edit', '--no-commit', 'origin/main')
-  if (merge.status !== 0) {
-    const conflicts = ok(git('diff', '--name-only', '--diff-filter=U'), 'git diff').split('\n').filter(Boolean)
-    const real = conflicts.filter((f) => !EVIDENCE.includes(f))
-    if (real.length) { git('merge', '--abort'); throw new RefreshError(`merging origin/main conflicts outside .agent/: ${real.join(', ')}. The branch is unchanged at ${before}; resolve those by hand.`) }
-  }
-  ok(git('checkout', 'origin/main', '--', ...EVIDENCE), 'restoring .agent from origin/main')
   const contract = JSON.parse(ok(git('show', `${before}:.agent/contract.json`), 'reading the branch contract'))
   const report = JSON.parse(ok(git('show', `${before}:.agent/completion.json`), 'reading the branch completion report'))
   if (Number(contract.work_issue) !== options.issue || Number(report.pr) !== options.pr) throw new RefreshError(`the branch evidence is for issue #${contract.work_issue} / PR #${report.pr}, not #${options.issue} / #${options.pr}`)
-  ok(git('commit', '-q', '--allow-empty', '-m', `Merge origin/main; implementation head for #${options.issue} without evidence files`), 'committing the implementation head')
+  ok(git('fetch', '-q', 'origin', 'main'), 'git fetch origin main')
+  // Until the implementation head is committed, any refusal puts the branch back exactly as it was
+  // (the tree was proved clean above), so a retry never meets a half-finished merge.
+  try {
+    const merge = git('merge', '--no-edit', '--no-commit', 'origin/main')
+    if (merge.status !== 0) {
+      const conflicts = ok(git('diff', '--name-only', '--diff-filter=U'), 'git diff').split('\n').filter(Boolean)
+      const real = conflicts.filter((f) => !EVIDENCE.includes(f))
+      if (real.length) throw new RefreshError(`merging origin/main conflicts outside .agent/: ${real.join(', ')}. The branch is unchanged at ${before}; resolve those by hand.`)
+      if (!conflicts.length) throw new RefreshError(`merging origin/main failed without a conflict: ${String(merge.stderr || merge.stdout).trim().split('\n').at(-1)}. The branch is unchanged at ${before}.`)
+    }
+    ok(git('checkout', 'origin/main', '--', ...EVIDENCE), 'restoring .agent from origin/main')
+    ok(git('commit', '-q', '--allow-empty', '-m', `Merge origin/main; implementation head for #${options.issue} without evidence files`), 'committing the implementation head')
+  } catch (e) {
+    git('merge', '--abort')
+    git('reset', '-q', '--hard', before)
+    throw e
+  }
   const head = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
   const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
   const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))

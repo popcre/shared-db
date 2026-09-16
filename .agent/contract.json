@@ -1,38 +1,63 @@
 {
   "schema_version": 1,
   "generation": 9,
-  "work_issue": 3054,
+  "work_issue": 3048,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add the committed read-only live-proof probe .github/live-proofs/3043.sql so Shared DB Live Proof can prove outcome #3043 (#3027 Step 1 canary).",
-  "base_sha": "7ae12aad1c796e16b7eb598c90bca71bf244d0aa",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3043-live-proof",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/sub-3055-3027s6-27635",
+  "goal": "Implement #401 plan Steps 2 and 4 for #3027: named holds (a blocked outcome records a hold_reason proven against a held lease, an open conflicting claim, or a declared dependency; lease refusals name the holder) and an hourly workflow that runs the existing two-hour no-progress alarm and reports transitions on the orchestrator marker issue. Step 4 is already delivered on main by 26542b40 (orchestrator-no-progress-alarm.yml); this PR keeps that alarm and adds hold_reason to snapshot outcome rows.",
+  "base_sha": "a160ca54e5eeef992744aeceaaf0df26675a2374",
+  "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 named-hold and alarm author",
+  "branch": "claude/3027-named-hold-alarm",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issues-3027-3028-3029-prod-f35ee9",
   "allowed_paths": [
-    ".github/live-proofs/3043.sql",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/db-coordination-events.mjs",
+    "scripts/db-coordination-events.test.mjs",
+    "scripts/lib/hold-reason.mjs",
+    "scripts/lib/hold-reason.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/live-proofs/3043.sql",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/db-coordination-events.mjs",
+    "scripts/db-coordination-events.test.mjs",
+    "scripts/lib/hold-reason.mjs",
+    "scripts/lib/hold-reason.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No session-made production workflow dispatch"
+    "No database read or write of any kind",
+    "No migration file change",
+    "No production command",
+    "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "node --version"
+    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The probe runs read-only through Shared DB Live Proof"
+    "No schema or structure change is needed for named holds or the alarm"
   ],
   "stop_conditions": [
-    "Stop if the probe would need a write"
+    "Stop and report if any change needs a schema or structure change or a database write"
   ]
 }

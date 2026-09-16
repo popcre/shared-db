@@ -45,6 +45,7 @@ import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIE
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange } from './orchestrator-flow/admission.mjs'
+import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
@@ -813,23 +814,9 @@ export function parseQueueScope(body = '') {
 export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker'])
 export const WORK_LABEL = 'db-work'
 
-// THE CONFLICT MATRIX (Step 2, issue #1366).
-//
-//              B reads   B writes
-//   A reads      no        YES
-//   A writes     YES       YES
-//
-// Read/read running in parallel is the entire point: two sessions may inspect the
-// same table at once. Anything involving a write serialises, in BOTH directions,
-// because a writer changing an object underneath a reader is exactly the silent
-// corruption these lanes exist to prevent.
-export function conflicts(a, b) {
-  const aWrites = new Set(a?.writes ?? []), bWrites = new Set(b?.writes ?? [])
-  for (const object of aWrites) if (bWrites.has(object)) return true
-  for (const object of (b?.reads ?? [])) if (aWrites.has(object)) return true
-  for (const object of (a?.reads ?? [])) if (bWrites.has(object)) return true
-  return false
-}
+// The conflict matrix lives in ./lib/hold-reason.mjs so named holds and lane
+// placement share one rule; re-exported here for existing callers.
+export { conflicts }
 
 // Two flat lists, compared as writes. Conservative on purpose: a caller that has
 // lost the read/write distinction must not be handed a weaker answer.
@@ -2787,8 +2774,69 @@ export function resolveCommandPath(command,platform=process.platform){
   }catch{return null}
 }
 
+// NAMED HOLDS (Step 2, locked decision 15, issue #3027). Every stage-lease refusal
+// names the exact lease holder, so a waiting item can record a hold on THAT lease
+// rather than on another item's pipeline stage. Reading the holder is best effort:
+// an unreadable lease commit still names the ref and SHA, never a guess.
+export function leaseHoldText(stage, io = githubIo) {
+  const ownerSha=io.readRef(EXCLUSIVE_REFS[stage])
+  if(!ownerSha)return `hold_reason lease:${stage} (holder released during the check; retry)`
+  let message=null
+  try{message=io.readCommitMessage?.(ownerSha)??null}catch{message=null}
+  return `hold_reason lease:${stage} held by ${describeLeaseHolder(stage,ownerSha,message)}`
+}
+
+export function holdFacts(io = githubIo, now = new Date()) {
+  let claims=null
+  const openClaims=()=>claims??=(io.openClaims()??[])
+  return {
+    leaseHolder(stage){
+      const ownerSha=io.readRef(EXCLUSIVE_REFS[stage])
+      if(!ownerSha)return null
+      let message=null
+      try{message=io.readCommitMessage?.(ownerSha)??null}catch{message=null}
+      return {ownerSha,message}
+    },
+    claim(number){
+      const claim=openClaims().find((row)=>Number(row.number)===Number(number))
+      if(!claim)return null
+      const lease=parseAuthorLease(claim.body,now)
+      return {open:!lease.legacy,objects:(lease.objects??[]).map(normalizeObject),reads:(lease.reads??[]).map(normalizeObject)}
+    },
+    issue(number){
+      const issue=io.getIssue(Number(number))
+      if(!issue)return null
+      let scope=null
+      try{scope=parseQueueScope(issue.body??'')}catch{scope=null}
+      return {state:issue.state,dependencies:scope?.dependencies??[],objects:(scope?.writes??[]).map(normalizeObject),reads:(scope?.reads??[]).map(normalizeObject)}
+    },
+  }
+}
+
+export function namedHold(heldIssue, reason, io = githubIo, now = new Date()) {
+  try{return assertNamedHold({heldIssue,reason},holdFacts(io,now))}
+  catch(error){if(error instanceof HoldReasonError)throw new LaneError(error.message);throw error}
+}
+
+// Names the exact claims (and their shared objects) an urgent item waits behind,
+// instead of a generic "capacity is occupied" line (#3027 named holds).
+export function urgentHoldReason(result, issue) {
+  const lane=(result?.queues??[]).find((row)=>(row.queued??[]).includes(issue))
+  const holders=[lane?.active,...(lane?.protected??[])].filter(Boolean).map((claim)=>`claim #${claim}`)
+  const objects=[...new Set(lane?.objects??[])].sort()
+  return holders.length&&objects.length?{kind:'claim',holder:holders.join(', '),objects}:null
+}
+
+export function urgentHoldDetail(result, issue) {
+  const record=urgentHoldReason(result,issue)
+  return `${record?formatHoldReason(record):'hold_reason unavailable: lane holder not found'}; no active work was preempted`
+}
+
 export function acquireRef(ref, ownerSha, io = githubIo) {
-  if (!io.createRef(ref, ownerSha)) throw new LaneError(`${ref} is occupied`)
+  if (!io.createRef(ref, ownerSha)) {
+    const stage=Object.entries(EXCLUSIVE_REFS).find(([kind,value])=>value===ref&&['preview','merge','production'].includes(kind))?.[0]
+    throw new LaneError(`${ref} is occupied${stage?`; ${leaseHoldText(stage,io)}`:''}`)
+  }
   if (readRefAfterWrite(ref, ownerSha, io) !== ownerSha) throw new LaneError(`${ref} ownership could not be proved after acquisition`)
 }
 
@@ -7467,7 +7515,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
     }
     if (kind === 'production') {
       if (metadata.headSha !== io.mainSha?.()) throw new LaneError('production lane requires the exact current main SHA')
-      if (io.readRef(EXCLUSIVE_REFS.merge)) throw new LaneError('a guarded merge is active; production promotion must wait')
+      if (io.readRef(EXCLUSIVE_REFS.merge)) throw new LaneError(`a guarded merge is active; production promotion must wait; ${leaseHoldText('merge',io)}`)
     } else if (kind === 'preview-rehearsal') {
       // POST-MERGE PREVIEW REHEARSAL -- the path that makes "merge first, then
       // rehearse on preview from merged main, then promote" executable. There is
@@ -7557,7 +7605,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
         if (changesMigration) throw new LaneError(`exclusive merge lane requires exactly one live author claim for a pull request that changes migrations${claimsSeen()}`)
       }
       if (kind === 'merge' && pr.base?.sha !== io.mainSha?.()) throw new LaneError('pull request is not based on the current main tip')
-      if (kind === 'merge' && io.readRef(EXCLUSIVE_REFS.production)) throw new LaneError('production promotion is active; merges are frozen')
+      if (kind === 'merge' && io.readRef(EXCLUSIVE_REFS.production)) throw new LaneError(`production promotion is active; merges are frozen; ${leaseHoldText('production',io)}`)
     }
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     acquireRef(ref, ownerSha, io)
@@ -7577,7 +7625,7 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
   acquireMutex(ownerSha,io)
   try {
     requireOwnedRef(MUTEX_REF,ownerSha,io)
-    if(io.readRef(EXCLUSIVE_REFS.production))throw new LaneError('production promotion is active; repository-maintenance authorization is frozen')
+    if(io.readRef(EXCLUSIVE_REFS.production))throw new LaneError(`production promotion is active; repository-maintenance authorization is frozen; ${leaseHoldText('production',io)}`)
     const pr=io.getPr(prNumber),baseSha=String(pr?.base?.sha??'')
     if(!pr?.head?.sha||pr.head.sha!==headSha)throw new LaneError('repository-maintenance authorization head SHA does not match the live pull request')
     if(pr?.base?.ref!=='main'||pr?.base?.repo?.full_name!==REPO)throw new LaneError('repository-maintenance authorization requires the protected main base in this repository')
@@ -7589,7 +7637,7 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
     const finalPr=io.getPr(prNumber)
     if(finalPr?.base?.sha!==baseSha||finalPr?.base?.ref!=='main'||finalPr?.base?.repo?.full_name!==REPO||finalPr?.head?.sha!==headSha)throw new LaneError('repository-maintenance authorization pull request moved during exact comparison')
     requireOwnedRef(MUTEX_REF,ownerSha,io)
-    if(io.readRef(EXCLUSIVE_REFS.production))throw new LaneError('production promotion began during repository-maintenance authorization')
+    if(io.readRef(EXCLUSIVE_REFS.production))throw new LaneError(`production promotion began during repository-maintenance authorization; ${leaseHoldText('production',io)}`)
     io.postCommitStatus(headSha,{state:'success',context,description,targetUrl})
     posted=true
     return {pr:prNumber,headSha,context,documentsOnly:true,coordinationRef:MUTEX_REF,structuralStage:null}
@@ -7708,7 +7756,7 @@ function parseArgs(argv) {
     else if (a === '--confirm-stale') out.confirmStale = true
     else if (/^--acquire-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.acquireExclusive = a.slice(10)
     else if (/^--release-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.releaseExclusive = a.slice(10)
-    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact','--hold-reason'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if(a==='--confirm-local-dependency-unfixable')out.confirmLocalDependencyUnfixable=true
     else if(a==='--skip-doctor')out.skipDoctor=true
     else if(a==='--confirm-no-verdict')out.confirmNoVerdict=true
@@ -7842,7 +7890,8 @@ export function main(argv, now = new Date(), io = githubIo) {
       const result=withAuthorMutex('outcome-advance',io,o,(ownerSha)=>{
         requireAdmission(o,io,{pr:o.pr??null,mutexOwner:ownerSha})
         requireOwnedRef(MUTEX_REF,ownerSha,io)
-        return advanceOutcome({issue:Number(o.issue),state:o.advanceOutcome,actor:o.owner??'manage-migration-author-lanes',timestamp:now.toISOString(),evidenceUrls:[o.evidence]},io)
+        const holdReason=o.holdReason===undefined?undefined:namedHold(o.issue,o.holdReason,io)
+        return advanceOutcome({issue:Number(o.issue),state:o.advanceOutcome,actor:o.owner??'manage-migration-author-lanes',timestamp:now.toISOString(),evidenceUrls:[o.evidence],holdReason},io)
       })
       console.log(JSON.stringify(result,null,2));return 0
     }
@@ -8030,7 +8079,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         const exists=(io.issueComments?.(issue)??[]).flatMap((comment)=>{try{return parseEventComment(comment?.body??'')}catch{return[]}})
           .some((event)=>event.event_type==='urgent_waiting_capacity'&&event.result==='succeeded')
         if(!exists&&io.commentIssue){
-          io.commentIssue(issue,formatEventComment(coordinationEvent({eventType:'urgent_waiting_capacity',workIssue:issue,actor:'queue-audit',timestamp:now.toISOString(),service_class:'urgent-application',detail:'all safe author capacity is occupied or object-protected; no active work was preempted'})))
+          io.commentIssue(issue,formatEventComment(coordinationEvent({eventType:'urgent_waiting_capacity',workIssue:issue,actor:'queue-audit',timestamp:now.toISOString(),service_class:'urgent-application',...(urgentHoldReason(result,issue)?{hold_reason:urgentHoldReason(result,issue)}:{}),detail:urgentHoldDetail(result,issue)})))
         }
       }
       console.log(JSON.stringify(result,null,2))

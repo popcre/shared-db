@@ -1,26 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3054,
+  "work_issue": 3048,
   "outcome": "ready-for-merge",
-  "pr": 3055,
+  "pr": 3049,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3054/9",
-  "contract_sha256": "2d83d0aef792f9ac49966b93e1c5408ced307795b09416f69e726f20a23fdea3",
-  "head_sha": "2e1a666b2a61746801e38af0d40e26794dcc9ebd",
+  "contract_ref": "refs/db-contracts/3048/9",
+  "contract_sha256": "5307c15ef6f48e2f47d424dd049ee791f3b0b0c44aa12a7bd31075335d6f969b",
+  "head_sha": "c41aa92e9ab00c65c6e5654580acc18d0b62eeda",
   "files_changed": [
-    ".github/live-proofs/3043.sql"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/db-coordination-events.mjs",
+    "scripts/db-coordination-events.test.mjs",
+    "scripts/lib/hold-reason.mjs",
+    "scripts/lib/hold-reason.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --version",
+      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2e1a666b: node v24.19.0. Probe file unchanged; read-only."
+      "evidence": "2312 tests, 2312 pass, 0 fail, 0 skipped at implementation head c41aa92e against origin/main a160ca54. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no output at 0bf963ec."
     }
   ],
   "assumptions_resolved": [
-    "Shared DB Live Proof runs the probe with read_only true."
+    "No schema or structure change was needed: hold_reason is an optional field in a GitHub comment event, and the alarm posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
   ],
   "stop_conditions_hit": []
 }

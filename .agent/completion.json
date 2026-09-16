@@ -1,42 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3039,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3047,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3039/3",
-  "contract_sha256": "8d739ffe2f84607c165116e5c95c069e86b9b46d2a4fe1b04eb19c5796060e0c",
-  "head_sha": "aa25c7504ad277a3ba7ded5c6352a24f27c7f0e5",
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "636a6ce331f447acd70426d1eb6dcfb1545bb7ce",
   "files_changed": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/check-workflow-automatic-promotion-source.test.mjs",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     "scripts/production_business_risk_gate.py",
-    "scripts/test_automatic_qualification_route.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head aa25c750."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
     },
     {
-      "command": "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+      "command": "python scripts/check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Ran 166 tests, OK, at implementation head aa25c750; includes the verbatim #3039 producer-mismatch reproduction."
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
     },
     {
-      "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
       "exit_code": 0,
-      "evidence": "pass 10, fail 0 at aa25c750; full node --test scripts/*.test.mjs also passed 1724/1724."
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "The production review job already accepts ephemeral_check_run_id and skips its preview_run_id checks for that route; the apply lane re-runs prove_ephemeral_ci_evidence itself."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

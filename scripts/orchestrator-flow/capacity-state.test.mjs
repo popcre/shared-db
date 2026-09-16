@@ -77,6 +77,11 @@ function memoryIo(){
     makeOwnerCommit:()=>`owner-${++serial}`,
     createRef:(name,sha)=>{if(refs.has(name))return false;refs.set(name,sha);return true},
     readRef:(name)=>refs.get(name)??null,
+    // #2301 Step 3: the retirement guard asks this double which versions are
+    // terminally retired. Answer from the real ref map -- a hard-coded [] would
+    // report "nothing is retired" without ever being asked.
+    listRefs:(prefix)=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),
+    readCommitMessage:()=>null,
     deleteRef:(name)=>{refs.delete(name)},
     getCommitMessage:()=>'',
     openClaims:()=>[structuredClone(issues.get(77))],

@@ -4,23 +4,23 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
-  "base_sha": "6306532e35eb996b58d74b6fbbcfc6d7f63a9363",
+  "base_sha": "cfbe5efcf789ff6b431108621ef0a8b691d45f2f",
   "dispatcher": "Codex shared-db orchestrator",
   "worker": "subagent:issue-2870-cutover-columns",
   "branch": "codex/issue-2870-cutover-columns",
   "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2870-cutover-columns/shared-db",
   "allowed_paths": [
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
+    "supabase/migrations/20260914105252_add_dflow_prod_cutover_columns.sql",
     "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260914032423.json",
+    "scripts/production-verification-sidecars/20260914105252.json",
     "scripts/production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260914032423_add_dflow_prod_cutover_columns.sql",
+    "supabase/migrations/20260914105252_add_dflow_prod_cutover_columns.sql",
     "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260914032423.json",
+    "scripts/production-verification-sidecars/20260914105252.json",
     "scripts/production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
@@ -35,14 +35,15 @@
   "prohibited_actions": [
     "Do not write application rows.",
     "Do not add foreign keys, defaults, indexes, or non-null constraints.",
-    "Do not preview, assign a reviewer, merge, deploy, or close the issue.",
+    "Do not preview, merge, deploy, or close the issue.",
     "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
     "ephemeral preview-equivalent database contract test",
     "node scripts/check-production-verification-sidecars.mjs",
-    "git diff --check"
+    "git diff --check",
+    "two governed exact-head reviews or sanctioned content-equivalence carry-forward"
   ],
   "assumptions": [
     "dflow_prod.users and dflow_prod.comments already exist in the preview and production-shaped schemas.",
@@ -54,5 +55,5 @@
     "Stop if compatibility requires row writes or a foreign key.",
     "Stop if the reserved migration version collides."
   ],
-  "generation": 4
+  "generation": 6
 }

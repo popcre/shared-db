@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 import { canonicalJson } from './orchestrator-flow/evidence-bundle.mjs'
 import { buildOrchestratorSnapshot, publishSnapshotTransition } from './orchestrator-flow/orchestrator-snapshot.mjs'
 import { OUTCOME_STATES, trustedOutcomeComments } from './orchestrator-flow/outcome-lifecycle.mjs'
+import { formatHoldReason } from './lib/hold-reason.mjs'
 import { parseEventComment } from './db-coordination-events.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 
@@ -65,7 +66,7 @@ export function outcomeEventsFromComments(comments = []) {
     try { parsed = parseEventComment(comment?.body ?? '') } catch { continue }
     for (const event of parsed) {
       if (!OUTCOME_STATES.includes(event.event_type) || event.result === 'refused') continue
-      events.push({ event_id: event.event_id, event_type: event.event_type, work_issue: event.work_issue, timestamp: event.timestamp })
+      events.push({ event_id: event.event_id, event_type: event.event_type, work_issue: event.work_issue, timestamp: event.timestamp, ...(event.hold_reason ? { hold_reason: event.hold_reason } : {}) })
     }
   }
   return events
@@ -83,12 +84,12 @@ export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallM
     const at = Date.parse(event.timestamp)
     if (Number.isNaN(at)) continue
     const prior = last.get(event.work_issue)
-    if (!prior || at > prior.at || (at === prior.at && event.event_id > prior.event_id)) last.set(event.work_issue, { at, state: event.event_type, event_id: event.event_id })
+    if (!prior || at > prior.at || (at === prior.at && event.event_id > prior.event_id)) last.set(event.work_issue, { at, state: event.event_type, event_id: event.event_id, hold_reason: event.hold_reason ?? null })
   }
   const owned = ownedIssues ? new Set(ownedIssues.map(Number)) : null
   const outcomes = [...last.entries()]
     .filter(([issue, row]) => row.state !== TERMINAL_OUTCOME_STATE && (!owned || owned.has(issue)))
-    .map(([issue, row]) => ({ work_issue: issue, state: row.state, last_transition_at: new Date(row.at).toISOString(), minutes_since_transition: Math.max(0, Math.floor((nowMs - row.at) / MINUTE)) }))
+    .map(([issue, row]) => ({ work_issue: issue, state: row.state, last_transition_at: new Date(row.at).toISOString(), minutes_since_transition: Math.max(0, Math.floor((nowMs - row.at) / MINUTE)), ...(row.hold_reason ? { hold_reason: row.hold_reason } : {}) }))
     .sort((a, b) => b.minutes_since_transition - a.minutes_since_transition || a.work_issue - b.work_issue)
   const closureIds = new Set()
   const closures = outcomeEvents.filter((event) => {
@@ -178,6 +179,9 @@ export const defaultIo = {
   openPullRequests: (repo) => JSON.parse(gh(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,statusCheckRollup'])),
   matchingRefs: (repo, prefix) => JSON.parse(gh(['api', `repos/${repo}/git/matching-refs/${prefix}`])),
   issueComments: (repo, issue) => ghPages(`repos/${repo}/issues/${issue}/comments?per_page=100`),
+  commentIssue(repo, issue, body) {
+    gh(['api', '--method', 'POST', `repos/${repo}/issues/${Number(issue)}/comments`, '-F', 'body=@-'], { input: body })
+  },
   // One GraphQL read for every owned issue's comments instead of one paginated
   // REST read per issue. An issue whose comments do not fit one page, or that
   // GraphQL cannot resolve, falls back to the REST reader so nothing is dropped
@@ -242,10 +246,68 @@ export function gatherLiveInput(repo, io = defaultIo) {
   }
 }
 
+// ------------------------------------------------------- durable alarm report
+//
+// Plan #401 Step 4: the two-hour no-progress alarm is reported where it lasts,
+// on the orchestrator marker issue, and only on a transition. The dedupe key is
+// the alarm set alone (stalled issue numbers + zero_closures_4h), read back from
+// the newest alarm block already on the marker, so an hourly schedule posts
+// once when an alarm fires, once when it changes, once when it clears, and
+// otherwise stays silent. No state file is needed; the marker is the ledger.
+
+export const ALARM_FENCE = 'orchestrator-no-progress-alarm'
+export const ALARM_EXIT = 3
+
+export function alarmKey(alarms) {
+  return sha256(canonicalJson({ stalled: alarms.stalled_outcomes.map((row) => row.work_issue).sort((a, b) => a - b), zero_closures_4h: alarms.zero_closures_4h }))
+}
+
+export function latestAlarmRecord(comments = []) {
+  let latest = null
+  for (const comment of comments) {
+    const association = String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase()
+    if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association) && comment?.user?.login !== 'github-actions[bot]') continue
+    const fence = new RegExp('```' + ALARM_FENCE + '\\s*\\n([\\s\\S]*?)```').exec(comment?.body ?? '')
+    if (!fence) continue
+    try { const record = JSON.parse(fence[1]); if (typeof record?.alarm_key === 'string') latest = record } catch { /* a malformed block is not a record */ }
+  }
+  return latest
+}
+
+export function alarmLine(alarms) {
+  if (!alarms.stalled_outcomes.length && !alarms.zero_closures_4h) return `NO-PROGRESS ALARM CLEAR: ${alarms.active_outcomes} active outcomes, none stalled over ${STALL_MINUTES} minutes; ${alarms.closures_in_window} closures in 4h`
+  const rows = alarms.stalled_outcomes.map((row) => `#${row.work_issue} ${row.state} ${row.minutes_since_transition}m (${row.hold_reason ? formatHoldReason(row.hold_reason) : 'no named hold recorded'})`)
+  return `NO-PROGRESS ALARM FIRED: ${alarms.stalled_outcomes.length} outcomes stalled over ${STALL_MINUTES} minutes${rows.length ? `: ${rows.join('; ')}` : ''}; ${alarms.closures_in_window} closures in 4h${alarms.zero_closures_4h ? ' (zero closures in 4h)' : ''}`
+}
+
+/** Decide the report for one alarm check. Returns { line, active, post: body|null, record }. */
+export function alarmReport(input, { now, markerComments = [], sessionStarted = null, runUrl = null } = {}) {
+  const ownedIssues = [...new Set((input.claims ?? []).flatMap((claim) => [claim.issue, ...(claim.work_issues ?? [])]))]
+  const alarms = stalledOutcomes(input.outcome_events, { now, ownedIssues, sessionStarted })
+  const active = alarms.stalled_outcomes.length > 0 || alarms.zero_closures_4h
+  const key = alarmKey(alarms)
+  const line = alarmLine(alarms)
+  const previous = latestAlarmRecord(markerComments)
+  const record = { alarm_key: key, active, checked_at: now, stall_minutes: STALL_MINUTES, stalled_outcomes: alarms.stalled_outcomes, active_outcomes: alarms.active_outcomes, closures_in_window: alarms.closures_in_window, zero_closures_4h: alarms.zero_closures_4h, run_url: runUrl }
+  const changed = previous ? previous.alarm_key !== key : active
+  const post = changed ? [line, '', '```' + ALARM_FENCE, JSON.stringify(record, null, 2), '```'].join('\n') : null
+  return { line, active, post, record, previous_key: previous?.alarm_key ?? null }
+}
+
 export function main(argv = process.argv.slice(2), { io = defaultIo, stdout = console.log, stderr = console.error } = {}) {
   try {
     const value = (name) => { const index = argv.indexOf(name); return index >= 0 && argv[index + 1] ? argv[index + 1] : null }
-    if (!argv.includes('--orchestrator-snapshot')) throw new SnapshotCallerError('--orchestrator-snapshot is required')
+    if (argv.includes('--report-alarm')) {
+      const repo = value('--repo') ?? 'u2giants/shared-db'
+      const now = value('--now') ?? new Date().toISOString()
+      const { input, sessionStarted } = gatherLiveInput(repo, io)
+      const marker = input.marker.issue
+      const report = alarmReport(input, { now, markerComments: io.issueComments(repo, marker), sessionStarted, runUrl: value('--run-url') })
+      stdout(report.line)
+      if (report.post && !argv.includes('--dry-run')) { io.commentIssue(repo, marker, report.post); stdout(`reported on marker issue #${marker}`) } else stdout(report.post ? `dry run: would report on marker issue #${marker}` : `unchanged since the last report on marker issue #${marker}; nothing posted`)
+      return report.active ? ALARM_EXIT : 0
+    }
+    if (!argv.includes('--orchestrator-snapshot')) throw new SnapshotCallerError('--orchestrator-snapshot or --report-alarm is required')
     const repo = value('--repo') ?? 'u2giants/shared-db'
     const now = value('--now') ?? new Date().toISOString()
     const stateDir = value('--state-dir')

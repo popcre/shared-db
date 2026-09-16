@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { namedHold, urgentHoldDetail } from './manage-migration-author-lanes.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX } from './lib/review-verdict-artifact.mjs'
@@ -2782,6 +2783,34 @@ test('preview and merge are fixed exclusive refs and merge refuses during produc
   assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc'},io),/merges are frozen/)
   io.refs.delete(EXCLUSIVE_REFS.production);io.refs.set(EXCLUSIVE_REFS.merge,'merge-owner')
   assert.throws(()=>acquireExclusive('production',{owner:'p',headSha:'main'},io),/guarded merge is active/)
+})
+
+test('issue 3027 every stage-lease refusal names the exact lease holder', () => {
+  const io=memoryIo()
+  io.openClaims=()=>[{number:1,body:body(['table core.x'],'1','2099-01-01T00:00:00Z')}]
+  io.getPr=(number)=>({number:Number(number),head:{sha:'abc',ref:'codex/1'},base:{sha:'main'}})
+  io.readCommitMessage=(sha)=>sha==='prod-owner-sha-0001'?'db-coordination production req pr=77 head=main\nholder_id: run-9\ngithub_run_id: 9\nacquired_at: 2026-09-16T00:00:00Z':null
+  io.refs.set(EXCLUSIVE_REFS.production,'prod-owner-sha-0001')
+  assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc'},io),/merges are frozen; hold_reason lease:production held by production lease prod-owner-s, holder run-9, PR #77, run 9, acquired 2026-09-16T00:00:00Z/)
+  io.refs.delete(EXCLUSIVE_REFS.production);io.refs.set(EXCLUSIVE_REFS.merge,'merge-owner')
+  assert.throws(()=>acquireExclusive('production',{owner:'p',headSha:'main'},io),/guarded merge is active; production promotion must wait; hold_reason lease:merge held by merge lease merge-owner/)
+  io.refs.delete(EXCLUSIVE_REFS.merge)
+  const first=acquireExclusive('preview',{owner:'a',pr:1,headSha:'abc'},io)
+  assert.throws(()=>acquireExclusive('preview',{owner:'b',pr:2,headSha:'abc'},io),new RegExp(`occupied; hold_reason lease:preview held by preview lease ${first.ownerSha.slice(0,12)}`))
+})
+
+test('issue 3027 a hold naming an unrelated production refuses while the held production lease is accepted', () => {
+  const io=memoryIo()
+  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','```'].join('\n')
+  io.getIssue=(n)=>Number(n)===50?{number:50,state:'open',body:scopeBody}:{number:Number(n),state:'open',body:''}
+  io.openClaims=()=>[{number:60,body:body(['table core.other'],'1','2099-01-01T00:00:00Z')}]
+  assert.throws(()=>namedHold(50,'lease:production',io),/names a lease nobody holds/)
+  assert.throws(()=>namedHold(50,'until #2860 production finishes',io),/hold_reason must be/)
+  assert.throws(()=>namedHold(50,'claim:#60',io),/shares no conflicting object/)
+  assert.throws(()=>namedHold(50,'dependency:#2860',io),/not declared/)
+  io.refs.set(EXCLUSIVE_REFS.production,'prod-sha')
+  const record=namedHold(50,'lease:production',io)
+  assert.equal(record.kind,'lease');assert.equal(record.stage,'production');assert.equal(record.owner_sha,'prod-sha')
 })
 
 test('issue 2958 open claims never depend on the GitHub labels= filtered listing', () => {
@@ -8206,4 +8235,10 @@ test('--abandonment-audit reports a refusal as unverifiable (3), not as an expir
   }finally{console.error=originalError}
   assert.equal(errors.filter((line)=>line.startsWith('REFUSED: ')).length,3,'the refusal message is still printed in full; only its exit code moves')
   assert.ok(errors.some((line)=>line.includes('must identify exactly one work issue')),'the operator must still be told what could not be read')
+})
+
+test('issue 3027 an urgent item waiting on capacity names the exact claims and objects it waits behind', () => {
+  const result={queues:[{lane:1,active:12,protected:[14],queued:[30],objects:['table core.b','table core.a']}]}
+  assert.equal(urgentHoldDetail(result,30),'hold_reason claim #12, claim #14 on table core.a, table core.b; no active work was preempted')
+  assert.match(urgentHoldDetail(result,99),/holder not found/)
 })

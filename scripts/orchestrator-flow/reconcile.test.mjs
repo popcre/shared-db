@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict'
-import { readyRecord,persistInitialReady,preparePreviewDispatch,terminalizeReady,repairPreviewReady,reconcileFlow,ReconcileError,MODE_SEQUENCE,RECONCILE_SCHEMA_VERSION,RELINQUISH_WORKTREE_STATES,parseAbandonmentAudit,abandonmentEvidenceFor } from './reconcile.mjs'
+import { readyRecord,persistInitialReady,preparePreviewDispatch,terminalizeReady,repairPreviewReady,reconcileFlow,ReconcileError,MODE_SEQUENCE,RECONCILE_SCHEMA_VERSION,RELINQUISH_WORKTREE_STATES,parseAbandonmentAudit,abandonmentEvidenceFor,reportOnlyFlowIo,abandonmentAuditExit } from './reconcile.mjs'
 import { githubIo, main as managerMain, WORKTREE_STATES, claimBody, assertAbandonmentEvidence, relinquishAuthorLease, flowCapacityFacts } from '../manage-migration-author-lanes.mjs'
 import { sha256, canonicalJson } from './evidence-bundle.mjs'
 const h='a'.repeat(40),b='b'.repeat(64),base={issue:7,pr:8,head_sha:h,bundle_id:b,route:'ordinary_preview_apply',route_context:'',manifest:{target:'preview',preview_allowlist:'v',claim_pr:'8',claim_head_sha:h}}
@@ -207,6 +207,83 @@ test('reconcile exit codes are deterministic per domain',()=>{
   assert.equal(run([{issue:1,preview_error:'unreadable'}]),2,'a preview-domain failure alone is exit 2')
   assert.equal(run([{issue:1,capacity_error:'unreadable'}]),2,'a capacity-domain failure alone is exit 2')
   assert.equal(run([expiredRow()]),0,'an expired report is a report, not a failure')
+})
+
+// --- #2301 Step 5: the scheduled read-only audit -----------------------------
+
+test('the scheduled audit cannot write even when a live marker says it may',()=>{
+  // The ONLY thing that makes --reconcile-flow mutate is the marker, and a hosted
+  // runner merely happens not to hold one. This asserts the stronger property: a
+  // marker that WOULD authorise every transition still produces no call, because
+  // the capability was removed rather than left unused. Each hook throws if
+  // reached, so a regression fails loudly here instead of writing in production.
+  const called=[]
+  const adapter={
+    resolveMarker:()=>({live:true,task:'t',calling_task:'t'}),
+    relinquishCapacity:(row)=>called.push(['relinquish',row.issue]),
+    resumeCapacity:(row)=>called.push(['resume',row.issue]),
+    persistReady:(row)=>called.push(['ready',row.issue]),
+  }
+  const issues=[{issue:1,capacity_state:'active',blocker:{durable:true}},{issue:2,capacity_state:'relinquished',blocker:{resolved:true}},{issue:3,preview_edge_satisfied:true}]
+  // The same input through the mutating entry point, to prove the fixture really
+  // would have written and this test is not passing on an inert case.
+  assert.equal(reconcileFlow({issues},adapter).status,'RECONCILED')
+  assert.deepEqual(called,[['relinquish',1],['resume',2],['ready',3]])
+  called.length=0
+  const guarded=reconcileFlow({issues},reportOnlyFlowIo(adapter))
+  assert.equal(guarded.mutating,false)
+  assert.equal(guarded.status,'REPORT_ONLY')
+  assert.deepEqual(called,[],'the read-only audit called a mutation hook')
+  for(const hook of ['relinquishCapacity','resumeCapacity','persistReady'])
+    assert.throws(()=>reportOnlyFlowIo(adapter)[hook]({issue:1}),/read-only abandonment audit must never call/,`${hook} was still callable`)
+})
+
+test('expiry and unreadability are different exit codes, and neither is clean',()=>{
+  // An hourly job whose every abnormal state is one number teaches its operator to
+  // ignore that number. Expiry needs a decision; an unreadable state means the
+  // instrument is broken and must fail closed, so they are 2 and 3, never 0.
+  const adapter={resolveMarker:()=>({live:true,task:'t',calling_task:'t'})}
+  const run=(issues)=>managerMain(['--abandonment-audit'],new Date(),{flowSnapshot:()=>({issues}),orchestratorFlowAdapter:()=>adapter})
+  assert.equal(run([{issue:1,preview_edge_satisfied:true}]),0)
+  assert.equal(run([expiredRow()]),2,'a non-empty expired claim must be visible, not silent')
+  assert.equal(run([{issue:1,capacity_error:'unreadable'}]),3,'an unreadable capacity row must be distinguishable from expiry')
+  assert.equal(run([{issue:1,preview_error:'unreadable'}]),3)
+  assert.equal(run([expiredRow(),{issue:9,capacity_error:'unreadable'}]),3,'unreadable outranks expiry; the audit is not trusted to have seen everything')
+})
+
+test('the audit fails closed on any result it does not recognise',()=>{
+  // abandonmentAuditExit is what the workflow's exit status comes from, so a
+  // future schema, or a result that claims to have mutated, must never read as a
+  // clean hour. Enumerated rather than tested through the CLI, because the CLI
+  // cannot currently produce these and that is exactly why they need pinning.
+  const clean={schema_version:RECONCILE_SCHEMA_VERSION,mutating:false,capacity:{status:'REPORT_ONLY'},preview:{status:'REPORT_ONLY'},actions:[]}
+  assert.equal(abandonmentAuditExit(clean),0,'the control case must be clean, or the rest proves nothing')
+  assert.equal(abandonmentAuditExit({...clean,schema_version:RECONCILE_SCHEMA_VERSION+1}),3)
+  assert.equal(abandonmentAuditExit({...clean,mutating:true}),3)
+  assert.equal(abandonmentAuditExit(null),3)
+  assert.equal(abandonmentAuditExit({}),3)
+})
+
+test('the scheduled audit reports the claim and queued-behind count an operator needs',()=>{
+  // "Something expired" is not actionable. The plan requires the exact claim and
+  // the exact queued-behind count, and requires null to survive as UNKNOWN rather
+  // than being rendered as zero, which would read as "nobody is waiting".
+  const adapter={resolveMarker:()=>({live:true,task:'t',calling_task:'t'})}
+  const capture=(issues)=>{
+    const lines=[],write=console.log
+    console.log=(text)=>lines.push(text)
+    try{managerMain(['--abandonment-audit'],new Date(),{flowSnapshot:()=>({issues}),orchestratorFlowAdapter:()=>adapter})}
+    finally{console.log=write}
+    return JSON.parse(lines.join('\n'))
+  }
+  const row=expiredRow()
+  const report=capture([row]).actions.find((action)=>action.action==='expired-unconfirmed-report')
+  assert.equal(report.claim,row.expired_claim.claim)
+  assert.equal(report.queued_behind,row.expired_claim.queued_behind)
+  assert.equal(report.mutates,false)
+  const unknown=structuredClone(row);unknown.expired_claim.queued_behind=null
+  assert.equal(capture([unknown]).actions.find((action)=>action.action==='expired-unconfirmed-report').queued_behind,null,
+    'an unreadable queue was rendered as a number an operator would act on')
 })
 
 // --- the separate guarded command ------------------------------------------

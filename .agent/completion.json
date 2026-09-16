@@ -1,34 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3100,
+  "work_issue": 3036,
   "outcome": "ready-for-merge",
-  "pr": 3101,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3100/2",
-  "contract_sha256": "01b833462d98b8dd6a6740068af4da0e95875723b68bdfb762d39a01f6b8a605",
-  "head_sha": "3e184f8b1d841b06de3f6c5a76c425be1f3e4c92",
+  "pr": 3108,
+  "migration_versions": [
+    "20260916231639"
+  ],
+  "contract_ref": "refs/db-contracts/3036/1",
+  "contract_sha256": "7502bdc2c3d2381412cf15b0e00b2367263fffb0bc0a1c67dc2cfdae307536f9",
+  "head_sha": "7fcb83d15fa197299d36a5aa6076531dd052105b",
   "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
+    "types/database.types.ts"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "column plm.item.product_construction",
+    "column plm.item.product_material",
+    "column plm.item.product_treatment",
+    "column plm.item.product_type",
+    "column plm.item.product_type_read_at",
+    "column plm.item.product_type_rules_version",
+    "column plm.item.product_type_status",
+    "table plm.item"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head aefc612c: tests 16, pass 16, fail 0, skipped 0; the new CI/sibling case fails on the pre-fix source."
+      "evidence": "Run at implementation head 7fcb83d1: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "Run at implementation head aefc612c: tests 590, pass 590, fail 0, skipped 0 (run-governed-review 78/78, start-reroute 23/23, repair-voided-findings 11/11, transport conformance 268 files clean)."
+      "evidence": "status OK; version 20260916231639 has markers [] and needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "Unstarted probe and reclaim fingerprint only PR state, head, draft and this slot's verdict; the plain silence path still refuses on PR activity (tested)"
+    "Governed Muse review found no triggers, column-level grants or dependent SELECT * on plm.item; table-level grants and RLS cover the new columns."
   ],
   "stop_conditions_hit": []
 }

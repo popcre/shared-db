@@ -1,45 +1,51 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3100,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "In unstarted mode judge each reviewer only by its own durable start marker; PR-wide CI or sibling-slot activity never counts as its start; unreadable evidence stays fail-closed.",
-  "base_sha": "9feeccab189aa05f30a6cbe467a3868641c8352e",
-  "dispatcher": "Claude #3027 Step 7 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 7 own-start-marker fix",
-  "branch": "claude/3027-start-watch-own-marker",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-own-marker",
+  "generation": 1,
+  "work_issue": 3036,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Add seven nullable product-type reader columns (with status check constraint and column comments) to plm.item and regenerate types. Additive; no data, grant or RLS change.",
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3036 migration author a7",
+  "branch": "claude/3036-product-type-cols-a7",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3036-product-type-cols-a7",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
+    "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
+    "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "column plm.item.product_construction",
+    "column plm.item.product_material",
+    "column plm.item.product_treatment",
+    "column plm.item.product_type",
+    "column plm.item.product_type_read_at",
+    "column plm.item.product_type_rules_version",
+    "column plm.item.product_type_status",
+    "table plm.item"
+  ],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No production workflow dispatch"
+    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
+    "No data, grant or RLS change",
+    "No migration version other than claimed 20260916231639"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "The ordinary two-hour silence path keeps using PR activity"
+    "Table-level grants and RLS on plm.item cover new columns"
   ],
   "stop_conditions": [
-    "Stop if the fix would need a database change"
+    "Stop if the change needs anything beyond the seven admitted columns"
   ]
 }

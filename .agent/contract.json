@@ -1,34 +1,30 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3069,
+  "generation": 4,
+  "work_issue": 3079,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement popcre/ai-devops#507 (a)-(c): the guarded merge pre-flight waits for running checks instead of refusing; a one-step code PR branch refresh helper; a production dispatch helper that gathers evidence digests and checks input names. No refusal is loosened.",
-  "base_sha": "7ae12aad1c796e16b7eb598c90bca71bf244d0aa",
-  "dispatcher": "Albert Hazan via Claude session owning ai-devops#507 (2026-09-16)",
-  "worker": "Claude Opus 5 #507 author",
-  "branch": "claude/507-merge-wait",
-  "worktree": "C:/repos/shared-db-wt-498",
+  "goal": "Make the scheduled no-progress alarm evaluate stalled outcomes even when no orchestrator marker resolves, post to one stable fallback issue created once, and exit non-zero when it can neither evaluate nor post.",
+  "base_sha": "e7ece4f411d7ca0cc0746aef3759553c1909c942",
+  "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 alarm fallback author",
+  "branch": "claude/3027-alarm-fallback",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-evidence-live",
   "allowed_paths": [
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    ".github/workflows/migration-author-lease.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-snapshot.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    ".github/workflows/migration-author-lease.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-snapshot.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -37,17 +33,17 @@
   "prohibited_actions": [
     "No database read or write of any kind",
     "No migration file change",
-    "No production apply dispatch",
-    "No weakening of any refusal"
+    "No production command",
+    "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "node --test on every changed scripts test file",
+    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "No schema or structure change is needed for message text"
+    "No schema or structure change is needed; the alarm only reads GitHub and posts GitHub issue comments"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
+    "Stop and report if any change needs a schema or structure change or a database write"
   ]
 }

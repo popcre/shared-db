@@ -211,9 +211,20 @@ function checkSummary(rollup = []) {
   return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-export function gatherLiveInput(repo, io = defaultIo) {
-  const resolved = io.resolveMarker(repo)
-  if (!Number.isInteger(resolved?.marker) || !resolved?.routing?.routeId) throw new SnapshotCallerError('no open routable orchestrator marker')
+// Exit 3 from the marker resolver, or a resolved marker with no route, means no orchestrator is running.
+export const NO_ORCHESTRATOR = /marker did not resolve \(exit 3\)|no open routable orchestrator marker/
+
+// allowNoMarker: the no-progress alarm must still evaluate stalls with no orchestrator, so it gets
+// marker: null. Every other caller keeps refusing, and any other read failure still throws.
+export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } = {}) {
+  let resolved = null
+  try {
+    resolved = io.resolveMarker(repo)
+    if (!Number.isInteger(resolved?.marker) || !resolved?.routing?.routeId) throw new SnapshotCallerError('no open routable orchestrator marker')
+  } catch (error) {
+    if (!allowNoMarker || !NO_ORCHESTRATOR.test(String(error?.message))) throw error
+    resolved = null
+  }
   const issues = io.openIssues(repo).filter((issue) => !issue.pull_request)
   const claims = issues.filter((issue) => labelNames(issue).includes('db-claim')).map((issue) => ({
     issue: issue.number,
@@ -231,7 +242,7 @@ export function gatherLiveInput(repo, io = defaultIo) {
   const stageRefs = io.matchingRefs(repo, 'db-coordination').filter((ref) => STAGE_LOCK_REFS.includes(ref.ref))
   return {
     input: {
-      marker: { issue: resolved.marker, status: 'active', route_id: resolved.routing.routeId },
+      marker: resolved ? { issue: resolved.marker, status: 'active', route_id: resolved.routing.routeId } : null,
       claims,
       pull_requests: io.openPullRequests(repo).map((pr) => ({ number: pr.number, head: pr.headRefOid, checks: checkSummary(pr.statusCheckRollup) })),
       reviewer_leases: leaseRefs.map((ref) => ({ ref: ref.ref, sha: ref.object?.sha })),
@@ -239,7 +250,7 @@ export function gatherLiveInput(repo, io = defaultIo) {
       outcome_events: outcomeEvents,
       eligible_queue: issues.filter((issue) => labelNames(issue).some((name) => QUEUE_LABELS.includes(name))).map((issue) => ({ issue: issue.number, labels: labelNames(issue).filter((name) => QUEUE_LABELS.includes(name)).sort() })),
     },
-    sessionStarted: resolved.routing.started ?? null,
+    sessionStarted: resolved?.routing?.started ?? null,
   }
 }
 

@@ -811,7 +811,8 @@ export function parseQueueScope(body = '') {
   return { status, workType, route, priority, dependencies, returnTo, writes, reads, legacyObjects, objects: writes, serviceClass, changeType, applicationReturnTo, liveAssertion, generatedTypes, outcomeStage }
 }
 
-export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker'])
+// orchestrator-alarm marks the no-progress alarm fallback issue (scripts/orchestrator-flow/no-progress-alarm.mjs); the queue audit excludes it too.
+export const COORDINATION_LABELS = new Set(['db-claim','orchestrator-marker','orchestrator-alarm'])
 export const WORK_LABEL = 'db-work'
 
 // The conflict matrix lives in ./lib/hold-reason.mjs so named holds and lane

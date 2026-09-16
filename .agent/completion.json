@@ -1,37 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3069,
+  "work_issue": 3079,
   "outcome": "ready-for-merge",
-  "pr": 3070,
+  "pr": 3080,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3069/1",
-  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
-  "head_sha": "dc67311f81c09554c5fe64ba9d5d5529dff91ef0",
+  "contract_ref": "refs/db-contracts/3079/4",
+  "contract_sha256": "4196a4d4cb9b7d9b5eada037cab0afcbdf7b293b6b7a8912909b71cb6acc82eb",
+  "head_sha": "8c7b4ec4e3f1ee60f18e029c4cc5f64625dcdbb8",
   "files_changed": [
-    ".github/workflows/migration-author-lease.yml",
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-snapshot.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every changed scripts test file",
+      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "check-required-checks-preflight, dispatch-production-apply, refresh-code-pr-branch 59/59 pass, 0 fail, 0 skipped at dc67311f after refreshing onto origin/main."
+      "evidence": "2319 tests, 2319 pass, 0 fail, 0 skipped at implementation head 8c7b4ec4 against origin/main e7ece4f4. The excluded file fails identically on clean main and is untouched by this PR. Truth audit OK at 296 call sites."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at dc67311f."
+      "evidence": "Exit 0 with no output at 8c7b4ec4."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
+    "No schema or structure change was needed: the alarm reads GitHub issues and posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
   ],
   "stop_conditions_hit": []
 }

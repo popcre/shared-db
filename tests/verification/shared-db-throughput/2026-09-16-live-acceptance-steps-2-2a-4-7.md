@@ -142,16 +142,25 @@ Both alarm conditions fire on live data: an outcome idle for more than 120 minut
 
 ## Step 7 — bounded reviewer and runner start waits
 
-### Reviewer non-start reroute — NOT PROVEN
+### Runner non-pickup reroute — PROVEN LIVE (2026-09-16)
 
-- The start SLO is implemented (`START_SLO_MS=10*60*1000` and `REROUTE_REF_PREFIX='refs/db-start-reroutes'` in `scripts/orchestrator-flow/start-reroute.mjs`, used by `scripts/run-governed-review.mjs`).
-- `git ls-remote origin 'refs/db-start-reroutes*'` returns 0 refs, so no live start reroute was ever recorded.
-- All 948 reviewer failure/replacement refs were fetched. Their failure codes are `insufficient_quota` 313, `local_dependency_unavailable` 80, `provider_unavailable` 26, `review_target_superseded` 9, `reviewer_cannot_read_repository` 26, `turn_limit_cancelled` 107, and `wrapper_terminal_failure` 391. None is a not-started code.
+Mechanism: `start-reroute-canary.yml` driven by `scripts/orchestrator-flow/start-reroute-canary.mjs` at main `e6e0eacc`. The staged attempt targets the label no runner serves, so it genuinely never starts.
 
-### Runner non-pickup reroute — NOT PROVEN
+- Healthy run (kept, never cancelled, ran past the SLO): https://github.com/u2giants/shared-db/actions/runs/35108725806 — canary job started 14:28:22Z, completed 14:43:24Z, `success`.
+- Staged non-pickup: https://github.com/u2giants/shared-db/actions/runs/35108728953 — canary job created 14:28:20Z, no runner, `started_at` = created; cancelled only after the replacement was accepted.
+- Reroute reserved create-only at 14:38:43Z (10 min 23 s after queue, i.e. the first poll after the 10-minute SLO): `refs/db-start-reroutes/runner/staged-mu473wfl` → `"lane":"ubuntu-latest","original_id":"staged-mu473wfl","replacement_id":"replacement-staged-mu473wfl"`.
+- Dispatch ack `refs/db-start-reroutes/runner/staged-mu473wfl--dispatch-ack`: `{"dispatch_status":"created","replacement_id":"replacement-staged-mu473wfl",...}`.
+- Replacement: https://github.com/u2giants/shared-db/actions/runs/35109943926 — canary job started 14:39:00Z on `GitHub Actions 1000100806`, `success` (picked up 40 s after the reroute).
+- Accepted: `refs/db-runner-accepted/start-reroute-canary.yml/e6e0eaccc440998bd0613ec3fbff9b718612e2f8` → `"attempt_id":"replacement-staged-mu473wfl" ... "supersedes_attempt_id":"staged-mu473wfl"`, assertion `start-reroute-canary` `passed`.
+- An earlier attempt (`staged-mu45ttv4`, run 35104711973) reserved a reroute ref but produced no dispatch ack or accepted result; it is not counted.
 
-- `scripts/orchestrator-flow/runner-lanes.json` registers five qualified lanes, and the `Queue-sensitive checks (aggregate)` workflow runs on PRs. Example: run 35092689708, `success`, 2026-09-16T11:52:44Z.
-- `gh run list --event workflow_dispatch` for `coldlion-promotion-contract-tests.yml` and `tools-offline-tests.yml` returns no runs, so no replacement lane run has ever been dispatched.
+### Reviewer non-start reroute — NOT PROVEN (code gap, 2026-09-16)
+
+- No live path measures a reviewer start against the 10-minute SLO. `run-governed-review.mjs` calls `reviewerStartDecision` only with `provider_state:confirmed-not-started` and `assigned_at` = now, and only on a second doctor timeout or a `turn_limit_cancelled` terminal.
+- `governedReviewDeps` binds no `appendLifecycle`, so no `review_started`/`provider_launched` event is ever written, and `reserveReviewerReroute` has no non-test caller. `--replace-failed-reviewer` has no not-started failure code.
+- A genuine live case cannot be staged: `QUARANTINED_REVIEWERS` is empty and retired reviewers cannot be assigned.
+- Live reroutes that DO use the #2729 code are terminal non-verdicts, not non-starts (below, and e.g. `refs/db-review-failures/3015-3016-a44638c2f704ac4a19a74db1a8e4e9867f153468-2918`, `code=turn_limit_cancelled`).
+- Needed: a reviewer start watcher that writes durable lifecycle events, applies `START_SLO_MS` from the durable assignment time, and dispatches through `reserveReviewerReroute` plus a not-started replacement code; then a live proof.
 
 ### Supporting live evidence (not the acceptance event)
 

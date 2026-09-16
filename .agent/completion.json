@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+<<<<<<< HEAD
   "work_issue": 3093,
   "outcome": "ready-for-merge",
   "pr": 3094,
@@ -85,18 +86,33 @@
     "docs/db-data-admin-inventory.md",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/check-data-admin-launch-readiness.mjs",
+=======
+  "work_issue": 3081,
+  "outcome": "ready-for-merge",
+  "pr": 3082,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3081/6",
+  "contract_sha256": "a3048d6e4dd8bc34da80d5a8a72825ebe8ec7178f6aab3bf50199d7df6acbf82",
+  "head_sha": "a34a84570cd2db23044f8e601df8dc5c92a9605d",
+  "files_changed": [
+>>>>>>> origin/main
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/reviewer-start-watch.mjs",
     "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     "scripts/run-governed-review.mjs",
+<<<<<<< HEAD
     "scripts/run-governed-review.test.mjs",
     "scripts/tests/check-data-admin-launch-readiness.test.mjs"
+=======
+    "scripts/run-governed-review.test.mjs"
+>>>>>>> origin/main
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+<<<<<<< HEAD
       "command": "node --test scripts/check-domain-ownership.test.mjs scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/public-data-venue.test.mjs scripts/lib/documents-only-change.test.mjs",
       "exit_code": 0,
       "evidence": "5 + 19 + 4 + 22 tests passed, 0 failed at implementation head fe6cd5c2."
@@ -114,6 +130,26 @@
   ],
   "assumptions_resolved": [
     "No schema or structure change was needed: only application code already copied to u2giants/popdam3 was removed."
+=======
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 150fc628: tests 15, pass 15, fail 0, skipped 0."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 150fc628: tests 78, pass 78, fail 0, skipped 0 (manage-migration-author-lanes.test.mjs 589/589, start-reroute.test.mjs 23/23, repair-voided-findings.test.mjs 11/11)."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 150fc628: 268 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
+    }
+  ],
+  "assumptions_resolved": [
+    "The unstarted reclaim and the runner race on one create-only per-lease start marker inside the reclaim's atomic compare-and-swap; proved by the marker-race test in manage-migration-author-lanes.test.mjs",
+    "A resumed dispatch recognises a completed probe and reclaim; a refusal is mooted only while the exact lease is still held; failed resumes are bounded; --apply only acts on leases drawn after --drawn-since"
+>>>>>>> origin/main
   ],
   "stop_conditions_hit": []
 }

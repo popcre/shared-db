@@ -173,6 +173,27 @@ export const REVIEW_QUOTA_RESERVE = 100
 export const REVIEW_LEASE_SUSPECT_HOURS = 24 // Advisory visibility only. Age never releases a lease.
 export const SILENCE_MIN_AGE_HOURS = 2
 export const SILENCE_CONFIRM_HOURS = 2
+// ISSUE #3027 STEP 7 -- the reviewer START watcher. A lease whose review never
+// started (no durable review-started marker written by run-governed-review.mjs and
+// no PR activity after the draw) is returned through this same silence path after
+// the 10-minute start SLO instead of the 2-hour silence window. A lease with ANY
+// start marker newer than its draw is never eligible here: a healthy running review
+// is only ever handled by the ordinary 2-hour silence path.
+export const REVIEW_STARTED_REF_PREFIX = 'refs/db-review-started'
+export const UNSTARTED_MIN_AGE_HOURS = 10/60
+// One deterministic marker per exact lease (issue, PR, head, slot, draw sequence). The runner
+// creates it create-only before launching a provider; the unstarted reclaim creates the SAME ref
+// (pointing at its release commit) inside its atomic compare-and-swap. Exactly one of the two can
+// win, so a review can never start on a slot that was returned, and a started review can never be
+// reclaimed as unstarted. No listing, no timestamps, no extra reclaim requests.
+export function reviewStartedMarkerRef(lease){
+  const head=String(lease.headSha??'').toLowerCase(),seq=Number(lease.sequence),slot=Number(lease.slot??1)
+  if(!Number.isInteger(Number(lease.issue))||!Number.isInteger(Number(lease.pr))||!/^[0-9a-f]{40}$/.test(head)||!Number.isInteger(seq)||!Number.isInteger(slot))throw new LaneError('review start marker requires exact issue, PR, head, slot, and sequence')
+  return `${REVIEW_STARTED_REF_PREFIX}/${Number(lease.issue)}-${Number(lease.pr)}-${head}-slot${slot}-seq${seq}`
+}
+// readRef returns null only on a confirmed 404 and throws otherwise, so an unreadable marker
+// never reads as a non-start.
+export function reviewStartMarkerPresent(lease,io){return io.readRef(reviewStartedMarkerRef(lease))!==null}
 export const REVIEW_QUEUE_TTL_HOURS = 2
 export const REVIEW_QUEUE_ROW_LIMIT = 32
 // Row ceiling for listReviewRefsPaged. It is a REFUSAL, not a truncation: past
@@ -4570,13 +4591,29 @@ function resolveSilentLease(options,io){
 
 function probeSilentReviewerOperation(options,now,io){
   io=reviewOperationIo(io)
-  const {request,original,lease}=resolveSilentLease(options,io),probeRef=silenceProbeRef(request)
+  let resolved
+  try{resolved=resolveSilentLease(options,io)}
+  catch(error){
+    // A resumed start-watch dispatch re-runs the probe after its own reclaim removed the lease.
+    // Only on that failure path, pay one read to report the existing probe as already done.
+    if(options.unstarted===true&&error instanceof LaneError){
+      let probed=null
+      try{probed=io.readRef(silenceProbeRef({issue:Number(options.issue),pr:Number(options.pr),headSha:String(options.headSha??'').toLowerCase(),sequence:Number(options.failedSequence)}))}catch{}
+      if(probed)throw new LaneError('reviewer silence probe already exists and is immutable')
+    }
+    throw error
+  }
+  // Budget (issue #2075 rule): the unstarted probe is the reclaim's measured 14-request
+  // pre-mutex half minus the reclaim-only reads, plus ONE marker readRef below -- at most 15
+  // of REVIEW_OPERATION_REQUEST_LIMIT=25. The failure-path read above never runs on success.
+  const {request,original,lease}=resolved,probeRef=silenceProbeRef(request)
   if(io.readRef(probeRef))throw new LaneError('reviewer silence probe already exists and is immutable')
   const pr=io.getPr(request.pr)
   if(pr?.state!=='open'||pr?.head?.sha!==request.headSha||hasVerdictForHead(request.issue,request.pr,request.headSha,io,{slot:request.slot}))throw new LaneError('silence probe requires a live lease at the exact open PR head')
-  const age=reviewLeaseAgeHours(lease.heldSince,now)
-  if(age===null||age<SILENCE_MIN_AGE_HOURS)throw new LaneError(`silence probe requires a lease at least ${SILENCE_MIN_AGE_HOURS} hours old`)
+  const age=reviewLeaseAgeHours(lease.heldSince,now),unstarted=options.unstarted===true,minAge=unstarted?UNSTARTED_MIN_AGE_HOURS:SILENCE_MIN_AGE_HOURS
+  if(age===null||age<minAge)throw new LaneError(unstarted?'unstarted probe requires a lease at least 10 minutes old':`silence probe requires a lease at least ${SILENCE_MIN_AGE_HOURS} hours old`)
   const heldSince=lease.heldSince
+  if(unstarted&&reviewStartMarkerPresent({...lease,sequence:request.sequence,slot:request.slot},io))throw new LaneError('unstarted probe refused because the review has a durable start marker')
   const observed=activityFingerprintForLease(lease,io)
   if(observed.lastActivityIso!=='none'&&Date.parse(observed.lastActivityIso)>Date.parse(heldSince))throw new LaneError('silence probe refused because reviewer activity occurred after the lease was drawn')
   const message=`db-coordination reviewer-silence-probe reviewer=${original.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} sequence=${request.sequence} slot=${request.slot} observed-at=${new Date(now).toISOString()} lease-held-since=${new Date(heldSince).toISOString()} last-activity=${observed.lastActivityIso} fingerprint=${observed.fingerprint}`
@@ -4590,13 +4627,26 @@ export function probeSilentReviewer(options,now=new Date(),io=githubIo){return w
 function reclaimSilentReviewerOperation(options,now,io){
   if(!options.confirmNoVerdict||!options.confirmNoArtifact)throw new LaneError('silent reviewer reclaim requires explicit confirmation that the session produced no verdict and no artifact')
   io=reviewOperationIo(io)
-  const {request,original,leaseRef,leaseSha}=resolveSilentLease(options,io),probeRef=silenceProbeRef(request),releaseRef=silenceReleaseRef(request),probeSha=io.readRef(probeRef)
+  let resolved
+  try{resolved=resolveSilentLease(options,io)}
+  catch(error){
+    // A retry after a completed unstarted reclaim finds no lease. Only then pay one read to
+    // tell "already reclaimed" apart from any other refusal; the happy path costs nothing.
+    if(options.unstarted===true&&error instanceof LaneError){
+      let released=null
+      try{released=io.readRef(silenceReleaseRef({issue:Number(options.issue),pr:Number(options.pr),headSha:String(options.headSha??'').toLowerCase(),sequence:Number(options.failedSequence),slot:Number(options.slot??1)}))}catch{}
+      if(released)throw new LaneError('silent reviewer lease was already reclaimed with immutable evidence')
+    }
+    throw error
+  }
+  const {request,original,leaseRef,leaseSha}=resolved,probeRef=silenceProbeRef(request),releaseRef=silenceReleaseRef(request),probeSha=io.readRef(probeRef)
   if(!probeSha)throw new LaneError('silent reviewer reclaim requires an immutable prior silence probe')
   if(io.readRef(releaseRef))throw new LaneError('silent reviewer lease was already reclaimed with immutable evidence')
   const probe=parseSilenceProbe(io.getCommit(probeSha))
   if(probe.issue!==request.issue||probe.pr!==request.pr||probe.headSha!==request.headSha||probe.sequence!==request.sequence||probe.slot!==request.slot||probe.reviewer!==original.reviewer)throw new LaneError('silence probe does not match the exact active lease')
-  const probeAge=reviewLeaseAgeHours(probe.observedAt,now)
-  if(probeAge===null||probeAge<SILENCE_CONFIRM_HOURS)throw new LaneError(`silent reviewer reclaim requires an unchanged readable probe for at least ${SILENCE_CONFIRM_HOURS} hours`)
+  const probeAge=reviewLeaseAgeHours(probe.observedAt,now),unstarted=options.unstarted===true
+  if(unstarted){const leaseAge=reviewLeaseAgeHours(probe.leaseHeldSince,now);if(probeAge===null||leaseAge===null||leaseAge<UNSTARTED_MIN_AGE_HOURS)throw new LaneError('unstarted reclaim requires a lease at least 10 minutes old')}
+  else if(probeAge===null||probeAge<SILENCE_CONFIRM_HOURS)throw new LaneError(`silent reviewer reclaim requires an unchanged readable probe for at least ${SILENCE_CONFIRM_HOURS} hours`)
   const observed=activityFingerprintForLease({...original,slot:request.slot},io)
   if(observed.fingerprint!==probe.fingerprint)throw new LaneError('silent reviewer reclaim refused because the activity fingerprint changed after the probe')
   if(typeof io.atomicReviewRefs!=='function'||typeof io.readReviewRefs!=='function')throw new LaneError('silent reviewer reclaim requires atomic compare-and-swap ref support')
@@ -4611,11 +4661,15 @@ function reclaimSilentReviewerOperation(options,now,io){
     // never disagree; issue #2697 removed it and the check now uses those facts.
     const current=resolveSilentLease(options,io),fresh=activityFingerprintForLease({...original,slot:request.slot},io,{freshPr:true}),pr={state:fresh.facts.prState,head:{sha:fresh.facts.currentHead}}
     if(current.leaseSha!==leaseSha||pr?.state!=='open'||pr?.head?.sha!==request.headSha||hasVerdictForHead(request.issue,request.pr,request.headSha,io,{fresh:true,slot:request.slot})||fresh.fingerprint!==probe.fingerprint)throw new LaneError('silent reviewer lease or activity changed after mutex acquisition')
-    const locked=io.readReviewRefs([MUTEX_REF,releaseRef,leaseRef])
+    // Unstarted mode claims the lease's start marker in the same atomic push: a runner that
+    // already wrote it makes the push fail, and a runner that writes after finds it occupied.
+    const markerRef=unstarted?reviewStartedMarkerRef({...request}):null,watched=[MUTEX_REF,releaseRef,leaseRef,...(markerRef?[markerRef]:[])]
+    const locked=io.readReviewRefs(watched)
+    if(markerRef&&locked.get(markerRef)!==null)throw new LaneError('unstarted reclaim refused because the review has a durable start marker')
     if(locked.get(MUTEX_REF)!==ownerSha||locked.get(releaseRef)!==null||locked.get(leaseRef)!==leaseSha)throw new LaneError('silent reviewer reclaim ownership changed after preflight')
-    io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},{ref:releaseRef,expected:null,sha:releaseSha},{ref:leaseRef,expected:leaseSha,sha:null}])
-    const after=io.readReviewRefs([MUTEX_REF,releaseRef,leaseRef])
-    if(after.get(MUTEX_REF)!==ownerSha||after.get(releaseRef)!==releaseSha||after.get(leaseRef)!==null)throw new LaneError('atomic silent reviewer reclaim readback mismatch')
+    io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},{ref:releaseRef,expected:null,sha:releaseSha},{ref:leaseRef,expected:leaseSha,sha:null},...(markerRef?[{ref:markerRef,expected:null,sha:releaseSha}]:[])])
+    const after=io.readReviewRefs(watched)
+    if(after.get(MUTEX_REF)!==ownerSha||after.get(releaseRef)!==releaseSha||after.get(leaseRef)!==null||(markerRef&&after.get(markerRef)!==releaseSha))throw new LaneError('atomic silent reviewer reclaim readback mismatch')
     return {...request,reviewer:original.reviewer,probeSha,releaseSha,releasedLeaseSha:leaseSha}
   }finally{if(acquired)finalizeReviewMutex(ownerSha,io)}
 }
@@ -4827,6 +4881,40 @@ function reviewerCapacityReportOperation(io,now){
   if(io.enableReviewerQueue)try{queue=liveReviewerQueue(io)}catch{queue=null}
   return {generatedAt:new Date(now).toISOString(),advisorySuspectHours:REVIEW_LEASE_SUSPECT_HOURS,silenceMinAgeHours:SILENCE_MIN_AGE_HOURS,silenceConfirmHours:SILENCE_CONFIRM_HOURS,summary:{total:rows.length,free:rows.filter((row)=>row.classification==='free').length,live:rows.filter((row)=>['live','suspect-aged','silence-probed'].includes(row.classification)).length,reclaimable:rows.filter((row)=>['stale-reclaimable','silence-reclaimable'].includes(row.classification)).length,silenceProbed:rows.filter((row)=>row.classification==='silence-probed').length,silenceReclaimable:rows.filter((row)=>row.classification==='silence-reclaimable').length,unknown:rows.filter((row)=>row.classification==='unknown').length},queue,reviewers:rows}
 }
+
+// ISSUE #3027 STEP 7 -- read-only lease view for the reviewer start watcher
+// (scripts/orchestrator-flow/reviewer-start-watch.mjs). Every lease reports its exact
+// slot, draw time, whether a durable start marker exists after the draw, and the last
+// PR activity. Anything unreadable is reported as `unknown`, which the watcher never
+// reroutes. Leases younger than the start SLO are listed without further reads.
+function reviewerStartWatchLeasesOperation(io,now,minAgeHours){
+  const busy=findBusyReviewers(io,[],{keepUnreadableLeases:true})
+  if(!busy)throw new LaneError('active reviewer leases are unreadable; start watch refused')
+  const staleRefs=new Set((busy.stale??[]).map((row)=>row.ref))
+  return [...(busy.byAssignment?.values()??[])].map((record)=>{
+    const lease=record.lease,row={leaseRef:record.ref,reviewer:lease.reviewer,issue:lease.issue,pr:lease.pr,headSha:lease.headSha,sequence:lease.sequence,slot:lease.slot??1,heldSinceIso:record.heldSince??null,stale:staleRefs.has(record.ref),started:null,lastActivityIso:null,verdictPresent:null,error:null}
+    const age=reviewLeaseAgeHours(record.heldSince,now)
+    if(row.stale||age===null||age<minAgeHours)return row
+    try{
+      row.verdictPresent=hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease))
+      row.started=reviewStartMarkerPresent({...lease,slot:row.slot},io)
+      row.lastActivityIso=activityFingerprintForLease(lease,io).lastActivityIso
+    }catch(error){row.error=String(error?.message??error)}
+    return row
+  })
+}
+// Issue #3027 Step 7: the governed runner re-checks, AFTER writing its start marker and
+// before launching the provider, that its exact lease is still held. A start-watch reclaim
+// that listed markers just before the marker landed has then already removed the lease, and
+// the runner refuses to start. Unreadable leases throw: an unknown lease never starts a review.
+export function reviewLeaseStillHeld(request,io=githubIo){
+  const busy=findBusyReviewers(reviewOperationIo(io),[],{keepUnreadableLeases:true})
+  if(!busy)throw new LaneError('active reviewer leases are unreadable; review start refused')
+  // Returns the exact held lease (with its draw sequence) or null.
+  const hit=[...(busy.byAssignment?.values()??[])].find(({lease})=>Number(lease.issue)===Number(request.issue)&&Number(lease.pr)===Number(request.pr)&&String(lease.headSha).toLowerCase()===String(request.headSha).toLowerCase()&&Number(lease.slot??1)===Number(request.slot??1)&&(!request.reviewer||lease.reviewer===request.reviewer)&&(request.sequence===undefined||Number(lease.sequence)===Number(request.sequence)))
+  return hit?{...hit.lease,slot:Number(hit.lease.slot??1)}:null
+}
+export function reviewerStartWatchLeases(io=githubIo,now=new Date(),minAgeHours=UNSTARTED_MIN_AGE_HOURS){return withReviewRequestBudget(()=>reviewerStartWatchLeasesOperation(reviewOperationIo(io),now,minAgeHours),REVIEW_CAPACITY_REQUEST_LIMIT)}
 
 export function reviewerCapacityReport(io=githubIo,now=new Date()){return withReviewRequestBudget(()=>reviewerCapacityReportOperation(reviewOperationIo(io),now),REVIEW_CAPACITY_REQUEST_LIMIT)}
 
@@ -7717,6 +7805,7 @@ function parseArgs(argv) {
     else if (a === '--reclaim-silent-reviewer') out.reclaimSilentReviewer = true
     else if (a === '--request-reviewer') out.assignReviewer = true
     else if (a === '--reviewer-capacity') out.reviewerCapacity = true
+    else if (a === '--reviewer-start-watch-leases') out.reviewerStartWatchLeases = true
     else if (a === '--reap-abandoned-review-leases') out.reapAbandonedReviewLeases = true
     else if (a === '--archive-old-review-verdicts') out.archiveOldReviewVerdicts = true
     else if (a === '--reviewer-preflight') out.reviewerPreflight = true
@@ -7762,6 +7851,7 @@ function parseArgs(argv) {
     else if(a==='--skip-doctor')out.skipDoctor=true
     else if(a==='--confirm-no-verdict')out.confirmNoVerdict=true
     else if(a==='--confirm-no-artifact')out.confirmNoArtifact=true
+    else if(a==='--unstarted')out.unstarted=true
     else if (a === '--versions') { out.versions = next(i).split(',').map((v)=>v.trim()).filter(Boolean); i++ }
     else if (a === '--objects') { out.objects.push(...next(i).split(',').map((v)=>v.trim()).filter(Boolean)); i++ }
     else if (a === '--lease-hours') { out.leaseHours = Number(next(i)); i++ }
@@ -7854,7 +7944,7 @@ export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
     if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
-    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
+    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')
     if(selectedPrimary.length>1)throw new LaneError(`choose exactly one primary operation; received ${selectedPrimary.join(', ')}`)
@@ -7995,6 +8085,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.reclaimSilentReviewer){console.log(JSON.stringify(reclaimSilentReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},now,io),null,2));return 0}
     if(o.reapAbandonedReviewLeases){console.log(JSON.stringify(reapAbandonedReviewLeases(o,now,io),null,2));return 0}
     if(o.archiveOldReviewVerdicts){console.log(JSON.stringify(archiveOldReviewVerdicts(o,now,io),null,2));return 0}
+    if(o.reviewerStartWatchLeases){console.log(JSON.stringify(reviewerStartWatchLeases(io,now),null,2));return 0}
     if(o.reviewerCapacity){console.log(JSON.stringify(reviewerCapacityReport(io,now),null,2));return 0}
     if(o.excludeReviewer){console.log(JSON.stringify(excludeReviewerForPr(o,io),null,2));return 0}
     if(o.reinstateReviewerExclusion){console.log(JSON.stringify(reinstateReviewerExclusion(o,io),null,2));return 0}

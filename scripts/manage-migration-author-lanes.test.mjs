@@ -8207,3 +8207,15 @@ test('--abandonment-audit reports a refusal as unverifiable (3), not as an expir
   assert.equal(errors.filter((line)=>line.startsWith('REFUSED: ')).length,3,'the refusal message is still printed in full; only its exit code moves')
   assert.ok(errors.some((line)=>line.includes('must identify exactly one work issue')),'the operator must still be told what could not be read')
 })
+
+test('claim release refused for the wrong owner names the owner on record and the corrected command (#498)',()=>{
+  const io=memoryIo();let closed=null
+  io.openClaims=()=>[{number:7,body:body(['table core.x'],'7')}]
+  io.closeClaim=(n)=>{closed=n}
+  const lines=[],original=console.error
+  console.error=(...args)=>lines.push(args.join(' '))
+  let code
+  try{code=main(['--release-claim','7','--owner','someone-else','--confirm-finished'],NOW,io)}finally{console.error=original}
+  assert.equal(code,2);assert.equal(closed,null)
+  assert.match(lines.join('\n'),/owner on record is "agent-7", got --owner "someone-else"; if you are that session rerun: --release-claim 7 --owner "agent-7" --confirm-finished/)
+})

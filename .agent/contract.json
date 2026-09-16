@@ -1,70 +1,62 @@
 {
+  "schema_version": 1,
+  "generation": 15,
+  "work_issue": 2301,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement Step 7 of plan_author_lane_abandonment_lifecycle.md, the completion step: run the full section 10 suites, verify the finished lifecycle live and read-only, fix what that live verification finds, record the final STATUS and the definition of done, and retire the plan's handoff. Live verification found two real defects that the unit suites could not see. First, the claim-identity read ran outside the per-domain failing legs of the flow snapshot, so live claim #2871, titled CLAIM: issue-2870-cutover-columns with no issue number in it, threw out of the map and blanked the entire snapshot: the hourly audit described none of the other seven lanes. The identity read becomes its own failing leg, so one unreadable claim is one unreadable row, reported as unverifiable in both domains. Second, a refusal on --abandonment-audit fell through to the generic handler, which exits 2, and on this command 2 already means an expired author lane was found, so the scheduled run announced every read failure as an expiry report about lanes it never read. A refusal on this command now exits 3, because an instrument that could not read is exactly the unverifiable case and unverifiable outranks expiry. No schema, database or infrastructure change.",
+  "base_sha": "3fdd16effbd154e1602c29aa5610161910138d68",
+  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Step 7 completion worker",
+  "branch": "claude/2301-step7-completion",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
   "allowed_paths": [
-    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "plan_author_lane_abandonment_lifecycle.md",
+    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "assumptions": [
-    "Reserved migration version 20260916033914 is the only version this work may use; it replaced superseded version 20260916001923 and was centrally reserved by the repository governed --supersede-active-claim-version command, whose durable evidence is the permanent reservation ref refs/db-claims/20260916033914 (6c9b149d8747293cdb306a73262bd341873bc682) and the owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e",
-    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
-    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
-    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
-  ],
-  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "branch": "claude/issue-2988-orderlist-timeout",
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
-  "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
-  ],
-  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916033914)",
   "file_writes": [
-    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "plan_author_lane_abandonment_lifecycle.md",
+    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 3,
-  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
-    "No merge of this or any pull request",
-    "No edit to any migration other than reserved version 20260916033914",
-    "No claim of any database object beyond those declared in db_writes",
-    "No work in any other worktree or on any other branch",
-    "No raising of statement_timeout or lock_timeout",
-    "No change to core.customer or core.factory policies, grants or columns",
-    "No security_definer setting on api.dam_order_list without the issue #2662 security review"
+    "No database, preview, production, or infrastructure action",
+    "No application of the abandonment lifecycle to any live expired claim; the lifecycle is proven by hermetic fixtures and by read-only reporting, never by acting on a real lane",
+    "No automatic transition of an expired author claim",
+    "No deletion of any coordination ref, claim, branch, pull request, or worktree",
+    "No weakening, skipping, or relaxing of any existing check, guard, refusal, or exit code; the exit-code change narrows one command from a wrong code to the stricter correct one and every other command is unchanged",
+    "No synthetic review verdict and no self-approval",
+    "No new feature; Step 7 is regression, live proof, the fixes that proof demands, and the record"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-    "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
+    "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+    "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+    "python -m unittest scripts.test_production_migration_guard",
+    "node scripts/check-skill-drift.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
   ],
-  "route": "migration",
-  "schema_version": 1,
+  "assumptions": [
+    "A green unit suite is not proof that an instrument works. Both defects fixed here were invisible to 980 passing tests and visible within one live read-only run, because both need a real record that predates the current conventions. The plan's own live-verification gate is what found them, which is the reason that gate exists",
+    "Mapping a refusal on --abandonment-audit to exit 3 is a hardening, not a weakening. Exit 2 on this command is a factual claim that an expired author lane was found; a refusal never established that, and unverifiable already outranks expiry in this command's contract. The refusal message is still printed in full, and the generic handler that every other command uses is untouched",
+    "Isolating the claim-identity read does not hide the bad claim. It reports it in both domains with the claim number in the message, so an operator is told exactly which claim to go and fix, and the run can never report clean while a claim is unreadable",
+    "scripts/manage-migration-author-lanes.mjs is the repository's one protected coordination source. Before editing it, the nine open pull requests were checked against the collision rule in scripts/check-pr-source-collisions.mjs and none of them touches that file, so there is no colliding pull request to wait behind",
+    "The definition-of-done boxes are ticked against named artifacts rather than from memory, and the STATUS table holds the per-step commits, sub-issues, verdict refs and suite counts behind them",
+    "The plan's handoff is deleted in this pull request because this pull request closes #2301, which is what the handoff-contract rule requires; the plan file itself stays as the durable record"
+  ],
   "stop_conditions": [
-    "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
-    "Stop if the fix would require making api.dam_order_list security definer",
-    "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
-    "Stop if any required check cannot be run rather than reporting it as passed"
-  ],
-  "work_issue": 2988,
-  "work_type": "structural",
-  "worker": "Claude Opus 5 issue-2988 migration author",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988"
+    "Stop if the live audit cannot be run read-only, or if any live run mutates anything",
+    "Stop if any definition-of-done box cannot be tied to a real artifact",
+    "Stop if current main moves before the final exact-head review-to-merge cycle",
+    "Stop rather than apply the lifecycle to a live expired claim to demonstrate it"
+  ]
 }

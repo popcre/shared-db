@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3035/1",
   "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
-  "head_sha": "d3c45840182f985b097c1d87a14669519bdd6482",
+  "head_sha": "80c5f5276699031b79a3557271bda647187f7ea7",
   "files_changed": [
     "AGENTS.md"
   ],
@@ -16,11 +16,11 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head d3c45840 against origin/main 4e290252; the diff is AGENTS.md only (+8/-2)."
+      "evidence": "Exit 0 with no output at refreshed head 80c5f527 against origin/main 95619429; the diff is AGENTS.md only (+8/-2)."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...d3c45840 lists only AGENTS.md; no code, migration, workflow or configuration file changed."
+    "git diff --stat origin/main...80c5f527 lists only AGENTS.md; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

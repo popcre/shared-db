@@ -1,62 +1,62 @@
 {
   "schema_version": 1,
-  "work_issue": 2301,
+  "work_issue": 2988,
   "outcome": "ready-for-merge",
-  "pr": 3019,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/15",
-  "contract_sha256": "ef932cbfce2c17b056403ccf1495811aa657d48d5aa671c235f9ff7b0e30a5a3",
-  "head_sha": "5b7d128191ed367a60ba8e9162197abfa06f5c6d",
-  "files_changed": [
-    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
-    "plan_author_lane_abandonment_lifecycle.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+  "pr": 3007,
+  "migration_versions": [
+    "20260916033914"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2988/3",
+  "contract_sha256": "1a951cb6fd44da7b5d10f57deb6ed9a5085874ae03ca5a1280a1b0c77dba1dd6",
+  "head_sha": "0ee3b2aad313e059b51e5b56e89def328e50fef6",
+  "files_changed": [
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260916033914.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql"
+  ],
+  "db_reads": [
+    "table core.customer",
+    "table core.factory"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "view dam.dam_order_list_customer_directory",
+    "view dam.dam_order_list_vendor_directory"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: tests 653, pass 653, fail 0, cancelled 0, skipped 0, todo 0. Two of those are new and each pins one of the defects that live verification found. The first builds a snapshot from two open claims whose titles name no single work issue -- one copied from the real live claim #2871, 'CLAIM: issue-2870-cutover-columns', and one ambiguous title naming two issues -- and asserts that both still appear as rows, that each row names the claim number an operator has to go and fix, that neither can ever be reported preview-ready, and that the capacity and preview domains report the same failure. Before the fix the identity read threw out of the map and the snapshot came back empty. The second drives the CLI itself: a missing runtime adapter and an unreadable snapshot both exit 3, a refusal on any other command still exits 2, and the REFUSED line is still printed in full each time, so the message an operator reads is unchanged and only the code it is filed under moves."
+      "evidence": "Run at implementation head 3946f5413d50a67b3d2a70f72532fc50b1476137 (PR base 1dcf196ea9b506ec14feb55e8465b53d9faf1706): 'Static checks passed.' The issue #1235 expected-count guard, the verify-cost guard ('1 added migration(s) contain no prohibited verification read') and the issue #1684 EOL guard all passed."
     },
     {
-      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0. The coordination scenarios include the hermetic relinquish, resume and retired-refusal fixtures that demonstrate the lifecycle without touching a live lane."
+      "evidence": "status OK over 55 sidecars; the scan for version 20260916033914 reports markers [] and sidecar true, so the reserved migration carries its hash-bound production verification sidecar and adds no dynamic execution marker."
     },
     {
-      "command": "python -m unittest scripts.test_production_migration_guard",
+      "command": "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: Ran 272 tests, OK. Unchanged by this step; run to prove the Step 6 rulebook agreement tests still hold against the prose as it now stands, including the exit-code paragraph this change makes true."
+      "evidence": "tests 91, pass 91, fail 0, cancelled 0, skipped 0, todo 0. Confirms the applied-migration-edit guard still refuses edits to already-applied versions and that the SQL guards themselves are intact."
     },
     {
-      "command": "node scripts/check-skill-drift.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "OK: checked 3 canonical skills in C:/repos/ai-devops against AGENTS.md; no contradictions."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: truth audit OK: call_sites=296, unchanged. The new code adds no semantic call site, so the inventory file held by open pull requests 2823 and 2821 stays untouched."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: no whitespace errors."
+      "evidence": "357 passed, 305 subtests passed. Covers the PREVIEW_PRODUCER_PATHS pin for scripts/production-verification-sidecars/20260916033914.json and the registration of catalog contract dam_order_list_role_free_party_names_v1."
     }
   ],
   "assumptions_resolved": [
-    "Live read-only verification, not the test suite, is what found both defects in this step. 980 tests passed over code that could not read the live lanes at all, because both failures need a real record written before the current conventions existed. That is the reason the plan requires a live gate as well as suites, and it is now the reason two new tests exist.",
-    "The exit-code change is a narrowing, not a relaxation. Exit 2 on --abandonment-audit is a factual claim that an expired author lane was found. A refusal never established that, so reporting it as 2 was a false positive with an operator cost: the scheduled run on 2026-09-16 at main head 3fdd16ef logged 'REFUSED: claim title must identify exactly one work issue for capacity transition events' and then '##[error]Expired author lane(s) detected', which is a report about lanes the instrument never read. Exit 3 already means unverifiable on this command and already outranks expiry. Every other command keeps the generic handler and keeps exiting 2, which the new test asserts directly.",
-    "Isolating the claim-identity read does not hide the unreadable claim. The row carries the claim number in both the capacity and the preview error, so the operator is told which claim to fix, and preview_edge_satisfied is forced false so an unreadable claim can never be counted as ready.",
-    "scripts/manage-migration-author-lanes.mjs is the repository's single protected coordination source. The nine open pull requests were checked against the rule in scripts/check-pr-source-collisions.mjs before it was edited and none of them touches that file, so there was no colliding pull request to wait behind. The rule was not bypassed.",
-    "Live proof at this head, all read-only: --abandonment-audit reports status UNVERIFIABLE with mutating false, zero actions carrying mutates true, all eight lanes described, capacity 8 issues / 7 actions / 1 unverifiable, six expired-unconfirmed-report actions, exit 3. That agrees with --queue-audit, which reports the same seven lanes without a live lease and one active lane. No database, preview, production or infrastructure write occurred, and no ref, branch or worktree was deleted.",
-    "The lifecycle was deliberately NOT applied to any live expired claim to demonstrate it. Six live lanes are reported as expired-unconfirmed; acting on any of them needs that claim's own current evidence and an authorised operator decision, and this plan is not that authority.",
-    "The definition-of-done boxes in section 13 are ticked against named artifacts -- merge commits, verdict refs, suite counts and the live run above -- rather than from memory.",
-    "An independent governed review of the previous head kept both code changes -- it confirmed the identity leg still reports the bad claim in both domains, that the exit-code remap is a hardening rather than a relaxation, that no other command's code moves, and that both new tests fail against the old code -- and refused the record. It was right: the definition-of-done list ticked boxes about the completion step's own review, checks, merge and issue closure, none of which a commit can establish about itself, and the plan's header still linked the handoff this change deletes. The list now states plainly that those boxes cover Steps 1-6, the #2301 closure box is left UNTICKED on purpose with the reason written next to it, the header records the handoff as retired instead of linking to it, and no code path was touched in the fix.",
-    "The plan's handoff is deleted in this pull request because this pull request closes its step issue #3018 and the plan it registers is finished. Nothing unfinished depends on it. The plan file itself stays as the durable record and now says plainly that it is complete and must not be restarted."
+    "Root cause proven read-only on production qsllyeztdwjgirsysgai, not inferred: 826 evaluations of the core.customer shared_read qual under the reporting user's own JWT claims cost 5,373 ms and every one returned false; the same (id, name) pairs read with no policy evaluation cost 1.2 ms.",
+    "Mechanism: two narrow postgres-owned security_invoker=false directory views in the dam schema, which this project's PostgREST does not expose. api.dam_order_list stays security_invoker=true, so issue #2662 is untouched.",
+    "No timeout is raised, no full dataset is loaded, and no policy, grant or column on core.customer or core.factory changes.",
+    "Behaviour proved on a throwaway PostgreSQL 18 cluster because Docker is unavailable on this machine: a role-free authenticated principal reads its visible order lines with non-null customer and vendor names, service_role and an owner session with no JWT both read them, anon is refused on the directory views, and authenticated still reads zero rows from core.customer directly.",
+    "Residual, stated in the pull request body: because the outer view must stay invoker, the authenticated role holds SELECT on the two directories, so a direct Postgres session already holding that role could list all 826 customer and 93 factory (id, name) pairs. No PopDAM user has that route -- dam is absent from pgrst.db_schemas and authenticated and service_role are NOLOGIN.",
+    "Claim #3005 must be expanded to cover view dam.dam_order_list_customer_directory and view dam.dam_order_list_vendor_directory before the lease check will accept this migration; the coordinator holds that action.",
+    "Nothing was applied to preview or production and no pull request was merged.",
+    "Migration version 20260916033914 was centrally reserved, not chosen locally: the governed --supersede-active-claim-version command reserved it and pushed head 7700029e3b32e66a4970e813652546676373cc8e. Durable evidence: refs/db-claims/20260916033914 = 6c9b149d8747293cdb306a73262bd341873bc682, and owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e. The sidecar present in Git is scripts/production-verification-sidecars/20260916033914.json; no sidecar for the superseded version exists or is referenced."
   ],
   "stop_conditions_hit": []
 }

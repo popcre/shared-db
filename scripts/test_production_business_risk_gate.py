@@ -343,6 +343,11 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                 if not line.rstrip().endswith("\\"):
                     break
             invocations.append("\n".join(block))
+        # The read-only qualify-route subcommand (#3039) never waits and is counted separately.
+        routes = [block for block in invocations if block.startswith(" qualify-route")]
+        self.assertEqual(len(routes), 1)
+        self.assertNotIn("--rate-limit-wait-seconds", routes[0])
+        invocations = [block for block in invocations if not block.startswith(" qualify-route")]
         self.assertEqual(len(invocations), 2)
         self.assertEqual(["--rate-limit-wait-seconds 900" in block for block in invocations], [True, False],
                          "the lane-held invocation must fail fast")
@@ -1951,7 +1956,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         # opened one without looking, so every new mention is made to argue for
         # itself. If this citation ever becomes a read, this entry must go and
         # docs must be pinned in PREVIEW_PRODUCER_PATHS instead.
-        ("scripts/manage-migration-author-lanes.mjs", "message-citation"): 1,
+        ("scripts/manage-migration-author-lanes.mjs", "message-citation"): 2,
         ("scripts/production_migration_guard.py", "message-citation"): 1,
     }
 
@@ -2203,9 +2208,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             root = Path(temp)
             migrations = root / "supabase/migrations"
             migrations.mkdir(parents=True)
-            (migrations / "20260814000000_safe.sql").write_text("create table core.safe(id bigint); insert into core.safe values (1);")
+            (migrations / "20260814000000_safe.sql").write_text("create table core.safe(id bigint);")
             self.assertEqual(classify_sql(root, ["20260814000000"]), [])
-            (migrations / "20260814000001_risky.sql").write_text("alter table core.safe add column x text; revoke select on core.safe from anon;")
+            (migrations / "20260814000001_risky.sql").write_text("alter table core.safe alter column id type numeric; revoke select on core.safe from anon;")
             reasons = classify_sql(root, ["20260814000001"])
             self.assertIn("users may be interrupted", reasons)
             self.assertIn("access or permissions materially change", reasons)
@@ -2326,7 +2331,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     def test_production_workflow_enforces_gate_twice_and_keeps_old_boundary(self):
         workflow = Path(__file__).parents[1] / ".github/workflows/shared-supabase-migrations.yml"
         text = workflow.read_text(encoding="utf-8")
-        self.assertEqual(text.count("python scripts/production_business_risk_gate.py"), 2)
+        self.assertEqual(text.count("python scripts/production_business_risk_gate.py qualify-route"), 1)
+        self.assertEqual(text.count("python scripts/production_business_risk_gate.py")
+                         - text.count("python scripts/production_business_risk_gate.py qualify-route"), 2)
         self.assertIn("environment: production", text)
         self.assertGreaterEqual(text.count("config/production-risk-policy-activation.json"), 2)
 
@@ -3495,43 +3502,173 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             (root / "supabase/migrations/20260814000000_x.sql").write_text(body, encoding="utf-8")
             return classify_sql(root, ["20260814000000"])
 
+    EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
+                         RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
+
+    def assert_allowed(self, allowed, refused):
+        for body in allowed:
+            with self.subTest(allowed=body):
+                self.assertEqual(self.classify(body), [])
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_the_allowlist_is_one_finite_constant(self):
+        """PR #2970: exemption is allowlist-only. Adding an entry must add a test here."""
+        from production_business_risk_gate import ALLOWLIST
+        self.assertEqual(set(ALLOWLIST), {
+            "create_function", "drop_function_if_exists", "add_nullable_column",
+            "create_table", "create_index_on_new_table", "comment_on"})
+
+    def test_the_two_refused_production_migrations_are_allowed(self):
+        """Runs 34987389408 (#2934, PR #2958) and 34989644100 (#2911) were refused."""
+        self.assert_allowed([
+            "drop function if exists public.deactivate_stale_sg_files(text, uuid);",
+            "alter table public.style_guide_files\n  add column has_talent_likeness boolean null;",
+        ], [])
+
+    def test_allowlist_entry_create_function(self):
+        self.assert_allowed([
+            "CREATE OR REPLACE FUNCTION dflow.f() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN UPDATE dflow.a SET id = id; DELETE FROM dflow.b; RETURN NEW; END; $$;",
+            "create function public.g(text, uuid) returns boolean language sql stable as $b$ select true $b$;",
+        ], [
+            "create function public.g() returns void language plpgsql security definer as $$ begin end $$;",
+            "create function public.g() returns void language c as 'lib', 'sym';",
+            "create function public.g() returns void language plpgsql set search_path = public as $$ begin end $$;",
+            "create function public.g(a int default nextval('s')) returns void language sql as 'select 1';",
+            "create function public.g(a int default 7) returns void language sql as $$ $$;",
+            "create function g() returns void language sql as 'select 1';",
+            "create procedure public.p() language sql as 'delete from public.t';",
+        ])
+
+    def test_allowlist_entry_drop_function_if_exists(self):
+        self.assert_allowed([
+            "DROP FUNCTION IF EXISTS public.f(integer), public.g();",
+        ], [
+            "drop function if exists public.f(text) cascade;",
+            "drop function if exists public.f(text) /* x */ cascade;",
+            "drop function public.f(text);",
+            "drop function if exists public.f;",
+            "drop procedure if exists public.p();",
+            "drop routine if exists public.f(text);",
+            "drop function if exists public.f(text); drop table core.safe;",
+        ])
+
+    def test_allowlist_entry_add_nullable_column(self):
+        self.assert_allowed([
+            "ALTER TABLE public.t ADD COLUMN IF NOT EXISTS note text;",
+            "alter table only public.t add column n numeric(10,2);",
+        ], [
+            "alter table public.t add column c timestamptz default now();",
+            "alter table public.t add column c boolean not null;",
+            "alter table public.t add column c integer check (c > 0);",
+            "alter table public.t add column c bigint references public.u(id);",
+            "alter table public.t add column c serial;",
+            "alter table public.t add column c public.some_domain;",
+            "alter table public.t add column c text collate \"C\";",
+            "alter table public.t add column c int generated always as identity;",
+            "alter table public.t add column n text, add column m text;",
+            "alter table public.t add column n text, alter column c set not null;",
+            "alter table public.t owner to app_owner;",
+            "alter table t add column c text;",
+            "alter table public.t add column c text; /* unterminated comment",
+        ])
+
+    def test_allowlist_entry_create_table(self):
+        self.assert_allowed([
+            "create table core.n(id bigint primary key, v text not null default 'a' check (v <> ''));",
+        ], [
+            "create table if not exists core.n (id bigint);",
+            "create table core.n (id bigint references core.x(id));",
+            "create table core.n (like core.x including all);",
+            "create table core.n (id bigint) inherits (core.x);",
+            "create table core.n partition of core.x for values in (1);",
+            "create table core.n (id bigint) with (fillfactor = 70);",
+            "create table core.n as select * from core.x;",
+            "create unlogged table core.n (id bigint);",
+            "create table n (id bigint);",
+        ])
+
     def test_creating_new_tables_is_not_reported_as_losing_production_data(self):
-        """The false alarm that turned the owner-decision block into a rubber stamp.
+        """Named in scripts/throughput-guard/false-alarm-corpus.test.mjs: brand-new
+        tables with their indexes and comments are not a business risk."""
+        self.assert_allowed([
+            "CREATE TABLE dflow.a (id bigint PRIMARY KEY, note text);\n"
+            "CREATE INDEX a_note_idx ON dflow.a (note);\n"
+            "COMMENT ON TABLE dflow.a IS 'x';",
+        ], [])
 
-        Every clause here is ordinary idempotent table creation. None of it touches
-        existing data, and the classifier used to report data loss AND downtime for
-        all of it. That is what was being escalated to a non-programmer for sign-off.
-        """
-        sql = "; ".join([
-            "CREATE TABLE IF NOT EXISTS dflow.a (id bigint PRIMARY KEY, b_fk integer REFERENCES dflow.b(id) ON UPDATE CASCADE ON DELETE RESTRICT)",
-            "CREATE INDEX IF NOT EXISTS a_idx ON dflow.a (id)",
-            "DROP TRIGGER IF EXISTS t ON dflow.a",
-            "CREATE TRIGGER t BEFORE UPDATE ON dflow.a FOR EACH ROW EXECUTE FUNCTION dflow.f()",
-        ]) + ";"
-        reasons = self.classify(sql)
-        self.assertNotIn(RISK_TEXT["permanent_data_rewrite_or_loss"], reasons)
-        self.assertNotIn(RISK_TEXT["expected_downtime"], reasons)
+    def test_allowlist_entry_create_index_on_new_table(self):
+        self.assert_allowed([
+            "create table core.n(id bigint, v text);\ncreate unique index n_v_idx on core.n (v);",
+            "create table core.n(id bigint, v text); create index on core.n using btree (v);",
+        ], [
+            "create index t_v_idx on public.t (v);",
+            "create index concurrently if not exists t_v_idx on public.t (v);",
+            "create index n_v_idx on core.n (v); create table core.n(id bigint, v text);",
+            "create table if not exists core.n (id bigint); create index n_idx on core.n (id);",
+            "create table core.n(id bigint); create index if not exists n_idx on core.n (id);",
+            "create table core.n(id bigint); create index concurrently on core.n (id);",
+        ])
 
-    def test_a_function_body_does_not_make_the_migration_destructive(self):
-        """A trigger body describes runtime behaviour, not the apply-time effect."""
-        sql = ("CREATE OR REPLACE FUNCTION dflow.f() RETURNS trigger LANGUAGE plpgsql AS $$ "
-               "BEGIN UPDATE dflow.a SET id = id; DELETE FROM dflow.b; RETURN NEW; END; $$;")
-        self.assertNotIn(RISK_TEXT["permanent_data_rewrite_or_loss"], self.classify(sql))
+    def test_block_comments_end_where_postgres_ends_them(self):
+        """PostgreSQL block comments nest and end only at one or more asterisks then
+        a slash (scan.l xcstop); `*+/` is comment text. Checked on PostgreSQL 18.6."""
+        self.assert_allowed([
+            "/* open /* again */ UPDATE public.t SET x = 1; -- */\ncreate table core.n (a text);",
+            "/* start *+/ UPDATE public.t SET x = 1; -- */\ncreate table core.n (a text);",
+        ], [
+            "/* three **/ UPDATE public.t SET x = 1;",
+            "/* a /* b */ */ UPDATE public.t SET x = 1;",
+        ])
 
-    def test_genuinely_destructive_statements_are_still_reported(self):
-        """Narrowing must not blind it. These are real and must still be seen."""
-        for body, risk in [
-            ("DROP TABLE dflow.a;", "permanent_data_rewrite_or_loss"),
-            ("TRUNCATE dflow.a;", "permanent_data_rewrite_or_loss"),
-            ("DELETE FROM dflow.a WHERE id > 0;", "permanent_data_rewrite_or_loss"),
-            ("UPDATE dflow.a SET id = 1;", "permanent_data_rewrite_or_loss"),
-            ("ALTER TABLE dflow.a ADD COLUMN c text;", "expected_downtime"),
-            ("LOCK TABLE dflow.a IN SHARE MODE;", "expected_downtime"),
-            ("CREATE UNIQUE INDEX a_u ON dflow.a (id);", "expected_downtime"),
-            ("GRANT SELECT ON dflow.a TO authenticated;", "material_access_change"),
-        ]:
-            with self.subTest(body=body):
-                self.assertIn(RISK_TEXT[risk], self.classify(body))
+    def test_a_dollar_inside_an_identifier_opens_no_quote(self):
+        """PostgreSQL ident_cont includes `$`, so `a$$$` is one identifier and no
+        dollar-quote opens. Checked on PostgreSQL 18.6: the middle DROP runs."""
+        self.assert_allowed([
+            "comment on table core.a$$$ is null;",
+            "create table core.n (a$b text, c$$ text);",
+        ], [
+            "comment on table core.a$$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.a$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.é$$ is null; drop table core.character; comment on table core.b$$ is null;",
+            "comment on table core.a$e'\\' is null; drop table core.character; comment on table core.b$e'\\' is null;",
+        ])
+
+    def test_allowlist_entry_comment_on(self):
+        self.assert_allowed([
+            "-- drop table core.safe;\n/* drop table core.x cascade; */\ncomment on table core.safe is 'x';",
+            "COMMENT ON COLUMN public.t.c IS NULL;",
+        ], [])
+
+    def test_an_unknown_statement_reports_every_risk(self):
+        """Nothing outside ALLOWLIST is modelled, so nothing outside it is excused."""
+        self.assert_allowed([], [
+            "select 1;",
+            "select public.rebuild_everything();",
+            "SELECT setval('public.my_seq', 1, false);",
+            "WITH x AS (SELECT nextval('public.my_seq')) SELECT * FROM x;",
+            "EXPLAIN ANALYZE SELECT * FROM public.style_guide_files;",
+            "DO $$ BEGIN DELETE FROM public.t; END $$;",
+            "DO 'BEGIN DROP TABLE core.character; END';",
+            "create table core.n(id bigint); insert into core.n values (1);",
+            "create table core.n(id bigint); grant select on core.n to authenticated;",
+            "create table core.n(id bigint); alter table core.n enable row level security;",
+            "begin; comment on table core.safe is 'x'; commit;",
+            "set search_path = public; comment on table core.safe is 'x';",
+            "update public.t set v = 1;",
+            "truncate public.t;",
+            "drop table core.safe;",
+            "DROP TRIGGER IF EXISTS trg ON public.t;",
+            "CALL public.p();",
+            "COPY public.t FROM '/tmp/x.csv';",
+            "EXECUTE purge_old_rows;",
+            "ALTER SEQUENCE public.my_seq RESTART WITH 1;",
+            "LOCK TABLE public.t IN SHARE MODE;",
+            "create extension if not exists pg_trgm;",
+            "comment on table core.safe is 'x'; /* unterminated",
+        ])
 
     def test_disclosed_risks_no_longer_block_promotion(self):
         """Owner ruling 2026-08-18: derived risks are DISCLOSED in the evidence,
@@ -3776,6 +3913,150 @@ class PerPullRequestPreviewInstanceBinding(unittest.TestCase):
     def test_missing_binding_is_still_refused(self):
         with self.assertRaises(RiskGateError):
             self.exercise({})
+
+
+class MigrationTrainPerEntryGate(unittest.TestCase):
+    """#3027 Step 6: a dispatched train binds EACH version to its own merged PR."""
+
+    MAIN = "a" * 40
+    V1, V2 = "20260915000001", "20260915000002"
+
+    def setUp(self):
+        import production_business_risk_gate as gate
+        self.gate = gate
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        migrations = self.root / "supabase" / "migrations"
+        migrations.mkdir(parents=True)
+        self.files = {}
+        for version in (self.V1, self.V2):
+            path = migrations / f"{version}_train.sql"
+            path.write_bytes(f"select {version};\n".encode())
+            self.files[version] = hashlib.sha256(path.read_bytes()).hexdigest()
+        # PR 101 authored V1, PR 102 authored V2: two different merged PRs.
+        self.prs = {
+            101: {"head": "1" * 40, "merge": "b" * 40, "added": [self.V1]},
+            102: {"head": "2" * 40, "merge": "c" * 40, "added": [self.V2]},
+        }
+        git_ok = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+        patcher = mock.patch("subprocess.run", return_value=git_ok)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.temp.cleanup)
+
+    def api(self, endpoint):
+        green = {"check_runs": [{"name": n, "conclusion": "success"} for n in REQUIRED_CHECKS]}
+        for number, pr in self.prs.items():
+            if endpoint.endswith(f"/pulls/{number}"):
+                return {"merged": True, "merge_commit_sha": pr["merge"], "head": {"sha": pr["head"]}}
+            if f"/pulls/{number}/files" in endpoint:
+                return [{"filename": f"supabase/migrations/{v}_train.sql", "status": "added"} for v in pr["added"]]
+            if endpoint.endswith(f"/commits/{pr['head']}/check-runs?per_page=100"):
+                return green
+            if endpoint.endswith(f"/commits/{pr['head']}/status"):
+                return {"statuses": [{"context": "Migration guarded merge authorization", "state": "success"}]}
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    def record(self, **entry_overrides):
+        entries = [
+            {"version": self.V1, "file_sha256": self.files[self.V1], "source_pr": 101, "merge_sha": "b" * 40},
+            {"version": self.V2, "file_sha256": self.files[self.V2], "source_pr": 102, "merge_sha": "c" * 40},
+        ]
+        for version, overrides in entry_overrides.items():
+            next(e for e in entries if e["version"] == version).update(overrides)
+        return {"train_id": "d" * 64, "generation": 3, "state": "dispatched", "target": "production",
+                "base_main_sha": self.MAIN, "entries": entries}
+
+    def prove(self, record):
+        return self.gate.prove_migration_train(
+            record, main_sha=self.MAIN, allowlist=[self.V1, self.V2], api=self.api, repo_root=self.root,
+        )
+
+    def test_entry_from_a_different_merged_pr_is_accepted(self):
+        self.assertEqual(self.prove(self.record()), {101: ("1" * 40, "b" * 40), 102: ("2" * 40, "c" * 40)})
+
+    def test_entry_whose_pr_did_not_author_it_is_refused_by_name(self):
+        self.prs[102]["added"] = []
+        with self.assertRaisesRegex(
+            RiskGateError, f"train entry {self.V2}: source PR 102 did not author the exact migration {self.V2}"
+        ):
+            self.prove(self.record())
+        # Naming the OTHER train PR as the author is refused the same way.
+        self.prs[102]["added"] = [self.V2]
+        with self.assertRaisesRegex(RiskGateError, f"train entry {self.V2}: source PR 101 merged as b{{40}}, not the train's c{{40}}"):
+            self.prove(self.record(**{self.V2: {"source_pr": 101}}))
+
+    def test_each_entry_gets_the_full_single_pr_proof(self):
+        with self.assertRaisesRegex(RiskGateError, f"train entry {self.V2}: file hashes to"):
+            self.prove(self.record(**{self.V2: {"file_sha256": "f" * 64}}))
+        with self.assertRaisesRegex(RiskGateError, "not exactly the allowlist"):
+            self.gate.prove_migration_train(self.record(), main_sha=self.MAIN, allowlist=[self.V1], api=self.api, repo_root=self.root)
+        with self.assertRaisesRegex(RiskGateError, "not dispatched"):
+            self.prove({**self.record(), "state": "closed"})
+        with self.assertRaisesRegex(RiskGateError, "different main commit"):
+            self.prove({**self.record(), "base_main_sha": "e" * 40})
+        real_api = self.api
+        def red_checks(endpoint):
+            if endpoint.endswith(f"/commits/{'2' * 40}/check-runs?per_page=100"):
+                return {"check_runs": []}
+            return real_api(endpoint)
+        self.api = red_checks
+        with self.assertRaisesRegex(RiskGateError, f"train entry {self.V2}: source PR 102: required exact-head checks"):
+            self.prove(self.record())
+
+    def assess_args(self, train_path=None, pr=101):
+        return Namespace(
+            repo=self.root, activation=self.root / "activation.json", main_sha=self.MAIN,
+            allowlist=f"{self.V1},{self.V2}", pr=pr, work_issue=7, review_run_id=55,
+            review_digest="sha256:" + "9" * 64, preview_run_id="66", preview_digest="sha256:" + "8" * 64,
+            ephemeral_check_run_id=None, preview_project_ref=PREVIEW_PROJECT_REF,
+            owner_decision_run_id="", owner_decision_digest="", migration_train_record=train_path,
+        )
+
+    def run_assess(self, args, review):
+        def fake_review(**kwargs):
+            path = Path(kwargs["output_dir"], "review.json")
+            path.write_text(json.dumps(review), encoding="utf-8")
+            return path
+        preview_calls = []
+        with mock.patch.object(self.gate, "load_activation", return_value={}), \
+             mock.patch.object(self.gate, "prove_activation"), \
+             mock.patch.object(self.gate, "verify_review", side_effect=fake_review), \
+             mock.patch.object(self.gate, "prove_preview", side_effect=lambda **kw: preview_calls.append(kw)), \
+             mock.patch.object(self.gate, "classify_sql", return_value=[]):
+            return self.gate.assess(args, api=self.api), preview_calls
+
+    def review(self, source_pr, head):
+        return {"schema_version": "shared-db-production-apply-review/v2", "verdict": "APPROVE",
+                "source_pr": source_pr, "source_pr_head": head, "work_issue": 7,
+                "preview_run_id": 66, "preview_artifact_digest": "sha256:" + "8" * 64}
+
+    def test_train_assess_binds_preview_per_authoring_pr(self):
+        path = self.root / "train.json"
+        path.write_text(json.dumps(self.record()), encoding="utf-8")
+        result, calls = self.run_assess(self.assess_args(path), self.review(102, "2" * 40))
+        self.assertEqual(
+            sorted((c["source_pr"], c["pr_head"], c["merge_commit_sha"]) for c in calls),
+            [(101, "1" * 40, "b" * 40), (102, "2" * 40, "c" * 40)],
+        )
+        self.assertTrue(all(c["allowlist"] == [self.V1, self.V2] for c in calls))
+        self.assertEqual([e["sourcePr"] for e in result["governedEvidence"]["migrationTrain"]["entries"]], [101, 102])
+        with self.assertRaisesRegex(RiskGateError, "authored no entry of the migration train"):
+            self.run_assess(self.assess_args(path, pr=103), self.review(101, "1" * 40))
+
+    def test_no_train_keeps_the_single_source_pr_rule_unchanged(self):
+        # PR 102 did not author V1, yet without a train the gate still binds
+        # everything to the one --pr exactly as before, and a review naming a
+        # different PR still refuses with today's wording.
+        with mock.patch.object(self.gate, "prove_pr_and_checks", return_value=("1" * 40, "b" * 40)) as single:
+            with self.assertRaisesRegex(
+                RiskGateError, "automatic review evidence is not bound to the promoted source PR and exact head"
+            ):
+                self.run_assess(self.assess_args(None), self.review(102, "2" * 40))
+            result, calls = self.run_assess(self.assess_args(None), self.review(101, "1" * 40))
+        self.assertEqual(single.call_args.args[0], 101)
+        self.assertEqual([(c["source_pr"], c["pr_head"]) for c in calls], [(101, "1" * 40)])
+        self.assertNotIn("migrationTrain", result["governedEvidence"])
 
 
 if __name__ == "__main__":

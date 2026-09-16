@@ -26,6 +26,7 @@ from production_apply_review_evidence import verify as verify_review
 from production_migration_guard import parse_remote_versions
 from production_review_allowlist import normalize_review_allowlist
 from historical_preview_recovery import verify as verify_historical_preview
+from historical_preview_recovery import prove_pr_authored
 from preview_instance_binding import verify as verify_preview_instance_binding
 from production_owner_decision_evidence import TRANSIENT_GITHUB_ERRORS, verify_artifact as verify_owner_decision
 
@@ -112,6 +113,61 @@ RISK_TEXT = {
     "material_access_change": "access or permissions materially change",
     "recovery_unproven": "recovery is uncertain",
     "unresolved_material_objection": "the reviewers have an unresolved material disagreement",
+}
+
+
+# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
+# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
+# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
+# scans the table, so it is refused (#2771).
+_BUILTIN_COLUMN_TYPE = (
+    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
+    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
+    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
+    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
+    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
+    r"(?: ?\[ ?\])*"
+)
+
+
+# The ONLY statements that report no business risk (#2969, PR #2970). The design
+# is allowlist-only: every top-level statement must fullmatch one entry, with no
+# trailing clause, or the migration reports all three risks. Anything else --
+# WITH, EXPLAIN, DO, SELECT, INSERT, SET, BEGIN, GRANT, an unparsed file -- is
+# never modelled and never excused. Patterns run on sql_top_level_statements
+# output: comments removed, whitespace folded, unquoted text lower-cased, every
+# string literal emptied to '' and every dollar-quoted body emptied to $$ $$.
+_ALLOW_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_]*)'
+_ALLOW_QUALIFIED = rf"{_ALLOW_IDENT}\.{_ALLOW_IDENT}"  # schema-qualified only
+_ALLOW_ARGS = r"\((?![^)]*\bdefault\b)(?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no DEFAULT
+_ALLOW_ROUTINE_OPTION = r"(?:language (?:sql|plpgsql)|immutable|stable|volatile|strict|security invoker)"
+ALLOWLIST = {
+    # Defines a routine; its body is not executed by CREATE. Only SQL and
+    # PL/pgSQL, only a quoted body, no SECURITY DEFINER, SET, or argument default.
+    "create_function": re.compile(
+        rf"create (?:or replace )?function {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS} "
+        rf"returns (?:setof )?(?:trigger|{_BUILTIN_COLUMN_TYPE}|void) "
+        rf"(?:{_ALLOW_ROUTINE_OPTION} )*as (?:\$\$ \$\$|'')(?: {_ALLOW_ROUTINE_OPTION})*"),
+    # Without CASCADE, Postgres refuses the drop while anything depends on it.
+    "drop_function_if_exists": re.compile(
+        rf"drop function if exists {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+        rf"(?: ?, ?{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS})*"),
+    # One nullable column of a built-in type, no default, constraint, reference,
+    # collation, or generated/identity clause: a catalog-only change.
+    "add_nullable_column": re.compile(
+        rf"alter table (?:only )?{_ALLOW_QUALIFIED} add column (?:if not exists )?"
+        rf"{_ALLOW_IDENT} {_BUILTIN_COLUMN_TYPE}(?: null)?"),
+    # A brand-new table: no IF NOT EXISTS, AS SELECT/EXECUTE/VALUES, LIKE, OF,
+    # INHERITS, PARTITION, WITH, TABLESPACE, or REFERENCES (a foreign key locks
+    # the referenced existing table).
+    "create_table": re.compile(
+        rf"create table ({_ALLOW_QUALIFIED}) ?\("
+        r"(?!.*\b(?:references|like|of|inherits|partition|with|tablespace|using|select|execute|values)\b)"
+        r"[^;]*\)"),
+    # An index on a table created by an EARLIER statement of this migration.
+    "create_index_on_new_table": re.compile(
+        rf"create (?:unique )?index (?:(?!concurrently )(?!if )(?!on ){_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
+    "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
 }
 
 
@@ -567,21 +623,6 @@ PREVIEW_PRODUCER_PATHS = (
     # Hash-bound verification declarations are read by the catalog verifier in
     # preview. Contents API directory responses are arrays, so pin each reviewed
     # file explicitly rather than pretending a directory has a blob SHA.
-    "scripts/production-verification-sidecars/20260621151155.json",
-    "scripts/production-verification-sidecars/20260701154948.json",
-    "scripts/production-verification-sidecars/20260710135600.json",
-    "scripts/production-verification-sidecars/20260710135700.json",
-    "scripts/production-verification-sidecars/20260710135900.json",
-    "scripts/production-verification-sidecars/20260710135950.json",
-    "scripts/production-verification-sidecars/20260727154500.json",
-    "scripts/production-verification-sidecars/20260807030000.json",
-    "scripts/production-verification-sidecars/20260823233716.json",
-    "scripts/production-verification-sidecars/20260825031841.json",
-    "scripts/production-verification-sidecars/20260825050407.json",
-    "scripts/production-verification-sidecars/20260825082910.json",
-    "scripts/production-verification-sidecars/20260828021051.json",
-    "scripts/production-verification-sidecars/20260830195655.json",
-    "scripts/production-verification-sidecars/20260830204711.json",
     # Local import of the guard, and the only thing that reads a migration's
     # `-- derived-from:` declaration (issue #1608). An unpinned copy could
     # declare every base satisfied and the guard would believe it, which is the
@@ -644,6 +685,10 @@ PREVIEW_PRODUCER_PATHS = (
     # reused, so preview proof must bind their exact bytes.
     "config/orchestrator-evidence-schema-v1.json",
     "config/orchestrator-global-invalidators-v1.json",
+    # Issue #2728. Read from main by the pinned pr-content-equivalence.mjs to
+    # decide which stored script-hash re-pins may carry an approval forward, so
+    # its bytes change whether a prior review is reused for preview.
+    "config/review-carry-forward-stored-hashes-v1.json",
     # Governed preview-ledger reconciliation reads this reviewed manifest to
     # select the exact issue/claim/source/orphan/replacement tuple. Bind those
     # bytes to the same exact-main producer proof as the workflow and tool.
@@ -1900,22 +1945,118 @@ def prove_pr_and_checks(
     return head, str(merge_commit_sha)
 
 
+TRAIN_VERSION_RE = re.compile(r"\d{14}")
+TRAIN_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+TRAIN_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+
+def load_migration_train_record(path: Path) -> dict[str, Any]:
+    """The dispatched train record, as the workflow re-read it from its immutable ref."""
+    try:
+        record = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RiskGateError(f"migration train record is unreadable: {exc}") from exc
+    if not isinstance(record, dict) or not isinstance(record.get("entries"), list) or not record["entries"]:
+        raise RiskGateError("migration train record has no exact entry list")
+    return record
+
+
+def prove_migration_train(
+    record: dict[str, Any], *, main_sha: str, allowlist: list[str],
+    api: Callable[[str], Any], repo_root: Path,
+) -> dict[int, tuple[str, str]]:
+    """Issue #3027 Step 6: prove EVERY train entry against its OWN authoring PR.
+
+    Each entry gets the full single-PR proof it would get alone: merged, merge
+    commit an ancestor of exact main, required checks green at that PR's exact
+    head, the latest guarded-merge authorization successful there, the merge
+    commit equal to the one the train recorded, the PR ADDED that exact migration
+    file, and the file on exact main hashing to the train's recorded sha256.
+    Returns {source_pr: (head, merge_commit)} for the preview and review bindings.
+    """
+    if record.get("state") != "dispatched":
+        raise RiskGateError(f"migration train {record.get('train_id')} is {record.get('state')}, not dispatched")
+    if record.get("target") != "production":
+        raise RiskGateError(f"migration train targets {record.get('target')}, not production")
+    if str(record.get("base_main_sha", "")).lower() != main_sha.lower():
+        raise RiskGateError("migration train was built on a different main commit than the promoted exact main")
+    entries = record["entries"]
+    versions = [str(entry.get("version")) if isinstance(entry, dict) else "" for entry in entries]
+    if versions != allowlist:
+        raise RiskGateError(
+            f"migration train versions {','.join(versions)} are not exactly the allowlist {','.join(allowlist)}"
+        )
+    proven: dict[int, tuple[str, str]] = {}
+    for entry in entries:
+        version = entry["version"]
+        source_pr, merge_sha, file_sha = entry.get("source_pr"), entry.get("merge_sha"), entry.get("file_sha256")
+        if (
+            not TRAIN_VERSION_RE.fullmatch(version)
+            or type(source_pr) is not int or source_pr < 1
+            or not TRAIN_SHA_RE.fullmatch(str(merge_sha))
+            or not TRAIN_DIGEST_RE.fullmatch(str(file_sha))
+        ):
+            raise RiskGateError(f"train entry {version}: missing exact source PR, merge commit or file hash")
+        try:
+            head, merge_commit = prove_pr_and_checks(source_pr, main_sha, [version], api, repo_root)
+        except RiskGateError as exc:
+            raise RiskGateError(f"train entry {version}: source PR {source_pr}: {exc}") from exc
+        if merge_commit != merge_sha:
+            raise RiskGateError(
+                f"train entry {version}: source PR {source_pr} merged as {merge_commit}, not the train's {merge_sha}"
+            )
+        try:
+            authored_merge = prove_pr_authored(source_pr, main_sha, [version], repo_root, api)
+        except ValueError as exc:
+            raise RiskGateError(f"train entry {version}: {exc}") from exc
+        if authored_merge != merge_sha:
+            raise RiskGateError(f"train entry {version}: source PR {source_pr} authorship names another merge commit")
+        matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
+        if len(matches) != 1:
+            raise RiskGateError(f"train entry {version}: exact main has {len(matches)} migration files, not 1")
+        actual = sha256_file(matches[0])
+        if actual != file_sha:
+            raise RiskGateError(f"train entry {version}: file hashes to {actual}, not the train's {file_sha}")
+        if source_pr in proven and proven[source_pr] != (head, merge_commit):
+            raise RiskGateError(f"train entry {version}: source PR {source_pr} changed identity mid-proof")
+        proven[source_pr] = (head, merge_commit)
+    return proven
+
+
 def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
     reasons: set[str] = set()
     for version in allowlist:
         matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
-        sql = migration_statements(matches[0].read_text(encoding="utf-8"))
-        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or re.search(
-                r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", sql):
-            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
-        if re.search(r"\b(lock\s+table|alter\s+table)\b", sql) or re.search(
-                r"\bcreate\s+(?:unique\s+)?index\s+(?!concurrently|if\s+not\s+exists)", sql):
-            reasons.add(RISK_TEXT["expected_downtime"])
-        if re.search(r"\b(grant|revoke|create\s+policy|alter\s+policy|drop\s+policy|row\s+level\s+security)\b", sql):
-            reasons.add(RISK_TEXT["material_access_change"])
+        raw = matches[0].read_text(encoding="utf-8")
+        reasons.update(_classify_statements(sql_top_level_statements(raw)))
     return sorted(reasons)
+
+
+def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
+    """The ALLOWLIST entry this statement fullmatches, or None."""
+    for name, pattern in ALLOWLIST.items():
+        m = pattern.fullmatch(statement)
+        if m and (name != "create_index_on_new_table" or m.group(1) in new_tables):
+            return name
+    return None
+
+
+def _classify_statements(statements: list[str] | None) -> set[str]:
+    """All three risks unless EVERY statement is on ALLOWLIST. Unparsed is all."""
+    every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
+             RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
+    if statements is None:
+        return every
+    new_tables: set[str] = set()
+    for s in statements:
+        entry = allowlist_entry(s, new_tables)
+        if entry is None:
+            return every
+        if entry == "create_table":
+            new_tables.add(ALLOWLIST["create_table"].fullmatch(s).group(1))
+    return set()
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:
@@ -2045,7 +2186,7 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             current.append(" ")
             continue
         if ch == "'":
-            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] == "_"))
+            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] in "_$" or ord(raw[i - 2]) >= 0x80))
             j = i + 1
             while True:
                 if j >= n:
@@ -2071,7 +2212,10 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
             continue
         if ch == "$":
             tag = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", raw[i:])
-            if tag and not (i > 0 and (raw[i - 1].isalnum() or raw[i - 1] == "_")):
+            # PostgreSQL ident_cont is [A-Za-z\200-\377_0-9$]: a "$" glued to an
+            # identifier (including after another "$", as in a$$$) never opens a quote.
+            prev = raw[i - 1] if i > 0 else ""
+            if tag and not (prev and (prev.isalnum() or prev in "_$" or ord(prev) >= 0x80)):
                 end = raw.find(tag.group(0), i + len(tag.group(0)))
                 if end == -1:
                     return None
@@ -2111,20 +2255,6 @@ def _canonical_name(name: str) -> tuple[str, ...]:
     """
     return tuple(m.group(1) if m.group(1) is not None else m.group(2)
                  for m in re.finditer(r'"([^"]*)"|([^."]+)', name))
-
-
-# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
-# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
-# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
-# scans the table, so it is refused (#2771).
-_BUILTIN_COLUMN_TYPE = (
-    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
-    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
-    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
-    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
-    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
-    r"(?: ?\[ ?\])*"
-)
 
 
 def _binds_on(statement: str, pattern: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
@@ -2410,7 +2540,23 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
         raise RiskGateError("promotion needs preview run + digest, or an ephemeral CI check run ID")
     activation = load_activation(args.activation)
     prove_activation(activation, main_sha=args.main_sha, api=api, repo_root=repo_root)
-    pr_head, pr_merge_commit = prove_pr_and_checks(args.pr, args.main_sha, allowlist, api, repo_root)
+    train_path = getattr(args, "migration_train_record", None)
+    train = load_migration_train_record(train_path) if train_path else None
+    train_prs: dict[int, tuple[str, str]] = {}
+    if train is None:
+        pr_head, pr_merge_commit = prove_pr_and_checks(args.pr, args.main_sha, allowlist, api, repo_root)
+    else:
+        if ephemeral_text:
+            raise RiskGateError(
+                "a migration train promotes only on preview evidence; one ephemeral CI check "
+                "cannot prove several authoring pull request heads"
+            )
+        train_prs = prove_migration_train(
+            train, main_sha=args.main_sha, allowlist=allowlist, api=api, repo_root=repo_root,
+        )
+        if args.pr not in train_prs:
+            raise RiskGateError(f"source PR {args.pr} authored no entry of the migration train")
+        pr_head, pr_merge_commit = train_prs[args.pr]
     with tempfile.TemporaryDirectory(prefix="production-risk-review-") as temp:
         review_path = verify_review(
             run_id_text=str(args.review_run_id), expected_digest=args.review_digest,
@@ -2421,10 +2567,21 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     if review.get("verdict") != "APPROVE":
         return {"automaticPromotionAllowed": False, "ownerDecisionReasons": [RISK_TEXT["unresolved_material_objection"]]}
     if review.get("schema_version") == "shared-db-production-apply-review/v2":
-        if review.get("source_pr") != args.pr or review.get("source_pr_head") != pr_head:
-            raise RiskGateError(
-                "automatic review evidence is not bound to the promoted source PR and exact head"
-            )
+        if train is None:
+            if review.get("source_pr") != args.pr or review.get("source_pr_head") != pr_head:
+                raise RiskGateError(
+                    "automatic review evidence is not bound to the promoted source PR and exact head"
+                )
+        else:
+            reviewed = review.get("source_pr")
+            if (
+                type(reviewed) is not int or reviewed not in train_prs
+                or review.get("source_pr_head") != train_prs[reviewed][0]
+            ):
+                raise RiskGateError(
+                    "automatic review evidence is not bound to an authoring PR of the migration "
+                    "train and its exact head"
+                )
         if review.get("work_issue") != args.work_issue:
             raise RiskGateError("automatic review evidence names a different admitted structural work issue")
         if not ephemeral_text:
@@ -2446,12 +2603,28 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     else:
         if not optional_text(getattr(args, "preview_project_ref", None)):
             raise RiskGateError("the preview route needs --preview-project-ref")
-        prove_preview(
-            run_id=int(preview_run_text), digest=preview_digest, pr_head=pr_head,
-            main_sha=args.main_sha, source_pr=args.pr, allowlist=allowlist,
-            preview_project_ref=args.preview_project_ref, merge_commit_sha=pr_merge_commit,
-            api=api, downloader=downloader, repo_root=repo_root,
-        )
+        if train is None:
+            prove_preview(
+                run_id=int(preview_run_text), digest=preview_digest, pr_head=pr_head,
+                main_sha=args.main_sha, source_pr=args.pr, allowlist=allowlist,
+                preview_project_ref=args.preview_project_ref, merge_commit_sha=pr_merge_commit,
+                api=api, downloader=downloader, repo_root=repo_root,
+            )
+        else:
+            # ONE PROOF PER AUTHORING PR against the one rehearsal of the whole
+            # train. A merged_preview_source_pr_map rehearsal files
+            # preview-instance-<pr>.json naming each PR and its own merge commit
+            # over the complete allowlist (#2140); each is checked strictly.
+            for train_pr, (train_head, train_merge) in train_prs.items():
+                try:
+                    prove_preview(
+                        run_id=int(preview_run_text), digest=preview_digest, pr_head=train_head,
+                        main_sha=args.main_sha, source_pr=train_pr, allowlist=allowlist,
+                        preview_project_ref=args.preview_project_ref, merge_commit_sha=train_merge,
+                        api=api, downloader=downloader, repo_root=repo_root,
+                    )
+                except (RiskGateError, ValueError) as exc:
+                    raise RiskGateError(f"migration train preview proof for source PR {train_pr}: {exc}") from exc
     decision = decide_business_risk(classify_sql(repo_root, allowlist), recovery_proven=True, review_approved=True)
     enforce_automatic_risk_decision(review, decision)
     # OWNER RULING 2026-08-18: the machine-readable owner-decision block remains
@@ -2490,7 +2663,7 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
         expected_risks = sorted(key for key, text in RISK_TEXT.items() if text in decision["ownerDecisionReasons"])
         if sorted(owner_evidence["accepted_risks"]) != expected_risks:
             raise RiskGateError("owner decision does not accept exactly the risks derived from governed evidence")
-    return {
+    result = {
         **decision,
         # Legacy/manual evidence preserves the earlier disclosure path. Automatic
         # v2 evidence reached this line only after every derived risk class cleared.
@@ -2508,6 +2681,17 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
             "ownerDecision": owner_evidence,
         },
     }
+    if train is not None:
+        result["governedEvidence"]["migrationTrain"] = {
+            "trainId": train.get("train_id"), "generation": train.get("generation"),
+            "entries": [
+                {"version": e["version"], "sourcePr": e["source_pr"],
+                 "sourcePrHead": train_prs[e["source_pr"]][0], "mergeSha": e["merge_sha"],
+                 "fileSha256": e["file_sha256"]}
+                for e in train["entries"]
+            ],
+        }
+    return result
 
 
 def main() -> int:
@@ -2541,6 +2725,9 @@ def main() -> int:
     # invocation passes a budget (capped at 900s inside gh_json); the invocation
     # that holds the production lane must never sit on it waiting.
     parser.add_argument("--rate-limit-wait-seconds", type=float, default=0)
+    # #3027 Step 6: the dispatched migration-train record, re-read from its
+    # immutable ref by the workflow. Absent, the single source-PR rule is unchanged.
+    parser.add_argument("--migration-train-record", type=Path)
     args = parser.parse_args()
     api = functools.partial(gh_json, rate_limit_wait_seconds=args.rate_limit_wait_seconds) if args.rate_limit_wait_seconds > 0 else gh_json
     try:
@@ -2573,50 +2760,159 @@ PREVIEW_PRODUCER_PATHS += (
     # manifest is repository source read by an offline CI validator. Both are
     # pinned rather than exempted: the test's own instruction is to pin anything
     # a tool in the preview job could read, and pinning is the stricter answer.
-    "scripts/production-verification-sidecars/20260910155753.json",
-    "scripts/production-verification-sidecars/20260911081204.json",
+    # Issue #2988. The sidecar binds migration 20260916033914 and is read by the
+    # catalog verifier in preview, so it is pinned like every other sidecar.
     "config/db-data-admin-property-source-coverage.json",
-    "scripts/production-verification-sidecars/20260908214749.json",
-    "scripts/production-verification-sidecars/20260911213429.json",
-    "scripts/production-verification-sidecars/20260909084253.json",
-    "scripts/production-verification-sidecars/20260910123636.json",
-    "scripts/production-verification-sidecars/20260830013942.json",
-    "scripts/production-verification-sidecars/20260830130345.json",
-    "scripts/production-verification-sidecars/20260830172356.json",
-    "scripts/production-verification-sidecars/20260830191719.json",
-    "scripts/production-verification-sidecars/20260830202243.json",
-    "scripts/production-verification-sidecars/20260830212955.json",
-    "scripts/production-verification-sidecars/20260902024541.json",
-    "scripts/production-verification-sidecars/20260830220646.json",
-    "scripts/production-verification-sidecars/20260830230246.json",
-    "scripts/production-verification-sidecars/20260830235651.json",
-    "scripts/production-verification-sidecars/20260831002935.json",
-    "scripts/production-verification-sidecars/20260831012326.json",
-    "scripts/production-verification-sidecars/20260831021656.json",
-    "scripts/production-verification-sidecars/20260831104325.json",
-    "scripts/production-verification-sidecars/20260831145707.json",
-    "scripts/production-verification-sidecars/20260902035909.json",
-    "scripts/production-verification-sidecars/20260831173841.json",
-    "scripts/production-verification-sidecars/20260831184547.json",
-    "scripts/production-verification-sidecars/20260831212757.json",
-    "scripts/production-verification-sidecars/20260831221607.json",
-    "scripts/production-verification-sidecars/20260901142825.json",
-    "scripts/production-verification-sidecars/20260905105038.json",
-    "scripts/production-verification-sidecars/20260903083204.json",
-    "scripts/production-verification-sidecars/20260905063701.json",
-    "scripts/production-verification-sidecars/20260905142150.json",
-    "scripts/production-verification-sidecars/20260907200221.json",
-    "scripts/production-verification-sidecars/20260907030418.json",
-    "scripts/production-verification-sidecars/20260907051735.json",
-    "scripts/production-verification-sidecars/20260911045438.json",
-    "scripts/production-verification-sidecars/20260914025520.json",
-    "scripts/production-verification-sidecars/20260911222514.json",
     # Invoked by check-sql.sh during preview; pin the reviewed parser so the
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",
     "scripts/check-migration-verify-cost.mjs",
 )
 
+# THE SINGLE SIDECAR DECLARATION REGISTRY (#3028, popcre/ai-devops#401 Step 5).
+#
+# Hash-bound verification sidecars are read by the catalog verifier in preview,
+# so each one is a producer file and must be pinned byte for byte. Contents API
+# directory responses are arrays, so each reviewed file is pinned explicitly
+# rather than pretending a directory has a blob SHA. They used to be hand-listed
+# in the tuples above, and a sidecar merged without its line (#2627) needed a
+# second repair PR. Now the ONLY declaration is one entry in
+# SIDECAR_REGISTRY_PATH. This is not discovery: a sidecar file that is not
+# declared is refused by check_production_verification_sidecars.py in CI before
+# review and by the test suite, and a declaration without its file is refused
+# the same way, so trust never widens silently. The registry itself is pinned.
+SIDECAR_REGISTRY_PATH = "config/production-verification-sidecar-registry.json"
+SIDECAR_DIR = "scripts/production-verification-sidecars"
+
+
+def load_sidecar_registry(repo_root: Path | None = None) -> tuple[str, ...]:
+    """Return the declared sidecar versions, refusing any malformed registry."""
+    root = repo_root or Path(__file__).resolve().parents[1]
+    try:
+        data = json.loads((root / SIDECAR_REGISTRY_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} is unreadable: {exc}") from exc
+    if not isinstance(data, dict) or set(data) != {"schema_version", "sidecars"} or data["schema_version"] != 1:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} must be schema_version 1 with exactly schema_version and sidecars")
+    entries = data["sidecars"]
+    if not isinstance(entries, list):
+        raise RiskGateError("sidecar registry must declare a sidecars list")
+    versions = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"version", "issue"}:
+            raise RiskGateError(f"sidecar registry entry {entry!r} must contain exactly version and issue")
+        version, issue = entry["version"], entry["issue"]
+        if not isinstance(version, str) or not re.fullmatch(r"\d{14}", version):
+            raise RiskGateError(f"sidecar registry version {version!r} is not a 14-digit migration version")
+        if issue is not None and (not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0):
+            raise RiskGateError(f"sidecar registry issue for {version} must be a positive integer or null")
+        versions.append(version)
+    if len(set(versions)) != len(versions):
+        raise RiskGateError("sidecar registry declares a version more than once")
+    return tuple(versions)
+
+
+def sidecar_registry_paths(repo_root: Path | None = None) -> tuple[str, ...]:
+    return tuple(f"{SIDECAR_DIR}/{version}.json" for version in load_sidecar_registry(repo_root))
+
+
+PREVIEW_PRODUCER_PATHS += (SIDECAR_REGISTRY_PATH,) + sidecar_registry_paths()
+
+
+
+def successful_ephemeral_job_id(pr_head: str, api: Callable[[str], Any]) -> int:
+    """The one successful ephemeral-database check on the source PR head."""
+    endpoint = f"repos/{REPOSITORY}/commits/{pr_head}/check-runs?per_page=100"
+    checks = api_sublist(api_object(api, endpoint), "check_runs", endpoint)
+    ids = sorted({
+        c.get("id") for c in checks
+        if isinstance(c, dict) and c.get("name") == EPHEMERAL_CHECK_NAME
+        and c.get("status") == "completed" and c.get("conclusion") == "success"
+        and type(c.get("id")) is int and c.get("id") > 0
+    })
+    if len(ids) != 1:
+        raise RiskGateError(
+            f"expected exactly one successful '{EPHEMERAL_CHECK_NAME}' check on source PR "
+            f"head {pr_head}, found {len(ids)}"
+        )
+    return ids[0]
+
+
+def qualify_automatic_route(
+    *, main_sha: str, allowlist: list[str], source_pr: int, recovery_record: dict | None,
+    repo_root: Path, api: Callable[[str], Any], downloader: Callable[[int, Path], None],
+) -> dict[str, Any]:
+    """Choose, BEFORE dispatch, the evidence route the production gate will accept (#3039).
+
+    Automatic qualification used to dispatch every historical rebind on its preview
+    evidence without asking the gate's question. When the rebind names an ORIGINAL
+    apply run made on an older commit, `prove_historical_original_apply_runs` pins
+    that run's commits to the authoring merge commit and refuses the drift -- so the
+    dispatch was doomed (runs 35052182196, 35061726161). Qualification now runs that
+    SAME proof, unchanged. On refusal it never dispatches the stale evidence: a
+    migration that is not high-risk to live data takes the gate's own ephemeral-CI
+    route, bound to the exact source PR head and proved here with the gate's own
+    `prove_ephemeral_ci_evidence`; a high-risk migration refuses outright.
+    """
+    pr_endpoint = f"repos/{REPOSITORY}/pulls/{source_pr}"
+    pr = api_object(api, pr_endpoint)
+    head_obj = pr.get("head")
+    pr_head = head_obj.get("sha") if isinstance(head_obj, dict) else None
+    if pr.get("merged") is not True or not re.fullmatch(r"[0-9a-f]{40}", str(pr_head)):
+        raise RiskGateError("source PR is not merged or has no exact head")
+    if recovery_record is None:
+        return {"route": "preview"}
+    try:
+        prove_historical_original_apply_runs(
+            record=recovery_record, allowlist=allowlist, repo_root=repo_root,
+            main_sha=main_sha, api=api, downloader=downloader,
+        )
+        return {"route": "preview"}
+    except RiskGateError as preview_refusal:
+        high_risk = preview_required_reasons(repo_root, allowlist)
+        if high_risk:
+            raise RiskGateError(
+                f"the production gate would refuse this preview evidence ({preview_refusal}), "
+                "and the migration is high-risk to live data so the ephemeral CI route cannot "
+                "substitute -- " + "; ".join(high_risk)
+            ) from preview_refusal
+        job_id = successful_ephemeral_job_id(pr_head, api)
+        prove_ephemeral_ci_evidence(
+            check_run_id_text=str(job_id), pr_head=pr_head, allowlist=allowlist,
+            api=api, downloader=downloader, repo_root=repo_root,
+        )
+        return {"route": "ephemeral", "ephemeral_check_run_id": job_id,
+                "preview_refusal": str(preview_refusal)}
+
+
+def qualify_route_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="production_business_risk_gate.py qualify-route")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--main-sha", required=True)
+    parser.add_argument("--allowlist", required=True)
+    parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--recovery-record", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        record = None
+        if args.recovery_record is not None:
+            record = json.loads(args.recovery_record.read_text(encoding="utf-8"))
+            if not isinstance(record, dict):
+                raise RiskGateError("historical recovery record is unreadable")
+        result = qualify_automatic_route(
+            main_sha=args.main_sha, allowlist=normalize_review_allowlist(args.allowlist),
+            source_pr=args.pr, recovery_record=record, repo_root=args.repo.resolve(),
+            api=gh_json, downloader=download_artifact,
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure refuses dispatch
+        print(f"::error::ENGINEER ACTION REQUIRED: automatic qualification found no evidence route "
+              f"the production gate accepts: {type(exc).__name__}: {exc}. Nothing was dispatched.", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "qualify-route":
+        raise SystemExit(qualify_route_main(sys.argv[2:]))
     raise SystemExit(main())

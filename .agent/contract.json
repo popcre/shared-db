@@ -4,16 +4,16 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Bind each HTS RAG worker role to its own source_environment on INSERT across all ten tables while preserving shared reads, bounded cross-environment updates, immutable provenance, and the no-delete posture.",
-  "base_sha": "6306532e35eb996b58d74b6fbbcfc6d7f63a9363",
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
   "dispatcher": "successor orchestrator marker 2858",
   "worker": "subagent:issue-2866-hts-provenance",
   "branch": "codex/issue-2866-hts-insert-provenance",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2866-hts-provenance/shared-db",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/resume-2866-a7c3",
   "allowed_paths": [
     "supabase/migrations/20260914025520_hts_rag_insert_provenance.sql",
     "supabase/tests/hts_rag_shared_schema_contract.sql",
     "scripts/production-verification-sidecars/20260914025520.json",
-    "scripts/production_business_risk_gate.py",
+    "config/production-verification-sidecar-registry.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -21,7 +21,7 @@
     "supabase/migrations/20260914025520_hts_rag_insert_provenance.sql",
     "supabase/tests/hts_rag_shared_schema_contract.sql",
     "scripts/production-verification-sidecars/20260914025520.json",
-    "scripts/production_business_risk_gate.py",
+    "config/production-verification-sidecar-registry.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -92,7 +92,7 @@
     "No preview, production, or other database access.",
     "No edit to applied migration 20260911210709.",
     "No merge, production promotion, or claim release.",
-    "No write outside the six allowed paths."
+    "No write outside the allowed paths."
   ],
   "required_checks": [
     "ai-task-gates check --before review",
@@ -111,5 +111,5 @@
     "Stop if existing bounded cross-environment UPDATE semantics cannot be preserved.",
     "Stop if preview or production access is required for authoring."
   ],
-  "generation": 7
+  "generation": 8
 }

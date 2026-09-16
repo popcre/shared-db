@@ -37,8 +37,9 @@ The guarded row-application work is planned in [`plan_historical_mg_reclassifica
 
 ## Active contracts and implementation plans
 
+- **Product-type reader (issue #3024):** [`plan_product_type_reader.md`](plan_product_type_reader.md). Read its STATUS table first. Hardens the item-description product-type reader to zero wrong answers on the full live catalog, then stores the value on `plm.item` (owner ruling 2026-09-16: never on `coldlion.item_header`).
 - **Transfer `shared-db` to `popcre` and activate GitHub's native merge queue (issue #2530):** [`plan_shared_db_popcre_transfer_merge_queue.md`](plan_shared_db_popcre_transfer_merge_queue.md). Read its STATUS table first. This is repository-maintenance work outside the structure/schema orchestrator. It separates transfer compatibility, the owner-authorized repository move, settings/credential reconciliation, and queue activation so direct guarded merging remains available throughout. Do not cherry-pick closed PR #1950, weaken required checks, assume transfer-back is available, or invent a migration for acceptance proof.
-- **Author-lane abandonment lifecycle (issue #2301):** [`plan_author_lane_abandonment_lifecycle.md`](plan_author_lane_abandonment_lifecycle.md). Read its STATUS table first. Repository-maintenance work outside the structure/schema orchestrator. It preserves every object/version claim while allowing evidence-backed capacity relinquishment, adds recovery-gated resume and immutable retirement tombstones, and forbids expiry-only release, ref deletion, automatic PR closure, or worktree mutation.
+- **Author-lane abandonment lifecycle (issue #2301):** [`plan_author_lane_abandonment_lifecycle.md`](plan_author_lane_abandonment_lifecycle.md). Read its STATUS table first. Repository-maintenance work outside the structure/schema orchestrator. It preserves every object/version claim while allowing evidence-backed capacity relinquishment, adds recovery-gated resume and immutable retirement tombstones, and forbids expiry-only release, ref deletion, automatic PR closure, or worktree mutation. Steps 1–5 have landed. **An expired lease is not an abandoned lane:** detect with the read-only `node scripts/manage-migration-author-lanes.mjs --abandonment-audit`, which cannot write on any code path and exits `0` clean, `2` expired, `3` unverifiable, with `3` outranking `2` — a run that could not read everything concludes nothing. The same report runs hourly as the `Author Lane Abandonment Audit` workflow, which holds only `read` scopes and files no issue and no comment; never call `--reconcile-flow` or any other mutating lane command from a scheduled job. Before any lane is touched, open an abandonment audit issue from `.github/ISSUE_TEMPLATE/author-lane-abandonment.md`, and fill in its required `abandonment-audit` fence: an absent or incomplete fence is read as no evidence at all, so no guarded command is suggested and a relinquish falls through to the ordinary-blocker path with none of the exact-tuple revalidation. Both guarded commands take `--claim-number <n>`, never a bare `--claim` (that is the boolean that claims a lane), and acting on abandonment evidence is refused without an explicit `--worktree-state`. **Authority boundary:** the orchestrator may retire work where the worktree is `clean`, or `absent` with its absence proven and its durable branch/PR evidence complete; Albert alone decides whether potentially recoverable `dirty` or `remote` uncommitted work may be abandoned. Both procedures — quarantine/recovery and terminal retirement — are written out in [`docs/agents/section-4-anti-collision-rules.md`](docs/agents/section-4-anti-collision-rules.md).
 - **Database efficiency and Data API security program (issue #2209):** [`plan_database_efficiency_and_api_security.md`](plan_database_efficiency_and_api_security.md). Read its STATUS table first. It is the evidence-gated umbrella plan for Supabase advisor findings, expensive rebuilds, effective-tag churn, foreign-key/index review, RLS and privileged-API validation, maintenance statistics, and replication attribution. It authorizes no bulk fix: each structural change must be split into its own orchestrator issue, while application scheduling/batching changes remain with the owning application repo. The unused-index decision for four high-churn tables remains frozen under issue #1966 until its 2026-09-17 delta reading.
 - PopDAM OrderList linked to Master Data: [`plan_popdam_order_list.md`](plan_popdam_order_list.md). Read its STATUS table first. Do not re-derive or re-plan completed steps.
 - **Companywide business rules (read before interpreting business meaning):** start at [`docs/business-rules/application-map.md`](docs/business-rules/application-map.md). Licensing Master Data starts at [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md); its detailed architecture remains in [`docs/core-master-data-consolidation-aim.md`](docs/core-master-data-consolidation-aim.md).
@@ -62,8 +63,14 @@ shares the Supabase database**: PM/PIM `poppim-web`, CRM `popcrm-web`, DAM
 touching code or the database. It exists to stop separate
 AI sessions from breaking each other through the one database they all depend on.
 
-> **Started in `shared-db` and you are not the orchestrator? Stop and hand over.**
-> This repo runs **one orchestrator session**, which dispatches every task to
+> **The orchestrator takes ONLY database-SHAPE changes (§0.0-C) and curated Master
+> Data loads. Nothing else is ever sent to it** — not proofs, monitoring, reports,
+> tooling, scripts, docs, or repository maintenance, however small. The session
+> that owns that outcome does it. When in doubt, it does not go to the orchestrator.
+>
+> **Started in `shared-db` and you are not the orchestrator?** Stop mutating the
+> database. Hand over only unfinished shape work; keep everything else.
+> This repo runs **one orchestrator session**, which dispatches structural work to
 > sub-agents in isolated worktrees.
 > **To find out who that is and where to send work, run
 > `node scripts/check-orchestrator-marker.mjs --resolve` — §11c.** It is the only
@@ -467,7 +474,8 @@ and then the canonical infrastructure runbook it links.
 ## 0.2 `data.designflow.app` means DB Data Admin — never the retired system
 
 `https://data.designflow.app` is the permanent production hostname of **DB Data
-Admin**, implemented in this repository at `apps/db-data-admin/`. The retired
+Admin**, implemented in `u2giants/popdam3` at `apps/db-data-admin/` (moved
+from this repository on 2026-09-16, popdam3 PR #135). The retired
 legacy application previously used that DNS name, but it has no remaining
 runtime, credential, database, API, import, rollback, proxy, or ownership
 relationship to it.
@@ -486,7 +494,8 @@ DB Data Admin's grid headers already implement the **AG Grid Multi Filter
 equivalent (Text Filter + Set Filter with a searchable checkbox list of distinct
 values)**. The reusable, framework-free logic is
 `apps/db-data-admin/src/lib/grid-filters.ts`; the React header UI is
-`FilterHeader` in `apps/db-data-admin/src/DataAdmin.tsx`.
+`FilterHeader` in `apps/db-data-admin/src/DataAdmin.tsx` — both in `u2giants/popdam3`
+since 2026-09-16.
 
 Before building any column-filter UI in ANY POP app, read
 [`docs/db-data-admin-column-multi-filter.md`](docs/db-data-admin-column-multi-filter.md).
@@ -983,6 +992,8 @@ that may be edited after the fact.
 
 ### 5.2 A red check on `main` can be a STALE verdict — the domain-ownership guard scans more than its trigger watches (learned 2026-07-31)
 
+> **Moved 2026-09-16:** the DB Data Admin application, its deploy workflow and its launch-readiness check now live in [`u2giants/popdam3`](https://github.com/u2giants/popdam3) at `apps/db-data-admin`, `.github/workflows/db-data-admin.yml` and `scripts/db-data-admin/` (popdam3 PR #135). This repository no longer builds or deploys it. The history below is kept; the only domain-ownership run in this repository is now `domain-ownership.yml`.
+
 **Read this before you debug a failing check on `main`.** The `DB Data Admin` workflow
 (`.github/workflows/db-data-admin.yml`) has a `verify` job whose first step,
 *"Enforce DB Data Admin domain ownership"*, runs `scripts/check-domain-ownership.mjs`. That
@@ -1036,9 +1047,8 @@ docs PR. The correct permanent fix is a separate, tiny `domain-ownership` workfl
 filter, `on: pull_request` plus `on: push` to `main`, one job that runs
 `scripts/check-domain-ownership.test.mjs` and then `scripts/check-domain-ownership.mjs`. Its
 check-run name is **`Domain ownership`** and it is one of the six required contexts on `main`
-(§6.7). Verified green against the `main` tip on 2026-08-09. The duplicate invocation still
-inside `db-data-admin.yml` is left there deliberately — it is cheap, and removing it would
-weaken that workflow's own self-check.
+(§6.7). Verified green against the `main` tip on 2026-08-09. (The former duplicate invocation inside
+`db-data-admin.yml` left this repository with that workflow on 2026-09-16.)
 
 *(This paragraph said "Not yet built" until 2026-08-09, four days after it was built, while
 §6.7 of this same file already relied on the workflow existing. Issue #657. If you are adding
@@ -1734,10 +1744,11 @@ have already happened in this repo, more than once.
     `scripts/check-documents-only-merge-authorization.mjs` separately permits plan files and
     declarative routing pointers in AGENTS, task-router, and skill files. It inspects the actual
     changed hunks and accepts only link-only list/table rows whose labels literally name the local
-    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. A
-    fail-closed refusal posts a separate visible diagnostic that directs the pull request to guarded
-    code checks without competing for the required context. Ordinary mixed/code pull requests write
-    only that diagnostic; if the same commit already carries this workflow's lightweight success, or
+    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. An
+    ordinary mixed/code pull request gets a separate, green `Not applicable` diagnostic (and a green
+    job) that directs it to guarded code checks without competing for the required context (#2838:
+    a routine red trained everyone to ignore this check). Red on that diagnostic now means a genuine
+    refusal: a moved head, a production freeze, or an unreadable comparison. If the same commit already carries this workflow's lightweight success, or
     if its base is retargeted, the command explicitly revokes that required status before guarded
     checks re-authorize the new comparison. Thus an unreadable,
     over-ceiling, retargeted, or non-prose comparison cannot strand an absent or stale-green result. The

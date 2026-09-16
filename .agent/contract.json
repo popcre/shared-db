@@ -1,55 +1,49 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3028,
+  "work_issue": 3039,
+  "generation": 3,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
-  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
-  "dispatcher": "Claude popcre/ai-devops#401 programme session",
-  "worker": "Claude Opus 5 issue-3028 sidecar registry",
-  "branch": "claude/3028-sidecar-registry",
-  "worktree": "C:/repos/shared-db-3028",
+  "goal": "Make automatic production qualification ask the production gate's own evidence question before dispatch: run the unchanged historical original-apply proof, fall back to the gate's existing ephemeral-CI route only for non-high-risk migrations, and otherwise refuse without dispatching. No comparison is loosened.",
+  "base_sha": "268e453f29fa073e38fc16dcf7c60324b778b32e",
+  "dispatcher": "Claude shared-db session owning issue 3039",
+  "worker": "Claude Opus 5 subagent",
+  "branch": "claude/fix-3039-promotion-evidence",
+  "worktree": "C:/repos/shared-db-wt-3039",
   "allowed_paths": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/check_production_verification_sidecars.py",
-    "scripts/test_check_production_verification_sidecars.py",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
-    ".github/workflows/**",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "file_writes": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/check_production_verification_sidecars.py",
-    "scripts/test_check_production_verification_sidecars.py",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No migration, schema change, db claim, or database read or write",
-    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
-    "No work in a shared checkout"
+    "No schema, migration, database claim, preview or production database write.",
+    "No production workflow dispatch and no GitHub settings change.",
+    "No loosening of any production evidence comparison."
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
-    "python scripts/check_production_verification_sidecars.py",
-    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
+    "git diff --check origin/main...HEAD",
+    "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+    "node --test scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "assumptions": [
-    "Every existing sidecar is declared with issue null because its originating issue is historical",
-    "The preview producer set is byte-identical to main apart from the added registry file"
+    "The production apply lane already accepts ephemeral_check_run_id for non-high-risk migrations and re-runs every proof itself."
   ],
   "stop_conditions": [
-    "Stop and report if the change needs a migration, schema change, or database write"
+    "Stop if the fix would require changing prove_historical_original_apply_runs, preview_required_reasons or prove_ephemeral_ci_evidence."
   ]
 }

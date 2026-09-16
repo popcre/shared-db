@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX } from './manage-migration-author-lanes.mjs'
+import { claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
@@ -2490,6 +2490,70 @@ test('the six-hour #2237 shape probes and reclaims after an unchanged confirmati
   assert.throws(()=>assignNextReviewer(request,io),/silent lease was reclaimed/)
   const replacement=replaceFailedReviewer({...options,failureCode:'silent_worker_observed'},io)
   assert.notEqual(replacement.reviewer,assigned.reviewer)
+})
+
+// Issue #3027 Step 7: the reviewer START watcher's unstarted mode.
+function withStartMarker(fixture){
+  const ref=reviewStartedMarkerRef({...fixture.request,sequence:fixture.assigned.sequence,slot:1}),sha=fixture.io.makeOwnerCommit('db-coordination review-started')
+  fixture.io.refs.set(ref,sha)
+  return ref
+}
+test('an unstarted lease is probed and reclaimed after 10 minutes, then replaced by the next eligible reviewer',()=>{
+  const {io,request,assigned,leaseRef}=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  assert.throws(()=>probeSilentReviewer(options,new Date('2026-09-04T10:09:59Z'),io),/at least 10 minutes/)
+  // A marker for an earlier draw sequence of the same slot is a different lease.
+  io.refs.set(reviewStartedMarkerRef({...request,sequence:assigned.sequence-1,slot:1}),io.makeOwnerCommit('db-coordination review-started'))
+  probeSilentReviewer(options,new Date('2026-09-04T10:10:00Z'),io)
+  const released=reclaimSilentReviewer(options,new Date('2026-09-04T10:10:05Z'),io)
+  assert.ok(released.releaseSha);assert.equal(io.refs.get(leaseRef)??null,null)
+  // The reclaim occupies this lease's start marker, so a late runner can never start on it.
+  assert.equal(io.refs.get(reviewStartedMarkerRef({...request,sequence:assigned.sequence,slot:1})),released.releaseSha)
+  // A resumed dispatch recognises the completed reclaim even though the lease is gone.
+  assert.throws(()=>reclaimSilentReviewer(options,new Date('2026-09-04T10:11:00Z'),io),/already reclaimed with immutable evidence/)
+  // ...and so does a resumed probe, instead of a lease-mismatch refusal that would moot the reroute.
+  assert.throws(()=>probeSilentReviewer(options,new Date('2026-09-04T10:11:00Z'),io),/silence probe already exists and is immutable/)
+  // Without an existing probe the lease-mismatch refusal is unchanged.
+  assert.throws(()=>probeSilentReviewer({...options,failedSequence:assigned.sequence+50},new Date('2026-09-04T10:11:00Z'),io),(e)=>!/already exists/.test(e.message))
+  const replacement=replaceFailedReviewer({...options,failureCode:'silent_worker_observed'},io)
+  assert.notEqual(replacement.reviewer,assigned.reviewer)
+})
+test('unreadable start markers are never read as a non-start',()=>{
+  const fixture=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),options={...fixture.request,failedSequence:fixture.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  const rawRead=fixture.io.readRef
+  fixture.io.readRef=(ref)=>{if(String(ref).startsWith('refs/db-review-started/'))throw new Error('HTTP 502');return rawRead(ref)}
+  assert.throws(()=>probeSilentReviewer(options,new Date('2026-09-04T10:15:00Z'),fixture.io),/HTTP 502/)
+  const row=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:15:00Z')).find((r)=>r.reviewer===fixture.assigned.reviewer)
+  assert.equal(row.started,null);assert.match(row.error,/HTTP 502/)
+})
+test('a lease with a start marker is never probed or reclaimed as unstarted, even when the marker races the reclaim',()=>{
+  const fixture=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),options={...fixture.request,failedSequence:fixture.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  withStartMarker(fixture)
+  assert.throws(()=>probeSilentReviewer(options,new Date('2026-09-04T11:00:00Z'),fixture.io),/durable start marker/)
+  // Marker written after the probe: the locked readback refuses.
+  const late=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),lateOptions={...late.request,failedSequence:late.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  probeSilentReviewer(lateOptions,new Date('2026-09-04T10:10:00Z'),late.io)
+  withStartMarker(late)
+  assert.throws(()=>reclaimSilentReviewer(lateOptions,new Date('2026-09-04T10:10:05Z'),late.io),/durable start marker/)
+  assert.equal(late.io.refs.get(late.leaseRef),late.leaseSha)
+  // Marker written between the locked readback and the atomic push: the compare-and-swap fails.
+  const race=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),raceOptions={...race.request,failedSequence:race.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  probeSilentReviewer(raceOptions,new Date('2026-09-04T10:10:00Z'),race.io)
+  const rawAtomic=race.io.atomicReviewRefs.bind(race.io)
+  race.io.atomicReviewRefs=(changes)=>{if(changes.some((c)=>String(c.ref).startsWith('refs/db-review-started/')))withStartMarker(race);return rawAtomic(changes)}
+  assert.throws(()=>reclaimSilentReviewer(raceOptions,new Date('2026-09-04T10:10:05Z'),race.io))
+  assert.equal(race.io.refs.get(race.leaseRef),race.leaseSha)
+  // Without --unstarted the ordinary two-hour silence windows still apply.
+  const plain=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'})
+  assert.throws(()=>probeSilentReviewer({...plain.request,failedSequence:plain.assigned.sequence},new Date('2026-09-04T10:30:00Z'),plain.io),/at least 2 hours/)
+})
+test('start-watch lease view reports slot, draw time, start marker, and activity',()=>{
+  const fixture=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'})
+  const [young]=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:05:00Z')).filter((row)=>row.reviewer===fixture.assigned.reviewer)
+  assert.equal(young.slot,1);assert.equal(young.started,null)
+  const [old]=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:15:00Z')).filter((row)=>row.reviewer===fixture.assigned.reviewer)
+  assert.deepEqual([old.started,old.lastActivityIso,old.verdictPresent,old.error],[false,'none',false,null])
+  withStartMarker(fixture)
+  assert.equal(reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:15:00Z')).find((row)=>row.reviewer===fixture.assigned.reviewer).started,true)
 })
 
 test('capacity reports a silence probe and only calls it reclaimable after confirmation',()=>{

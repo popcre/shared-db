@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 3048,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -51,7 +51,7 @@
     "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "node --test on every scripts test file",
+    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [

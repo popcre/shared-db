@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3049,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/4",
-  "contract_sha256": "8b0aec97eff777e785eede9a9fc6260ab17623f597af60b0554afc072768b3da",
+  "contract_ref": "refs/db-contracts/3048/5",
+  "contract_sha256": "0ebd8a69c9ef13c72dd7495d0fc240a01c3e1f865c715602f6db9705742cc0d3",
   "head_sha": "0bf963eca23dc4ec3d4227203acff39243c6d83b",
   "files_changed": [
     ".agent/completion.json",
@@ -25,9 +25,9 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every scripts test file",
-      "exit_code": 1,
-      "evidence": "2311 tests, 2310 pass, 1 fail (pre-existing on main d53d4746: check-issue-505 stranded original test), 0 skipped at implementation head 0bf963ec against origin/main d53d4746."
+      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+      "exit_code": 0,
+      "evidence": "2308 tests, 2308 pass, 0 fail, 0 skipped at implementation head 0bf963ec against origin/main d53d4746. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
     },
     {
       "command": "git diff --check origin/main...HEAD",

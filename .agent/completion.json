@@ -1,14 +1,17 @@
 {
   "schema_version": 1,
-  "work_issue": 3035,
+  "work_issue": 3037,
   "outcome": "ready-for-merge",
-  "pr": 3032,
+  "pr": 3038,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3035/1",
-  "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
-  "head_sha": "b23a11769ccb0b6a2c43ed53a1ca9c32157c7a7e",
+  "contract_ref": "refs/db-contracts/3037/3",
+  "contract_sha256": "08429ecaa9129c52f2dc4c97f49d54459502b0b5801f84fef37051d9e103cf5f",
+  "head_sha": "8e0592e66b65d7db3d3964535f501d1c38117a09",
   "files_changed": [
-    "AGENTS.md"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "plan_product_type_reader.md"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -16,11 +19,11 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head b23a1176 against origin/main 9b6c26b0; the implementation diff is AGENTS.md only (+8/-2)."
+      "evidence": "Exit 0 with no output at implementation head 8e0592e6 (8fc2be65 plus merges of origin/main) against origin/main 9b6c26b0; the diff is the two prose files (plan and handoff) plus the .agent contract pair."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...b23a1176 lists only AGENTS.md; no code, migration, workflow or configuration file changed."
+    "git diff --stat origin/main...8e0592e6 lists only plan_product_type_reader.md, the HANDOFF.d file and the .agent contract pair; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

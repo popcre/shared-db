@@ -1,22 +1,17 @@
 {
   "schema_version": 1,
-  "work_issue": 3045,
+  "work_issue": 3057,
   "outcome": "ready-for-merge",
-  "pr": 3042,
+  "pr": 3058,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3045/8",
-  "contract_sha256": "ea9b09901e84ca0e47780adee3312f57db228de9734fcef470749cea2286040f",
-  "head_sha": "1cfc6e9e166e7c249bc172fa44e0163c4ea3b9d9",
+  "contract_ref": "refs/db-contracts/3057/1",
+  "contract_sha256": "d7e0be271373c295764d4a26f5f6bb2f00ad7eb9caa7e124ee32b0c5ff175fc5",
+  "head_sha": "fd3b5576fa3b3b6d299aaa5c6848f8fff08e258b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/documents-only-merge-authorization.yml",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".github/workflows/start-reroute-canary.yml",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.test.mjs"
   ],
@@ -24,18 +19,18 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
       "exit_code": 0,
-      "evidence": "49 pass, 0 fail, 0 skipped at implementation head 7576e32f (ea4c73f5 merged with main 3f5c2a23) rebased on origin/main 95619429."
+      "evidence": "All pass, 0 fail, 0 skipped at implementation head fd3b5576; the full orchestrator-flow suite is 289 pass. The ref fake reproduces the live HTTP 422 with the old child-ref naming."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at ea4c73f5."
+      "evidence": "Exit 0 with no output."
     }
   ],
   "assumptions_resolved": [
-    "The documents-only route step carries continue-on-error: true and always exits 0, so it only reports and cannot change the merge authorization."
+    "NO_ORCHESTRATOR matches only exit 3 (EXIT_NONE) or the no-routable-marker error; the test proves exit 2 still throws."
   ],
   "stop_conditions_hit": []
 }

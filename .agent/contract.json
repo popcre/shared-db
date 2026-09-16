@@ -1,36 +1,26 @@
 {
   "schema_version": 1,
-  "generation": 8,
-  "work_issue": 3045,
+  "generation": 1,
+  "work_issue": 3057,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Tooling for programme popcre/ai-devops#401 Steps 2A, 4 and 7 under issue 3045 (tracked in 3027): a report-only no-database-preview route decision in the documents-only workflow, a scheduled two-hour no-progress alarm with successor resume, and a dispatch-only start-reroute staging hook with its harness. Scripts, tests and workflows only; no schema, migration, database claim or database access.",
-  "base_sha": "8c4ce615bd6bfc7910e9351163a14336b709c4cd",
+  "goal": "Fix two live-proof failures for issue 3057 (tracked in 3027): make the start-reroute canary dispatch claim and ack refs siblings of the reservation ref so git accepts them, and make the no-progress alarm report no-orchestrator when zero orchestrator markers are open. Scripts and tests only; no schema, migration, database claim or database access.",
+  "base_sha": "25722fb2cfc12fd0cddc04dbe2c819632197b986",
   "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
   "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
-  "branch": "claude/3027-blocked-steps-tooling",
+  "branch": "claude/3027-reroute-ref-namespace",
   "worktree": "C:/repos/shared-db-worktrees/3027-blocked-steps",
   "allowed_paths": [
-    ".github/workflows/documents-only-merge-authorization.yml",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".github/workflows/start-reroute-canary.yml",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/documents-only-merge-authorization.yml",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".github/workflows/start-reroute-canary.yml",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.mjs",
     "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
@@ -41,15 +31,14 @@
   "prohibited_actions": [
     "No database read or write of any kind",
     "No migration, schema, or database claim",
-    "No GitHub settings change",
-    "No cancellation of any run other than the staged non-start canary"
+    "No GitHub settings change"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The documents-only route step is continue-on-error and report-only, so it cannot change a merge decision"
+    "A no-orchestrator status is only returned for the zero-marker resolution; every other read failure still fails the run"
   ],
   "stop_conditions": [
     "Stop and report if any step needs a schema, migration, database write, or settings change"

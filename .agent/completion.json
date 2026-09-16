@@ -1,35 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3043,
+  "work_issue": 3039,
   "outcome": "ready-for-merge",
-  "pr": 3046,
-  "migration_versions": [
-    "20260916120643"
-  ],
-  "contract_ref": "refs/db-contracts/3043/2",
-  "contract_sha256": "dae55247e9c107da83348faa7a8355ba3a97d5fddabbe3a4fd9f3a1bfec78411",
-  "head_sha": "680e8a00ad5d6186967eb870d5735ebe4d16e3c6",
+  "pr": 3047,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3039/3",
+  "contract_sha256": "8d739ffe2f84607c165116e5c95c069e86b9b46d2a4fe1b04eb19c5796060e0c",
+  "head_sha": "aa25c7504ad277a3ba7ded5c6352a24f27c7f0e5",
   "files_changed": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Run at implementation head 680e8a00 (refreshed from main 268e453f), re-run: Static checks passed."
+      "evidence": "Exit 0 with no output at implementation head aa25c750."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."
+      "evidence": "Ran 166 tests, OK, at implementation head aa25c750; includes the verbatim #3039 producer-mismatch reproduction."
+    },
+    {
+      "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
+      "exit_code": 0,
+      "evidence": "pass 10, fail 0 at aa25c750; full node --test scripts/*.test.mjs also passed 1724/1724."
     }
   ],
   "assumptions_resolved": [
-    "Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."
+    "The production review job already accepts ephemeral_check_run_id and skips its preview_run_id checks for that route; the apply lane re-runs prove_ephemeral_ci_evidence itself."
   ],
   "stop_conditions_hit": []
 }

@@ -1,42 +1,49 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3043,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 1: add one nullable, default-less text column to the no-op, fully revoked canary table plm.production_lane_canary so the automatic production lane performs one fully machine-qualified promotion. No data, grant, RLS or application behaviour change.",
+  "work_issue": 3039,
+  "generation": 3,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make automatic production qualification ask the production gate's own evidence question before dispatch: run the unchanged historical original-apply proof, fall back to the gate's existing ephemeral-CI route only for non-high-risk migrations, and otherwise refuse without dispatching. No comparison is loosened.",
   "base_sha": "268e453f29fa073e38fc16dcf7c60324b778b32e",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3027-step1-canary-comment",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-step1-canary",
+  "dispatcher": "Claude shared-db session owning issue 3039",
+  "worker": "Claude Opus 5 subagent",
+  "branch": "claude/fix-3039-promotion-evidence",
+  "worktree": "C:/repos/shared-db-wt-3039",
   "allowed_paths": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "file_writes": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_automatic_qualification_route.py",
+    "scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command and no session-made production workflow dispatch",
-    "No change to data, grants, RLS or any application table",
-    "No migration version other than claimed 20260916120643"
+    "No schema, migration, database claim, preview or production database write.",
+    "No production workflow dispatch and no GitHub settings change.",
+    "No loosening of any production evidence comparison."
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "git diff --check origin/main...HEAD",
+    "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+    "node --test scripts/check-workflow-automatic-promotion-source.test.mjs"
   ],
   "assumptions": [
-    "plm.production_lane_canary exists on preview and production and is read by no application"
+    "The production apply lane already accepts ephemeral_check_run_id for non-high-risk migrations and re-runs every proof itself."
   ],
   "stop_conditions": [
-    "Stop if production can only be reached by a session-made dispatch"
+    "Stop if the fix would require changing prove_historical_original_apply_runs, preview_required_reasons or prove_ephemeral_ci_evidence."
   ]
 }

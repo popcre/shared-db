@@ -1,16 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 3030,
+  "work_issue": 3041,
   "outcome": "ready-for-merge",
-  "pr": 3025,
+  "pr": 3034,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3030/1",
-  "contract_sha256": "d1ced6e1a06d7b9caedbaeb1975c50a13e4e5d745fc69e57ac6350a724323828",
-  "head_sha": "638a61ef15c7fc684be198bed543a7180ffababa",
+  "contract_ref": "refs/db-contracts/3041/1",
+  "contract_sha256": "77b16c0629ab21263a8e8d0420d3d4a642edb0aca01f8f1b118ae958113dc959",
+  "head_sha": "1341aeb9e98d132e4c17bbe4c88f251df2f7fe84",
   "files_changed": [
-    "AGENTS.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    "plan_product_type_reader.md"
+    "tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-1-3-6.md"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -18,11 +16,11 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head 638a61ef against origin/main 9fe6f0bb; the diff is exactly three prose files (AGENTS.md +1 line, plan +270, handoff +15)."
+      "evidence": "Exit 0 with no output at implementation head 1341aeb9 against origin/main 1d0a711a; the diff is exactly one prose evidence file."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...638a61ef lists only AGENTS.md, plan_product_type_reader.md and the HANDOFF.d file; no code, migration, workflow or configuration file changed."
+    "git diff --name-only origin/main...1341aeb9 lists only tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-1-3-6.md; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

@@ -1,44 +1,40 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3030,
+  "work_issue": 3041,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Record the implementation plan for the product-type reader (issue 3030, tracked work issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
-  "dispatcher": "Claude shared-db session (product-type reader planning, 2026-09-16)",
-  "worker": "Claude Opus 5 product-type reader plan author",
-  "branch": "claude/product-description-extraction-118fbe",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/product-description-extraction-118fbe",
+  "goal": "Record the #3027 live acceptance evidence for #401 Steps 1, 3 and 6 (issue 3041): add tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-1-3-6.md. Prose evidence file only; no code, migration, workflow, or database change.",
+  "base_sha": "1d0a711adc16ed622cef5e2355996d720d60c597",
+  "dispatcher": "Claude shared-db coordinator session (#3027 live acceptance, 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Steps 1/3/6 evidence harvester",
+  "branch": "claude/3027-live-acceptance-1-3-6",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issues-3027-3028-3029-prod-f35ee9",
   "allowed_paths": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-1-3-6.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-1-3-6.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
+    "No database write of any kind",
     "No migration, script, workflow, or configuration change",
-    "No edit to AGENTS.md beyond the one pointer bullet",
+    "No workflow dispatch that touches preview or production databases",
     "No work in a shared checkout or on another branch"
   ],
   "required_checks": [
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The plan and handoff are prose only and change no executable behaviour"
+    "The evidence file is prose only and changes no executable behaviour"
   ],
   "stop_conditions": [
-    "Stop and report if the change set grows beyond the three prose files"
+    "Stop and report if the change set grows beyond the one prose evidence file"
   ]
 }

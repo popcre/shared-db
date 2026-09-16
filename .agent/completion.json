@@ -1,36 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3057,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3058,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3057/2",
-  "contract_sha256": "3bef42181aa9f10d9b75313d1d83766ec8d849541dd08ec8fe5d815778e6be02",
-  "head_sha": "01d9b6b1cfac5a5716da66bfc3e11acdee011012",
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "399e554dd0fc4676513c1d2c7c6b23cba07826f5",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.test.mjs"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "All pass, 0 fail, 0 skipped at implementation head fd3b5576; the full orchestrator-flow suite is 289 pass. The ref fake reproduces the live HTTP 422 with the old child-ref naming."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
     },
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "python scripts/check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output."
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "NO_ORCHESTRATOR matches only exit 3 (EXIT_NONE) or the no-routable-marker error; the test proves exit 2 still throws."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

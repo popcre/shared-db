@@ -1,64 +1,70 @@
 {
-  "schema_version": 1,
-  "generation": 14,
-  "work_issue": 2301,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Implement Step 6 of plan_author_lane_abandonment_lifecycle.md: synchronize the operating rules with the behaviour Steps 1-5 landed. Section 4 gains the read-only --abandonment-audit command and its three exit codes, the abandonment record, the quarantine/recovery and terminal-retirement procedures written out in full, and the settled authority boundary; AGENTS.md's task-router entry for #2301 gains the same facts; a new privacy-safe issue template records the abandonment evidence and carries an empty objects: fence on purpose; new static tests in the canonical guard test fail the build when those venues disagree; and the plan STATUS table records Steps 3-5 with their merge evidence. The canonical popcre/ai-devops orchestrator skill is synchronized in its own repository and check-skill-drift.mjs must still report no contradictions. No schema, database or infrastructure change.",
-  "base_sha": "6c9b149d8747293cdb306a73262bd341873bc682",
-  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Step 6 operating-rules synchronization worker",
-  "branch": "claude/2301-step6-operating-rules",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
   "allowed_paths": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
-    "scripts/test_production_migration_guard.py",
-    "plan_author_lane_abandonment_lifecycle.md",
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
+    "scripts/production-verification-sidecars/20260916033914.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
-  ],
-  "file_writes": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
-    "scripts/test_production_migration_guard.py",
-    "plan_author_lane_abandonment_lifecycle.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database, preview, production, or infrastructure action",
-    "No change to any lane script, workflow, or other executable behaviour in this pull request; Step 6 is documentation and its agreement tests",
-    "No automatic transition of an expired author claim",
-    "No deletion of any coordination ref, claim, branch, pull request, or worktree",
-    "No Step 7 implementation in this pull request",
-    "No weakening, skipping, or relaxing of any existing check, guard, or refusal",
-    "No personal path, account name, credential, token, or message content in the abandonment record template",
-    "No synthetic review verdict and no self-approval"
-  ],
-  "required_checks": [
-    "python -m unittest scripts.test_production_migration_guard",
-    "node --test scripts/orchestrator-flow/reconcile.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "node scripts/check-skill-drift.mjs",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "git diff --check"
   ],
   "assumptions": [
-    "Documentation drift is not a cosmetic problem. A rule that lives in five files becomes five rules the moment one is edited alone, and the reader who follows the stale copy cannot tell which one he read. The agreement tests therefore assert that each operative FACT appears in every venue where it is operative, not that any particular wording is used, so the prose can be rewritten freely but a promise cannot be deleted from one venue while the others still make it",
-    "The authority boundary was already settled and is recorded here rather than re-decided: the orchestrator may retire work whose worktree is clean, or absent with its absence proven and its durable branch and pull-request evidence complete; Albert alone decides whether potentially recoverable dirty or remote uncommitted work may be abandoned",
-    "The abandonment audit issue claims no database object. Its db-work-scope fence carries an empty objects: on purpose, because claiming the object would collide with the very claim the audit is investigating",
-    "The record is privacy-safe by instruction and by shape: machine and worktree are recorded as identifiers only, and the template names credentials, tokens, personal paths, account names and message contents as things that must never be pasted into it",
-    "The canonical ai-devops skill is the fifth venue and cannot be asserted from this repository's test suite, because it lives outside the repository. scripts/check-skill-drift.mjs is the gate that covers it, and it must still report no contradictions after the ai-devops change lands",
-    "AGENTS.md is held by open pull requests 2821 and 2607, but AGENTS.md is not a protected coordination source: scripts/check-pr-source-collisions.mjs protects exactly scripts/manage-migration-author-lanes.mjs, which this pull request does not touch. The edit here is a single self-contained paragraph in the task-router entry for #2301, chosen to minimise textual overlap with those branches"
+    "Reserved migration version 20260916033914 is the only version this work may use; it replaced superseded version 20260916001923 and was centrally reserved by the repository governed --supersede-active-claim-version command, whose durable evidence is the permanent reservation ref refs/db-claims/20260916033914 (6c9b149d8747293cdb306a73262bd341873bc682) and the owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e",
+    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
+    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
+    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
   ],
+  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
+  "branch": "claude/issue-2988-orderlist-timeout",
+  "db_reads": [
+    "table core.customer",
+    "table core.factory"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "view dam.dam_order_list_customer_directory",
+    "view dam.dam_order_list_vendor_directory"
+  ],
+  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916033914)",
+  "file_writes": [
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
+    "scripts/production-verification-sidecars/20260916033914.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "generation": 3,
+  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
+  "prohibited_actions": [
+    "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
+    "No merge of this or any pull request",
+    "No edit to any migration other than reserved version 20260916033914",
+    "No claim of any database object beyond those declared in db_writes",
+    "No work in any other worktree or on any other branch",
+    "No raising of statement_timeout or lock_timeout",
+    "No change to core.customer or core.factory policies, grants or columns",
+    "No security_definer setting on api.dam_order_list without the issue #2662 security review"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
+  ],
+  "route": "migration",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if any documentation claim in this change is not true of the code that landed in Steps 1-5",
-    "Stop if the agreement tests would pass against a venue that had silently lost a fact",
-    "Stop if current main moves before the final exact-head review-to-merge cycle"
-  ]
+    "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
+    "Stop if the fix would require making api.dam_order_list security definer",
+    "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
+    "Stop if any required check cannot be run rather than reporting it as passed"
+  ],
+  "work_issue": 2988,
+  "work_type": "structural",
+  "worker": "Claude Opus 5 issue-2988 migration author",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988"
 }

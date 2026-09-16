@@ -1,28 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3065,
+  "work_issue": 3069,
   "outcome": "ready-for-merge",
-  "pr": 3066,
+  "pr": 3070,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3065/3",
-  "contract_sha256": "c5663e85877df159d11b98dc6b8ae35af7bef188db3faaffa68b70830530ac1d",
-  "head_sha": "dcbce882c1e55b835a2e25223b0df088f0b6bec5",
+  "contract_ref": "refs/db-contracts/3069/1",
+  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
+  "head_sha": "dc67311f81c09554c5fe64ba9d5d5529dff91ef0",
   "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/migration-train.mjs",
-    "scripts/orchestrator-flow/migration-train.test.mjs"
+    ".github/workflows/migration-author-lease.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
+      "command": "node --test on every changed scripts test file",
       "exit_code": 0,
-      "evidence": "Run at implementation head dcbce882: tests 14, pass 14, fail 0, skipped 0 (manage-migration-author-lanes.test.mjs 584/584)."
+      "evidence": "check-required-checks-preflight, dispatch-production-apply, refresh-code-pr-branch 59/59 pass, 0 fail, 0 skipped at dc67311f after refreshing onto origin/main."
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no output at dc67311f."
     }
   ],
   "assumptions_resolved": [
-    "grep found no consumer of production_assertions/--close-train/--validate-train outside migration-train.mjs and manage-migration-author-lanes.mjs"
+    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
   ],
   "stop_conditions_hit": []
 }

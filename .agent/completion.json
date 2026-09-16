@@ -1,34 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 3100,
+  "work_issue": 2870,
   "outcome": "ready-for-merge",
-  "pr": 3101,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3100/2",
-  "contract_sha256": "01b833462d98b8dd6a6740068af4da0e95875723b68bdfb762d39a01f6b8a605",
-  "head_sha": "3e184f8b1d841b06de3f6c5a76c425be1f3e4c92",
+  "pr": 2872,
+  "migration_versions": [
+    "20260916232835"
+  ],
+  "contract_ref": "refs/db-contracts/2870/7",
+  "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
+  "head_sha": "26c6c427008a1d9fd8203f97825ce6381c715584",
   "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260916232835.json",
+    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head aefc612c: tests 16, pass 16, fail 0, skipped 0; the new CI/sibling case fails on the pre-fix source."
+      "evidence": "Static checks passed at head 26c6c427 after the current-main refresh and version supersession to 20260916232835."
     },
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "ephemeral preview-equivalent database contract test",
       "exit_code": 0,
-      "evidence": "Run at implementation head aefc612c: tests 590, pass 590, fail 0, skipped 0 (run-governed-review 78/78, start-reroute 23/23, repair-voided-findings 11/11, transport conformance 268 files clean)."
+      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Sidecar validator returned status OK with the sidecar declared in the registry."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against current main."
     }
   ],
   "assumptions_resolved": [
-    "Unstarted probe and reclaim fingerprint only PR state, head, draft and this slot's verdict; the plain silence path still refuses on PR activity (tested)"
+    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
+    "The migration performs DDL only and contains no application-row write.",
+    "Claim version 20260914032423 was superseded to 20260916232835 through the governed supersession tool because the old version sorted behind current main."
   ],
   "stop_conditions_hit": []
 }

@@ -1,69 +1,64 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 2863,
-  "work_type": "structural",
-  "route": "shared-db-migration",
-  "goal": "Author the ColdLion landing tables coldlion.prepack_detail and coldlion.prod_detail at reserved migration version 20260916001944, with a documented grain proof per endpoint, a contract test file, and the mandatory production verification sidecar pinned in PREVIEW_PRODUCER_PATHS. Structure only: no row loads, no preview or production apply.",
-  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "dispatcher": "Claude shared-db orchestrator (claim 3006, marker issue 3004, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2863 ColdLion detail landing author",
-  "branch": "claude/issue-2863-coldlion-detail-landing",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2863",
+  "generation": 14,
+  "work_issue": 2301,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement Step 6 of plan_author_lane_abandonment_lifecycle.md: synchronize the operating rules with the behaviour Steps 1-5 landed. Section 4 gains the read-only --abandonment-audit command and its three exit codes, the abandonment record, the quarantine/recovery and terminal-retirement procedures written out in full, and the settled authority boundary; AGENTS.md's task-router entry for #2301 gains the same facts; a new privacy-safe issue template records the abandonment evidence and carries an empty objects: fence on purpose; new static tests in the canonical guard test fail the build when those venues disagree; and the plan STATUS table records Steps 3-5 with their merge evidence. The canonical popcre/ai-devops orchestrator skill is synchronized in its own repository and check-skill-drift.mjs must still report no contradictions. No schema, database or infrastructure change.",
+  "base_sha": "6c9b149d8747293cdb306a73262bd341873bc682",
+  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Step 6 operating-rules synchronization worker",
+  "branch": "claude/2301-step6-operating-rules",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
   "allowed_paths": [
-    "supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql",
-    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql",
-    "docs/coldlion-unit-5b-grain-proof-20260915.md",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916001944.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
+    "AGENTS.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
+    "scripts/test_production_migration_guard.py",
+    "plan_author_lane_abandonment_lifecycle.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql",
-    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql",
-    "docs/coldlion-unit-5b-grain-proof-20260915.md",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916001944.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
+    "AGENTS.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
+    "scripts/test_production_migration_guard.py",
+    "plan_author_lane_abandonment_lifecycle.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "coldlion.prepack_detail",
-    "coldlion.prod_detail"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "No apply to preview or production; Supabase MCP stays read-only",
-    "No merge of this or any other pull request",
-    "No use of any migration version other than the reserved 20260916001944",
-    "No database object outside the claimed coldlion.prepack_detail and coldlion.prod_detail",
-    "No row loads into the new tables",
-    "No work in another worktree or on another branch",
-    "No weakening of any existing check or guard"
+    "No database, preview, production, or infrastructure action",
+    "No change to any lane script, workflow, or other executable behaviour in this pull request; Step 6 is documentation and its agreement tests",
+    "No automatic transition of an expired author claim",
+    "No deletion of any coordination ref, claim, branch, pull request, or worktree",
+    "No Step 7 implementation in this pull request",
+    "No weakening, skipping, or relaxing of any existing check, guard, or refusal",
+    "No personal path, account name, credential, token, or message content in the abandonment record template",
+    "No synthetic review verdict and no self-approval"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-    "node --test scripts/check-sql.test.mjs",
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
-    "python -m pytest -q scripts/test_production_catalog_verification.py"
+    "python -m unittest scripts.test_production_migration_guard",
+    "node --test scripts/orchestrator-flow/reconcile.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-skill-drift.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Migration version 20260916001944 is reserved for this claim and must be used exactly",
-    "Both ColdLion endpoints are enumerable rather than paged, so a live grain census is possible from a sampled key set",
-    "A fully static migration still requires a production verification sidecar, and every sidecar path must be individually pinned in PREVIEW_PRODUCER_PATHS",
-    "Adding a catalog_contract requires a CATALOG_CONTRACTS entry plus a refreshed detector_source_sha256 in the reviewed throughput-guard baseline",
-    "The governed verification connects as supabase_read_only_user, so every catalog predicate must be evaluated on that connection before it is trusted"
+    "Documentation drift is not a cosmetic problem. A rule that lives in five files becomes five rules the moment one is edited alone, and the reader who follows the stale copy cannot tell which one he read. The agreement tests therefore assert that each operative FACT appears in every venue where it is operative, not that any particular wording is used, so the prose can be rewritten freely but a promise cannot be deleted from one venue while the others still make it",
+    "The authority boundary was already settled and is recorded here rather than re-decided: the orchestrator may retire work whose worktree is clean, or absent with its absence proven and its durable branch and pull-request evidence complete; Albert alone decides whether potentially recoverable dirty or remote uncommitted work may be abandoned",
+    "The abandonment audit issue claims no database object. Its db-work-scope fence carries an empty objects: on purpose, because claiming the object would collide with the very claim the audit is investigating",
+    "The record is privacy-safe by instruction and by shape: machine and worktree are recorded as identifiers only, and the template names credentials, tokens, personal paths, account names and message contents as things that must never be pasted into it",
+    "The canonical ai-devops skill is the fifth venue and cannot be asserted from this repository's test suite, because it lives outside the repository. scripts/check-skill-drift.mjs is the gate that covers it, and it must still report no contradictions after the ai-devops change lands",
+    "AGENTS.md is held by open pull requests 2821 and 2607, but AGENTS.md is not a protected coordination source: scripts/check-pr-source-collisions.mjs protects exactly scripts/manage-migration-author-lanes.mjs, which this pull request does not touch. The edit here is a single self-contained paragraph in the task-router entry for #2301, chosen to minimise textual overlap with those branches"
   ],
   "stop_conditions": [
-    "Stop and report if the grain census shows a repeated group for either endpoint, rather than labelling a guessed key as natural",
-    "Stop if the ColdLion API cannot be reached, and say so explicitly rather than guessing a key",
-    "Stop if the work would require writing any database object outside the claim",
-    "Stop if a verification predicate cannot be shown to fail on a deliberately wrong expectation"
+    "Stop if any documentation claim in this change is not true of the code that landed in Steps 1-5",
+    "Stop if the agreement tests would pass against a venue that had silently lost a fact",
+    "Stop if current main moves before the final exact-head review-to-merge cycle"
   ]
 }

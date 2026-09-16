@@ -13782,9 +13782,16 @@ export type Database = {
           licensor_id: string | null
           merch_group_id: string | null
           name: string | null
+          product_construction: string | null
           product_depth_id: string | null
+          product_material: string | null
           product_size_id: string | null
+          product_treatment: string | null
+          product_type: string | null
           product_type_id: string | null
+          product_type_read_at: string | null
+          product_type_rules_version: string | null
+          product_type_status: string | null
           property_id: string | null
           raw: Json
           source_id: string | null
@@ -13802,9 +13809,16 @@ export type Database = {
           licensor_id?: string | null
           merch_group_id?: string | null
           name?: string | null
+          product_construction?: string | null
           product_depth_id?: string | null
+          product_material?: string | null
           product_size_id?: string | null
+          product_treatment?: string | null
+          product_type?: string | null
           product_type_id?: string | null
+          product_type_read_at?: string | null
+          product_type_rules_version?: string | null
+          product_type_status?: string | null
           property_id?: string | null
           raw?: Json
           source_id?: string | null
@@ -13822,9 +13836,16 @@ export type Database = {
           licensor_id?: string | null
           merch_group_id?: string | null
           name?: string | null
+          product_construction?: string | null
           product_depth_id?: string | null
+          product_material?: string | null
           product_size_id?: string | null
+          product_treatment?: string | null
+          product_type?: string | null
           product_type_id?: string | null
+          product_type_read_at?: string | null
+          product_type_rules_version?: string | null
+          product_type_status?: string | null
           property_id?: string | null
           raw?: Json
           source_id?: string | null

@@ -1,3 +1,4 @@
+import { main as readTrainMain } from './read-verified-train-record.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { proposeTrain, validateTrain, transitionTrain, assertTrainProductionEvidence, MigrationTrainError } from './migration-train.mjs'
@@ -34,7 +35,7 @@ function managerFixture(n=2){
   const dir=mkdtempSync(path.join(tmpdir(),'train-'))
   const write=(name,value)=>{const file=path.join(dir,name);writeFileSync(file,JSON.stringify(value));return file}
   const run=(argv)=>{const out=[],err=[],log=console.log,error=console.error;console.log=(v)=>out.push(v);console.error=(v)=>err.push(v);try{const code=main(argv,new Date(),raw);return{code,out:out.length?JSON.parse(out.join('\n')):null,err:err.join('\n')}}finally{console.log=log;console.error=error}}
-  return {manifest:rebuilt,proof,files,write,run,setMain:(sha)=>{mainSha=sha}}
+  return {manifest:rebuilt,proof,files,write,run,raw,setMain:(sha)=>{mainSha=sha}}
 }
 
 test('manager propose, validate, authorize, dispatch, verify and close one exact train',()=>{
@@ -98,4 +99,19 @@ test('closing a train refuses missing or failed production assertions by migrati
   proof.production_assertions[manifest.entries[1].version].result='failed'
   assert.throws(()=>assertTrainProductionEvidence(manifest,proof),new RegExp(`migration ${manifest.entries[1].version} lacks exact passing production assertion`))
   assert.throws(()=>assertTrainProductionEvidence(manifest,{...fixture(2).proof,target_identity:'other'}),/different target identity/)
+})
+
+// #3027 Step 6: the production jobs hand the risk gate the exact verified record.
+test('the verified train record reader writes only the exact dispatched record',()=>{
+  const f=managerFixture(2),proofFile=f.write('proof.json',f.proof)
+  const authorized=f.run(['--authorize-train',f.write('m.json',f.manifest),'--train-proof',proofFile,'--authorization-digest',h('b',64),'--target-identity','project:prod'])
+  const dispatched=f.run(['--dispatch-train',f.write('a.json',authorized.out.record)])
+  const versions=f.manifest.entries.map((e)=>e.version).join(','),output=f.write('record.json',{})
+  const err=[],error=console.error;console.error=(v)=>err.push(v)
+  try{
+    assert.equal(readTrainMain(['--ref',dispatched.out.ref,'--target','production','--commit-sha',h('a'),'--allowlist',versions,'--output',output],f.raw),0,err.join('\n'))
+    assert.deepEqual(JSON.parse(readFileSync(output,'utf8')),dispatched.out.record)
+    assert.equal(readTrainMain(['--ref',dispatched.out.ref,'--target','production','--commit-sha',h('a'),'--allowlist',f.manifest.entries[0].version,'--output',output],f.raw),2)
+    assert.match(err.join('\n'),/is not the exact train list/)
+  }finally{console.error=error}
 })

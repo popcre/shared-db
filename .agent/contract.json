@@ -1,43 +1,50 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3088,
+  "generation": 7,
+  "work_issue": 3076,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Typing in a db-data-admin column filter popover's search box also filters the main table.",
+  "goal": "Let the production risk gate accept a validated migration train that binds each allowlisted version to its own merged authoring PR and its own preview evidence, with the single source_pr rule unchanged when no train ref is supplied (#3027 Step 6).",
   "base_sha": "1dce1ca466ceb9abdf6f1c62d43bf7704322dda1",
-  "dispatcher": "Albert Hazan via Claude shared-db session (owner chat: main table must act on the filter, 2026-09-16)",
-  "worker": "Claude Opus 5 db-data-admin filter fix",
-  "branch": "claude/filter-main-table-bug-2d5f55",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/filter-main-table-bug-2d5f55",
+  "dispatcher": "Claude #3027 Step 6 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 6 train gate",
+  "branch": "claude/3027-train-per-entry-gate",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-train-gate",
   "allowed_paths": [
-    "apps/db-data-admin/src/FilterHeader.tsx",
-    "apps/db-data-admin/src/DataAdmin.test.tsx",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    "scripts/orchestrator-flow/read-verified-train-record.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
-    "apps/db-data-admin/src/FilterHeader.tsx",
-    "apps/db-data-admin/src/DataAdmin.test.tsx",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/orchestrator-flow/migration-train.test.mjs",
+    "scripts/orchestrator-flow/read-verified-train-record.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration file change",
-    "No production database command",
-    "No migration or preview workflow dispatch"
+    "No database write of any kind",
+    "No production workflow dispatch",
+    "No weakening of the single source_pr rule when no train ref is supplied"
   ],
   "required_checks": [
-    "npx vitest run in apps/db-data-admin",
-    "git diff --check origin/main...HEAD"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
+    "node --test scripts/orchestrator-flow/migration-train.test.mjs"
   ],
   "assumptions": [
-    "No schema or structure change is needed; the fix is client-side UI filtering only"
+    "A merged_preview_source_pr_map rehearsal files a per-PR preview instance binding for every authoring PR"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change or a database write"
+    "Stop if the fix would need a database change"
   ]
 }

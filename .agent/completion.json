@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3021,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2988/4",
-  "contract_sha256": "56dd8b9306329e12f090eb983de271a1aabbcd7ee37794c06816456daea0bcf5",
-  "head_sha": "49760a34fa3f77e2300b184076c8f70b31a85c4b",
+  "contract_ref": "refs/db-contracts/2988/5",
+  "contract_sha256": "282dae216b73d43dccfecdf78f316dff93b4279058c7a335de4a373370fa42e9",
+  "head_sha": "f399389fd36301a63d2379a7500bf8675f19f82a",
   "files_changed": [
     "docs/verification/issue-2988-historical-producer-restoration.md",
     "scripts/historical-migration-restorations.mjs",

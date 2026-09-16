@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 2988,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Resolve the production-apply producer-mismatch refusal for migration 20260916033914 by registering its one exact historical restoration in scripts/historical-migration-restorations.mjs, with every value derived from the original preview apply run 35060692115, its artifact binding, PR 3007 and its merge commit, and the migration bytes on origin/main; pin the new entry and the issue 2863 entry in scripts/historical-migration-restorations.test.mjs; and record the evidence in a verification document. No guard is weakened, no workflow is dispatched, and no database is touched.",
-  "base_sha": "86da2d44bcd390b3177f322f947b212c8dc9bbc9",
+  "base_sha": "87b10ced4bea49564be400f196bb3cce5be0c551",
   "dispatcher": "Claude shared-db orchestrator (issue 2988 production-apply refusal, 2026-09-16)",
   "worker": "Claude Opus 5 issue-2988 historical restoration registrar",
   "branch": "claude/2988-historical-restoration",

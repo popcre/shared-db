@@ -1,32 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3062,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3063,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3062/1",
-  "contract_sha256": "6bc2caeedc71abe0c968ad1c5a1fd1c153603fec0d0a99f3735fa10b208696d6",
-  "head_sha": "2b1e6a395e07ce3587c82a3d0ef9677531a52d5e",
+  "contract_ref": "refs/db-contracts/3054/9",
+  "contract_sha256": "062ab0bcd5dafedccbf87208500a04e907cb3723ba1d31110d861b363fce1ca4",
+  "head_sha": "64b7c4937c1727e25de0873f7fc388ef556a3dfc",
   "files_changed": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every changed scripts test file",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "run-governed-review 77/77 pass, 0 fail, 0 skipped at 2b1e6a39; check-throughput-truth-audit OK."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
     },
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "python scripts/check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 2b1e6a39."
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: only the review runner's pre-start checks and prompt copy changed; every existing refusal condition is unchanged."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

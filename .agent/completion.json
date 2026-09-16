@@ -1,35 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3074,
+  "work_issue": 3081,
   "outcome": "ready-for-merge",
-  "pr": 3090,
-  "migration_versions": [
-    "20260916184821"
-  ],
-  "contract_ref": "refs/db-contracts/3074/1",
-  "contract_sha256": "682ab4831a923e3659851407ff1bde56a06c768290a1ece5a33adf2c635f0df2",
-  "head_sha": "13990fa54ad4a6da2c1737d2d064ed4d8ff0b92f",
+  "pr": 3082,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3081/6",
+  "contract_sha256": "a3048d6e4dd8bc34da80d5a8a72825ebe8ec7178f6aab3bf50199d7df6acbf82",
+  "head_sha": "a34a84570cd2db23044f8e601df8dc5c92a9605d",
   "files_changed": [
-    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 13990fa5: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "Run at implementation head 150fc628: tests 15, pass 15, fail 0, skipped 0."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "node --test scripts/run-governed-review.test.mjs",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916184821 has markers [] and needs no sidecar."
+      "evidence": "Run at implementation head 150fc628: tests 78, pass 78, fail 0, skipped 0 (manage-migration-author-lanes.test.mjs 589/589, start-reroute.test.mjs 23/23, repair-voided-findings.test.mjs 11/11)."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 150fc628: 268 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
     }
   ],
   "assumptions_resolved": [
-    "plm.production_lane_canary is the #660 no-op canary table; production proof #3043 read it with exactly 1 row on 2026-09-16."
+    "The unstarted reclaim and the runner race on one create-only per-lease start marker inside the reclaim's atomic compare-and-swap; proved by the marker-race test in manage-migration-author-lanes.test.mjs",
+    "A resumed dispatch recognises a completed probe and reclaim; a refusal is mooted only while the exact lease is still held; failed resumes are bounded; --apply only acts on leases drawn after --drawn-since"
   ],
   "stop_conditions_hit": []
 }

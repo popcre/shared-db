@@ -1,25 +1,25 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3043,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 1: add one nullable, default-less text column to the no-op, fully revoked canary table plm.production_lane_canary so the automatic production lane performs one fully machine-qualified promotion. No data, grant, RLS or application behaviour change.",
-  "base_sha": "1d0a711adc16ed622cef5e2355996d720d60c597",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3027-step1-canary-comment",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-step1-canary",
-  "allowed_paths": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql", ".agent/contract.json", ".agent/completion.json"],
+  "work_issue": 3035,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Tighten the AGENTS.md top banner so the shared-db orchestrator takes only database-shape work (issue 3035, PR 3032). Prose rulebook change only; no code, migration, workflow, or database change.",
+  "base_sha": "4e290252bfc9528427d502a18ffcef3d617c7047",
+  "dispatcher": "Claude ai-devops session (orchestrator routing guidelines, 2026-09-16)",
+  "worker": "Claude Opus 5 orchestrator banner editor",
+  "branch": "claude/orchestrator-minimum-routing",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-minimum-routing",
+  "allowed_paths": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
-  "db_writes": ["table plm.production_lane_canary"],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command and no session-made production workflow dispatch",
-    "No change to data, grants, RLS or any application table",
-    "No migration version other than claimed 20260916120643"
+    "No database read or write of any kind",
+    "No migration, script, workflow, or configuration change",
+    "No work in a shared checkout or on another branch"
   ],
-  "required_checks": ["bash scripts/check-sql.sh", "node scripts/check-production-verification-sidecars.mjs --base origin/main"],
-  "assumptions": ["plm.production_lane_canary exists on preview and production and is read by no application"],
-  "stop_conditions": ["Stop if production can only be reached by a session-made dispatch"]
+  "required_checks": ["git diff --check origin/main...HEAD"],
+  "assumptions": ["The banner edit is prose only and changes no executable behaviour"],
+  "stop_conditions": ["Stop and report if the change set grows beyond AGENTS.md"]
 }

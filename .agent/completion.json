@@ -1,19 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3043,
+  "work_issue": 3035,
   "outcome": "ready-for-merge",
-  "pr": 3046,
-  "migration_versions": ["20260916120643"],
-  "contract_ref": "refs/db-contracts/3043/1",
-  "contract_sha256": "b58661abdedb28349ac4f6003f66c08766360c39f9b4b036a1a8373415bf2061",
-  "head_sha": "7daeb0ef5ef902b589b00fe7b9eda47340d4abf9",
-  "files_changed": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"],
-  "db_reads": [],
-  "db_writes": ["table plm.production_lane_canary"],
-  "checks": [
-    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Run at implementation head 7daeb0ef against base 1d0a711a: Static checks passed."},
-    {"command": "node scripts/check-production-verification-sidecars.mjs --base origin/main", "exit_code": 0, "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."}
+  "pr": 3032,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3035/1",
+  "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
+  "head_sha": "52552d1d0bc2d4732893a64d226ea01690283c21",
+  "files_changed": [
+    "AGENTS.md"
   ],
-  "assumptions_resolved": ["Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no output at implementation head 52552d1d against origin/main 3f5c2a23; the implementation diff is AGENTS.md only (+8/-2)."
+    }
+  ],
+  "assumptions_resolved": [
+    "git diff --stat origin/main...52552d1d lists only AGENTS.md; no code, migration, workflow or configuration file changed."
+  ],
   "stop_conditions_hit": []
 }

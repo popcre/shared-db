@@ -45,9 +45,10 @@
 --   (826 rows) and core.factory (93 rows). Both carry the `shared_read` policy
 --   `app.has_any_role(array[administrator,sales,licensing,designer,viewer,vendor])`.
 --   That qual takes no row-dependent argument but is STABLE, so PostgreSQL
---   evaluates it once PER ROW instead of folding it. Measured under
---   yzhou@popcre.com's own JWT claims on production, 826 evaluations of that
---   exact qual cost 5,373 ms and every one returned false. That is the whole of
+--   evaluates it once PER ROW instead of folding it. Measured under the
+--   reporting user's own JWT claims on production (the PopDAM account named in
+--   issue #2988; referred to by issue, not by address, per AGENTS.md 6.14), 826
+--   evaluations of that exact qual cost 5,373 ms and every one returned false. That is the whole of
 --   the ~3.44 s customer node and ~0.41 s factory node in the issue's plan, and
 --   the reason a bounded 500-row page reaches the 8 s authenticated timeout.
 --   Reading the same two columns with no policy evaluation costs 1.2 ms.

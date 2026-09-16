@@ -1,42 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3039,
+  "work_issue": 3043,
   "outcome": "ready-for-merge",
-  "pr": 3047,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3039/3",
-  "contract_sha256": "8d739ffe2f84607c165116e5c95c069e86b9b46d2a4fe1b04eb19c5796060e0c",
-  "head_sha": "aa25c7504ad277a3ba7ded5c6352a24f27c7f0e5",
+  "pr": 3046,
+  "migration_versions": [
+    "20260916120643"
+  ],
+  "contract_ref": "refs/db-contracts/3043/3",
+  "contract_sha256": "f201dee4ee003d96b4422bc465e76562a4fead5a2e0a80b8bcf6bd42cbd49126",
+  "head_sha": "6f13850050579b464d50c50c369d93b546cae302",
   "files_changed": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/check-workflow-automatic-promotion-source.test.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_automatic_qualification_route.py",
-    "scripts/test_production_business_risk_gate.py"
+    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table plm.production_lane_canary"
+  ],
   "checks": [
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head aa25c750."
+      "evidence": "Run at implementation head 6f138500 (refreshed from main 4e32da47), re-run: Static checks passed."
     },
     {
-      "command": "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "Ran 166 tests, OK, at implementation head aa25c750; includes the verbatim #3039 producer-mismatch reproduction."
-    },
-    {
-      "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
-      "exit_code": 0,
-      "evidence": "pass 10, fail 0 at aa25c750; full node --test scripts/*.test.mjs also passed 1724/1724."
+      "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."
     }
   ],
   "assumptions_resolved": [
-    "The production review job already accepts ephemeral_check_run_id and skips its preview_run_id checks for that route; the apply lane re-runs prove_ephemeral_ci_evidence itself."
+    "Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."
   ],
   "stop_conditions_hit": []
 }

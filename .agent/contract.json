@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3079,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Make the scheduled no-progress alarm evaluate stalled outcomes even when no orchestrator marker resolves, post to one stable fallback issue created once, and exit non-zero when it can neither evaluate nor post.",
-  "base_sha": "b682b524106a8231dc12f49a8ace8ea23aa1b838",
+  "base_sha": "3fd05cf84c58b92c73c5d6030497fd66b95243cc",
   "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
   "worker": "Claude Opus 5 #3027 alarm fallback author",
   "branch": "claude/3027-alarm-fallback",

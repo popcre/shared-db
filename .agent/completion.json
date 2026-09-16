@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3080,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3079/2",
-  "contract_sha256": "ad956795df7911d6db1cfe20fa809eec21f6ee7da466014432a373d7420b78f3",
-  "head_sha": "95ed871c8a2010b4b4c691652ca1e699431bda5d",
+  "contract_ref": "refs/db-contracts/3079/3",
+  "contract_sha256": "ce0bba1a7a678cd92e1ce044245361eea3162d7bca8ee8457246025445ce538d",
+  "head_sha": "47928a00a1267fd72b6b9d86882d9e62d19e74eb",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
@@ -25,7 +27,7 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 95ed871c."
+      "evidence": "Exit 0 with no output at 47928a00."
     }
   ],
   "assumptions_resolved": [

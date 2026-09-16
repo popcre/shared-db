@@ -2,60 +2,61 @@
   "schema_version": 1,
   "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 3016,
+  "pr": 3019,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/14",
-  "contract_sha256": "8b363ea32e9affcde09c7ad40bcc0db2ac22ade7a5eecca154e9dc8d5b6c9a79",
-  "head_sha": "35267ab6f76123f34415ad2fdca82dc116b4a499",
+  "contract_ref": "refs/db-contracts/2301/15",
+  "contract_sha256": "ef932cbfce2c17b056403ccf1495811aa657d48d5aa671c235f9ff7b0e30a5a3",
+  "head_sha": "5b7d128191ed367a60ba8e9162197abfa06f5c6d",
   "files_changed": [
-    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
     "plan_author_lane_abandonment_lifecycle.md",
-    "scripts/test_production_migration_guard.py"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: tests 653, pass 653, fail 0, cancelled 0, skipped 0, todo 0. Two of those are new and each pins one of the defects that live verification found. The first builds a snapshot from two open claims whose titles name no single work issue -- one copied from the real live claim #2871, 'CLAIM: issue-2870-cutover-columns', and one ambiguous title naming two issues -- and asserts that both still appear as rows, that each row names the claim number an operator has to go and fix, that neither can ever be reported preview-ready, and that the capacity and preview domains report the same failure. Before the fix the identity read threw out of the map and the snapshot came back empty. The second drives the CLI itself: a missing runtime adapter and an unreadable snapshot both exit 3, a refusal on any other command still exits 2, and the REFUSED line is still printed in full each time, so the message an operator reads is unchanged and only the code it is filed under moves."
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: tests 57, pass 57, fail 0, cancelled 0, skipped 0, todo 0. The coordination scenarios include the hermetic relinquish, resume and retired-refusal fixtures that demonstrate the lifecycle without touching a live lane."
+    },
+    {
       "command": "python -m unittest scripts.test_production_migration_guard",
       "exit_code": 0,
-      "evidence": "Run at implementation head 1d1ed815e7aec817fcf74482413c111c7b7f48ff and re-run on the merged tree 35267ab6: Ran 272 tests, OK. Twelve of them are new and are the Step 6 verification gate. They assert agreement rather than wording: the read-only --abandonment-audit command is named in AGENTS.md, section 4, the issue template and the workflow, and is still defined by the CLI; all three exit codes and the word unverifiable survive in both rulebooks; 'an expired lease is not an abandoned lane' survives in all three prose venues; the four worktree states and the name of who decides survive in all three; the prohibition on a mutating lane command in a scheduled job is written down as well as enforced; every one of the ten required record headings is present in the template; the template is privacy-safe, names credentials and tokens as things never to paste, and carries a fence pinned on all four of its lines -- work_type: repo-maintenance, route: repo-maintenance, and empty writes: and reads:; the template the rules point at exists on disk; and both procedures are written out rather than merely named, proven by requiring the steps that distinguish them -- the blocked-on relinquish and the atomic resume on one side, the tombstoning release and the fresh successor version on the other, plus the refusal to delete a ref. One of these tests failed on first run because section 4 described exit 3 without using the word unverifiable; the prose was corrected, not the test. A second, real defect was caught by running the reviewer draw against this very template: it shipped route: shared-db-orchestrator with work_type: repo-maintenance, a pair the lane CLI refuses outright at ROUTES_BY_WORK_TYPE. The template, the section 4 example and the work issue were all corrected to route: repo-maintenance, and four new assertions pin every line of the fence so the defect cannot return. The independent reviewer then returned REVISE on head 5ef8126f and found three further real defects, all fixed here and each now pinned by its own test: the printed relinquish and resume commands used --claim <n>, which the CLI parses as a boolean and which dies on the bare number (the value flag is --claim-number); the printed relinquish omitted --worktree-state, without which acting on abandonment evidence is refused outright; and the issue template carried only prose headings, so an issue opened from it produced no machine-readable abandonment-audit fence, meaning parseAbandonmentAudit returned null, no guarded command was ever suggested, and a relinquish would fall through to the ordinary-blocker path with none of the exact-tuple revalidation the record exists to provide. Three further tests were added, and the pre-existing loose substring assertions were scoped to the abandonment passage in each rulebook, because the bare words clean, dirty, remote and schedul occur elsewhere in a 1758-line file and a venue could have lost the whole paragraph while still passing."
-    },
-    {
-      "command": "node --test scripts/orchestrator-flow/reconcile.test.mjs",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 1d1ed815e7aec817fcf74482413c111c7b7f48ff and re-run on the merged tree 35267ab6: tests 32, pass 32, fail 0, cancelled 0, skipped 0, todo 0. Unchanged by this documentation step; run to prove the behaviour the new prose describes is still the behaviour that exists."
-    },
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 1d1ed815e7aec817fcf74482413c111c7b7f48ff and re-run on the merged tree 35267ab6: tests 578, pass 578, fail 0, cancelled 0, skipped 0, todo 0. No lane script is touched by this pull request."
+      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: Ran 272 tests, OK. Unchanged by this step; run to prove the Step 6 rulebook agreement tests still hold against the prose as it now stands, including the exit-code paragraph this change makes true."
     },
     {
       "command": "node scripts/check-skill-drift.mjs",
       "exit_code": 0,
-      "evidence": "OK: checked 3 canonical skills in C:/repos/ai-devops against AGENTS.md; no contradictions. This is the gate covering the fifth venue, the canonical popcre/ai-devops orchestrator skill, which lives outside this repository and so cannot be asserted by the in-repo agreement tests."
+      "evidence": "OK: checked 3 canonical skills in C:/repos/ai-devops against AGENTS.md; no contradictions."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 1d1ed815e7aec817fcf74482413c111c7b7f48ff and re-run on the merged tree 35267ab6: truth audit OK: call_sites=296, unchanged. No new prose in this change is discovered as a semantic call site, so the audit inventory file held by open pull requests 2823 and 2821 stays untouched."
+      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: truth audit OK: call_sites=296, unchanged. The new code adds no semantic call site, so the inventory file held by open pull requests 2823 and 2821 stays untouched."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "Run at implementation head 1d1ed815e7aec817fcf74482413c111c7b7f48ff and re-run on the merged tree 35267ab6: no whitespace errors."
+      "evidence": "Run at implementation head 5b7d128191ed367a60ba8e9162197abfa06f5c6d: no whitespace errors."
     }
   ],
   "assumptions_resolved": [
-    "The agreement tests could have been written as byte-for-byte fixtures. They were not, because a fixture makes every rewording a failure and trains its maintainer to update the fixture without reading the change. Asserting the FACT instead means the prose stays editable and the promise stays enforced.",
-    "AGENTS.md is held by open pull requests 2821 and 2607. That is not a collision under this repository's rule: scripts/check-pr-source-collisions.mjs protects exactly one path, scripts/manage-migration-author-lanes.mjs, which this pull request does not touch. The AGENTS.md edit is one self-contained paragraph inside the #2301 task-router entry, chosen to minimise textual overlap with those branches.",
-    "The reviewer noted it could not execute commands and so treated the STATUS evidence as unverified. It was verified here against git history: 1dcf196e is 'Merge pull request #3000 from u2giants/claude/2301-step3-tombstones', 0a11c42d is '#3010 ... claude/2301-step4-capacity-preview', and 95e1ac95 is '#3013 ... claude/2301-step5-hourly-audit'.",
-    "The STATUS table now records Steps 3, 4 and 5 with their merge commits, guarded-merge heads, implementation commits and sub-issues, so the next reader does not have to reconstruct what landed from git history.",
-    "The abandonment audit issue claims no database object. Its fence carries empty writes: and reads: on purpose -- claiming the object would collide with the very claim the audit exists to investigate -- and it is routed as repo-maintenance, not shared-db-orchestrator, because the lane CLI refuses that pairing. The template test pins all four fence lines, so nobody later 'fixes' the empty lists or the route.",
-    "The canonical ai-devops orchestrator skill half of this step is a separate synchronized change in popcre/ai-devops, not a hand edit of the installed copy.",
-    "After the approving review at head a44638c2, origin/main advanced to 05606696 (pull request #3014) and this pull request reported a conflict. origin/main was merged forward as 35267ab6; the only conflicting paths were the two .agent evidence files. The merge commit takes main's evidence pair verbatim, so it changes only the five implementation paths against the new base, and this branch's own evidence pair is then written by the single evidence commit that follows it. No rule, template, test or script hunk was touched by the merge. Every check below was re-run on the merged tree."
+    "Live read-only verification, not the test suite, is what found both defects in this step. 980 tests passed over code that could not read the live lanes at all, because both failures need a real record written before the current conventions existed. That is the reason the plan requires a live gate as well as suites, and it is now the reason two new tests exist.",
+    "The exit-code change is a narrowing, not a relaxation. Exit 2 on --abandonment-audit is a factual claim that an expired author lane was found. A refusal never established that, so reporting it as 2 was a false positive with an operator cost: the scheduled run on 2026-09-16 at main head 3fdd16ef logged 'REFUSED: claim title must identify exactly one work issue for capacity transition events' and then '##[error]Expired author lane(s) detected', which is a report about lanes the instrument never read. Exit 3 already means unverifiable on this command and already outranks expiry. Every other command keeps the generic handler and keeps exiting 2, which the new test asserts directly.",
+    "Isolating the claim-identity read does not hide the unreadable claim. The row carries the claim number in both the capacity and the preview error, so the operator is told which claim to fix, and preview_edge_satisfied is forced false so an unreadable claim can never be counted as ready.",
+    "scripts/manage-migration-author-lanes.mjs is the repository's single protected coordination source. The nine open pull requests were checked against the rule in scripts/check-pr-source-collisions.mjs before it was edited and none of them touches that file, so there was no colliding pull request to wait behind. The rule was not bypassed.",
+    "Live proof at this head, all read-only: --abandonment-audit reports status UNVERIFIABLE with mutating false, zero actions carrying mutates true, all eight lanes described, capacity 8 issues / 7 actions / 1 unverifiable, six expired-unconfirmed-report actions, exit 3. That agrees with --queue-audit, which reports the same seven lanes without a live lease and one active lane. No database, preview, production or infrastructure write occurred, and no ref, branch or worktree was deleted.",
+    "The lifecycle was deliberately NOT applied to any live expired claim to demonstrate it. Six live lanes are reported as expired-unconfirmed; acting on any of them needs that claim's own current evidence and an authorised operator decision, and this plan is not that authority.",
+    "The definition-of-done boxes in section 13 are ticked against named artifacts -- merge commits, verdict refs, suite counts and the live run above -- rather than from memory.",
+    "An independent governed review of the previous head kept both code changes -- it confirmed the identity leg still reports the bad claim in both domains, that the exit-code remap is a hardening rather than a relaxation, that no other command's code moves, and that both new tests fail against the old code -- and refused the record. It was right: the definition-of-done list ticked boxes about the completion step's own review, checks, merge and issue closure, none of which a commit can establish about itself, and the plan's header still linked the handoff this change deletes. The list now states plainly that those boxes cover Steps 1-6, the #2301 closure box is left UNTICKED on purpose with the reason written next to it, the header records the handoff as retired instead of linking to it, and no code path was touched in the fix.",
+    "The plan's handoff is deleted in this pull request because this pull request closes its step issue #3018 and the plan it registers is finished. Nothing unfinished depends on it. The plan file itself stays as the durable record and now says plainly that it is complete and must not be restarted."
   ],
   "stop_conditions_hit": []
 }

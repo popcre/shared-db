@@ -1,30 +1,28 @@
 {
   "schema_version": 1,
-  "generation": 14,
+  "generation": 15,
   "work_issue": 2301,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement Step 6 of plan_author_lane_abandonment_lifecycle.md: synchronize the operating rules with the behaviour Steps 1-5 landed. Section 4 gains the read-only --abandonment-audit command and its three exit codes, the abandonment record, the quarantine/recovery and terminal-retirement procedures written out in full, and the settled authority boundary; AGENTS.md's task-router entry for #2301 gains the same facts; a new privacy-safe issue template records the abandonment evidence and carries an empty objects: fence on purpose; new static tests in the canonical guard test fail the build when those venues disagree; and the plan STATUS table records Steps 3-5 with their merge evidence. The canonical popcre/ai-devops orchestrator skill is synchronized in its own repository and check-skill-drift.mjs must still report no contradictions. No schema, database or infrastructure change.",
-  "base_sha": "6c9b149d8747293cdb306a73262bd341873bc682",
+  "goal": "Implement Step 7 of plan_author_lane_abandonment_lifecycle.md, the completion step: run the full section 10 suites, verify the finished lifecycle live and read-only, fix what that live verification finds, record the final STATUS and the definition of done, and retire the plan's handoff. Live verification found two real defects that the unit suites could not see. First, the claim-identity read ran outside the per-domain failing legs of the flow snapshot, so live claim #2871, titled CLAIM: issue-2870-cutover-columns with no issue number in it, threw out of the map and blanked the entire snapshot: the hourly audit described none of the other seven lanes. The identity read becomes its own failing leg, so one unreadable claim is one unreadable row, reported as unverifiable in both domains. Second, a refusal on --abandonment-audit fell through to the generic handler, which exits 2, and on this command 2 already means an expired author lane was found, so the scheduled run announced every read failure as an expiry report about lanes it never read. A refusal on this command now exits 3, because an instrument that could not read is exactly the unverifiable case and unverifiable outranks expiry. No schema, database or infrastructure change.",
+  "base_sha": "3fdd16effbd154e1602c29aa5610161910138d68",
   "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Step 6 operating-rules synchronization worker",
-  "branch": "claude/2301-step6-operating-rules",
+  "worker": "Claude Opus 5 issue-2301 Step 7 completion worker",
+  "branch": "claude/2301-step7-completion",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
   "allowed_paths": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
-    "scripts/test_production_migration_guard.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "plan_author_lane_abandonment_lifecycle.md",
+    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
-    "scripts/test_production_migration_guard.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "plan_author_lane_abandonment_lifecycle.md",
+    "HANDOFF.d/2026-09-04T1453Z-edge-dev-codex-author-lane-lifecycle-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -32,33 +30,33 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, or infrastructure action",
-    "No change to any lane script, workflow, or other executable behaviour in this pull request; Step 6 is documentation and its agreement tests",
+    "No application of the abandonment lifecycle to any live expired claim; the lifecycle is proven by hermetic fixtures and by read-only reporting, never by acting on a real lane",
     "No automatic transition of an expired author claim",
     "No deletion of any coordination ref, claim, branch, pull request, or worktree",
-    "No Step 7 implementation in this pull request",
-    "No weakening, skipping, or relaxing of any existing check, guard, or refusal",
-    "No personal path, account name, credential, token, or message content in the abandonment record template",
-    "No synthetic review verdict and no self-approval"
+    "No weakening, skipping, or relaxing of any existing check, guard, refusal, or exit code; the exit-code change narrows one command from a wrong code to the stricter correct one and every other command is unchanged",
+    "No synthetic review verdict and no self-approval",
+    "No new feature; Step 7 is regression, live proof, the fixes that proof demands, and the record"
   ],
   "required_checks": [
+    "node --test scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-migration-pr-lease.test.mjs",
+    "node --test scripts/lib/exclusive-lease.test.mjs scripts/coordination-scenarios.test.mjs",
     "python -m unittest scripts.test_production_migration_guard",
-    "node --test scripts/orchestrator-flow/reconcile.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
     "node scripts/check-skill-drift.mjs",
     "node scripts/check-throughput-truth-audit.mjs",
     "git diff --check"
   ],
   "assumptions": [
-    "Documentation drift is not a cosmetic problem. A rule that lives in five files becomes five rules the moment one is edited alone, and the reader who follows the stale copy cannot tell which one he read. The agreement tests therefore assert that each operative FACT appears in every venue where it is operative, not that any particular wording is used, so the prose can be rewritten freely but a promise cannot be deleted from one venue while the others still make it",
-    "The authority boundary was already settled and is recorded here rather than re-decided: the orchestrator may retire work whose worktree is clean, or absent with its absence proven and its durable branch and pull-request evidence complete; Albert alone decides whether potentially recoverable dirty or remote uncommitted work may be abandoned",
-    "The abandonment audit issue claims no database object. Its db-work-scope fence carries an empty objects: on purpose, because claiming the object would collide with the very claim the audit is investigating",
-    "The record is privacy-safe by instruction and by shape: machine and worktree are recorded as identifiers only, and the template names credentials, tokens, personal paths, account names and message contents as things that must never be pasted into it",
-    "The canonical ai-devops skill is the fifth venue and cannot be asserted from this repository's test suite, because it lives outside the repository. scripts/check-skill-drift.mjs is the gate that covers it, and it must still report no contradictions after the ai-devops change lands",
-    "AGENTS.md is held by open pull requests 2821 and 2607, but AGENTS.md is not a protected coordination source: scripts/check-pr-source-collisions.mjs protects exactly scripts/manage-migration-author-lanes.mjs, which this pull request does not touch. The edit here is a single self-contained paragraph in the task-router entry for #2301, chosen to minimise textual overlap with those branches"
+    "A green unit suite is not proof that an instrument works. Both defects fixed here were invisible to 980 passing tests and visible within one live read-only run, because both need a real record that predates the current conventions. The plan's own live-verification gate is what found them, which is the reason that gate exists",
+    "Mapping a refusal on --abandonment-audit to exit 3 is a hardening, not a weakening. Exit 2 on this command is a factual claim that an expired author lane was found; a refusal never established that, and unverifiable already outranks expiry in this command's contract. The refusal message is still printed in full, and the generic handler that every other command uses is untouched",
+    "Isolating the claim-identity read does not hide the bad claim. It reports it in both domains with the claim number in the message, so an operator is told exactly which claim to go and fix, and the run can never report clean while a claim is unreadable",
+    "scripts/manage-migration-author-lanes.mjs is the repository's one protected coordination source. Before editing it, the nine open pull requests were checked against the collision rule in scripts/check-pr-source-collisions.mjs and none of them touches that file, so there is no colliding pull request to wait behind",
+    "The definition-of-done boxes are ticked against named artifacts rather than from memory, and the STATUS table holds the per-step commits, sub-issues, verdict refs and suite counts behind them",
+    "The plan's handoff is deleted in this pull request because this pull request closes #2301, which is what the handoff-contract rule requires; the plan file itself stays as the durable record"
   ],
   "stop_conditions": [
-    "Stop if any documentation claim in this change is not true of the code that landed in Steps 1-5",
-    "Stop if the agreement tests would pass against a venue that had silently lost a fact",
-    "Stop if current main moves before the final exact-head review-to-merge cycle"
+    "Stop if the live audit cannot be run read-only, or if any live run mutates anything",
+    "Stop if any definition-of-done box cannot be tied to a real artifact",
+    "Stop if current main moves before the final exact-head review-to-merge cycle",
+    "Stop rather than apply the lifecycle to a live expired claim to demonstrate it"
   ]
 }

@@ -218,3 +218,32 @@ NO-PROGRESS ALARM FIRED: 2 outcomes stalled over 120 minutes: #2866 dispatched 3
 ```
 
 - Same result as the earlier dispatch 35108722305 (14:28Z). The run reports success but never evaluates stalls or comments on the marker, because the workflow cannot resolve an open orchestrator marker. Step 4 acceptance (a fired alarm on the marker issue) is not met.
+
+## 2026-09-16 17:41Z: Step 4 alarm fixed and fired live (#3079, PR #3080)
+
+### Step 4 hourly no-progress alarm: FIRED LIVE — PROVEN
+
+- Fix: with no resolvable orchestrator marker, the alarm now still evaluates stalled outcomes and posts to one stable fallback issue, created once and labelled `orchestrator-alarm`. The queue audit excludes that label. A run that can neither evaluate nor post exits 1. Reviewed by glm-5.3 (REVISE at bc4b7029, then APPROVE at 846b2841) and muse-spark-1.3-contributor (APPROVE at 2f738adc). Guarded merge: 6492c767.
+- Live dispatch on main 6492c767: https://github.com/u2giants/shared-db/actions/runs/35129683767 (workflow_dispatch, concluded `success`). Verbatim output fields:
+
+```
+  "status": "posted",
+  "marker": "none",
+  "alarm_key": "4332d550564b359bcfa84aa7c6bc6108584c9029ff582b7c2b2b1c3ccc0d6a29",
+  "target": 3084,
+  "comment_url": "https://github.com/u2giants/shared-db/issues/3084#issuecomment-5701892117",
+  "stalled": [
+    2866,
+    2870
+  ],
+  "zero_closures_4h": true
+```
+
+- Fallback issue #3084, "Orchestrator no-progress alarm (no orchestrator marker)", was created by `app/github-actions` with label `orchestrator-alarm`.
+- Posted comment https://github.com/u2giants/shared-db/issues/3084#issuecomment-5701892117, verbatim line:
+
+```
+- #2866 has been `dispatched` for 3766 minutes (since 2026-09-14T02:54:54.466Z). Blocker: worker has not reported implementation complete. Unblock: check the worker session; if it is gone, reclaim and redispatch.
+```
+
+- This supersedes "Alarm installed — NOT PROVEN" and "LIVE RUN DID NOT FIRE" above. The scheduled `7,37 * * * *` trigger runs the same command, and later runs are deduped by alarm key until the stalled set changes.

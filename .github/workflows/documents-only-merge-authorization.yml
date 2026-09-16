@@ -77,6 +77,20 @@ jobs:
             echo 'documents_only=false' >> "$GITHUB_OUTPUT"
           fi
 
+      # No-database-preview fast lane receiver (#3027, ai-devops#401 Step 2A). Report-only:
+      # it reads a sender classification block from a trusted author, re-proves it against
+      # the authenticated live pull request, and writes the decision to the log and summary.
+      # It never grants or blocks a status. Skipped while the base lacks the script.
+      - name: Report the no-database-preview route decision
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f scripts/orchestrator-flow/preview-route-canary.mjs ]; then
+            node scripts/orchestrator-flow/preview-route-canary.mjs --receiver --pr "$PR_NUMBER"
+          fi
+
       - name: Re-prove and authorize under the repository-maintenance mutex
         env:
           GH_TOKEN: ${{ github.token }}

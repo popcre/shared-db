@@ -1,42 +1,57 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3043,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 1: add one nullable, default-less text column to the no-op, fully revoked canary table plm.production_lane_canary so the automatic production lane performs one fully machine-qualified promotion. No data, grant, RLS or application behaviour change.",
-  "base_sha": "4e32da479959d9d3c2b336e4d529a4d8188e7940",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3027-step1-canary-comment",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-step1-canary",
+  "generation": 8,
+  "work_issue": 3045,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Tooling for programme popcre/ai-devops#401 Steps 2A, 4 and 7 under issue 3045 (tracked in 3027): a report-only no-database-preview route decision in the documents-only workflow, a scheduled two-hour no-progress alarm with successor resume, and a dispatch-only start-reroute staging hook with its harness. Scripts, tests and workflows only; no schema, migration, database claim or database access.",
+  "base_sha": "8c4ce615bd6bfc7910e9351163a14336b709c4cd",
+  "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
+  "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
+  "branch": "claude/3027-blocked-steps-tooling",
+  "worktree": "C:/repos/shared-db-worktrees/3027-blocked-steps",
   "allowed_paths": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
+    ".github/workflows/documents-only-merge-authorization.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    ".github/workflows/start-reroute-canary.yml",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
+    ".github/workflows/documents-only-merge-authorization.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    ".github/workflows/start-reroute-canary.yml",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command and no session-made production workflow dispatch",
-    "No change to data, grants, RLS or any application table",
-    "No migration version other than claimed 20260916120643"
+    "No database read or write of any kind",
+    "No migration, schema, or database claim",
+    "No GitHub settings change",
+    "No cancellation of any run other than the staged non-start canary"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "plm.production_lane_canary exists on preview and production and is read by no application"
+    "The documents-only route step is continue-on-error and report-only, so it cannot change a merge decision"
   ],
   "stop_conditions": [
-    "Stop if production can only be reached by a session-made dispatch"
+    "Stop and report if any step needs a schema, migration, database write, or settings change"
   ]
 }

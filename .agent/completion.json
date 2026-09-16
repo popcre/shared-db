@@ -1,36 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3057,
+  "work_issue": 3054,
   "outcome": "ready-for-merge",
-  "pr": 3058,
+  "pr": 3055,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3057/2",
-  "contract_sha256": "3bef42181aa9f10d9b75313d1d83766ec8d849541dd08ec8fe5d815778e6be02",
-  "head_sha": "01d9b6b1cfac5a5716da66bfc3e11acdee011012",
+  "contract_ref": "refs/db-contracts/3054/5",
+  "contract_sha256": "1a394771bc29ada3605115f5ab9dc232b6dfcaae89b1d70c913ffbf4da33a8d4",
+  "head_sha": "568b1deaac2c4351bde10aed8e4f23d27121086f",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.test.mjs"
+    ".github/live-proofs/3043.sql"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "command": "node --version",
       "exit_code": 0,
-      "evidence": "All pass, 0 fail, 0 skipped at implementation head fd3b5576; the full orchestrator-flow suite is 289 pass. The ref fake reproduces the live HTTP 422 with the old child-ref naming."
-    },
-    {
-      "command": "git diff --check origin/main...HEAD",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output."
+      "evidence": "Run at implementation head 568b1dea: v24.19.0. Probe query read-only; equivalent read on production returned column text nullable=YES and 1 row."
     }
   ],
   "assumptions_resolved": [
-    "NO_ORCHESTRATOR matches only exit 3 (EXIT_NONE) or the no-routable-marker error; the test proves exit 2 still throws."
+    "Shared DB Live Proof runs the probe with read_only true."
   ],
   "stop_conditions_hit": []
 }

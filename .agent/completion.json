@@ -8,6 +8,8 @@
   "contract_sha256": "282dae216b73d43dccfecdf78f316dff93b4279058c7a335de4a373370fa42e9",
   "head_sha": "f399389fd36301a63d2379a7500bf8675f19f82a",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "docs/verification/issue-2988-historical-producer-restoration.md",
     "scripts/historical-migration-restorations.mjs",
     "scripts/historical-migration-restorations.test.mjs"

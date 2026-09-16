@@ -1,35 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3043,
+  "work_issue": 3054,
   "outcome": "ready-for-merge",
-  "pr": 3046,
-  "migration_versions": [
-    "20260916120643"
-  ],
-  "contract_ref": "refs/db-contracts/3043/3",
-  "contract_sha256": "f201dee4ee003d96b4422bc465e76562a4fead5a2e0a80b8bcf6bd42cbd49126",
-  "head_sha": "6f13850050579b464d50c50c369d93b546cae302",
-  "files_changed": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"
-  ],
+  "pr": 3055,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3054/1",
+  "contract_sha256": "e9b1091089061099f77cd18a4da7f38f3ebc4f997f1b9bab6200c5c3bfbe425f",
+  "head_sha": "c2ffb53d9cf5dd014e39e093e90d62d0fcf63014",
+  "files_changed": [".github/live-proofs/3043.sql"],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
-  "checks": [
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Run at implementation head 6f138500 (refreshed from main 4e32da47), re-run: Static checks passed."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."
-    }
-  ],
-  "assumptions_resolved": [
-    "Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."
-  ],
+  "db_writes": [],
+  "checks": [{"command": "node --version", "exit_code": 0, "evidence": "Run at implementation head c2ffb53d: v24.19.0. Probe query read-only; equivalent read on production returned column text nullable=YES and 1 row."}],
+  "assumptions_resolved": ["Shared DB Live Proof runs the probe with read_only true."],
   "stop_conditions_hit": []
 }

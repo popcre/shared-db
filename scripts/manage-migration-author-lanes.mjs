@@ -48,7 +48,7 @@ import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TY
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
-import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
+import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
 
 export const REPO = 'u2giants/shared-db'
 // NO AUTHOR LANE CAP. The cap was three (2026-08-14), five (2026-08-25), eight
@@ -7833,6 +7833,10 @@ export function runTrainCommand(o,io,readJson){
     const prior=readJson(o.closeTrain,'--close-train')
     assertRecordedTrain(prior,io)
     const failed=o.failedAppliedPrefix!==undefined
+    if(!failed){
+      if(!o.trainProof)throw new MigrationTrainError('--close-train requires --train-proof <file> with passing production assertions')
+      assertTrainProductionEvidence(prior,readJson(o.trainProof,'--train-proof'))
+    }
     const prefix=failed?String(o.failedAppliedPrefix).split(',').map((v)=>v.trim()).filter(Boolean):[]
     const record=transitionTrain(prior,failed?'failed':'closed',io,{applied_prefix:prefix})
     return {record,ref:trainRecordRef(record)}

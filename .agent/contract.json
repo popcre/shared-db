@@ -1,45 +1,54 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3100,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "In unstarted mode judge each reviewer only by its own durable start marker; PR-wide CI or sibling-slot activity never counts as its start; unreadable evidence stays fail-closed.",
-  "base_sha": "9feeccab189aa05f30a6cbe467a3868641c8352e",
-  "dispatcher": "Claude #3027 Step 7 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 7 own-start-marker fix",
-  "branch": "claude/3027-start-watch-own-marker",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-own-marker",
+  "generation": 1,
+  "work_issue": 3091,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3091 migration author a7f2",
+  "branch": "claude/3091-milestone-schedule-a7f2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "config/db-data-admin-property-source-coverage.json",
+    "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "config/db-data-admin-property-source-coverage.json",
+    "types/database.types.ts",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table plm.\"FactoryTime\""
+  ],
+  "db_writes": [
+    "index plm.prod_order_header_id_key",
+    "index plm.prod_order_milestone_schedule_status_needed_idx",
+    "index plm.prod_order_milestone_schedule_upsert_key",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.prod_order_milestone_schedule"
+  ],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No production workflow dispatch"
+    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
+    "No data change to existing tables",
+    "No migration version other than claimed 20260916231838"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "The ordinary two-hour silence path keeps using PR activity"
+    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
   ],
   "stop_conditions": [
-    "Stop if the fix would need a database change"
+    "Stop if the change needs anything beyond the admitted objects"
   ]
 }

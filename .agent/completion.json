@@ -8,6 +8,8 @@
   "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
   "head_sha": "d9b7b6d7e0751df877a6dfb1bacd50c0de4e4a51",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/orchestrator-flow/reviewer-start-watch.mjs",
     "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],

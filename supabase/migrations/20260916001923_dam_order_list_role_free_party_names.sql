@@ -2,6 +2,15 @@
 -- PopDAM user, including one with no app.user_role row.
 -- derived-from: 20260810010000
 --
+-- The two helpers live in the dam schema, not app. PostgREST on this project
+-- is configured with
+--   pgrst.db_schemas = public, graphql_public, api, crm, pim, core, app
+-- so a set-returning helper in app would be reachable as an RPC and any signed
+-- in user could enumerate the whole customer and factory directory outside the
+-- view. dam is not in that list, authenticated already holds USAGE on it and
+-- anon does not, so the helpers are reachable only through the view. The
+-- explicit authenticated guard inside each function is kept as a second layer.
+--
 -- PRODUCTION DIAGNOSIS (read-only, 2026-09-15/16, qsllyeztdwjgirsysgai).
 --   api.dam_order_list is a security-invoker view that LEFT JOINs core.customer
 --   (826 rows) and core.factory (93 rows). Both carry the `shared_read` policy
@@ -38,7 +47,7 @@
 --   * No timeout is raised, no dataset is loaded in full, and no index,
 --     materialized view or scheduled job is introduced.
 
-create or replace function app.dam_order_list_customer_directory()
+create or replace function dam.dam_order_list_customer_directory()
 returns table (customer_id uuid, customer_name text)
 language plpgsql
 stable
@@ -54,7 +63,7 @@ begin
 end;
 $function$;
 
-create or replace function app.dam_order_list_vendor_directory()
+create or replace function dam.dam_order_list_vendor_directory()
 returns table (vendor_id uuid, vendor_name text)
 language plpgsql
 stable
@@ -70,16 +79,16 @@ begin
 end;
 $function$;
 
-revoke all on function app.dam_order_list_customer_directory() from public, anon;
-revoke all on function app.dam_order_list_vendor_directory() from public, anon;
+revoke all on function dam.dam_order_list_customer_directory() from public, anon;
+revoke all on function dam.dam_order_list_vendor_directory() from public, anon;
 -- service_role keeps EXECUTE because it already holds SELECT on the view and
 -- would otherwise lose the two name columns it can read today.
-grant execute on function app.dam_order_list_customer_directory() to authenticated, service_role;
-grant execute on function app.dam_order_list_vendor_directory() to authenticated, service_role;
+grant execute on function dam.dam_order_list_customer_directory() to authenticated, service_role;
+grant execute on function dam.dam_order_list_vendor_directory() to authenticated, service_role;
 
-comment on function app.dam_order_list_customer_directory() is
+comment on function dam.dam_order_list_customer_directory() is
   'Issue #2988. Authenticated-only (id, name) customer directory for api.dam_order_list. Returns no other column and is evaluated once per OrderList query; core.customer policies are unchanged.';
-comment on function app.dam_order_list_vendor_directory() is
+comment on function dam.dam_order_list_vendor_directory() is
   'Issue #2988. Authenticated-only (id, name) vendor directory for api.dam_order_list. Returns no other column and is evaluated once per OrderList query; core.factory policies are unchanged.';
 
 create or replace view api.dam_order_list as
@@ -188,9 +197,9 @@ join plm.production_order po
 -- Issue #2988: the two party names come from narrow authenticated-only
 -- directories, evaluated once per query, instead of a per-row RLS policy
 -- evaluation over core.customer / core.factory.
-left join app.dam_order_list_customer_directory() cust
+left join dam.dam_order_list_customer_directory() cust
   on cust.customer_id = po.company_id
-left join app.dam_order_list_vendor_directory() fact
+left join dam.dam_order_list_vendor_directory() fact
   on fact.vendor_id = po.factory_id
 left join plm.item item
   on item.id = pol.item_id
@@ -207,10 +216,15 @@ left join plm.production_order_line_source_ref coldlion_ref
 
 -- Re-asserted, not changed: the view keeps the invoker semantics fixed by
 -- 20260810110000 and the same grants it already carries. anon stays excluded.
+-- The service_role write grants below are not new and are not decorative: the
+-- live view's relacl on production today is
+--   {postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}
+-- so re-asserting them reproduces the existing state exactly. Dropping them
+-- would be an unrelated privilege change outside this issue's scope.
 alter view api.dam_order_list set (security_invoker = true);
 revoke all on api.dam_order_list from public, anon;
 grant select on api.dam_order_list to authenticated;
 grant select, insert, update, delete on api.dam_order_list to service_role;
 
 comment on view api.dam_order_list is
-  'PopDAM OrderList read contract. security_invoker view over plm order/line/item/bridge inputs under the caller''s own RLS. Issue #2988: customer and vendor display names come from app.dam_order_list_customer_directory() and app.dam_order_list_vendor_directory(), narrow authenticated-only (id, name) directories evaluated once per query, so a signed-in user with no business role loads the bounded page without the per-row core.customer and core.factory policy cost. Direct core.customer and core.factory access is unchanged.';
+  'PopDAM OrderList read contract. security_invoker view over plm order/line/item/bridge inputs under the caller''s own RLS. Issue #2988: customer and vendor display names come from dam.dam_order_list_customer_directory() and dam.dam_order_list_vendor_directory(), narrow authenticated-only (id, name) directories evaluated once per query, so a signed-in user with no business role loads the bounded page without the per-row core.customer and core.factory policy cost. Direct core.customer and core.factory access is unchanged.';

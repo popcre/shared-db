@@ -7,7 +7,7 @@
       "kind": "catalog_contract"
     }
   ],
-  "migration_sha256": "dc219f07f41445b607871feea6bf62293e429a35edcda30e8e0d047813874353",
+  "migration_sha256": "4f7a138d22ec190d6d7c4eedf2737d1fa3ee491680badde0349d5bbc540e0739",
   "migration_version": "20260916001923",
   "schema_version": 1
 }

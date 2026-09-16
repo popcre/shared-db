@@ -1,46 +1,55 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3057,
+  "generation": 1,
+  "work_issue": 3028,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Fix two live-proof failures for issue 3057 (tracked in 3027): make the start-reroute canary dispatch claim and ack refs siblings of the reservation ref so git accepts them, and make the no-progress alarm report no-orchestrator when zero orchestrator markers are open. Scripts and tests only; no schema, migration, database claim or database access.",
-  "base_sha": "585f61ae7d0b7ab4b2b7d486d193d415824f9ef4",
-  "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
-  "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
-  "branch": "claude/3027-reroute-ref-namespace",
-  "worktree": "C:/repos/shared-db-worktrees/3027-blocked-steps",
+  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
+  "dispatcher": "Claude popcre/ai-devops#401 programme session",
+  "worker": "Claude Opus 5 issue-3028 sidecar registry",
+  "branch": "claude/3028-sidecar-registry",
+  "worktree": "C:/repos/shared-db-3028",
   "allowed_paths": [
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/**",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration, schema, or database claim",
-    "No GitHub settings change"
+    "No migration, schema change, db claim, or database read or write",
+    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
+    "No work in a shared checkout"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-    "git diff --check origin/main...HEAD"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python scripts/check_production_verification_sidecars.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
   ],
   "assumptions": [
-    "A no-orchestrator status is only returned for the zero-marker resolution; every other read failure still fails the run"
+    "Every existing sidecar is declared with issue null because its originating issue is historical",
+    "The preview producer set is byte-identical to main apart from the added registry file"
   ],
   "stop_conditions": [
-    "Stop and report if any step needs a schema, migration, database write, or settings change"
+    "Stop and report if the change needs a migration, schema change, or database write"
   ]
 }

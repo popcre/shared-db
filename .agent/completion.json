@@ -1,26 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3054,
+  "work_issue": 3069,
   "outcome": "ready-for-merge",
-  "pr": 3055,
+  "pr": 3070,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3054/9",
-  "contract_sha256": "2d83d0aef792f9ac49966b93e1c5408ced307795b09416f69e726f20a23fdea3",
-  "head_sha": "2e1a666b2a61746801e38af0d40e26794dcc9ebd",
+  "contract_ref": "refs/db-contracts/3069/1",
+  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
+  "head_sha": "37e7ddf4f0dc28b74ed68ad4e03af360f2c90574",
   "files_changed": [
-    ".github/live-proofs/3043.sql"
+    ".github/workflows/migration-author-lease.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --version",
+      "command": "node --test on every changed scripts test file",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2e1a666b: node v24.19.0. Probe file unchanged; read-only."
+      "evidence": "check-required-checks-preflight, dispatch-production-apply, refresh-code-pr-branch 58/58 pass, 0 fail, 0 skipped at 37e7ddf4 after refreshing onto origin/main."
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no output at 37e7ddf4."
     }
   ],
   "assumptions_resolved": [
-    "Shared DB Live Proof runs the probe with read_only true."
+    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
   ],
   "stop_conditions_hit": []
 }

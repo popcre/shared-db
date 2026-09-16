@@ -4518,5 +4518,80 @@ CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
 )
 
 
+# Issue #2988. api.dam_order_list must keep invoker semantics while reading the
+# two party display names through narrow authenticated-only directories, so a
+# signed-in PopDAM user with no app.user_role row stops paying a per-row
+# core.customer / core.factory policy evaluation on every bounded page.
+DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT = (
+    "exists (select 1 from pg_class c where c.oid=to_regclass('api.dam_order_list')"
+    " and c.relkind='v'"
+    " and c.reloptions @> array['security_invoker=true']::text[]"
+    " and position('dam_order_list_customer_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('dam_order_list_vendor_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))=0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))=0"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    # The roles that read this view today must still be able to read it. The
+    # first shape of this repair raised insufficient_privilege from a joined
+    # SECURITY DEFINER helper, which a LEFT JOIN does not swallow, so
+    # service_role and every no-JWT session got 42501 instead of rows. Nothing
+    # in the catalog caught that, so it is pinned here.
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # Both directories are OWNER-evaluated views, never invoker views and never
+    # functions: a view cannot raise, so it cannot abort the order list.
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_customer_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('customer_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('customer_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_vendor_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('vendor_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('vendor_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # The owner reading is only safe while neither source table forces RLS on
+    # its owner, and the repair must not have been bought by widening either
+    # table: both keep exactly the two policies they carry today.
+    " and (select count(*) from pg_class c join pg_namespace n"
+    " on n.oid=c.relnamespace where n.nspname='core'"
+    " and c.relname in ('customer','factory')"
+    " and c.relrowsecurity and not c.relforcerowsecurity"
+    " and c.relowner::regrole::text='postgres')=2"
+    " and (select count(*) from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname in ('shared_read','admin_write'))=4"
+    " and not exists (select 1 from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname not in ('shared_read','admin_write'))"
+    # No SECURITY DEFINER helper of the abandoned first shape may survive.
+    " and to_regprocedure('dam.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('dam.dam_order_list_vendor_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_vendor_directory()') is null"
+)
+CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
+    DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT
+)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

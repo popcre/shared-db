@@ -194,7 +194,16 @@ export function FilterHeader(props: HeaderProps) {
             aria-label={`Search ${label} values`}
             placeholder="Search values…"
             value={listSearch}
-            onChange={(event) => setListSearch(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value
+              setListSearch(next)
+              // Typing in the search box filters the main table too: keep only
+              // the values that match, or clear the filter when the box is empty.
+              const q = next.trim().toLowerCase()
+              props.onSetFilter?.(key, q
+                ? new Set(allValues.filter(value => formatFilterOptionLabel(value).toLowerCase().includes(q)))
+                : null)
+            }}
             onClick={(event) => event.stopPropagation()}
           />
           <div className="set-filter-actions">

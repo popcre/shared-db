@@ -71,6 +71,7 @@ describe('RevoGrid public header filter adapter', () => {
   })
 
   it('filters the checkbox list by the set-filter search box', () => {
+    const onSetFilter = vi.fn()
     render(
       <FilterHeader
         prop="status"
@@ -78,7 +79,7 @@ describe('RevoGrid public header filter adapter', () => {
         filters={{}}
         distinctValues={{ status: ['alpha', 'bravo', 'charlie'] }}
         setFilters={{}}
-        onSetFilter={() => undefined}
+        onSetFilter={onSetFilter}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Set filter Status' }))
@@ -89,6 +90,7 @@ describe('RevoGrid public header filter adapter', () => {
     expect(within(dialog).getByText('alpha')).toBeInTheDocument()
     expect(within(dialog).queryByText('bravo')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('charlie')).not.toBeInTheDocument()
+    expect(onSetFilter).toHaveBeenLastCalledWith('status', new Set(['alpha']))
   })
 
   it('suggests matching distinct values as you type in the header text input', () => {

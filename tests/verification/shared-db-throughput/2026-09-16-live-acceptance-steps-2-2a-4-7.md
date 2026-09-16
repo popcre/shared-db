@@ -13,8 +13,8 @@
 |---|---|---|
 | 2 | Safe version re-reservation without closing a PR | PROVEN (live, 2026-09-16) |
 | 2 | Named lease/conflict admission; no unrelated production hold | NOT PROVEN — `hold_reason` is not implemented on main |
-| 2A | Authenticated sender-to-receiver no-database-preview canary | see §2A |
-| 2A | Ten-minute qualified-capacity target | see §2A |
+| 2A | Authenticated sender-to-receiver no-database-preview canary | PROVEN (live, PR #3022, 26 s) |
+| 2A | Ten-minute target | PROVEN for prose PRs (7 m 13 s, 59 s); not measured for no-DB code PRs |
 | 4 | Successor verifies and resumes from a live snapshot | PROVEN (live read-only canary) |
 | 4 | Two-hour no-progress alarm fires | PROVEN (fires on live state when run) |
 | 4 | Alarm is installed (runs without being invoked by hand) | NOT PROVEN — no scheduler or skill invokes it |
@@ -46,7 +46,51 @@ Note: the supersession operation (`--supersede-active-claim-version`) dates from
 
 ## Step 2A — no-database-preview fast lane
 
-Canary in progress on this documentation PR; results are added in the next commit.
+### Authenticated sender-to-receiver canary — PROVEN (live; no database touched)
+
+- Sender: popcre/ai-devops `origin/main` `tools/ci/classify-database-preview.mjs --manifest <m>`, run against the live git objects.
+- Receiver: `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch 3027 --issue 3027 --pr <n> --database-preview-classification-file <sender output>`.
+- The receiver ran only after an in-process pre-check of `databasePreviewAdmission` returned `NO_DATABASE_PREVIEW`, because any other decision continues into the mutating prepare-preview path.
+
+Target: open prose-only [PR #3022](https://github.com/u2giants/shared-db/pull/3022) (single file `HANDOFF.d/2026-09-16T0730Z-edge-dev-2-claude-orch-3004-closeout.md`). The canary only read the PR and did not change it.
+
+```
+2026-09-16T11:57:15Z sender  NO_DATABASE_PREVIEW proven_non_database_change 887fa5d4d785090c1d14935f72e9c33a39f6ecd8 0065a2b25cf66dc0f6f38572856d3bfc45f9099794b506bfeed1cc49f3733747 [["HANDOFF.d/2026-09-16T0730Z-edge-dev-2-claude-orch-3004-closeout.md","documentation"]]
+2026-09-16T11:57:37Z receiver start
+2026-09-16T11:57:40Z receiver exit 0
+  "decision": "NO_DATABASE_PREVIEW", "next_action": "return-to-natural-owner", "issue": 3027, "pr": 3022,
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d", "head_sha": "887fa5d4d785090c1d14935f72e9c33a39f6ecd8",
+  "bundle_id": "75fadb648a4f0b521e66b11e6d603967e47343cfd3d560a2063a15916e88d1f9",
+  "classification_digest": "2d440b1b43e5585ec9fb6340028587c15c2f309736f772c546d3bd5ec7337f72",
+  "applicable_checks": ["exact-head-review","full-ci"]
+```
+
+The complete loop took 26 s. The receiver re-read the live PR base, head, and files before admitting.
+
+Negative control (live, in-process, nothing written): the same sender output with `head_sha` replaced by forty zeros was refused with:
+
+```
+LaneError: database preview evidence does not match the authenticated live pull request repository, base, and head
+```
+
+### Finding — this repository's verification evidence is not fast-lane eligible
+
+The sender run on this PR (#3040, head `6bf3c93a`) returned:
+
+```
+2026-09-16T11:57:14Z DATABASE_PREVIEW_REQUIRED impact_ambiguous 6bf3c93a4bfee4ae5bb5b5eff22f75fab717d17b [["tests/verification/shared-db-throughput/2026-09-16-live-acceptance-steps-2-2a-4-7.md","ambiguous"]]
+```
+
+The sender's safe-documentation allowlist is `docs/*.md|txt`, `HANDOFF.d/*.md`, `plan_*.md`, and `README.md`. Prose under `tests/verification/` classifies as `ambiguous`, and the fail-closed result is correct. The receiver was deliberately not run for this PR. Widening the allowlist is a sender change in popcre/ai-devops and needs no database change.
+
+### Ten-minute target — PROVEN for two live prose PRs (checks only)
+
+| PR | head pushed | last check completed | elapsed | result |
+|---|---|---|---|---|
+| #3022 | 2026-09-16T11:14:30Z (commit `887fa5d4`) | 2026-09-16T11:21:43Z | 7 m 13 s | SUCCESS 19, SKIPPED 6 |
+| #3040 (this PR, first head) | 2026-09-16T11:56:34Z | 2026-09-16T11:57:33Z | 59 s | SUCCESS 17, SKIPPED 6, `Migration guarded merge authorization` SUCCESS |
+
+Limit: these are check-completion times for prose PRs. No live measurement exists yet for a non-documentation, no-database code PR routed by `return-to-natural-owner`.
 
 ## Step 4 — resumable snapshots and the no-progress alarm
 

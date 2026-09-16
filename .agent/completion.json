@@ -2,34 +2,83 @@
   "schema_version": 1,
   "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 2996,
+  "pr": 3000,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2301/6",
-  "contract_sha256": "388ff5aa673073fb6d495a6fa850d42fc3afffb88ac47937fa0f189141ab2a51",
-  "head_sha": "487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe",
+  "contract_ref": "refs/db-contracts/2301/9",
+  "contract_sha256": "c4c76cc5c320e8262106944434e68224c826e0e2c619da7641c52622f403dade",
+  "head_sha": "43c14f8d96895a945679d1a6d769ae16121097c1",
   "files_changed": [
-    "plan_author_lane_abandonment_lifecycle.md"
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-migration-pr-lease.mjs",
+    "scripts/check-migration-pr-lease.test.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs",
+    "scripts/test-fixtures/migration-lane-race-worker.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/documents-only-change.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe (base main 7eac0c7110e597bb8380c75037f2f1b4730d6a9b): pass 22, fail 0, cancelled 0, skipped 0, todo 0. Confirms the classifier that treats plan_author_lane_abandonment_lifecycle.md as a rulebook file, never documents-only, is intact."
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 578, pass 578, fail 0, cancelled 0, skipped 0, todo 0. Unchanged from the pre-change count of 578, so adding the guard to three further mutation paths weakened no existing refusal and broke no existing double. The Windows EPERM race-fixture repair recorded in generation 8 is untouched here; its 30 consecutive clean race runs were measured then and are not re-asserted for this head."
+    },
+    {
+      "command": "node --test scripts/migration-retirement-tombstones.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 30, pass 30, fail 0. The count is unchanged because the reactivation-wiring test was rewritten in place rather than added to: it no longer enumerates five named functions but discovers claim-mutating exports from the module and requires each to consult the retirement guard. That rewritten test fails against the previous head, naming recoverExpiredClaimFromPr, supersedeActiveClaimVersion, reversionActiveClaim and reissueMergedStrandedClaim as unguarded."
+    },
+    {
+      "command": "node --test scripts/check-migration-pr-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 19, pass 19, fail 0. Includes the merge refusal for a terminally retired migration version and its fail-closed behaviour on an unreadable retirement ref."
+    },
+    {
+      "command": "node --test scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 31, pass 31, fail 0. The abandoned-absent scenario still refuses a resume without recovery evidence with the retirement guard in place."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors reported for 7eac0c7110e597bb8380c75037f2f1b4730d6a9b..487a8305e9b54cf6c2eaf4c4d42ce51c2ae16ebe."
+      "evidence": "No whitespace errors reported for 921fef3a0e47f01bc5af73a667f2932d7a33d988..43c14f8d96895a945679d1a6d769ae16121097c1."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 70, pass 70, fail 0. These doubles previously lacked the ref listing the retirement guard asks for; each now answers from its own ref map instead of a hard-coded empty list."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 22, pass 22, fail 0. Same fixture gap and same repair: the shared memoryIo factory lists its real refs rather than reporting that nothing is retired without being asked."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Re-run at implementation head 43c14f8d96895a945679d1a6d769ae16121097c1: tests 6, pass 6, fail 0. The recorded inventory of 296 call sites is unchanged by this fix, which adds guard CALLS rather than new refusal messages, so no disposition needed rewriting."
     }
   ],
   "assumptions_resolved": [
-    "Phase A landed as merge commit 7eac0c7110e597bb8380c75037f2f1b4730d6a9b; verified with git log and the merged state of PR 2640.",
-    "The guarded merge authorized head e7619dc3e391cefa016c5cfad8510d59b41d6cbe under governed APPROVE ref refs/db-review-verdicts/2994-2640-e7619dc3e391cefa016c5cfad8510d59b41d6cbe; sub-issue 2994 is closed as completed.",
-    "Only the plan document changes here; no script, test, workflow or configuration file is touched, and no check or guard is weakened.",
-    "plan_author_lane_abandonment_lifecycle.md is a rulebook file, so the documents-only exemption does not apply and this pull request carries the full evidence pair, governed review and guarded merge.",
-    "Issue 2301 remains open for Phases B-D."
+    "Base is 921fef3a0e47f01bc5af73a667f2932d7a33d988, the merged Phase A plan STATUS record; this branch was rebased onto it before the pull request was opened, so the guarded merge cannot refuse it as behind.",
+    "No other open pull request touches any of the five shared scripts changed here; PRs 2877, 2872, 2869, 2846, 2835, 2823, 2821 and 2607 were each checked file by file, so the single-ready-PR collision rule is satisfied rather than bypassed.",
+    "Retirement is opt-in and the existing --release-claim behaviour is unchanged without --retire; a test asserts an ordinary release writes no tombstone.",
+    "Test doubles that the retirement guard now questions gained a real ref listing rather than a hard-coded empty one, because a double that answers \"nothing is retired\" without being asked would hide the exact failure this step exists to catch.",
+    "No retirement ref is ever deleted; a test asserts deleteRef is never called across create, conflicting retry, rollback and refusal paths.",
+    "plan_author_lane_abandonment_lifecycle.md is deliberately untouched here; recording Step 3 in its STATUS table is Step 6 work.",
+    "This pull request closes sub-issue 2999 and leaves parent 2301 open for Steps 4 to 7.",
+    "The 25-process race test failed roughly one run in twenty-five with a Windows EPERM crash inside the fixture's createRef, not with the assertion under test: Windows reports EPERM rather than EEXIST while a racing process holds the mutex path open with a delete pending. The fixture now retries that transient contention briefly; reporting false instead would have claimed another owner held the ref and refused an author entitled to it.",
+    "The race-test flake was measured at the base commit 921fef3a0e47f01bc5af73a667f2932d7a33d988 in an isolated scratch clone before being attributed: 2 of 40 baseline runs failed with the identical EPERM at migration-lane-race-worker.mjs createRef, so the defect pre-dates this work and the repair here fixes a latent platform bug rather than one introduced by Step 3.",
+    "files_changed lists the nine implementation paths only. The evidence gate compares that list against the change set from the pull request base to report.head_sha, the implementation commit, and separately verifies that the two .agent evidence files are the only paths permitted to follow that head. Naming them in files_changed as well counts them twice and is refused.",
+    "A governed review of head 9551b9be54a25c0456ff0d91cca749571871a03f returned a revision request, recorded durably at refs/db-review-verdicts/2999-3000-9551b9be54a25c0456ff0d91cca749571871a03f, sha 98e477baf353e0726289c4ee8ea87d4d7f275a07. It passed the merge-gate, fixture-honesty and audit-visibility checks and found one gap: recoverExpiredClaimFromPr carried no call to the version guard, so a claim reopened over a tombstoned version could still be mutated through the expired-recovery entry while neighbouring entries stopped it. That finding was confirmed independently against the source before being acted on, not adopted on the reviewer's word.",
+    "The finding was wider than reported. Discovery over the module's own exports found three unguarded paths that re-point or extend a claim, not one: recoverExpiredClaimFromPr, supersedeActiveClaimVersion together with its alias reversionActiveClaim (line 5287 exports the same function under both names), and reissueMergedStrandedClaim. All three now consult the guard. The reissue entry stays unreachable today because it needs a merged pull request the merge gate would have stopped, but an entry that is unreachable by one route is not an entry that may skip the refusal.",
+    "The wiring test that existed to catch this class of defect passed while the three holes were open, because it enumerated the five functions that already carried the guard. An allowlist of the guarded can never catch the unguarded. It now derives the population from the module and holds it to a floor of eight, so a discovery that silently matches nothing fails instead of passing.",
+    "main and relinquishAuthorLease are exempt from that discovery, each with its reason recorded in the test itself. main performs the retirement close and would refuse its own --release-claim --retire; relinquishing hands capacity back without re-pointing or extending a lease, and guarding it would strand a retired claim rather than protect it. Both were read before being exempted: relinquishAuthorLease sets capacity state only and touches no version, branch, worktree or expiry.",
+    "No behavioural fixture was added for the three newly guarded paths, and this is a deliberate limit rather than an oversight. Each guard sits behind preconditions -- an exact claim title, an expired lease, a merged source pull request -- that a double must satisfy before reaching the refusal, and a double that failed a precondition would read as coverage while proving nothing. The rewritten discovery test fails without this fix and names all three paths, which is the property being asserted.",
+    "The fix is a new implementation commit rather than an amendment of the evidence commit. Committing it on top of the old evidence commit would have put the two .agent files inside base..head_sha and been refused by the evidence gate, so the history was re-ordered to implementation commit 43c14f8d96895a945679d1a6d769ae16121097c1 followed by this evidence commit alone."
   ],
   "stop_conditions_hit": []
 }

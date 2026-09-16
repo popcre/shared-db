@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3071,
+  "generation": 1,
+  "work_issue": 3074,
   "work_type": "structural",
   "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 6, train entry a: one migration adding one nullable default-less text column step6_train_note_a to the no-op fully revoked canary table plm.production_lane_canary, promoted to production only as part of one governed migration train whose entries each come from their own merged authoring PR. No data, grant, RLS or application behaviour change.",
-  "base_sha": "c94ef25f1075e2dc7ee4031f5507fed19422e3ab",
+  "goal": "Live acceptance canary for #3027 Step 6, train entry b: one migration adding one nullable default-less text column step6_train_note_b to the no-op fully revoked canary table plm.production_lane_canary, promoted to production only as part of one governed migration train whose entries each come from their own merged authoring PR. No data, grant, RLS or application behaviour change.",
+  "base_sha": "7a5d1ac74c69e3d2c293a92a812d064ae62692b4",
   "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
   "worker": "Claude Opus 5 #3027 Step 6 canary author",
-  "branch": "claude/3071-step6-train-canary",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-canary-3071",
+  "branch": "claude/3074-step6-train-canary-b",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-canary-3074",
   "allowed_paths": [
-    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql",
+    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql",
+    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -27,7 +27,7 @@
   "prohibited_actions": [
     "No manual production command; production only via the governed train after an explicit Grok APPROVE",
     "No change to data, grants, RLS or any application table",
-    "No migration versions other than claimed 20260916160617",
+    "No migration versions other than claimed 20260916184821",
     "No single-PR merged_preview_source_pr rehearsal for this PR (it would auto-promote outside the train)"
   ],
   "required_checks": [

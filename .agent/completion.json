@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "work_issue": 3071,
+  "work_issue": 3074,
   "outcome": "ready-for-merge",
-  "pr": 3073,
+  "pr": 3090,
   "migration_versions": [
-    "20260916160617"
+    "20260916184821"
   ],
-  "contract_ref": "refs/db-contracts/3071/3",
-  "contract_sha256": "14731ac95c97a3c030d5a06cad68f53c2a4821e00b182ecc2ee66d9a2cc7ea2d",
-  "head_sha": "3178ac40f3c7b599e5b1ac17a7ce84b3c87d23b7",
+  "contract_ref": "refs/db-contracts/3074/1",
+  "contract_sha256": "682ab4831a923e3659851407ff1bde56a06c768290a1ece5a33adf2c635f0df2",
+  "head_sha": "13990fa54ad4a6da2c1737d2d064ed4d8ff0b92f",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql"
+    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql"
   ],
   "db_reads": [],
   "db_writes": [
@@ -22,12 +22,12 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 3178ac40: Static checks passed; verify-cost guard passed for 1 added migration."
+      "evidence": "Run at implementation head 13990fa5: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "status OK; version 20260916160617 has markers [] and needs no sidecar."
+      "evidence": "status OK; version 20260916184821 has markers [] and needs no sidecar."
     }
   ],
   "assumptions_resolved": [

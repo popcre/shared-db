@@ -1,42 +1,52 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3043,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 1: add one nullable, default-less text column to the no-op, fully revoked canary table plm.production_lane_canary so the automatic production lane performs one fully machine-qualified promotion. No data, grant, RLS or application behaviour change.",
-  "base_sha": "4e32da479959d9d3c2b336e4d529a4d8188e7940",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3027-step1-canary-comment",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-step1-canary",
+  "generation": 1,
+  "work_issue": 3050,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement popcre/ai-devops#498 items 11-13: refusal messages for files_changed mismatch, wrong-owner claim operations, and a governed review wrapper call missing new <session-name> say exactly what is wrong and how to correct it. Every refusal still refuses.",
+  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
+  "dispatcher": "Albert Hazan via Claude session owning ai-devops#498 (2026-09-16)",
+  "worker": "Claude Opus 5 #498 close-out fast path author",
+  "branch": "claude/498-closeout-fastpath",
+  "worktree": "C:/repos/shared-db-wt-498",
   "allowed_paths": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command and no session-made production workflow dispatch",
-    "No change to data, grants, RLS or any application table",
-    "No migration version other than claimed 20260916120643"
+    "No database read or write of any kind",
+    "No migration file change",
+    "No production command",
+    "No migration or preview workflow dispatch",
+    "No weakening of any refusal"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test on every changed scripts test file",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "plm.production_lane_canary exists on preview and production and is read by no application"
+    "No schema or structure change is needed for message text"
   ],
   "stop_conditions": [
-    "Stop if production can only be reached by a session-made dispatch"
+    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
   ]
 }

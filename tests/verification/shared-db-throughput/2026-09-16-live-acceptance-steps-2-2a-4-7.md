@@ -250,4 +250,25 @@ NO-PROGRESS ALARM FIRED: 2 outcomes stalled over 120 minutes: #2866 dispatched 3
 
 ## 2026-09-16: Step 7 reviewer start watcher live proof (#3095)
 
-In progress.
+PROVEN live on 2026-09-16 from merged main `b063823f` (#3101 fix-forward, issue #3100: an unstarted reviewer is judged only by its own start marker; CI activity and sibling-slot verdicts no longer count as its start).
+
+- Subject: PR #3098 (issue #3097) head `1ad1380c`, slot 1 Muse Spark seq 3009, drawn 2026-09-16T19:45:26Z and never started. Slot 2 grok seq 3010 had already returned APPROVE on the same PR.
+- Before #3101, the dry run kept this lease as `keep-active` because CI runs and the slot 2 verdict counted as activity. After #3101, the dry run shows `governed-return-and-reroute`.
+- Live command: `node scripts/orchestrator-flow/reviewer-start-watch.mjs --drawn-since 2026-09-16T19:35:13Z --apply`, exit 0. Verbatim output lines:
+
+```
+      "action": "governed-return-and-reroute",
+      "reason": "confirmed-not-started",
+        "ref": "refs/db-start-reroutes/reviewer/review-3097-3098-seq3009-slot1",
+              "failureCode": "silent_worker_observed",
+              "sequence": 3014,
+              "reviewer": "glm-5.3",
+          "status": "acknowledged"
+```
+
+- Durable refs read back afterward:
+  - `refs/db-start-reroutes/reviewer/review-3097-3098-seq3009-slot1` = `f2daeb60`
+  - `refs/db-start-reroutes/reviewer/review-3097-3098-seq3009-slot1--dispatch-ack` = `8a15fa19`
+  - `refs/db-review-silence/3097-3098-1ad1380c...-3009` probe `9694f33b`, release `dfb3ea03`
+  - `refs/db-review-replacements/3097-3098-1ad1380c...-3009` = `259e9410`
+  - The Muse lease is gone. `refs/db-review-active-v2/glm-5.3/3097-3098-1ad1380c...` = `259e9410` is the replacement draw (seq 3014, slot 1).

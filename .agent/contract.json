@@ -1,44 +1,26 @@
 {
   "schema_version": 1,
-  "generation": 9,
-  "work_issue": 3048,
+  "generation": 1,
+  "work_issue": 3079,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement #401 plan Steps 2 and 4 for #3027: named holds (a blocked outcome records a hold_reason proven against a held lease, an open conflicting claim, or a declared dependency; lease refusals name the holder) and an hourly workflow that runs the existing two-hour no-progress alarm and reports transitions on the orchestrator marker issue. Step 4 is already delivered on main by 26542b40 (orchestrator-no-progress-alarm.yml); this PR keeps that alarm and adds hold_reason to snapshot outcome rows.",
-  "base_sha": "a160ca54e5eeef992744aeceaaf0df26675a2374",
+  "goal": "Make the scheduled no-progress alarm evaluate stalled outcomes even when no orchestrator marker resolves, post to one stable fallback issue created once, and exit non-zero when it can neither evaluate nor post.",
+  "base_sha": "b682b524106a8231dc12f49a8ace8ea23aa1b838",
   "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 named-hold and alarm author",
-  "branch": "claude/3027-named-hold-alarm",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issues-3027-3028-3029-prod-f35ee9",
+  "worker": "Claude Opus 5 #3027 alarm fallback author",
+  "branch": "claude/3027-alarm-fallback",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-evidence-live",
   "allowed_paths": [
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/db-coordination-events.mjs",
-    "scripts/db-coordination-events.test.mjs",
-    "scripts/lib/hold-reason.mjs",
-    "scripts/lib/hold-reason.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/db-coordination-events.mjs",
-    "scripts/db-coordination-events.test.mjs",
-    "scripts/lib/hold-reason.mjs",
-    "scripts/lib/hold-reason.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -55,7 +37,7 @@
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "No schema or structure change is needed for named holds or the alarm"
+    "No schema or structure change is needed; the alarm only reads GitHub and posts GitHub issue comments"
   ],
   "stop_conditions": [
     "Stop and report if any change needs a schema or structure change or a database write"

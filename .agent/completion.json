@@ -1,26 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3048,
+  "work_issue": 3079,
   "outcome": "ready-for-merge",
-  "pr": 3049,
+  "pr": 3080,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/9",
-  "contract_sha256": "5307c15ef6f48e2f47d424dd049ee791f3b0b0c44aa12a7bd31075335d6f969b",
-  "head_sha": "c41aa92e9ab00c65c6e5654580acc18d0b62eeda",
+  "contract_ref": "refs/db-contracts/3079/1",
+  "contract_sha256": "27f4f328fb0ef86624279d097074dc6613c761e2d1ff27bdbdc5a33f38573f51",
+  "head_sha": "dd6f45f7571dc3af919193b282f150986ced143e",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/db-coordination-events.mjs",
-    "scripts/db-coordination-events.test.mjs",
-    "scripts/lib/hold-reason.mjs",
-    "scripts/lib/hold-reason.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-snapshot.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -28,16 +18,16 @@
     {
       "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "2312 tests, 2312 pass, 0 fail, 0 skipped at implementation head c41aa92e against origin/main a160ca54. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
+      "evidence": "2314 tests, 2314 pass, 0 fail, 0 skipped at implementation head dd6f45f7 against origin/main b682b524. The excluded file fails identically on clean main and is untouched by this PR."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 0bf963ec."
+      "evidence": "Exit 0 with no output at dd6f45f7."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: hold_reason is an optional field in a GitHub comment event, and the alarm posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
+    "No schema or structure change was needed: the alarm reads GitHub issues and posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
   ],
   "stop_conditions_hit": []
 }

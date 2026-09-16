@@ -1,67 +1,70 @@
 {
   "schema_version": 1,
-  "generation": 12,
-  "work_issue": 2301,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Implement Step 4 of plan_author_lane_abandonment_lifecycle.md: separate the reconciliation's capacity truth from its preview truth so one undecipherable preview edge can no longer hide every other lane's readable capacity report; report an expired-unconfirmed author lane with the facts an operator needs; recognize an exact abandonment-audit issue as evidence and, only then, print the separate guarded relinquishment command; never transition an expired claim automatically, with or without a live marker. No schema, database or infrastructure change.",
+  "generation": 1,
+  "work_issue": 2988,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
   "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Step 4 capacity/preview separation worker",
-  "branch": "claude/2301-step4-capacity-preview",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
+  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916001923)",
+  "worker": "Claude Opus 5 issue-2988 migration author",
+  "branch": "claude/issue-2988-orderlist-timeout",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988",
   "allowed_paths": [
-    "scripts/orchestrator-flow/reconcile.mjs",
-    "scripts/orchestrator-flow/reconcile.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
+    "scripts/production-verification-sidecars/20260916001923.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/orchestrator-flow/reconcile.mjs",
-    "scripts/orchestrator-flow/reconcile.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
+    "scripts/production-verification-sidecars/20260916001923.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table core.customer",
+    "table core.factory"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "view dam.dam_order_list_customer_directory",
+    "view dam.dam_order_list_vendor_directory"
+  ],
   "prohibited_actions": [
-    "No database, preview, production, or infrastructure action",
-    "No automatic transition of an expired author claim, on any code path, under any marker state",
-    "No deletion of any coordination ref, claim, branch, pull request, or worktree",
-    "No edit to plan_author_lane_abandonment_lifecycle.md in this pull request; the plan STATUS table is Step 6 work",
-    "No Step 5-7 implementation in this pull request",
-    "No weakening, skipping, or relaxing of any existing check, guard, or refusal",
-    "No synthetic review verdict and no self-approval"
+    "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
+    "No merge of this or any pull request",
+    "No edit to any migration other than reserved version 20260916001923",
+    "No claim of any database object beyond those declared in db_writes",
+    "No work in any other worktree or on any other branch",
+    "No raising of statement_timeout or lock_timeout",
+    "No change to core.customer or core.factory policies, grants or columns",
+    "No security_definer setting on api.dam_order_list without the issue #2662 security review"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/reconcile.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "node --test scripts/orchestrator-flow/capacity-state.test.mjs",
-    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "node --test scripts/coordination-scenarios.test.mjs",
-    "node --test scripts/migration-retirement-tombstones.test.mjs",
-    "git diff --check",
-    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
   ],
   "assumptions": [
-    "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator; Step 3 landed as 1dcf196ea9b506ec14feb55e8465b53d9faf1706, which is this branch's base",
-    "Capacity and preview are separate truths. The old reconcileFlow collapsed both into a single status word, so one unreadable preview edge reported the whole run UNVERIFIABLE and hid every other lane's readable capacity answer",
-    "The top-level status keeps its exact previous meaning, so no consumer reading only that word is affected. The only NEW way to reach UNVERIFIABLE is capacity_error, a field that did not exist before, so no run a consumer has already seen can be reclassified",
-    "Action ordering (relinquish, then resume, then ready) is preserved so the existing consumer assertion in reconcile.test.mjs stays a true statement about the code rather than being rewritten to fit it",
-    "Expiry is not abandonment. An expired lease means a clock ran out; abandonment is a separate fact that exists only if somebody wrote the evidence down. Expiry alone never mutates and never suggests a mutation",
-    "queued_behind of null means UNKNOWN, never zero. 'Nothing is waiting behind this expired lane' is a reason not to act; 'the queue was unreadable' is not, and coercing one into the other would manufacture a reason",
-    "The queued-behind computation is lazy and memoized, so only a snapshot containing at least one expired lane pays for openWorkIssues() and buildDynamicQueues()",
-    "assertAbandonmentEvidence returns null for an ordinary blocker, so the marker requirement and the explicit worktree-state requirement cannot reach the existing ordinary relinquishment path or its tests",
-    "The flow adapter's relinquishCapacity passes no worktree state, so automatic reconciliation of an abandonment-audit blocker now refuses rather than completing. That is the intended fail-closed behaviour, not an accidental throw: no automated caller can observe somebody else's disk, and the plan requires that reconciliation never automatically transitions an expired claim. It is pinned by a test that asserts the refusal and then asserts the same evidence is accepted once an operator supplies the observation",
-    "RELINQUISH_WORKTREE_STATES duplicates WORKTREE_STATES across a module boundary rather than importing it, so a test asserts the two are equal; a drifted suggestion would tell an operator to run a command with a value that command refuses",
-    "Three new prose comments originally used the word 'missing', which the throughput truth audit discovers as call sites; the first push failed with 'truth-audit semantic inventory drift (found 299, recorded 296)'. Two ways to satisfy that check exist: record three excluded dispositions in the audit inventory, or say the same thing in words the audit does not claim. Recording them would have put this pull request on docs/verification/throughput-guard-truth-audit-20260828.json, which open pull requests 2823 and 2821 already hold, and the single-ready-PR collision rule is a rule to wait behind, not to bypass. The comments were therefore reworded to 'absent', 'unreadable' and 'omits'. Their meaning is unchanged and none of them ever described a database object that was never created, so the truth audit loses nothing: it still records 296 call sites and its own suite still passes."
+    "Reserved migration version 20260916001923 is the only version this work may use",
+    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
+    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
+    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
   ],
   "stop_conditions": [
-    "Stop if separating the domains would change the meaning of the existing top-level status for any input a consumer has already seen",
-    "Stop if another ready pull request holds any of the shared scripts in allowed_paths",
-    "Stop if recognizing abandonment evidence would require weakening any existing refusal on the ordinary relinquishment path",
-    "Stop if current main moves before the final exact-head review-to-merge cycle"
+    "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
+    "Stop if the fix would require making api.dam_order_list security definer",
+    "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
+    "Stop if any required check cannot be run rather than reporting it as passed"
   ]
 }

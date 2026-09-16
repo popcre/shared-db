@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "work_issue": 3039,
-  "generation": 1,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Make automatic production qualification ask the production gate's own evidence question before dispatch: run the unchanged historical original-apply proof, fall back to the gate's existing ephemeral-CI route only for non-high-risk migrations, and otherwise refuse without dispatching. No comparison is loosened.",
-  "base_sha": "1d0a711adc16ed622cef5e2355996d720d60c597",
+  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
   "dispatcher": "Claude shared-db session owning issue 3039",
   "worker": "Claude Opus 5 subagent",
   "branch": "claude/fix-3039-promotion-evidence",

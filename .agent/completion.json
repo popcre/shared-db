@@ -1,37 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 3079,
+  "work_issue": 3088,
   "outcome": "ready-for-merge",
-  "pr": 3080,
+  "pr": 3087,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3079/4",
-  "contract_sha256": "4196a4d4cb9b7d9b5eada037cab0afcbdf7b293b6b7a8912909b71cb6acc82eb",
-  "head_sha": "8c7b4ec4e3f1ee60f18e029c4cc5f64625dcdbb8",
+  "contract_ref": "refs/db-contracts/3088/1",
+  "contract_sha256": "22d0f21b06a7bf7bd7fdb27b9097e5ac94d963e4a0f060f5d0afdf22357b7f25",
+  "head_sha": "d0f4ac957155db9a9d34e495de39d18f0dacb79a",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs"
+    "apps/db-data-admin/src/DataAdmin.test.tsx",
+    "apps/db-data-admin/src/FilterHeader.tsx"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+      "command": "npx vitest run in apps/db-data-admin",
       "exit_code": 0,
-      "evidence": "2319 tests, 2319 pass, 0 fail, 0 skipped at implementation head 8c7b4ec4 against origin/main e7ece4f4. The excluded file fails identically on clean main and is untouched by this PR. Truth audit OK at 296 call sites."
+      "evidence": "22 test files, 147 tests passed, 0 failed at implementation head d0f4ac95 on origin/main 1dce1ca4."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 8c7b4ec4."
+      "evidence": "Exit 0 with no output at d0f4ac95."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: the alarm reads GitHub issues and posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
+    "No schema or structure change was needed: the fix is client-side table filtering in the db-data-admin UI."
   ],
   "stop_conditions_hit": []
 }

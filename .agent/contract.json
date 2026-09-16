@@ -1,30 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 4,
-  "work_issue": 3079,
+  "generation": 1,
+  "work_issue": 3088,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the scheduled no-progress alarm evaluate stalled outcomes even when no orchestrator marker resolves, post to one stable fallback issue created once, and exit non-zero when it can neither evaluate nor post.",
-  "base_sha": "e7ece4f411d7ca0cc0746aef3759553c1909c942",
-  "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 alarm fallback author",
-  "branch": "claude/3027-alarm-fallback",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-evidence-live",
+  "goal": "Typing in a db-data-admin column filter popover's search box also filters the main table.",
+  "base_sha": "1dce1ca466ceb9abdf6f1c62d43bf7704322dda1",
+  "dispatcher": "Albert Hazan via Claude shared-db session (owner chat: main table must act on the filter, 2026-09-16)",
+  "worker": "Claude Opus 5 db-data-admin filter fix",
+  "branch": "claude/filter-main-table-bug-2d5f55",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/filter-main-table-bug-2d5f55",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs",
+    "apps/db-data-admin/src/FilterHeader.tsx",
+    "apps/db-data-admin/src/DataAdmin.test.tsx",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    "scripts/orchestrator-snapshot.mjs",
+    "apps/db-data-admin/src/FilterHeader.tsx",
+    "apps/db-data-admin/src/DataAdmin.test.tsx",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -33,15 +27,15 @@
   "prohibited_actions": [
     "No database read or write of any kind",
     "No migration file change",
-    "No production command",
+    "No production database command",
     "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+    "npx vitest run in apps/db-data-admin",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "No schema or structure change is needed; the alarm only reads GitHub and posts GitHub issue comments"
+    "No schema or structure change is needed; the fix is client-side UI filtering only"
   ],
   "stop_conditions": [
     "Stop and report if any change needs a schema or structure change or a database write"

@@ -622,21 +622,6 @@ PREVIEW_PRODUCER_PATHS = (
     # Hash-bound verification declarations are read by the catalog verifier in
     # preview. Contents API directory responses are arrays, so pin each reviewed
     # file explicitly rather than pretending a directory has a blob SHA.
-    "scripts/production-verification-sidecars/20260621151155.json",
-    "scripts/production-verification-sidecars/20260701154948.json",
-    "scripts/production-verification-sidecars/20260710135600.json",
-    "scripts/production-verification-sidecars/20260710135700.json",
-    "scripts/production-verification-sidecars/20260710135900.json",
-    "scripts/production-verification-sidecars/20260710135950.json",
-    "scripts/production-verification-sidecars/20260727154500.json",
-    "scripts/production-verification-sidecars/20260807030000.json",
-    "scripts/production-verification-sidecars/20260823233716.json",
-    "scripts/production-verification-sidecars/20260825031841.json",
-    "scripts/production-verification-sidecars/20260825050407.json",
-    "scripts/production-verification-sidecars/20260825082910.json",
-    "scripts/production-verification-sidecars/20260828021051.json",
-    "scripts/production-verification-sidecars/20260830195655.json",
-    "scripts/production-verification-sidecars/20260830204711.json",
     # Local import of the guard, and the only thing that reads a migration's
     # `-- derived-from:` declaration (issue #1608). An unpinned copy could
     # declare every base satisfied and the guard would believe it, which is the
@@ -2639,56 +2624,159 @@ PREVIEW_PRODUCER_PATHS += (
     # manifest is repository source read by an offline CI validator. Both are
     # pinned rather than exempted: the test's own instruction is to pin anything
     # a tool in the preview job could read, and pinning is the stricter answer.
-    "scripts/production-verification-sidecars/20260910155753.json",
     # Issue #2988. The sidecar binds migration 20260916033914 and is read by the
     # catalog verifier in preview, so it is pinned like every other sidecar.
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production-verification-sidecars/20260911081204.json",
     "config/db-data-admin-property-source-coverage.json",
-    "scripts/production-verification-sidecars/20260908214749.json",
-    "scripts/production-verification-sidecars/20260911213429.json",
-    "scripts/production-verification-sidecars/20260915111626.json",
-    "scripts/production-verification-sidecars/20260909084253.json",
-    "scripts/production-verification-sidecars/20260910123636.json",
-    "scripts/production-verification-sidecars/20260830013942.json",
-    "scripts/production-verification-sidecars/20260830130345.json",
-    "scripts/production-verification-sidecars/20260830172356.json",
-    "scripts/production-verification-sidecars/20260830191719.json",
-    "scripts/production-verification-sidecars/20260830202243.json",
-    "scripts/production-verification-sidecars/20260830212955.json",
-    "scripts/production-verification-sidecars/20260902024541.json",
-    "scripts/production-verification-sidecars/20260830220646.json",
-    "scripts/production-verification-sidecars/20260830230246.json",
-    "scripts/production-verification-sidecars/20260830235651.json",
-    "scripts/production-verification-sidecars/20260831002935.json",
-    "scripts/production-verification-sidecars/20260831012326.json",
-    "scripts/production-verification-sidecars/20260831021656.json",
-    "scripts/production-verification-sidecars/20260831104325.json",
-    "scripts/production-verification-sidecars/20260831145707.json",
-    "scripts/production-verification-sidecars/20260902035909.json",
-    "scripts/production-verification-sidecars/20260831173841.json",
-    "scripts/production-verification-sidecars/20260831184547.json",
-    "scripts/production-verification-sidecars/20260831212757.json",
-    "scripts/production-verification-sidecars/20260831221607.json",
-    "scripts/production-verification-sidecars/20260901142825.json",
-    "scripts/production-verification-sidecars/20260905105038.json",
-    "scripts/production-verification-sidecars/20260903083204.json",
-    "scripts/production-verification-sidecars/20260905063701.json",
-    "scripts/production-verification-sidecars/20260905142150.json",
-    "scripts/production-verification-sidecars/20260907200221.json",
-    "scripts/production-verification-sidecars/20260907030418.json",
-    "scripts/production-verification-sidecars/20260907051735.json",
-    "scripts/production-verification-sidecars/20260911045438.json",
-    "scripts/production-verification-sidecars/20260911222514.json",
-    "scripts/production-verification-sidecars/20260914061331.json",
-    "scripts/production-verification-sidecars/20260914075758.json",
-    "scripts/production-verification-sidecars/20260916001944.json",
     # Invoked by check-sql.sh during preview; pin the reviewed parser so the
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",
     "scripts/check-migration-verify-cost.mjs",
 )
 
+# THE SINGLE SIDECAR DECLARATION REGISTRY (#3028, popcre/ai-devops#401 Step 5).
+#
+# Hash-bound verification sidecars are read by the catalog verifier in preview,
+# so each one is a producer file and must be pinned byte for byte. Contents API
+# directory responses are arrays, so each reviewed file is pinned explicitly
+# rather than pretending a directory has a blob SHA. They used to be hand-listed
+# in the tuples above, and a sidecar merged without its line (#2627) needed a
+# second repair PR. Now the ONLY declaration is one entry in
+# SIDECAR_REGISTRY_PATH. This is not discovery: a sidecar file that is not
+# declared is refused by check_production_verification_sidecars.py in CI before
+# review and by the test suite, and a declaration without its file is refused
+# the same way, so trust never widens silently. The registry itself is pinned.
+SIDECAR_REGISTRY_PATH = "config/production-verification-sidecar-registry.json"
+SIDECAR_DIR = "scripts/production-verification-sidecars"
+
+
+def load_sidecar_registry(repo_root: Path | None = None) -> tuple[str, ...]:
+    """Return the declared sidecar versions, refusing any malformed registry."""
+    root = repo_root or Path(__file__).resolve().parents[1]
+    try:
+        data = json.loads((root / SIDECAR_REGISTRY_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} is unreadable: {exc}") from exc
+    if not isinstance(data, dict) or set(data) != {"schema_version", "sidecars"} or data["schema_version"] != 1:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} must be schema_version 1 with exactly schema_version and sidecars")
+    entries = data["sidecars"]
+    if not isinstance(entries, list):
+        raise RiskGateError("sidecar registry must declare a sidecars list")
+    versions = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"version", "issue"}:
+            raise RiskGateError(f"sidecar registry entry {entry!r} must contain exactly version and issue")
+        version, issue = entry["version"], entry["issue"]
+        if not isinstance(version, str) or not re.fullmatch(r"\d{14}", version):
+            raise RiskGateError(f"sidecar registry version {version!r} is not a 14-digit migration version")
+        if issue is not None and (not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0):
+            raise RiskGateError(f"sidecar registry issue for {version} must be a positive integer or null")
+        versions.append(version)
+    if len(set(versions)) != len(versions):
+        raise RiskGateError("sidecar registry declares a version more than once")
+    return tuple(versions)
+
+
+def sidecar_registry_paths(repo_root: Path | None = None) -> tuple[str, ...]:
+    return tuple(f"{SIDECAR_DIR}/{version}.json" for version in load_sidecar_registry(repo_root))
+
+
+PREVIEW_PRODUCER_PATHS += (SIDECAR_REGISTRY_PATH,) + sidecar_registry_paths()
+
+
+
+def successful_ephemeral_job_id(pr_head: str, api: Callable[[str], Any]) -> int:
+    """The one successful ephemeral-database check on the source PR head."""
+    endpoint = f"repos/{REPOSITORY}/commits/{pr_head}/check-runs?per_page=100"
+    checks = api_sublist(api_object(api, endpoint), "check_runs", endpoint)
+    ids = sorted({
+        c.get("id") for c in checks
+        if isinstance(c, dict) and c.get("name") == EPHEMERAL_CHECK_NAME
+        and c.get("status") == "completed" and c.get("conclusion") == "success"
+        and type(c.get("id")) is int and c.get("id") > 0
+    })
+    if len(ids) != 1:
+        raise RiskGateError(
+            f"expected exactly one successful '{EPHEMERAL_CHECK_NAME}' check on source PR "
+            f"head {pr_head}, found {len(ids)}"
+        )
+    return ids[0]
+
+
+def qualify_automatic_route(
+    *, main_sha: str, allowlist: list[str], source_pr: int, recovery_record: dict | None,
+    repo_root: Path, api: Callable[[str], Any], downloader: Callable[[int, Path], None],
+) -> dict[str, Any]:
+    """Choose, BEFORE dispatch, the evidence route the production gate will accept (#3039).
+
+    Automatic qualification used to dispatch every historical rebind on its preview
+    evidence without asking the gate's question. When the rebind names an ORIGINAL
+    apply run made on an older commit, `prove_historical_original_apply_runs` pins
+    that run's commits to the authoring merge commit and refuses the drift -- so the
+    dispatch was doomed (runs 35052182196, 35061726161). Qualification now runs that
+    SAME proof, unchanged. On refusal it never dispatches the stale evidence: a
+    migration that is not high-risk to live data takes the gate's own ephemeral-CI
+    route, bound to the exact source PR head and proved here with the gate's own
+    `prove_ephemeral_ci_evidence`; a high-risk migration refuses outright.
+    """
+    pr_endpoint = f"repos/{REPOSITORY}/pulls/{source_pr}"
+    pr = api_object(api, pr_endpoint)
+    head_obj = pr.get("head")
+    pr_head = head_obj.get("sha") if isinstance(head_obj, dict) else None
+    if pr.get("merged") is not True or not re.fullmatch(r"[0-9a-f]{40}", str(pr_head)):
+        raise RiskGateError("source PR is not merged or has no exact head")
+    if recovery_record is None:
+        return {"route": "preview"}
+    try:
+        prove_historical_original_apply_runs(
+            record=recovery_record, allowlist=allowlist, repo_root=repo_root,
+            main_sha=main_sha, api=api, downloader=downloader,
+        )
+        return {"route": "preview"}
+    except RiskGateError as preview_refusal:
+        high_risk = preview_required_reasons(repo_root, allowlist)
+        if high_risk:
+            raise RiskGateError(
+                f"the production gate would refuse this preview evidence ({preview_refusal}), "
+                "and the migration is high-risk to live data so the ephemeral CI route cannot "
+                "substitute -- " + "; ".join(high_risk)
+            ) from preview_refusal
+        job_id = successful_ephemeral_job_id(pr_head, api)
+        prove_ephemeral_ci_evidence(
+            check_run_id_text=str(job_id), pr_head=pr_head, allowlist=allowlist,
+            api=api, downloader=downloader, repo_root=repo_root,
+        )
+        return {"route": "ephemeral", "ephemeral_check_run_id": job_id,
+                "preview_refusal": str(preview_refusal)}
+
+
+def qualify_route_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="production_business_risk_gate.py qualify-route")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--main-sha", required=True)
+    parser.add_argument("--allowlist", required=True)
+    parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--recovery-record", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        record = None
+        if args.recovery_record is not None:
+            record = json.loads(args.recovery_record.read_text(encoding="utf-8"))
+            if not isinstance(record, dict):
+                raise RiskGateError("historical recovery record is unreadable")
+        result = qualify_automatic_route(
+            main_sha=args.main_sha, allowlist=normalize_review_allowlist(args.allowlist),
+            source_pr=args.pr, recovery_record=record, repo_root=args.repo.resolve(),
+            api=gh_json, downloader=download_artifact,
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure refuses dispatch
+        print(f"::error::ENGINEER ACTION REQUIRED: automatic qualification found no evidence route "
+              f"the production gate accepts: {type(exc).__name__}: {exc}. Nothing was dispatched.", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "qualify-route":
+        raise SystemExit(qualify_route_main(sys.argv[2:]))
     raise SystemExit(main())

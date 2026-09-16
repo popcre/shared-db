@@ -1149,6 +1149,36 @@ jobs:
           ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
+      # ISSUE #3039. Ask the production gate's own evidence question BEFORE
+      # dispatching. A historical rebind whose original apply ran on an older
+      # commit is refused by the gate's unchanged producer pin; qualification
+      # then takes the gate's ephemeral-CI route on the exact source PR head for a
+      # non-high-risk migration, or refuses without dispatching.
+      - name: Qualify the evidence route the production gate accepts
+        id: evidence_route
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ inputs.commit_sha }}
+          PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          HISTORICAL_PREVIEW_PR: ${{ inputs.historical_preview_source_pr }}
+          RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json
+        run: |
+          set -euo pipefail
+          RECORD_ARGS=()
+          if [ -n "${HISTORICAL_PREVIEW_PR:-}" ]; then
+            RECORD_ARGS=(--recovery-record "$RECOVERY_EVIDENCE")
+          fi
+          python scripts/production_business_risk_gate.py qualify-route \
+            --main-sha "$MAIN_SHA" --allowlist "$PRODUCTION_ALLOWLIST" --pr "$SOURCE_PR" \
+            "${RECORD_ARGS[@]}" > "$RUNNER_TEMP/evidence-route.json"
+          cat "$RUNNER_TEMP/evidence-route.json"
+          ROUTE="$(jq -r '.route' "$RUNNER_TEMP/evidence-route.json")"
+          case "$ROUTE" in
+            preview) echo "ephemeral_check_run_id=" >> "$GITHUB_OUTPUT" ;;
+            ephemeral) echo "ephemeral_check_run_id=$(jq -r '.ephemeral_check_run_id' "$RUNNER_TEMP/evidence-route.json")" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::ENGINEER ACTION REQUIRED: unknown evidence route. Nothing was dispatched." >&2; exit 2 ;;
+          esac
       - name: Write immutable automatic review evidence
         env:
           MAIN_SHA: ${{ inputs.commit_sha }}
@@ -1202,6 +1232,7 @@ jobs:
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}
+          EPHEMERAL_CHECK_RUN_ID: ${{ steps.evidence_route.outputs.ephemeral_check_run_id }}
         run: |
           set -euo pipefail
           # actions/upload-artifact@v4 reports artifact-digest as bare hex, while
@@ -1223,7 +1254,8 @@ jobs:
             --arg review_digest "$REVIEW_DIGEST" \
             --arg preview_digest "$PREVIEW_DIGEST" \
             --arg binding "${SHARED_DB_MERGED_PR_ISSUE_BINDING:-}" \
-            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest,merged_pr_issue_binding:$binding}}' \
+            --arg ephemeral "${EPHEMERAL_CHECK_RUN_ID:-}" \
+            '{ref:"main",inputs:({target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,merged_pr_issue_binding:$binding} + (if $ephemeral == "" then {preview_run_id:$run_id,preview_artifact_digest:$preview_digest} else {ephemeral_check_run_id:$ephemeral} end))}' \
             > "$RUNNER_TEMP/automatic-production-dispatch.json"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \

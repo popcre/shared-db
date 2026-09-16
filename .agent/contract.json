@@ -1,43 +1,60 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3074,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Live acceptance canary for #3027 Step 6, train entry b: one migration adding one nullable default-less text column step6_train_note_b to the no-op fully revoked canary table plm.production_lane_canary, promoted to production only as part of one governed migration train whose entries each come from their own merged authoring PR. No data, grant, RLS or application behaviour change.",
-  "base_sha": "7a5d1ac74c69e3d2c293a92a812d064ae62692b4",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 6 canary author",
-  "branch": "claude/3074-step6-train-canary-b",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-canary-3074",
+  "work_issue": 3093,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Remove the DB Data Admin app, its deploy workflow and launch-readiness check from shared-db because the app moved to u2giants/popdam3 (PR #135); keep database-side guards and update doc pointers.",
+  "base_sha": "135a71a1c4de218035dabd34c2afe3eae326ad7f",
+  "dispatcher": "Albert Hazan via Claude shared-db session (owner chat: move the site to popdam3 right now, 2026-09-16)",
+  "worker": "Claude Opus 5 db-data-admin removal",
+  "branch": "claude/remove-db-data-admin-moved-popdam3",
+  "worktree": "C:/repos/shared-db-wt-rm-dda",
   "allowed_paths": [
-    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql",
+    "apps/db-data-admin/**",
+    ".github/workflows/db-data-admin.yml",
+    ".github/workflows/domain-ownership.yml",
+    "scripts/check-data-admin-launch-readiness.mjs",
+    "scripts/tests/check-data-admin-launch-readiness.test.mjs",
+    "AGENTS.md",
+    "README.md",
+    "DB_Data_Admin.md",
+    "docs/db-data-admin-deployment.md",
+    "docs/db-data-admin-inventory.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916184821_production_lane_canary_step6_train_note_b.sql",
+    "apps/db-data-admin/**",
+    ".github/workflows/db-data-admin.yml",
+    ".github/workflows/domain-ownership.yml",
+    "scripts/check-data-admin-launch-readiness.mjs",
+    "scripts/tests/check-data-admin-launch-readiness.test.mjs",
+    "AGENTS.md",
+    "README.md",
+    "DB_Data_Admin.md",
+    "docs/db-data-admin-deployment.md",
+    "docs/db-data-admin-inventory.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "table plm.production_lane_canary"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command; production only via the governed train after an explicit Grok APPROVE",
-    "No change to data, grants, RLS or any application table",
-    "No migration versions other than claimed 20260916184821",
-    "No single-PR merged_preview_source_pr rehearsal for this PR (it would auto-promote outside the train)"
+    "No database read or write of any kind",
+    "No migration file change",
+    "No production database command",
+    "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/check-domain-ownership.test.mjs scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/public-data-venue.test.mjs scripts/lib/documents-only-change.test.mjs",
+    "node scripts/check-domain-ownership.mjs",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "plm.production_lane_canary exists on preview and production and is read by no application"
+    "No schema or structure change is needed; this removes application code already copied to u2giants/popdam3"
   ],
   "stop_conditions": [
-    "Stop if production can only be reached outside the governed train"
+    "Stop and report if any change needs a schema or structure change or a database write"
   ]
 }

@@ -4,7 +4,8 @@ import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migratio
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { REVIEW_VERDICT_REF_PREFIX } from './lib/review-verdict-artifact.mjs'
+import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
+import { OWN_START_ONLY_ACTIVITY } from './manage-migration-author-lanes.mjs'
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
@@ -2546,12 +2547,36 @@ test('a lease with a start marker is never probed or reclaimed as unstarted, eve
   const plain=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'})
   assert.throws(()=>probeSilentReviewer({...plain.request,failedSequence:plain.assigned.sequence},new Date('2026-09-04T10:30:00Z'),plain.io),/at least 2 hours/)
 })
+test('unstarted mode judges a reviewer only by its own start marker: CI and a sibling slot verdict are not its start',()=>{
+  // #3027 Step 7 live finding: CI check runs and the other slot's review made an unstarted
+  // slot look started. Only the lease's own durable start marker may count.
+  const fixture=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),options={...fixture.request,failedSequence:fixture.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
+  let ci='2026-09-04T10:03:00Z'
+  fixture.io.readLeaseActivity=()=>({issueComments:[{created_at:'2026-09-04T10:08:00Z'}],reviewComments:[],reviews:[{submitted_at:'2026-09-04T10:08:00Z',state:'APPROVED'}],checkRuns:[{started_at:ci,completed_at:ci}],workflowRuns:[{updated_at:ci}]})
+  // The sibling slot 2 has a durable verdict at this head.
+  fixture.io.refs.set(verdictRef({...fixture.request,slot:2}),fixture.io.makeOwnerCommit('db-coordination review-verdict sibling'))
+  const row=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:12:00Z')).find((r)=>r.reviewer===fixture.assigned.reviewer)
+  assert.deepEqual([row.started,row.verdictPresent,row.error],[false,false,null])
+  const probe=probeSilentReviewer(options,new Date('2026-09-04T10:12:00Z'),fixture.io)
+  assert.equal(probe.lastActivityIso,OWN_START_ONLY_ACTIVITY)
+  // More CI lands between probe and reclaim; it must not change the unstarted fingerprint.
+  ci='2026-09-04T10:12:30Z'
+  const released=reclaimSilentReviewer(options,new Date('2026-09-04T10:13:00Z'),fixture.io)
+  assert.ok(released.releaseSha);assert.equal(fixture.io.refs.get(fixture.leaseRef)??null,null)
+  // The ordinary (non-unstarted) silence path still treats PR activity as progress.
+  const plain=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z',activity:[{created_at:'2026-09-04T11:00:00Z'}]})
+  assert.throws(()=>probeSilentReviewer({...plain.request,failedSequence:plain.assigned.sequence},new Date('2026-09-04T13:00:00Z'),plain.io),/activity occurred after the lease was drawn/)
+  // Fail closed: an unreadable PR is never read as unstarted.
+  const dark=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),darkOptions={...dark.request,failedSequence:dark.assigned.sequence,unstarted:true}
+  dark.io.getPr=()=>null
+  assert.throws(()=>probeSilentReviewer(darkOptions,new Date('2026-09-04T10:12:00Z'),dark.io))
+})
 test('start-watch lease view reports slot, draw time, start marker, and activity',()=>{
   const fixture=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'})
   const [young]=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:05:00Z')).filter((row)=>row.reviewer===fixture.assigned.reviewer)
   assert.equal(young.slot,1);assert.equal(young.started,null)
   const [old]=reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:15:00Z')).filter((row)=>row.reviewer===fixture.assigned.reviewer)
-  assert.deepEqual([old.started,old.lastActivityIso,old.verdictPresent,old.error],[false,'none',false,null])
+  assert.deepEqual([old.started,old.lastActivityIso,old.verdictPresent,old.error],[false,OWN_START_ONLY_ACTIVITY,false,null])
   withStartMarker(fixture)
   assert.equal(reviewerStartWatchLeases(fixture.io,new Date('2026-09-04T10:15:00Z')).find((row)=>row.reviewer===fixture.assigned.reviewer).started,true)
 })

@@ -8,7 +8,7 @@
  *
  * It reads the live orchestrator marker, open claims, open PR heads and check
  * rollups, reviewer lease refs, exclusive stage lock refs, outcome events on the
- * owned issues, and the now/next eligible queue. It never writes to GitHub.
+ * owned issues, and the now/next eligible queue. It never writes to GitHub, except --report-alarm, which comments on the marker issue when the alarm state changes.
  *
  * Output is transition-only. Without --state-dir every run prints the report.
  * With --state-dir, the last report key is kept in that local directory and

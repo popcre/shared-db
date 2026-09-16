@@ -10,8 +10,6 @@
   "contract_sha256": "351250a80e34784bf9aebb03fa6a43c61268cc5f505660b6c20542751516828c",
   "head_sha": "2940e295e595809b0eeeb2bd9a15977b08797221",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     ".github/live-proofs/3023.sql",
     "config/production-verification-sidecar-registry.json",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",

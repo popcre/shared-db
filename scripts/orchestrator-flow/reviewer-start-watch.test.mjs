@@ -34,7 +34,14 @@ test('an overdue lease with no start marker and no activity is rerouted', () => 
 
 test('a started review is never rerouted, however old', () => {
   assert.equal(leaseStartDecision(row({ started: true }), '2026-09-16T15:00:00.000Z').decision.action, 'keep-active')
-  assert.equal(leaseStartDecision(row({ lastActivityIso: '2026-09-16T12:05:00.000Z' }), late).decision.action, 'keep-active')
+})
+
+test('CI or another reviewer on the same PR is not this reviewer starting; only its own marker is', () => {
+  // The manager reports own-marker-only rows; any activity value never marks a start.
+  for (const lastActivityIso of ['not-counted-own-start-marker-only', '2026-09-16T12:05:00.000Z']) {
+    assert.equal(leaseStartDecision(row({ lastActivityIso }), late).decision.action, 'governed-return-and-reroute', lastActivityIso)
+  }
+  assert.equal(leaseStartDecision(row({ started: true, lastActivityIso: 'not-counted-own-start-marker-only' }), late).decision.action, 'keep-active')
 })
 
 test('unreadable, stale, or verdict-bearing leases are left alone', () => {

@@ -4549,10 +4549,19 @@ function newestActivityTimestamp(rows,fields){
   return newest
 }
 
-export function activityFingerprintForLease(lease,io,{freshPr=false}={}){
+// Issue #3027 Step 7: in unstarted mode a reviewer is judged ONLY by its own durable start
+// marker. PR-wide activity (CI check runs, workflow runs, another slot's review or comments)
+// is not that reviewer's start, so ownStartOnly neither reads nor fingerprints it. The PR state,
+// head, draft flag and this slot's verdict stay in the fingerprint; unreadable facts still throw.
+export const OWN_START_ONLY_ACTIVITY='not-counted-own-start-marker-only'
+export function activityFingerprintForLease(lease,io,{freshPr=false,ownStartOnly=false}={}){
   if(typeof io?.readLeaseActivity!=='function')throw new LaneError('reviewer activity is unreadable; silence cannot be observed')
   const pr=freshPr&&typeof io.__freshGetPr==='function'?io.__freshGetPr(lease.pr):io.getPr(lease.pr)
   if(!pr?.state||!pr?.head?.sha)throw new LaneError('reviewer PR activity is unreadable; silence cannot be observed')
+  if(ownStartOnly){
+    const facts={issue:Number(lease.issue),pr:Number(lease.pr),headSha:String(lease.headSha).toLowerCase(),slot:Number(lease.slot??1),sequence:Number(lease.sequence),prState:String(pr.state).toLowerCase(),currentHead:String(pr.head.sha).toLowerCase(),draft:pr.draft===true,verdictPresent:hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease)),activity:OWN_START_ONLY_ACTIVITY}
+    return {fingerprint:createHash('sha256').update(canonicalJson(facts)).digest('hex'),lastActivityIso:OWN_START_ONLY_ACTIVITY,facts}
+  }
   const activity=io.readLeaseActivity(lease)
   for(const key of ['issueComments','reviewComments','reviews','checkRuns','workflowRuns'])if(!Array.isArray(activity?.[key]))throw new LaneError(`reviewer ${key} activity is unreadable; silence cannot be observed`)
   const groups=[
@@ -4614,8 +4623,8 @@ function probeSilentReviewerOperation(options,now,io){
   if(age===null||age<minAge)throw new LaneError(unstarted?'unstarted probe requires a lease at least 10 minutes old':`silence probe requires a lease at least ${SILENCE_MIN_AGE_HOURS} hours old`)
   const heldSince=lease.heldSince
   if(unstarted&&reviewStartMarkerPresent({...lease,sequence:request.sequence,slot:request.slot},io))throw new LaneError('unstarted probe refused because the review has a durable start marker')
-  const observed=activityFingerprintForLease(lease,io)
-  if(observed.lastActivityIso!=='none'&&Date.parse(observed.lastActivityIso)>Date.parse(heldSince))throw new LaneError('silence probe refused because reviewer activity occurred after the lease was drawn')
+  const observed=activityFingerprintForLease({...lease,slot:request.slot},io,{ownStartOnly:unstarted})
+  if(!unstarted&&observed.lastActivityIso!=='none'&&Date.parse(observed.lastActivityIso)>Date.parse(heldSince))throw new LaneError('silence probe refused because reviewer activity occurred after the lease was drawn')
   const message=`db-coordination reviewer-silence-probe reviewer=${original.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} sequence=${request.sequence} slot=${request.slot} observed-at=${new Date(now).toISOString()} lease-held-since=${new Date(heldSince).toISOString()} last-activity=${observed.lastActivityIso} fingerprint=${observed.fingerprint}`
   const sha=io.makeOwnerCommit(message)
   if(!io.createRef(probeRef,sha)||io.readRef(probeRef)!==sha)throw new LaneError('reviewer silence probe create-only write could not be proved')
@@ -4647,7 +4656,7 @@ function reclaimSilentReviewerOperation(options,now,io){
   const probeAge=reviewLeaseAgeHours(probe.observedAt,now),unstarted=options.unstarted===true
   if(unstarted){const leaseAge=reviewLeaseAgeHours(probe.leaseHeldSince,now);if(probeAge===null||leaseAge===null||leaseAge<UNSTARTED_MIN_AGE_HOURS)throw new LaneError('unstarted reclaim requires a lease at least 10 minutes old')}
   else if(probeAge===null||probeAge<SILENCE_CONFIRM_HOURS)throw new LaneError(`silent reviewer reclaim requires an unchanged readable probe for at least ${SILENCE_CONFIRM_HOURS} hours`)
-  const observed=activityFingerprintForLease({...original,slot:request.slot},io)
+  const observed=activityFingerprintForLease({...original,slot:request.slot},io,{ownStartOnly:unstarted})
   if(observed.fingerprint!==probe.fingerprint)throw new LaneError('silent reviewer reclaim refused because the activity fingerprint changed after the probe')
   if(typeof io.atomicReviewRefs!=='function'||typeof io.readReviewRefs!=='function')throw new LaneError('silent reviewer reclaim requires atomic compare-and-swap ref support')
   const releaseSha=io.makeOwnerCommit(`db-coordination reviewer-silence-release reviewer=${original.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} sequence=${request.sequence} code=silent_worker_observed probe=${probeSha} observed-at=${probe.observedAt} confirmed-at=${new Date(now).toISOString()} verdict=none artifact=none replacement=none`)
@@ -4659,7 +4668,7 @@ function reclaimSilentReviewerOperation(options,now,io){
     // The fingerprint already reads the PR fresh (`freshPr`) and records its state and
     // head in `facts`. Reading it fresh a second time here cost one request and could
     // never disagree; issue #2697 removed it and the check now uses those facts.
-    const current=resolveSilentLease(options,io),fresh=activityFingerprintForLease({...original,slot:request.slot},io,{freshPr:true}),pr={state:fresh.facts.prState,head:{sha:fresh.facts.currentHead}}
+    const current=resolveSilentLease(options,io),fresh=activityFingerprintForLease({...original,slot:request.slot},io,{freshPr:true,ownStartOnly:unstarted}),pr={state:fresh.facts.prState,head:{sha:fresh.facts.currentHead}}
     if(current.leaseSha!==leaseSha||pr?.state!=='open'||pr?.head?.sha!==request.headSha||hasVerdictForHead(request.issue,request.pr,request.headSha,io,{fresh:true,slot:request.slot})||fresh.fingerprint!==probe.fingerprint)throw new LaneError('silent reviewer lease or activity changed after mutex acquisition')
     // Unstarted mode claims the lease's start marker in the same atomic push: a runner that
     // already wrote it makes the push fail, and a runner that writes after finds it occupied.
@@ -4898,7 +4907,8 @@ function reviewerStartWatchLeasesOperation(io,now,minAgeHours){
     try{
       row.verdictPresent=hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease))
       row.started=reviewStartMarkerPresent({...lease,slot:row.slot},io)
-      row.lastActivityIso=activityFingerprintForLease(lease,io).lastActivityIso
+      // Own start marker only (#3027 Step 7): PR-wide CI or another slot's activity is not this reviewer starting.
+      row.lastActivityIso=OWN_START_ONLY_ACTIVITY
     }catch(error){row.error=String(error?.message??error)}
     return row
   })

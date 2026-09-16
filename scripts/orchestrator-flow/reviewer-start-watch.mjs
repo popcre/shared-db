@@ -5,9 +5,10 @@
 //
 // Every reviewer lease is read through the lane manager (--reviewer-start-watch-leases).
 // run-governed-review.mjs writes a durable refs/db-review-started marker before it launches a
-// provider. A lease with a marker or any PR activity after its draw is a started review and is
-// kept (reviewerStartDecision -> keep-active); it is never touched here. A lease older than the
-// 10-minute start SLO with neither is a confirmed non-start. With --apply it is reserved
+// provider. A lease with its own marker is a started review and is kept (reviewerStartDecision
+// -> keep-active); it is never touched here. PR-wide CI or another slot's activity never counts
+// as this reviewer starting. A lease older than the 10-minute start SLO without its own marker
+// is a confirmed non-start; unreadable evidence is skipped, never treated as started or not. With --apply it is reserved
 // create-only under refs/db-start-reroutes/reviewer/<id> (reserveReviewerReroute), then
 // dispatched exactly once (dispatchQueuedReroute): the slot is returned through the existing
 // governed silence path in its unstarted mode (probe, reclaim) and the next eligible provider
@@ -41,7 +42,6 @@ export function leaseStartDecision(row, now) {
   if (row.verdictPresent) return { assignment, decision: { action: 'skip', reason: 'a verdict exists for this head' } }
   const lifecycle = []
   if (row.started) lifecycle.push({ assignment_id: assignment.id, type: 'review_started', at: row.heldSinceIso, source: 'durable-start-marker' })
-  if (row.lastActivityIso !== 'none' && !(Date.parse(row.lastActivityIso) <= Date.parse(row.heldSinceIso))) lifecycle.push({ assignment_id: assignment.id, type: 'provider_contacted', at: row.lastActivityIso, source: 'pr-activity' })
   return { assignment, decision: reviewerStartDecision(assignment, { now, provider_state: lifecycle.length ? 'usable' : 'confirmed-not-started', lifecycle }) }
 }
 

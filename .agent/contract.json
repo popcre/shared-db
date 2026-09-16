@@ -1,34 +1,44 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3069,
+  "generation": 9,
+  "work_issue": 3048,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement popcre/ai-devops#507 (a)-(c): the guarded merge pre-flight waits for running checks instead of refusing; a one-step code PR branch refresh helper; a production dispatch helper that gathers evidence digests and checks input names. No refusal is loosened.",
-  "base_sha": "7ae12aad1c796e16b7eb598c90bca71bf244d0aa",
-  "dispatcher": "Albert Hazan via Claude session owning ai-devops#507 (2026-09-16)",
-  "worker": "Claude Opus 5 #507 author",
-  "branch": "claude/507-merge-wait",
-  "worktree": "C:/repos/shared-db-wt-498",
+  "goal": "Implement #401 plan Steps 2 and 4 for #3027: named holds (a blocked outcome records a hold_reason proven against a held lease, an open conflicting claim, or a declared dependency; lease refusals name the holder) and an hourly workflow that runs the existing two-hour no-progress alarm and reports transitions on the orchestrator marker issue. Step 4 is already delivered on main by 26542b40 (orchestrator-no-progress-alarm.yml); this PR keeps that alarm and adds hold_reason to snapshot outcome rows.",
+  "base_sha": "a160ca54e5eeef992744aeceaaf0df26675a2374",
+  "dispatcher": "Albert Hazan via Claude shared-db session (#3027 follow-up, 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 named-hold and alarm author",
+  "branch": "claude/3027-named-hold-alarm",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issues-3027-3028-3029-prod-f35ee9",
   "allowed_paths": [
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/db-coordination-events.mjs",
+    "scripts/db-coordination-events.test.mjs",
+    "scripts/lib/hold-reason.mjs",
+    "scripts/lib/hold-reason.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/db-coordination-events.mjs",
+    "scripts/db-coordination-events.test.mjs",
+    "scripts/lib/hold-reason.mjs",
+    "scripts/lib/hold-reason.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -37,17 +47,17 @@
   "prohibited_actions": [
     "No database read or write of any kind",
     "No migration file change",
-    "No production apply dispatch",
-    "No weakening of any refusal"
+    "No production command",
+    "No migration or preview workflow dispatch"
   ],
   "required_checks": [
-    "node --test on every changed scripts test file",
+    "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "No schema or structure change is needed for message text"
+    "No schema or structure change is needed for named holds or the alarm"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
+    "Stop and report if any change needs a schema or structure change or a database write"
   ]
 }

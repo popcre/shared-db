@@ -10,7 +10,7 @@
     ".agent/completion.json"
   ],
   "assumptions": [
-    "Reserved migration version 20260916001923 is the only version this work may use",
+    "Reserved migration version 20260916033914 is the only version this work may use; it replaced superseded version 20260916001923 and was centrally reserved by the repository governed --supersede-active-claim-version command, whose durable evidence is the permanent reservation ref refs/db-claims/20260916033914 (6c9b149d8747293cdb306a73262bd341873bc682) and the owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e",
     "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
     "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
     "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
@@ -26,7 +26,7 @@
     "view dam.dam_order_list_customer_directory",
     "view dam.dam_order_list_vendor_directory"
   ],
-  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916001923)",
+  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916033914)",
   "file_writes": [
     "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
     "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
@@ -37,12 +37,12 @@
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 2,
+  "generation": 3,
   "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
   "prohibited_actions": [
     "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
     "No merge of this or any pull request",
-    "No edit to any migration other than reserved version 20260916001923",
+    "No edit to any migration other than reserved version 20260916033914",
     "No claim of any database object beyond those declared in db_writes",
     "No work in any other worktree or on any other branch",
     "No raising of statement_timeout or lock_timeout",

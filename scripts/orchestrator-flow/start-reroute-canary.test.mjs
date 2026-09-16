@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { START_SLO_MS } from './start-reroute.mjs'
-import { STAGED_LABEL, lifecycleFromJob, qualifiedCanaryLanes, reviewerReplay, runCanary } from './start-reroute-canary.mjs'
+import { STAGED_LABEL, canaryLabelAllowed, lifecycleFromJob, main, qualifiedCanaryLanes, reviewerReplay, runCanary } from './start-reroute-canary.mjs'
 
 const HEAD = 'b'.repeat(40)
 function world({ stagedStartsAt = null } = {}) {
@@ -51,6 +51,17 @@ test('a staged run that starts is refused as a broken staging hook', async () =>
   const w = world({ stagedStartsAt: Date.parse('2026-09-16T12:01:00.000Z') })
   await assert.rejects(runCanary({ io: w.io, now: w.now, sleep: w.sleep }), /not isolated/)
   assert.equal(w.cancelled.length, 0)
+})
+
+test('the staging hook admits only registered lanes and the staged label', async () => {
+  assert.equal(canaryLabelAllowed('ubuntu-latest'), true)
+  assert.equal(canaryLabelAllowed(STAGED_LABEL), true)
+  for (const label of ['self-hosted', 'windows-latest', 'ubuntu-latest-16-cores', '', undefined]) assert.equal(canaryLabelAllowed(label), false)
+  const quiet = console.error; console.error = () => {}
+  try {
+    assert.equal(await main(['--check-label', 'self-hosted']), 1)
+    assert.equal(await main(['--check-label', STAGED_LABEL]), 0)
+  } finally { console.error = quiet }
 })
 
 test('lanes, lifecycle and reviewer replay', () => {

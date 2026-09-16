@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           [[ "$ATTEMPT" =~ ^[A-Za-z0-9._-]{1,80}$ ]] || { echo "unsafe attempt id" >&2; exit 1; }
           [[ "$HOLD" =~ ^[0-9]{1,4}$ ]] && (( HOLD <= 1200 )) || { echo "hold_seconds must be 0-1200" >&2; exit 1; }
-          node -e 'const r=require("./scripts/orchestrator-flow/runner-lanes.json");const l=process.env.LABEL;if(l!=="db-staged-non-start-canary"&&!r.lanes.some(x=>x.label===l)){console.error("label is not a registered lane");process.exit(1)}'
+          node scripts/orchestrator-flow/start-reroute-canary.mjs --check-label "$LABEL"
   canary:
     name: canary
     needs: gate

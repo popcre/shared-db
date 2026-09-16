@@ -36,6 +36,27 @@ test('an outcome without a transition for over 120 minutes fires exactly one ala
   assert.equal(fake.posts.length, 1)
 })
 
+test('an untrusted comment carrying the alarm key cannot suppress the alarm', () => {
+  const fake = io()
+  const planted = runAlarm({ repo: 'r', now: '2026-09-16T10:01:00.000Z', dryRun: true }, fake)
+  fake.comments.set(900, [{ body: `<!-- db-no-progress-alarm alarm_key=${planted.alarm_key} -->`, author_association: 'NONE', user: { login: 'stranger' } }])
+  assert.equal(runAlarm({ repo: 'r', now: '2026-09-16T10:01:00.000Z' }, fake).status, 'posted')
+  fake.comments.set(901, [{ body: `<!-- db-no-progress-alarm alarm_key=${planted.alarm_key} -->`, author_association: 'MEMBER' }])
+  assert.equal(runAlarm({ repo: 'r', now: '2026-09-16T10:01:00.000Z', postIssue: 901 }, fake).status, 'already-posted')
+})
+
+test('zero closures alone fires only once outcomes have existed for the whole four-hour window', () => {
+  const events = [
+    { event_id: 'e1', event_type: 'entered', work_issue: 11, timestamp: T0 },
+    { event_id: 'e2', event_type: 'classified', work_issue: 11, timestamp: '2026-09-16T11:50:00.000Z' },
+  ]
+  const fake = io(input({ events }))
+  assert.equal(runAlarm({ repo: 'r', now: '2026-09-16T11:55:00.000Z' }, fake).status, 'quiet')
+  const fired = runAlarm({ repo: 'r', now: '2026-09-16T12:05:00.000Z' }, fake)
+  assert.equal(fired.status, 'posted'); assert.deepEqual(fired.stalled, []); assert.equal(fired.zero_closures_4h, true)
+  assert.match(fake.posts[0].body, /Nothing reached live_verified in the last 4 hours/)
+})
+
 test('a staged alarm goes only to the named issue and is labelled', () => {
   const fake = io()
   const result = runAlarm({ repo: 'r', now: '2026-09-16T11:00:00.000Z', postIssue: 3027, stagedLabel: 'STAGED CANARY' }, fake)

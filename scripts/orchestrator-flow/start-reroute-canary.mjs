@@ -27,6 +27,11 @@ export const STAGED_LABEL = 'db-staged-non-start-canary'
 export const ASSERTION = 'start-reroute-canary'
 export const CANARY_JOB = 'canary'
 
+/** The staging hook's only admissible labels: a registered lane or the staged non-start label. */
+export function canaryLabelAllowed(label, registry = loadRegistry()) {
+  return label === STAGED_LABEL || registry.lanes.some((lane) => lane.label === label)
+}
+
 export function qualifiedCanaryLanes(registry = loadRegistry()) {
   return registry.lanes.filter((lane) => lane.qualified === true).map((lane) => ({ name: lane.label, qualified: true, assertions: [ASSERTION] }))
 }
@@ -147,8 +152,12 @@ export function liveIo(repo) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  if (!argv.includes('--run')) { console.error('usage: --run [--repo owner/name] [--healthy-hold seconds]'); return 2 }
   const value = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined }
+  if (argv.includes('--check-label')) {
+    if (canaryLabelAllowed(value('--check-label'))) return 0
+    console.error('label is not a registered lane or the staged non-start label'); return 1
+  }
+  if (!argv.includes('--run')) { console.error('usage: --run [--repo owner/name] [--healthy-hold seconds] | --check-label LABEL'); return 2 }
   const repo = value('--repo') ?? 'u2giants/shared-db'
   const evidence = await runCanary({ io: liveIo(repo), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)), healthyHold: Number(value('--healthy-hold') ?? 900) })
   console.log(JSON.stringify(evidence, null, 2))

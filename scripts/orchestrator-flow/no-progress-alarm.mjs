@@ -64,7 +64,9 @@ export function renderAlarm({ output, key, now, stagedLabel = null }) {
   return lines.join('\n')
 }
 
-export const postedKeys = (comments) => new Set(comments.flatMap((c) => [...String(c?.body ?? '').matchAll(new RegExp(`<!-- ${ALARM_MARKER} alarm_key=([0-9a-f]{64})`, 'g'))].map((m) => m[1])))
+// Only a trusted author or the workflow itself can mark a key as posted; anyone can comment on a public issue.
+export const trustedComment = (c) => TRUSTED_AUTHORS.includes(c?.author_association) || c?.user?.login === 'github-actions[bot]'
+export const postedKeys = (comments) => new Set(comments.filter(trustedComment).flatMap((c) => [...String(c?.body ?? '').matchAll(new RegExp(`<!-- ${ALARM_MARKER} alarm_key=([0-9a-f]{64})`, 'g'))].map((m) => m[1])))
 
 export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryRun = false }, io) {
   const { input, sessionStarted } = io.gatherLiveInput(repo)
@@ -83,7 +85,7 @@ export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryR
 }
 
 export function latestSnapshotFromComments(comments) {
-  const rows = comments.filter((c) => TRUSTED_AUTHORS.includes(c?.author_association) || c?.user?.login === 'github-actions[bot]')
+  const rows = comments.filter(trustedComment)
   for (const comment of [...rows].reverse()) {
     const body = String(comment?.body ?? '')
     if (!body.includes(`<!-- ${ALARM_MARKER} `)) continue

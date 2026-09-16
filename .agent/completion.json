@@ -8,6 +8,8 @@
   "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
   "head_sha": "80c5f5276699031b79a3557271bda647187f7ea7",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "AGENTS.md"
   ],
   "db_reads": [],

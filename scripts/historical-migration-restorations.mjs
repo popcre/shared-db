@@ -5,6 +5,31 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const HISTORICAL_RESTORATIONS = Object.freeze({
+  // #2863. Preview applied these exact bytes in claim-mode run 35047947727,
+  // dispatched at main commit 0a11c42d and bound (instance-binding
+  // appliedCommit) to PR #3008 commit 1595aec0 before the PR merged. The
+  // production apply of this version was refused because the evidence-producing
+  // scripts/manage-migration-author-lanes.mjs at the dispatch commit differs
+  // from the one at merge commit 6c9b149d, so the immutable original apply must
+  // be rebound through this registry rather than replayed. Producer provenance
+  // is complete because this exact version merged from PR #3008 as 6c9b149d.
+  '20260916001944': Object.freeze({
+    filename: 'supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql',
+    name: 'coldlion_prepack_and_prod_detail_landing',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '35047947727',
+    previewDispatchCommit: '0a11c42d3e373fe9b45e826a3015c93bb7cf4704',
+    previewAppliedCommit: '1595aec05565b1a138b6f40e09bda8191fa40acf',
+    sourcePr: 3008,
+    sourceMergeCommit: '6c9b149d8747293cdb306a73262bd341873bc682',
+    statementBytes: 13890,
+    statementSha256: 'f54b6ffb87a38c11201fb61a80c6af61bead7399f41c410a629d02500cee1c91',
+    fileSha256: 'c79374a85369589e3a5ed6e5f58b5ccf495e0ba1ad420f9e589b7bd1dba6aec9',
+    objects: Object.freeze([
+      'table coldlion.prepack_detail',
+      'table coldlion.prod_detail',
+    ]),
+  }),
   // #2792. Preview applied these exact bytes in claim-mode run 34920902290,
   // dispatched at and applied from unmerged PR #2930 head a119760e (claim
   // #2929). The PR was then closed unmerged after a derived-from header changed

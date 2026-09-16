@@ -1,38 +1,55 @@
 {
   "schema_version": 1,
-  "generation": 9,
-  "work_issue": 3054,
+  "generation": 10,
+  "work_issue": 3028,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add the committed read-only live-proof probe .github/live-proofs/3043.sql so Shared DB Live Proof can prove outcome #3043 (#3027 Step 1 canary).",
-  "base_sha": "7ae12aad1c796e16b7eb598c90bca71bf244d0aa",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3043-live-proof",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/sub-3055-3027s6-27635",
+  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
+  "base_sha": "4cb2262eaf0a2196612c463746d287af48da6319",
+  "dispatcher": "Claude popcre/ai-devops#401 programme session",
+  "worker": "Claude Opus 5 issue-3028 sidecar registry",
+  "branch": "claude/3028-sidecar-registry",
+  "worktree": "C:/repos/shared-db-3028",
   "allowed_paths": [
-    ".github/live-proofs/3043.sql",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/**",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/live-proofs/3043.sql",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No session-made production workflow dispatch"
+    "No migration, schema change, db claim, or database read or write",
+    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
+    "No work in a shared checkout"
   ],
   "required_checks": [
-    "node --version"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python scripts/check_production_verification_sidecars.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
   ],
   "assumptions": [
-    "The probe runs read-only through Shared DB Live Proof"
+    "Every existing sidecar is declared with issue null because its originating issue is historical",
+    "The preview producer set is byte-identical to main apart from the added registry file"
   ],
   "stop_conditions": [
-    "Stop if the probe would need a write"
+    "Stop and report if the change needs a migration, schema change, or database write"
   ]
 }

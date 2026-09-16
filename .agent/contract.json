@@ -1,38 +1,46 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3054,
+  "generation": 2,
+  "work_issue": 3057,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add the committed read-only live-proof probe .github/live-proofs/3043.sql so Shared DB Live Proof can prove outcome #3043 (#3027 Step 1 canary).",
-  "base_sha": "e6e0eaccc440998bd0613ec3fbff9b718612e2f8",
-  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 1 canary author",
-  "branch": "claude/3043-live-proof",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3043-live-proof",
+  "goal": "Fix two live-proof failures for issue 3057 (tracked in 3027): make the start-reroute canary dispatch claim and ack refs siblings of the reservation ref so git accepts them, and make the no-progress alarm report no-orchestrator when zero orchestrator markers are open. Scripts and tests only; no schema, migration, database claim or database access.",
+  "base_sha": "585f61ae7d0b7ab4b2b7d486d193d415824f9ef4",
+  "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
+  "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
+  "branch": "claude/3027-reroute-ref-namespace",
+  "worktree": "C:/repos/shared-db-worktrees/3027-blocked-steps",
   "allowed_paths": [
-    ".github/live-proofs/3043.sql",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/live-proofs/3043.sql",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No session-made production workflow dispatch"
+    "No database read or write of any kind",
+    "No migration, schema, or database claim",
+    "No GitHub settings change"
   ],
   "required_checks": [
-    "node --version"
+    "node --test scripts/orchestrator-flow/start-reroute-canary.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The probe runs read-only through Shared DB Live Proof"
+    "A no-orchestrator status is only returned for the zero-marker resolution; every other read failure still fails the run"
   ],
   "stop_conditions": [
-    "Stop if the probe would need a write"
+    "Stop and report if any step needs a schema, migration, database write, or settings change"
   ]
 }

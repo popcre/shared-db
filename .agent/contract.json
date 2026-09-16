@@ -1,44 +1,38 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3062,
+  "generation": 9,
+  "work_issue": 3054,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement popcre/ai-devops#498 items 16-17: the governed review runner sets or names the reviewer caller variable, injects the live PR head into the prompt, and refuses before any reviewer starts when a named head is stale. Every existing refusal still refuses.",
-  "base_sha": "d53d4746b0f80c1be5ccf36c6e3839646a8d6ba5",
-  "dispatcher": "Albert Hazan via Claude session owning ai-devops#498 (2026-09-16)",
-  "worker": "Claude Opus 5 #498 close-out fast path author",
-  "branch": "claude/498-review-caller-head",
-  "worktree": "C:/repos/shared-db-wt-498",
+  "goal": "Add the committed read-only live-proof probe .github/live-proofs/3043.sql so Shared DB Live Proof can prove outcome #3043 (#3027 Step 1 canary).",
+  "base_sha": "7ae12aad1c796e16b7eb598c90bca71bf244d0aa",
+  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 1 canary author",
+  "branch": "claude/3043-live-proof",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/sub-3055-3027s6-27635",
   "allowed_paths": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs",
+    ".github/live-proofs/3043.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs",
+    ".github/live-proofs/3043.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration file change",
-    "No production command",
-    "No migration or preview workflow dispatch",
-    "No weakening of any refusal"
+    "No database write of any kind",
+    "No session-made production workflow dispatch"
   ],
   "required_checks": [
-    "node --test on every changed scripts test file",
-    "git diff --check origin/main...HEAD"
+    "node --version"
   ],
   "assumptions": [
-    "No schema or structure change is needed for message text"
+    "The probe runs read-only through Shared DB Live Proof"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
+    "Stop if the probe would need a write"
   ]
 }

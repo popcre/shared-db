@@ -808,6 +808,8 @@ test('#498-17 live head is injected, a stale named head or stale prompt verdict 
   const copy=ok.options.wrapperArgs[3]
   assert.notEqual(copy,'brief.md')
   assert.ok(written[copy].startsWith('Review it.')&&written[copy].includes(`VERDICT: APPROVE ${live}`))
+  for(const word of ['APPROVE','REVISE','REJECT']){assert.ok(written[copy].includes(`VERDICT: ${word} ${live}`));assert.notEqual(verdictFromOutput(`VERDICT: ${word} ${live}`,live),null)}
+  assert.ok(!/REQUEST_CHANGES/.test(written[copy]))
   assert.throws(()=>prepareGovernedReview({...base,headSha:stale},{env:{CLAUDECODE:'1'},github,files:files('x')}),/is stale.*now at a{40}.*No reviewer was started/)
   assert.throws(()=>prepareGovernedReview(base,{env:{CLAUDECODE:'1'},github,files:files(`End with VERDICT: APPROVE ${stale.slice(0,8)}`)}),/names head bbbbbbbb.*No reviewer was started/)
   assert.equal(prepareGovernedReview({...base,headSha:live.toUpperCase()},{env:{CLAUDECODE:'1'},github,files:files(`VERDICT: APPROVE ${live}`)}).options.headSha,live)

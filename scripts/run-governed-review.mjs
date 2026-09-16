@@ -617,7 +617,7 @@ export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSy
   const instruction=`
 
 Authoritative pull request head (injected by the governed review runner): ${head}
-Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REQUEST_CHANGES ${head}
+Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVISE ${head} | VERDICT: REJECT ${head}
 `
   const stale=(text)=>{
     for(const match of String(text).matchAll(/VERDICT:\s*[A-Z_]+[ \t]+([0-9a-f]{7,40})\b/gi)){

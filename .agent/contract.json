@@ -1,44 +1,55 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3062,
+  "work_issue": 3028,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement popcre/ai-devops#498 items 16-17: the governed review runner sets or names the reviewer caller variable, injects the live PR head into the prompt, and refuses before any reviewer starts when a named head is stale. Every existing refusal still refuses.",
-  "base_sha": "d53d4746b0f80c1be5ccf36c6e3839646a8d6ba5",
-  "dispatcher": "Albert Hazan via Claude session owning ai-devops#498 (2026-09-16)",
-  "worker": "Claude Opus 5 #498 close-out fast path author",
-  "branch": "claude/498-review-caller-head",
-  "worktree": "C:/repos/shared-db-wt-498",
+  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
+  "dispatcher": "Claude popcre/ai-devops#401 programme session",
+  "worker": "Claude Opus 5 issue-3028 sidecar registry",
+  "branch": "claude/3028-sidecar-registry",
+  "worktree": "C:/repos/shared-db-3028",
   "allowed_paths": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/**",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration file change",
-    "No production command",
-    "No migration or preview workflow dispatch",
-    "No weakening of any refusal"
+    "No migration, schema change, db claim, or database read or write",
+    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
+    "No work in a shared checkout"
   ],
   "required_checks": [
-    "node --test on every changed scripts test file",
-    "git diff --check origin/main...HEAD"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python scripts/check_production_verification_sidecars.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
   ],
   "assumptions": [
-    "No schema or structure change is needed for message text"
+    "Every existing sidecar is declared with issue null because its originating issue is historical",
+    "The preview producer set is byte-identical to main apart from the added registry file"
   ],
   "stop_conditions": [
-    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
+    "Stop and report if the change needs a migration, schema change, or database write"
   ]
 }

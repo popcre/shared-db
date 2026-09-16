@@ -1,48 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3028,
+  "work_issue": 3037,
   "outcome": "ready-for-merge",
-  "pr": 3031,
+  "pr": 3038,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3028/1",
-  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
-  "head_sha": "016c142e05b5d3cc7dcee3d19b2c1c853a2c32db",
+  "contract_ref": "refs/db-contracts/3037/3",
+  "contract_sha256": "08429ecaa9129c52f2dc4c97f49d54459502b0b5801f84fef37051d9e103cf5f",
+  "head_sha": "8e0592e66b65d7db3d3964535f501d1c38117a09",
   "files_changed": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/check_production_verification_sidecars.py",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
-    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_check_production_verification_sidecars.py"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "plan_product_type_reader.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
-    },
-    {
-      "command": "python scripts/check_production_verification_sidecars.py",
-      "exit_code": 0,
-      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
-    },
-    {
-      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=296 at the implementation head."
+      "evidence": "Exit 0 with no output at implementation head 8e0592e6 (8fc2be65 plus merges of origin/main) against origin/main 9b6c26b0; the diff is the two prose files (plan and handoff) plus the .agent contract pair."
     }
   ],
   "assumptions_resolved": [
-    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
-    "The preview producer set equals main's set plus the registry file."
+    "git diff --stat origin/main...8e0592e6 lists only plan_product_type_reader.md, the HANDOFF.d file and the .agent contract pair; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

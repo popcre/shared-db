@@ -1,28 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 3030,
+  "work_issue": 3043,
   "outcome": "ready-for-merge",
-  "pr": 3025,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3030/1",
-  "contract_sha256": "d1ced6e1a06d7b9caedbaeb1975c50a13e4e5d745fc69e57ac6350a724323828",
-  "head_sha": "638a61ef15c7fc684be198bed543a7180ffababa",
-  "files_changed": [
-    "AGENTS.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    "plan_product_type_reader.md"
-  ],
+  "pr": 3046,
+  "migration_versions": ["20260916120643"],
+  "contract_ref": "refs/db-contracts/3043/1",
+  "contract_sha256": "b58661abdedb28349ac4f6003f66c08766360c39f9b4b036a1a8373415bf2061",
+  "head_sha": "7daeb0ef5ef902b589b00fe7b9eda47340d4abf9",
+  "files_changed": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql"],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": ["table plm.production_lane_canary"],
   "checks": [
-    {
-      "command": "git diff --check origin/main...HEAD",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head 638a61ef against origin/main 9fe6f0bb; the diff is exactly three prose files (AGENTS.md +1 line, plan +270, handoff +15)."
-    }
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Run at implementation head 7daeb0ef against base 1d0a711a: Static checks passed."},
+    {"command": "node scripts/check-production-verification-sidecars.mjs --base origin/main", "exit_code": 0, "evidence": "status OK; version 20260916120643 has markers [] and needs no sidecar; derive_targets yields table and rls_relations plm.production_lane_canary, and classify_sql returns no business risk."}
   ],
-  "assumptions_resolved": [
-    "git diff --stat origin/main...638a61ef lists only AGENTS.md, plan_product_type_reader.md and the HANDOFF.d file; no code, migration, workflow or configuration file changed."
-  ],
+  "assumptions_resolved": ["Production read-only check on qsllyeztdwjgirsysgai 2026-09-16: plm.production_lane_canary exists with 1 row."],
   "stop_conditions_hit": []
 }

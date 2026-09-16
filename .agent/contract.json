@@ -1,44 +1,25 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3030,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Record the implementation plan for the product-type reader (issue 3030, tracked work issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
-  "dispatcher": "Claude shared-db session (product-type reader planning, 2026-09-16)",
-  "worker": "Claude Opus 5 product-type reader plan author",
-  "branch": "claude/product-description-extraction-118fbe",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/product-description-extraction-118fbe",
-  "allowed_paths": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
+  "work_issue": 3043,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Live acceptance canary for #3027 Step 1: add one nullable, default-less text column to the no-op, fully revoked canary table plm.production_lane_canary so the automatic production lane performs one fully machine-qualified promotion. No data, grant, RLS or application behaviour change.",
+  "base_sha": "1d0a711adc16ed622cef5e2355996d720d60c597",
+  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 1 canary author",
+  "branch": "claude/3027-step1-canary-comment",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-step1-canary",
+  "allowed_paths": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql", ".agent/contract.json", ".agent/completion.json"],
+  "file_writes": ["supabase/migrations/20260916120643_production_lane_canary_step1_acceptance_column.sql", ".agent/contract.json", ".agent/completion.json"],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": ["table plm.production_lane_canary"],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration, script, workflow, or configuration change",
-    "No edit to AGENTS.md beyond the one pointer bullet",
-    "No work in a shared checkout or on another branch"
+    "No manual production command and no session-made production workflow dispatch",
+    "No change to data, grants, RLS or any application table",
+    "No migration version other than claimed 20260916120643"
   ],
-  "required_checks": [
-    "git diff --check origin/main...HEAD"
-  ],
-  "assumptions": [
-    "The plan and handoff are prose only and change no executable behaviour"
-  ],
-  "stop_conditions": [
-    "Stop and report if the change set grows beyond the three prose files"
-  ]
+  "required_checks": ["bash scripts/check-sql.sh", "node scripts/check-production-verification-sidecars.mjs --base origin/main"],
+  "assumptions": ["plm.production_lane_canary exists on preview and production and is read by no application"],
+  "stop_conditions": ["Stop if production can only be reached by a session-made dispatch"]
 }

@@ -1,70 +1,54 @@
 {
+  "schema_version": 1,
+  "generation": 4,
+  "work_issue": 2988,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Resolve the production-apply producer-mismatch refusal for migration 20260916033914 by registering its one exact historical restoration in scripts/historical-migration-restorations.mjs, with every value derived from the original preview apply run 35060692115, its artifact binding, PR 3007 and its merge commit, and the migration bytes on origin/main; pin the new entry and the issue 2863 entry in scripts/historical-migration-restorations.test.mjs; and record the evidence in a verification document. No guard is weakened, no workflow is dispatched, and no database is touched.",
+  "base_sha": "86da2d44bcd390b3177f322f947b212c8dc9bbc9",
+  "dispatcher": "Claude shared-db orchestrator (issue 2988 production-apply refusal, 2026-09-16)",
+  "worker": "Claude Opus 5 issue-2988 historical restoration registrar",
+  "branch": "claude/2988-historical-restoration",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/w2988hr",
   "allowed_paths": [
-    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs",
+    "docs/verification/issue-2988-historical-producer-restoration.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "assumptions": [
-    "Reserved migration version 20260916033914 is the only version this work may use; it replaced superseded version 20260916001923 and was centrally reserved by the repository governed --supersede-active-claim-version command, whose durable evidence is the permanent reservation ref refs/db-claims/20260916033914 (6c9b149d8747293cdb306a73262bd341873bc682) and the owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e",
-    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
-    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
-    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
-  ],
-  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "branch": "claude/issue-2988-orderlist-timeout",
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
-  "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
-  ],
-  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916033914)",
   "file_writes": [
-    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs",
+    "docs/verification/issue-2988-historical-producer-restoration.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 3,
-  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
-    "No merge of this or any pull request",
-    "No edit to any migration other than reserved version 20260916033914",
-    "No claim of any database object beyond those declared in db_writes",
-    "No work in any other worktree or on any other branch",
-    "No raising of statement_timeout or lock_timeout",
-    "No change to core.customer or core.factory policies, grants or columns",
-    "No security_definer setting on api.dam_order_list without the issue #2662 security review"
+    "No apply, dispatch, or promotion of any workflow, preview or production",
+    "No database read or write of any kind",
+    "No edit to any guard, gate, validator, or test to make the new entry pass",
+    "No change to any migration file, including 20260916033914",
+    "No merge of this or any other pull request",
+    "No edit to any existing registry entry",
+    "No work in a shared checkout or on another branch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-    "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
-    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
+    "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
+    "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "node --test scripts/historical-migration-restorations.test.mjs",
+    "python -m pytest -q scripts/test_production_business_risk_gate.py"
   ],
-  "route": "migration",
-  "schema_version": 1,
+  "assumptions": [
+    "The registered historical restoration route is the repository's own sanctioned remedy for a producer mismatch on an immutable original apply",
+    "A migration that ships a new preview-producer sidecar can never rehearse on preview at a commit that already carries that sidecar on main, so run 35060692115 cannot be replayed and its evidence must be rebound rather than regenerated",
+    "The migration file on origin/main contains no CRLF, so the raw-byte artifact manifest digest and the newline-normalised registry digest are the same value the gate compares"
+  ],
   "stop_conditions": [
-    "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
-    "Stop if the fix would require making api.dam_order_list security definer",
-    "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
-    "Stop if any required check cannot be run rather than reporting it as passed"
-  ],
-  "work_issue": 2988,
-  "work_type": "structural",
-  "worker": "Claude Opus 5 issue-2988 migration author",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988"
+    "Stop and report if any registry value cannot be pinned exactly from the run, its artifact, the pull request, or the file on origin/main",
+    "Stop and report if the sanctioned historical restoration route does not fit this fact pattern",
+    "Stop and report rather than weaken, bypass, or special-case any guard to make the entry validate"
+  ]
 }

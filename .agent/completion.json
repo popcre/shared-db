@@ -2,61 +2,46 @@
   "schema_version": 1,
   "work_issue": 2988,
   "outcome": "ready-for-merge",
-  "pr": 3007,
-  "migration_versions": [
-    "20260916033914"
-  ],
-  "contract_ref": "refs/db-contracts/2988/3",
-  "contract_sha256": "1a951cb6fd44da7b5d10f57deb6ed9a5085874ae03ca5a1280a1b0c77dba1dd6",
-  "head_sha": "0ee3b2aad313e059b51e5b56e89def328e50fef6",
+  "pr": 3021,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2988/4",
+  "contract_sha256": "56dd8b9306329e12f090eb983de271a1aabbcd7ee37794c06816456daea0bcf5",
+  "head_sha": "49760a34fa3f77e2300b184076c8f70b31a85c4b",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916033914.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql"
+    "docs/verification/issue-2988-historical-producer-restoration.md",
+    "scripts/historical-migration-restorations.mjs",
+    "scripts/historical-migration-restorations.test.mjs"
   ],
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
-  "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
       "exit_code": 0,
-      "evidence": "Run at implementation head 3946f5413d50a67b3d2a70f72532fc50b1476137 (PR base 1dcf196ea9b506ec14feb55e8465b53d9faf1706): 'Static checks passed.' The issue #1235 expected-count guard, the verify-cost guard ('1 added migration(s) contain no prohibited verification read') and the issue #1684 EOL guard all passed."
+      "evidence": "Run at implementation head 49760a34 with exactly the evidence object prove_registered_historical_restoration_provenance builds. Output: {\"version\":\"20260916033914\",\"fileSha256\":\"e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0\"}, which equals the run artifact's migration-content-manifest.json digest for this version. A negative control with the run id changed by one digit exited 2 with 'historical production provenance mismatch for previewApplyRun'."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
       "exit_code": 0,
-      "evidence": "status OK over 55 sidecars; the scan for version 20260916033914 reports markers [] and sidecar true, so the reserved migration carries its hash-bound production verification sidecar and adds no dynamic execution marker."
+      "evidence": "Exit 0 with no output at the same head: the file on origin/main matches the registered filename, fileSha256, statementBytes 13874 and statementSha256 568e72b43a86a70cc1001a52331615b8b7d13b5310567d2f29657e77bcc93723."
     },
     {
-      "command": "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
+      "command": "node --test scripts/historical-migration-restorations.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 91, pass 91, fail 0, cancelled 0, skipped 0, todo 0. Confirms the applied-migration-edit guard still refuses edits to already-applied versions and that the SQL guards themselves are intact."
+      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at the same head; the two added tests pin the issue 2988 and issue 2863 entries field by field with negative controls."
     },
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "357 passed, 305 subtests passed. Covers the PREVIEW_PRODUCER_PATHS pin for scripts/production-verification-sidecars/20260916033914.json and the registration of catalog contract dam_order_list_role_free_party_names_v1."
+      "evidence": "155 passed, 237 subtests passed in 32.88s at the same head."
     }
   ],
   "assumptions_resolved": [
-    "Root cause proven read-only on production qsllyeztdwjgirsysgai, not inferred: 826 evaluations of the core.customer shared_read qual under the reporting user's own JWT claims cost 5,373 ms and every one returned false; the same (id, name) pairs read with no policy evaluation cost 1.2 ms.",
-    "Mechanism: two narrow postgres-owned security_invoker=false directory views in the dam schema, which this project's PostgREST does not expose. api.dam_order_list stays security_invoker=true, so issue #2662 is untouched.",
-    "No timeout is raised, no full dataset is loaded, and no policy, grant or column on core.customer or core.factory changes.",
-    "Behaviour proved on a throwaway PostgreSQL 18 cluster because Docker is unavailable on this machine: a role-free authenticated principal reads its visible order lines with non-null customer and vendor names, service_role and an owner session with no JWT both read them, anon is refused on the directory views, and authenticated still reads zero rows from core.customer directly.",
-    "Residual, stated in the pull request body: because the outer view must stay invoker, the authenticated role holds SELECT on the two directories, so a direct Postgres session already holding that role could list all 826 customer and 93 factory (id, name) pairs. No PopDAM user has that route -- dam is absent from pgrst.db_schemas and authenticated and service_role are NOLOGIN.",
-    "Claim #3005 must be expanded to cover view dam.dam_order_list_customer_directory and view dam.dam_order_list_vendor_directory before the lease check will accept this migration; the coordinator holds that action.",
-    "Nothing was applied to preview or production and no pull request was merged.",
-    "Migration version 20260916033914 was centrally reserved, not chosen locally: the governed --supersede-active-claim-version command reserved it and pushed head 7700029e3b32e66a4970e813652546676373cc8e. Durable evidence: refs/db-claims/20260916033914 = 6c9b149d8747293cdb306a73262bd341873bc682, and owner commit b02e78d2dd355b2717f345c2f938297922724964 at refs/db-claim-supersessions/3005-20260916001923 reading: db-coordination claim-version-superseded issue=2988 claim=3005 pr=3007 old=20260916001923 new=20260916033914 old-ref=921fef3a0e47f01bc5af73a667f2932d7a33d988 head=7700029e3b32e66a4970e813652546676373cc8e. The sidecar present in Git is scripts/production-verification-sidecars/20260916033914.json; no sidecar for the superseded version exists or is referenced."
+    "Run 35060692115 is a workflow_dispatch run on main, run_attempt 1, conclusion success, head_sha 3fdd16effbd154e1602c29aa5610161910138d68; its single unexpired artifact preview-migration-apply-bac58c5f49687c7911d013e1f392fcf5c356e626 carries preview-instance.json with appliedCommit bac58c5f49687c7911d013e1f392fcf5c356e626, previewProjectRef mvpkijzfmfcxhnzqogzs, rehearsalMode claim and allowlist [20260916033914]. Because that binding is claim mode, the gate's bound-mainline post-merge exception does not apply and the registry route is the correct remedy.",
+    "PR 3007 is merged at 86da2d44bcd390b3177f322f947b212c8dc9bbc9, which is the current origin/main, so producer provenance is complete and the entry carries sourcePr and sourceMergeCommit.",
+    "The migration on origin/main contains zero CRLF, so its raw digest and its newline-normalised digest are both e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0, identical to the artifact manifest digest the gate compares against.",
+    "The objects the migration creates are view dam.dam_order_list_customer_directory, view dam.dam_order_list_vendor_directory and view api.dam_order_list, plus idempotent drops of four abandoned function signatures.",
+    "No guard, gate, validator, or migration was edited; no workflow was dispatched and no database was read or written."
   ],
   "stop_conditions_hit": []
 }

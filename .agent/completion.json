@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3047,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3039/2",
-  "contract_sha256": "e7257d23d9a1f73aad827de7479f2ae5b7cc91aace44d02eb4510459725371d6",
-  "head_sha": "d1021127c875384fca266994a744281314261cfb",
+  "contract_ref": "refs/db-contracts/3039/3",
+  "contract_sha256": "8d739ffe2f84607c165116e5c95c069e86b9b46d2a4fe1b04eb19c5796060e0c",
+  "head_sha": "aa25c7504ad277a3ba7ded5c6352a24f27c7f0e5",
   "files_changed": [
     ".agent/contract.json",
     ".agent/completion.json",
@@ -22,17 +22,17 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head d1021127."
+      "evidence": "Exit 0 with no output at implementation head aa25c750."
     },
     {
       "command": "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Ran 166 tests, OK, at implementation head d1021127; includes the verbatim #3039 producer-mismatch reproduction."
+      "evidence": "Ran 166 tests, OK, at implementation head aa25c750; includes the verbatim #3039 producer-mismatch reproduction."
     },
     {
       "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
       "exit_code": 0,
-      "evidence": "pass 10, fail 0 at d1021127; full node --test scripts/*.test.mjs also passed 1724/1724."
+      "evidence": "pass 10, fail 0 at aa25c750; full node --test scripts/*.test.mjs also passed 1724/1724."
     }
   ],
   "assumptions_resolved": [

@@ -1,49 +1,52 @@
 {
   "schema_version": 1,
-  "work_issue": 3039,
-  "generation": 3,
+  "generation": 1,
+  "work_issue": 3050,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make automatic production qualification ask the production gate's own evidence question before dispatch: run the unchanged historical original-apply proof, fall back to the gate's existing ephemeral-CI route only for non-high-risk migrations, and otherwise refuse without dispatching. No comparison is loosened.",
-  "base_sha": "268e453f29fa073e38fc16dcf7c60324b778b32e",
-  "dispatcher": "Claude shared-db session owning issue 3039",
-  "worker": "Claude Opus 5 subagent",
-  "branch": "claude/fix-3039-promotion-evidence",
-  "worktree": "C:/repos/shared-db-wt-3039",
+  "goal": "Implement popcre/ai-devops#498 items 11-13: refusal messages for files_changed mismatch, wrong-owner claim operations, and a governed review wrapper call missing new <session-name> say exactly what is wrong and how to correct it. Every refusal still refuses.",
+  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
+  "dispatcher": "Albert Hazan via Claude session owning ai-devops#498 (2026-09-16)",
+  "worker": "Claude Opus 5 #498 close-out fast path author",
+  "branch": "claude/498-closeout-fastpath",
+  "worktree": "C:/repos/shared-db-wt-498",
   "allowed_paths": [
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/test_automatic_qualification_route.py",
-    "scripts/check-workflow-automatic-promotion-source.test.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/test_automatic_qualification_route.py",
-    "scripts/check-workflow-automatic-promotion-source.test.mjs"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No schema, migration, database claim, preview or production database write.",
-    "No production workflow dispatch and no GitHub settings change.",
-    "No loosening of any production evidence comparison."
+    "No database read or write of any kind",
+    "No migration file change",
+    "No production command",
+    "No migration or preview workflow dispatch",
+    "No weakening of any refusal"
   ],
   "required_checks": [
-    "git diff --check origin/main...HEAD",
-    "python -m unittest scripts/test_automatic_qualification_route.py scripts/test_production_business_risk_gate.py",
-    "node --test scripts/check-workflow-automatic-promotion-source.test.mjs"
+    "node --test on every changed scripts test file",
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The production apply lane already accepts ephemeral_check_run_id for non-high-risk migrations and re-runs every proof itself."
+    "No schema or structure change is needed for message text"
   ],
   "stop_conditions": [
-    "Stop if the fix would require changing prove_historical_original_apply_runs, preview_required_reasons or prove_ephemeral_ci_evidence."
+    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
   ]
 }

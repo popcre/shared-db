@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3057,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Fix two live-proof failures for issue 3057 (tracked in 3027): make the start-reroute canary dispatch claim and ack refs siblings of the reservation ref so git accepts them, and make the no-progress alarm report no-orchestrator when zero orchestrator markers are open. Scripts and tests only; no schema, migration, database claim or database access.",
-  "base_sha": "25722fb2cfc12fd0cddc04dbe2c819632197b986",
+  "base_sha": "585f61ae7d0b7ab4b2b7d486d193d415824f9ef4",
   "dispatcher": "Claude ai-devops session repairing #401 (2026-09-16)",
   "worker": "Claude Opus 5 #3027 blocked-steps maintainer",
   "branch": "claude/3027-reroute-ref-namespace",

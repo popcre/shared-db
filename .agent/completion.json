@@ -1,38 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 3076,
+  "work_issue": 3088,
   "outcome": "ready-for-merge",
-  "pr": 3075,
+  "pr": 3087,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3076/7",
-  "contract_sha256": "8c4be7f1140738c65de34c0bc15bb3aba331afad471747609f7524e0a7ecb973",
-  "head_sha": "6a2e0fb526394c02aa944168975a3bba34382d26",
+  "contract_ref": "refs/db-contracts/3088/1",
+  "contract_sha256": "22d0f21b06a7bf7bd7fdb27b9097e5ac94d963e4a0f060f5d0afdf22357b7f25",
+  "head_sha": "2b8a70fa863a19e51708a25705ef3398a67c71e0",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/read-verified-train-record.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "apps/db-data-admin/src/DataAdmin.test.tsx",
+    "apps/db-data-admin/src/FilterHeader.tsx"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
+      "command": "npx vitest run in apps/db-data-admin",
       "exit_code": 0,
-      "evidence": "Run at implementation head 6a2e0fb5: 5 passed, 155 deselected. Full suite: 3 failed, 157 passed; the same 3 fail identically on base a160ca54 (3 failed, 152 passed)."
+      "evidence": "22 test files, 147 tests passed, 0 failed at d0f4ac95; head 2b8a70fa863a19e51708a25705ef3398a67c71e0 merges current main ."
     },
     {
-      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Run at implementation head 6a2e0fb5: tests 13, pass 13, fail 0, skipped 0."
+      "evidence": "Exit 0 with no output at d0f4ac95."
     }
   ],
   "assumptions_resolved": [
-    "preview_instance_text reads preview-instance-<pr>.json per authoring PR from a map rehearsal (#2140)"
+    "No schema or structure change was needed: the fix is client-side table filtering in the db-data-admin UI."
   ],
   "stop_conditions_hit": []
 }

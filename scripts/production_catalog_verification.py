@@ -4485,15 +4485,32 @@ COLDLION_UNIT_5B_LANDING_CONTRACT = (
     + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
     # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
     # request-stamped company_code + 5 provenance. No field dropped, none invented.
-    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prepack_detail')=23"
-    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prod_detail')=27"
+    # information_schema views are role-filtered the same way role_table_grants is:
+    # under supabase_read_only_user they return nothing for coldlion, so a column
+    # census there would be unfalsifiable. pg_attribute is the unfiltered catalog.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped)=23"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prod_detail') and a.attnum>0 and not a.attisdropped)=27"
     # ColdLion emits BOTH itemPrice and ItemPrice; folding them would lose a field.
-    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name='prepack_detail' and column_name in ('item_price','item_price_capitalized'))=2"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped and a.attname in ('item_price','item_price_capitalized'))=2"
     # No application role may reach the landing layer, and RLS is on.
+    #
+    # The grant half deliberately does NOT read information_schema.role_table_grants.
+    # That view is filtered to grants the CURRENT role granted or holds, and the
+    # governed verification connects as supabase_read_only_user, for which it returns
+    # no rows at all -- so a "no rows" test there would be unconditionally true and
+    # could never fail. has_table_privilege() is a catalog function with no such
+    # role-visibility filter and answers the real question on any connection.
+    #
+    # Checking anon and authenticated also covers PUBLIC: has_table_privilege() folds
+    # a privilege held via PUBLIC into every role's answer, and PUBLIC is not a role
+    # name the function accepts.
     + " and (select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='coldlion' and c.relname in ('prepack_detail','prod_detail'))"
-    + " and (select count(*) from information_schema.role_table_grants where table_schema='coldlion' and table_name in ('prepack_detail','prod_detail') and grantee in ('anon','authenticated','PUBLIC'))=0"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['coldlion.prepack_detail','coldlion.prod_detail']) t(n) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,t.n,p.v))=0"
+    # RLS with no policy is the second half of the lockdown: a policy added later
+    # would open a path the grant check alone does not describe.
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename in ('prepack_detail','prod_detail'))=0"
     # D5: no per-row raw archive, and no FK out of the landing schema.
-    + " and (select count(*) from information_schema.columns where table_schema='coldlion' and table_name in ('prepack_detail','prod_detail') and column_name='raw')=0"
+    + " and (select count(*) from pg_attribute a where a.attrelid in (to_regclass('coldlion.prepack_detail'),to_regclass('coldlion.prod_detail')) and a.attnum>0 and not a.attisdropped and a.attname='raw')=0"
     + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
 )
 CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (

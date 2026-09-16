@@ -213,6 +213,41 @@ function expiredUnconfirmedReport(issue){
 
 function domainStatus(unverifiable,mutating){return unverifiable?'UNVERIFIABLE':mutating?'RECONCILED':'REPORT_ONLY'}
 
+// #2301 Step 5. A SCHEDULED audit must be read-only BY CONSTRUCTION, not by
+// luck of its environment. `reconcileFlow` decides whether to mutate from the
+// live sole-orchestrator marker, and a hosted runner happens not to hold one --
+// but "happens not to" is exactly the guarantee that stops holding the day
+// somebody grants the workflow a token or a marker leaks into CI. This wrapper
+// removes the capability instead of relying on its absence: the marker reads as
+// gone, and every mutation hook throws if it is ever reached at all. A run that
+// tried to write fails loudly rather than writing.
+export const AUDIT_EXIT_CLEAN=0
+export const AUDIT_EXIT_EXPIRED=2
+export const AUDIT_EXIT_UNVERIFIABLE=3
+export function reportOnlyFlowIo(io){
+  const refuse=(name)=>()=>{throw new ReconcileError(`read-only abandonment audit must never call ${name}`)}
+  return {
+    ...io,
+    resolveMarker:()=>null,
+    relinquishCapacity:refuse('relinquishCapacity'),
+    resumeCapacity:refuse('resumeCapacity'),
+    persistReady:refuse('persistReady'),
+  }
+}
+
+// THREE OUTCOMES, NOT TWO. Expiry and unreadability are different facts and an
+// operator must be able to tell them apart from the exit code alone: an expired
+// claim is a queue that needs a decision, while an unreadable or malformed audit
+// state is a broken instrument and must fail closed. Anything that is not a
+// report-only result of the current schema is treated as unreadable, so a future
+// schema or a mutating result can never be mistaken for a clean run.
+export function abandonmentAuditExit(result){
+  if(result?.schema_version!==RECONCILE_SCHEMA_VERSION||result?.mutating!==false)return AUDIT_EXIT_UNVERIFIABLE
+  if([result.capacity?.status,result.preview?.status].includes('UNVERIFIABLE'))return AUDIT_EXIT_UNVERIFIABLE
+  if((result.actions??[]).some((action)=>action.action==='expired-unconfirmed-report'))return AUDIT_EXIT_EXPIRED
+  return AUDIT_EXIT_CLEAN
+}
+
 export function reconcileFlow(input,io){
   const marker=io.resolveMarker(),mutating=Boolean(marker?.live&&marker.calling_task===marker.task),actions=[]
   const seen={[CAPACITY_DOMAIN]:new Set(),[PREVIEW_DOMAIN]:new Set()}

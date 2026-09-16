@@ -1,61 +1,84 @@
 {
   "schema_version": 1,
-  "work_issue": 2988,
+  "work_issue": 2301,
   "outcome": "ready-for-merge",
-  "pr": 3007,
-  "migration_versions": [
-    "20260916001923"
-  ],
-  "contract_ref": "refs/db-contracts/2988/1",
-  "contract_sha256": "aba95e600e68fa6e52554eddbfeadbcbcba801e42c26a5d44b53ead02ae33e0d",
-  "head_sha": "2adde3a3e3a023a8cad48ec9c09c97f7759bbd33",
+  "pr": 3013,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2301/13",
+  "contract_sha256": "ee0480ab80f912bae0bec6209a0746bacbd8f4f294880bc9722d761c8cf53afd",
+  "head_sha": "b5fcd818c270f765e5d9e2779e8e77465c3ecdf4",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916001923.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql"
+    ".github/workflows/author-lane-abandonment-audit.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/reconcile.mjs",
+    "scripts/orchestrator-flow/reconcile.test.mjs",
+    "scripts/test_production_migration_guard.py"
   ],
-  "db_reads": [
-    "table core.customer",
-    "table core.factory"
-  ],
-  "db_writes": [
-    "view api.dam_order_list",
-    "view dam.dam_order_list_customer_directory",
-    "view dam.dam_order_list_vendor_directory"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/orchestrator-flow/reconcile.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 3946f5413d50a67b3d2a70f72532fc50b1476137 (PR base 1dcf196ea9b506ec14feb55e8465b53d9faf1706): 'Static checks passed.' The issue #1235 expected-count guard, the verify-cost guard ('1 added migration(s) contain no prohibited verification read') and the issue #1684 EOL guard all passed."
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 32, pass 32, fail 0, cancelled 0, skipped 0, todo 0. Twenty-eight pre-existing tests plus four new ones covering every Step 5 verification gate: the audit writes nothing even when handed a marker that would authorise all three transitions, and the same fixture through the mutating entry point is asserted to write all three, so the read-only case is not passing on an inert input; each stripped hook is separately asserted to throw if called at all; expiry (2), an unreadable capacity row (3), an unreadable preview edge (3) and a clean run (0) are four distinct exit codes through the real CLI, with unverifiable outranking expiry when both are present; every result the classifier does not recognise -- a later schema, a result claiming to have mutated, null, an empty object -- is 3 rather than 0, against a clean control case asserted first; and the emitted report carries the exact claim number and queued-behind count, with an unreadable queue staying null rather than being rendered as a zero an operator would act on."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "status OK over 55 sidecars; the scan for version 20260916001923 reports markers [] and sidecar true, so the reserved migration carries its hash-bound production verification sidecar and adds no dynamic execution marker."
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 578, pass 578, fail 0, cancelled 0, skipped 0, todo 0. The lane CLI's own suite is unchanged by the new flag: --abandonment-audit is a new branch that no existing path reaches, and the existing --reconcile-flow branch, its exit codes and its mutation behaviour are untouched."
     },
     {
-      "command": "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/capacity-state.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 91, pass 91, fail 0, cancelled 0, skipped 0, todo 0. Confirms the applied-migration-edit guard still refuses edits to already-applied versions and that the SQL guards themselves are intact."
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 22, pass 22, fail 0, cancelled 0, skipped 0, todo 0."
     },
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
       "exit_code": 0,
-      "evidence": "357 passed, 305 subtests passed. Covers the PREVIEW_PRODUCER_PATHS pin for scripts/production-verification-sidecars/20260916001923.json and the registration of catalog contract dam_order_list_role_free_party_names_v1."
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 70, pass 70, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "node --test scripts/coordination-scenarios.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 31, pass 31, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "node --test scripts/migration-retirement-tombstones.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 30, pass 30, fail 0, cancelled 0, skipped 0, todo 0."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_migration_guard",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: Ran 260 tests, OK. Eight of them are new and are the Step 5 verification gate: the workflow is hourly (cron hour field '*', minute field not '*') and dispatchable and carries no push, pull_request or pull_request_target trigger, checked against declaration lines only with a positive control asserting the schedule was seen; its permission set is exactly contents, issues and pull-requests, every one of them read, with no job-level block that could widen it; it has a timeout of at most 15 minutes, a concurrency group and cancel-in-progress true; actions/checkout@v4, actions/setup-node@v4 and a numeric node-version are all pinned and no `uses:` is unpinned; it invokes --abandonment-audit and names none of nine mutating lane flags and none of gh issue create, gh issue comment or gh pr comment; EVERY scheduled workflow in .github/workflows is scanned for a --reconcile-flow call on a non-comment line, with a positive control asserting the scan found this workflow; the guard's own tests run before the audit is trusted; and exit 2 and exit 3 reach the operator as different sentences with the run's exit code preserved."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: truth audit OK: call_sites=296, unchanged from the Step 4 head. No new prose in this change is discovered as a semantic call site, so the audit inventory file -- which open pull requests 2823 and 2821 hold -- is untouched."
+    },
+    {
+      "command": "node scripts/check-skill-drift.mjs",
+      "exit_code": 0,
+      "evidence": "OK: checked 3 canonical skills in C:/repos/ai-devops against AGENTS.md; no contradictions. Re-run after the ai-devops orchestrator-skill change (popcre/ai-devops PR 491) is the Step 5 dependency the plan names: the shared-db behaviour and the skill text must agree before this step is claimed complete."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: no whitespace errors."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Run at implementation head b5fcd818c270f765e5d9e2779e8e77465c3ecdf4: tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0."
     }
   ],
   "assumptions_resolved": [
-    "Root cause proven read-only on production qsllyeztdwjgirsysgai, not inferred: 826 evaluations of the core.customer shared_read qual under the reporting user's own JWT claims cost 5,373 ms and every one returned false; the same (id, name) pairs read with no policy evaluation cost 1.2 ms.",
-    "Mechanism: two narrow postgres-owned security_invoker=false directory views in the dam schema, which this project's PostgREST does not expose. api.dam_order_list stays security_invoker=true, so issue #2662 is untouched.",
-    "No timeout is raised, no full dataset is loaded, and no policy, grant or column on core.customer or core.factory changes.",
-    "Behaviour proved on a throwaway PostgreSQL 18 cluster because Docker is unavailable on this machine: a role-free authenticated principal reads its visible order lines with non-null customer and vendor names, service_role and an owner session with no JWT both read them, anon is refused on the directory views, and authenticated still reads zero rows from core.customer directly.",
-    "Residual, stated in the pull request body: because the outer view must stay invoker, the authenticated role holds SELECT on the two directories, so a direct Postgres session already holding that role could list all 826 customer and 93 factory (id, name) pairs. No PopDAM user has that route -- dam is absent from pgrst.db_schemas and authenticated and service_role are NOLOGIN.",
-    "Claim #3005 must be expanded to cover view dam.dam_order_list_customer_directory and view dam.dam_order_list_vendor_directory before the lease check will accept this migration; the coordinator holds that action.",
-    "Nothing was applied to preview or production and no pull request was merged."
+    "A hosted runner holds no sole-orchestrator marker, so --reconcile-flow on a schedule would in fact report only. That is an environmental accident, not a guarantee, and the plan forbids relying on it. reportOnlyFlowIo removes the write capability before the reconciler sees the adapter, so the guarantee is structural: resolveMarker reads as gone and each of relinquishCapacity, resumeCapacity and persistReady throws if reached. A run that tried to write fails loudly.",
+    "The new command's exit codes do not touch --reconcile-flow's. That branch still returns 0 or 2 exactly as before; 3 exists only on the new --abandonment-audit branch, where it means the state could not be read. Both branches are exercised in the same test file so a change to either shows up against the other.",
+    "The workflow was given issues: read and pull-requests: read rather than no scopes at all, because the audit reads claims, work issues and pull requests through the GitHub API and would otherwise fail closed on every run. It was NOT given issues: write, so it cannot file the duplicate alarm issues an hourly monitor would otherwise produce -- the model workflow migration-ledger-drift.yml needs that scope for its throttled alarm and this one deliberately does not.",
+    "The workflow's own header comment names `push:`, `pull_request:` and `--reconcile-flow` in prose explaining why each is absent. The first policy test failed on exactly that, which is the right failure from a test scanning raw text: it was corrected to scan declaration lines and non-comment lines, and both scanners carry a positive control so a scanner that matched nothing cannot pass as a clean result.",
+    "No open non-draft pull request holds any file in allowed_paths. Pull requests 2823, 2821 and 2607 hold other workflow files; none holds this new workflow, either lane script, the reconcile test or the canonical guard test. The single-ready-PR collision rule is therefore satisfied rather than bypassed."
   ],
   "stop_conditions_hit": []
 }

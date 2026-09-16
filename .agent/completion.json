@@ -1,26 +1,48 @@
 {
   "schema_version": 1,
-  "work_issue": 3035,
+  "work_issue": 3028,
   "outcome": "ready-for-merge",
-  "pr": 3032,
+  "pr": 3031,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3035/1",
-  "contract_sha256": "97424a7b0bc02e836ed936bb61cd49a1f29cbfbe77a09976480e5d0985769f57",
-  "head_sha": "52552d1d0bc2d4732893a64d226ea01690283c21",
+  "contract_ref": "refs/db-contracts/3028/1",
+  "contract_sha256": "b18ebb6ba155adfd6ab63c793bae055e46b07cae826fd3acc6d7021d35f348b9",
+  "head_sha": "8a73bf25e6b2d302dd29f67348766628df651888",
   "files_changed": [
-    "AGENTS.md"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_check_production_verification_sidecars.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head 52552d1d against origin/main 3f5c2a23; the implementation diff is AGENTS.md only (+8/-2)."
+      "evidence": "171 passed, 237 subtests passed in 36.08s at the implementation head."
+    },
+    {
+      "command": "python scripts/check_production_verification_sidecars.py",
+      "exit_code": 0,
+      "evidence": "{\"status\":\"OK\",\"sidecars\":56,\"scans\":[]} at the implementation head."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6, pass 6, fail 0, cancelled 0, skipped 0, todo 0 at the implementation head."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=296 at the implementation head."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...52552d1d lists only AGENTS.md; no code, migration, workflow or configuration file changed."
+    "All 56 existing sidecars are declared with issue null and the checker confirms declarations and files agree.",
+    "The preview producer set equals main's set plus the registry file."
   ],
   "stop_conditions_hit": []
 }

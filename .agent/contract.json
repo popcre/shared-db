@@ -1,25 +1,55 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3035,
+  "work_issue": 3028,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Tighten the AGENTS.md top banner so the shared-db orchestrator takes only database-shape work (issue 3035, PR 3032). Prose rulebook change only; no code, migration, workflow, or database change.",
-  "base_sha": "4e290252bfc9528427d502a18ffcef3d617c7047",
-  "dispatcher": "Claude ai-devops session (orchestrator routing guidelines, 2026-09-16)",
-  "worker": "Claude Opus 5 orchestrator banner editor",
-  "branch": "claude/orchestrator-minimum-routing",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-minimum-routing",
-  "allowed_paths": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
-  "file_writes": ["AGENTS.md", ".agent/contract.json", ".agent/completion.json"],
+  "goal": "Replace the hand-listed verification sidecar entries in PREVIEW_PRODUCER_PATHS with one declarative registry, config/production-verification-sidecar-registry.json, owned by production_business_risk_gate.py and enforced by check_production_verification_sidecars.py, and add scripts/orchestrator-flow/sidecar-registry-evidence.mjs so the early delivery preflight registers its sidecars and producers checks from that registry at an exact head (popcre/ai-devops#401 Step 5).",
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
+  "dispatcher": "Claude popcre/ai-devops#401 programme session",
+  "worker": "Claude Opus 5 issue-3028 sidecar registry",
+  "branch": "claude/3028-sidecar-registry",
+  "worktree": "C:/repos/shared-db-3028",
+  "allowed_paths": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".github/workflows/**",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/check_production_verification_sidecars.py",
+    "scripts/test_check_production_verification_sidecars.py",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.mjs",
+    "scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read or write of any kind",
-    "No migration, script, workflow, or configuration change",
-    "No work in a shared checkout or on another branch"
+    "No migration, schema change, db claim, or database read or write",
+    "No weakening of any guard; discovery must not widen trust beyond declared sidecars",
+    "No work in a shared checkout"
   ],
-  "required_checks": ["git diff --check origin/main...HEAD"],
-  "assumptions": ["The banner edit is prose only and changes no executable behaviour"],
-  "stop_conditions": ["Stop and report if the change set grows beyond AGENTS.md"]
+  "required_checks": [
+    "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_check_production_verification_sidecars.py",
+    "python scripts/check_production_verification_sidecars.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs"
+  ],
+  "assumptions": [
+    "Every existing sidecar is declared with issue null because its originating issue is historical",
+    "The preview producer set is byte-identical to main apart from the added registry file"
+  ],
+  "stop_conditions": [
+    "Stop and report if the change needs a migration, schema change, or database write"
+  ]
 }

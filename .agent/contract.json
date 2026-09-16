@@ -1,26 +1,32 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3030,
+  "work_issue": 3050,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Record the implementation plan for the product-type reader (issue 3030, tracked work issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
-  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
-  "dispatcher": "Claude shared-db session (product-type reader planning, 2026-09-16)",
-  "worker": "Claude Opus 5 product-type reader plan author",
-  "branch": "claude/product-description-extraction-118fbe",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/product-description-extraction-118fbe",
+  "goal": "Implement popcre/ai-devops#498 items 11-13: refusal messages for files_changed mismatch, wrong-owner claim operations, and a governed review wrapper call missing new <session-name> say exactly what is wrong and how to correct it. Every refusal still refuses.",
+  "base_sha": "9b6c26b0c6b37f5390c371ac3fd22001a04fe234",
+  "dispatcher": "Albert Hazan via Claude session owning ai-devops#498 (2026-09-16)",
+  "worker": "Claude Opus 5 #498 close-out fast path author",
+  "branch": "claude/498-closeout-fastpath",
+  "worktree": "C:/repos/shared-db-wt-498",
   "allowed_paths": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "AGENTS.md",
-    "plan_product_type_reader.md",
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -28,17 +34,19 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database read or write of any kind",
-    "No migration, script, workflow, or configuration change",
-    "No edit to AGENTS.md beyond the one pointer bullet",
-    "No work in a shared checkout or on another branch"
+    "No migration file change",
+    "No production command",
+    "No migration or preview workflow dispatch",
+    "No weakening of any refusal"
   ],
   "required_checks": [
+    "node --test on every changed scripts test file",
     "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The plan and handoff are prose only and change no executable behaviour"
+    "No schema or structure change is needed for message text"
   ],
   "stop_conditions": [
-    "Stop and report if the change set grows beyond the three prose files"
+    "Stop and report if any change needs a schema or structure change, a database write, or loosens a guard"
   ]
 }

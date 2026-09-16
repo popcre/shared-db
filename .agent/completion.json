@@ -1,32 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3062,
+  "work_issue": 3054,
   "outcome": "ready-for-merge",
-  "pr": 3063,
+  "pr": 3055,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3062/1",
-  "contract_sha256": "6bc2caeedc71abe0c968ad1c5a1fd1c153603fec0d0a99f3735fa10b208696d6",
-  "head_sha": "2b1e6a395e07ce3587c82a3d0ef9677531a52d5e",
+  "contract_ref": "refs/db-contracts/3054/9",
+  "contract_sha256": "2d83d0aef792f9ac49966b93e1c5408ced307795b09416f69e726f20a23fdea3",
+  "head_sha": "2e1a666b2a61746801e38af0d40e26794dcc9ebd",
   "files_changed": [
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    ".github/live-proofs/3043.sql"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every changed scripts test file",
+      "command": "node --version",
       "exit_code": 0,
-      "evidence": "run-governed-review 77/77 pass, 0 fail, 0 skipped at 2b1e6a39; check-throughput-truth-audit OK."
-    },
-    {
-      "command": "git diff --check origin/main...HEAD",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output at 2b1e6a39."
+      "evidence": "Run at implementation head 2e1a666b: node v24.19.0. Probe file unchanged; read-only."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: only the review runner's pre-start checks and prompt copy changed; every existing refusal condition is unchanged."
+    "Shared DB Live Proof runs the probe with read_only true."
   ],
   "stop_conditions_hit": []
 }

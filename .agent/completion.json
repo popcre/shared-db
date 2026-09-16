@@ -4,17 +4,19 @@
   "outcome": "ready-for-merge",
   "pr": 3007,
   "migration_versions": [
-    "20260916001923"
+    "20260916033914"
   ],
-  "contract_ref": "refs/db-contracts/2988/1",
-  "contract_sha256": "aba95e600e68fa6e52554eddbfeadbcbcba801e42c26a5d44b53ead02ae33e0d",
-  "head_sha": "d51024e0c201f9f2a5faa72e1bef4ec899fd9b29",
+  "contract_ref": "refs/db-contracts/2988/2",
+  "contract_sha256": "2cc69f487c32c40c1cf94f53107ef060c8dfd15c56ff82ac482cfd6d543688fc",
+  "head_sha": "7700029e3b32e66a4970e813652546676373cc8e",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260916001923.json",
+    "scripts/production-verification-sidecars/20260916033914.json",
     "scripts/production_business_risk_gate.py",
     "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
     "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql"
   ],
   "db_reads": [

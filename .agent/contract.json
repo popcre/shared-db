@@ -1,35 +1,22 @@
 {
-  "schema_version": 1,
-  "generation": 1,
-  "work_issue": 2988,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
-  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
-  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916001923)",
-  "worker": "Claude Opus 5 issue-2988 migration author",
-  "branch": "claude/issue-2988-orderlist-timeout",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988",
   "allowed_paths": [
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
     "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916001923.json",
+    "scripts/production-verification-sidecars/20260916033914.json",
     "scripts/production_business_risk_gate.py",
     "scripts/production_catalog_verification.py",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "file_writes": [
-    "supabase/migrations/20260916001923_dam_order_list_role_free_party_names.sql",
-    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
-    "scripts/production-verification-sidecars/20260916001923.json",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    ".agent/contract.json",
-    ".agent/completion.json"
+  "assumptions": [
+    "Reserved migration version 20260916001923 is the only version this work may use",
+    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
+    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
+    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
   ],
+  "base_sha": "1dcf196ea9b506ec14feb55e8465b53d9faf1706",
+  "branch": "claude/issue-2988-orderlist-timeout",
   "db_reads": [
     "table core.customer",
     "table core.factory"
@@ -39,6 +26,19 @@
     "view dam.dam_order_list_customer_directory",
     "view dam.dam_order_list_vendor_directory"
   ],
+  "dispatcher": "Claude shared-db orchestrator (issue 2988, claim 3005, reserved migration version 20260916001923)",
+  "file_writes": [
+    "supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
+    "supabase/tests/wb_grants_rls_and_dam_order_list_invoker.sql",
+    "scripts/production-verification-sidecars/20260916033914.json",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "generation": 2,
+  "goal": "Make the bounded 500-row PopDAM OrderList query finish for an authenticated PopDAM user who has no app.user_role row, preserving customer and vendor names, without raising the 8s statement timeout, without loading the full dataset, without weakening core.customer or core.factory access, and without making api.dam_order_list security definer (issue #2662).",
   "prohibited_actions": [
     "No apply to preview or production; the Supabase MCP is read-only against qsllyeztdwjgirsysgai",
     "No merge of this or any pull request",
@@ -55,16 +55,16 @@
     "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
     "python -m pytest -q scripts/test_production_business_risk_gate.py scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py"
   ],
-  "assumptions": [
-    "Reserved migration version 20260916001923 is the only version this work may use",
-    "Claim #3005 must be expanded to cover the two dam directory views before the lease check will accept this migration",
-    "Docker is unavailable on this machine, so the ephemeral contract-test lane runs in CI, not locally; behavioural proof was taken on a throwaway PostgreSQL 18 cluster",
-    "api.dam_order_list must remain security_invoker=true until issue #2662 is decided"
-  ],
+  "route": "migration",
+  "schema_version": 1,
   "stop_conditions": [
     "Stop if the fix would require raising a timeout, loading the full dataset, or weakening core.customer or core.factory access",
     "Stop if the fix would require making api.dam_order_list security definer",
     "Stop if the reserved migration version is already taken or a second object claim would be needed beyond the declared db_writes",
     "Stop if any required check cannot be run rather than reporting it as passed"
-  ]
+  ],
+  "work_issue": 2988,
+  "work_type": "structural",
+  "worker": "Claude Opus 5 issue-2988 migration author",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-2988"
 }

@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3080,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3079/3",
-  "contract_sha256": "ce0bba1a7a678cd92e1ce044245361eea3162d7bca8ee8457246025445ce538d",
-  "head_sha": "47928a00a1267fd72b6b9d86882d9e62d19e74eb",
+  "contract_ref": "refs/db-contracts/3079/4",
+  "contract_sha256": "4196a4d4cb9b7d9b5eada037cab0afcbdf7b293b6b7a8912909b71cb6acc82eb",
+  "head_sha": "8c7b4ec4e3f1ee60f18e029c4cc5f64625dcdbb8",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -22,12 +22,12 @@
     {
       "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
       "exit_code": 0,
-      "evidence": "2316 tests, 2316 pass, 0 fail, 0 skipped at implementation head 95ed871c against origin/main b682b524. The excluded file fails identically on clean main and is untouched by this PR."
+      "evidence": "2319 tests, 2319 pass, 0 fail, 0 skipped at implementation head 8c7b4ec4 against origin/main e7ece4f4. The excluded file fails identically on clean main and is untouched by this PR. Truth audit OK at 296 call sites."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 47928a00."
+      "evidence": "Exit 0 with no output at 8c7b4ec4."
     }
   ],
   "assumptions_resolved": [

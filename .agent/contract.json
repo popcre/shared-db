@@ -1,54 +1,44 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 2988,
+  "generation": 1,
+  "work_issue": 3030,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Resolve the production-apply producer-mismatch refusal for migration 20260916033914 by registering its one exact historical restoration in scripts/historical-migration-restorations.mjs, with every value derived from the original preview apply run 35060692115, its artifact binding, PR 3007 and its merge commit, and the migration bytes on origin/main; pin the new entry and the issue 2863 entry in scripts/historical-migration-restorations.test.mjs; and record the evidence in a verification document. No guard is weakened, no workflow is dispatched, and no database is touched.",
-  "base_sha": "87b10ced4bea49564be400f196bb3cce5be0c551",
-  "dispatcher": "Claude shared-db orchestrator (issue 2988 production-apply refusal, 2026-09-16)",
-  "worker": "Claude Opus 5 issue-2988 historical restoration registrar",
-  "branch": "claude/2988-historical-restoration",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/w2988hr",
+  "goal": "Record the implementation plan for the product-type reader (issue 3030, tracked work issue 3024): add plan_product_type_reader.md, one AGENTS.md pointer bullet under Active contracts and implementation plans, and the session HANDOFF.d file. Prose rulebook and handoff files only; no code, migration, workflow, or database change.",
+  "base_sha": "9fe6f0bbf6d5f1f2332aaf0af5501816729ccf8d",
+  "dispatcher": "Claude shared-db session (product-type reader planning, 2026-09-16)",
+  "worker": "Claude Opus 5 product-type reader plan author",
+  "branch": "claude/product-description-extraction-118fbe",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/product-description-extraction-118fbe",
   "allowed_paths": [
-    "scripts/historical-migration-restorations.mjs",
-    "scripts/historical-migration-restorations.test.mjs",
-    "docs/verification/issue-2988-historical-producer-restoration.md",
+    "AGENTS.md",
+    "plan_product_type_reader.md",
+    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/historical-migration-restorations.mjs",
-    "scripts/historical-migration-restorations.test.mjs",
-    "docs/verification/issue-2988-historical-producer-restoration.md",
+    "AGENTS.md",
+    "plan_product_type_reader.md",
+    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No apply, dispatch, or promotion of any workflow, preview or production",
     "No database read or write of any kind",
-    "No edit to any guard, gate, validator, or test to make the new entry pass",
-    "No change to any migration file, including 20260916033914",
-    "No merge of this or any other pull request",
-    "No edit to any existing registry entry",
+    "No migration, script, workflow, or configuration change",
+    "No edit to AGENTS.md beyond the one pointer bullet",
     "No work in a shared checkout or on another branch"
   ],
   "required_checks": [
-    "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
-    "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-    "node --test scripts/historical-migration-restorations.test.mjs",
-    "python -m pytest -q scripts/test_production_business_risk_gate.py"
+    "git diff --check origin/main...HEAD"
   ],
   "assumptions": [
-    "The registered historical restoration route is the repository's own sanctioned remedy for a producer mismatch on an immutable original apply",
-    "A migration that ships a new preview-producer sidecar can never rehearse on preview at a commit that already carries that sidecar on main, so run 35060692115 cannot be replayed and its evidence must be rebound rather than regenerated",
-    "The migration file on origin/main contains no CRLF, so the raw-byte artifact manifest digest and the newline-normalised registry digest are the same value the gate compares"
+    "The plan and handoff are prose only and change no executable behaviour"
   ],
   "stop_conditions": [
-    "Stop and report if any registry value cannot be pinned exactly from the run, its artifact, the pull request, or the file on origin/main",
-    "Stop and report if the sanctioned historical restoration route does not fit this fact pattern",
-    "Stop and report rather than weaken, bypass, or special-case any guard to make the entry validate"
+    "Stop and report if the change set grows beyond the three prose files"
   ]
 }

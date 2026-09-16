@@ -1,49 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2988,
+  "work_issue": 3030,
   "outcome": "ready-for-merge",
-  "pr": 3021,
+  "pr": 3025,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2988/5",
-  "contract_sha256": "282dae216b73d43dccfecdf78f316dff93b4279058c7a335de4a373370fa42e9",
-  "head_sha": "f399389fd36301a63d2379a7500bf8675f19f82a",
+  "contract_ref": "refs/db-contracts/3030/1",
+  "contract_sha256": "d1ced6e1a06d7b9caedbaeb1975c50a13e4e5d745fc69e57ac6350a724323828",
+  "head_sha": "638a61ef15c7fc684be198bed543a7180ffababa",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "docs/verification/issue-2988-historical-producer-restoration.md",
-    "scripts/historical-migration-restorations.mjs",
-    "scripts/historical-migration-restorations.test.mjs"
+    "AGENTS.md",
+    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
+    "plan_product_type_reader.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/historical-migration-restorations.mjs --production-provenance supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql <gate evidence>",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Run at implementation head 49760a34 with exactly the evidence object prove_registered_historical_restoration_provenance builds. Output: {\"version\":\"20260916033914\",\"fileSha256\":\"e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0\"}, which equals the run artifact's migration-content-manifest.json digest for this version. A negative control with the run id changed by one digit exited 2 with 'historical production provenance mismatch for previewApplyRun'."
-    },
-    {
-      "command": "node scripts/historical-migration-restorations.mjs --allows-backdated supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output at the same head: the file on origin/main matches the registered filename, fileSha256, statementBytes 13874 and statementSha256 568e72b43a86a70cc1001a52331615b8b7d13b5310567d2f29657e77bcc93723."
-    },
-    {
-      "command": "node --test scripts/historical-migration-restorations.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at the same head; the two added tests pin the issue 2988 and issue 2863 entries field by field with negative controls."
-    },
-    {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
-      "exit_code": 0,
-      "evidence": "155 passed, 237 subtests passed in 32.88s at the same head."
+      "evidence": "Exit 0 with no output at implementation head 638a61ef against origin/main 9fe6f0bb; the diff is exactly three prose files (AGENTS.md +1 line, plan +270, handoff +15)."
     }
   ],
   "assumptions_resolved": [
-    "Run 35060692115 is a workflow_dispatch run on main, run_attempt 1, conclusion success, head_sha 3fdd16effbd154e1602c29aa5610161910138d68; its single unexpired artifact preview-migration-apply-bac58c5f49687c7911d013e1f392fcf5c356e626 carries preview-instance.json with appliedCommit bac58c5f49687c7911d013e1f392fcf5c356e626, previewProjectRef mvpkijzfmfcxhnzqogzs, rehearsalMode claim and allowlist [20260916033914]. Because that binding is claim mode, the gate's bound-mainline post-merge exception does not apply and the registry route is the correct remedy.",
-    "PR 3007 is merged at 86da2d44bcd390b3177f322f947b212c8dc9bbc9, which is the current origin/main, so producer provenance is complete and the entry carries sourcePr and sourceMergeCommit.",
-    "The migration on origin/main contains zero CRLF, so its raw digest and its newline-normalised digest are both e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0, identical to the artifact manifest digest the gate compares against.",
-    "The objects the migration creates are view dam.dam_order_list_customer_directory, view dam.dam_order_list_vendor_directory and view api.dam_order_list, plus idempotent drops of four abandoned function signatures.",
-    "No guard, gate, validator, or migration was edited; no workflow was dispatched and no database was read or written."
+    "git diff --stat origin/main...638a61ef lists only AGENTS.md, plan_product_type_reader.md and the HANDOFF.d file; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

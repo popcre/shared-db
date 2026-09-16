@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3037/1",
   "contract_sha256": "594e0ca57a421a98f05aa011f77428643680d29e85557de9084c46d9ad201427",
-  "head_sha": "8fc2be65e50bdb4436a5231fd0b7e0631c63fc5b",
+  "head_sha": "b1a8ccc64f12caf42c9aa79cb17c6316604db801",
   "files_changed": [
     "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
     "plan_product_type_reader.md"
@@ -17,11 +17,11 @@
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at implementation head 8fc2be65 against origin/main 4e290252; the diff is exactly two prose files (plan and handoff)."
+      "evidence": "Exit 0 with no output at implementation head b1a8ccc6 (8fc2be65 plus a merge of origin/main 95619429) against origin/main 95619429; the diff is exactly two prose files (plan and handoff)."
     }
   ],
   "assumptions_resolved": [
-    "git diff --stat origin/main...8fc2be65 lists only plan_product_type_reader.md and the HANDOFF.d file; no code, migration, workflow or configuration file changed."
+    "git diff --stat origin/main...b1a8ccc6 lists only plan_product_type_reader.md and the HANDOFF.d file; no code, migration, workflow or configuration file changed."
   ],
   "stop_conditions_hit": []
 }

@@ -38,9 +38,9 @@ def check_registry(repo: Path, sidecar_versions: list[str]) -> None:
             "Add one {\"version\": ..., \"issue\": ...} entry per sidecar; that single "
             "declaration pins it as a preview producer."
         )
-    missing = sorted(declared - set(sidecar_versions))
-    if missing:
-        raise GuardError(f"{SIDECAR_REGISTRY_PATH} declares sidecars {missing} whose files do not exist")
+    fileless = sorted(declared - set(sidecar_versions))
+    if fileless:
+        raise GuardError(f"{SIDECAR_REGISTRY_PATH} declares sidecars {fileless} whose files do not exist")
 
 
 def check(repo: Path, scan_versions: list[str]) -> dict:

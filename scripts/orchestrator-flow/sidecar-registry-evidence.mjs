@@ -71,8 +71,8 @@ export function sidecarsEvidence(target, reader) {
   const present = [...tree.keys()].filter((file) => path.posix.dirname(file) === SIDECAR_DIR && file.endsWith('.json')).map((file) => path.posix.basename(file, '.json'))
   const undeclared = present.filter((version) => !declared.includes(version)).sort()
   if (undeclared.length) throw new DeliveryPreflightError(`delivery preflight blocked by sidecars: ${undeclared.join(', ')} not declared in ${SIDECAR_REGISTRY_PATH}`)
-  const missing = declared.filter((version) => !present.includes(version)).sort()
-  if (missing.length) throw new DeliveryPreflightError(`delivery preflight blocked by sidecars: ${SIDECAR_REGISTRY_PATH} declares ${missing.join(', ')} without a sidecar file`)
+  const fileless = declared.filter((version) => !present.includes(version)).sort()
+  if (fileless.length) throw new DeliveryPreflightError(`delivery preflight blocked by sidecars: ${SIDECAR_REGISTRY_PATH} declares ${fileless.join(', ')} without a sidecar file`)
   const sidecars = [...declared].sort().map((version) => ({ path: `${SIDECAR_DIR}/${version}.json`, blob: tree.get(`${SIDECAR_DIR}/${version}.json`) }))
   return registration('sidecars', target, `${SIDECAR_REGISTRY_PATH}@${registryBlob}`, { registry: { path: SIDECAR_REGISTRY_PATH, blob: registryBlob }, sidecars })
 }

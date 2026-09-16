@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3075,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3076/6",
-  "contract_sha256": "925124dade1dc91fb69b43f7401365c71783b9802e9d159ba7894ad83668c72c",
-  "head_sha": "ac26435aec8c3024f9916746c62bddacf182808e",
+  "contract_ref": "refs/db-contracts/3076/7",
+  "contract_sha256": "8c4be7f1140738c65de34c0bc15bb3aba331afad471747609f7524e0a7ecb973",
+  "head_sha": "6a2e0fb526394c02aa944168975a3bba34382d26",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/shared-supabase-migrations.yml",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "scripts/orchestrator-flow/migration-train.test.mjs",
@@ -21,12 +23,12 @@
     {
       "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
       "exit_code": 0,
-      "evidence": "Run at implementation head ac26435a: 5 passed, 155 deselected. Full suite: 3 failed, 157 passed; the same 3 fail identically on base a160ca54 (3 failed, 152 passed)."
+      "evidence": "Run at implementation head 6a2e0fb5: 5 passed, 155 deselected. Full suite: 3 failed, 157 passed; the same 3 fail identically on base a160ca54 (3 failed, 152 passed)."
     },
     {
       "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head ac26435a: tests 13, pass 13, fail 0, skipped 0."
+      "evidence": "Run at implementation head 6a2e0fb5: tests 13, pass 13, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [

@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 7,
   "work_issue": 3076,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Let the production risk gate accept a validated migration train that binds each allowlisted version to its own merged authoring PR and its own preview evidence, with the single source_pr rule unchanged when no train ref is supplied (#3027 Step 6).",
-  "base_sha": "6492c76767de64e8f901e380160d1702bccc17e4",
+  "base_sha": "1dce1ca466ceb9abdf6f1c62d43bf7704322dda1",
   "dispatcher": "Claude #3027 Step 6 live acceptance session (owner approval relayed 2026-09-16)",
   "worker": "Claude Opus 5 #3027 Step 6 train gate",
   "branch": "claude/3027-train-per-entry-gate",

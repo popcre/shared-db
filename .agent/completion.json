@@ -8,6 +8,8 @@
   "contract_sha256": "0119defc8b1a59a73d8e5ea800c98dd2c72a06dd4f47c9a6d48d444f1c152df6",
   "head_sha": "2c7cd2a251ecae11e2bf06d2b444f7938f925ef4",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/db-data-admin.yml",
     ".github/workflows/domain-ownership.yml",
     "AGENTS.md",

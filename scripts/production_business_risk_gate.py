@@ -2776,7 +2776,7 @@ def qualify_route_main(argv: list[str]) -> int:
         )
     except Exception as exc:  # noqa: BLE001 - any failure refuses dispatch
         print(f"::error::ENGINEER ACTION REQUIRED: automatic qualification found no evidence route "
-              f"the production gate accepts: {type(exc).__name__}: {exc}. Nothing was dispatched.")
+              f"the production gate accepts: {type(exc).__name__}: {exc}. Nothing was dispatched.", file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
     return 0

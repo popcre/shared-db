@@ -132,6 +132,26 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("python scripts/production_business_risk_gate.py qualify-route", self.job)
         self.assertIn('RECORD_ARGS=(--recovery-record "$RECOVERY_EVIDENCE")', self.job)
 
+    def test_recovery_record_is_the_proof_the_source_guard_read_and_only_for_historical_runs(self):
+        route = self.job.index("- name: Qualify the evidence route the production gate accepts")
+        self.assertLess(self.job.index("- name: Read the historical recovery proof from the exact preview artifact"), route)
+        path = "RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json"
+        self.assertEqual(self.job.count(path), 2)
+        step = self.job[route:self.job.index("- name: Write immutable automatic review evidence")]
+        self.assertIn(path, step)
+        self.assertIn("HISTORICAL_PREVIEW_PR: ${{ inputs.historical_preview_source_pr }}", step)
+        self.assertRegex(step, r'RECORD_ARGS=\(\)\n\s+if \[ -n "\$\{HISTORICAL_PREVIEW_PR:-\}" \]; then\n'
+                               r'\s+RECORD_ARGS=\(--recovery-record "\$RECOVERY_EVIDENCE"\)\n\s+fi')
+
+    def test_refusal_reaches_the_step_log_not_the_route_file(self):
+        with mock.patch.object(gate, "qualify_automatic_route", side_effect=RiskGateError("no route")), \
+                mock.patch("sys.stdout") as out, mock.patch("sys.stderr") as err:
+            code = gate.qualify_route_main(["--main-sha", MAIN, "--allowlist", VERSION, "--pr", "3007"])
+        self.assertEqual(code, 2)
+        written_err = "".join(c.args[0] for c in err.write.call_args_list)
+        self.assertIn("::error::ENGINEER ACTION REQUIRED", written_err)
+        self.assertNotIn("::error::", "".join(c.args[0] for c in out.write.call_args_list))
+
     def test_dispatch_names_exactly_one_route(self):
         self.assertIn("EPHEMERAL_CHECK_RUN_ID: ${{ steps.evidence_route.outputs.ephemeral_check_run_id }}", self.job)
         payload = re.search(r"'\{ref:\"main\",inputs:.*\}' \\", self.job).group(0)

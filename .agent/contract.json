@@ -1,47 +1,77 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 9,
   "work_issue": 2301,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Record the Phase A landing evidence in the plan_author_lane_abandonment_lifecycle.md STATUS table so Steps 1-2 cite the merge commit, guarded merge head, governed approval ref and check results; no behaviour, schema or database change.",
-  "base_sha": "7eac0c7110e597bb8380c75037f2f1b4730d6a9b",
-  "dispatcher": "Claude shared-db coordinator (issue 2301 repo-maintenance, 2026-09-15)",
-  "worker": "Claude Opus 5 issue-2301 Phase A status-record worker",
-  "branch": "claude/2301-phase-a-status",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/disney-creative-unmapped-titles-7b4149",
+  "goal": "Implement Step 3 of plan_author_lane_abandonment_lifecycle.md: a canonical refs/db-claims-retired namespace holding a versioned, immutable terminal-retirement tombstone; --release-claim --retire that validates the claim, pull request, exact head, worktree state and typed decision and creates the tombstone before closing the issue; idempotent identical retry and refusal of a conflicting record; refusal of every claim-reactivation path and of merge for a retired migration version; refusal to reuse a retired branch or worktree; RETIRED-REOPENED audit reporting; and one bounded retirement ref listing per command. No schema, database or infrastructure change.",
+  "base_sha": "921fef3a0e47f01bc5af73a667f2932d7a33d988",
+  "dispatcher": "Claude shared-db coordinator (issue 2301 Phases B-D, 2026-09-15)",
+  "worker": "Claude Opus 5 issue-2301 Step 3 terminal-retirement worker",
+  "branch": "claude/2301-step3-tombstones",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-ad05e67b707796220",
   "allowed_paths": [
-    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/check-migration-pr-lease.mjs",
+    "scripts/check-migration-pr-lease.test.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "scripts/test-fixtures/migration-lane-race-worker.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
-    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/check-migration-pr-lease.mjs",
+    "scripts/check-migration-pr-lease.test.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "scripts/test-fixtures/migration-lane-race-worker.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/capacity-state.test.mjs",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database, preview, production, or infrastructure action",
-    "No claim, branch, pull request, worktree, or coordination-ref deletion",
-    "No change to any script, test, workflow, or configuration file",
-    "No Phase B-D implementation in this pull request",
-    "No weakening of any existing check or guard"
+    "No deletion of any coordination ref, claim, branch, pull request, or worktree, and specifically no deletion path for a retirement tombstone",
+    "No edit to plan_author_lane_abandonment_lifecycle.md in this pull request; the plan STATUS table is Step 6 work",
+    "No Step 4-7 implementation in this pull request",
+    "No weakening, skipping, or relaxing of any existing check, guard, or refusal",
+    "No synthetic review verdict and no self-approval"
   ],
   "required_checks": [
-    "node --test scripts/lib/documents-only-change.test.mjs",
-    "git diff --check"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/migration-retirement-tombstones.test.mjs",
+    "node --test scripts/check-migration-pr-lease.test.mjs",
+    "node --test scripts/coordination-scenarios.test.mjs",
+    "git diff --check",
+    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "node --test scripts/orchestrator-flow/capacity-state.test.mjs",
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
   ],
   "assumptions": [
-    "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator",
-    "Phase A implementation landed as merge commit 7eac0c7110e597bb8380c75037f2f1b4730d6a9b (PR 2640, sub-issue 2994 closed); this pull request only records that fact in the plan STATUS table",
-    "plan_author_lane_abandonment_lifecycle.md is a rulebook file, so this change is never documents-only and takes the full contract, review and guarded-merge route",
-    "This pull request closes sub-issue 2997 and references parent 2301, matching the one-closing-issue reviewer rule"
+    "Issue 2301 is repo-maintenance owned by a repository session, not the orchestrator; this pull request closes sub-issue 2999 and references parent 2301",
+    "Phase A (Steps 1-2) landed as 7eac0c7110e597bb8380c75037f2f1b4730d6a9b and its plan STATUS record landed as 921fef3a0e47f01bc5af73a667f2932d7a33d988, which is this branch's base",
+    "A terminal retirement is opt-in: without --retire, --release-claim keeps its existing behaviour, because an ordinary release frees capacity and says nothing about whether the work is finished",
+    "A retirement tombstone is create-only and permanent; an identical retry is what a lost HTTP response looks like and must not strand a half-finished retirement",
+    "Retirement questions are answered from one bounded ref listing per command, because issue 2301's own parallel sessions already exhaust the same rate limit",
+    "Three files outside the original eight are changed because the retirement guard now questions their test doubles and adds one discovered truth-audit call site: the two orchestrator-flow fixtures gained a real ref listing instead of a hard-coded empty answer, and the audit inventory records the new call site with a written disposition. Their suites are required checks here rather than incidental edits.",
+    "Generation 9 answers a governed review of head 9551b9be54a25c0456ff0d91cca749571871a03f that found the goal's promise of 'every claim-reactivation path' unmet in the code. The guard was wired into resume, renew, expand and split recovery, but not into expired recovery, version supersession and its reversion alias, or merged-claim reissue; all three re-point or extend a claim and now consult it. The reviewer named expired recovery as the reachable one, because a claim reopened over a tombstoned version reaches it, and that is the RETIRED-REOPENED state this step already reports.",
+    "The wiring test that existed to prevent exactly this defect passed throughout, because it enumerated the five functions that already carried the guard. An allowlist of the guarded can never catch the unguarded, since a path nobody remembered to guard is also a path nobody remembered to list. It now discovers claim-mutating exports from the module itself and holds the discovered population to a floor so a broken discovery cannot pass by finding nothing.",
+    "main and relinquishAuthorLease are exempt from that discovery in writing, because both are de-escalations rather than reactivations: main performs the retirement close itself and would refuse its own --release-claim --retire, and relinquishing hands capacity back without re-pointing or extending a lease, so guarding it would strand a retired claim instead of protecting it.",
+    "No behavioural fixture was added for the three newly guarded paths. Each has preconditions ahead of the guard -- an exact claim title, an expired lease, a merged source pull request -- so a double would have to satisfy those before reaching the refusal, and a double that died on a precondition would read as coverage while proving nothing. The discovery test fails without this fix and covers all three paths, which is the property under test."
   ],
   "stop_conditions": [
-    "Stop if recording the evidence would require editing any non-prose file",
-    "Stop if the cited merge commit, guarded merge head or verdict ref cannot be verified from git and the GitHub record",
+    "Stop if implementing Step 3 would require deleting any ref or weakening any existing refusal",
+    "Stop if another ready pull request holds any of the shared scripts in allowed_paths",
+    "Stop if the retirement guard cannot be wired into a claim-reactivation path without changing that path's existing behaviour for a live claim",
     "Stop if current main moves before the final exact-head review-to-merge cycle"
   ]
 }

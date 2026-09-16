@@ -71,6 +71,34 @@ export const DEFAULT_LEASE_HOURS = 12
 export const MUTEX_STALE_AFTER_MS = 2 * 60 * 1000
 export const MUTEX_REF = 'refs/db-coordination/author-acquisition'
 export const MUTEX_RECOVERY_ACTIVE_REF = 'refs/db-coordination/author-acquisition-recovery-active'
+// TERMINAL RETIREMENT (issue #2301, Step 3). `refs/db-claims/<version>` is the
+// PERMANENT reservation and says "this version is spent". It does not say why,
+// and it cannot say that the author work behind it is over. A closed claim issue
+// cannot carry that either: an issue can be REOPENED, and a reopened claim used
+// to read as ordinary open work -- capacity, resume, renew, expand and merge all
+// accepted it. That is the resurrection this namespace exists to stop.
+//
+// A tombstone is create-only and is NEVER deleted. There is deliberately no
+// delete path in this file for this prefix: a retirement that can be withdrawn
+// is not a terminal state, and "withdraw the tombstone" would be indistinguishable
+// from the abandonment it records. A successor gets a FRESH version, branch,
+// worktree and claim instead; the retired version stays spent forever.
+export const RETIRED_CLAIM_REF_PREFIX = 'refs/db-claims-retired'
+export const RETIREMENT_SCHEMA_VERSION = 1
+export const RETIREMENT_RECORD_PREFIX = 'db-claim-retirement '
+// Typed decisions. Free-text would let "abandoned" and "superseded" be recorded
+// as the same thing, and Step 4's reporting has to tell them apart.
+export const RETIREMENT_DECISIONS = Object.freeze(['abandoned-worktree', 'superseded-by-successor', 'owner-terminated'])
+// A worktree that is dirty or on another machine holds unmerged author work, so
+// retiring it destroys something nobody in this process can see. Those two states
+// require a durable owner-decision artifact; clean and absent do not.
+export const RETIREMENT_OWNER_DECISION_STATES = Object.freeze(['dirty', 'remote'])
+// Sized like REVIEW_REF_ROW_LIMIT: one version per retirement, and this
+// repository has spent a few hundred versions in its whole history. At this
+// ceiling a silently truncated listing becomes plausible, and a truncated
+// listing reads as "not retired" -- the fail-OPEN direction -- so it refuses
+// loudly rather than guessing.
+export const RETIREMENT_REF_ROW_LIMIT = 1000
 export const REVIEW_CURSOR_REF = 'refs/db-coordination/reviewer-round-robin'
 export const REVIEW_FAILURE_REF_PREFIX = 'refs/db-review-failures'
 export const REVIEW_REPLACEMENT_REF_PREFIX = 'refs/db-review-replacements'
@@ -1477,6 +1505,197 @@ export const RECOVERABLE_CLAIM_CLOSE_REASONS = new Set([LEGACY_GUARDED_CLEANUP_C
 function requireClaimCloseReason(reason) {
   if (typeof reason !== 'string' || !reason.trim()) throw new LaneError('closing a claim requires an exact stated reason')
   return reason
+}
+
+// ---------------------------------------------------------------------------
+// Terminal retirement tombstones (issue #2301, Step 3)
+// ---------------------------------------------------------------------------
+
+export const RETIREMENT_CLOSE_REASON = 'Migration-author claim closed by an explicit owner-confirmed terminal retirement (--release-claim with retirement evidence). An immutable tombstone under refs/db-claims-retired records the decision. No lease expired and no cleanup sweep ran. Its migration version remains permanently unavailable and this claim can never be resumed, renewed, expanded, or merged.'
+
+export function retiredClaimRef(version) {
+  if (!/^\d{14}$/.test(String(version ?? ''))) throw new LaneError('retirement ref requires an exact 14-digit migration version')
+  return `${RETIRED_CLAIM_REF_PREFIX}/${version}`
+}
+
+// Identity comparison for branch and worktree reuse. Windows worktree paths
+// reach this file with either slash, sometimes with a trailing one, and Git
+// branch names are compared exactly -- but a path that differs only in case or
+// separator is the SAME directory, and treating it as a new one is exactly how
+// a retired worktree gets resurrected under a cosmetically different spelling.
+export function normalizeRetirementIdentity(value) {
+  return String(value ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+const RETIREMENT_REQUIRED_FIELDS = Object.freeze(['schema_version', 'claim', 'pr', 'head_sha', 'branch', 'version', 'worktree', 'worktree_state', 'decision', 'evidence', 'successor_issue', 'created_at'])
+
+/**
+ * Validate a retirement record. EVERY field is required, including
+ * `successor_issue` -- which is explicitly `null` when there is no successor.
+ * An OPTIONAL successor field would make "no successor" and "the writer forgot"
+ * the same record, and Step 3 requires a successor to be nameable.
+ */
+export function validateRetirementRecord(record) {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) throw new LaneError('retirement record must be a JSON object')
+  for (const field of RETIREMENT_REQUIRED_FIELDS) if (record[field] === undefined) throw new LaneError(`retirement record is missing ${field}`)
+  // Unknown keys are refused for the same reason the work contract refuses them:
+  // a typo silently drops a binding, and a dropped binding is indistinguishable
+  // from one that was never required.
+  for (const key of Object.keys(record)) if (!RETIREMENT_REQUIRED_FIELDS.includes(key) && key !== 'owner_decision') throw new LaneError(`retirement record has unknown field ${key}`)
+  if (record.schema_version !== RETIREMENT_SCHEMA_VERSION) throw new LaneError(`retirement record schema_version must be ${RETIREMENT_SCHEMA_VERSION}`)
+  if (!Number.isInteger(record.claim) || record.claim <= 0) throw new LaneError('retirement record claim must be a positive issue number')
+  if (!Number.isInteger(record.pr) || record.pr <= 0) throw new LaneError('retirement record pr must be a positive pull request number')
+  if (!/^[0-9a-f]{40}$/.test(String(record.head_sha))) throw new LaneError('retirement record head_sha must be an exact 40-character commit SHA')
+  if (!/^\d{14}$/.test(String(record.version))) throw new LaneError('retirement record version must be exactly 14 digits')
+  for (const field of ['branch', 'worktree', 'evidence']) {
+    if (typeof record[field] !== 'string' || !record[field].trim()) throw new LaneError(`retirement record ${field} must be a non-empty string`)
+  }
+  if (!WORKTREE_STATES.includes(record.worktree_state)) throw new LaneError(`retirement record worktree_state must be one of ${WORKTREE_STATES.join(', ')}`)
+  if (!RETIREMENT_DECISIONS.includes(record.decision)) throw new LaneError(`retirement record decision must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
+  if (record.successor_issue !== null && (!Number.isInteger(record.successor_issue) || record.successor_issue <= 0)) throw new LaneError('retirement record successor_issue must be a positive issue number or null')
+  if (record.decision === 'superseded-by-successor' && record.successor_issue === null) throw new LaneError('a superseded-by-successor retirement must name its successor issue')
+  if (Number.isNaN(Date.parse(String(record.created_at)))) throw new LaneError('retirement record created_at must be a valid ISO timestamp')
+  // Unmerged work on a dirty or remote tree is destroyed by retirement, so the
+  // decision must be durable and dereferenceable, never a sentence typed at the
+  // command line.
+  if (RETIREMENT_OWNER_DECISION_STATES.includes(record.worktree_state)) {
+    if (!record.owner_decision) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires an owner-decision record`)
+    validateImmutableArtifactReference(record.owner_decision, 'retirement owner_decision')
+  } else if (record.owner_decision !== undefined) throw new LaneError('owner_decision is allowed only for a dirty or remote worktree retirement')
+  return record
+}
+
+export function formatRetirementRecord(record) {
+  return `${RETIREMENT_RECORD_PREFIX}${JSON.stringify(validateRetirementRecord(record))}`
+}
+
+/**
+ * FAIL CLOSED. A ref that exists in this namespace but whose commit message is
+ * unreadable, truncated, or not a retirement record is NOT treated as "no
+ * retirement" -- that is the direction that lets a corrupted tombstone resurrect
+ * a claim. It throws, and the operator repairs the record.
+ */
+export function parseRetirementRecord(message) {
+  const text = String(message ?? '')
+  if (!text.startsWith(RETIREMENT_RECORD_PREFIX)) throw new LaneError('retirement ref does not point to a retirement record')
+  let payload
+  try { payload = JSON.parse(text.slice(RETIREMENT_RECORD_PREFIX.length)) }
+  catch { throw new LaneError('retirement record is not readable JSON') }
+  return validateRetirementRecord(payload)
+}
+
+// ONE bounded listing per command, not one API call per claim. `--audit` reads
+// every open claim, so a per-claim `readRef` turned a single audit into dozens of
+// requests against the same rate limit that issue #2301's own parallel sessions
+// already exhaust. The snapshot is cached for the life of the process and reset
+// explicitly in tests.
+let retirementSnapshotCache = null
+export function resetRetirementSnapshot() { retirementSnapshotCache = null }
+export function retirementSnapshot(io = githubIo) {
+  if (retirementSnapshotCache) return retirementSnapshotCache
+  const rows = io.listRefs(RETIRED_CLAIM_REF_PREFIX) ?? []
+  if (rows.length >= RETIREMENT_REF_ROW_LIMIT) throw new LaneError(`${RETIRED_CLAIM_REF_PREFIX} returned ${rows.length} refs, at or past the ${RETIREMENT_REF_ROW_LIMIT}-ref ceiling; refusing a possibly truncated retirement audit rather than reading a truncated listing as "not retired"`)
+  const versions = new Map()
+  for (const row of rows) {
+    const version = String(row.ref ?? '').slice(`${RETIRED_CLAIM_REF_PREFIX}/`.length)
+    if (!/^\d{14}$/.test(version)) throw new LaneError(`malformed retirement ref ${row.ref}`)
+    versions.set(version, row.sha)
+  }
+  retirementSnapshotCache = { versions, shas: new Map([...versions].map(([version, sha]) => [sha, version])) }
+  return retirementSnapshotCache
+}
+
+export function isVersionRetired(version, io = githubIo) {
+  return retirementSnapshot(io).versions.has(String(version ?? ''))
+}
+
+export function readRetirementRecord(version, io = githubIo) {
+  const sha = retirementSnapshot(io).versions.get(String(version ?? ''))
+  if (!sha) return null
+  const message = io.readCommitMessage(sha)
+  // `readCommitMessage` returns null when the commit is unreadable. A retirement
+  // ref whose target cannot be read is an UNKNOWN terminal state, not an absent
+  // one, so it refuses rather than returning null.
+  if (message === null || message === undefined) throw new LaneError(`retirement record for ${version} is unreadable; refusing rather than treating it as not retired`)
+  return parseRetirementRecord(message)
+}
+
+/**
+ * The single refusal every claim-reactivation path calls. `action` names the
+ * command so the operator is told which mutation was refused and why, instead of
+ * a generic "claim is closed".
+ */
+export function assertClaimNotRetired(version, action, io = githubIo) {
+  if (!isVersionRetired(version, io)) return null
+  const record = readRetirementRecord(version, io)
+  const successor = record.successor_issue ? `; successor work is issue #${record.successor_issue}` : '; a successor needs a fresh claim, branch, worktree and migration version'
+  throw new LaneError(`migration version ${version} was terminally retired (${record.decision}, claim #${record.claim}, PR #${record.pr}) and can never be ${action}${successor}`)
+}
+
+/**
+ * Branch and worktree identities are never reused, whether the holder is a live
+ * claim or a tombstone. Reusing a retired branch re-points a dead lane's name at
+ * new work, and every later audit of that branch reads the retired record.
+ */
+export function assertRetirementIdentityAvailable({ branch, worktree }, io = githubIo) {
+  const wantedBranch = normalizeRetirementIdentity(branch), wantedWorktree = normalizeRetirementIdentity(worktree)
+  for (const version of retirementSnapshot(io).versions.keys()) {
+    const record = readRetirementRecord(version, io)
+    if (normalizeRetirementIdentity(record.branch) === wantedBranch) throw new LaneError(`branch ${branch} belongs to terminally retired claim #${record.claim} (version ${version}); a successor must use a fresh branch`)
+    if (normalizeRetirementIdentity(record.worktree) === wantedWorktree) throw new LaneError(`worktree ${worktree} belongs to terminally retired claim #${record.claim} (version ${version}); a successor must use a fresh worktree`)
+  }
+}
+
+/**
+ * Create-only, idempotent on an IDENTICAL record, refusing on a conflicting one.
+ * An identical retry is what a lost HTTP response looks like from here, and it
+ * must not become a second refusal that strands a half-finished retirement.
+ */
+export function createRetirementTombstone(record, io = githubIo) {
+  const validated = validateRetirementRecord(record)
+  const ref = retiredClaimRef(validated.version)
+  const existingSha = io.readRef(ref)
+  if (existingSha) {
+    const existing = parseRetirementRecord(io.readCommitMessage(existingSha))
+    // Compare the canonical serialisation, not field-by-field: a difference in
+    // ANY bound field is a conflicting retirement.
+    if (JSON.stringify(existing) !== JSON.stringify(validated)) throw new LaneError(`version ${validated.version} already carries a conflicting retirement tombstone for claim #${existing.claim}; retirement records are immutable and are never replaced`)
+    resetRetirementSnapshot()
+    return { ref, sha: existingSha, idempotent: true }
+  }
+  const sha = io.makeOwnerCommit(formatRetirementRecord(validated))
+  if (!io.createRef(ref, sha)) {
+    // Lost the create race. Whoever won must have written the identical record
+    // or this retirement is in conflict.
+    const winner = io.readRef(ref)
+    const existing = winner ? parseRetirementRecord(io.readCommitMessage(winner)) : null
+    if (!existing || JSON.stringify(existing) !== JSON.stringify(validated)) throw new LaneError(`retirement tombstone for ${validated.version} was created concurrently with a different record; refusing`)
+    resetRetirementSnapshot()
+    return { ref, sha: winner, idempotent: true }
+  }
+  // Readback: the ref must point at exactly the commit we wrote.
+  if (io.readRef(ref) !== sha) throw new LaneError(`retirement tombstone readback failed for ${validated.version}`)
+  resetRetirementSnapshot()
+  return { ref, sha, idempotent: false }
+}
+
+/**
+ * RETIRED-REOPENED. An open claim whose version is tombstoned is a resurrection:
+ * somebody reopened the issue after the terminal record was written. Every
+ * mutation path already refuses it; this is what makes it VISIBLE in a report
+ * instead of only failing when someone tries to use it.
+ */
+export function retiredReopenedClaims(claims, now = new Date(), io = githubIo) {
+  const found = []
+  for (const claim of claims ?? []) {
+    let lease
+    try { lease = parseAuthorLease(claim.body, now) } catch { continue }
+    if (lease.legacy || !lease.version) continue
+    if (!isVersionRetired(lease.version, io)) continue
+    const record = readRetirementRecord(lease.version, io)
+    found.push({ status: 'RETIRED-REOPENED', claim: Number(claim.number), version: lease.version, branch: lease.branch, decision: record.decision, retiredClaim: record.claim, successorIssue: record.successor_issue })
+  }
+  return found
 }
 
 export function matchesLiveProof(proof,evidence){
@@ -5032,6 +5251,7 @@ export function supersedeActiveClaimVersion(options,now=new Date(),io=githubIo){
     if(workstreamKey(before.title)!==`#${request.issue}`)throw new LaneError(`claim title does not identify exact issue #${request.issue}: ${JSON.stringify(before.title??'')}`)
     if(lease.owner!==request.owner)throw new LaneError('claim owner changed')
     if(lease.version!==request.oldVersion)throw new LaneError('claim version changed')
+    assertClaimNotRetired(lease.version,'superseded',io)
     if(lease.branch!==request.branch)throw new LaneError('claim branch changed')
     if(lease.worktree!==request.worktree)throw new LaneError('claim worktree changed')
     const oldReservation=io.readRef(`refs/db-claims/${request.oldVersion}`);if(!oldReservation)throw new LaneError('old permanent reservation is missing')
@@ -5096,6 +5316,7 @@ export function reissueMergedStrandedClaim(options,now=new Date(),io=githubIo){
     if(workstreamKey(before.title)!==`#${request.issue}`)throw new LaneError(`claim title does not identify exact issue #${request.issue}: ${JSON.stringify(before.title??'')}`)
     if(lease.owner!==request.owner)throw new LaneError('claim owner changed')
     if(lease.version!==request.oldVersion)throw new LaneError('claim stranded version changed')
+    assertClaimNotRetired(lease.version,'reissued',io)
     if(lease.branch===request.targetBranch||lease.worktree===request.targetWorktree)throw new LaneError('merged claim reissue requires a fresh target branch and worktree')
     const oldReservation=io.readRef(`refs/db-claims/${request.oldVersion}`)
     if(!oldReservation)throw new LaneError('old permanent reservation is missing')
@@ -6251,6 +6472,10 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const claims = io.openClaims()
     const prSources = io.prSources()
     assertLaneAvailable(claims, options.objects, now, { prSources })
+    // #2301 Step 3. A retired branch or worktree is never reused, so a successor
+    // cannot quietly inherit a dead lane's identity. Checked INSIDE the mutex,
+    // before the version is reserved, so a refusal spends no permanent version.
+    assertRetirementIdentityAvailable({ branch: options.branch, worktree: options.worktree }, io)
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     const reservation = io.reserveVersion()
     const expiresAt = new Date(now.valueOf() + options.leaseHours * 3600000)
@@ -6494,6 +6719,7 @@ export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
     if(lease.legacy||lease.owner!==options.owner)throw new LaneError('claim lease is legacy or belongs to a different owner')
     if(lease.capacityState!=='relinquished')throw new LaneError('claim capacity is not relinquished')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before resume')
+    assertClaimNotRetired(lease.version,'resumed',io)
     const requestedRecovery=options.recoveryArtifact?requireDereferenceableRecoveryArtifact(options.recoveryArtifact,io):null
     if(requestedRecovery&&lease.recoveryArtifact&&requestedRecovery!==lease.recoveryArtifact)throw new LaneError('recovery artifact does not match the relinquished claim')
     if(lease.worktreeState!=='clean'){
@@ -6573,6 +6799,7 @@ export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
     if(lease.legacy)throw new LaneError('legacy claim leases cannot be renewed')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
     if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
+    assertClaimNotRetired(lease.version,'renewed',io)
     const expectedBody=replaceLeaseExpiry(before.body,desiredExpiry)
     if(lease.active){
       if(before.body===expectedBody)return {claim:Number(options.claim),version:lease.version,expiresAt:lease.expiresAt.toISOString(),idempotent:true}
@@ -6652,6 +6879,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy||lease.active)throw new LaneError('target claim lease must be non-legacy and expired')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
+    assertClaimNotRetired(lease.version,'recovered from expiry',io)
     if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
     const workIssue=io.getIssue(options.issue)
@@ -6711,6 +6939,7 @@ export function expandActiveClaimFromPr(options, now = new Date(), io = githubIo
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
     if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('target claim owner, branch, or worktree changed')
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
+    assertClaimNotRetired(lease.version,'expanded',io)
     const pr=io.getPr(options.pr)
     if(pr?.state!=='open'||pr.head?.sha!==options.headSha||pr.head?.ref!==options.branch)throw new LaneError('open pull request head or branch changed')
     const fileVersions=migrationVersions(io.getPrFiles(options.pr))
@@ -6759,6 +6988,7 @@ export function expandActiveClaimFromIssue(options,now=new Date(),io=githubIo){
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
     if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('target claim owner, branch, or worktree changed')
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
+    assertClaimNotRetired(lease.version,'expanded',io)
     const workIssue=io.getIssue(options.issue),scope=parseQueueScope(workIssue?.body??'')
     if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||scope.route!=='shared-db-orchestrator')throw new LaneError('exact work issue is not open ready structural orchestrator work')
     const claimed=new Set(lease.objects.map(normalizeObject)),uncovered=scope.objects.filter((object)=>!claimed.has(object))
@@ -6803,6 +7033,8 @@ export function recoverSameOwnerSplit(options, now = new Date(), io = githubIo) 
     if(released.legacy||active.legacy||released.owner!==active.owner)throw new LaneError('claims do not have the same exact manager owner')
     if(!released.active||!active.active)throw new LaneError('split recovery requires both exact leases to remain unexpired')
     if(released.version===active.version)throw new LaneError('split claims must retain two different permanent versions')
+    assertClaimNotRetired(released.version,'recovered by split recovery',io)
+    assertClaimNotRetired(active.version,'recovered by split recovery',io)
     const original=new Set(released.objects.map(normalizeObject)),combined=new Set(active.objects.map(normalizeObject))
     if(original.size>=combined.size||[...original].some((object)=>!combined.has(object)))throw new LaneError('original claim objects are not an exact strict subset')
     const remainder=[...combined].filter((object)=>!original.has(object))
@@ -7316,6 +7548,18 @@ function parseArgs(argv) {
     else if (a === '--reviewer-preflight') out.reviewerPreflight = true
     else if (a === '--cleanup-stale') out.cleanup = true
     else if (a === '--release-claim') out.releaseClaim = next(i), i++
+    // #2301 Step 3. --retire is a MODIFIER on --release-claim, never a primary
+    // operation of its own: retirement is a kind of release, and making it a
+    // separate command would let somebody retire a claim without going through
+    // the release-path checks (owner match, no open PR on the branch, mutex).
+    // The decision is typed at the boundary so an unknown word can never reach
+    // the permanent, immutable tombstone payload.
+    else if (a === '--retire') {
+      const decision = next(i); i++
+      if (!RETIREMENT_DECISIONS.includes(decision)) throw new LaneError(`--retire must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
+      out.retire = decision
+    }
+    else if (['--successor-issue','--owner-decision'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if (a === '--release-duplicate-claim') out.releaseDuplicateClaim = next(i), i++
     else if (a === '--confirm-finished') out.confirmFinished = true
     else if (a === '--recover-author-mutex') out.recoverMutex = true
@@ -7730,6 +7974,46 @@ export function main(argv, now = new Date(), io = githubIo) {
         const lease=parseAuthorLease(claim.body,now)
         if(lease.owner!==o.owner)throw new LaneError(`claim #${o.releaseClaim} belongs to a different owner`)
         if((io.openPulls?.() ?? io.prSources()).some((pr)=>(pr.head?.ref ?? pr.branch)===lease.branch))throw new LaneError(`claim branch ${lease.branch} still has an open pull request`)
+        // #2301 Step 3 -- TERMINAL RETIREMENT.
+        //
+        // ORDERING IS THE WHOLE GUARANTEE: the tombstone is created BEFORE the
+        // issue is closed. Closing first and writing the ref second leaves a
+        // window in which the claim is closed with no terminal record, and that
+        // is precisely the state a reopen resurrects -- closed work that nothing
+        // marks as over. Create-first fails safe in the other direction instead:
+        // a tombstone with a still-open claim refuses every mutation and is
+        // repaired by re-running the identical command, which is idempotent.
+        //
+        // Retirement is OPT-IN. Without --retire this stays an ordinary release,
+        // unchanged, because an ordinary release frees capacity and says nothing
+        // about whether the work is finished.
+        if(o.retire){
+          if(lease.legacy)throw new LaneError('a legacy claim cannot be terminally retired; reconcile its lease first')
+          const worktreeState=lease.worktreeState??o.worktreeState
+          if(!WORKTREE_STATES.includes(worktreeState))throw new LaneError(`--retire requires --worktree-state to be one of ${WORKTREE_STATES.join(', ')}`)
+          if(!o.pr||!o.headSha)throw new LaneError('--retire requires the exact --pr and --head-sha the retired work reached')
+          const record={
+            schema_version:RETIREMENT_SCHEMA_VERSION,
+            claim:Number(claim.number),
+            pr:Number(o.pr),
+            head_sha:String(o.headSha).toLowerCase(),
+            branch:lease.branch,
+            version:lease.version,
+            worktree:lease.worktree,
+            worktree_state:worktreeState,
+            decision:o.retire,
+            evidence:o.evidence??'',
+            successor_issue:o.successorIssue?Number(o.successorIssue):null,
+            created_at:now.toISOString(),
+          }
+          if(o.ownerDecision)record.owner_decision=o.ownerDecision
+          requireOwnedRef(MUTEX_REF,ownerSha,io)
+          const tombstone=createRetirementTombstone(record,io)
+          requireOwnedRef(MUTEX_REF,ownerSha,io)
+          io.closeClaim(claim.number, RETIREMENT_CLOSE_REASON)
+          console.log(JSON.stringify({claim:Number(claim.number),version:lease.version,retired:true,ref:tombstone.ref,sha:tombstone.sha,idempotent:tombstone.idempotent},null,2))
+          return 0
+        }
         requireOwnedRef(MUTEX_REF,ownerSha,io)
         io.closeClaim(claim.number, CLAIM_CLOSE_REASONS.explicitRelease)
       } finally { if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io) }
@@ -7796,7 +8080,14 @@ export function main(argv, now = new Date(), io = githubIo) {
       for(const claim of claims){try{const lease=parseAuthorLease(claim.body,now);protectedCount++;if(lease.capacityActive)occupied++;else relinquished++;if(!lease.legacy&&!lease.active)expired++}catch(e){malformed.push(`#${claim.number}: ${e.message}`)}}
       console.log(`${occupied} active-author lease(s) (no cap); ${protectedCount} protected claim(s); ${relinquished} relinquished; ${expired} expired lease(s) remain locked.`)
       for(const problem of malformed)console.error(`MALFORMED ${problem}`)
-      return malformed.length ? 2 : 0
+      // #2301 Step 3. An OPEN claim whose version carries a tombstone was
+      // reopened after its terminal record was written. Every mutation path
+      // already refuses it; this is what makes the resurrection visible instead
+      // of only surfacing when somebody tries to use the claim. ONE bounded ref
+      // listing serves the whole audit -- never one read per claim.
+      const reopened=retiredReopenedClaims(claims,now,io)
+      for(const row of reopened)console.error(`RETIRED-REOPENED #${row.claim}: version ${row.version} was terminally retired (${row.decision}) and this claim is open again; it can never be resumed, renewed, expanded, or merged${row.successorIssue?`. Successor work is issue #${row.successorIssue}`:'. A successor needs a fresh claim, branch, worktree and migration version'}`)
+      return malformed.length||reopened.length ? 2 : 0
     }
     throw new LaneError('choose --admit-issue, --claim, --audit, --queue-audit, --outcome-status, --repair-outcome-history, --complete-outcome, --return-issue, --cleanup-stale, --activate-review-cutover, or an exclusive-lane command')
   } catch (error) { console.error(`REFUSED: ${error.message}`); return 2 }

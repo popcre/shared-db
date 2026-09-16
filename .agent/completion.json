@@ -1,43 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3048,
+  "work_issue": 3069,
   "outcome": "ready-for-merge",
-  "pr": 3049,
+  "pr": 3070,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3048/9",
-  "contract_sha256": "5307c15ef6f48e2f47d424dd049ee791f3b0b0c44aa12a7bd31075335d6f969b",
-  "head_sha": "c41aa92e9ab00c65c6e5654580acc18d0b62eeda",
+  "contract_ref": "refs/db-contracts/3069/1",
+  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
+  "head_sha": "f93f89e729f3c8956eb15d10c4be673030728285",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/db-coordination-events.mjs",
-    "scripts/db-coordination-events.test.mjs",
-    "scripts/lib/hold-reason.mjs",
-    "scripts/lib/hold-reason.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    ".github/workflows/migration-author-lease.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every scripts test file except scripts/check-issue-505-licensor-code-forward-repair.test.mjs",
+      "command": "node --test on every changed scripts test file",
       "exit_code": 0,
-      "evidence": "2312 tests, 2312 pass, 0 fail, 0 skipped at implementation head c41aa92e against origin/main a160ca54. The excluded file fails identically on clean main d53d4746 (1 of 3: stranded original is blocked and the producer gate pins the successor sidecar) and is untouched by this PR."
+      "evidence": "check-required-checks-preflight, dispatch-production-apply, refresh-code-pr-branch 59/59 pass, 0 fail, 0 skipped at f93f89e7 after refreshing onto origin/main."
     },
     {
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 0bf963ec."
+      "evidence": "Exit 0 with no output at f93f89e7."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: hold_reason is an optional field in a GitHub comment event, and the alarm posts a GitHub issue comment. Nothing touches the database or supabase/migrations."
+    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
   ],
   "stop_conditions_hit": []
 }

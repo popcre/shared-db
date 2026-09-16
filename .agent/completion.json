@@ -1,37 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3069,
+  "work_issue": 3065,
   "outcome": "ready-for-merge",
-  "pr": 3070,
+  "pr": 3066,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3069/1",
-  "contract_sha256": "ac970b3afaceafad2d283a701d5b69d236fa6d73aff12614b249e76292d01e8d",
-  "head_sha": "f93f89e729f3c8956eb15d10c4be673030728285",
+  "contract_ref": "refs/db-contracts/3065/3",
+  "contract_sha256": "c5663e85877df159d11b98dc6b8ae35af7bef188db3faaffa68b70830530ac1d",
+  "head_sha": "dcbce882c1e55b835a2e25223b0df088f0b6bec5",
   "files_changed": [
-    ".github/workflows/migration-author-lease.yml",
-    "scripts/check-required-checks-preflight.mjs",
-    "scripts/check-required-checks-preflight.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    "scripts/refresh-code-pr-branch.mjs",
-    "scripts/refresh-code-pr-branch.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/migration-train.mjs",
+    "scripts/orchestrator-flow/migration-train.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test on every changed scripts test file",
+      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
       "exit_code": 0,
-      "evidence": "check-required-checks-preflight, dispatch-production-apply, refresh-code-pr-branch 59/59 pass, 0 fail, 0 skipped at f93f89e7 after refreshing onto origin/main."
-    },
-    {
-      "command": "git diff --check origin/main...HEAD",
-      "exit_code": 0,
-      "evidence": "Exit 0 with no output at f93f89e7."
+      "evidence": "Run at implementation head dcbce882: tests 14, pass 14, fail 0, skipped 0 (manage-migration-author-lanes.test.mjs 584/584)."
     }
   ],
   "assumptions_resolved": [
-    "No schema or structure change was needed: a bounded wait before the existing pre-flight refusal, and two helpers that only drive existing gated commands."
+    "grep found no consumer of production_assertions/--close-train/--validate-train outside migration-train.mjs and manage-migration-author-lanes.mjs"
   ],
   "stop_conditions_hit": []
 }

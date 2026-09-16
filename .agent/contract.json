@@ -1,50 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 7,
-  "work_issue": 3076,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Let the production risk gate accept a validated migration train that binds each allowlisted version to its own merged authoring PR and its own preview evidence, with the single source_pr rule unchanged when no train ref is supplied (#3027 Step 6).",
-  "base_sha": "1dce1ca466ceb9abdf6f1c62d43bf7704322dda1",
-  "dispatcher": "Claude #3027 Step 6 live acceptance session (owner approval relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3027 Step 6 train gate",
-  "branch": "claude/3027-train-per-entry-gate",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-train-gate",
+  "generation": 3,
+  "work_issue": 3071,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Live acceptance canary for #3027 Step 6, train entry a: one migration adding one nullable default-less text column step6_train_note_a to the no-op fully revoked canary table plm.production_lane_canary, promoted to production only as part of one governed migration train whose entries each come from their own merged authoring PR. No data, grant, RLS or application behaviour change.",
+  "base_sha": "c94ef25f1075e2dc7ee4031f5507fed19422e3ab",
+  "dispatcher": "Claude #3027 Steps 1/6 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 6 canary author",
+  "branch": "claude/3071-step6-train-canary",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/s6-canary-3071",
   "allowed_paths": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/read-verified-train-record.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/read-verified-train-record.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
+    ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table plm.production_lane_canary"
+  ],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No production workflow dispatch",
-    "No weakening of the single source_pr rule when no train ref is supplied"
+    "No manual production command; production only via the governed train after an explicit Grok APPROVE",
+    "No change to data, grants, RLS or any application table",
+    "No migration versions other than claimed 20260916160617",
+    "No single-PR merged_preview_source_pr rehearsal for this PR (it would auto-promote outside the train)"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
-    "node --test scripts/orchestrator-flow/migration-train.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "A merged_preview_source_pr_map rehearsal files a per-PR preview instance binding for every authoring PR"
+    "plm.production_lane_canary exists on preview and production and is read by no application"
   ],
   "stop_conditions": [
-    "Stop if the fix would need a database change"
+    "Stop if production can only be reached outside the governed train"
   ]
 }

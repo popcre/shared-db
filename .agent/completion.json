@@ -1,38 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3076,
+  "work_issue": 3071,
   "outcome": "ready-for-merge",
-  "pr": 3075,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3076/7",
-  "contract_sha256": "8c4be7f1140738c65de34c0bc15bb3aba331afad471747609f7524e0a7ecb973",
-  "head_sha": "6a2e0fb526394c02aa944168975a3bba34382d26",
+  "pr": 3073,
+  "migration_versions": [
+    "20260916160617"
+  ],
+  "contract_ref": "refs/db-contracts/3071/3",
+  "contract_sha256": "14731ac95c97a3c030d5a06cad68f53c2a4821e00b182ecc2ee66d9a2cc7ea2d",
+  "head_sha": "3178ac40f3c7b599e5b1ac17a7ce84b3c87d23b7",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/orchestrator-flow/migration-train.test.mjs",
-    "scripts/orchestrator-flow/read-verified-train-record.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "supabase/migrations/20260916160617_production_lane_canary_step6_train_note_a.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table plm.production_lane_canary"
+  ],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"train or single_source_pr\"",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 6a2e0fb5: 5 passed, 155 deselected. Full suite: 3 failed, 157 passed; the same 3 fail identically on base a160ca54 (3 failed, 152 passed)."
+      "evidence": "Run at implementation head 3178ac40: Static checks passed; verify-cost guard passed for 1 added migration."
     },
     {
-      "command": "node --test scripts/orchestrator-flow/migration-train.test.mjs",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "Run at implementation head 6a2e0fb5: tests 13, pass 13, fail 0, skipped 0."
+      "evidence": "status OK; version 20260916160617 has markers [] and needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "preview_instance_text reads preview-instance-<pr>.json per authoring PR from a map rehearsal (#2140)"
+    "plm.production_lane_canary is the #660 no-op canary table; production proof #3043 read it with exactly 1 row on 2026-09-16."
   ],
   "stop_conditions_hit": []
 }

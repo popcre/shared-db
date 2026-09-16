@@ -8166,3 +8166,44 @@ test('#2987 a verdict-namespace ceiling refusal names its real cause and the arc
   const transient={...io,listReviewRefsPaged:()=>{throw new LaneError('HTTP 502')}}
   assert.equal(findBusyReviewers(transient),null,'a transient verdict read still fails closed as before')
 })
+
+// A LEGACY CLAIM TITLE MUST NOT BLANK THE WHOLE READ-ONLY AUDIT. On 2026-09-16 the
+// live `--abandonment-audit` printed one refusal and nothing else, because claim
+// #2871 was titled "CLAIM: issue-2870-cutover-columns" -- no `#` -- and the identity
+// read threw out of the snapshot map before any lane was described. The hourly job
+// that exists to show expiry therefore showed nothing about the other seven lanes.
+test('a claim whose title names no work issue becomes one unreadable row, not a blank audit',()=>{
+  const body=claimBody({version:'20260916010101',objects:['table plm.x'],owner:'agent/legacy',branch:'legacy/branch',worktree:'C:/repos/x',expiresAt:new Date('2026-09-14T00:00:00Z')})
+  const legacy={number:2871,state:'open',title:'CLAIM: issue-2870-cutover-columns',body}
+  const ambiguous={number:2872,state:'open',title:'CLAIM: #10 supersedes #11',body}
+  const io={...githubIo,openClaims:()=>[legacy,ambiguous],openWorkIssues:()=>{throw new LaneError('not needed')},openIssueNumbers:()=>{throw new LaneError('not needed')}}
+  const snapshot=io.flowSnapshot(new Date('2026-09-16T00:00:00Z'))
+  assert.equal(snapshot.issues.length,2,'every open claim must still be described')
+  for(const row of snapshot.issues){
+    assert.equal(row.issue,null,'an unidentifiable claim has no work issue to report')
+    assert.match(row.capacity_error??'',/must identify exactly one work issue/)
+    assert.match(row.capacity_error??'',new RegExp(`claim #${row.claim}\\b`),'the row must name the claim an operator has to go and fix')
+    assert.equal(row.preview_edge_satisfied,false,'an unreadable claim can never be reported preview-ready')
+    assert.equal(row.preview_error,row.capacity_error)
+  }
+  assert.deepEqual(snapshot.issues.map((row)=>row.claim),[2871,2872])
+})
+
+// A REFUSAL ON --abandonment-audit IS UNVERIFIABLE, NOT EXPIRED. Every other
+// command may exit 2 on a refusal, but on this one 2 already means "an expired
+// author lane was found", so the generic handler filed every read failure as an
+// expiry report about lanes it never read. Unverifiable outranks expiry, so the
+// refusal now exits 3 -- and the other commands must keep exiting 2.
+test('--abandonment-audit reports a refusal as unverifiable (3), not as an expiry (2)',()=>{
+  const errors=[],originalError=console.error
+  console.error=(line)=>errors.push(String(line))
+  try{
+    const noAdapter={...githubIo,flowSnapshot:()=>({issues:[]}),orchestratorFlowAdapter:null}
+    assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),noAdapter),3,'a missing runtime adapter means the instrument could not read')
+    const unreadable={...githubIo,orchestratorFlowAdapter:()=>({}),flowSnapshot:()=>{throw new LaneError('claim title must identify exactly one work issue for capacity transition events')}}
+    assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),unreadable),3,'an unreadable snapshot means the instrument could not read')
+    assert.equal(main([],new Date('2026-09-16T00:00:00Z'),githubIo),2,'every other refusal keeps the generic exit code')
+  }finally{console.error=originalError}
+  assert.equal(errors.filter((line)=>line.startsWith('REFUSED: ')).length,3,'the refusal message is still printed in full; only its exit code moves')
+  assert.ok(errors.some((line)=>line.includes('must identify exactly one work issue')),'the operator must still be told what could not be read')
+})

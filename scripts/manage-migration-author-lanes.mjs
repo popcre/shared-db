@@ -12,7 +12,7 @@ import { gatherOpenPrObjects, normalizeObject, parseClaimBlock } from './check-d
 import { classifyDependencies, findCompletionRecord, findDependencyCycles, validateCompletionRecord, validateDependencyDeclaration, COMPLETION_FENCE, DependencyError } from './lib/work-dependencies.mjs'
 import { assertLease, evaluateRecovery, formatLeaseMessage, parseLeaseMessage, recoveredLeaseMetadata, LeaseError } from './lib/exclusive-lease.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment, auditTimeline, renderTimeline } from './db-coordination-events.mjs'
-import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit, reportOnlyFlowIo, abandonmentAuditExit } from './orchestrator-flow/reconcile.mjs'
+import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit, reportOnlyFlowIo, abandonmentAuditExit, AUDIT_EXIT_UNVERIFIABLE } from './orchestrator-flow/reconcile.mjs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 // `Migration guarded merge authorization` is posted by the guarded merge ITSELF,
@@ -2431,7 +2431,16 @@ export const githubIo = {
       return queuedBehind.has(Number(claimNumber))?queuedBehind.get(Number(claimNumber)):null
     }
     return {issues:claims.map((claim)=>{
-      const issue=claimWorkIssue(claim)
+      // THE CLAIM-IDENTITY READ IS ITS OWN FAILING LEG. A live claim whose title
+      // predates the `#<number>` convention -- #2871 "CLAIM: issue-2870-cutover-columns"
+      // was one on 2026-09-16 -- used to throw out of this map and blank the entire
+      // snapshot, so the hourly read-only audit reported nothing at all about the
+      // other seven lanes. One unreadable claim is now one unreadable row: both
+      // domains report it as unverifiable, which is what the exit code already
+      // means, instead of one legacy title silencing the whole instrument.
+      let issue=null,identity_error=null
+      try{issue=claimWorkIssue(claim)}catch(error){identity_error=error.message}
+      if(identity_error!==null)return {issue:null,claim:claim.number,capacity_error:`claim #${claim.number}: ${identity_error}`,preview_edge_satisfied:false,preview_error:`claim #${claim.number}: ${identity_error}`}
       // THE TWO DOMAINS ARE DERIVED INDEPENDENTLY AND FAIL INDEPENDENTLY. A throw
       // while reading capacity evidence must not blank the preview answer, and a
       // preview edge that cannot be derived must not make capacity look unreadable.
@@ -7876,10 +7885,25 @@ export function main(argv, now = new Date(), io = githubIo) {
     // instrument could not read the state", because an hourly job that reported
     // both as one number would train its operator to ignore both.
     if(o.abandonmentAudit){
-      if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
-      const result=reconcileFlow(io.flowSnapshot(now),reportOnlyFlowIo(io.orchestratorFlowAdapter()))
-      console.log(JSON.stringify(result,null,2))
-      return abandonmentAuditExit(result)
+      // A REFUSAL ON THIS COMMAND IS "UNVERIFIABLE", NOT "EXPIRED". Every other
+      // command can let a throw fall through to the generic handler, which exits
+      // 2. For this one, 2 already means "an expired author lane was found", so
+      // the generic handler announced every read failure as an expiry: the
+      // scheduled run on 2026-09-16 logged `REFUSED: claim title must identify
+      // exactly one work issue...` and then `Expired author lane(s) detected`,
+      // which is a report about lanes that the instrument never managed to read.
+      // An instrument that could not read is exactly the unverifiable case, and
+      // unverifiable outranks expiry, so the refusal is mapped to 3 here. The
+      // message is still printed in full; only the code it is filed under moves.
+      try{
+        if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
+        const result=reconcileFlow(io.flowSnapshot(now),reportOnlyFlowIo(io.orchestratorFlowAdapter()))
+        console.log(JSON.stringify(result,null,2))
+        return abandonmentAuditExit(result)
+      }catch(error){
+        console.error(`REFUSED: ${error.message}`)
+        return AUDIT_EXIT_UNVERIFIABLE
+      }
     }
     if(o.preparePreviewDispatch){
       if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('preview preparation runtime adapter is unavailable')

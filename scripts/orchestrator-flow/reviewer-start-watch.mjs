@@ -121,6 +121,9 @@ export function watchOnce(io, { apply = false, drawnSince = null } = {}) {
   // --apply the operator must name the instant from which every runner writes markers; older
   // leases are left to the ordinary two-hour silence path.
   if (apply && !Number.isFinite(Date.parse(drawnSince ?? ''))) throw new Error('--apply requires --drawn-since <ISO time> after which every governed runner writes start markers')
+  // A malformed --drawn-since would otherwise compare as NaN and silently skip every overdue lease,
+  // so a dry run would report no non-starts while some exist.
+  if (drawnSince != null && !Number.isFinite(Date.parse(drawnSince))) throw new Error(`--drawn-since is not a valid ISO time: ${drawnSince}`)
   const now = io.now()
   const out = []
   const handled = new Set()

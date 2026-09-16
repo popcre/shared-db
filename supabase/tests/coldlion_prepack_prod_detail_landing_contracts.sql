@@ -113,13 +113,29 @@ begin
     raise exception 'coldlion.prod_detail does not assert the second proven identity (prod_order_no, prod_line_seq)';
   end if;
 
-  -- 7. The empty-date marker must be storable as NULL, so no date column may be NOT NULL.
+  -- 7. The empty-date marker must be storable as NULL, so no source date column may be
+  --    NOT NULL. The source date columns are declared timestamptz, not date, so this
+  --    must match on the declared type or it examines nothing. fetched_at /
+  --    first_seen_at / last_seen_at are loader-set and are deliberately NOT NULL.
   select count(*) into v_count
-  from information_schema.columns
-  where table_schema = 'coldlion' and table_name in ('prepack_detail','prod_detail')
-    and data_type = 'date' and is_nullable = 'NO';
+  from pg_attribute a
+  where a.attrelid in (to_regclass('coldlion.prepack_detail'), to_regclass('coldlion.prod_detail'))
+    and a.attnum > 0 and not a.attisdropped
+    and a.atttypid = 'timestamptz'::regtype
+    and a.attname in ('created_time','mod_time');
+  if v_count <> 4 then
+    raise exception 'expected 4 source timestamptz columns (created_time, mod_time on both tables), found %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from pg_attribute a
+  where a.attrelid in (to_regclass('coldlion.prepack_detail'), to_regclass('coldlion.prod_detail'))
+    and a.attnum > 0 and not a.attisdropped
+    and a.atttypid = 'timestamptz'::regtype
+    and a.attname in ('created_time','mod_time')
+    and a.attnotnull;
   if v_count <> 0 then
-    raise exception '% date column(s) are NOT NULL; the 1900-01-01 empty marker must land as NULL', v_count;
+    raise exception '% source date column(s) are NOT NULL; the 1900-01-01 empty marker must land as NULL', v_count;
   end if;
 
   -- 8. ColdLion sends '' rather than null, so no unit 5b column may forbid a blank.

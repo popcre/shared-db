@@ -97,6 +97,10 @@ create table coldlion.prepack_detail (
   size_code     text,
   dim_code      text,
   label_code    text,
+  -- LOADER NOTE: integer, unlike prod_detail.prod_qty / wip_qty which are numeric.
+  -- The live sample only ever showed whole 1..3. Confirm quantity never arrives
+  -- fractional before loading: a fractional value will fail the insert loudly
+  -- rather than silently truncate, which is the intended fail-closed behaviour.
   quantity      integer,
 
   detail_prepack text,

@@ -10,17 +10,17 @@
   "branch": "codex/issue-2866-hts-insert-provenance",
   "worktree": "C:/repos/shared-db/.claude/worktrees/resume-2866-a7c3",
   "allowed_paths": [
-    "supabase/migrations/20260914025520_hts_rag_insert_provenance.sql",
+    "supabase/migrations/20260916232818_hts_rag_insert_provenance.sql",
     "supabase/tests/hts_rag_shared_schema_contract.sql",
-    "scripts/production-verification-sidecars/20260914025520.json",
+    "scripts/production-verification-sidecars/20260916232818.json",
     "config/production-verification-sidecar-registry.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260914025520_hts_rag_insert_provenance.sql",
+    "supabase/migrations/20260916232818_hts_rag_insert_provenance.sql",
     "supabase/tests/hts_rag_shared_schema_contract.sql",
-    "scripts/production-verification-sidecars/20260914025520.json",
+    "scripts/production-verification-sidecars/20260916232818.json",
     "config/production-verification-sidecar-registry.json",
     ".agent/contract.json",
     ".agent/completion.json"
@@ -111,5 +111,5 @@
     "Stop if existing bounded cross-environment UPDATE semantics cannot be preserved.",
     "Stop if preview or production access is required for authoring."
   ],
-  "generation": 8
+  "generation": 9
 }

@@ -3676,5 +3676,149 @@ class ForeignTargetScopeTest(unittest.TestCase):
         self.assertEqual(parse_allowlist(self.IN_SCOPE_CONTROL), [self.IN_SCOPE_CONTROL])
 
 
+# ===========================================================================
+# THE HOURLY READ-ONLY ABANDONMENT AUDIT (issue #2301, Step 5)
+#
+# This workflow's whole value is that it is SAFE to run unattended every hour
+# against the live repository. That safety is a property of its declaration --
+# what it is triggered by, what token it is handed, how long it may run, and
+# which command it invokes -- so it is the declaration that is tested here, in
+# the repository's canonical workflow-policy test, rather than left to review.
+#
+# The mutating counterpart, `--reconcile-flow`, is a real command that a human
+# runs deliberately while holding a sole-orchestrator marker. The one thing that
+# must never happen is a SCHEDULED run reaching it, so the absence of every
+# mutating flag from every scheduled workflow is asserted, not assumed.
+# ===========================================================================
+ABANDONMENT_AUDIT_WORKFLOW = (
+    REPO / ".github" / "workflows" / "author-lane-abandonment-audit.yml"
+)
+
+# Flags that change state. A scheduled workflow naming any of these is the
+# failure this plan step exists to make impossible.
+MUTATING_LANE_FLAGS = (
+    "--reconcile-flow",
+    "--relinquish-author-lease",
+    "--resume-author-lease",
+    "--recover-expired-claim",
+    "--renew-claim",
+    "--release-claim",
+    "--recover-mutex",
+    "--complete-work",
+    "--cleanup-stale",
+)
+
+
+class AbandonmentAuditWorkflowPolicyTests(unittest.TestCase):
+    """Prove the hourly audit's declaration, not merely its intent."""
+
+    def setUp(self) -> None:
+        self.text = ABANDONMENT_AUDIT_WORKFLOW.read_text(encoding="utf-8")
+        self.header = self.text.split("\njobs:", 1)[0]
+        self.jobs = self.text.split("\njobs:", 1)[1]
+
+    def test_the_audit_runs_hourly_and_on_demand_and_on_nothing_else(self) -> None:
+        # Hourly: a lease is measured in hours, so a daily job would let a queue
+        # wait most of a day behind a lane whose author is gone.
+        cron = re.search(r'(?m)^\s*- cron: "([^"]+)"', self.header)
+        self.assertIsNotNone(cron, "the audit has no schedule at all")
+        minute, hour = cron.group(1).split()[:2]
+        self.assertEqual(hour, "*", f"the audit is not hourly: {cron.group(1)}")
+        self.assertNotEqual(minute, "*", "a cron running every minute is not an hourly audit")
+        self.assertIn("workflow_dispatch:", self.header)
+        # Time passing changes no file, so no commit-shaped trigger could catch
+        # expiry; one present would mean somebody misunderstood what this checks.
+        # Prose naming a trigger to explain why it is absent is not a trigger.
+        declared = [
+            line.strip()
+            for line in self.header.splitlines()
+            if line.startswith("  ") and not line.lstrip().startswith("#")
+        ]
+        for trigger in ("push:", "pull_request:", "pull_request_target:"):
+            self.assertNotIn(trigger, declared, f"{trigger} cannot detect a lease expiring")
+        self.assertIn("schedule:", declared, "the positive control failed; nothing was scanned")
+
+    def test_the_audit_is_handed_a_token_that_cannot_write(self) -> None:
+        # The promise "this job never files an issue or a comment" is only worth
+        # something if the job COULD not, whatever a future step tries to do.
+        permissions = re.search(r"(?m)^permissions:\n((?:^ +\S+: \w+\n)+)", self.text)
+        self.assertIsNotNone(permissions, "the audit inherits default permissions")
+        granted = dict(
+            re.findall(r"(?m)^\s+(\S+):\s*(\w+)$", permissions.group(1))
+        )
+        self.assertEqual(
+            sorted(granted),
+            ["contents", "issues", "pull-requests"],
+            "the audit's permission set changed; every entry must stay read-only",
+        )
+        for scope, level in granted.items():
+            self.assertEqual(level, "read", f"{scope} is not read-only")
+        # A job-level block could silently widen the header's grant.
+        self.assertNotIn("\n    permissions:", self.jobs)
+
+    def test_the_audit_is_bounded_and_cancels_its_own_overlap(self) -> None:
+        timeout = re.search(r"(?m)^\s+timeout-minutes:\s*(\d+)$", self.jobs)
+        self.assertIsNotNone(timeout, "an unbounded hourly job can stack up forever")
+        self.assertLessEqual(int(timeout.group(1)), 15)
+        self.assertRegex(self.header + self.jobs, r"(?m)^concurrency:\n\s+group: \S+")
+        self.assertRegex(self.header + self.jobs, r"(?m)^\s+cancel-in-progress: true$")
+
+    def test_the_audit_pins_its_runtime_and_actions(self) -> None:
+        # An hourly job on a floating action or Node version is an hourly job
+        # whose behaviour can change without anyone changing this repository.
+        for action in ("actions/checkout@v4", "actions/setup-node@v4"):
+            self.assertIn(action, self.jobs, f"{action} is unpinned or absent")
+        self.assertRegex(self.jobs, r"(?m)^\s+node-version:\s*\d+$")
+        self.assertNotRegex(self.jobs, r"uses: [^\s@]+\s*$")
+
+    def test_the_audit_calls_the_read_only_command_and_no_mutating_one(self) -> None:
+        self.assertIn(
+            "node scripts/manage-migration-author-lanes.mjs --abandonment-audit",
+            self.jobs,
+        )
+        for flag in MUTATING_LANE_FLAGS:
+            self.assertNotIn(flag, self.text, f"a scheduled workflow names {flag}")
+        # Filing is the duplicate-generating failure mode this job must not have.
+        for writer in ("gh issue create", "gh issue comment", "gh pr comment"):
+            self.assertNotIn(writer, self.text, f"the hourly audit calls {writer}")
+
+    def test_no_scheduled_workflow_anywhere_calls_a_mutating_lane_command(self) -> None:
+        # The rule is about SCHEDULED runs, not about this one file, so it is
+        # enforced across the whole directory. A positive control first: the
+        # scan must actually be looking at scheduled workflows.
+        scheduled = [
+            path
+            for path in sorted((REPO / ".github" / "workflows").glob("*.yml"))
+            if re.search(r"(?m)^\s*schedule:\s*$", path.read_text(encoding="utf-8"))
+        ]
+        self.assertIn(
+            ABANDONMENT_AUDIT_WORKFLOW,
+            scheduled,
+            "the scan did not even find the audit; it proves nothing",
+        )
+        for path in scheduled:
+            text = path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                # Prose explaining WHY a command must not be called is not a call.
+                if line.lstrip().startswith("#"):
+                    continue
+                if "--reconcile-flow" in line:
+                    self.fail(f"{path.name} calls --reconcile-flow on a schedule: {line.strip()}")
+
+    def test_the_audit_runs_the_guards_own_tests_before_trusting_it(self) -> None:
+        self.assertIn(
+            "node --test scripts/orchestrator-flow/reconcile.test.mjs", self.jobs
+        )
+
+    def test_the_audit_distinguishes_unreadable_from_expired(self) -> None:
+        # Exit 2 and exit 3 must reach the operator as different sentences. An
+        # hourly job that reports "something is wrong" for both trains its reader
+        # to ignore both.
+        self.assertRegex(self.jobs, r"(?m)^\s+2\)\s*echo \"::error::")
+        self.assertRegex(self.jobs, r"(?m)^\s+\*\)\s*echo \"::error::")
+        self.assertIn("COULD NOT RUN", self.jobs)
+        self.assertIn('exit "$CODE"', self.jobs)
+
+
 if __name__ == "__main__":
     unittest.main()

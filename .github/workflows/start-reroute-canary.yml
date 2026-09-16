@@ -1,0 +1,58 @@
+name: Start reroute canary
+
+# Safe staging hook for a runner non-start (issue #3027, programme popcre/ai-devops#401 Step 7).
+# Dispatched only by scripts/orchestrator-flow/start-reroute-canary.mjs. The canary job does no
+# work beyond a bounded sleep. `runner_label` may be a registered free standard lane
+# (scripts/orchestrator-flow/runner-lanes.json) or the one staged label no runner serves, which
+# makes the job wait for a runner that never comes: a real, harmless non-start. Any other label
+# is refused by the gate job before the canary job is ever queued.
+run-name: start-reroute-canary ${{ inputs.attempt_id }} on ${{ inputs.runner_label }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      attempt_id:
+        description: 'Canary attempt identity (letters, digits, . _ -)'
+        required: true
+      runner_label:
+        description: 'A registered runner lane, or db-staged-non-start-canary'
+        required: true
+      hold_seconds:
+        description: 'How long the canary stays running once started (max 1200)'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate the canary label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse any label that is not a registered lane or the staged non-start label
+        env:
+          LABEL: ${{ inputs.runner_label }}
+          ATTEMPT: ${{ inputs.attempt_id }}
+          HOLD: ${{ inputs.hold_seconds }}
+        run: |
+          set -euo pipefail
+          [[ "$ATTEMPT" =~ ^[A-Za-z0-9._-]{1,80}$ ]] || { echo "unsafe attempt id" >&2; exit 1; }
+          [[ "$HOLD" =~ ^[0-9]{1,4}$ ]] && (( HOLD <= 1200 )) || { echo "hold_seconds must be 0-1200" >&2; exit 1; }
+          node -e 'const r=require("./scripts/orchestrator-flow/runner-lanes.json");const l=process.env.LABEL;if(l!=="db-staged-non-start-canary"&&!r.lanes.some(x=>x.label===l)){console.error("label is not a registered lane");process.exit(1)}'
+  canary:
+    name: canary
+    needs: gate
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 25
+    steps:
+      - name: Hold the canary run
+        env:
+          HOLD: ${{ inputs.hold_seconds }}
+          ATTEMPT: ${{ inputs.attempt_id }}
+        run: |
+          echo "start-reroute-canary attempt $ATTEMPT started on $RUNNER_NAME"
+          sleep "$HOLD"
+          echo "assertion start-reroute-canary passed"

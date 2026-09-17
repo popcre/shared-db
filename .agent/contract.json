@@ -1,48 +1,45 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3153,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
-  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
-  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3153 subagent",
-  "branch": "claude/prod-gate-config-scope-a1",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
+  "generation": 1,
+  "work_issue": 3154,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Add btree index plm.prod_order_milestone_schedule_factory_time_id_idx on plm.prod_order_milestone_schedule(factory_time_id) supporting the #3091 foreign key. Additive; no data, grant or RLS change.",
+  "base_sha": "48f2c6926ebc6ee7dbb585ef37741b1e9061852c",
+  "dispatcher": "Claude shared-db orchestrator (owner instruction relayed 2026-09-17)",
+  "worker": "Claude Opus 5 #3154 migration author b2",
+  "branch": "claude/3154-factory-time-idx-b2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3d47360f234754dd",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "index plm.prod_order_milestone_schedule_factory_time_id_idx",
+    "table plm.prod_order_milestone_schedule"
+  ],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
+    "No manual production command; production only via the automatic merged-main lane or its governed reviewer-approved recovery dispatch",
+    "No data, grant or RLS change",
+    "No migration version other than claimed 20260917035654"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/check-main-tip-freshness.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
-    "No production job step runs a test file or reads .agent evidence"
+    "plm.prod_order_milestone_schedule is small enough that a non-concurrent index build takes a negligible lock"
   ],
   "stop_conditions": [
-    "Stop if a preview-job tool reads the coverage manifest"
+    "Stop if the change needs anything beyond the admitted index"
   ]
 }

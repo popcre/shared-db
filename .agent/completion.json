@@ -1,26 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 2365,
+  "work_issue": 3161,
   "outcome": "ready-for-merge",
-  "pr": 3143,
+  "pr": 3162,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2365/1",
-  "contract_sha256": "40375c95984fdc733c300067798043ab077b21c807077b6c453a4ae06eb98aaf",
-  "head_sha": "f7d8ea0203c48ccf6e6e35d4c8461448d414d87c",
+  "contract_ref": "refs/db-contracts/3161/1",
+  "contract_sha256": "0a07c8d3fd846dd12e3b1131c1865bb7b632a56f712ed6749256967b1dabc252",
+  "head_sha": "f7b0b324ede0554f2a225421c03719664e5133f5",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_governed_reconciliation_mutations.py"
+    "scripts/check-skill-drift.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "node --test scripts/check-skill-drift.test.mjs",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "Run at f7b0b324 against a fresh clone of ai-devops main: tests 3, pass 3, fail 0, skipped 0. Before the fix check-skill-drift --require-skills printed [missing-author-cap]."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 8 governed-reconciliation guard mutants listed in issue #2365; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "CI failure on every branch since ai-devops #531 reproduced locally against ai-devops main and fixed by this change."
   ],
   "stop_conditions_hit": []
 }

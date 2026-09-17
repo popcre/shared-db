@@ -1,43 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 3179,
+  "work_issue": 2373,
   "outcome": "ready-for-merge",
-  "pr": 3220,
+  "pr": 3213,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3179/1",
-  "contract_sha256": "edf466bbf137f94c77fe90a50ed070acf81e3550dc8ccf21f525e99d30a51e9a",
-  "head_sha": "70283d04b1cf595d8479ea43cf9494c9c6915783",
+  "contract_ref": "refs/db-contracts/2373/1",
+  "contract_sha256": "130399b7f43f33693e780bca89b9fbcba56fa9b27d334cf732c4575a72df6b51",
+  "head_sha": "c547455c444a5466ece47bf0c5c49d8c61486d6c",
   "files_changed": [
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    "scripts/test_production_catalog_verification.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "command": "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests",
       "exit_code": 0,
-      "evidence": "33/33 pass: eighteen-field projection, sentinel normalisation, replay idempotence (byte-identical SQL), duplicate and blank-key refusal, fractional-quantity refusal, request-identity guards, zero-row and malformed responses, bounded resumability, load-transaction shape, workflow target/secret/serialisation guards, privacy guards."
+      "evidence": "2 focused tests passed in 0.001 seconds at refreshed implementation head c547455c."
     },
     {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
+      "command": "python -m unittest scripts/test_production_catalog_verification.py",
       "exit_code": 0,
-      "evidence": "100/100 pass — the existing ColdLion landing suites are unbroken by the workflow extension (history-then-masters ordering still asserted and still true)."
-    },
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Static guards pass; this pull request adds no migration, so Guard B compared zero new versions against origin/main's newest 20260917144950."
+      "evidence": "193 tests passed in 2.273 seconds at refreshed implementation head c547455c."
     }
   ],
   "assumptions_resolved": [
-    "The complete approved prepackCode population IS derivable from already-landed data: the loader harvests coldlion.item_detail, coldlion.prod_history_line and coldlion.order_history_line, and probes coldlion.inventory and coldlion.prod_detail with to_regclass so they contribute once their own loaders exist.",
-    "Resumability needed no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params, exactly as the issue's no-shape-change scope requires.",
-    "Runtime row writes (coldlion.prepack_detail, sync_run, change_log) are deliberately outside this contract's db lists: the contract validator requires non-structural work to declare empty db_reads/db_writes, and the loader's target-proof and transaction guarantees live in the tested loader code and its workflows."
+    "Both mutation survivors remain reachable on current origin/main and are now directly falsified by focused tests."
   ],
   "stop_conditions_hit": []
 }

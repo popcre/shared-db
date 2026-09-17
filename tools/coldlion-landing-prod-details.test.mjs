@@ -18,6 +18,7 @@ import {
   parseDoneKeys,
   parseHarvest,
   parseReconciliation,
+  prodDetailRefusalSql,
   reconcileSql,
   selectKeys,
   projectProdDetailRows,
@@ -95,8 +96,29 @@ test("unknown and omitted fields fail loudly and fatally", () => {
   assert.throws(() => projected([missing]), /omitted approved field/);
   for (const bad of [sourceRow({ newPrivateField: "x" })]) {
     try { projected([bad]); assert.fail("must throw"); }
-    catch (error) { assert.equal(error.fatal, true, "a shape failure is fatal for the whole run"); }
+    catch (error) { assert.equal(error.fatal, true, "a feed-shape failure is fatal for the whole run"); }
   }
+});
+
+test("identity collisions are per-key refusals, not run-fatal", () => {
+  // Regression semantics bought live on 2026-09-17: order 20344 returned two rows
+  // with distinct pkeys sharing one prodLineSeq, falsifying the #2863 unique
+  // constraint. One key's data must not abort a run with thousands of healthy keys.
+  const cases = [
+    [sourceRow(), sourceRow({ itemNo: "SYN-OTHER" })],
+    [sourceRow(), sourceRow({ pkey: 900002, itemNo: "SYN-OTHER" })],
+    [sourceRow({ pkey: "" })],
+    [sourceRow({ prodOrderNo: 20001 })],
+  ];
+  for (const rows of cases) {
+    try { projected(rows); assert.fail("must throw"); }
+    catch (error) {
+      assert.equal(error.refused, "identity-collision", "the key is refused with a durable reason");
+      assert.equal(error.fatal, undefined, "a refused key does not abort the run");
+    }
+  }
+  assert.throws(() => projected(cases[0]), /duplicate rows for one pkey/);
+  assert.throws(() => projected(cases[1]), /duplicate rows for one prodOrderNo \+ prodLineSeq/);
 });
 
 test("a row for another production order is refused", () => {
@@ -226,21 +248,35 @@ test("the harvest reads the landed history and the resume set reads the run evid
   assert.match(doneKeysSql("SYNCO"), /endpoint = '\/proddetails'/);
   assert.match(doneKeysSql("SYNCO"), /status = 'succeeded'/);
   assert.match(doneKeysSql("SYNCO"), /request_params \? 'prodOrderNo'/);
+  assert.match(doneKeysSql("SYNCO"), /status = 'failed' and request_params->>'refused' = 'identity-collision'/,
+    "a refused key counts as answered: re-fetching it cannot change the answer until the constraint ruling lands");
+});
+
+test("the refusal record is a durable failed sync_run the selection and reconciliation can find", () => {
+  const sql = prodDetailRefusalSql({ companyCode: "SYNCO", prodOrderNo: 20344, requestedBy: "test", error: new Error("duplicate rows for one prodOrderNo + prodLineSeq (prodLineSeq 10)") });
+  assert.match(sql, /begin;/);
+  assert.match(sql, /'failed'/);
+  assert.match(sql, /"refused":"identity-collision"/);
+  assert.match(sql, /"prodOrderNo":20344/);
+  assert.match(sql, /pg_notify\('coldlion_sync_alert'/, "a refusal alerts, never whispers");
+  assert.match(sql, /commit;/);
 });
 
 test("reconciliation agrees only when the API side and the table tell one story", () => {
-  const agrees = parseReconciliation(["3", "1", "10", "2", "10", "10", "10"]);
+  const agrees = parseReconciliation(["3", "1", "10", "2", "10", "10", "10", "1"]);
   assert.equal(agrees.agrees, true);
   assert.equal(agrees.zeroRowKeys, 1);
-  assert.equal(agrees.exclusions, 0);
-  const collapsed = parseReconciliation(["3", "1", "10", "2", "10", "9", "9"]);
+  assert.equal(agrees.refusedKeys, 1);
+  assert.equal(agrees.exclusions, 1, "a refused key is the one named, counted exclusion");
+  const collapsed = parseReconciliation(["3", "1", "10", "2", "10", "9", "9", "1"]);
   assert.equal(collapsed.agrees, false, "a missing table row disagrees");
-  const duplicateCollapse = parseReconciliation(["3", "1", "10", "2", "10", "10", "9"]);
+  const duplicateCollapse = parseReconciliation(["3", "1", "10", "2", "10", "10", "9", "1"]);
   assert.equal(duplicateCollapse.agrees, false, "distinct pkey below table rows is a collapse");
-  const droppedZeroRow = parseReconciliation(["3", "1", "10", "3", "10", "10", "10"]);
+  const droppedZeroRow = parseReconciliation(["3", "1", "10", "3", "10", "10", "10", "1"]);
   assert.equal(droppedZeroRow.agrees, false, "a zero-row key must never be counted as landed");
   assert.match(reconcileSql("SYNCO"), /count\(distinct pkey\)/);
   assert.match(reconcileSql("SYNCO"), /rows_fetched = 0/);
+  assert.match(reconcileSql("SYNCO"), /request_params->>'refused' = 'identity-collision'/);
 });
 
 // -------------------------------------------------------------------------------------
@@ -307,7 +343,7 @@ test("parseArgs validates its own inputs", () => {
   assert.deepEqual(parseArgs(["--mode", "keys", "--keys", "20000, 24332"]), { mode: "keys", keys: [20000, 24332], limit: null, from: null, recentDays: 21, company: "EDGEHOME", pauseMs: 3000, dryRun: false });
 });
 
-function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["0", "0", "0", "0", "0", "0", "0"] } = {}) {
+function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["0", "0", "0", "0", "0", "0", "0", "0"] } = {}) {
   return {
     proveTarget: () => ({ database: "postgres", host: "syn-host", coldlionTables: 25 }),
     queryRows: (sql) => {
@@ -356,16 +392,46 @@ test("a per-key transport failure is recorded, skipped and fails the run loudly"
   assert.match(io.output, /prodOrderNo 30002 failed/);
 });
 
+test("an identity-collision refusal is recorded durably, the run continues, and exits non-zero", async () => {
+  const loaded = [];
+  const recorded = [];
+  const deps = cliDependencies({
+    loadKey: async ({ prodOrderNo }) => {
+      if (prodOrderNo === 30002) {
+        const error = new Error("/proddetails returned duplicate rows for one prodOrderNo + prodLineSeq (prodLineSeq 10)");
+        error.refused = "identity-collision";
+        throw error;
+      }
+      loaded.push(prodOrderNo);
+      return { prodOrderNo, rowsFetched: 1, zeroRow: false };
+    },
+  });
+  deps.runSql = (sql) => { if (sql.includes("identity-collision")) recorded.push(sql); };
+  deps.queryRows = (sql) => {
+    if (sql.includes("count(distinct pkey)")) return [["3", "0", "3", "3", "3", "3", "3", "1"]];
+    if (sql.includes("prod_history_line")) return HARVEST.map((entry) => [String(entry.prodOrderNo), entry.firstObserved, entry.lastObserved]);
+    return [];
+  };
+  const io = capture(() => assert.rejects(main(["--mode", "backfill"], deps), /refused: identity collisions recorded/));
+  await io.promise;
+  assert.deepEqual(loaded.sort(), [30001, 30003, 30004], "one colliding order does not stop the population");
+  assert.equal(recorded.length, 1, "the refusal is recorded once, durably");
+  assert.match(recorded[0], /"refused":"identity-collision"/);
+  assert.match(io.output, /prodOrderNo 30002 REFUSED \(identity-collision\)/);
+  assert.match(io.output, /refusedKeys=1/);
+});
+
 test("a successful run ends with a reconciling report", async () => {
-  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "2", "2"] });
+  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "2", "2", "0"] });
   const io = capture(() => main(["--mode", "backfill"], deps));
   const result = await io.promise;
   assert.equal(result.reconciliation.agrees, true);
   assert.match(io.output, /reconcile: keysDone=2 zeroRowKeys=0 rowsFetchedTotal=2/);
+  assert.match(io.output, /refusedKeys=0 exclusions=0 agrees=true/);
 });
 
 test("a disagreement fails the run even though every key loaded", async () => {
-  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "1", "1"] });
+  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "1", "1", "0"] });
   const io = capture(() => assert.rejects(main(["--mode", "backfill"], deps), /reconciliation disagrees/));
   await io.promise;
 });

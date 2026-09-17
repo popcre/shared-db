@@ -73,6 +73,29 @@ function fatal(error) {
 }
 
 /**
+ * A PER-KEY refusal: this one order's data cannot land, but the feed itself is healthy.
+ *
+ * The distinction the live backfill bought on 2026-09-17: order 20344 returned two rows
+ * with distinct pkeys sharing one prodLineSeq — the vendor falsified the second proven
+ * identity that #2863 asserted as a table constraint. That is a fact about ONE key
+ * (until re-proven otherwise), not a change in the feed's shape, so it must not abort a
+ * run that still has thousands of healthy keys to fetch. The key is refused: recorded as
+ * a failed sync_run carrying a refused marker, never re-selected while the structural
+ * question is open, and counted in every run's reconciliation.
+ *
+ * Feed-SHAPE failures (unknown or omitted fields) stay FATAL: they would repeat for
+ * every key, and fetching the rest of the population against a changed feed proves
+ * nothing but noise.
+ */
+export const REFUSAL_REASON = "identity-collision";
+
+function refusal(error, reason = REFUSAL_REASON) {
+  error.refused = reason;
+  error.endpoint ??= PROD_DETAIL_SPEC.endpoint;
+  return error;
+}
+
+/**
  * Every row must belong to the order that was asked for. /prodHistory taught this
  * repository that a ColdLion scope can silently drift (the stage agreement); the same
  * assertion belongs on any keyed request.
@@ -80,7 +103,7 @@ function fatal(error) {
 export function assertRequestedOrder(rows, prodOrderNo) {
   for (const row of rows) {
     if (num(row.prodOrderNo) !== prodOrderNo) {
-      throw fatal(new Error(
+      throw refusal(new Error(
         `/proddetails returned a row for production order ${row.prodOrderNo ?? "(blank)"} under a request for ${prodOrderNo}`,
       ));
     }
@@ -90,10 +113,12 @@ export function assertRequestedOrder(rows, prodOrderNo) {
 /**
  * Project one /proddetails response into landing rows.
  *
- * Fails loudly — before anything is written — on unknown or omitted fields, on a row
- * for another production order, on a blank key field, and on EITHER identity appearing
- * twice in one response. Those are shape failures: they would repeat for every key, so
- * the CLI treats them as fatal for the whole run rather than one bad order.
+ * Unknown or omitted FIELDS are fatal for the whole run — the feed's shape changed and
+ * every later key would fail the same way. Everything else is a PER-KEY refusal: a row
+ * for another order, a blank identity field, or EITHER identity appearing twice in one
+ * response. The second case is not hypothetical: on 2026-09-17 the live feed returned
+ * two distinct-pkey rows for one (prodOrderNo, prodLineSeq), the exact collision the
+ * #2863 unique constraint exists to make visible.
  */
 export function projectProdDetailRows(sourceRows, { runId, fetchedAt, companyCode, prodOrderNo }) {
   try {
@@ -115,14 +140,14 @@ export function projectProdDetailRows(sourceRows, { runId, fetchedAt, companyCod
     row.fetched_at = fetchedAt;
 
     if (row.pkey === null || row.prod_order_no === null || row.prod_line_seq === null) {
-      throw fatal(new Error("/proddetails returned a row with a blank identity field (pkey, prodOrderNo or prodLineSeq)"));
+      throw refusal(new Error("/proddetails returned a row with a blank identity field (pkey, prodOrderNo or prodLineSeq)"));
     }
     const lineKey = `${row.company_code}\u001f${row.prod_order_no}\u001f${row.prod_line_seq}`;
     if (byPkey.has(String(row.pkey))) {
-      throw fatal(new Error("/proddetails returned duplicate rows for one pkey"));
+      throw refusal(new Error("/proddetails returned duplicate rows for one pkey"));
     }
     if (byLine.has(lineKey)) {
-      throw fatal(new Error("/proddetails returned duplicate rows for one prodOrderNo + prodLineSeq"));
+      throw refusal(new Error(`/proddetails returned duplicate rows for one prodOrderNo + prodLineSeq (prodLineSeq ${row.prod_line_seq}); both the table's unique constraint and this loader refuse to collapse them`));
     }
     byPkey.set(String(row.pkey), row);
     byLine.set(lineKey, row);
@@ -265,14 +290,24 @@ export function harvestSql(companyCode) {
  group by prod_order_no`;
 }
 
-/** Keys with a SUCCEEDED /proddetails run — the resume set. Zero-row keys count: they were asked and answered. */
+/**
+ * Keys a run must not fetch again: SUCCEEDED runs, plus keys REFUSED for an identity
+ * collision. Zero-row keys count as done (they were asked and answered); refused keys
+ * count as answered too — re-fetching them cannot change the answer until the
+ * falsified-unique-constraint ruling lands, and a nightly schedule that re-fails the
+ * same key forever is alert fatigue, not safety. Transport failures are NOT here:
+ * those keys stay outstanding and are retried by the next run.
+ */
 export function doneKeysSql(companyCode) {
   return `select (request_params->>'prodOrderNo')
   from coldlion.sync_run
  where endpoint = '/proddetails'
    and company_code = ${sqlText(companyCode)}
-   and status = 'succeeded'
-   and request_params ? 'prodOrderNo'`;
+   and request_params ? 'prodOrderNo'
+   and (
+     status = 'succeeded'
+     or (status = 'failed' and request_params->>'refused' = ${sqlText(REFUSAL_REASON)})
+   )`;
 }
 
 /** Parse [key, firstObserved, lastObserved] rows (CR-safe: psql on Windows emits \\r\\n). */
@@ -323,7 +358,7 @@ export function selectKeys({ harvested, done, mode, from, recentDays, limit }) {
   return limit === null ? selection : selection.slice(0, limit);
 }
 
-/** The reconciliation read: API-side evidence (succeeded runs) against the landed table. */
+/** The reconciliation read: API-side evidence (succeeded runs) against the landed table, refusals counted. */
 export function reconcileSql(companyCode) {
   return `with done as (
   select (request_params->>'prodOrderNo')::bigint as prod_order_no, rows_fetched
@@ -340,16 +375,41 @@ select (select count(*) from done),
        (select count(*) from landed),
        (select coalesce(sum(n), 0) from landed),
        (select count(*) from coldlion.prod_detail where company_code = ${sqlText(companyCode)}),
-       (select count(distinct pkey) from coldlion.prod_detail where company_code = ${sqlText(companyCode)})`;
+       (select count(distinct pkey) from coldlion.prod_detail where company_code = ${sqlText(companyCode)}),
+       (select count(*) from coldlion.sync_run
+         where endpoint = '/proddetails' and company_code = ${sqlText(companyCode)}
+           and status = 'failed' and request_params->>'refused' = ${sqlText(REFUSAL_REASON)})`;
+}
+
+/**
+ * Record one refused key durably, in its own transaction: a FAILED sync_run whose
+ * request_params carry the same flat prodOrderNo as a succeeded run plus the refusal
+ * marker, so doneKeysSql and the reconciliation can find it without any other table.
+ */
+export function prodDetailRefusalSql({ companyCode, prodOrderNo, requestedBy, error }) {
+  const message = String(error?.message ?? error).slice(0, 4000);
+  return `begin;
+insert into coldlion.sync_run
+  (endpoint, company_code, request_params, status, requested_by, started_at, finished_at,
+   http_status, body_status, error_message)
+values
+  ('/proddetails', ${sqlText(companyCode)},
+   ${sqlText(JSON.stringify({ companyCode, prodOrderNo, fullSnapshot: true, refused: REFUSAL_REASON }))}::jsonb,
+   'failed', ${sqlText(requestedBy)}, now(), now(),
+   ${error?.httpStatus ?? "null"}, ${error?.bodyStatus ?? "null"}, ${sqlText(message)});
+select pg_notify('coldlion_sync_alert', ${sqlText(`/proddetails refused production order ${prodOrderNo} (${REFUSAL_REASON}): ${message}`.slice(0, 7000))});
+commit;`;
 }
 
 export function parseReconciliation(row) {
-  const [keysDone, zeroRowKeys, rowsFetchedTotal, keysLanded, rowsLandedTotal, tableRows, distinctPkey] = row.map(Number);
+  const [keysDone, zeroRowKeys, rowsFetchedTotal, keysLanded, rowsLandedTotal, tableRows, distinctPkey, refusedKeys] = row.map(Number);
   return {
-    keysDone, zeroRowKeys, rowsFetchedTotal, keysLanded, rowsLandedTotal, tableRows, distinctPkey,
+    keysDone, zeroRowKeys, rowsFetchedTotal, keysLanded, rowsLandedTotal, tableRows, distinctPkey, refusedKeys,
     // This feed lands everything it fetches: no EP001 exclusion, no withheld rows (unit
-    // 5b ruling). Any gap between the API side and the table is a defect, not a filter.
-    exclusions: 0,
+    // 5b ruling). Refused keys are the one named exception — orders whose response
+    // breaks a proven identity, durably recorded and awaiting a structural ruling —
+    // and they are counted here rather than hidden inside a mismatch.
+    exclusions: refusedKeys,
     agrees: keysLanded === keysDone - zeroRowKeys
       && rowsLandedTotal === rowsFetchedTotal
       && tableRows === rowsLandedTotal

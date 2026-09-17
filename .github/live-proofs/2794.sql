@@ -1,8 +1,8 @@
--- Live proof for #2794 (migration 20260917081021). Read-only.
+-- Live proof for #2794 (migration 20260917102139). Read-only.
 -- Proves: the migration is in production's ledger; plm.import_master_data(jsonb,jsonb)
 -- no longer exists; the licensing write guard it must not disturb is intact.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917081021')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917102139')
   and to_regprocedure('plm.import_master_data(jsonb,jsonb)') is null
   and not exists (
     select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace

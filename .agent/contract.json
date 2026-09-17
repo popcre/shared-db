@@ -1,32 +1,46 @@
 {
   "schema_version": 1,
-  "generation": 9,
+  "generation": 10,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement issue #3199 Phase A3: a read-only scheduled Queue Hygiene Report — scripts/queue-hygiene-report.mjs (importing the audit machinery; off the protected lane manager), a daily read-only queue-hygiene-report.yml workflow, offline tests wired into tools-offline-tests.yml, plan STATUS updates for A1/A2, and the review-fix hardening (two more refused mutation hooks + a completeness guard classifying every githubIo hook).",
-  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
+  "goal": "Implement issue #3199 Phases B and C: the self-service additive lane (fail-closed boundary classifier over the production tokenizer, route admission across the lane machinery and admission, merge-time enforcement inside the guarded merge, route-sync guard, AGENTS.md documentation) and the #2758 ephemeral-route hop table with C2 no-code-change outcome.",
+  "base_sha": "13efcd77496db37ee2f1d80ab86e5b5e35e30ac5",
   "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
   "worker": "ZCode (GLM 5.3) repository-maintenance session",
-  "branch": "zcode/3199-queue-hygiene",
+  "branch": "zcode/3199-self-service-lane-v2",
   "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
   "allowed_paths": [
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs",
-    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/tools-offline-tests.yml",
+    "AGENTS.md",
+    "docs/agents/ephemeral-route-hop-table.md",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
+    "scripts/check-lane-route-sync.test.mjs",
+    "scripts/check-self-service-additive-lane.mjs",
+    "scripts/check-self-service-additive-lane.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs",
-    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/tools-offline-tests.yml",
+    "AGENTS.md",
+    "docs/agents/ephemeral-route-hop-table.md",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
+    "scripts/check-lane-route-sync.test.mjs",
+    "scripts/check-self-service-additive-lane.mjs",
+    "scripts/check-self-service-additive-lane.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -36,23 +50,25 @@
     "No database write or structure change of any kind",
     "No production workflow dispatch",
     "No weakening of any safety gate, required check, or caller check",
-    "The scheduled report must hold read-only permissions and write nothing",
-    "No edit to scripts/manage-migration-author-lanes.mjs (protected source held by PR #3215)"
+    "NON_STRUCTURAL_EXITS stays untouched",
+    "The lane boundary never grows beyond {crm,pim,dam}"
   ],
   "required_checks": [
-    "node --test scripts/queue-hygiene-report.test.mjs",
+    "node --test scripts/check-self-service-additive-lane.test.mjs",
+    "node --test scripts/check-lane-route-sync.test.mjs",
     "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "bash scripts/check-sql.sh",
-    "node scripts/check-github-transport-conformance.mjs",
+    "python -m unittest scripts.test_self_service_boundary_lexing",
+    "python -m unittest scripts.test_production_preview_skip",
     "node scripts/check-throughput-truth-audit.mjs",
+    "bash scripts/check-sql.sh",
     "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "origin/main moved four times during implementation; the branch was refreshed by merge before each evidence bind.",
-    "Grok 4.6 reviewed head fd7d1327 (REVISE): hygieneReportIo missed rewriteVersion and commitAndPushReversion. Generation 9 carries the fix plus the completeness guard classifying every githubIo function hook."
+    "Phase B edits the protected coordination source scripts/manage-migration-author-lanes.mjs; PR #3228 queues behind #3215 and #3217 on that file by design.",
+    "The classifier consumes the production tokenizer through new output views only; the default folded view is byte-identical for every existing consumer (pinned by tests)."
   ],
   "stop_conditions": [
     "Stop if any change would weaken a safety gate or touch the database",
-    "Stop if the report cannot be made write-free by construction"
+    "Stop if the boundary classifier cannot be made fail-closed"
   ]
 }

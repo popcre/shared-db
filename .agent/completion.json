@@ -2,31 +2,58 @@
   "schema_version": 1,
   "work_issue": 3199,
   "outcome": "ready-for-merge",
-  "pr": 3216,
+  "pr": 3228,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/9",
-  "contract_sha256": "261437cde7a3df3533e24fcc0855db4b9867b5702ff37d7c66dca3c24a204f25",
-  "head_sha": "64dab1710fdb24750368ce5511e0d6cc5f2acd63",
+  "contract_ref": "refs/db-contracts/3199/10",
+  "contract_sha256": "bbf4672fc44aac3b2ec587f1a2f639963b4184f72f6180156e160a167160c31f",
+  "head_sha": "81fd7e569861d3f9d4bd6bb693d104ca90a6ce3c",
   "files_changed": [
-    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/tools-offline-tests.yml",
+    "AGENTS.md",
+    "docs/agents/ephemeral-route-hop-table.md",
     "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs"
+    "scripts/check-lane-route-sync.test.mjs",
+    "scripts/check-self-service-additive-lane.mjs",
+    "scripts/check-self-service-additive-lane.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_self_service_boundary_lexing.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/queue-hygiene-report.test.mjs",
+      "command": "node --test scripts/check-self-service-additive-lane.test.mjs",
       "exit_code": 0,
-      "evidence": "7 tests, 7 pass at implementation head 64dab171 — the two review-found hooks now refused and every githubIo function hook classified."
+      "evidence": "20 dirty-first fixtures pass, including the Grok-review holes (FK targets, SECURITY DEFINER, RLS-before-grant, CREATE OR REPLACE, dflow/app escapes, riding-along workflows, both sides of ADD COLUMN)."
+    },
+    {
+      "command": "node --test scripts/check-lane-route-sync.test.mjs",
+      "exit_code": 0,
+      "evidence": "4/4 — route machinery, admission, workflow invocation and AGENTS.md prose agree; the B2/B3 ordering rule is enforced permanently."
     },
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "604 tests pass; the lane manager stays byte-identical to main in this pull request."
+      "evidence": "604/604 including the every-work-type-keeps-an-exit family; NON_STRUCTURAL_EXITS untouched."
+    },
+    {
+      "command": "python -m unittest scripts.test_self_service_boundary_lexing",
+      "exit_code": 0,
+      "evidence": "6/6 pinning the tokenizer spans and keep_dollar_quoted views, including default-view byte identity."
+    },
+    {
+      "command": "python -m unittest scripts.test_production_preview_skip",
+      "exit_code": 0,
+      "evidence": "31/31 — the production gate consumers of the tokenizer are unaffected by the new output-only parameters."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=309 (both new workflow guard steps registered as excluded presence checks)."
     },
     {
       "command": "bash scripts/check-sql.sh",
@@ -34,25 +61,15 @@
       "evidence": "Static checks passed; zero migrations added."
     },
     {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "Every GitHub call goes through scripts/lib/github-transport.mjs."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=308."
-    },
-    {
       "command": "ai-task-gates check --before pr-wait",
       "exit_code": 0,
-      "evidence": "pr-wait may start; the exact-head independent review proceeds through this pull request."
+      "evidence": "pr-wait may start; exact-head independent review proceeds through this pull request."
     }
   ],
   "assumptions_resolved": [
-    "origin/main moved four times during implementation; the branch was refreshed by merge before each evidence bind and tests re-run green at each implementation head.",
-    "The Grok 4.6 governed review of head fd7d1327 returned REVISE finding rewriteVersion and commitAndPushReversion missing from the refuse list; generation 9 refuses both and adds the completeness guard classifying every githubIo function hook as known read or refused mutation.",
-    "A1/A2 executed live before this pull request; queue-audit rerun shows no UNLABELLED ISSUES block and no EXPIRED AUTHOR LEASES section."
+    "Phase B edits the protected coordination source; PR #3228 queues behind #3215 and #3217 on that file by the collision guard design, and merges only after they clear.",
+    "The tokenizer gained output-only parameters; the default view is pinned byte-identical so every existing ALLOWLIST consumer is unaffected.",
+    "Phase A merged first as PR #3216 (13efcd77); this branch is cut from that merged main, not stacked on the A3 branch."
   ],
   "stop_conditions_hit": []
 }

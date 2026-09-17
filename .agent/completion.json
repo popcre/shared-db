@@ -6,8 +6,10 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2367/2",
   "contract_sha256": "6771b8a2622820843b0b278aa92854b3d89ed787180ecf9051035fd385b6bef1",
-  "head_sha": "8224df8a1bb417d65ebcda5d4beaa8afbe25cc1b",
+  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
@@ -20,7 +22,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change."
+    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
+    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
   ],
   "stop_conditions_hit": []
 }

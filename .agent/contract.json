@@ -5,9 +5,10 @@
     ".agent/completion.json"
   ],
   "assumptions": [
-    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment."
+    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment.",
+    "Generation 3 exists because main advanced to 7a15d152 and conflicted only on the shared .agent pair; the branch was refreshed by MERGE (never rebase) as b0c64a08, with the pair resolved to this lane."
   ],
-  "base_sha": "14464e77f16163589af5abb7d6908b2c6f0b6500",
+  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
   "branch": "claude/fix-2367-test-comment",
   "db_reads": [],
   "db_writes": [],
@@ -17,7 +18,7 @@
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 2,
+  "generation": 3,
   "goal": "Correct the comment in scripts/production_business_risk_gate.py that wrongly says no test reaches the historical run-map guards; no behavior change.",
   "prohibited_actions": [
     "No database change of any kind",

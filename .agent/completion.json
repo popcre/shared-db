@@ -1,30 +1,54 @@
 {
   "schema_version": 1,
-  "work_issue": 3173,
+  "work_issue": 2611,
   "outcome": "ready-for-merge",
-  "pr": 3172,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/2",
-  "contract_sha256": "ef1cfa89c5b02bf1d269f77207f2cbe3ee2fbd311ea587004fb4f4adc3ffaa94",
-  "head_sha": "0a5fe4e4c93dc5987126464d66883c8c71af52b1",
+  "pr": 2823,
+  "migration_versions": [
+    "20260917081048"
+  ],
+  "contract_ref": "refs/db-contracts/2611/10",
+  "contract_sha256": "a10d215ee254441e4f3e3fb22214f21d3b9534d8e9d14d4728c1a7c584fa2f7c",
+  "head_sha": "5c686f09ba49423a79cdae1392ee6ea6653decba",
   "files_changed": [
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/lib/github-transport.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2611.sql",
+    ".github/workflows/prepack-exclusion.yml",
+    "docs/business-rules/product-items-and-identifiers.md",
+    "docs/verification/prepack-exclusion-20260911.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-prepack-exclusion.mjs",
+    "scripts/check-prepack-exclusion.test.mjs",
+    "supabase/migrations/20260917081048_prepack_exclusion.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role",
+    "view plm.item_missing_attribution",
+    "table plm.item_missing_attribution"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "604 passed, 0 failed, 0 skipped at 0a5fe4e4c93dc5987126464d66883c8c71af52b1; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read; waiters keep waiting through a latched quota wait; exhausted-quota latch stops other callers with 0 wire requests until reset."
+      "evidence": "Static checks passed at 5c686f09."
+    },
+    {
+      "command": "node scripts/check-prepack-exclusion.test.mjs",
+      "exit_code": 0,
+      "evidence": "Prepack exclusion test passed at 5c686f09: guard verified green on the tree and red on 10 dirty cases, including a later function-only migration weakening plm.prepack_role."
+    },
+    {
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "exit_code": 0,
+      "evidence": "PR_NUMBER=2823: Migration claim verified: #2819, version 20260917081048."
     }
   ],
   "assumptions_resolved": [
-    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
+    "Refreshed by merge onto main e0c54faa; version 20260917081048 remains newest on main.",
+    "Throughput truth audit OK at 306 call sites and pass-2 routine rebuild check PASS at 8f7224eb.",
+    "Governed review sequence 3111 (Muse) REVISE at 21cda954: the one High guard finding and Lows 5-7 are fixed; Mediums 2-4 (per-row function cost, unscoped head match, member exclusion breadth) are recorded on the PR for follow-up.",
+    "Governed review sequence 3115 (grok-4.6) APPROVE at 8514a309; the guarded merge then required a live-proof probe, added at 5c686f09 as .github/live-proofs/2611.sql, which needs a fresh review."
   ],
   "stop_conditions_hit": []
 }

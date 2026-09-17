@@ -1,34 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3165,
+  "work_issue": 3153,
   "outcome": "ready-for-merge",
-  "pr": 3166,
+  "pr": 3155,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3165/1",
-  "contract_sha256": "82fbc2bc22928af119f0986d94ab18b9e3bc96e44f4fad35172560c32b180c31",
-  "head_sha": "1bb0dcc40bf2534bdc5dd629b5739db5c339d6da",
+  "contract_ref": "refs/db-contracts/3153/2",
+  "contract_sha256": "7694d975ca4c729f5a2d969f8025ce5d4dc5f7d4ebf43e87b493f9ef121a3a8d",
+  "head_sha": "885efeb5fbde1084ad75b9df58eccad1424a2a80",
   "files_changed": [
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "tests 680 pass 680 fail 0 at implementation head 1bb0dcc4."
+      "evidence": "162 passed, 0 failed, 0 skipped; new #2870/#2866 regression test fails on main and passes here. Full scripts pytest: 1248 passed, 8 skipped."
     },
     {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (52 entries)."
+      "evidence": "tests 25, pass 25, fail 0, skipped 0; the #3091 production-mode test cannot import on main."
     }
   ],
   "assumptions_resolved": [
-    "Organization-owned repositories report an org member comments as MEMBER; the operator login is still required, so no other member, collaborator, or OWNER-association account is admitted."
+    "The coverage manifest's only reader is the validate job; the 'Never read by the preview job' phrase test passes",
+    "No production job step in shared-supabase-migrations.yml runs pytest or node --test, and no non-test script imports a test file"
   ],
   "stop_conditions_hit": []
 }

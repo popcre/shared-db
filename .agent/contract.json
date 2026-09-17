@@ -1,40 +1,56 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2373,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Add focused falsification coverage proving that the production catalog verifier refuses unknown privilege kinds and non-object strict-key inputs.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
-  "dispatcher": "Codex root session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
-  "worker": "Codex issue #2373 subagent",
-  "branch": "codex/issue-2373-catalog-guards",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2373-catalog-guards/shared-db",
+  "work_issue": 3179,
+  "work_type": "source-data",
+  "route": "source-data-session",
+  "goal": "Load and continuously refresh ColdLion /prepackDetail data in the live coldlion.prepack_detail table created by #2863: extend the existing repository-owned ColdLion landing loader (no second framework), add synthetic offline tests, and wire a bounded, resumable production backfill plus the ongoing scheduled refresh. No database-shape change.",
+  "base_sha": "1d4cb402d4f546fb1845d65d3b93bca82771f875",
+  "dispatcher": "delegated source-data session started from issue #3179 text (non-orchestrator work)",
+  "worker": "Claude GLM 5.3 source-data session, issue #3179",
+  "branch": "claude/issue-3179-prepack-detail-loader",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-detail-3179",
   "allowed_paths": [
-    "scripts/test_production_catalog_verification.py",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".github/workflows/coldlion-landing-sync.yml",
+    ".github/workflows/coldlion-prepack-backfill.yml",
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prepack-detail.mjs",
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "file_writes": [
-    "scripts/test_production_catalog_verification.py",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".github/workflows/coldlion-landing-sync.yml",
+    ".github/workflows/coldlion-prepack-backfill.yml",
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prepack-detail.mjs",
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read, write, or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening, removal, or bypass of catalog-verifier refusal behavior"
+    "Never author a migration or change any database shape; this work changes rows and loader code only (issue #3179 db-work-scope declares writes: []).",
+    "Never run the loader against a database whose connection string does not name the declared COLDLION_EXPECTED_PROJECT_REF; the target is proved immediately before every write.",
+    "Never commit ColdLion row values, harvested key populations, or credentials; fixtures are synthetic and logs carry counts only.",
+    "Never close issue #3179; the originating session owns closure."
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests"
+    "node --test tools/coldlion-landing-prepack.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
+    "bash scripts/check-sql.sh"
   ],
   "assumptions": [
-    "The two issue-listed mutation survivors still map to PrivilegeExpectation.__init__ and _strict_keys on current origin/main"
+    "The /prepackDetail shape and grain are those sampled live on 2026-09-15 (docs/coldlion-unit-5b-grain-proof-20260915.md): a bare JSON array of eighteen fields keyed by (company_code, prepack_code, sequence_no), with itemPrice and ItemPrice as two real properties.",
+    "The complete approved prepackCode population is harvestable from already-landed ColdLion data (issue #3179 required work); coldlion.inventory and coldlion.prod_detail contribute automatically once their own loaders exist.",
+    "Resumability needs no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params.",
+    "A zero-row response for a harvested code is expected and must be counted and named, never silently skipped; malformed responses abort the run before any write."
   ],
   "stop_conditions": [
-    "Stop if issue #2373 gains an active owner or blocker",
-    "Stop if either refusal guard is unreachable or requires production-code changes beyond focused test coverage"
+    "Stop and report a blocker if the live dry-run shows a response shape outside the eighteen-field sample or a harvest population too large for the scheduled window.",
+    "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

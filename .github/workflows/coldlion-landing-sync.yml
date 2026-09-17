@@ -5,6 +5,11 @@
 # deliberate — an order edited days after it was written falls in an older window,
 # and a sync that only ever looked at the current week would never see it.
 #
+# Since issue #3179 the same run also refreshes coldlion.prepack_detail: it
+# re-harvests the prepackCode population from the tables landed above and re-asks
+# every code, so recipe edits and removals are observed. The initial bounded
+# backfill lives in coldlion-prepack-backfill.yml, manual dispatch only.
+#
 # This workflow WRITES to the shared database. Two rules follow from that:
 #   1. It is never triggered by a pull request or a push. Schedule and manual
 #      dispatch only, so a branch cannot make it run.
@@ -56,7 +61,7 @@ jobs:
         run: psql --version
 
       - name: Run the offline contract tests before touching anything
-        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs
+        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs
 
       - name: Refuse to run without an explicit target
         env:
@@ -81,6 +86,8 @@ jobs:
           set -euo pipefail
           ARGS=(--windows "$WINDOWS")
           MASTER_ARGS=()
-          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); fi
+          PREPACK_ARGS=()
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); fi
           node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
+          node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"

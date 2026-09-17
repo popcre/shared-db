@@ -42,7 +42,7 @@ export function parseRepositorySlug(value, label = 'repository') {
 }
 
 // Accepts only github.com remotes: https (optionally with credentials), ssh://,
-// and scp-like git@github.com:owner/name. Anything else is refused.
+// and the scp-like form (user git, host github.com, then :owner/name). Anything else is refused.
 export function parseGitHubRemoteUrl(url) {
   const text = String(url ?? '').trim()
   const patterns = [

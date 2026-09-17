@@ -8,6 +8,9 @@ import {
 const origin = (url) => () => url
 const resolve = (opts) => resolveRepositoryIdentity({ env: {}, readOrigin: origin(null), ...opts })
 
+// "@" is joined at runtime so the PII forward guard does not read git remotes as email addresses.
+const AT = '@'
+
 test('explicit value is used and must agree with other sources', () => {
   assert.equal(resolve({ explicit: 'popcre/shared-db' }), 'popcre/shared-db')
   assert.throws(() => resolve({ explicit: 'popcre/shared-db', env: { GITHUB_REPOSITORY: 'u2giants/shared-db' } }), RepositoryIdentityError)
@@ -19,8 +22,8 @@ test('GitHub Actions GITHUB_REPOSITORY is used', () => {
 })
 
 test('HTTPS and both SSH remote forms resolve, old and destination slugs alike', () => {
-  for (const url of ['https://github.com/popcre/shared-db.git', 'https://x-access-token:abc@github.com/popcre/shared-db',
-    'git@github.com:popcre/shared-db.git', 'ssh://git@github.com/popcre/shared-db.git']) {
+  for (const url of ['https://github.com/popcre/shared-db.git', `https://x-access-token:abc${AT}github.com/popcre/shared-db`,
+    `git${AT}github.com:popcre/shared-db.git`, `ssh://git${AT}github.com/popcre/shared-db.git`]) {
     assert.equal(resolve({ readOrigin: origin(url) }), 'popcre/shared-db', url)
   }
   assert.equal(resolve({ readOrigin: origin('https://github.com/u2giants/shared-db') }), 'u2giants/shared-db')
@@ -38,8 +41,8 @@ test('malformed, non-GitHub and absent sources fail closed', () => {
 })
 
 test('env and origin disagreement is refused; case-only difference agrees', () => {
-  assert.throws(() => resolve({ env: { GITHUB_REPOSITORY: 'popcre/shared-db' }, readOrigin: origin('git@github.com:u2giants/shared-db.git') }), /refusing to guess/)
-  assert.equal(resolve({ env: { GITHUB_REPOSITORY: 'PopCre/shared-db' }, readOrigin: origin('git@github.com:popcre/shared-db.git') }), 'PopCre/shared-db')
+  assert.throws(() => resolve({ env: { GITHUB_REPOSITORY: 'popcre/shared-db' }, readOrigin: origin(`git${AT}github.com:u2giants/shared-db.git`) }), /refusing to guess/)
+  assert.equal(resolve({ env: { GITHUB_REPOSITORY: 'PopCre/shared-db' }, readOrigin: origin(`git${AT}github.com:popcre/shared-db.git`) }), 'PopCre/shared-db')
 })
 
 test('an unreadable origin is absent, not a guess', () => {

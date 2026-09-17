@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 3023,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "The nightly PopSG crawl's public.refresh_style_guide_matviews call completes inside the unchanged 8s statement timeout at current corpus size, with identical search-document sync semantics.",
@@ -11,9 +11,9 @@
   "branch": "claude/3023-sg-refresh-bounded",
   "worktree": "C:/repos/shared-db/.claude/worktrees/sg-3023-refresh-bounded",
   "allowed_paths": [
-    "supabase/migrations/20260916232205_popsg_refresh_search_sync_queue.sql",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
     "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
-    "scripts/production-verification-sidecars/20260916232205.json",
+    "scripts/production-verification-sidecars/20260917005221.json",
     "config/production-verification-sidecar-registry.json",
     "scripts/production_catalog_verification.py",
     "scripts/test_production_catalog_verification.py",
@@ -23,9 +23,9 @@
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260916232205_popsg_refresh_search_sync_queue.sql",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
     "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
-    "scripts/production-verification-sidecars/20260916232205.json",
+    "scripts/production-verification-sidecars/20260917005221.json",
     "config/production-verification-sidecar-registry.json",
     "scripts/production_catalog_verification.py",
     "scripts/test_production_catalog_verification.py",
@@ -62,7 +62,7 @@
     "git diff --check"
   ],
   "assumptions": [
-    "Claim #3113 reserves version 20260916232205 and covers every declared write",
+    "Claim #3113 reserves version 20260917005221 and covers every declared write",
     "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the full-table sync candidate scan about 11.6s with zero candidates",
     "Nothing else writes source_identity inputs without updating style_guide_files, so an update trigger observes every identity change"
   ],

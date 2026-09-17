@@ -1,30 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 3193,
+  "work_issue": 3181,
   "outcome": "ready-for-merge",
-  "pr": 3194,
+  "pr": 3176,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3193/1",
-  "contract_sha256": "0f97dd1bd7b749d481775bc6a15acf1dad9136b44bf5e292d1056cc29f5ceb65",
-  "head_sha": "b16a2505580af1cdc7ee81b6b0491f0e351eae6c",
+  "contract_ref": "refs/db-contracts/3181/5",
+  "contract_sha256": "573c5940dc6288512684f7ea7728ca968afc2c8cd2f2ae6853d18442f7b569d8",
+  "head_sha": "b68ae799cbe52764c7db48fdcceeff4b36c0d365",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py"
+    "config/db-data-admin-property-source-coverage.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_production_migration_guard.py",
+      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
       "exit_code": 0,
-      "evidence": "With scripts/test_migration_derivation.py and scripts/test_production_business_risk_gate.py: Ran 501 tests, OK. Two of the three new tests fail against main's guard. Workflow text tests (preview-ref, supabase-ref-config, rehearsal-map-parse, preview-mode-guard, automatic-promotion-source): 167 pass, 0 fail, 0 skipped."
+      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
+    },
+    {
+      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "44 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Confirmed #2794's original rehearsal run 35216549909 checked out 8664e6a5, which is PR #2821's merge commit, so the historical-recovery lane applies"
+    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
   ],
   "stop_conditions_hit": []
 }

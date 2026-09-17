@@ -1,54 +1,75 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3091,
+  "work_issue": 3023,
+  "generation": 2,
   "work_type": "structural",
-  "route": "migration",
-  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
-  "base_sha": "0c16ff3f0d00169bbd6a2ef1645a44b98390a215",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3091 migration author a7f2",
-  "branch": "claude/3091-milestone-schedule-a7f2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
+  "route": "shared-db-orchestrator",
+  "goal": "The nightly PopSG crawl's public.refresh_style_guide_matviews call completes inside the unchanged 8s statement timeout at current corpus size, with identical search-document sync semantics.",
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "dispatcher": "Albert Hazan (session request relayed by shared-db orchestrator marker #3106)",
+  "worker": "claude-sub-3023",
+  "branch": "claude/3023-sg-refresh-bounded",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/sg-3023-refresh-bounded",
   "allowed_paths": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [
-    "table plm.\"FactoryTime\""
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
   ],
   "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
   ],
   "prohibited_actions": [
-    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
-    "No data change to existing tables",
-    "No migration version other than claimed 20260917005942"
+    "Do not raise any statement timeout",
+    "Do not delete or replay application rows",
+    "Do not write production or dispatch production manually",
+    "Do not change the refresh function signature, grants or caller contract"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "python3 scripts/test_migration_derivation.py",
+    "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "git diff --check"
   ],
   "assumptions": [
-    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
+    "Claim #3113 reserves version 20260917005221 and covers every declared write",
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the full-table sync candidate scan about 11.6s with zero candidates",
+    "Nothing else writes source_identity inputs without updating style_guide_files, so an update trigger observes every identity change"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the admitted objects"
+    "Claim #3113 ownership changes",
+    "A needed change lies outside the declared objects",
+    "Preview apply or the refresh exceeds the 8s ceiling",
+    "A gate refuses; do not bypass it or raise a timeout"
   ]
 }

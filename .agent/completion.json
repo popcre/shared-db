@@ -1,26 +1,72 @@
 {
   "schema_version": 1,
-  "work_issue": 2362,
+  "work_issue": 3124,
   "outcome": "ready-for-merge",
-  "pr": 3140,
+  "pr": 3121,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2362/2",
-  "contract_sha256": "24a9aa1fa209b45f61fa3a3231ca2aec2fa1cd4b01d966189930c1b8eb5a2036",
-  "head_sha": "09a1511702aa4c88b955f11ee97fe5053adc7fe9",
+  "contract_ref": "refs/db-contracts/3124/1",
+  "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
+  "head_sha": "d0080ca028a0c14de8f8976a70785e548d4256d2",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_activation_mutations.py"
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/agent-work-contract.mjs",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-handoff-contract.mjs",
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/check-repository-identity-conformance.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/historical_preview_recovery.py",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/review-verdict-artifact.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/read-preview-ledger.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/production_apply_review_evidence.py",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_owner_decision_evidence.py",
+    "scripts/reap-merged-worktrees.mjs",
+    "scripts/repair-voided-findings.mjs",
+    "scripts/report-stale-handoffs.mjs",
+    "scripts/repository_identity.py",
+    "scripts/run-governed-review.mjs",
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_repository_identity.py",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs",
+    "scripts/verify_preview_apply_artifact.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "Run at implementation head 2723dff5: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
+    },
+    {
+      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "Full Python suite at 2723dff5: Ran 1091 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 12 activation-evidence guard mutants listed in issue #2362; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
   ],
   "stop_conditions_hit": []
 }

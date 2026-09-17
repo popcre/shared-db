@@ -1,53 +1,51 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3174,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Add Coca-Cola Submissions, WWE Creative, Peanuts Creative, Sesame Workshop Creative and Sesame Workshop Submissions sections to api.db_data_admin_scraped_source_inventory, with the new landing table plm.sesame_submission_property_option.",
-  "base_sha": "c705dfdad76275d859ad48cddb7f329956142d42",
-  "dispatcher": "claude shared-db orchestrator issue #3174",
-  "worker": "Claude Opus 5 issue-3174 migration author lane (claim #3189)",
-  "branch": "claude/issue-3174-scraped-sections",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a62ecbe202c69cc64",
+  "generation": 8,
+  "work_issue": 3173,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
+  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
+  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
+  "worker": "Claude Opus 5 #2773 subagent",
+  "branch": "claude/api-fanout-2773-a",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
   "allowed_paths": [
-    ".agent/completion.json",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
-    ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".agent/completion.json",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
-    ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+    ".agent/completion.json"
   ],
-  "db_reads": [
-    "table plm.coke_approval_vocabulary_value",
-    "table plm.wwe_creative_brand",
-    "table plm.peanuts_art_program",
-    "table plm.sesame_brand",
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member"
-  ],
-  "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory",
-    "table plm.sesame_submission_property_option"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "Never run direct production DDL; production reaches the database only through the governed promotion lane.",
-    "Never change existing inventory arms, row keys or grants.",
-    "Never rebase this branch; refresh from main with a merge."
+    "No database write or structure change of any kind",
+    "No production workflow dispatch",
+    "No weakening of collision locks, migration version reservation or serial lanes"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh"
+    "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "The live production function body equals migration 20260917005650 (md5 verified), so it is the derivation source.",
-    "Peanuts rows without a Tenovos source id have no ledger identity and are left out on purpose; production has none today."
+    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
   ],
   "stop_conditions": [
-    "Stop if the lane claim is refused for object collision.",
-    "Stop on anything other than an explicit independent APPROVE."
+    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
   ]
 }

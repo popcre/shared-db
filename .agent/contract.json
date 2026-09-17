@@ -1,52 +1,42 @@
 {
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 2730,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Select the newest same-name check run deterministically by check-run id in prove_pr_and_checks, so an older cancelled run can no longer overwrite a newer successful one regardless of API row order (PR #2527 production refusal).",
+  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (non-orchestrator sweep)",
+  "worker": "ZCode GLM-5.3 session repo-maintenance sweep 2026-09-17",
+  "branch": "claude/issue-2730-newest-check-selection",
+  "worktree": "C:/repos/shared-db-worktrees/issue-sweep-20260917",
   "allowed_paths": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
-    ".github/live-proofs/2478.sql"
+    ".agent/completion.json"
   ],
-  "assumptions": [
-    "Claim #2745 was moved off its reused worktree with the guarded --rebind-claim-worktree mode (#3182, PR #3185) to C:/repos/shared-db-worktrees/issue-2478-rebind-3182 at PR head af7b1689; the old worktree was never inspected or touched.",
-    "The backdated version 20260912030028 was superseded through the lane tool as 20260917112129 (supersession 0394af44, head 32f51125).",
-    "Issue #2478 scope now says application_return_to: u2giants/shared-db, because the helper and its two consumers live only in this repository, so the PR carries the read-only probe .github/live-proofs/2478.sql.",
-    "The branch was refreshed by MERGE onto main 74cd0a5c; no behaviour change is intended and the existing contract tests for both consumers are unchanged.",
-    "Generation 9: refreshed by merge onto main 49cabb90; the implementation diff is unchanged."
-  ],
-  "base_sha": "49cabb90a765e8cbd27864018fa12a515eed59b0",
-  "branch": "claude/issue-2478-sku-key-reissue",
-  "db_reads": [],
-  "db_writes": [
-    "function public.style_group_key_for_sku",
-    "function public.rebuild_style_groups_batch",
-    "function public.reconcile_style_group_drift"
-  ],
-  "dispatcher": "owner request to deliver claim #2745 (audit #3117) after lane-tool fix #3182",
   "file_writes": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
-    ".github/live-proofs/2478.sql"
+    ".agent/completion.json"
   ],
-  "generation": 9,
-  "goal": "Extract the shared SKU style-group derivation into public.style_group_key_for_sku and have public.rebuild_style_groups_batch and public.reconcile_style_group_drift call it, with no behaviour change.",
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "Do not touch the claim's former worktree C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9.",
-    "Do not write or repair any application rows; this is a structural change only.",
-    "Do not run DDL directly against preview or production; apply only through the governed workflows.",
-    "Do not weaken any guard to make a refusal pass."
+    "No database write or structure change of any kind",
+    "No change to any migration file or workflow file"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-migration-pr-lease.mjs"
+    "python -m unittest scripts.test_production_business_risk_gate"
   ],
-  "route": "shared-db-orchestrator",
-  "schema_version": 1,
+  "assumptions": [
+    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run of that check",
+    "A single same-name row needs no ordering evidence; only two or more rows must carry usable integer ids or the gate refuses"
+  ],
   "stop_conditions": [
-    "Stop if a guard refusal could only be cleared by weakening the guard.",
-    "Stop if another claim is found to hold any of the three functions."
-  ],
-  "work_issue": 2478,
-  "work_type": "structural",
-  "worker": "claude issue-2478 delivery session (claim #2745)",
-  "worktree": "C:/repos/shared-db-worktrees/issue-2478-rebind-3182"
+    "Stop and report if any existing test proves the id-ordering assumption wrong for same-name check runs",
+    "Stop if the exact-head proof or the guarded-merge authorization check would need to change"
+  ]
 }

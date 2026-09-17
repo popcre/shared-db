@@ -1,22 +1,30 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3161,
+  "generation": 2,
+  "work_issue": 3153,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Unbreak Tools offline tests on every branch: the skill drift check accepts the current no-ceiling author rule wording alongside the older cap wording.",
-  "base_sha": "ab1e3fa8851e0a33635887c2fb6485c8f3309fe3",
-  "dispatcher": "Claude #3154 migration author b2 (blocked by this check)",
-  "worker": "Claude Opus 5 #3154 migration author b2",
-  "branch": "claude/skill-drift-no-author-cap-b2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3d47360f234754dd",
+  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
+  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
+  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
+  "worker": "Claude Opus 5 #3153 subagent",
+  "branch": "claude/prod-gate-config-scope-a1",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
   "allowed_paths": [
-    "scripts/check-skill-drift.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/check-skill-drift.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -24,15 +32,17 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "Do not delete the author-rule requirement"
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "node --test scripts/check-skill-drift.test.mjs"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py",
+    "node --test scripts/check-main-tip-freshness.test.mjs"
   ],
   "assumptions": [
-    "ai-devops main shared-db-orchestrator skill is the canonical copy CI reads"
+    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
+    "No production job step runs a test file or reads .agent evidence"
   ],
   "stop_conditions": [
-    "Stop if the skill contradicts AGENTS.md on a rule other than the author cap"
+    "Stop if a preview-job tool reads the coverage manifest"
   ]
 }

@@ -1,30 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3153,
+  "generation": 1,
+  "work_issue": 3159,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
-  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
+  "goal": "Stop the production business-risk gate forcing the manual route for routine migrations (#3104 PR #3131, #2866): classify a CREATE OR REPLACE FUNCTION that re-establishes a function exactly as the latest earlier migration left it (same header, comment and grants), and narrowing REVOKEs, as routine, while new functions, header changes, widened grants, intervening grant changes and data changes still report every risk.",
+  "base_sha": "03d540a6ff170a0b0141d9cd10a68ea6497888d0",
   "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3153 subagent",
-  "branch": "claude/prod-gate-config-scope-a1",
+  "worker": "Claude Opus 5 #3159 subagent",
+  "branch": "claude/3159-risk-gate-routine-fn",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -35,14 +29,12 @@
     "No production workflow dispatch"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/check-main-tip-freshness.test.mjs"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py"
   ],
   "assumptions": [
-    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
-    "No production job step runs a test file or reads .agent evidence"
+    "The tokeniser empties function bodies, so the comparison covers header, comment and grants; the body is covered by the required independent review"
   ],
   "stop_conditions": [
-    "Stop if a preview-job tool reads the coverage manifest"
+    "Stop if any widening grant or data change would classify as routine"
   ]
 }

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3198,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -16,6 +16,6 @@
   "db_writes": [],
   "prohibited_actions": ["No database write or structure change of any kind", "No change to check-pr-object-collisions.mjs grant dual-keying"],
   "required_checks": ["node --test scripts/check-migration-pr-lease.test.mjs", "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs"],
-  "assumptions": ["A migration cannot create a table and a view with the same qualified name, so a view key on a table created in the same file can only come from grant/revoke dual-keying", "Claims cannot be amended after creation, so the view half must be covered lease-side", "Generation 2: refreshed by merge onto main b2633a33; the implementation diff is unchanged"],
+  "assumptions": ["A migration cannot create a table and a view with the same qualified name, so a view key on a table created in the same file can only come from grant/revoke dual-keying", "Claims cannot be amended after creation, so the view half must be covered lease-side", "Generation 2: refreshed by merge onto main b2633a33; the implementation diff is unchanged", "Generation 3: refreshed by merge onto main d0cec2a2; the implementation diff is unchanged"],
   "stop_conditions": ["Stop if the fix would relax the view declaration requirement for a relation the migration does not create", "Stop if the collision guard's dual-keying would need to change"]
 }

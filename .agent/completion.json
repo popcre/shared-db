@@ -4,16 +4,16 @@
   "outcome": "ready-for-merge",
   "pr": 3200,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3198/2",
-  "contract_sha256": "1feb5b363be694901b3482a564760026490494c7b1b3f6127444b0fb875d3f66",
-  "head_sha": "a91cec1291900de77b05743d178a06a25fb3aa0d",
+  "contract_ref": "refs/db-contracts/3198/3",
+  "contract_sha256": "adf461eddef7b5302942004d3e01ea4856cc13e57b9634bfa259b9026d779e56",
+  "head_sha": "f90a9bb6c47cd7ce4b426dd237ec5f82334d6c41",
   "files_changed": ["scripts/check-migration-pr-lease.mjs","scripts/check-migration-pr-lease.test.mjs",".agent/contract.json",".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "22 pass, 0 fail at refreshed head a91cec12, including the three new #3191 tests: grant on a created table needs no view declaration (TABLE-keyword and keyword-less forms), the relaxation is gated on the declared table, and a grant on a relation the migration does not create still requires its view declaration."},
-    {"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs", "exit_code": 0, "evidence": "110 pass, 0 fail at refreshed head a91cec12; the collision reader is untouched. Also verified offline: the exact PR #3190 statement shape (create table + revoke all on table plm.sesame_submission_property_option) now validates against a claim declaring only the table, while an existing-relation grant still refuses with both keys named."}
+    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "22 pass, 0 fail at refreshed head f90a9bb6, including the three new #3191 tests: grant on a created table needs no view declaration (TABLE-keyword and keyword-less forms), the relaxation is gated on the declared table, and a grant on a relation the migration does not create still requires its view declaration."},
+    {"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs", "exit_code": 0, "evidence": "110 pass, 0 fail at refreshed head f90a9bb6; the collision reader is untouched. Also verified offline: the exact PR #3190 statement shape (create table + revoke all on table plm.sesame_submission_property_option) now validates against a claim declaring only the table, while an existing-relation grant still refuses with both keys named."}
   ],
-  "assumptions_resolved": ["Confirmed from the parser that a `view X` key alongside `create table X` in one file can only be produced by grant/revoke dual-keying (42ae9758), since extractOperations keys create-table and grants independently", "Confirmed claims are immutable after creation, so the coverage must come from the lease-side check", "files_changed lists the evidence pair to match Git after the refresh onto main b2633a33"],
+  "assumptions_resolved": ["Confirmed from the parser that a `view X` key alongside `create table X` in one file can only be produced by grant/revoke dual-keying (42ae9758), since extractOperations keys create-table and grants independently", "Confirmed claims are immutable after creation, so the coverage must come from the lease-side check", "files_changed lists the evidence pair to match Git after the refresh onto main d0cec2a2"],
   "stop_conditions_hit": []
 }

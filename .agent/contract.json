@@ -1,51 +1,38 @@
 {
   "schema_version": 1,
-  "generation": 8,
-  "work_issue": 3173,
+  "generation": 5,
+  "work_issue": 3181,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
-  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-a",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
+  "goal": "Remove the stale absent_from_production_catalog declaration for prod_order_milestone_schedule, which is live on production (run 35179427282, proof on #3091).",
+  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
+  "dispatcher": "Albert Hazan chat session",
+  "worker": "Claude Opus 5 session bold-kowalevski",
+  "branch": "claude/remove-3091-prod-gap-1789640648",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/rm-3091-gap",
   "allowed_paths": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "config/db-data-admin-property-source-coverage.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "config/db-data-admin-property-source-coverage.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No database write or structure change of any kind"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs"
+    "node scripts/check-db-data-admin-property-source-coverage.mjs",
+    "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs"
   ],
   "assumptions": [
-    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
+    "The production catalog contains prod_order_milestone_schedule, so the coverage check would fail while the declaration remains"
   ],
   "stop_conditions": [
-    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
+    "Stop if any other coverage family changes"
   ]
 }

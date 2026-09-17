@@ -1,53 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 2870,
+  "work_issue": 3023,
   "outcome": "ready-for-merge",
-  "pr": 2872,
+  "pr": 3118,
   "migration_versions": [
-    "20260916232835"
+    "20260917005221"
   ],
-  "contract_ref": "refs/db-contracts/2870/7",
-  "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
-  "head_sha": "e174a87f3bd4a7a36a3f3df2200014a349719f97",
+  "contract_ref": "refs/db-contracts/3023/2",
+  "contract_sha256": "d93bb4913c0cc20328aea2be8ce41f0dea59c027737e1dd752f16718e7e4db0c",
+  "head_sha": "233ee3c6313a53aa2af4656222cbdaef7ff4491a",
   "files_changed": [
+    ".github/live-proofs/3023.sql",
     "config/production-verification-sidecar-registry.json",
-    "scripts/production-verification-sidecars/20260916232835.json",
-    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql"
   ],
-  "db_reads": [],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
   "db_writes": [
-    "column dflow_prod.comments.app_comment_id",
-    "column dflow_prod.users.app_profile_id",
-    "table dflow_prod.comments",
-    "table dflow_prod.users"
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks (bash scripts/check-sql.sh) passed at head e174a87f, after merging main 4ba3732d and adding the sidecar column assertions."
+      "evidence": "Static checks passed for the added migration."
     },
     {
-      "command": "ephemeral preview-equivalent database contract test",
+      "command": "python3 scripts/test_migration_derivation.py",
       "exit_code": 0,
-      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+      "evidence": "OK."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Sidecar validator returned status OK at head e174a87f and load_behavior_sidecars parsed both typed column checks."
+      "evidence": "367 passed, 307 subtests passed, zero failures or skips."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK, 57 sidecars, detector baseline hash matches."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "51 tests, 51 passed, 0 failed, 0 skipped."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors against current main."
+      "evidence": "No whitespace errors."
     }
   ],
   "assumptions_resolved": [
-    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
-    "The migration performs DDL only and contains no application-row write.",
-    "Claim version 20260914032423 was superseded to 20260916232835 through the governed supersession tool because the old version sorted behind current main."
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the old candidate scan about 11.6s with zero candidates, removed by the queue.",
+    "Reconcile deactivates file and document together, and reactivation fires the trigger, so contract 14 semantics hold."
   ],
   "stop_conditions_hit": []
 }

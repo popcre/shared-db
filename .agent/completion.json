@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3225,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3224/1",
-  "contract_sha256": "5b5f16de0f2f3307aa027ac6ef512228d6bb53d30b508b6587ff473d7c25139e",
-  "head_sha": "0d84ab62bf39c9f7c6a99ad0363af2219360693f",
+  "contract_ref": "refs/db-contracts/3224/2",
+  "contract_sha256": "a157371d2d25d47c1c71473a66dd483ab83c12b8f6f4607dbe30091fb46d7414",
+  "head_sha": "2abebe4b49a68c024da5cfb33a5ba1a9eefe65e7",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
@@ -16,12 +18,12 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass on this branch, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, history-then-masters-then-prepack ordering, and the shared coldlion-landing-sync concurrency group."
+      "evidence": "33/33 pass, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, history-then-masters-then-prepack ordering, and the shared coldlion-landing-sync concurrency group. Re-verified on the refreshed branch whose workflow now also carries the #3221 prod-detail step after prepack."
     }
   ],
   "assumptions_resolved": [
-    "The 2,577-code population and ~3.1s-per-key measurement come from the live production dry-run dispatched after PR #3220 merged (run 35264164570): target proved, five keys fetched live with zero refusals, nothing written.",
-    "Only the scheduled step needed the pace: the backfill workflow already takes pause_ms per dispatch and the bounded production runs pass it explicitly."
+    "The 2,577-code population and ~3.1s-per-key measurement come from the live production dry-run (run 35264164570) and the two successful bounded backfill runs (35264306654: 900 keys/3,589 rows; 35266106746: 900 keys/3,545 rows) at the 1,000ms pace.",
+    "The branch was refreshed by merge onto main bf16ed5a (2abebe4b) after PR #3221 added the /proddetails refresh to the same job; the pacing line and the prod-detail step coexist and the earlier reviewed head is superseded by this one."
   ],
   "stop_conditions_hit": []
 }

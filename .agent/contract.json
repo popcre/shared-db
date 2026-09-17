@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3224,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Pass an explicit --pause-ms 1000 on the daily ColdLion Landing Sync's prepack-detail refresh step so the 2,577-code re-read fits the job's 90-minute budget instead of overrunning it at the loader's 3,000ms default.",
-  "base_sha": "f06a85c34fcfe54b71740be589eddb4845e93433",
+  "base_sha": "bf16ed5ad206106dc35f7c943f5e240834332665",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
   "branch": "claude/issue-3179-prepack-refresh-pacing",
@@ -25,19 +25,19 @@
   "prohibited_actions": [
     "Never author a migration or change any database shape; this is a workflow pacing change only.",
     "Never weaken a workflow guard: the offline tests still run before any write, the declared target stays beside every credential, and the missing-secret refusals stay.",
-    "Never remove or reorder the history-then-masters-then-prepack sequence.",
+    "Never remove or reorder the history-then-masters-then-prepack-then-prod-details sequence.",
     "Never close issue #3179; the originating session owns closure."
   ],
   "required_checks": [
     "node --test tools/coldlion-landing-prepack.test.mjs"
   ],
   "assumptions": [
-    "The live dry-run dispatched after PR #3220 merged measured 2,577 distinct harvested prepack codes and ~3.1s per code at the 3,000ms default pace.",
+    "The live dry-run dispatched after PR #3220 merged measured 2,577 distinct harvested prepack codes and ~3.1s per key at the 3,000ms default pace.",
     "The vendor agreement is serialized one-request-at-a-time; a 1,000ms pause keeps it while landing the full refresh in ~45 minutes beside history+masters' ~8 minutes, inside the 90-minute job budget.",
-    "The backfill workflow already accepts pause_ms per dispatch, so only the scheduled step needs the baked-in pace."
+    "Generation 2 exists because main advanced to bf16ed5a (PR #3221 added the /proddetails refresh to the same job); the branch was refreshed by merge (2abebe4b), the pacing change and the prod-detail step now coexist, and main changed a file this pull request also edits, so the earlier reviewed head is superseded."
   ],
   "stop_conditions": [
-    "Stop and report a blocker if the measured daily refresh plus history and masters would exceed the job timeout at any acceptable pace.",
+    "Stop and report a blocker if the measured daily refresh plus history, masters and prod-detail would exceed the job timeout at any acceptable pace.",
     "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

@@ -1,4 +1,4 @@
--- Live proof for #3009 (migration 20260917022957). Read-only.
+-- Live proof for #3009 (migration 20260917011016). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger;
 --   2. both snapshot read models are populated (files and guides summary rows,
@@ -24,7 +24,7 @@ with claims as materialized (
   ) t
 )
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917022957')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917011016')
   and (select count(*) from public.style_guide_library_default_summary) = 2
   and exists (select 1 from public.style_guide_library_default_guides)
   and not has_table_privilege('anon', 'public.style_guide_library_default_summary', 'SELECT')

@@ -37,9 +37,14 @@ import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { hostQuotaLatch, runGitHubCommand } from './github-transport.mjs'
+import { parseLinkHeader } from '../manage-migration-author-lanes.mjs'
 
 export class SharedReadError extends Error {
-  constructor(message) { super(message); this.name = 'SharedReadError' }
+  constructor(message, { transientTransport = false } = {}) {
+    super(message)
+    this.name = 'SharedReadError'
+    this.transientTransport = transientTransport
+  }
 }
 
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
@@ -72,7 +77,11 @@ export function parseHttpResponse(raw) {
   const headers = new Map()
   for (const line of lines.slice(1)) {
     const at = line.indexOf(':')
-    if (at > 0) headers.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim())
+    if (at > 0) {
+      const name = line.slice(0, at).trim().toLowerCase()
+      const value = line.slice(at + 1).trim()
+      headers.set(name, headers.has(name) ? `${headers.get(name)}, ${value}` : value)
+    }
   }
   return { status: Number.isFinite(status) ? status : null, headers, body }
 }
@@ -212,7 +221,7 @@ export function sharedConditionalGet(endpoint, {
         if (!state || typeof state.body !== 'string') throw new SharedReadError(`GitHub answered 304 for ${endpoint} but no cached body exists; refusing to invent one`)
         return { body: state.body, changed: false, status: 304, pollIntervalMs, link: state.link ?? null }
       }
-      if (response.status !== 200) throw new SharedReadError(`GitHub answered HTTP ${response.status} for ${endpoint}`)
+      if (response.status !== 200) throw new SharedReadError(`GitHub answered HTTP ${response.status} for ${endpoint}`, { transientTransport: response.status >= 500 && response.status <= 599 })
       const next = { etag: response.headers.get('etag') ?? null, body: response.body, generation: Number(state?.generation ?? 0) + 1, link: response.headers.get('link') ?? null }
       writeJsonAtomic(stateFile, next)
       return { body: next.body, changed: true, status: 200, pollIntervalMs, link: next.link }
@@ -223,6 +232,12 @@ export function sharedConditionalGet(endpoint, {
 
 /** Next-page URL from a Link header, or null. */
 export function nextPageEndpoint(link) {
-  const match = /<https:\/\/api\.github\.com\/([^>]+)>;\s*rel="next"/.exec(String(link ?? ''))
-  return match ? match[1] : null
+  const value = String(link ?? '').trim()
+  if (!value) return null
+  const next = parseLinkHeader(value).find((entry) => String(entry.params.rel ?? '').trim().toLowerCase().split(/\s+/).includes('next'))
+  if (!next) return null
+  let parsed
+  try { parsed = new URL(next.uri) } catch { throw new SharedReadError('check-run Link rel=next URI is invalid; refusing a partial listing') }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'api.github.com') throw new SharedReadError('check-run Link rel=next URI is not on api.github.com; refusing a partial listing')
+  return `${parsed.pathname.replace(/^\//, '')}${parsed.search}`
 }

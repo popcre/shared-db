@@ -38,8 +38,9 @@ function fakeGitHub({ etag = 'W/"v1"', body = '{"n":1}', pollInterval } = {}) {
 }
 
 test('parseHttpResponse reads status, headers and body', () => {
-  const r = parseHttpResponse('HTTP/2.0 200 OK\r\nEtag: W/"x"\r\nX-Poll-Interval: 60\r\n\r\n{"a":1}')
+  const r = parseHttpResponse('HTTP/2.0 200 OK\r\nEtag: W/"x"\r\nX-Poll-Interval: 60\r\nLink: <https://api.github.com/x?page=2>; rel="next"\r\nLink: <https://api.github.com/x?page=9>; rel="last"\r\n\r\n{"a":1}')
   assert.equal(r.status, 200); assert.equal(r.headers.get('etag'), 'W/"x"'); assert.equal(r.headers.get('x-poll-interval'), '60'); assert.equal(r.body, '{"a":1}')
+  assert.equal(r.headers.get('link'), '<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=9>; rel="last"')
 })
 
 test('unchanged polling consumes no primary quota: every repeat poll is a 304', () => {
@@ -186,6 +187,9 @@ test('conditional check-run pages follow Link and are validated exactly as befor
   const rows = fetchCheckRuns('o/r', h, { readPage: (endpoint) => { served.push(endpoint); return pages[endpoint] } })
   assert.deepEqual(rows.map((r) => r.name), ['a', 'b']); assert.equal(served.length, 2)
   assert.equal(nextPageEndpoint(null), null)
+  assert.equal(nextPageEndpoint('<https://api.github.com/x?page=2>; title="more"; rel="next", <https://api.github.com/x?page=9>; rel="last"'), 'x?page=2')
+  assert.throws(() => nextPageEndpoint('<https://example.com/x?page=2>; rel="next"'), /not on api.github.com/)
+  assert.throws(() => nextPageEndpoint('<https://api.github.com/x?page=2>; title="missing relation"'), /no rel relation/)
   assert.throws(() => fetchCheckRuns('o/r', h, { readPage: () => ({ body: JSON.stringify({ total_count: 3, check_runs: [] }), link: null }) }), /incomplete/)
 })
 

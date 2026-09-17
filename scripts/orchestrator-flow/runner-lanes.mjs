@@ -170,6 +170,7 @@ export function runAggregate({ repo, headSha, registry = loadRegistry(), fetchRu
       // 30/60/120/300s jittered backoff until the deadline, instead of ending a
       // 50-minute wait on one bad poll or hammering GitHub while it is failing.
       if (error instanceof RunnerLaneError) throw error
+      if (!error?.transientTransport && !error?.rateLimitExhausted && !error?.quotaLatched) throw error
       failures += 1
       if (now() >= deadline) return { verdict: 'refuse', refusals: [`check-run listing still failing at deadline: ${error?.message ?? error}`] }
       const delay = Math.min(pollDelayMs({ baseMs: intervalMs, failures, random }), Math.max(0, deadline - now()))
@@ -204,7 +205,7 @@ export function readCheckRunPagesConditionally(repo, sha, { readPage = sharedCon
     const page = readPage(endpoint)
     pollIntervalMs = Math.max(pollIntervalMs, Number(page.pollIntervalMs) || 0)
     try { pages.push(JSON.parse(page.body)) } catch { throw new RunnerLaneError('check-run listing returned unreadable JSON; refusing rather than judging a partial read') }
-    endpoint = nextPageEndpoint(page.link)
+    try { endpoint = nextPageEndpoint(page.link) } catch (error) { throw new RunnerLaneError(error?.message ?? String(error)) }
   }
   Object.defineProperty(pages, 'pollIntervalMs', { value: pollIntervalMs, enumerable: false })
   return pages

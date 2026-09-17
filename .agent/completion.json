@@ -1,29 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 3097,
+  "work_issue": 3023,
   "outcome": "ready-for-merge",
-  "pr": 3098,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3097/1",
-  "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
-  "head_sha": "ccfdbef49960e3bef126fafb35890e34aeadfdbb",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+  "pr": 3118,
+  "migration_versions": [
+    "20260916232205"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3023/1",
+  "contract_sha256": "351250a80e34784bf9aebb03fa6a43c61268cc5f505660b6c20542751516828c",
+  "head_sha": "ce9adca7c7300e45855746041c02c96833c89be5",
+  "files_changed": [
+    ".github/live-proofs/3023.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260916232205.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260916232205_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5d7fdc3a: tests 15, pass 15, fail 0, skipped 0."
+      "evidence": "Static checks passed for the added migration."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "OK."
+    },
+    {
+      "command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "367 passed, 307 subtests passed, zero failures or skips."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK, 57 sidecars, detector baseline hash matches."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "51 tests, 51 passed, 0 failed, 0 skipped."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
     }
   ],
   "assumptions_resolved": [
-    "A malformed --drawn-since now throws in dry run and apply; proved by the drawn-since test"
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the old candidate scan about 11.6s with zero candidates, removed by the queue.",
+    "Reconcile deactivates file and document together, and reactivation fires the trigger, so contract 14 semantics hold."
   ],
   "stop_conditions_hit": []
 }

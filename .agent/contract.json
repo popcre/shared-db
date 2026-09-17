@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Write the implementation plan reducing what MUST pass through the shared-db orchestrator without reducing safety (issue #3199): queue hygiene, a self-service additive lane for crm/pim/dam, and a zero-touch audit of the #2758 ephemeral wait chain; reviewed by Grok 4.6 after Muse failed, findings folded in.",
-  "base_sha": "c0238000ade48a9f3996be125d2c766ad77a7550",
+  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
   "dispatcher": "ZCode session relaying Albert's instruction",
   "worker": "ZCode (GLM 5.3) repository-maintenance session",
   "branch": "zcode/plan-orchestrator-required-load-reduction",

@@ -106,7 +106,7 @@ jobs:
             echo "::error::Missing scripts/check-main-tip-freshness.test.mjs"; exit 1; }
           node --test scripts/check-main-tip-freshness.test.mjs
 
-      - name: Run the GitHub transport tests and the conformance check (#2342)
+      - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
         # Named explicitly, like the freshness gate above: these decide how every
         # governed gate reaches GitHub. The conformance check is the half that
         # cannot be left to a reviewer's eye -- eight hand-rolled `gh` wrappers

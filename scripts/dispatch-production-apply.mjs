@@ -21,7 +21,7 @@ export const EVIDENCE_ARTIFACTS = {
   preview: /^preview-migration-apply-[0-9a-f]{40}$/,
   owner_decision: /^production-owner-decision-\d+$/,
 }
-const USAGE = 'Usage: node scripts/dispatch-production-apply.mjs --versions V1,V2 --mode dry-run|apply [--commit-sha SHA] [--review-run-id ID] [--preview-run-id ID | --ephemeral-check-run-id ID] [--owner-decision-run-id ID] [--source-pr N] [--work-issue N] [--merged-pr-issue-binding PR:ISSUE] [--derivation-override TEXT] [--repo OWNER/NAME] [--dispatch]'
+const USAGE = 'Usage: node scripts/dispatch-production-apply.mjs --versions V1,V2 --mode dry-run|apply [--commit-sha SHA] [--review-run-id ID] [--preview-run-id ID | --ephemeral-check-run-id ID] [--owner-decision-run-id ID] [--source-pr N] [--work-issue N] [--merged-pr-issue-binding PR:ISSUE] [--derivation-override TEXT] [--repo OWNER/NAME (assertion: must equal the detected repository)] [--dispatch]'
 
 export function parseArgs(argv) {
   const flags = {

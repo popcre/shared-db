@@ -114,6 +114,7 @@ export function parseArgs(argv) {
     throw new RequiredChecksError(`unknown argument ${arg}`)
   }
   // An explicit --repo must agree with the detected identity; nothing is hard-coded (#2530).
+  if (options.help) return options
   try { options.repo = resolveRepositoryIdentity({ explicit: options.repo }) }
   catch (error) { if (error instanceof RepositoryIdentityError) throw new RequiredChecksError(error.message); throw error }
   return options

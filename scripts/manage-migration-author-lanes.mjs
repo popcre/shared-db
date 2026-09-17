@@ -2246,7 +2246,7 @@ export const githubIo = {
     const artifacts=ghJson(['api',`repos/${REPO}/actions/runs/${match[2]}/artifacts`])?.artifacts
     const artifact=Array.isArray(artifacts)?artifacts.find((row)=>Number(row.id)===Number(evidence.production_artifact_id)):null
     if(!(artifact?.name===`production-migration-apply-${String(evidence.production_commit_sha).toLowerCase()}`&&artifact.expired===false&&String(artifact.digest??'').toLowerCase()===String(evidence.production_artifact_digest).toLowerCase()))return false
-    const files=this.readArtifactFiles(match[1],artifact.id,['production-apply.txt','production-ledger-after.txt','migration-content-manifest.json','production-catalog-verification.json'])
+    const files=this.readArtifactFiles(REPO,artifact.id,['production-apply.txt','production-ledger-after.txt','migration-content-manifest.json','production-catalog-verification.json'])
     if(!files.get('production-apply.txt')?.trim())return false
     try{JSON.parse(files.get('production-catalog-verification.json'));JSON.parse(files.get('migration-content-manifest.json'))}catch{return false}
     const versions=this.getPrFiles(Number(evidence.merge_pr)).map((file)=>/^supabase\/migrations\/(\d{14})_[^/]+\.sql$/.exec(String(file?.filename??''))?.[1]).filter(Boolean)

@@ -16,7 +16,7 @@
     {
       "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally at the new head; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally for all 6 mutants, including each exact-main cardinality subtest on its own with prove_preview_migration_contents patched to fail, and is not committed as an artifact."
+      "evidence": "python -m unittest scripts/test_*.py: Ran 1105 tests, OK (skipped=8) locally at the new head; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally for all 6 mutants, including each exact-main cardinality subtest on its own with prove_preview_migration_contents patched to fail, and is not committed as an artifact."
     }
   ],
   "assumptions_resolved": [

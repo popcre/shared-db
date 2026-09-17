@@ -160,6 +160,17 @@ test("the upsert targets only the primary key and never collapses the second ide
   assert.match(sql, /where t\.company_code is null or t\.source_hash <> s\.source_hash/, "the change trail records only real changes");
 });
 
+test("the insert names the request-stamped company_code column", () => {
+  // Regression for the 3-key production probe on 2026-09-17: an insert that omitted
+  // company_code supplied NULL into the leading primary-key column and failed every
+  // key with a not-null violation.
+  const sql = buildProdDetailLoadSql({ run: runFor(), rows: projected([sourceRow()]).rows });
+  assert.match(sql, /insert into coldlion\.prod_detail \(company_code, pkey,/);
+  assert.match(sql, /select s\.company_code, s\.pkey,/);
+  assert.equal(sql.match(/insert into coldlion\.prod_detail \(([^)]+)\)/)[1].split(", ").length, 27,
+    "21 payload fields + company_code + 5 bookkeeping columns");
+});
+
 test("the transaction carries the spine bookkeeping", () => {
   const sql = buildProdDetailLoadSql({ run: runFor(), rows: projected([sourceRow()]).rows });
   assert.match(sql, /insert into coldlion\.sync_run/);

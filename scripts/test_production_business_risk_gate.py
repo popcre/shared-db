@@ -4113,5 +4113,102 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         self.assertNotIn("migrationTrain", result["governedEvidence"])
 
 
+class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
+    """#3168: #2870 and #2866 previewed at main-line 426cca7c; main later changed
+    custody-only producers (freshness check, lane manager, repository identity,
+    workflow freshness flag). That drift must not refuse, while apply-shaping
+    producers and non-main-line refs still refuse."""
+
+    REF, MAIN = "1" * 40, "3" * 40
+    BASE_WORKFLOW = (
+        "jobs:\n  preview:\n    steps:\n"
+        "      - run: |\n"
+        "          MAIN_SHA=\"$REQUESTED_SHA\" node scripts/check-main-tip-freshness.mjs\n"
+        "          gh api 'repos/u2giants/shared-db/pulls?state=open' \\n"
+        "          python scripts/atomic_migration_apply.py --apply\n"
+    )
+
+    def api(self, *, changed=(), absent_at_ref=(), main_line=True, workflows=None):
+        import base64
+        ref, main = self.REF, self.MAIN
+        workflows = workflows or {}
+
+        def api(endpoint):
+            if endpoint.endswith(f"/compare/{main}...{main}"):
+                return {"status": "identical", "behind_by": 0}
+            if "/compare/" in endpoint:
+                self.assertEqual(endpoint, f"repos/u2giants/shared-db/compare/{ref}...{main}")
+                return ({"status": "ahead", "behind_by": 0} if main_line
+                        else {"status": "diverged", "behind_by": 2})
+            if "/git/blobs/" in endpoint:
+                side = endpoint.rsplit("/", 1)[1]
+                text = workflows[side]
+                return {"encoding": "base64",
+                        "content": base64.b64encode(text.encode()).decode()}
+            r = tree_ref(endpoint)
+            entries = []
+            for path in PREVIEW_PRODUCER_PATHS:
+                if r == ref and path in absent_at_ref:
+                    continue
+                if path == PREVIEW_WORKFLOW and workflows:
+                    sha = "wf-ref" if r == ref else "wf-main"
+                else:
+                    sha = f"changed-{r}" if path in changed else "same-blob"
+                entries.append({"path": path, "type": "blob", "sha": sha})
+            return {"truncated": False, "tree": entries}
+        return api
+
+    def prove(self, api, target=None):
+        prove_preview_producer_matches_main(
+            self.REF, target or exact_main(self.MAIN), self.MAIN, api,
+            promoted_versions=[], repo_root=Path("."))
+
+    def test_custody_only_edits_and_additions_after_a_main_line_preview_pass(self):
+        self.prove(self.api(
+            changed=("scripts/check-main-tip-freshness.mjs",
+                     "scripts/manage-migration-author-lanes.mjs"),
+            absent_at_ref=("scripts/lib/repository-identity.mjs",
+                           "scripts/repository_identity.py"),
+        ))
+
+    def test_custody_only_drift_from_a_ref_main_does_not_contain_is_refused(self):
+        with self.assertRaisesRegex(RiskGateError, "different scripts/check-main-tip-freshness.mjs"):
+            self.prove(self.api(changed=("scripts/check-main-tip-freshness.mjs",), main_line=False))
+        with self.assertRaisesRegex(RiskGateError, "repository_identity.py absent where"):
+            self.prove(self.api(absent_at_ref=("scripts/repository_identity.py",), main_line=False))
+
+    def test_apply_shaping_producers_still_refuse_on_a_main_line_ref(self):
+        for path in ("scripts/production_migration_guard.py", "scripts/migration_derivation.py",
+                     "scripts/atomic_migration_apply.py", "scripts/preview_instance_binding.py",
+                     "config/atomic-migration-allowlist.json", "supabase/config.toml"):
+            with self.subTest(path=path), self.assertRaisesRegex(RiskGateError, f"different {re.escape(path)}"):
+                self.prove(self.api(changed=(path, "scripts/check-main-tip-freshness.mjs")))
+        with self.assertRaisesRegex(RiskGateError, "atomic_migration_apply.py absent where"):
+            self.prove(self.api(absent_at_ref=("scripts/atomic_migration_apply.py",)))
+
+    def test_authored_merge_target_gets_no_custody_tolerance(self):
+        with self.assertRaisesRegex(RiskGateError, "different scripts/check-main-tip-freshness.mjs"):
+            self.prove(self.api(changed=("scripts/check-main-tip-freshness.mjs",)),
+                       target=authored_merge(self.MAIN))
+
+    def test_workflow_differing_only_by_custody_rewrites_passes(self):
+        main_wf = (self.BASE_WORKFLOW
+                   .replace("freshness.mjs\n", "freshness.mjs --production\n")
+                   .replace("'repos/u2giants/shared-db/pulls?state=open'",
+                            '"repos/${GITHUB_REPOSITORY}/pulls?state=open"')
+                   + "          # #3153: a comment\n")
+        self.prove(self.api(workflows={"wf-ref": self.BASE_WORKFLOW, "wf-main": main_wf}))
+
+    def test_workflow_step_change_is_refused_even_on_a_main_line_ref(self):
+        for main_wf in (
+            self.BASE_WORKFLOW.replace("--apply", "--apply --skip-verify"),
+            self.BASE_WORKFLOW.replace("u2giants/shared-db", "someone/else"),
+            self.BASE_WORKFLOW + "          echo forged > ledger.json\n",
+        ):
+            with self.subTest(main_wf=main_wf), self.assertRaisesRegex(
+                    RiskGateError, "different .github/workflows/shared-supabase-migrations.yml"):
+                self.prove(self.api(workflows={"wf-ref": self.BASE_WORKFLOW, "wf-main": main_wf}))
+
+
 if __name__ == "__main__":
     unittest.main()

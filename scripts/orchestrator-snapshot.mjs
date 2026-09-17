@@ -28,6 +28,8 @@ import { OUTCOME_STATES, trustedOutcomeComments } from './orchestrator-flow/outc
 import { formatHoldReason } from './lib/hold-reason.mjs'
 import { parseEventComment } from './db-coordination-events.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
+import { buildDynamicQueues, githubIo as laneIo, parseQueueScope } from './manage-migration-author-lanes.mjs'
+import { findCompletionRecord } from './lib/work-dependencies.mjs'
 
 export class SnapshotCallerError extends Error {}
 
@@ -112,6 +114,43 @@ export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallM
   }
 }
 
+/**
+ * Ready structural requests the ledger has never seen (issue #3148). The event alarm above only
+ * sees issues with outcome events, so a request waiting for admission was invisible: #3036 sat
+ * 11.4 hours and #2860 23.5 hours between creation and `entered`. Candidacy is decided by the
+ * queue audit's own `buildDynamicQueues` (one scope parser, the dependency proof, the admission
+ * gate), so the alarm never names a request the queue itself withholds. Claims are not passed:
+ * admission does not wait for a busy collision lane. Without `dependencyStates` the audit falls
+ * back to its open-issue test.
+ */
+export function readyRequestCandidates(issues = [], { dependencyStates = null } = {}) {
+  const workIssues = issues.filter((issue) => !issue.pull_request && !labelNames(issue).includes('db-claim'))
+  const openNumbers = issues.filter((issue) => !issue.pull_request).map((issue) => Number(issue.number))
+  const queued = new Set(buildDynamicQueues(workIssues.map((issue) => ({ ...issue, labels: labelNames(issue) })), [], new Date(), openNumbers, dependencyStates).queues.flatMap((lane) => lane.queued))
+  return workIssues.filter((issue) => queued.has(Number(issue.number))).map((issue) => ({ work_issue: Number(issue.number), created_at: issue.created_at ?? issue.createdAt }))
+}
+
+/** Dependency numbers referenced by any parseable scope, for the audit's dependency proof. */
+export function referencedDependencies(issues = []) {
+  const referenced = new Set()
+  for (const issue of issues) {
+    try { for (const number of parseQueueScope(issue.body)?.dependencies ?? []) referenced.add(Number(number)) } catch { /* malformed scopes are withheld by the audit */ }
+  }
+  return [...referenced].sort((a, b) => a - b)
+}
+
+/** Candidates with no outcome event, older than the dispatch threshold, as stalled rows in state `requested`. */
+export function stalledRequests(unentered = [], { now, dispatchStallMinutes = DISPATCH_STALL_MINUTES } = {}) {
+  const nowMs = Date.parse(now)
+  if (Number.isNaN(nowMs)) throw new SnapshotCallerError('now must be an ISO instant')
+  return unentered.flatMap((row) => {
+    const at = Date.parse(row.created_at)
+    if (Number.isNaN(at)) return []
+    const minutes = Math.max(0, Math.floor((nowMs - at) / MINUTE))
+    return minutes > dispatchStallMinutes ? [{ work_issue: row.work_issue, state: 'requested', last_transition_at: new Date(at).toISOString(), minutes_since_transition: minutes }] : []
+  }).sort((a, b) => b.minutes_since_transition - a.minutes_since_transition || a.work_issue - b.work_issue)
+}
+
 /** The key that decides whether anything is worth reporting. Minute counters are excluded. */
 export function reportKey(snapshot, alarms) {
   return sha256(canonicalJson({
@@ -179,6 +218,17 @@ export const defaultIo = {
     if (result.status !== 0) throw new SnapshotCallerError(`orchestrator marker did not resolve (exit ${result.status})`)
     return JSON.parse(result.stdout)
   },
+  // The queue audit's own dependency proof, including merge-in-main evidence for closed dependencies.
+  dependencyStates(numbers) {
+    const states = laneIo.dependencyStates(numbers)
+    for (const state of Object.values(states)) {
+      if (state.open || state.unreadable || state.exists === false) continue
+      let record = null
+      try { record = findCompletionRecord(state.comments) } catch { continue }
+      if (['merged', 'live_verified'].includes(record?.outcome)) state.mergeInMain = laneIo.mergeCommitInMain(record.merge_sha)
+    }
+    return states
+  },
   openIssues: (repo) => ghPages(`repos/${repo}/issues?state=open&per_page=100`),
   openPullRequests: (repo) => JSON.parse(gh(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,statusCheckRollup'])),
   matchingRefs: (repo, prefix) => JSON.parse(gh(['api', `repos/${repo}/git/matching-refs/${prefix}`])),
@@ -242,6 +292,11 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
   const toRead = ownedIssues.filter((issue) => listedCommentCount.get(issue) !== 0)
   const commentsByIssue = io.issueCommentsMany ? io.issueCommentsMany(repo, toRead) : new Map(toRead.map((issue) => [issue, io.issueComments(repo, issue)]))
   const outcomeEvents = ownedIssues.flatMap((issue) => outcomeEventsFromComments(commentsByIssue.get(issue) ?? []).filter((event) => owned.has(event.work_issue) && (event.work_issue === issue || claims.some((claim) => claim.issue === issue))))
+  const references = referencedDependencies(issues)
+  const dependencyStates = references.length && io.dependencyStates ? io.dependencyStates(references) : null
+  const candidates = readyRequestCandidates(issues, { dependencyStates }).filter((row) => !owned.has(row.work_issue))
+  const candidateComments = candidates.length ? (io.issueCommentsMany ? io.issueCommentsMany(repo, candidates.map((row) => row.work_issue)) : new Map(candidates.map((row) => [row.work_issue, io.issueComments(repo, row.work_issue)]))) : new Map()
+  const unentered = candidates.filter((row) => outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).length === 0)
   const leaseRefs = io.matchingRefs(repo, REVIEWER_LEASE_PREFIX)
   const stageRefs = io.matchingRefs(repo, 'db-coordination').filter((ref) => STAGE_LOCK_REFS.includes(ref.ref))
   return {
@@ -255,6 +310,8 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
       eligible_queue: issues.filter((issue) => labelNames(issue).some((name) => QUEUE_LABELS.includes(name))).map((issue) => ({ issue: issue.number, labels: labelNames(issue).filter((name) => QUEUE_LABELS.includes(name)).sort() })),
     },
     sessionStarted: resolved?.routing?.started ?? null,
+    // Kept out of `input` so the sealed snapshot digest is unchanged.
+    unentered,
   }
 }
 

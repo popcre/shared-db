@@ -1,59 +1,46 @@
 {
   "schema_version": 1,
-  "generation": 10,
-  "work_issue": 3009,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Make the unfiltered PopSG v2 default browse (files and guides) complete well under the 8 s authenticated statement timeout by serving totals, facets and guide rows from a refreshed snapshot, without raising any timeout.",
-  "base_sha": "0c17774a330b0b0eaeffe604f49d799ba02986fa",
-  "dispatcher": "shared-db orchestrator u2giants/shared-db#3106 relaying Albert Hazan owner chat: finish #3009 ASAP",
-  "worker": "Claude Opus 5 #3009 author (claude-3009-author)",
-  "branch": "claude/3009-sg-default-browse-snapshot",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-3009-sg-default-snapshot",
+  "generation": 2,
+  "work_issue": 3152,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Cut request-to-live time (#3148, child #3152): the no-progress alarm also names a ready structural request that has sat more than 30 minutes without entering the outcome ledger, the largest measured remaining wait, with its unblock action.",
+  "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
+  "dispatcher": "Claude coordinator session for #3148 (Albert: spin up a subagent and handle them)",
+  "worker": "Claude Opus 5 #3148 subagent",
+  "branch": "claude/3148-r2l-sinks-af65",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-af650115bded9de14",
   "allowed_paths": [
-    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
-    ".github/live-proofs/3009.sql",
-    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
-    ".github/live-proofs/3009.sql",
-    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table public.style_guide_search_documents",
-    "table public.style_guide_render_queue",
-    "table public.style_guide_files"
-  ],
-  "db_writes": [
-    "function public.search_style_guide_library_v2",
-    "function public.refresh_style_guide_library_default_snapshot",
-    "materialized view public.style_guide_library_default_guides",
-    "materialized view public.style_guide_library_default_summary",
-    "index public.style_guide_library_default_guides_group_uidx",
-    "index public.style_guide_library_default_guides_modified_idx",
-    "index public.style_guide_library_default_guides_name_idx",
-    "index public.style_guide_library_default_summary_mode_uidx",
-    "table public.style_guide_library_default_guides",
-    "table public.style_guide_library_default_summary"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No statement timeout increase",
-    "No change to objects owned by PR #3118 (#3023)",
-    "No DDL through the Supabase MCP"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
   ],
   "assumptions": [
-    "Unfiltered totals, facets and guide rows may lag the corpus by up to one five-minute refresh; files page rows stay live"
+    "The sealed snapshot digest must not change, so unentered requests are returned beside the input, not inside it"
   ],
   "stop_conditions": [
-    "Stop if preview shows the snapshot output differs from the full body beyond tie order the previous body already left undefined"
+    "Stop if the fix would need a database structure change"
   ]
 }

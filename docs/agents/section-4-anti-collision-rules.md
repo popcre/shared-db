@@ -536,11 +536,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The re-run rebuilds the returned records from the return namespace and
    completes the re-filing, recording no second exclusion and no second return.
 
-   **Grok's in-flight lock is PER REPOSITORY, not global.** `ai-grok-review`
-   allows one live Grok review at a time *in shared-db*; it does not cap Grok
-   across repositories. Five repositories with work can run five Grok reviews
-   simultaneously. Never treat a Grok review running in another repository as a
-   reason to skip Grok here, and never treat a busy Grok here as a Grok outage. Historical Qwen assignments, failures, and
+   **No reviewer wrapper serializes reviews by provider (owner ruling,
+   2026-09-16; popcre/ai-devops#401 Step 7A).** Any number of Grok, Kimi, GLM,
+   Muse or Gemini reviews may run at once, in this repository or any other,
+   each in its own session and sandbox. Never treat another live review by the
+   same provider as a reason to skip, wait for, or replace it. Historical Qwen assignments, failures, and
    replacement evidence remain readable and must be recovered or replaced
    through `scripts/manage-migration-author-lanes.mjs`, never hand-edited. Use
    only the wrapper returned by the manager and its fixed model settings. Reuse

@@ -1,51 +1,21 @@
 {
   "schema_version": 1,
-  "generation": 7,
-  "work_issue": 3173,
+  "generation": 1,
+  "work_issue": 3183,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
-  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-a",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
-  "allowed_paths": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
+  "goal": "Make the lane object reader see the grant on api.licensing_resolution_queue and key keyword-less grants on views as views, as found on PR #2835.",
+  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
+  "dispatcher": "Albert Hazan chat request to fix the lane object reader grant defect",
+  "worker": "Claude Opus 5 #3183 session",
+  "branch": "claude/lane-object-reader-grants-k7q2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/jovial-tesla-da760f",
+  "allowed_paths": ["scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs","scripts/check-dispatch-collision.test.mjs",".agent/contract.json",".agent/completion.json"],
+  "file_writes": ["scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs","scripts/check-dispatch-collision.test.mjs",".agent/contract.json",".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
-  ],
-  "required_checks": [
-    "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs"
-  ],
-  "assumptions": [
-    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
-  ],
-  "stop_conditions": [
-    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
-  ]
+  "prohibited_actions": ["No database write or structure change of any kind"],
+  "required_checks": ["node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs"],
+  "assumptions": ["Postgres applies a keyword-less GRANT ON name to tables and views alike"],
+  "stop_conditions": ["Stop if the fix removes an existing collision key"]
 }

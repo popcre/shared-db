@@ -1,32 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3173,
+  "work_issue": 3183,
   "outcome": "ready-for-merge",
-  "pr": 3172,
+  "pr": 3184,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/7",
-  "contract_sha256": "eee23dc1096118f3109dc5180eaf7f14f457d41baab127e3882a731c44521c8e",
-  "head_sha": "9c955a5013fccbd567bf6ad2d64a77bbfded2d1a",
-  "files_changed": [
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/lib/github-transport.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/3183/1",
+  "contract_sha256": "031accf43ccf806d006f1455ec3839c57170fca0b817c33c38bcc2378d1a60a8",
+  "head_sha": "eb83e18a639d8be1e21accc68278c4cf893d0c3a",
+  "files_changed": ["scripts/check-dispatch-collision.test.mjs","scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs"],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {
-      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "619 passed, 0 failed, 0 skipped at 9c955a5013fccbd567bf6ad2d64a77bbfded2d1a after refreshing onto current origin/main; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
-    }
-  ],
-  "assumptions_resolved": [
-    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
-  ],
+  "checks": [{"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs", "exit_code": 0, "evidence": "116 pass, 0 fail, 0 skipped; lease and orchestrator-flow suites 934 pass, 0 fail. Real PR #2835 migration now yields grant table+view for all three api views."}],
+  "assumptions_resolved": ["Verified on the real #2835 file that the '--' inside the comment literal hid the resolution_queue grant"],
   "stop_conditions_hit": []
 }

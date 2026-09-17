@@ -1671,8 +1671,7 @@ def prove_historical_original_apply_runs(
             "historical preview recovery does not name the original apply run for each "
             "version; a recovery is never accepted without a byte binding"
         )
-    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END -- SAID OUT LOUD SO NOBODY
-    # SCORES IT AS TESTED. This guard and the two below it (the run-id shape and
+    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END. This guard and the two below it (the run-id shape and
     # the source-pull-request shape) restate rules `parse_original_run_map` and
     # `parse_source_map` in scripts/historical_preview_recovery.py already
     # enforce, and re-derivation runs those parsers BEFORE this function is
@@ -1681,9 +1680,11 @@ def prove_historical_original_apply_runs(
     # `prove_preview`.
     #
     # They stay, because this function is also importable and callable on its
-    # own and must not assume its caller validated anything. But "the suite goes
-    # red if I delete it" is FALSE for all three, and #1213 round 9 is precisely
-    # about not calling such a line tested. The rules themselves ARE tested,
+    # own and must not assume its caller validated anything. Because they cannot
+    # be reached through `prove_preview`, they are driven by calling this function
+    # directly in `DirectRecordShapeGuardTests` in
+    # scripts/test_production_business_risk_gate_historical_original_runs_mutations.py
+    # (#2367), which goes red if any of them is removed. The rules are also tested,
     # per condition, in `PerConditionParserTests` in
     # scripts/test_historical_preview_recovery.py -- which is where the five
     # refusal paths of `parse_original_run_map` got their first negative tests of

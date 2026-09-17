@@ -1,33 +1,74 @@
 {
   "schema_version": 1,
-  "work_issue": 3130,
+  "work_issue": 3124,
   "outcome": "ready-for-merge",
-  "pr": 3132,
+  "pr": 3121,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3130/1",
-  "contract_sha256": "290d0b20450022232700a3aa5a5498e01eb440730a73ac86ee6202bc5dee095e",
-  "head_sha": "0df92b84f328a612e735fca0e6e5e68559e5f179",
+  "contract_ref": "refs/db-contracts/3124/2",
+  "contract_sha256": "347ae3190c85f991acbf26fa9cd32e40ba9e8c036d804f376f1da364e05fff81",
+  "head_sha": "fdb61a9450ea937e9f898036f54bc61a753341b0",
   "files_changed": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    "plan_orchestrator_throughput_phase_2.md",
-    "plan_reviewer_assignment_api_budget.md",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/agent-work-contract.mjs",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-handoff-contract.mjs",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/check-repository-identity-conformance.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/historical_preview_recovery.py",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/review-verdict-artifact.mjs",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.test.mjs"
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/read-preview-ledger.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/production_apply_review_evidence.py",
+    "scripts/production_business_risk_gate.py",
+    "scripts/production_owner_decision_evidence.py",
+    "scripts/reap-merged-worktrees.mjs",
+    "scripts/repair-voided-findings.mjs",
+    "scripts/report-stale-handoffs.mjs",
+    "scripts/repository_identity.py",
+    "scripts/run-governed-review.mjs",
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_repository_identity.py",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs",
+    "scripts/verify_preview_apply_artifact.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 0df92b84 (code identical to the tested merge of main 578bf4ac): tests 599, pass 599, fail 0, skipped 0."
+      "evidence": "Run at implementation head 2723dff5: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
+    },
+    {
+      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "Full Python suite at 2723dff5: Ran 1091 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "One provider holds 20 simultaneous reservations and each active reviewer holds more than eight live exact-head leases while the busy set is full; proved by the new tests"
+    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
   ],
   "stop_conditions_hit": []
 }

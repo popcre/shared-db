@@ -9,9 +9,10 @@
     "Claim #2745 was moved off its reused worktree with the guarded --rebind-claim-worktree mode (#3182, PR #3185) to C:/repos/shared-db-worktrees/issue-2478-rebind-3182 at PR head af7b1689; the old worktree was never inspected or touched.",
     "The backdated version 20260912030028 was superseded through the lane tool as 20260917112129 (supersession 0394af44, head 32f51125).",
     "Issue #2478 scope now says application_return_to: u2giants/shared-db, because the helper and its two consumers live only in this repository, so the PR carries the read-only probe .github/live-proofs/2478.sql.",
-    "The branch was refreshed by MERGE onto main 74cd0a5c; no behaviour change is intended and the existing contract tests for both consumers are unchanged."
+    "The branch was refreshed by MERGE onto main 74cd0a5c; no behaviour change is intended and the existing contract tests for both consumers are unchanged.",
+    "Generation 9: refreshed by merge onto main 49cabb90; the implementation diff is unchanged."
   ],
-  "base_sha": "74cd0a5c6d015e507ab427729114e77e47724d82",
+  "base_sha": "49cabb90a765e8cbd27864018fa12a515eed59b0",
   "branch": "claude/issue-2478-sku-key-reissue",
   "db_reads": [],
   "db_writes": [
@@ -26,7 +27,7 @@
     "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
     ".github/live-proofs/2478.sql"
   ],
-  "generation": 8,
+  "generation": 9,
   "goal": "Extract the shared SKU style-group derivation into public.style_group_key_for_sku and have public.rebuild_style_groups_batch and public.reconcile_style_group_drift call it, with no behaviour change.",
   "prohibited_actions": [
     "Do not touch the claim's former worktree C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9.",

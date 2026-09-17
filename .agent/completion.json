@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260917112129"
   ],
-  "contract_ref": "refs/db-contracts/2478/8",
-  "contract_sha256": "acd2c4a67ac4f3a76a2723ff5342917982fc46c90463843d5cc348e8d78dcf9a",
-  "head_sha": "6fdd9945f80d32ef93bedc7b4556a76ecd4a0ce4",
+  "contract_ref": "refs/db-contracts/2478/9",
+  "contract_sha256": "215d62213bed6757346edcef1839d8e666e0362c590aacea91245906a126702b",
+  "head_sha": "1b62cb9a01ab15f3e7ea575b875bbb5bc2e78bd1",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -35,7 +35,8 @@
   ],
   "assumptions_resolved": [
     "Claim #2745 rebound to the fresh worktree (rebind evidence da406344) and version superseded to 20260917112129 (supersession 0394af44).",
-    "Refreshed by merge onto main 74cd0a5c; the live-proof probe was added for application_return_to u2giants/shared-db."
+    "Refreshed by merge onto main 74cd0a5c; the live-proof probe was added for application_return_to u2giants/shared-db.",
+    "files_changed now lists the evidence pair to match Git. Main movement since 74cd0a5c touched no SQL; check-sql last run at 6fdd9945. Refreshed to 1b62cb9a."
   ],
   "stop_conditions_hit": []
 }

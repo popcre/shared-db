@@ -56,7 +56,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    --claim-number <n> --owner <owner> --blocked-on issue:#<n>`; after the blocker
    clears, use `--resume-author-lease --claim-number <n> --owner <owner>
    --lease-hours <hours>`. The value flag is `--claim-number` on both: a bare
-   `--claim` is the boolean that claims a lane.
+   `--claim` is the boolean that claims a lane. If a resumed claim still carries
+   `blocked_on`, `worktree_state` or `recovery` (refused as unreadable), repair it
+   with `--repair-resumed-claim --claim-number <n> --owner <owner>`; it only
+   removes that residue, and only after a recorded `author_capacity_resumed`
+   event (issue #3170).
 
    **An expired lease is not an abandoned lane (issue #2301).** Expiry is
    created by time passing. It proves that nobody renewed a claim; it does not

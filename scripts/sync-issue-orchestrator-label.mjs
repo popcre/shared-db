@@ -19,7 +19,8 @@
 // the workflow uses it only when the issue is opened or its body is edited.
 //
 // Usage: node scripts/sync-issue-orchestrator-label.mjs --issue <n> | --all  [--authoritative] [--max-changes <n>] [--dry-run]
-import { execFileSync } from 'node:child_process'
+import { runGitHubCommand } from './lib/github-transport.mjs'
+import { currentRepository } from './lib/repository-identity.mjs'
 import { pathToFileURL } from 'node:url'
 
 export const ORCH = 'orchestrator'
@@ -76,10 +77,14 @@ export function missingScopeComment() {
   ].join('\n')
 }
 
+// Label adds and removes are idempotent, so the transport may replay them; a comment
+// POST is not, so it gets exactly one attempt.
 function gh(args, input) {
-  return execFileSync('gh', args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'inherit'], maxBuffer: 256 * 1024 * 1024 })
+  const write = args.includes('-X')
+  const comment = input !== undefined
+  return runGitHubCommand(args, { input, idempotentWrite: write && !comment, attempts: comment ? 1 : 4, maxBuffer: 256 * 1024 * 1024 })
 }
-const repo = () => process.env.GITHUB_REPOSITORY || 'u2giants/shared-db'
+const repo = () => currentRepository()
 
 export function syncIssue(issue, { dryRun = false, authoritative = false, run = gh } = {}) {
   if (issue.pull_request) return null

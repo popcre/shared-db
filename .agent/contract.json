@@ -1,26 +1,30 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3212,
+  "generation": 6,
+  "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Keep every shared-db issue labelled exactly one of orchestrator or non-orchestrator: label on issue open/edit/reopen from the db-work-scope work_type, and sweep for blank or double-labelled issues on a schedule.",
+  "goal": "Implement issue #3199 Phase A3: a read-only scheduled Queue Hygiene Report — a write-stripped --queue-hygiene-report subcommand in the lane manager, a daily read-only queue-hygiene-report.yml workflow modeled on the abandonment audit, offline tests wired into tools-offline-tests.yml, and plan STATUS updates recording the completed A1 labelling and A2 claim release.",
   "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
-  "dispatcher": "Albert Hazan chat session 2026-09-17 (issue label rule)",
-  "worker": "Claude Opus 5 session issue-orch-label-sync 2026-09-17",
-  "branch": "claude/issue-orch-label-sync",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-orch-label-sync",
+  "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
+  "worker": "ZCode (GLM 5.3) repository-maintenance session",
+  "branch": "zcode/3199-queue-hygiene",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
   "allowed_paths": [
-    "scripts/sync-issue-orchestrator-label.mjs",
-    "scripts/sync-issue-orchestrator-label.test.mjs",
-    ".github/workflows/issue-orchestrator-label.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/sync-issue-orchestrator-label.mjs",
-    "scripts/sync-issue-orchestrator-label.test.mjs",
-    ".github/workflows/issue-orchestrator-label.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -28,16 +32,23 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No change to any migration file or existing workflow"
+    "No production workflow dispatch",
+    "No weakening of any safety gate, required check, or caller check",
+    "The scheduled report must hold read-only permissions and write nothing"
   ],
   "required_checks": [
-    "node --test scripts/sync-issue-orchestrator-label.test.mjs"
+    "node --test scripts/queue-hygiene-report.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "bash scripts/check-sql.sh",
+    "node scripts/check-github-transport-conformance.mjs",
+    "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "An issue that already carries exactly one of the two labels keeps it unless the issue is newly opened or its body is edited",
-    "Generation 3 re-seals the pair after a refresh from main 4b115d33; none of the merged changes touch this change's own files; the implementation head is the merge commit 1798102a5195a9126740f225af2593d2350fa9ca."
+    "origin/main moved once during implementation (PR #3211); the branch was refreshed by merge before the evidence bind",
+    "A1/A2 already executed live before this pull request; their gates were verified by queue-audit reruns"
   ],
   "stop_conditions": [
-    "Stop if the label rule would need to change an existing guard or workflow"
+    "Stop if any change would weaken a safety gate or touch the database",
+    "Stop if the report subcommand cannot be made write-free by construction"
   ]
 }

@@ -1,43 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3180,
+  "work_issue": 3229,
   "outcome": "ready-for-merge",
-  "pr": 3221,
+  "pr": 3231,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/4",
-  "contract_sha256": "99b05149c3e0858477d27e0889a39b9ded16c5c1d8988d8389b0cd9180a238e6",
-  "head_sha": "b7f4e0f1a2ac1808df5da845eb2abdb66879d040",
+  "contract_ref": "refs/db-contracts/3229/1",
+  "contract_sha256": "408c31b604b435db5937ef31da95b2a1fc452e3465ba173adb8baae223a79d60",
+  "head_sha": "7c80a764b6c15d804c0bc5fe539d28c8b3bf1596",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prod-detail-backfill.yml",
-    "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prod-details.mjs",
-    "tools/coldlion-landing/sync-prod-details.mjs"
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/lib/prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
+      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "32 tests, 32 pass, 0 fail on the refreshed head 9d8ce8f6, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules."
-    },
-    {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
-      "exit_code": 0,
-      "evidence": "165 tests, 165 pass, 0 fail on the refreshed head 9d8ce8f6 — the exact four-suite command the merged scheduled workflow's offline gate runs, proving the combined history+masters+prepack+prod-detail job satisfies every suite's workflow assertions. The full 48-file tools suite (935 tests) also passed on this tree."
+      "evidence": "33/33 pass on this head, with the request-identity test extended to pin both message shapes ('asked X, row answers Y') and the blank-answer spelling '(blank)', proving the refusal names both codes without weakening the abort."
     }
   ],
   "assumptions_resolved": [
-    "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
-    "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
-    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
-    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
-    "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758).",
-    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758)."
+    "The collision fired on live production data after 1,800 keys had landed cleanly (runs 35264306654 and 35266106746), so the guard is correct and only its evidence was missing."
   ],
   "stop_conditions_hit": []
 }

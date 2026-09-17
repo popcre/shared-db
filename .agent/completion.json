@@ -1,37 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 3154,
+  "work_issue": 3163,
   "outcome": "ready-for-merge",
-  "pr": 3157,
-  "migration_versions": [
-    "20260917035654"
-  ],
-  "contract_ref": "refs/db-contracts/3154/1",
-  "contract_sha256": "d0984fd27d5324ea50afc1b6d0275e18ff78507937c388bb2136d1c453eab4ee",
-  "head_sha": "341a00348610a6493199738ff1ec436be358a88d",
+  "pr": 3164,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3163/1",
+  "contract_sha256": "13990a30577f90b90f45fc608c3a1d0e00f95c26b613a38e4ac0bdc79bac13fa",
+  "head_sha": "cf72485bc392c5ba814f2734714a7afd2fe359de",
   "files_changed": [
-    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql"
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/work-dependencies.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "index plm.prod_order_milestone_schedule_factory_time_id_idx",
-    "table plm.prod_order_milestone_schedule"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation be943ea6, refreshed over main 388bbe56 at cabe6116: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "repository-identity/conformance/work-dependencies/admission-outcome/coordination: tests 147 pass 147 fail 0; manage-migration-author-lanes: tests 638 (with identity and dependency suites) pass 638 fail 0, at implementation head 5d8f1250."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "status OK; version 20260917035654 has markers [] and needs no sidecar."
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (52 entries)."
     }
   ],
   "assumptions_resolved": [
-    "Governed Qwen 3.8 Max review of head be943ea6 returned APPROVE (refs/db-review-verdicts/3154-3157-be943ea6f4f99be6c42c703b85525d9e59a7154b)."
+    "Organization-owned repositories report an org member's comments as MEMBER; the trusted login is still required, so no other member or collaborator is admitted."
   ],
   "stop_conditions_hit": []
 }

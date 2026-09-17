@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3206,
+  "work_issue": 3208,
   "outcome": "ready-for-merge",
-  "pr": 3207,
+  "pr": 3209,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3206/2",
-  "contract_sha256": "8da0a24283973cce9be32bd5e5ea651004f164e60b89f3e1beff50a5b590a027",
-  "head_sha": "3af65735cb0f7e9c56dbc108a73b083b9a8db673",
+  "contract_ref": "refs/db-contracts/3208/4",
+  "contract_sha256": "3ecd4931e0c06675dede2ab4422426c5dd45df18b7da3a4f3ffac86a9a04c83f",
+  "head_sha": "a486cd2d3b40170293c8c20c0ea793d24980e95f",
   "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs"
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/lib/github-watch.mjs",
+    "scripts/lib/github-watch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "At 3af65735 (main merged): 623 passed, 0 failed, 0 skipped; CI collision and author-lease lists 1252 passed, 0 failed, 0 skipped; truth audit OK at 307. Wire fixture: idempotent assignment retry 7 API requests, unstarted silent reclaim 5 (was 9 with explicit rate_limit), confirmed silent reclaim 9 (was 13); both reclaim tests fail on origin/main."
+      "evidence": "At a486cd2d (review fixes, main merged, truth audit OK at 307): 58 passed, 0 failed, 0 skipped. One notify woke each of 10 waiting processes exactly once with zero upstream reads; unreadable or vanished event/state files never wake and a token wakes once; zero delays still sleep and invalid windows are refused (both new tests hang or fail on the previous head); fallback detected a change in 3 polls; x-poll-interval and failure backoff honoured."
     }
   ],
   "assumptions_resolved": [
-    "Only the pre-mutex PR read was folded; the in-mutex fresh PR read and activity re-proof are unchanged"
+    "Webhook registration stays out of scope; notifyChange is the event entry point"
   ],
   "stop_conditions_hit": []
 }

@@ -1,49 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 3091,
+  "work_issue": 3104,
   "outcome": "ready-for-merge",
-  "pr": 3110,
+  "pr": 3131,
   "migration_versions": [
-    "20260917005942"
+    "20260917005650"
   ],
-  "contract_ref": "refs/db-contracts/3091/7",
-  "contract_sha256": "d84fe547bacb33717f93a33135dd48a270db565fdf4e6a2f40083a034bc18f03",
-  "head_sha": "d5bfa72550e00ae1565a28f62c51e6f6ce3cb33e",
+  "contract_ref": "refs/db-contracts/3104/3",
+  "contract_sha256": "0d4ed43058c1e2fbc2b1b9e506144496759b0c9ca852bd95e78ece4eb4145b76",
+  "head_sha": "3dcb2de2f71c609d968e03dec25ccebb8a3036dc",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json",
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "types/database.types.ts"
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql"
   ],
   "db_reads": [
-    "table plm.\"FactoryTime\""
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member",
+    "table plm.wb_property"
   ],
   "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
+    "function api.db_data_admin_scraped_source_inventory"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head d5bfa725: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "Run at implementation head a14110d3: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "status OK; version 20260917005942 has markers [] and needs no sidecar."
-    },
-    {
-      "command": "local PostgreSQL 18 run of the migration plus contract test on stub plm tables",
-      "exit_code": 0,
-      "evidence": "Migration applied at d5bfa725; both foreign keys created; contract test passed, including rejection of untrimmed stage_name, status and sku; with the sku trim check removed the test failed with \"untrimmed sku was accepted\"."
+      "evidence": "status OK; version 20260917005650 needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
+    "Production function body md5 956fbf9130a49bf0cbc875bbaf0e1c17 equals the 20260914172031 file body, so the re-derivation base is the live definition."
   ],
   "stop_conditions_hit": []
 }

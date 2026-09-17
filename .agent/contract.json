@@ -1,54 +1,48 @@
 {
   "schema_version": 1,
-  "generation": 7,
-  "work_issue": 3091,
+  "generation": 3,
+  "work_issue": 3104,
   "work_type": "structural",
   "route": "migration",
-  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
+  "goal": "Split plm.wb_property in api.db_data_admin_scraped_source_inventory into Warner Submissions (warner_product_catalogue) and Creative (warner_art_assets), and return mapped values (submissions on Creative rows, mapped_creative on Submissions rows) for the Mapping column. Grants, row identities and other arms unchanged.",
   "base_sha": "8f23bbb7aba7a705e48e638d1343fc12857f976e",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3091 migration author a7f2",
-  "branch": "claude/3091-milestone-schedule-a7f2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
+  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16: \"I meant #3104\")",
+  "worker": "Claude Opus 5 #3104 migration author b1",
+  "branch": "claude/3104-warner-subs-mapping-b1",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3104-warner-subs-mapping-b1",
   "allowed_paths": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
+    "docs/db-data-admin-scraped-properties.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
+    "docs/db-data-admin-scraped-properties.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [
-    "table plm.\"FactoryTime\""
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member",
+    "table plm.wb_property"
   ],
   "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
+    "function api.db_data_admin_scraped_source_inventory"
   ],
   "prohibited_actions": [
-    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
-    "No data change to existing tables",
-    "No migration version other than claimed 20260917005942"
+    "No manual production SQL; production only via the governed production lane",
+    "No grant, table, data or RLS change",
+    "No migration version other than claimed 20260917005650"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
     "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
+    "Live function body equals 20260914172031 (md5 956fbf9130a49bf0cbc875bbaf0e1c17 verified on production)"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the admitted objects"
+    "Stop if the change needs any object beyond api.db_data_admin_scraped_source_inventory"
   ]
 }

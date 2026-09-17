@@ -1,48 +1,39 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3153,
+  "generation": 1,
+  "work_issue": 2364,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
-  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
-  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3153 subagent",
-  "branch": "claude/prod-gate-config-scope-a1",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
+  "goal": "Kill every surviving guard mutant of scripts/production_business_risk_gate.py listed in issue #2364 (preview-contents) with focused falsification tests in one new test file, source unchanged.",
+  "base_sha": "4ba3732d6e02d9be95f582b8a2b607e7ea515651",
+  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; split into single-issue PRs by coordinator decision",
+  "worker": "Claude Opus 5 #2364 risk-gate mutation coverage",
+  "branch": "claude/2364-risk-gate-mutations-preview_contents",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/rg-mut-2364",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/test_production_business_risk_gate_preview_contents_mutations.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/test_production_business_risk_gate_preview_contents_mutations.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
+    "No database change of any kind",
+    "No production workflow dispatch",
+    "No change to scripts/production_business_risk_gate.py"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/check-main-tip-freshness.test.mjs"
+    "python -m unittest scripts/test_*.py"
   ],
   "assumptions": [
-    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
-    "No production job step runs a test file or reads .agent evidence"
+    "A mutant is the guard condition replaced with False, per scripts/mutation_sweep_guards.py; sweep positions were remapped to current source by guard text"
   ],
   "stop_conditions": [
-    "Stop if a preview-job tool reads the coverage manifest"
+    "Stop if a listed guard can only be killed by changing the gate source"
   ]
 }

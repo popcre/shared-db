@@ -1,46 +1,42 @@
 {
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3193,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make the shared production migration guard name the ledger it actually read, so a preview-job refusal says 'already applied on preview' and points to the historical-recovery lane, without changing any check.",
+  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
+  "dispatcher": "Albert Hazan chat request to fix the #2794 preview re-rehearsal deadlock",
+  "worker": "Claude Opus 5 #3193 session",
+  "branch": "claude/issue-rehearse-applied-evidence-only",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1916a8ff61864114",
   "allowed_paths": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".agent/completion.json"
   ],
-  "assumptions": [
-    "The recorded worktree of claim #2745 is used by another session with uncommitted work, so the rebind never inspects or touches the old worktree.",
-    "Renewal of an active lease is refused by design, so rebind requires an active lease and asks for renewal first otherwise.",
-    "Generation 3 binds the fixes for the governed review REVISE at 73828438.",
-    "Generation 4: refreshed by merge onto main 4fec003d; the implementation diff is unchanged.",
-    "Generation 5: refreshed by merge onto main ae714512; the implementation diff is unchanged."
+  "file_writes": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
-  "base_sha": "ae7145128de84a5237560528004c9fdf411d9633",
-  "branch": "claude/issue-3182-rebind-claim-worktree",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "owner request to unstick claim #2745 (audit #3117)",
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
-  "generation": 5,
-  "goal": "Add a guarded --rebind-claim-worktree mode to the lane manager that moves a live claim to a new clean worktree on the claim branch at the exact open PR head, with owner proof, mutex, exact readback, rollback and create-only evidence, covered by tests.",
   "prohibited_actions": [
-    "Do not inspect, modify or clean the claim's previously recorded worktree.",
-    "Do not weaken any existing lane guard, renewal refusal or supersession check.",
-    "Do not change any database structure or data."
+    "No database write or structure change of any kind",
+    "Do not let any already-applied version pass validate_candidates on any ledger"
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
+    "python -m unittest scripts/test_production_migration_guard.py"
   ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
+  "assumptions": [
+    "The existing historical-recovery lane already recovers a post-merge rehearsal that ran at the authoring merge commit (AGENTS.md section 6), so no new evidence-only mode is needed"
+  ],
   "stop_conditions": [
-    "Stop if moving the claim could only be done by bypassing owner proof or the mutex."
-  ],
-  "work_issue": 3182,
-  "work_type": "repo-maintenance",
-  "worker": "claude issue-3182 lane tooling session",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a652a18e111c40487"
+    "Stop if the change would let an applied version be applied again or loosen any producer pin"
+  ]
 }

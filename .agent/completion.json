@@ -1,36 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3153,
+  "work_issue": 3161,
   "outcome": "ready-for-merge",
-  "pr": 3155,
+  "pr": 3162,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3153/2",
-  "contract_sha256": "7694d975ca4c729f5a2d969f8025ce5d4dc5f7d4ebf43e87b493f9ef121a3a8d",
-  "head_sha": "50bbd3980ea68d569a7cbf551e84fc7f3a02df50",
+  "contract_ref": "refs/db-contracts/3161/1",
+  "contract_sha256": "0a07c8d3fd846dd12e3b1131c1865bb7b632a56f712ed6749256967b1dabc252",
+  "head_sha": "f7b0b324ede0554f2a225421c03719664e5133f5",
   "files_changed": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/check-skill-drift.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "command": "node --test scripts/check-skill-drift.test.mjs",
       "exit_code": 0,
-      "evidence": "162 passed, 0 failed, 0 skipped; new #2870/#2866 regression test fails on main and passes here. Full scripts pytest: 1248 passed, 8 skipped."
-    },
-    {
-      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 25, pass 25, fail 0, skipped 0; the #3091 production-mode test cannot import on main."
+      "evidence": "Run at f7b0b324 against a fresh clone of ai-devops main: tests 3, pass 3, fail 0, skipped 0. Before the fix check-skill-drift --require-skills printed [missing-author-cap]."
     }
   ],
   "assumptions_resolved": [
-    "The coverage manifest's only reader is the validate job; the 'Never read by the preview job' phrase test passes",
-    "No production job step in shared-supabase-migrations.yml runs pytest or node --test, and no non-test script imports a test file"
+    "CI failure on every branch since ai-devops #531 reproduced locally against ai-devops main and fixed by this change."
   ],
   "stop_conditions_hit": []
 }

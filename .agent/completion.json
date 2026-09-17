@@ -1,27 +1,72 @@
 {
   "schema_version": 1,
-  "work_issue": 3119,
+  "work_issue": 3124,
   "outcome": "ready-for-merge",
-  "pr": 3123,
+  "pr": 3121,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3119/2",
-  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
-  "head_sha": "a89e298e9b225fa3b41e8782314288e8f5b7bf0e",
+  "contract_ref": "refs/db-contracts/3124/1",
+  "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
+  "head_sha": "c098caad1696a759e9ee6340cf8d19de5feebebf",
   "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/agent-work-contract.mjs",
+    "scripts/check-destructive-analysis.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-handoff-contract.mjs",
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/check-repository-identity-conformance.test.mjs",
+    "scripts/dispatch-production-apply.mjs",
+    "scripts/historical_preview_recovery.py",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/review-verdict-artifact.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/read-preview-ledger.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/production_apply_review_evidence.py",
     "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/production_owner_decision_evidence.py",
+    "scripts/reap-merged-worktrees.mjs",
+    "scripts/repair-voided-findings.mjs",
+    "scripts/report-stale-handoffs.mjs",
+    "scripts/repository_identity.py",
+    "scripts/run-governed-review.mjs",
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_repository_identity.py",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs",
+    "scripts/verify_preview_apply_artifact.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
+      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
+      "evidence": "Run at implementation head c098caad: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
+    },
+    {
+      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "Full Python suite at c098caad: Ran 1089 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
+    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
   ],
   "stop_conditions_hit": []
 }

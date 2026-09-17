@@ -32,6 +32,10 @@ import { runGitHubCommand } from './lib/github-transport.mjs'
 export class SnapshotCallerError extends Error {}
 
 export const STALL_MINUTES = 120
+// Standard work must dispatch within one hour (ai-devops#401 target 2, issue #3126). The alarm runs
+// every 30 minutes, so undispatched work alarms after 30 minutes and is reported before the hour ends.
+export const DISPATCH_STALL_MINUTES = 30
+export const UNDISPATCHED_STATES = Object.freeze(['entered', 'classified'])
 export const ZERO_CLOSURE_WINDOW_MINUTES = 240
 export const TERMINAL_OUTCOME_STATE = 'live_verified'
 export const STAGE_LOCK_REFS = Object.freeze(['refs/db-coordination/preview', 'refs/db-coordination/merge', 'refs/db-coordination/production'])
@@ -76,7 +80,7 @@ export function outcomeEventsFromComments(comments = []) {
  * Minutes since each owned outcome's last stage transition. An outcome whose
  * last transition is the terminal state is closed and never stalls.
  */
-export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallMinutes = STALL_MINUTES, windowMinutes = ZERO_CLOSURE_WINDOW_MINUTES, sessionStarted = null } = {}) {
+export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallMinutes = STALL_MINUTES, dispatchStallMinutes = DISPATCH_STALL_MINUTES, windowMinutes = ZERO_CLOSURE_WINDOW_MINUTES, sessionStarted = null } = {}) {
   const nowMs = Date.parse(now)
   if (Number.isNaN(nowMs)) throw new SnapshotCallerError('now must be an ISO instant')
   const last = new Map()
@@ -100,7 +104,7 @@ export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallM
   const inWindow = closures.filter((event) => { const at = Date.parse(event.timestamp); return at <= nowMs && nowMs - at <= windowMinutes * MINUTE })
   const sessionMs = sessionStarted ? Date.parse(sessionStarted) : NaN
   return {
-    stalled_outcomes: outcomes.filter((row) => row.minutes_since_transition > stallMinutes),
+    stalled_outcomes: outcomes.filter((row) => row.minutes_since_transition > (UNDISPATCHED_STATES.includes(row.state) ? dispatchStallMinutes : stallMinutes)),
     active_outcomes: outcomes.length,
     closures_in_window: inWindow.length,
     closures_in_session: Number.isNaN(sessionMs) ? null : closures.filter((event) => Date.parse(event.timestamp) >= sessionMs).length,

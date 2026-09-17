@@ -6,8 +6,10 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3147/1",
   "contract_sha256": "63188eee4636e4f83db2612a8c4970504eb900eb788a4625097d344cfb1b6665",
-  "head_sha": "97fa21989f81ff6e60865fa2c1516d3a9dc19df1",
+  "head_sha": "086bcc65d4c1285c32bdc817815adb52b293683e",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "AGENTS.md",
     "scripts/check-live-proof-probe.mjs",
     "scripts/check-live-proof-probe.test.mjs"
@@ -18,7 +20,7 @@
     {
       "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 97fa2198: tests 9, pass 9, fail 0, skipped 0."
+      "evidence": "Run at refreshed head 086bcc65: tests 9, pass 9, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [

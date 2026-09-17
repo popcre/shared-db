@@ -1,74 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 3124,
+  "work_issue": 3147,
   "outcome": "ready-for-merge",
-  "pr": 3121,
+  "pr": 3150,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3124/2",
-  "contract_sha256": "347ae3190c85f991acbf26fa9cd32e40ba9e8c036d804f376f1da364e05fff81",
-  "head_sha": "b6ea0cc42b83e01ae1969287fa6a9616ee8c4a88",
+  "contract_ref": "refs/db-contracts/3147/1",
+  "contract_sha256": "63188eee4636e4f83db2612a8c4970504eb900eb788a4625097d344cfb1b6665",
+  "head_sha": "e31e7ef7fbcb9a17df4b4600a18f4863fe14a00e",
   "files_changed": [
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/agent-work-contract.mjs",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-dispatch-collision.mjs",
-    "scripts/check-handoff-contract.mjs",
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "AGENTS.md",
     "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs",
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/check-repository-identity-conformance.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/historical_preview_recovery.py",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/review-verdict-artifact.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/read-preview-ledger.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/production_apply_review_evidence.py",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_owner_decision_evidence.py",
-    "scripts/reap-merged-worktrees.mjs",
-    "scripts/repair-voided-findings.mjs",
-    "scripts/report-stale-handoffs.mjs",
-    "scripts/repository_identity.py",
-    "scripts/run-governed-review.mjs",
-    "scripts/shared_db_live_proof.py",
-    "scripts/test_repository_identity.py",
-    "scripts/update-required-checks.mjs",
-    "scripts/update-required-checks.test.mjs",
-    "scripts/verify_preview_apply_artifact.py"
+    "scripts/check-live-proof-probe.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2723dff5: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
-    },
-    {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
-    },
-    {
-      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
-      "exit_code": 0,
-      "evidence": "Full Python suite at 2723dff5: Ran 1091 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
+      "evidence": "Run at refreshed head e31e7ef7: tests 9, pass 9, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
+    "All seven committed probes under .github/live-proofs/ (2506, 2848, 2860, 2905, 3009, 3023, 3043) pass the tightened shape check"
   ],
   "stop_conditions_hit": []
 }

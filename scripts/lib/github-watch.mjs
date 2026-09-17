@@ -41,10 +41,21 @@ function files(endpoint, env, dir) {
   return { state: path.join(dir, `${key}.state.json`), events: path.join(dir, `${key}.events.json`) }
 }
 
-/** Current shared position for a resource, read from local files only. */
+/**
+ * Current shared position for a resource, read from local files only. A field is
+ * null when its file is missing or unreadable (for example mid-replace on Windows);
+ * null never counts as a change, so a transient read failure can neither wake a
+ * waiter nor make the same token wake it twice.
+ */
 export function watchCursor(endpoint, { env = process.env, dir = defaultSharedDir(env) } = {}) {
   const f = files(endpoint, env, dir)
-  return { event: readJson(f.events)?.token ?? null, generation: Number(readJson(f.state)?.generation ?? 0) }
+  const token = readJson(f.events)?.token
+  const generation = Number(readJson(f.state)?.generation)
+  return { event: typeof token === 'string' ? token : null, generation: Number.isFinite(generation) ? generation : null }
+}
+
+function merge(known, seen) {
+  return { event: seen.event ?? known?.event ?? null, generation: seen.generation ?? known?.generation ?? null }
 }
 
 /**
@@ -89,17 +100,22 @@ export function waitForChange(endpoint, {
   random = Math.random,
 } = {}) {
   if (!Number.isFinite(Number(timeoutMs)) || Number(timeoutMs) < 0) throw new Error('waitForChange requires a finite timeoutMs')
+  if (!Number.isFinite(Number(windowMs)) || Number(windowMs) <= 0) throw new Error('waitForChange requires a positive windowMs')
+  if (!Number.isFinite(Number(baseMs)) || Number(baseMs) < 0) throw new Error('waitForChange requires a non-negative baseMs')
+  if (!Number.isFinite(Number(checkMs)) || Number(checkMs) <= 0) throw new Error('waitForChange requires a positive checkMs')
   mkdirSync(dir, { recursive: true })
-  const start = since ?? watchCursor(endpoint, { env, dir })
+  const start = merge(null, since ?? watchCursor(endpoint, { env, dir }))
   const deadline = now() + Number(timeoutMs)
-  const align = (at) => Math.ceil(at / windowMs) * windowMs
+  // Every scheduled poll is strictly in the future, so a zero delay still sleeps.
+  const align = (at) => Math.max(Math.ceil(at / windowMs) * windowMs, now() + 1)
   let nextPollAt = align(now() + baseMs)
   let failures = 0
   let polls = 0
   for (;;) {
-    const cursor = watchCursor(endpoint, { env, dir })
-    if (cursor.event !== start.event) return { reason: 'event', cursor, polls }
-    if (cursor.generation !== start.generation) return { reason: 'changed', cursor, polls }
+    const seen = watchCursor(endpoint, { env, dir })
+    const cursor = merge(start, seen)
+    if (seen.event !== null && seen.event !== start.event) return { reason: 'event', cursor, polls }
+    if (seen.generation !== null && seen.generation !== start.generation) return { reason: 'changed', cursor, polls }
     const current = now()
     if (current >= deadline) return { reason: 'timeout', cursor, polls }
     if (current >= nextPollAt) {

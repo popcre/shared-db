@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -102,6 +102,46 @@ test('x-poll-interval stretches the fallback and failed reads back off; timeout 
     assert.ok(at[2] - at[1] >= 30000 && at[3] - at[2] >= 60000, 'failures back off')
     assert.ok(at.length <= 5)
     assert.throws(() => waitForChange(ENDPOINT, { env, dir, read: () => { throw new Error('bad') }, now: c.now, wait: c.wait, timeoutMs: 100000, baseMs: 0 }), /bad/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an unreadable or vanished event or state file never wakes a waiter, and a token wakes once', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'gh-watch-'))
+  try {
+    const c = clock()
+    const key = sharedReadKey(ENDPOINT, env)
+    const events = path.join(dir, `${key}.events.json`), state = path.join(dir, `${key}.state.json`)
+    writeFileSync(state, JSON.stringify({ generation: 4, body: '{}' }))
+    notifyChange(ENDPOINT, { env, dir })
+    const since = watchCursor(ENDPOINT, { env, dir })
+    let checks = 0
+    const wait = (ms) => {
+      c.wait(ms)
+      checks += 1
+      if (checks === 2) { rmSync(events); writeFileSync(state, '{partial') }
+      if (checks === 4) { writeFileSync(events, JSON.stringify({ token: since.event })); writeFileSync(state, JSON.stringify({ generation: 4, body: '{}' })) }
+    }
+    const result = waitForChange(ENDPOINT, { since, env, dir, read: () => ({}), now: c.now, wait, timeoutMs: 10000, baseMs: 3600000, checkMs: 1000 })
+    assert.equal(result.reason, 'timeout')
+    assert.deepEqual(result.cursor, since)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('zero delays still sleep between polls and invalid windows are refused', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'gh-watch-'))
+  try {
+    const c = clock()
+    let reads = 0
+    const result = waitForChange(ENDPOINT, { env, dir, read: () => { reads += 1; return {} }, now: c.now, wait: c.wait, timeoutMs: 50, baseMs: 0, windowMs: 1, checkMs: 1 })
+    assert.equal(result.reason, 'timeout')
+    assert.ok(c.waits.length >= reads && reads <= 51, `reads ${reads}, sleeps ${c.waits.length}`)
+    for (const windowMs of [0, -1, Number.NaN]) {
+      assert.throws(() => waitForChange(ENDPOINT, { env, dir, now: c.now, wait: c.wait, timeoutMs: 10, windowMs }), /windowMs/)
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

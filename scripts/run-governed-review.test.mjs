@@ -1,14 +1,188 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { runGovernedReview, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
+import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { anyVerdictFor } from './lib/review-verdict.mjs'
 
 const options={issue:1824,pr:2000,headSha:'a'.repeat(40),reviewer:'glm-5.3',wrapper:'ai-glm',worktree:'C:/review',slot:1,wrapperArgs:['review']}
+const fixtureFiles=[{filename:'source.txt',status:'modified'}]
+const fixtureSource=(input)=>({repository:'u2giants/shared-db',pr:input.pr,baseRef:'develop',targetSha:'b'.repeat(40),headSha:input.headSha,mergeBase:'c'.repeat(40),files:fixtureFiles,fileSetSha256:createHash('sha256').update(JSON.stringify(fixtureFiles)).digest('hex'),sourceDigest:'d'.repeat(64)})
+const fixtureReceipt=(input)=>({schema_version:1,identity:{repository:input.worktree,base:'c'.repeat(40),head:input.headSha,source_digest:'d'.repeat(64)},packet_sha256:'e'.repeat(64)})
+const fixturePaths={platform:'win32',realpath:(path)=>path,lstat:()=>({isSymbolicLink:()=>false,isDirectory:()=>true})}
+function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
+
+test('all qualified wrappers receive immutable source arguments without rewriting prompt values',()=>{
+  const source=fixtureSource(options)
+  for(const name of ['ai-claude-review','ai-codex-review','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen']){
+    for(const wrapper of [name,`C:\\tools\\${name.toUpperCase()}.CMD`,`/usr/bin/${name}.exe`]){
+      assert.deepEqual(wrapperSourceContractArgs(wrapper,['new','session','--prompt','--base'],source),['new','session','--prompt','--base','--base',source.mergeBase,'--assert-head',source.headSha])
+      assert.deepEqual(wrapperSourceContractArgs(wrapper,['new',`--base=${source.mergeBase}`,'--assert-head',source.headSha],source),['new','--base',source.mergeBase,'--assert-head',source.headSha])
+    }
+  }
+  for(const args of [['--base','f'.repeat(40)],['--assert-head='+ 'f'.repeat(40)],['--base',source.mergeBase,'--base='+source.mergeBase]])assert.throws(()=>wrapperSourceContractArgs('ai-glm',args,source),/does not match|duplicate/)
+  assert.throws(()=>wrapperSourceContractArgs('unknown-reviewer',[],source),/no qualified source/)
+  for(const wrapper of ['ai-deepseek-agent','C:\\tools\\AI-DEEPSEEK-AGENT.CMD']){
+    assert.deepEqual(wrapperSourceContractArgs(wrapper,['send','review this','--review'],source),['send','review this','--review','--base',source.mergeBase,'--assert-head',source.headSha])
+    assert.throws(()=>wrapperSourceContractArgs(wrapper,['send','advisory'],source),/requires a formal/)
+    assert.throws(()=>wrapperSourceContractArgs(wrapper,['send','advisory','--file','--review'],source),/requires a formal/)
+  }
+})
+
+function sourceIo(overrides={}){
+  const pr={number:options.pr,state:'open',merged:false,base:{ref:'develop',sha:'b'.repeat(40),repo:{full_name:'u2giants/shared-db'}},head:{sha:options.headSha},...overrides.pr}
+  const seen=[]
+  return {seen,digest:()=>overrides.digest??'d'.repeat(64),github:(args)=>({status:0,stdout:JSON.stringify(args[1].includes('/compare/')?{base_commit:{sha:'c'.repeat(40)},merge_base_commit:{sha:'c'.repeat(40)},files:fixtureFiles,...overrides.comparison}:pr)}),git:(_command,args)=>{
+    const op=args[2];seen.push(args.slice(2))
+    if(overrides.fail===op)return{status:1,stdout:''}
+    const stdout={remote:'https://github.com/u2giants/shared-db.git','rev-parse':options.headSha,status:'','cat-file':'','merge-base':'c'.repeat(40),diff:'M\0source.txt\0',...overrides.stdout}[op]
+    return{status:0,stdout}
+  }}
+}
+test('source resolver binds live non-main PR target to local merge-base',()=>{
+  assert.deepEqual(resolveReviewSource(options,sourceIo()),fixtureSource(options))
+})
+test('source resolver preserves Git SSH transports and refuses other users or hosts',()=>{
+  const host='github.com',user='git'
+  for(const remote of [`${user}@${host}:u2giants/shared-db.git`,`ssh://${user}@${host}/u2giants/shared-db.git`])assert.deepEqual(resolveReviewSource(options,sourceIo({stdout:{remote}})),fixtureSource(options))
+  for(const remote of [`other@${host}:u2giants/shared-db.git`,`ssh://other@${host}/u2giants/shared-db.git`,`${user}@elsewhere:u2giants/shared-db.git`])assert.throws(()=>resolveReviewSource(options,sourceIo({stdout:{remote}})),/repository/)
+})
+test('source resolver binds exact renamed and deleted files including unquoted paths',()=>{
+  const files=[{filename:'gone.txt',status:'removed'},{filename:'new\tname.txt',status:'renamed',previous_filename:'old name.txt'}]
+  const source=resolveReviewSource(options,sourceIo({comparison:{files:files.toReversed()},stdout:{diff:'R100\0old name.txt\0new\tname.txt\0D\0gone.txt\0'}}))
+  assert.deepEqual(source.files,files)
+  assert.equal(source.fileSetSha256,createHash('sha256').update(JSON.stringify(files)).digest('hex'))
+})
+test('missing truncated or mismatched file evidence refuses before any provider call',()=>{
+  for(const overrides of [
+    {comparison:{files:null}},{comparison:{files:Array(300).fill(fixtureFiles[0])}},
+    {comparison:{base_commit:{sha:'f'.repeat(40)}}},{comparison:{merge_base_commit:{sha:'f'.repeat(40)}}},
+    {comparison:{files:[]}},{comparison:{files:[{filename:'wrong.txt',status:'modified'}]}},
+    {comparison:{files:[{filename:'source.txt',status:'renamed'}]}},{comparison:{files:[fixtureFiles[0],fixtureFiles[0]]}},
+    {stdout:{diff:'M\0source.txt'}},{stdout:{diff:'R100\0source.txt\0'}},{fail:'diff'},{digest:'bad'},
+  ]){
+    let providerCalls=0
+    assert.throws(()=>executeGovernedReview(options,{sourceResolver:(input)=>resolveReviewSource(input,sourceIo(overrides)),preflight:()=>assert.fail('must refuse before preflight'),spawn:()=>{providerCalls++;assert.fail('must not contact provider')}}),/file|comparison|manifest|identity|digest/)
+    assert.equal(providerCalls,0)
+  }
+})
+test('source resolver refuses stale or wrong repository evidence before provider work',()=>{
+  for(const overrides of [
+    {pr:{state:'closed'}},{pr:{head:{sha:'f'.repeat(40)}}},
+    {pr:{base:{ref:'develop',sha:'b'.repeat(40),repo:{full_name:'other/repo'}}}},
+    {stdout:{remote:'https://github.com/other/repo.git'}},{stdout:{'rev-parse':'f'.repeat(40)}},
+    {stdout:{status:' M file'}},{fail:'cat-file'},{stdout:{'merge-base':''}},
+  ])assert.throws(()=>resolveReviewSource(options,sourceIo(overrides)),/source|head|repository|dirty|merge-base/)
+})
+test('source movement after provider completion prevents every publication and recording',()=>{
+  let reads=0,calls=0
+  assert.throws(()=>runGovernedReview(options,{sourceResolver:(input)=>({...fixtureSource(input),targetSha:(++reads===1?'b':'f').repeat(40)}),preflight:()=>{},resolve:(name)=>name,spawn:()=>{calls++;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}},record:()=>assert.fail('must not record')}),/source changed/)
+  assert.equal(calls,1)
+})
+test('receipt mismatches refuse without publishing a verdict',()=>{
+  for(const patch of [{packet_sha256:'bad'},{identity:{...fixtureReceipt(options).identity,base:'f'.repeat(40)}},{identity:{...fixtureReceipt(options).identity,head:'f'.repeat(40)}},{identity:{...fixtureReceipt(options).identity,repository:'C:/other'}},{identity:{...fixtureReceipt(options).identity,source_digest:'f'.repeat(64)}}]){
+    let calls=0
+    assert.throws(()=>runGovernedReview(options,{receiptFactory:()=>({path:'receipt',read:()=>({...fixtureReceipt(options),...patch}),bind:()=>assert.fail('must not bind')}),preflight:()=>{},resolve:(name)=>name,spawn:()=>{calls++;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}},record:()=>assert.fail('must not record')}),/receipt/)
+    assert.equal(calls,1)
+  }
+})
+test('receipt binds Windows drive-letter aliases to the exact worktree',()=>{
+  const receipt=fixtureReceipt(options);receipt.identity.repository='/c/review'
+  assert.equal(validateSourceReceipt(receipt,fixtureSource(options),'C:\\review',fixturePaths).packetSha256,'e'.repeat(64))
+})
+test('receipt repository equality preserves case-sensitive non-Windows paths',()=>{
+  const receipt=fixtureReceipt({...options,worktree:'/source/Review'})
+  const paths={...fixturePaths,platform:'linux'}
+  assert.throws(()=>validateSourceReceipt(receipt,fixtureSource(options),'/source/review',paths),/differs/)
+  assert.throws(()=>validateSourceReceipt(receipt,fixtureSource(options),'/source\\Review',paths),/differs/)
+  assert.equal(validateSourceReceipt(receipt,fixtureSource(options),'/source/Review',paths).packetSha256,'e'.repeat(64))
+})
+test('receipt repository identity rejects distinct physical roots and linked roots',()=>{
+  const root=mkdtempSync(join(tmpdir(),'governed-source-identity-'))
+  try{
+    const approved=join(root,'approved'),other=join(root,'other'),linked=join(root,'linked')
+    mkdirSync(approved);mkdirSync(other)
+    const receipt=fixtureReceipt({...options,worktree:approved})
+    assert.equal(validateSourceReceipt(receipt,fixtureSource(options),approved).packetSha256,'e'.repeat(64))
+    assert.throws(()=>validateSourceReceipt(receipt,fixtureSource(options),other),/differs/)
+    assert.throws(()=>validateSourceReceipt(receipt,fixtureSource(options),join(root,'missing')),/unavailable or unsafe/)
+    symlinkSync(approved,linked,process.platform==='win32'?'junction':'dir')
+    assert.throws(()=>validateSourceReceipt(receipt,fixtureSource(options),linked),/unavailable or unsafe/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+test('receipt accepts the real Windows short and long spelling of one worktree',{skip:process.platform!=='win32'},(t)=>{
+  const root=mkdtempSync(join(tmpdir(),'governed-source-long-alias-'))
+  try{
+    const short=execFileSync(process.env.ComSpec||'cmd.exe',['/d','/c','for %I in ("%AI_SOURCE_ALIAS_FIXTURE%") do @echo %~sI'],{windowsVerbatimArguments:true,encoding:'utf8',env:{...process.env,AI_SOURCE_ALIAS_FIXTURE:root}}).trim()
+    if(short.toLowerCase()===root.toLowerCase()){t.skip('this filesystem has no distinct 8.3 alias');return}
+    const receipt=fixtureReceipt({...options,worktree:root})
+    assert.equal(validateSourceReceipt(receipt,fixtureSource(options),short).packetSha256,'e'.repeat(64))
+    assert.equal(validateSourceReceipt(fixtureReceipt({...options,worktree:short}),fixtureSource(options),root).packetSha256,'e'.repeat(64))
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+test('receipt storage retains a private create-only PR and packet binding',()=>{
+  const root=mkdtempSync(join(tmpdir(),'governed-source-'))
+  try{
+    const git=(_command,args)=>({status:args[2]==='check-ignore'?0:1,stdout:''})
+    const store=reserveReviewReceipt({...options,worktree:root},{git})
+    writeFileSync(store.path,JSON.stringify(fixtureReceipt({...options,worktree:root})))
+    assert.equal(store.read().packet_sha256,'e'.repeat(64))
+    const binding=store.bind(fixtureSource(options))
+    assert.equal(JSON.parse(readFileSync(binding,'utf8')).baseRef,'develop')
+    assert.throws(()=>store.bind(fixtureSource(options)),/EEXIST/)
+    assert.throws(()=>reserveReviewReceipt({...options,worktree:root},{git:()=>({status:1})}),/not private/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+test('receipt storage refuses a linked private evidence directory',()=>{
+  const root=mkdtempSync(join(tmpdir(),'governed-source-link-'))
+  try{
+    const outside=join(root,'outside');mkdirSync(outside)
+    symlinkSync(outside,join(root,'.ai'),process.platform==='win32'?'junction':'dir')
+    assert.throws(()=>reserveReviewReceipt({...options,worktree:root}),/linked or unsafe/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+test('receipt storage rejects missing truncated or oversized receipts',()=>{
+  const root=mkdtempSync(join(tmpdir(),'governed-source-invalid-'))
+  try{
+    const git=(_command,args)=>({status:args[2]==='check-ignore'?0:1,stdout:''})
+    const store=reserveReviewReceipt({...options,worktree:root},{git})
+    assert.throws(()=>store.read(),/ENOENT/)
+    writeFileSync(store.path,'{"schema_version":')
+    assert.throws(()=>store.read(),SyntaxError)
+    writeFileSync(store.path,' '.repeat(128*1024+1))
+    assert.throws(()=>store.read(),/bounded regular file/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+test('successful governed review retains the trusted PR target and packet receipt',()=>{
+  let environment,bound,recorded
+  const result=runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,
+    receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(options),bind:(value)=>{bound={...value};return 'binding.json'}}),
+    spawn:(command,_args,spawnOptions)=>{
+      if(command!=='gh'){environment=spawnOptions.env;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}}
+      return{status:0,stdout:JSON.stringify({id:123,html_url:'https://github.com/u2giants/shared-db/pull/2000#issuecomment-123'})}
+    },record:(value)=>{recorded=value;return{ref:'ref',sha:'f'.repeat(40)}}})
+  assert.equal(environment.AI_REVIEW_SOURCE_RECEIPT_FILE,'C:/review/.ai/reviews/source.json')
+  assert.equal(bound.targetSha,'b'.repeat(40));assert.equal(bound.baseRef,'develop')
+  assert.equal(result.sourceEvidence.packetSha256,'e'.repeat(64))
+  assert.deepEqual(recorded.sourceEvidence,result.sourceEvidence)
+})
 
 test('wrapper failure preserves a safe cause without publishing a verdict or raw diagnostics',()=>{
   for(const [stderr,expected] of [
     ["unknown option '--review-kind'; token=private-value",/unsupported option/],
     ['ai-grok-review: Grok cancelled without a final answer. private-value',/provider cancelled/],
+    ['reason: provider_cancelled private-value',/provider_cancelled:.*cancelled/],
+    ['reason: turn_limit_cancelled private-value',/turn_limit_cancelled:.*turn budget/],
+    ['ai-muse: error: start_failed: caller_identity_missing private-value',/start_failed:.*caller identity/],
+    ['ai-muse: error: start_failed: invalid_caller_identity private-value',/start_failed:.*caller identity/],
+    ['ai-muse: error: start_failed: private-value',/start_failed:.*before the provider turn started/],
+    ['reason: unknown_terminal_reason private-value',/unknown_terminal_reason:.*unrecognized/],
+    ['terminal reason: content-filter private-value',/provider_unavailable: content-filter/],
+    ['[API Error: 400 InternalError.Algo.DataInspectionFailed: private-value]',/provider_unavailable: content-filter/],
+    ['provider-unavailable: private-value',/provider_unavailable/],
     ['timed-out private-value',/reported a timeout/],
     ['private-value',/reason was not recognized/],
   ]){
@@ -20,6 +194,32 @@ test('wrapper failure preserves a safe cause without publishing a verdict or raw
     })
     assert.equal(calls,1,'failed wrappers never publish to GitHub')
   }
+})
+
+test('typed terminal reasons require complete tokens rather than diagnostic substrings',()=>{
+  for(const reason of ['provider_cancelled','turn_limit_cancelled','unknown_terminal_reason','start_failed','content-filter','DataInspectionFailed','provider-unavailable']){
+    for(const stderr of [`prefix${reason}`,`${reason}_suffix`,`not-${reason}`,`${reason}-suffix`]){
+      assert.equal(wrapperFailureReason({stderr}),'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session')
+    }
+  }
+  assert.equal(wrapperFailureReason({stderr:'start_failed: not-caller_identity_missing'}),'start_failed: the wrapper refused before the provider turn started')
+})
+
+test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
+  const reason=wrapperFailureReason({stderr:'turn_limit_cancelled: Grok cancelled without a final answer. provider_cancelled'})
+  assert.equal(reason,'turn_limit_cancelled: the provider exhausted its declared turn budget')
+})
+
+test('DeepSeek receives the exact governed terminal head without changing advisory mode',()=>{
+  const head=options.headSha,other='f'.repeat(40)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent',['send','review this','--review'],head),['send','--governed-verdict',head,'review this','--review'])
+  assert.deepEqual(wrapperVerdictContractArgs('C:\\tools\\ai-deepseek-agent.cmd',['reply','session','followup','--review'],head),['reply','session','--governed-verdict',head,'followup','--review'])
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent',['send',`--governed-verdict=${head}`,'review this','--review'],head),['send',`--governed-verdict=${head}`,'review this','--review'])
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['send','--governed-verdict',other,'review this','--review'],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['reply','session',`--governed-verdict=${other}`,'followup','--review'],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['send','--governed-verdict',head,'review this','--governed-verdict',other],head),/does not match/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['doctor'],head),/send or reply subcommand/)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-deepseek-agent-other',['send','x'],head),['send','x'])
 })
 
 test('adapter with real process payload shapes posts findings and records before returning output',()=>{
@@ -258,7 +458,7 @@ test('the injected contract reaches the spawned gemini wrapper',()=>{
   const spawn=(command,args)=>{seen.push([command,args]);return command==='gh'?{status:0,stdout:JSON.stringify({html_url:'https://github.com/u2giants/shared-db/pull/2000#issuecomment-1'})}:{status:0,stdout:`Findings.
 VERDICT: APPROVE ${head}`}}
   runGovernedReview({...options,reviewer:'gemini-3.8-flash-high',wrapper:'ai-gemini',wrapperArgs:['new','sess','--prompt','x']},{spawn,resolve:(name)=>name,preflight:()=>{},record:()=>({ref:'refs/db-review-verdicts/x',sha:'b'.repeat(40)})})
-  assert.deepEqual(seen[0][1],['new','--governed-verdict',head,'sess','--prompt','x'])
+  assert.deepEqual(seen[0][1],['new','--governed-verdict',head,'sess','--prompt','x','--base','c'.repeat(40),'--assert-head',head])
 })
 
 test('every spelling of a caller-supplied gemini verdict head is checked',()=>{
@@ -513,4 +713,138 @@ test('issue 2307: the appended-verdict refusal is distinct from the other two',(
   assert.throws(()=>codexReportPath(''),/printed no report path/)
   assert.throws(()=>codexReportPath('C:/review/notes/codex-diff-review-20260908T190000-1-2.md'),/not inside the wrapper report directory/)
   assert.throws(()=>codexReportPath(`${codexPath}\nVERDICT: APPROVE ${'a'.repeat(40)}`),/final line is not a published report path/)
+})
+
+// Issue #2729 Step 7: retry once, then reroute; terminal non-verdicts reroute at the same head.
+import { GovernedReviewRerouteError, preflightWithTimeoutRetry, reviewAssignmentIdentity } from './run-governed-review.mjs'
+const doctorTimeout=()=>{throw new Error('reviewer glm-5.3 preflight failed: doctor reports "doctor did not answer within 60s"')}
+const okSpawn=(file)=>file==='gh'?{status:0,stdout:JSON.stringify({html_url:'https://github.com/u2giants/shared-db/pull/2000#issuecomment-1',id:1})}:{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}
+
+test('issue 2729: one doctor timeout retries the SAME reviewer once and then reviews',()=>{
+  let preflights=0,repairs=0,providers=0
+  const events=[]
+  const result=runGovernedReview(options,{preflight:()=>{if(++preflights===1)doctorTimeout()},repairLocalService:()=>repairs++,appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:(file)=>{if(file!=='gh')providers++;return okSpawn(file)},record:()=>({ref:'refs/db-review-verdicts/x',sha:'b'.repeat(40)})})
+  assert.equal(preflights,2);assert.equal(repairs,1);assert.equal(providers,1);assert.ok(result.artifact)
+  assert.deepEqual(events.map((e)=>e.type),['preflight_timeout','review_started'])
+})
+
+test('issue 2729: a second doctor timeout reroutes and never contacts the provider',()=>{
+  let preflights=0,providers=0
+  const events=[]
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{preflights++;doctorTimeout()},appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:()=>{providers++;assert.fail('must not contact provider')},record:()=>assert.fail('must not record')}),(error)=>{
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.equal(error.startDecision.action,'governed-return-and-reroute')
+    assert.equal(error.startDecision.reason,'local_preflight_timeout')
+    assert.equal(error.startDecision.head_sha,options.headSha)
+    return true
+  })
+  assert.equal(preflights,2,'retried exactly once, never more');assert.equal(providers,0)
+  assert.deepEqual(events.map((e)=>e.type),['preflight_timeout','preflight_timeout'])
+  assert.ok(events.every((e)=>e.assignment_id===reviewAssignmentIdentity(options).id&&e.source==='governed-review-runner'))
+})
+
+test('issue 2729: a non-timeout preflight refusal is neither retried nor rerouted',()=>{
+  let preflights=0
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{preflights++;throw new Error('reviewer is quarantined')},resolve:(x)=>x,spawn:()=>assert.fail('must not spawn'),record:()=>assert.fail('must not record')}),(error)=>{assert.ok(!(error instanceof GovernedReviewRerouteError));assert.match(error.message,/quarantined/);return true})
+  assert.equal(preflights,1)
+  assert.throws(()=>preflightWithTimeoutRetry({},reviewAssignmentIdentity(options),{preflight:()=>{throw new Error('doctor answered: broken')}}),/broken/)
+})
+
+test('issue 2729: turn_limit_cancelled is a terminal non-verdict eligible for same-head replacement',()=>{
+  const events=[]
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{},appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:()=>({status:1,stderr:'reason: turn_limit_cancelled private-value',stdout:''}),record:()=>assert.fail('must not record')}),(error)=>{
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.match(error.message,/turn_limit_cancelled:.*turn budget/)
+    assert.ok(!error.message.includes('private-value'))
+    const d=error.startDecision
+    assert.deepEqual([d.action,d.reason,d.head_sha,d.same_head],['governed-return-and-reroute','turn_limit_cancelled',options.headSha,true])
+    return true
+  })
+  assert.deepEqual(events.map((e)=>[e.type,e.reason,e.head_sha]),[['review_started',undefined,undefined],['terminal_non_verdict','turn_limit_cancelled',options.headSha]])
+})
+
+test('issue 2729: other wrapper failures stay plain refusals with no reroute decision',()=>{
+  for(const stderr of ['reason: provider_cancelled','reason: unknown_terminal_reason','timed-out','private-value']){
+    assert.throws(()=>runGovernedReview(options,{preflight:()=>{},resolve:(x)=>x,spawn:()=>({status:1,stderr,stdout:''}),record:()=>assert.fail('must not record')}),(error)=>{assert.equal(error.startDecision,undefined);assert.ok(!(error instanceof GovernedReviewRerouteError));return true})
+  }
+})
+
+test('parseArgs refuses unknown arguments instead of silently defaulting the slot (#2467)',()=>{
+  assert.throws(()=>parseArgs(['--issue','1','--pr','2','--slot','2','--','review']),/unknown governed review argument --slot \(use --review-slot\)/)
+  assert.throws(()=>parseArgs(['--issue','1','--bogus','x']),/unknown governed review argument --bogus/)
+  assert.throws(()=>parseArgs(['issue','1']),/--name value pairs/)
+  const parsed=parseArgs(['--issue','1','--pr','2','--head-sha','a','--reviewer','r','--wrapper','w','--worktree','t','--review-slot','2','--replacement-sequence','3','--assignment-id','x','--skip-doctor','true','--','review','--slot','9'])
+  assert.equal(parsed.slot,2);assert.equal(parsed.issue,1);assert.deepEqual(parsed.wrapperArgs,['review','--slot','9'])
+  assert.equal(parseArgs(['--issue','1','--pr','2']).slot,1)
+})
+
+test('a wrapper call missing new <session-name> is refused with the usage line (#498)',()=>{
+  const head='a'.repeat(40)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-gemini',['--prompt-file','p.md'],head),/must start with the new or ask subcommand; got "--prompt-file"\. Usage after the runner options: -- new <session-name> --prompt-file <file>/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-qwen',['new','--prompt-file','p.md'],head),/ai-qwen new has no <session-name>\. Usage after the runner options: -- new <session-name>/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-deepseek-agent',['reply','--review'],head),/ai-deepseek-agent reply has no <session-name>.*-- reply <session-name>/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-gemini',[],head),/got no wrapper arguments/)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-gemini',['new','review-3100','--prompt-file','p.md'],head),['new','--governed-verdict',head,'review-3100','--prompt-file','p.md'])
+})
+
+import { prepareGovernedReview, reviewCallerEnvironment, promptHeadContract } from './run-governed-review.mjs'
+// popcre/ai-devops#498 items 16-17: paperwork faults are refused or repaired before any reviewer starts.
+test('#498-16 caller variable is kept, detected, or named in a pre-start refusal', () => {
+  assert.deepEqual(reviewCallerEnvironment('ai-muse',{AI_MUSE_CALLER:'codex',CLAUDECODE:'1'}),{AI_MUSE_CALLER:'codex'})
+  assert.deepEqual(reviewCallerEnvironment('ai-muse',{CLAUDECODE:'1'}),{AI_MUSE_CALLER:'claude'})
+  assert.deepEqual(reviewCallerEnvironment('C:/bin/ai-grok-review.cmd',{CODEX_THREAD_ID:'t'}),{AI_GROK_CALLER:'codex'})
+  assert.throws(()=>reviewCallerEnvironment('ai-muse',{}),/needs AI_MUSE_CALLER set.*No reviewer was started.*AI_MUSE_CALLER=claude/)
+  assert.deepEqual(reviewCallerEnvironment('unlisted-wrapper',{}),{})
+})
+test('#498-17 live head is injected, a stale named head or stale prompt verdict line refuses before start', () => {
+  const live='a'.repeat(40),stale='b'.repeat(40)
+  const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
+  const written={}
+  const files=(text)=>({readFile:()=>text,writeFile:(p,t)=>{written[p]=t},tempDir:()=>'T'})
+  const base={pr:3031,wrapper:'ai-muse',wrapperArgs:['new','s1','--prompt-file','brief.md']}
+  const ok=prepareGovernedReview(base,{env:{CLAUDECODE:'1'},github,files:files('Review it.')})
+  assert.equal(ok.options.headSha,live)
+  assert.deepEqual(ok.callerEnv,{AI_MUSE_CALLER:'claude'})
+  const copy=ok.options.wrapperArgs[3]
+  assert.notEqual(copy,'brief.md')
+  assert.ok(written[copy].startsWith('Review it.')&&written[copy].includes(`VERDICT: APPROVE ${live}`))
+  for(const word of ['APPROVE','REVISE','REJECT']){assert.ok(written[copy].includes(`VERDICT: ${word} ${live}`));assert.notEqual(verdictFromOutput(`VERDICT: ${word} ${live}`,live),null)}
+  assert.ok(!/REQUEST_CHANGES/.test(written[copy]))
+  assert.throws(()=>prepareGovernedReview({...base,headSha:stale},{env:{CLAUDECODE:'1'},github,files:files('x')}),/is stale.*now at a{40}.*No reviewer was started/)
+  assert.throws(()=>prepareGovernedReview(base,{env:{CLAUDECODE:'1'},github,files:files(`End with VERDICT: APPROVE ${stale.slice(0,8)}`)}),/names head bbbbbbbb.*No reviewer was started/)
+  assert.equal(prepareGovernedReview({...base,headSha:live.toUpperCase()},{env:{CLAUDECODE:'1'},github,files:files(`VERDICT: APPROVE ${live}`)}).options.headSha,live)
+  assert.deepEqual(promptHeadContract(['send','--prompt','go','--review'],live)[2].startsWith('go'),true)
+  assert.throws(()=>prepareGovernedReview(base,{env:{CLAUDECODE:'1'},github:()=>({status:1,error:new Error('x')}),files:files('x')}),/could not read the live head/)
+})
+
+// Issue #3027 Step 7: the durable start marker is written before the provider launches and fails closed.
+import { recordReviewStart, reviewStartedRef } from './run-governed-review.mjs'
+test('review start marker is recorded before the provider spawns, and a failed record starts nothing',()=>{
+  const order=[]
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,recordStart:()=>{order.push('start');throw new Error('review start marker could not be recorded; no reviewer was started')},spawn:()=>{order.push('spawn');return{status:1,stdout:''}},record:()=>assert.fail('must not record')}),/no reviewer was started/)
+  assert.deepEqual(order,['start'])
+  order.length=0
+  try{runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,recordStart:()=>{order.push('start');return 'ref'},spawn:()=>{order.push('spawn');return{status:1,stdout:''}},record:()=>{}})}catch{}
+  assert.deepEqual(order.slice(0,2),['start','spawn'])
+  const ref=reviewStartedRef({issue:1,pr:2,headSha:'A'.repeat(40),slot:2},7)
+  assert.equal(ref,`refs/db-review-started/1-2-${'a'.repeat(40)}-slot2-seq7`)
+  const req={issue:1,pr:2,headSha:'a'.repeat(40),slot:2,reviewer:'kimi'},held=(r)=>({...r,sequence:7})
+  const refs=new Map(),commits=new Map(),io={makeOwnerCommit:(message)=>{const sha=String(commits.size+1).padStart(40,'c');commits.set(sha,{message});return sha},createRef:(r,sha)=>{if(refs.has(r))return false;refs.set(r,sha);return true},readRef:(r)=>refs.get(r)??null,getCommit:(sha)=>commits.get(sha)??null}
+  assert.equal(recordReviewStart(req,io,123,held),ref)
+  assert.match(commits.get(refs.get(ref)).message,/^db-coordination review-started issue=1 pr=2 .* sequence=7 /)
+  // A retry of the same lease finds its own marker and proceeds.
+  assert.equal(recordReviewStart(req,io,124,held),ref)
+  // A lease the unstarted reclaim already returned owns the marker with its release commit: nothing starts.
+  refs.set(ref,'r'.repeat(40));commits.set('r'.repeat(40),{message:'db-coordination reviewer-silence-release reviewer=kimi'})
+  assert.throws(()=>recordReviewStart(req,io,125,held),/occupied by a reclaim/)
+  // No held lease, a lease reclaimed after the write, or unreadable leases: nothing starts.
+  assert.throws(()=>recordReviewStart(req,io,126,()=>null),/no held reviewer lease/)
+  let calls=0
+  assert.throws(()=>recordReviewStart({...req,pr:3},io,127,(r)=>(calls++?null:{...r,sequence:8})),/reclaimed before the provider launched/)
+  assert.throws(()=>recordReviewStart(req,io,128,()=>{throw new Error('active reviewer leases are unreadable; review start refused')}),/unreadable/)
+  // A runner with no start recorder refuses before any provider launch.
+  order.length=0
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,recordStart:undefined,spawn:()=>{order.push('spawn');return{status:1,stdout:''}},record:()=>{}}),/start recorder is required/)
+  assert.deepEqual(order,[])
+  assert.throws(()=>reviewStartedRef({issue:1,pr:2,headSha:'short'},1),/exact issue/)
 })

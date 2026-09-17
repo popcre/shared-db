@@ -25,6 +25,10 @@ on:
         description: "Production only: comma-separated exact migration versions"
         type: string
         required: false
+      derivation_override:
+        description: "Production only: recorded VERSION:BASE=NOTE override for an absent declared base"
+        type: string
+        required: false
       preview_allowlist:
         description: "Preview only: comma-separated exact migration versions. REQUIRED for both dry-run and apply."
         type: string
@@ -101,6 +105,14 @@ on:
         description: "Material-risk apply only: pinned owner-decision evidence artifact digest"
         type: string
         required: false
+      merged_pr_issue_binding:
+        description: "Only for a merged source PR with no GitHub closing link: PR:ISSUE. Verified against the PR body, completion record, migration versions and claim reservations; any mismatch refuses."
+        type: string
+        required: false
+      migration_train_ref:
+        description: "Approved-migration train dispatch only: the exact refs/db-migration-trains/<id>/<generation>-dispatched record. Its target, main commit and exact version list must equal this run's inputs, or the run refuses before any job."
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -131,6 +143,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # Issue #2729 (popcre/ai-devops#401 Step 6). A train dispatch runs only the
+      # exact immutable dispatched record: same target, same main commit, same
+      # version list, and no later record. Every other job needs this job, so a
+      # refusal here stops preview and production before they start.
+      - name: Refuse a migration-train dispatch that is not the exact recorded train
+        if: github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
+          TRAIN_TARGET: ${{ inputs.target }}
+          TRAIN_COMMIT: ${{ inputs.commit_sha }}
+          TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
+        run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
+      - name: Test the migration-train manifest and manager commands
+        run: node --test scripts/orchestrator-flow/migration-train.test.mjs
       - name: Run SQL checks
         run: bash scripts/check-sql.sh
       - name: Validate hash-bound production verification sidecars
@@ -173,6 +200,10 @@ jobs:
       # preview/production identity contract.
       - name: Test that no workflow pins a preview project ref
         run: node --test scripts/check-workflow-preview-ref.test.mjs
+      # Issue #2429: the ref-config checker must call a live preview branch LIVE and a
+      # stale overlay ref a named failure, never "project deleted".
+      - name: Test the Supabase ref-config checker
+        run: node --test scripts/check-supabase-ref-config.test.mjs
       # Runs the post-merge rehearsal step's OWN map-parsing shell under a real
       # shell. The JavaScript lane tests could not have caught the 2026-08-21
       # one-iteration loop, because the defect was in this workflow's shell.
@@ -184,6 +215,10 @@ jobs:
       # recovery proof nor a bounded dry-run -- green, and empty (#2796).
       - name: Test the preview mode guard
         run: node --test scripts/check-workflow-preview-mode-guard.test.mjs
+      # Issue #2729: a single-PR recovery run reaches automatic production
+      # qualification under the same gates as the merged lane, and nothing weaker.
+      - name: Test the automatic promotion source guard
+        run: node --test scripts/check-workflow-automatic-promotion-source.test.mjs
       # ISSUE #731: this step used to NAME its Python test files one by one. That is
       # exactly how scripts/test_post_batch_app_verification.py (141 tests, merged in
       # PR #719) came to sit in the repository for a whole session without executing
@@ -301,6 +336,7 @@ jobs:
       # asserted below: this job must never write to production.
       PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
       PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       # FIRST STEP ON PURPOSE, before any credential is used. A lane that can be
       # pointed at the wrong project is worse than no lane, so the ref this job
@@ -969,16 +1005,20 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.target == 'preview' &&
       inputs.mode == 'apply' &&
-      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '')
+      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''))
     needs: [validate, preview]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # write: admission creates a db-coordination commit object and ref via the
+      # Git data API. It grants no database credential; this job holds none.
+      contents: write
       actions: write
       checks: read
       issues: read
       pull-requests: read
+    env:
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1003,20 +1043,63 @@ jobs:
             exit 2
           fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-      - name: Refuse anything except one fully qualified merged source PR
+      # Issue #2729 / programme Step 6: a sanctioned single-PR historical recovery
+      # run is first-class. Its preview job already proved (historical_preview_recovery.py)
+      # that the source PR merged, is an ancestor of exact main, authored every
+      # allowlisted version, and names the run that originally applied each one.
+      # That proof travels in the SAME preview artifact the merged lane uses, so it
+      # is read back here rather than trusted from inputs.
+      - name: Read the historical recovery proof from the exact preview artifact
+        if: inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-migration-apply-${{ inputs.commit_sha }}
+          path: ${{ runner.temp }}/recovery-evidence
+      - name: Refuse anything except one fully qualified merged or recovered source PR
+        id: source_guard
         env:
           SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
           SOURCE_MAP: ${{ inputs.merged_preview_source_pr_map }}
           HISTORICAL_SOURCE_PR: ${{ inputs.historical_preview_source_pr }}
           HISTORICAL_SOURCE_MAP: ${{ inputs.historical_preview_source_pr_map }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
+          MAIN_SHA: ${{ inputs.commit_sha }}
+          PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json
         run: |
           set -euo pipefail
-          if [ -n "${SOURCE_MAP:-}" ] || [ -n "${HISTORICAL_SOURCE_PR:-}" ] || [ -n "${HISTORICAL_SOURCE_MAP:-}" ] || ! [[ "$SOURCE_PR" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion cannot infer one source PR from a multi-PR or absent source. Nothing was dispatched. Use the governed migration-train path once it is qualified." >&2
+          # >>> BEGIN automatic-promotion-source-guard (covered by scripts/check-workflow-automatic-promotion-source.test.mjs)
+          # Exactly ONE single source PR: the merged lane's or the recovery lane's.
+          # Maps stay refused; they belong to the governed migration-train path.
+          if [ -n "${SOURCE_MAP:-}" ] || [ -n "${HISTORICAL_SOURCE_MAP:-}" ] || { [ -n "${SOURCE_PR:-}" ] && [ -n "${HISTORICAL_SOURCE_PR:-}" ]; }; then
+            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion cannot infer one source PR from a multi-PR or doubly named source. Nothing was dispatched. Use the governed migration-train path once it is qualified." >&2
             exit 2
           fi
-          if ! [[ "$PREVIEW_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          QUALIFIED_PR="${SOURCE_PR:-${HISTORICAL_SOURCE_PR:-}}"
+          if ! [[ "$QUALIFIED_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::ENGINEER ACTION REQUIRED: automatic single-PR promotion has no single numeric source PR. Nothing was dispatched." >&2
+            exit 2
+          fi
+          if [ -n "${HISTORICAL_SOURCE_PR:-}" ]; then
+            # A recovery qualifies only on the proof its own preview job wrote for
+            # THIS PR, THIS exact main and THIS allowlist, with a merge hash present.
+            if [ ! -f "${RECOVERY_EVIDENCE:-}" ]; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovery run's preview artifact carries no historical-preview-source.json proof. Nothing was dispatched." >&2
+              exit 2
+            fi
+            if [ "$(jq --arg pr "$QUALIFIED_PR" --arg main "$MAIN_SHA" --arg allow "$PREVIEW_ALLOWLIST" '
+                (.sourcePr | tostring) == $pr and
+                .mainSha == $main and
+                (.sourceMergeSha | type == "string" and test("^[0-9a-f]{40}$")) and
+                (.sourcePrMap == null) and
+                ((.allowlist | sort) == ($allow | split(",") | map(sub("^ +"; "") | sub(" +$"; "")) | map(select(length > 0)) | sort))
+              ' "$RECOVERY_EVIDENCE")" != "true" ]; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovery proof does not bind this source PR, exact main, allowlist and one merge hash. Nothing was dispatched." >&2
+              exit 2
+            fi
+            echo "source_merge_sha=$(jq -r .sourceMergeSha "$RECOVERY_EVIDENCE")" >> "$GITHUB_OUTPUT"
+          fi
+          if ! [[ "${PREVIEW_DIGEST:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::ENGINEER ACTION REQUIRED: the successful preview job did not publish one canonical artifact digest. Nothing was dispatched." >&2
             exit 2
           fi
@@ -1025,18 +1108,31 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: automatic production policy is not active. Nothing was dispatched." >&2
             exit 2
           fi
+          echo "source_pr=$QUALIFIED_PR" >> "$GITHUB_OUTPUT"
+          # <<< END automatic-promotion-source-guard
       - name: Re-prove current main, guarded merge, and durable exact-head verdict
         id: governed_review
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          RECOVERED_MERGE_SHA: ${{ steps.source_guard.outputs.source_merge_sha }}
         run: |
           set -euo pipefail
           git fetch origin main
           if [ "$(git rev-parse HEAD)" != "$MAIN_SHA" ] || [ "$(git rev-parse origin/main)" != "$MAIN_SHA" ]; then
             echo "::error::ENGINEER ACTION REQUIRED: main moved after preview. Nothing was dispatched; qualify the new exact main instead of reusing stale evidence." >&2
             exit 2
+          fi
+          if [ -n "${RECOVERED_MERGE_SHA:-}" ]; then
+            # Recovery only: the proven merge hash must still be the live PR's
+            # merge commit and an ancestor of exact main. Every gate below is the
+            # same one the merged lane passes.
+            LIVE_MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq 'if .merged == true then .merge_commit_sha else "" end')"
+            if [ "$LIVE_MERGE_SHA" != "$RECOVERED_MERGE_SHA" ] || ! git merge-base --is-ancestor "$RECOVERED_MERGE_SHA" "$MAIN_SHA"; then
+              echo "::error::ENGINEER ACTION REQUIRED: the recovered merge hash is not the live merge commit of source PR ${SOURCE_PR} on exact main. Nothing was dispatched." >&2
+              exit 2
+            fi
           fi
           SOURCE_HEAD="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq '.head.sha')"
           if ! [[ "$SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
@@ -1053,11 +1149,41 @@ jobs:
           ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
+      # ISSUE #3039. Ask the production gate's own evidence question BEFORE
+      # dispatching. A historical rebind whose original apply ran on an older
+      # commit is refused by the gate's unchanged producer pin; qualification
+      # then takes the gate's ephemeral-CI route on the exact source PR head for a
+      # non-high-risk migration, or refuses without dispatching.
+      - name: Qualify the evidence route the production gate accepts
+        id: evidence_route
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ inputs.commit_sha }}
+          PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          HISTORICAL_PREVIEW_PR: ${{ inputs.historical_preview_source_pr }}
+          RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json
+        run: |
+          set -euo pipefail
+          RECORD_ARGS=()
+          if [ -n "${HISTORICAL_PREVIEW_PR:-}" ]; then
+            RECORD_ARGS=(--recovery-record "$RECOVERY_EVIDENCE")
+          fi
+          python scripts/production_business_risk_gate.py qualify-route \
+            --main-sha "$MAIN_SHA" --allowlist "$PRODUCTION_ALLOWLIST" --pr "$SOURCE_PR" \
+            "${RECORD_ARGS[@]}" > "$RUNNER_TEMP/evidence-route.json"
+          cat "$RUNNER_TEMP/evidence-route.json"
+          ROUTE="$(jq -r '.route' "$RUNNER_TEMP/evidence-route.json")"
+          case "$ROUTE" in
+            preview) echo "ephemeral_check_run_id=" >> "$GITHUB_OUTPUT" ;;
+            ephemeral) echo "ephemeral_check_run_id=$(jq -r '.ephemeral_check_run_id' "$RUNNER_TEMP/evidence-route.json")" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::ENGINEER ACTION REQUIRED: unknown evidence route. Nothing was dispatched." >&2; exit 2 ;;
+          esac
       - name: Write immutable automatic review evidence
         env:
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
           SOURCE_HEAD: ${{ steps.governed_review.outputs.source_head }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
@@ -1101,12 +1227,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
-          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}
+          EPHEMERAL_CHECK_RUN_ID: ${{ steps.evidence_route.outputs.ephemeral_check_run_id }}
         run: |
           set -euo pipefail
+          # actions/upload-artifact@v4 reports artifact-digest as bare hex, while
+          # the evidence verifier and the preview digest use sha256:<hex> (#2883).
+          if [[ "$REVIEW_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            REVIEW_DIGEST="sha256:${REVIEW_DIGEST}"
+          fi
           if ! [[ "$REVIEW_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::ENGINEER ACTION REQUIRED: automatic review evidence has no canonical artifact digest. Nothing was dispatched." >&2
             exit 2
@@ -1114,12 +1247,15 @@ jobs:
           jq -n \
             --arg sha "$MAIN_SHA" \
             --arg allowlist "$PRODUCTION_ALLOWLIST" \
+            --arg derivation_override "$DERIVATION_OVERRIDE" \
             --arg source_pr "$SOURCE_PR" \
             --arg work_issue "$WORK_ISSUE" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg review_digest "$REVIEW_DIGEST" \
             --arg preview_digest "$PREVIEW_DIGEST" \
-            '{ref:"main",inputs:{target:"production",mode:"apply",production_allowlist:$allowlist,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,preview_run_id:$run_id,preview_artifact_digest:$preview_digest}}' \
+            --arg binding "${SHARED_DB_MERGED_PR_ISSUE_BINDING:-}" \
+            --arg ephemeral "${EPHEMERAL_CHECK_RUN_ID:-}" \
+            '{ref:"main",inputs:({target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,merged_pr_issue_binding:$binding} + (if $ephemeral == "" then {preview_run_id:$run_id,preview_artifact_digest:$preview_digest} else {ephemeral_check_run_id:$ephemeral} end))}' \
             > "$RUNNER_TEMP/automatic-production-dispatch.json"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \
@@ -1163,7 +1299,7 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       - uses: supabase/setup-cli@v1
         with:
           version: 2.105.0
@@ -1229,22 +1365,33 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py prepare \
             --repo "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/bounded-production" \
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Run and verify bounded dry-run
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
           cd "$RUNNER_TEMP/bounded-production"
           supabase link --project-ref "$PRODUCTION_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           set -o pipefail
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           # Re-prove the checkout is still bounded AT THE POINT OF USE, and keep
           # this the LAST command before the push so nothing can run in between.
           # The bound that makes --include-all safe below is the FILESYSTEM, not
@@ -1256,7 +1403,8 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
             --dir "$RUNNER_TEMP/bounded-production" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
           # --include-all is REQUIRED here, and only here. Most of the pending
           # production migrations sort BELOW the remote ledger head, and the CLI
           # refuses to insert those without it. AGENTS.md 5.1(4) licenses this
@@ -1348,7 +1496,7 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       # BEFORE ANY CREDENTIAL IS USED. With the automatic risk policy active, the
       # business-risk gate cannot run without the merged source PR. Run 34615626046
       # was dispatched without it and died much later on a bare `test -n` that named
@@ -1427,11 +1575,17 @@ jobs:
       - name: Hard guard preflight
         env:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py preflight \
             --repo "$GITHUB_WORKSPACE" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Verify immutable production review evidence
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1455,6 +1609,22 @@ jobs:
           if [ "$active" = false ]; then
             echo "New automatic policy is inactive. The production environment's old exact owner-approval rule remains mandatory."
           fi
+      # #3027 Step 6. A train dispatch hands the risk gate the EXACT record its
+      # immutable ref holds, re-verified here (same target, main and allowlist, no
+      # later generation). The gate then proves every entry against its own
+      # authoring PR and preview binding. No train ref: this step is skipped and
+      # the single source-PR rule below is unchanged.
+      - name: Read the exact dispatched migration train record
+        if: steps.policy_activation.outputs.active == 'true' && inputs.migration_train_ref != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+        run: |
+          node scripts/orchestrator-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
+            --target production --commit-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
+            --output "$RUNNER_TEMP/migration-train-record.json"
       - name: Derive business risk from governed artifacts
         if: steps.policy_activation.outputs.active == 'true'
         env:
@@ -1474,10 +1644,15 @@ jobs:
           OWNER_DECISION_RUN_ID: ${{ inputs.owner_decision_run_id }}
           OWNER_DECISION_ARTIFACT_DIGEST: ${{ inputs.owner_decision_artifact_digest }}
           EPHEMERAL_CHECK_RUN_ID: ${{ inputs.ephemeral_check_run_id }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
+          TRAIN_ARGS=()
+          if [ -n "$TRAIN_REF" ]; then
+            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
+          fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -1514,7 +1689,7 @@ jobs:
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
             --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
-            "${ROUTE_ARGS[@]}" \
+            "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \
             --rate-limit-wait-seconds 900 \
@@ -1549,6 +1724,7 @@ jobs:
     environment: production
     env:
       PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
+      SHARED_DB_MERGED_PR_ISSUE_BINDING: ${{ inputs.merged_pr_issue_binding }}
     steps:
       - name: Check exact confirmation
         env:
@@ -1585,8 +1761,10 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          # #3153: exact equality refused every apply once any commit landed.
+          # The production freshness rule tolerates only documentation, .agent
+          # evidence and test files; every other move still refuses.
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       # The freeze revokes authorization on the head of EVERY open pull request,
       # including PRs with nothing to do with this promotion. Two things were wrong
       # with the first version of this step (issue #2116):
@@ -1609,11 +1787,11 @@ jobs:
         run: |
           set -euo pipefail
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" \
-            api --paginate 'repos/u2giants/shared-db/pulls?state=open&per_page=100' \
+            api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[].head.sha' | sort -u > "$RUNNER_TEMP/open-pr-heads"
           while IFS= read -r head_sha; do
             [ -n "$head_sha" ] || continue
-            gh api "repos/u2giants/shared-db/statuses/$head_sha" \
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
               -f state=failure \
               -f context='Migration guarded merge authorization' \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
@@ -1642,6 +1820,22 @@ jobs:
           set -euo pipefail
           active="$(jq -r 'if .active == true then "true" elif .active == false then "false" else error("activation must be boolean") end' config/production-risk-policy-activation.json)"
           echo "active=$active" >> "$GITHUB_OUTPUT"
+      # #3027 Step 6. A train dispatch hands the risk gate the EXACT record its
+      # immutable ref holds, re-verified here (same target, main and allowlist, no
+      # later generation). The gate then proves every entry against its own
+      # authoring PR and preview binding. No train ref: this step is skipped and
+      # the single source-PR rule below is unchanged.
+      - name: Read the exact dispatched migration train record
+        if: steps.policy_activation.outputs.active == 'true' && inputs.migration_train_ref != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+        run: |
+          node scripts/orchestrator-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
+            --target production --commit-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
+            --output "$RUNNER_TEMP/migration-train-record.json"
       - name: Re-derive business risk after the approval wait
         if: steps.policy_activation.outputs.active == 'true'
         env:
@@ -1661,10 +1855,15 @@ jobs:
           OWNER_DECISION_RUN_ID: ${{ inputs.owner_decision_run_id }}
           OWNER_DECISION_ARTIFACT_DIGEST: ${{ inputs.owner_decision_artifact_digest }}
           EPHEMERAL_CHECK_RUN_ID: ${{ inputs.ephemeral_check_run_id }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
+          TRAIN_ARGS=()
+          if [ -n "$TRAIN_REF" ]; then
+            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
+          fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -1699,7 +1898,7 @@ jobs:
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
             --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
-            "${ROUTE_ARGS[@]}" \
+            "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \
             | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
@@ -1771,30 +1970,42 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           python scripts/production_migration_guard.py prepare \
             --repo "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/bounded-production" \
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
       - name: Fresh dry-run, then apply
         id: apply
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
           cd "$RUNNER_TEMP/bounded-production"
           supabase link --project-ref "$PRODUCTION_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           set -o pipefail
+          DERIVATION_ARGS=()
+          if [ -n "$DERIVATION_OVERRIDE" ]; then
+            DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")
+          fi
           # Re-prove the bound AT THE POINT OF USE. What makes --include-all safe
           # is the FILESYSTEM (prepare kept exactly `remote-ledger | allowlist`),
           # never the flag. Keep this the last check before the push.
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
             --dir "$RUNNER_TEMP/bounded-production" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
+            "${DERIVATION_ARGS[@]}"
           # A FRESH dry-run inside this same run, immediately before the real
           # push. The earlier production-dry-run job was a different run against a
           # different ledger snapshot; only this one describes the database we are
@@ -1942,7 +2153,7 @@ jobs:
             # swallowing the failure would print "left as-is" and exit 0 while a head
             # this run revoked stays red forever -- the exact outcome #2116 exists to
             # kill, with a misleading audit line on top. Fail the step and say why.
-            if ! current="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/u2giants/shared-db/commits/$head_sha/status" \
+            if ! current="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$head_sha/status" \
               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | "\(.state)|\(.description)"')"; then
               echo "$head_sha: could not READ the authorization status, so this freeze's revocation may still stand. Re-run guarded-migration-merge.yml for this head." >&2
               exit 1
@@ -1953,7 +2164,7 @@ jobs:
               echo "$head_sha: left as-is (state='${state:-none}')"
               continue
             fi
-            gh api "repos/u2giants/shared-db/statuses/$head_sha" \
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
               -f state=pending \
               -f context='Migration guarded merge authorization' \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \

@@ -1,59 +1,48 @@
 {
   "schema_version": 1,
-  "generation": 10,
-  "work_issue": 3009,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Make the unfiltered PopSG v2 default browse (files and guides) complete well under the 8 s authenticated statement timeout by serving totals, facets and guide rows from a refreshed snapshot, without raising any timeout.",
-  "base_sha": "0c17774a330b0b0eaeffe604f49d799ba02986fa",
-  "dispatcher": "shared-db orchestrator u2giants/shared-db#3106 relaying Albert Hazan owner chat: finish #3009 ASAP",
-  "worker": "Claude Opus 5 #3009 author (claude-3009-author)",
-  "branch": "claude/3009-sg-default-browse-snapshot",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-3009-sg-default-snapshot",
+  "generation": 2,
+  "work_issue": 3153,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
+  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
+  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
+  "worker": "Claude Opus 5 #3153 subagent",
+  "branch": "claude/prod-gate-config-scope-a1",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
   "allowed_paths": [
-    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
-    ".github/live-proofs/3009.sql",
-    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
-    ".github/live-proofs/3009.sql",
-    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table public.style_guide_search_documents",
-    "table public.style_guide_render_queue",
-    "table public.style_guide_files"
-  ],
-  "db_writes": [
-    "function public.search_style_guide_library_v2",
-    "function public.refresh_style_guide_library_default_snapshot",
-    "materialized view public.style_guide_library_default_guides",
-    "materialized view public.style_guide_library_default_summary",
-    "index public.style_guide_library_default_guides_group_uidx",
-    "index public.style_guide_library_default_guides_modified_idx",
-    "index public.style_guide_library_default_guides_name_idx",
-    "index public.style_guide_library_default_summary_mode_uidx",
-    "table public.style_guide_library_default_guides",
-    "table public.style_guide_library_default_summary"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No statement timeout increase",
-    "No change to objects owned by PR #3118 (#3023)",
-    "No DDL through the Supabase MCP"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py",
+    "node --test scripts/check-main-tip-freshness.test.mjs"
   ],
   "assumptions": [
-    "Unfiltered totals, facets and guide rows may lag the corpus by up to one five-minute refresh; files page rows stay live"
+    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
+    "No production job step runs a test file or reads .agent evidence"
   ],
   "stop_conditions": [
-    "Stop if preview shows the snapshot output differs from the full body beyond tie order the previous body already left undefined"
+    "Stop if a preview-job tool reads the coverage manifest"
   ]
 }

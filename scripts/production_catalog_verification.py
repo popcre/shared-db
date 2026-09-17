@@ -4593,5 +4593,28 @@ CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
 )
 
 
+POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
+    # Issue #3023. The refresh reads search-sync candidates from a narrow queue
+    # fed by a trigger instead of scanning every style guide file.
+    "exists (select 1 from pg_class c where c.oid=to_regclass('public.style_guide_search_sync_queue')"
+    " and c.relkind='r' and c.relrowsecurity"
+    " and not has_table_privilege('anon',c.oid,'SELECT')"
+    " and not has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.style_guide_files_queue_search_sync()')"
+    " and p.prosecdef and md5(p.prosrc)='2b082d5e84238234f3d20669b2931f0c'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE'))"
+    " and exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.style_guide_files')"
+    " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"
+    " and t.tgfoid=to_regprocedure('public.style_guide_files_queue_search_sync()'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')"
+    " and p.prosecdef and md5(p.prosrc)='52b676f90e4500dc323c2f9e6e6f3c97'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
+)
+CATALOG_CONTRACTS["popsg_refresh_search_sync_queue_v1"] = (
+    POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT
+)
+
 if __name__ == "__main__":
     raise SystemExit(main())

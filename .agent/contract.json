@@ -1,57 +1,75 @@
 {
-  "allowed_paths": [
-    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260916232835.json",
-    "config/production-verification-sidecar-registry.json",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "assumptions": [
-    "dflow_prod.users and dflow_prod.comments already exist in the preview and production-shaped schemas.",
-    "The two columns remain nullable UUIDs with no defaults and no foreign keys for exact cutover compatibility.",
-    "Generated types remain a required post-preview application-return artifact; shared-db cannot truthfully generate the dflow_prod contract before this migration reaches preview."
-  ],
+  "schema_version": 1,
+  "work_issue": 3023,
+  "generation": 2,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "The nightly PopSG crawl's public.refresh_style_guide_matviews call completes inside the unchanged 8s statement timeout at current corpus size, with identical search-document sync semantics.",
   "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
-  "branch": "codex/issue-2870-cutover-columns",
-  "db_reads": [],
-  "db_writes": [
-    "column dflow_prod.comments.app_comment_id",
-    "column dflow_prod.users.app_profile_id",
-    "table dflow_prod.comments",
-    "table dflow_prod.users"
-  ],
-  "dispatcher": "Claude shared-db orchestrator (marker #3106)",
-  "file_writes": [
-    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
-    "scripts/production-verification-sidecars/20260916232835.json",
+  "dispatcher": "Albert Hazan (session request relayed by shared-db orchestrator marker #3106)",
+  "worker": "claude-sub-3023",
+  "branch": "claude/3023-sg-refresh-bounded",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/sg-3023-refresh-bounded",
+  "allowed_paths": [
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
     "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 7,
-  "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
+  "file_writes": [
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
+  ],
   "prohibited_actions": [
-    "Do not write application rows.",
-    "Do not add foreign keys, defaults, indexes, or non-null constraints.",
-    "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."
+    "Do not raise any statement timeout",
+    "Do not delete or replay application rows",
+    "Do not write production or dispatch production manually",
+    "Do not change the refresh function signature, grants or caller contract"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "ephemeral preview-equivalent database contract test",
-    "node scripts/check-production-verification-sidecars.mjs",
+    "python3 scripts/test_migration_derivation.py",
+    "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
     "git diff --check"
   ],
-  "route": "shared-db-orchestrator",
-  "schema_version": 1,
-  "stop_conditions": [
-    "Stop if either parent table is absent.",
-    "Stop if compatibility requires row writes or a foreign key.",
-    "Stop if the reserved migration version collides."
+  "assumptions": [
+    "Claim #3113 reserves version 20260917005221 and covers every declared write",
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the full-table sync candidate scan about 11.6s with zero candidates",
+    "Nothing else writes source_identity inputs without updating style_guide_files, so an update trigger observes every identity change"
   ],
-  "work_issue": 2870,
-  "work_type": "structural",
-  "worker": "subagent:issue-2870-cutover-columns",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2870-cutover-columns/shared-db"
+  "stop_conditions": [
+    "Claim #3113 ownership changes",
+    "A needed change lies outside the declared objects",
+    "Preview apply or the refresh exceeds the 8s ceiling",
+    "A gate refuses; do not bypass it or raise a timeout"
+  ]
 }

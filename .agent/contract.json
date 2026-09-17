@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3159,
+  "work_issue": 3168,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop the production business-risk gate forcing the manual route for routine migrations (#3104 PR #3131, #2866): classify a CREATE OR REPLACE FUNCTION that re-establishes a function exactly as the latest earlier migration left it (same header, comment and grants), and narrowing REVOKEs, as routine, while new functions, header changes, widened grants, intervening grant changes and data changes still report every risk.",
+  "goal": "Stop the production risk gate's preview producer pin refusing #2870 and #2866, whose previews ran at main-line 426cca7c, over later main changes to custody-only producers: for an exact-main target and a ref proved an ancestor of exact main, tolerate an explicit custody-only producer set and a workflow that differs only by explicit custody rewrites, while apply-shaping producers and non-main-line refs still refuse.",
   "base_sha": "03d540a6ff170a0b0141d9cd10a68ea6497888d0",
   "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3159 subagent",
-  "branch": "claude/3159-risk-gate-routine-fn",
+  "worker": "Claude Opus 5 #3168 subagent",
+  "branch": "claude/producer-pin-custody",
   "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",
@@ -32,9 +32,9 @@
     "python -m pytest -q scripts/test_production_business_risk_gate.py"
   ],
   "assumptions": [
-    "The tokeniser empties function bodies, so the comparison covers header, comment and grants; the body is covered by the required independent review"
+    "A preview ref contained in exact main ran reviewed main-line copies of custody-only producers, which never execute, derive or write the applied SQL or its evidence"
   ],
   "stop_conditions": [
-    "Stop if any widening grant or data change would classify as routine"
+    "Stop if an apply-shaping producer difference or a non-main-line ref would pass the pin"
   ]
 }

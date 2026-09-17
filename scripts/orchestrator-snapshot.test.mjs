@@ -9,7 +9,7 @@ import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEve
 
 const NOW = '2026-09-15T12:00:00.000Z'
 const minutesAgo = (m) => new Date(Date.parse(NOW) - m * 60000).toISOString()
-const ownerComment = (event) => ({ author_association: 'OWNER', body: formatEventComment(event) })
+const ownerComment = (event) => ({ author_association: 'OWNER', author: 'u2giants', body: formatEventComment(event) })
 const event = (issue, state, minutes) => coordinationEvent({ eventType: state, workIssue: issue, actor: 'test', timestamp: minutesAgo(minutes) })
 
 function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CLAIM: issue-802-columns']], leases = [], locks = [] } = {}) {
@@ -52,8 +52,11 @@ test('issue 3148 only a request the queue audit itself would admit alarms after 
   assert.deepEqual(readyRequestCandidates(issues, { dependencyStates }).map((row) => row.work_issue).sort(), [800, 950, 954, 955])
   let asked = null
   const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], dependencyStates: (numbers) => { asked = numbers; return dependencyStates }, issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
-  const { unentered } = gatherLiveInput('o/r', io)
+  const { unentered, unclaimedEvents } = gatherLiveInput('o/r', io)
   assert.deepEqual(asked, [953, 9999])
+  // #3158: the entered-but-unclaimed request's events are read, so the alarm can watch that window.
+  assert.deepEqual(unclaimedEvents.map((e) => [e.work_issue, e.event_type]), [[954, 'entered']])
+  assert.deepEqual(stalledOutcomes(unclaimedEvents, { now: NOW }).stalled_outcomes.map((row) => [row.work_issue, row.state]), [[954, 'entered']])
   assert.deepEqual(unentered.map((row) => row.work_issue).sort(), [950, 955], 'entered #954 and claim-title-owned #800 are excluded')
   assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[950, 'requested', 31]])
 })
@@ -93,6 +96,8 @@ test('only trusted, well-formed outcome events are read', () => {
   const events = outcomeEventsFromComments([
     ownerComment(event(800, 'dispatched', 5)),
     { author_association: 'NONE', body: formatEventComment(event(800, 'merged', 1)) },
+    { author_association: 'OWNER', body: formatEventComment(event(800, 'merged', 2)) },
+    { author_association: 'OWNER', author: 'mallory', body: formatEventComment(event(800, 'merged', 3)) },
     { author_association: 'OWNER', body: '```db-coordination-event\nnot json\n```' },
   ])
   assert.deepEqual(events.map((e) => e.event_type), ['dispatched'])

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "work_issue": 3159,
+  "work_issue": 3168,
   "outcome": "ready-for-merge",
-  "pr": 3167,
+  "pr": 3169,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3159/1",
-  "contract_sha256": "e08befefa620e62c79a482d2ab29367f1403b1fd8789cb13d5c9b365ecd5649f",
-  "head_sha": "469742b691d22817b385a2bd59c77f662c65dd80",
+  "contract_ref": "refs/db-contracts/3168/1",
+  "contract_sha256": "5dc63fa52c2468a06835e3ec5e4d864661fb3ec9c41519184c0b7711b411cba8",
+  "head_sha": "5e8b8a23236c664b0b73d04676c4406349bc4c2e",
   "files_changed": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py"
@@ -17,11 +17,11 @@
     {
       "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "172 passed, 0 failed, 0 skipped; 3 new routine-classification tests (including the real #3104/#2866 migrations) fail on main, 7 fail-closed controls pass on both. Full scripts pytest: 1309 passed, 8 skipped."
+      "evidence": "169 passed; class MainLineCustodyOnlyProducerDriftTests: the positive tests and the apply-shaping control fail on main code. Full scripts pytest: 1306 passed, 8 skipped. Read-only dry run of prove_preview_producer_matches_main with live GitHub reads, preview ref 426cca7c (runs 35174395763 and 35175207318), promoted versions 20260917013422 and 20260916232818: refused on main code at 03d540a6 (different shared-supabase-migrations.yml), passes with this change at 03d540a6 and at b2d73ca9."
     }
   ],
   "assumptions_resolved": [
-    "Function bodies are emptied by the tokeniser; the re-establishment match compares full header, comment and grant statements only, and the body is left to the required independent review"
+    "Custody-only tolerance applies only to an exact-main target after the ref is proved an ancestor of exact main; apply-shaping producers remain byte-compared and tolerated paths are not counted as comparisons"
   ],
   "stop_conditions_hit": []
 }

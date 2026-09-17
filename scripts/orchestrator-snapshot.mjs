@@ -65,7 +65,7 @@ export function writeFileAtomic(file, text) {
 
 const labelNames = (issue) => (issue?.labels ?? []).map((label) => (typeof label === 'string' ? label : label?.name)).filter(Boolean)
 
-/** Outcome events from trusted OWNER comments; a malformed block is skipped, never fatal. */
+/** Outcome events from trusted operator comments (login plus owner-implied association, #2530); a malformed block is skipped, never fatal. */
 export function outcomeEventsFromComments(comments = []) {
   const events = []
   for (const comment of trustedOutcomeComments(comments)) {
@@ -233,7 +233,7 @@ export const defaultIo = {
   openIssues: (repo) => ghPages(`repos/${repo}/issues?state=open&per_page=100`),
   openPullRequests: (repo) => JSON.parse(gh(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,statusCheckRollup'])),
   matchingRefs: (repo, prefix) => JSON.parse(gh(['api', `repos/${repo}/git/matching-refs/${prefix}`])),
-  issueComments: (repo, issue) => ghPages(`repos/${repo}/issues/${issue}/comments?per_page=100`),
+  issueComments: (repo, issue) => ghPages(`repos/${repo}/issues/${issue}/comments?per_page=100`).map((c) => ({ ...c, author: c.user?.login })),
   // One GraphQL read for every owned issue's comments instead of one paginated
   // REST read per issue. An issue whose comments do not fit one page, or that
   // GraphQL cannot resolve, falls back to the REST reader so nothing is dropped
@@ -243,14 +243,14 @@ export const defaultIo = {
     const result = new Map()
     for (let start = 0; start < issues.length; start += 25) {
       const chunk = issues.slice(start, start + 25)
-      const fields = 'comments(first:100){pageInfo{hasNextPage} nodes{authorAssociation body}}'
+      const fields = 'comments(first:100){pageInfo{hasNextPage} nodes{authorAssociation author{login} body}}'
       const query = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${chunk.map((n) => `i${Number(n)}:issueOrPullRequest(number:${Number(n)}){...on Issue{${fields}} ...on PullRequest{${fields}}}`).join(' ')}}}`
       let data = null
       try { data = JSON.parse(gh(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`]))?.data?.repository ?? null } catch { data = null }
       for (const n of chunk) {
         const connection = data?.[`i${Number(n)}`]?.comments
         if (!connection || connection.pageInfo?.hasNextPage || !Array.isArray(connection.nodes)) { result.set(n, defaultIo.issueComments(repo, n)); continue }
-        result.set(n, connection.nodes.map((node) => ({ author_association: node.authorAssociation, body: node.body })))
+        result.set(n, connection.nodes.map((node) => ({ author_association: node.authorAssociation, author: node.author?.login, body: node.body })))
       }
     }
     return result
@@ -297,7 +297,10 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
   const dependencyStates = references.length && io.dependencyStates ? io.dependencyStates(references) : null
   const candidates = readyRequestCandidates(issues, { dependencyStates }).filter((row) => !owned.has(row.work_issue))
   const candidateComments = candidates.length ? (io.issueCommentsMany ? io.issueCommentsMany(repo, candidates.map((row) => row.work_issue)) : new Map(candidates.map((row) => [row.work_issue, io.issueComments(repo, row.work_issue)]))) : new Map()
-  const unentered = candidates.filter((row) => outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).length === 0)
+  const candidateEvents = new Map(candidates.map((row) => [row.work_issue, outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).filter((event) => event.work_issue === row.work_issue)]))
+  const unentered = candidates.filter((row) => candidateEvents.get(row.work_issue).length === 0)
+  // Entered but no owning claim yet (#3158): neither the owned-event alarm nor the unentered alarm sees these.
+  const unclaimedEvents = candidates.flatMap((row) => candidateEvents.get(row.work_issue))
   const leaseRefs = io.matchingRefs(repo, REVIEWER_LEASE_PREFIX)
   const stageRefs = io.matchingRefs(repo, 'db-coordination').filter((ref) => STAGE_LOCK_REFS.includes(ref.ref))
   return {
@@ -313,6 +316,7 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
     sessionStarted: resolved?.routing?.started ?? null,
     // Kept out of `input` so the sealed snapshot digest is unchanged.
     unentered,
+    unclaimedEvents,
   }
 }
 

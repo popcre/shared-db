@@ -11,7 +11,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ghJson } from '../lib/github-transport.mjs'
+import { nextPageEndpoint, sharedConditionalGet } from '../lib/github-conditional.mjs'
 
 export class RunnerLaneError extends Error {}
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -173,8 +173,26 @@ export function runAggregate({ repo, headSha, registry = loadRegistry(), fetchRu
 // filter=all, not filter=latest: `latest` selects by completed_at and can omit queued or in-progress
 // runs, and its total_count semantics are not pinned. The newest run per name (highest id) is kept,
 // which is what a re-run means, while queued runs stay visible so the verdict waits for them.
-export function fetchCheckRuns(repo, sha, { readJson = ghJson } = {}) {
-  const payload = readJson(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=all`])
+// Issue #2773: without an injected reader every page is a host-shared conditional
+// read (ETag -> free 304 when nothing changed), so an aggregate waiting 45 minutes
+// on unchanged checks no longer spends a primary-quota request per poll. The
+// pages are validated below exactly as a slurped listing was.
+export function readCheckRunPagesConditionally(repo, sha, { readPage = sharedConditionalGet, maxPages = 50 } = {}) {
+  const pages = []
+  let endpoint = `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=all`
+  while (endpoint) {
+    if (pages.length >= maxPages) throw new RunnerLaneError(`check-run listing exceeded ${maxPages} pages; refusing rather than judging a partial read`)
+    const page = readPage(endpoint)
+    try { pages.push(JSON.parse(page.body)) } catch { throw new RunnerLaneError('check-run listing returned unreadable JSON; refusing rather than judging a partial read') }
+    endpoint = nextPageEndpoint(page.link)
+  }
+  return pages
+}
+
+export function fetchCheckRuns(repo, sha, { readJson = null, readPage } = {}) {
+  const payload = readJson
+    ? readJson(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=all`])
+    : readCheckRunPagesConditionally(repo, sha, readPage ? { readPage } : {})
   const pages = Array.isArray(payload) ? payload : null
   if (!pages || !pages.length) throw new RunnerLaneError('check-run listing did not return pages; refusing rather than judging a partial read')
   const rows = []

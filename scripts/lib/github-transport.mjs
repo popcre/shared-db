@@ -64,6 +64,10 @@
 // reads or how it judges it.
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
 export class GitHubTransportError extends Error {}
 
@@ -152,6 +156,60 @@ export function rateLimitResetDelayMs(raw, args, nowMs) {
   return Math.max(0, resetSeconds * 1000 - nowMs)
 }
 
+// HOST-WIDE EXHAUSTION LATCH (issue #2773)
+// ----------------------------------------
+// Every session on a machine shares one hourly bucket per token. Before this
+// latch, each session discovered exhaustion by spending its own failing request,
+// then each one retried on its own schedule -- N sessions made N refusals per
+// attempt against a bucket that could not answer any of them. The first caller
+// to observe a primary exhaustion now records the bucket's reset time in a
+// host-wide file; every later call for that bucket, from any process, stops
+// WITHOUT a wire request until the reset (or waits for it, if it opted in to the
+// bounded wait above). The latch only ever REFUSES or DELAYS a call; it never
+// answers one, so no gate can read a stale fact through it.
+//
+// Keyed by bucket (core/graphql) and a truncated SHA-256 of the token identity,
+// so the Actions installation token and a person's login never block each other.
+// An unreadable or malformed latch file is ignored and removed: the latch is a
+// traffic brake, and the call it would have stopped still fails closed on its own
+// real 403 if the bucket is in fact empty.
+export const UNKNOWN_RESET_LATCH_MS = 60 * 1000
+
+export function hostQuotaLatch(env = process.env) {
+  if (String(env?.GITHUB_QUOTA_LATCH ?? '').toLowerCase() === 'off') return null
+  const dir = env?.GITHUB_QUOTA_LATCH_DIR || path.join(tmpdir(), 'shared-db-github-quota')
+  const identity = createHash('sha256').update(String(env?.GH_TOKEN || env?.GITHUB_TOKEN || 'gh-cli-login')).digest('hex').slice(0, 16)
+  const file = (args) => path.join(dir, `${identity}-${usesGraphqlQuota(args) ? 'graphql' : 'core'}.json`)
+  return {
+    read(args) {
+      try {
+        const row = JSON.parse(readFileSync(file(args), 'utf8'))
+        return Number.isFinite(row?.resetMs) ? row.resetMs : null
+      } catch (error) {
+        if (error?.code !== 'ENOENT') rmSync(file(args), { force: true })
+        return null
+      }
+    },
+    write(args, resetMs) {
+      mkdirSync(dir, { recursive: true })
+      const target = file(args)
+      const staging = `${target}.${process.pid}.${Date.now()}.tmp`
+      writeFileSync(staging, JSON.stringify({ resetMs }))
+      renameSync(staging, target)
+    },
+  }
+}
+
+export function latchedRateLimitError(args, resetMs, wrapError) {
+  const detail = `GitHub API rate limit exceeded (host-wide latch; no request sent): the quota resets at ${new Date(resetMs).toISOString()}`
+  const error = wrapError ? wrapError(detail, null) : new GitHubTransportError(`GitHub command failed: ${detail}`)
+  error.rateLimitExhausted = true
+  error.transientTransport = false
+  error.quotaLatched = true
+  error.stderr = detail
+  return error
+}
+
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 const MUTATING_SUBCOMMANDS = new Set([
   'merge', 'close', 'edit', 'comment', 'create', 'review', 'cancel', 'rerun', 'delete', 'reopen',
@@ -208,6 +266,9 @@ export function runGitHubCommand(args, {
   // an uncounted probe plus a replay. It therefore fails fast by default.
   maxRateLimitWaitMs = attempts <= 1 ? 0 : rateLimitMaxWaitMs(),
   now = Date.now,
+  // Only the real binary shares the host latch by default. An injected fake
+  // executor is a test fixture and must never read or write the machine's latch.
+  quotaLatch = executor === execFileSync ? hostQuotaLatch() : null,
 } = {}) {
   const mutating = isMutatingCall(args) || input !== undefined
   const allowed = mutating && !idempotentWrite ? 1 : Math.max(1, attempts)
@@ -223,6 +284,20 @@ export function runGitHubCommand(args, {
   let attempt = 0
   let rateLimitWaited = false
   for (;;) {
+    let latchedReset = null
+    try { latchedReset = quotaLatch ? quotaLatch.read(args) : null } catch { latchedReset = null }
+    if (latchedReset !== null && latchedReset > now()) {
+      const delay = latchedReset - now()
+      if (!mutating && !rateLimitWaited && maxRateLimitWaitMs > 0 && delay <= maxRateLimitWaitMs) {
+        rateLimitWaited = true
+        reportStderr(`gh ${args.join(' ')}
+GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1000) + 1}s for the stated reset
+`)
+        wait(delay + 1000)
+        continue
+      }
+      throw latchedRateLimitError(args, latchedReset, wrapError)
+    }
     try {
       return executor('gh', args, spawnOptions)
     } catch (error) {
@@ -239,12 +314,20 @@ export function runGitHubCommand(args, {
         } catch {
           delay = null // an unreadable reset is refused below, never guessed
         }
+        if (quotaLatch) {
+          try { quotaLatch.write(args, now() + (delay ?? UNKNOWN_RESET_LATCH_MS)) } catch { /* the brake is best-effort; the refusal below is not */ }
+        }
         if (delay !== null && delay <= maxRateLimitWaitMs) {
           rateLimitWaited = true
           reportStderr(`gh ${args.join(' ')}\nGitHub API rate limit exhausted; waiting ${Math.ceil(delay / 1000) + 1}s for the stated reset, then retrying once\n`)
           wait(delay + 1000)
           continue
         }
+      }
+      if (exhausted && quotaLatch && (mutating || rateLimitWaited || maxRateLimitWaitMs <= 0)) {
+        // No free probe was made (fail-fast caller or a write): brake every other
+        // caller for a short bounded window rather than guess a reset time.
+        try { if ((quotaLatch.read(args) ?? 0) <= now()) quotaLatch.write(args, now() + UNKNOWN_RESET_LATCH_MS) } catch { /* best-effort */ }
       }
       if (!transient || attempt >= allowed - 1) {
         const captured = String(error?.stderr ?? '').trim()

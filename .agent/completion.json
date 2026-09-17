@@ -10,6 +10,8 @@
   "contract_sha256": "a10d215ee254441e4f3e3fb22214f21d3b9534d8e9d14d4728c1a7c584fa2f7c",
   "head_sha": "5c686f09ba49423a79cdae1392ee6ea6653decba",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/2611.sql",
     ".github/workflows/prepack-exclusion.yml",
     "docs/business-rules/product-items-and-identifiers.md",

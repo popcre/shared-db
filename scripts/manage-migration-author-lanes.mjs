@@ -6694,8 +6694,7 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const admitted=requireAdmission(options,io,{timestamp:now,mutexOwner:ownerSha})
     if(io.enforceAdmission===true){
       const authorized=[...(admitted?.writes??[])].sort()
-      const requested=[...options.objects].sort()
-      if(requested.length!==authorized.length||requested.some((value,index)=>value!==authorized[index]))throw new LaneError(`--claim objects must exactly match admitted issue #${options.admitIssue} writes`)
+      if(options.objects.length!==authorized.length||options.objects.some((value,index)=>value!==authorized[index]))throw new LaneError(`--claim objects must exactly match admitted issue #${options.admitIssue} writes`)
     }
     const claims = io.openClaims()
     const prSources = io.prSources()

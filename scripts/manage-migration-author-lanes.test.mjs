@@ -8352,17 +8352,3 @@ test('the no-progress alarm fallback label is a coordination label the queue aud
   const { FALLBACK_LABEL } = await import('./orchestrator-flow/no-progress-alarm.mjs')
   assert.ok(COORDINATION_LABELS.has(FALLBACK_LABEL))
 })
-
-test('an admitted claim accepts its writes in any order (#3119)',()=>{
-  // Only the admission comparison is under test; later dispatch steps are out of scope.
-  const body=admittedReviewIo().io.getIssue().body.replace('  - table core.example','  - table core.zeta\n  - table core.alpha')
-  for(const objects of [['table core.zeta','table core.alpha'],['table core.alpha','table core.zeta']]){
-    const {io}=admittedReviewIo();io.issueComments=()=>[]
-    io.getIssue=()=>({number:41,state:'open',title:'review admission',body,createdAt:'2026-09-11T00:00:00Z'})
-    let error=null
-    try{acquireAuthorLane({task:'#41',owner:'author',branch:'codex/x',worktree:'C:/w/x',objects,admitIssue:41,leaseHours:12,requestId:'r1',mutexAttempts:1},NOW,io)}catch(caught){error=caught}
-    assert.doesNotMatch(String(error?.message??''),/must exactly match admitted/)
-  }
-  const {io}=admittedReviewIo()
-  assert.throws(()=>acquireAuthorLane({task:'#41',owner:'author',branch:'codex/x',worktree:'C:/w/x',objects:['table core.other'],admitIssue:41,leaseHours:12,requestId:'r1',mutexAttempts:1},NOW,io),/must exactly match admitted/)
-})

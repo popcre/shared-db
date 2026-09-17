@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 5,
+  "generation": 6,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
@@ -49,7 +49,8 @@
     "Generation 2: main advanced to f06a85c3 when the sibling /prepackDetail loader (#3179, PR #3220) merged; this branch was refreshed by merge (9d8ce8f6), the scheduled workflow now runs history, masters, prepack-detail and prod-detail in one job, and the offline gate covers all four suites (935 tools tests pass on the merged tree).",
     "Generation 3: main advanced again to 8e5af011 (catalog-verification guards, PR #3213); this branch refreshed by merge (a875c5c5), touching only the .agent evidence files, which are excluded from the content-equivalence comparison. The implementation diff is unchanged and the offline suites are unaffected.",
     "Generation 4: main advanced to 13efcd77 (queue-hygiene reporting, PR touching workflows and scripts disjoint from this change); refreshed by merge at b7f4e0f1, only the .agent evidence files touched. Implementation diff unchanged.",
-    "Generation 5: the 3-key production probe (run 35270886056) caught the insert omitting the request-stamped company_code, failing every key with a not-null violation before any row landed; the fix names the column and adds a 27-column regression test. Nothing was written to coldlion.prod_detail by the probe."
+    "Generation 5: the 3-key production probe (run 35270886056) caught the insert omitting the request-stamped company_code, failing every key with a not-null violation before any row landed; the fix names the column and adds a 27-column regression test. Nothing was written to coldlion.prod_detail by the probe.",
+    "Generation 6: corrected the completion report's implementation head SHA (the short SHA 38138487 was expanded wrongly; the true full SHA is 381384874e82be67bcbbac36d84aee1074254580). No implementation change."
   ],
   "stop_conditions": [
     "Stop and report if the live feed returns unknown or omitted fields, rows for another production order, or either identity twice in one response.",

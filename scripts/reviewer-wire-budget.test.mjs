@@ -62,3 +62,54 @@ test('#3187 reviewer assignment, release and replacement each stay within 10 API
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// Issue #3206 (Refs #2773): the idempotent retry of an assignment and both silent-reclaim
+// routes are proved on the same wire. Commit dates and the probe's observed-at are moved
+// back in the fake's model so the real age guards pass without weakening them.
+function backdate(dir, probeObservedAt) {
+  const file = path.join(dir, 'state.json'), state = JSON.parse(readFileSync(file, 'utf8'))
+  for (const commit of Object.values(state.commits)) {
+    commit.date = '2026-09-16T00:00:00Z'
+    if (probeObservedAt && /silence-probe/.test(commit.message)) commit.message = commit.message.replace(/observed-at=\S+/, `observed-at=${probeObservedAt}`)
+  }
+  writeFileSync(file, JSON.stringify(state))
+}
+
+function within(name, { status, output, api }) {
+  assert.equal(status, 0, `${name} failed:\n${output.slice(-1500)}`)
+  assert.ok(api.length <= LIMIT, `${name} used ${api.length} API requests:\n${api.map((row) => `${row.kind} ${row.label}`).join('\n')}`)
+  assert.ok(!api.some((row) => /rate_limit/.test(row.label)), `${name} made an explicit quota request`)
+  return api.length
+}
+
+test('#3206 an idempotent assignment retry stays within 10 API requests on the wire', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'reviewer-wire-'))
+  try {
+    seed(path.join(dir, 'state.json'))
+    within('first assignment', run(dir, ['--assign-reviewer', ...common]))
+    within('idempotent assignment retry', run(dir, ['--assign-reviewer', ...common]))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+for (const [name, extra, observedAt] of [
+  ['unstarted silent reclaim', ['--unstarted'], null],
+  ['silent reclaim after the confirmation window', [], '2026-09-16T01:00:00.000Z'],
+]) {
+  test(`#3206 ${name} stays within 10 API requests on the wire with no quota request`, () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'reviewer-wire-'))
+    try {
+      seed(path.join(dir, 'state.json'))
+      within('assignment', run(dir, ['--assign-reviewer', ...common]))
+      backdate(dir, null)
+      within('silence probe', run(dir, ['--probe-silent-reviewer', ...common, '--failed-sequence', '1', ...extra]))
+      if (observedAt) backdate(dir, observedAt)
+      const reclaim = run(dir, ['--reclaim-silent-reviewer', ...common, '--failed-sequence', '1', ...extra, '--confirm-no-verdict', '--confirm-no-artifact'])
+      within(name, reclaim)
+      assert.match(reclaim.output, /"releasedLeaseSha"/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+}

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2362,
+  "work_issue": 2363,
   "outcome": "ready-for-merge",
-  "pr": 3140,
+  "pr": 3141,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2362/2",
-  "contract_sha256": "24a9aa1fa209b45f61fa3a3231ca2aec2fa1cd4b01d966189930c1b8eb5a2036",
-  "head_sha": "09a1511702aa4c88b955f11ee97fe5053adc7fe9",
+  "contract_ref": "refs/db-contracts/2363/1",
+  "contract_sha256": "76c8e3e083a1a5e80711a61d2a0b6e6c5d4ac8289dc4f1cba8171e26a55312af",
+  "head_sha": "202267c7ba6f64b41a1cc7e95e51b7de24589331",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_activation_mutations.py"
+    "scripts/test_production_business_risk_gate_source_identity_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -20,7 +20,7 @@
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 12 activation-evidence guard mutants listed in issue #2362; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "This PR covers only the 4 source-identity guard mutants listed in issue #2363; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
   ],
   "stop_conditions_hit": []
 }

@@ -1,40 +1,40 @@
 {
-  "work_issue": 3126,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Make the no-progress alarm report standard work still undispatched (entered or classified) after 30 minutes, so the half-hourly alarm fires inside the 1-hour dispatch target.",
-  "base_sha": "0c16ff3f0d00169bbd6a2ef1645a44b98390a215",
-  "dispatcher": "Claude orchestrator session for #3029 (owner request relayed: spin up a subagent and handle them)",
-  "worker": "Claude Opus 5 agent-a8989295cf8ae84e7 #3126",
-  "branch": "claude/3126-dispatch-stall-alarm",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a8989295cf8ae84e7",
-  "allowed_paths": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
-  ],
-  "required_checks": [
-    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
-  ],
-  "assumptions": [
-    "The alarm workflow runs at minutes 7 and 37 of every hour"
-  ],
-  "stop_conditions": [
-    "Stop if the fix would need a database change"
-  ],
-  "generation": 1,
-  "schema_version": 1
+    "work_issue": 3126,
+    "work_type": "repo-maintenance",
+    "route": "repo-maintenance",
+    "goal": "Make the no-progress alarm report standard work still undispatched (entered or classified) after 30 minutes, so the half-hourly alarm fires inside the 1-hour dispatch target.",
+    "base_sha": "0c16ff3f0d00169bbd6a2ef1645a44b98390a215",
+    "dispatcher": "Claude orchestrator session for #3029 (owner request relayed: spin up a subagent and handle them)",
+    "worker": "Claude Opus 5 agent-a8989295cf8ae84e7 #3126",
+    "branch": "claude/3126-dispatch-stall-alarm",
+    "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a8989295cf8ae84e7",
+    "allowed_paths": [
+        "scripts/orchestrator-snapshot.mjs",
+        "scripts/orchestrator-snapshot.test.mjs",
+        ".agent/contract.json",
+        ".agent/completion.json"
+    ],
+    "file_writes": [
+        "scripts/orchestrator-snapshot.mjs",
+        "scripts/orchestrator-snapshot.test.mjs",
+        ".agent/contract.json",
+        ".agent/completion.json"
+    ],
+    "db_reads": [],
+    "db_writes": [],
+    "prohibited_actions": [
+        "No database write or structure change of any kind",
+        "No production workflow dispatch"
+    ],
+    "required_checks": [
+        "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
+    ],
+    "assumptions": [
+        "The alarm workflow runs at minutes 7 and 37 of every hour"
+    ],
+    "stop_conditions": [
+        "Stop if the fix would need a database change"
+    ],
+    "generation": 1,
+    "schema_version": 1
 }

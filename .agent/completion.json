@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3208,
+  "work_issue": 2406,
   "outcome": "ready-for-merge",
-  "pr": 3209,
+  "pr": 3215,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3208/6",
-  "contract_sha256": "56b4af17d902f0e9b66c97a19fd9a9ce4f52d04f3a12c587a0fea97c050b57c4",
-  "head_sha": "1f69912c46548189bceb0137ec2ba76ffa0d307f",
+  "contract_ref": "refs/db-contracts/2406/1",
+  "contract_sha256": "630caa177596e8cd3697e590fcc5dc5120fec625b97b49fa00a41039ac624fad",
+  "head_sha": "d113238a472076d90667c3c4a2b727415bd0b7b0",
   "files_changed": [
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "At 1f69912c (review fixes, main merged, truth audit OK at 307): 58 passed, 0 failed, 0 skipped. One notify woke each of 10 waiting processes exactly once with zero upstream reads; unreadable or vanished event/state files never wake and a token wakes once; zero delays still sleep and invalid windows are refused (both new tests hang or fail on the previous head); fallback detected a change in 3 polls; x-poll-interval and failure backoff honoured."
+      "evidence": "605 passed, 0 failed, 0 skipped; includes the #2406 negative regression and exact-version positive control."
     }
   ],
   "assumptions_resolved": [
-    "Webhook registration stays out of scope; notifyChange is the event entry point"
+    "Issue #2406 was open, unassigned, labelled non-orchestrator, and had no linked implementation pull request at dispatch.",
+    "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence."
   ],
   "stop_conditions_hit": []
 }

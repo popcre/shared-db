@@ -1,43 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3036,
+  "work_issue": 3119,
   "outcome": "ready-for-merge",
-  "pr": 3108,
-  "migration_versions": [
-    "20260916231639"
-  ],
-  "contract_ref": "refs/db-contracts/3036/1",
-  "contract_sha256": "7502bdc2c3d2381412cf15b0e00b2367263fffb0bc0a1c67dc2cfdae307536f9",
-  "head_sha": "7fcb83d15fa197299d36a5aa6076531dd052105b",
+  "pr": 3123,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3119/2",
+  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
+  "head_sha": "d17bc0b1cdacc63ea1f61ca74f8b5f6d3ecdedc8",
   "files_changed": [
-    "supabase/migrations/20260916231639_plm_item_product_type_reader_columns.sql",
-    "types/database.types.ts"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
-  "db_writes": [
-    "column plm.item.product_construction",
-    "column plm.item.product_material",
-    "column plm.item.product_treatment",
-    "column plm.item.product_type",
-    "column plm.item.product_type_read_at",
-    "column plm.item.product_type_rules_version",
-    "column plm.item.product_type_status",
-    "table plm.item"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
       "exit_code": 0,
-      "evidence": "Run at implementation head 7fcb83d1: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "status OK; version 20260916231639 has markers [] and needs no sidecar."
+      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
     }
   ],
   "assumptions_resolved": [
-    "Governed Muse review found no triggers, column-level grants or dependent SELECT * on plm.item; table-level grants and RLS cover the new columns."
+    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
   ],
   "stop_conditions_hit": []
 }

@@ -1,26 +1,28 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3174,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add Coca-Cola Submissions, WWE Creative, Peanuts Creative, Sesame Workshop Creative and Sesame Workshop Submissions sections to api.db_data_admin_scraped_source_inventory, with the new landing table plm.sesame_submission_property_option.",
-  "base_sha": "1c81b5b6875ce3b98907143965831f5ab09f6b3e",
+  "base_sha": "e2c53f215f3860a4bd19c311261db8a5a3506f5b",
   "dispatcher": "claude shared-db orchestrator issue #3174",
   "worker": "Claude Opus 5 issue-3174 migration author lane (claim #3189)",
   "branch": "claude/issue-3174-scraped-sections",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a62ecbe202c69cc64",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa5246435e4e6b9b3",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
+    "supabase/tests/sesame_landing_contracts.sql"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
+    "supabase/tests/sesame_landing_contracts.sql"
   ],
   "db_reads": [
     "table plm.coke_approval_vocabulary_value",
@@ -46,7 +48,8 @@
     "The live production function body equals migration 20260917005650 (md5 verified), so it is the derivation source.",
     "Peanuts rows without a Tenovos source id have no ledger identity and are left out on purpose; production has none today.",
     "Generation 2 exists because main advanced to 23d6142e; the branch was refreshed by merge (a3889133) and main changed no file this PR touches.",
-    "Generation 3: refreshed by merge (fce3914f) onto main 1c81b5b6, which carries the #3195 grant-kind reader fix; the migration and live proof are unchanged."
+    "Generation 3: refreshed by merge (fce3914f) onto main 1c81b5b6, which carries the #3195 grant-kind reader fix; the migration and live proof are unchanged.",
+    "Generation 4: the migration version was superseded 20260917112114 -> 20260917144950 (claim #3189 supersession 314adcc7) because main gained 20260917112129; claim worktree rebound (1424b1c9); the Sesame NetX landing census test now excludes the separate sesame_submission_ landing table; refreshed onto main e2c53f21."
   ],
   "stop_conditions": [
     "Stop if the lane claim is refused for object collision.",

@@ -4,16 +4,17 @@
   "outcome": "ready-for-merge",
   "pr": 3190,
   "migration_versions": [
-    "20260917112114"
+    "20260917144950"
   ],
-  "contract_ref": "refs/db-contracts/3174/3",
-  "contract_sha256": "e45570aaf88dc93cb947cf003f3ae80c93c51f412b1e5ec866477d0432a37cc4",
-  "head_sha": "fce3914ff29275d71460a93f7eaa731a9ee57b8e",
+  "contract_ref": "refs/db-contracts/3174/4",
+  "contract_sha256": "a58f66b50d85d7cd5da4171503278c5be6ed83f044219538d16fbfeda1458fe2",
+  "head_sha": "8cc76eaa9919ef11f3bb936f12166da35fbf3bfa",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
+    "supabase/tests/sesame_landing_contracts.sql"
   ],
   "db_reads": [
     "table plm.coke_approval_vocabulary_value",
@@ -31,13 +32,13 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 46ddec03; the refresh merge a3889133 from main 23d6142e changed no file this PR touches; refresh fce3914f onto main 1c81b5b6 likewise leaves the migration and live proof unchanged."
+      "evidence": "Previous head failed only the backdated-version guard (fixed by governed version supersession) and Sesame census A (20 vs 19 sesame_ tables; census now excludes the separate submissions landing). Both re-verified by CI on this head."
     }
   ],
   "assumptions_resolved": [
     "Production function body md5 matched migration 20260917005650 before derivation.",
     "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today.",
-    "Independent grok-4.6 review returned APPROVE at d2ff2ec4 (durable verdict 2d82409e)."
+    "Migration version superseded to 20260917144950 through --reversion-active-claim; claim #3189 lease version updated by the tool."
   ],
   "stop_conditions_hit": []
 }

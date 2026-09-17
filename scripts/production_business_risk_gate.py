@@ -2198,7 +2198,7 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         raw = matches[0].read_text(encoding="utf-8")
         reasons.update(_classify_statements(
-            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version)))
+            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version, raw)))
     return sorted(reasons)
 
 
@@ -2216,11 +2216,12 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
 #      ordered list must equal, byte for byte after normalisation, the list of
 #      statements naming it in the most recent earlier migration. Bodies are
 #      emptied by the tokeniser, so the comparison covers the full header
-#      (arguments, defaults, return type, SECURITY DEFINER, SET search_path) and
-#      every grant, but never the body; the body is what the required
+#      (arguments, defaults, return type, SECURITY DEFINER, SET search_path) with
+#      every string literal compared exactly, and every grant, but never the body; the body is what the required
 #      independent review reads. Because the latest earlier migration is the one
 #      compared, any later migration that changed the function's privileges
-#      breaks the match. A new function, a changed header, a new role, or a
+#      breaks the match, and any schema-wide grant or revoke, default-privilege
+#      change, rename or ownership move since then (or now) excuses nothing. A new function, a changed header, a new role, or a
 #      different grant order all still report every risk.
 _ROLE_LIST = rf"{_ALLOW_IDENT}(?: ?, ?{_ALLOW_IDENT})*"
 _FUNCTION_REF = rf"{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
@@ -2238,15 +2239,31 @@ def _names_object(statement: str, name: str) -> bool:
     return re.search(rf'(?<![a-z0-9_$."]){re.escape(name)}(?![a-z0-9_$"])', statement) is not None
 
 
+# A statement that can change a function's privileges or identity WITHOUT
+# naming it (#3159 review): schema-wide grants/revokes, default privileges,
+# renames and ownership moves. Seen between the latest named match and now, the
+# earlier state can no longer be trusted, so nothing is excused.
+_UNNAMED_FUNCTION_ACL_OR_IDENTITY = re.compile(
+    r"\bin schema\b|\balter default privileges\b|\brename to\b|\bowner to\b"
+    r"|\bset schema\b|\bon schema\b|\bdrop (?:schema|owned|role)\b")
+
+
+def _comparison_form(neutral: str, exact: str) -> str:
+    """Exact literals everywhere except a COMMENT's text, which grants nothing."""
+    return neutral if _FUNCTION_COMMENT.fullmatch(neutral) else exact
+
+
 class _PriorMigrations:
     """Statements of every migration on this tree older than ``version``, newest first."""
 
-    def __init__(self, repo_root: Path, version: str):
+    def __init__(self, repo_root: Path, version: str, current_raw: str | None = None):
+        self.current_exact = (None if current_raw is None
+                              else sql_top_level_statements(current_raw, keep_literals=True))
         self.files = sorted(
             (path for path in (Path(repo_root) / "supabase/migrations").glob("*.sql")
              if re.fullmatch(r"\d{14}", path.name[:14]) and path.name[:14] < version),
             key=lambda path: path.name, reverse=True)
-        self._cache: dict[Path, list[str] | None] = {}
+        self._cache: dict[Path, tuple[list[str], list[str]] | None] = {}
 
     def latest_touching(self, name: str) -> list[str] | None:
         """The ordered statements naming ``name`` in the newest earlier migration that names it.
@@ -2256,11 +2273,18 @@ class _PriorMigrations:
         """
         for path in self.files:
             if path not in self._cache:
-                self._cache[path] = sql_top_level_statements(path.read_text(encoding="utf-8"))
-            statements = self._cache[path]
-            if statements is None:
+                text = path.read_text(encoding="utf-8")
+                neutral = sql_top_level_statements(text)
+                exact = sql_top_level_statements(text, keep_literals=True)
+                self._cache[path] = (None if neutral is None or exact is None
+                                     or len(neutral) != len(exact) else (neutral, exact))
+            parsed = self._cache[path]
+            if parsed is None:
                 return None
-            touching = [s for s in statements if _names_object(s, name)]
+            neutral, exact = parsed
+            if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in neutral):
+                return None
+            touching = [_comparison_form(s, exact[i]) for i, s in enumerate(neutral) if _names_object(s, name)]
             if touching:
                 return touching
         return None
@@ -2268,8 +2292,11 @@ class _PriorMigrations:
 
 def _reestablished_functions(statements: list[str], prior: "_PriorMigrations | None") -> set[int]:
     """Indexes of statements that re-establish a function exactly as before (#3159)."""
-    if prior is None:
+    if prior is None or prior.current_exact is None or len(prior.current_exact) != len(statements):
         return set()
+    if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in statements):
+        return set()
+    exact = prior.current_exact
     excused: set[int] = set()
     names = {m.group(1) for s in statements if (m := _REPLACE_FUNCTION.fullmatch(s))}
     for name in names:
@@ -2280,7 +2307,7 @@ def _reestablished_functions(statements: list[str], prior: "_PriorMigrations | N
             for _, s in touching
         ):
             continue
-        if prior.latest_touching(name) == [s for _, s in touching]:
+        if prior.latest_touching(name) == [_comparison_form(s, exact[i]) for i, s in touching]:
             excused.update(i for i, _ in touching)
     return excused
 
@@ -2440,7 +2467,7 @@ _IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_$]*)'
 _NAME = rf"{_IDENT}(?:\.{_IDENT})?"
 
 
-def sql_top_level_statements(raw: str) -> list[str] | None:
+def sql_top_level_statements(raw: str, keep_literals: bool = False) -> list[str] | None:
     """Split SQL into top-level statements with literal CONTENTS neutralised.
 
     Comments are removed, string literals become '', and dollar-quoted bodies
@@ -2451,6 +2478,7 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
     """
     out: list[str] = []
     current: list[str] = []
+    literals: list[str] = []  # keep_literals: exact literal text, restored after folding
     i, n = 0, len(raw)
     while i < n:
         ch = raw[i]
@@ -2488,7 +2516,11 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
                         continue
                     break
                 j += 1
-            current.append("''")
+            if keep_literals:
+                literals.append(raw[i:j + 1])
+                current.append(f"'#{len(literals) - 1}'")
+            else:
+                current.append("''")
             i = j + 1
             continue
         if ch == '"':
@@ -2519,6 +2551,8 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
         i += 1
     out.append("".join(current))
     normalised = [_normalise_outside_identifiers(s) for s in out]
+    if keep_literals:
+        normalised = [re.sub(r"'#(\d+)'", lambda m: literals[int(m.group(1))], s) for s in normalised]
     return [s for s in normalised if s]
 
 

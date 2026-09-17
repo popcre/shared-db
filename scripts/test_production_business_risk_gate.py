@@ -4140,8 +4140,7 @@ grant execute on function api.inv(text,text) to authenticated;
     def test_the_real_3104_and_2866_migrations_are_routine(self):
         root = Path(__file__).resolve().parents[1]
         for version in ["20260917005650", "20260914172031"]:
-            if not list(root.glob(f"supabase/migrations/{version}_*.sql")):
-                self.skipTest("migration not on this tree")
+            self.assertTrue(list(root.glob(f"supabase/migrations/{version}_*.sql")), version)
             self.assertEqual(classify_sql(root, [version]), [], version)
 
     def test_body_only_replacement_with_the_same_header_and_grants_is_routine(self):
@@ -4174,6 +4173,31 @@ grant execute on function api.inv(text,text) to authenticated;
     def test_an_intervening_migration_that_changed_grants_breaks_the_match(self):
         narrowed = "revoke execute on function api.inv(text,text) from authenticated;\n"
         self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", narrowed),
+                                ("20260201000000", self.FN)])
+
+    def test_a_changed_header_string_literal_reports_every_risk(self):
+        before = self.FN.replace("search_path to ''", "search_path to 'app', 'public'")
+        for after in (before.replace("'app', 'public'", "'evil', 'public'"),
+                      before.replace("'app', 'public'", "'App', 'public'"),
+                      before.replace("default null", "default 'a'")):
+            with self.subTest(after=after[:120]):
+                self.assert_every_risk([("20260101000000", before), ("20260201000000", after)])
+        self.assertEqual(self.classify([("20260101000000", before), ("20260201000000", before)]), [])
+        recommented = before.replace("is 'inventory'", "is 'inventory, reworded'")
+        self.assertEqual(self.classify([("20260101000000", before), ("20260201000000", recommented)]), [])
+
+    def test_an_intervening_schema_wide_privilege_change_breaks_the_match(self):
+        for between in ("revoke execute on all functions in schema api from authenticated;\n",
+                        "alter default privileges in schema api revoke execute on functions from authenticated;\n",
+                        "alter function api.old(text,text) rename to inv;\n"):
+            with self.subTest(between=between):
+                self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", between),
+                                        ("20260201000000", self.FN)])
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "grant execute on all functions in schema api to anon;\n")])
+
+    def test_an_unparseable_earlier_migration_excuses_nothing(self):
+        self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", "select 'unterminated;\n"),
                                 ("20260201000000", self.FN)])
 
     def test_a_standalone_grant_reports_every_risk(self):

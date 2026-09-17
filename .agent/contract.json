@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3195,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Resolve a keyword-less or on-table grant's kind from the CREATE in the same migration so a grant on a newly created table is not refused as an undeclared view write, while grants on views stay detected (#3183).",
-  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
+  "base_sha": "d0cec2a26ead5f368a15957969c44f7d46784f32",
   "dispatcher": "Albert Hazan chat session",
   "worker": "Claude Opus 5 sub-agent agent-aa5246435e4e6b9b3",
   "branch": "claude/fix-grant-kind-from-create",
@@ -32,7 +32,7 @@
   ],
   "assumptions": [
     "A name created in the migration as exactly one of table or view is that kind for every grant in the same migration",
-    "Generation 3: refreshed by merge onto main b2633a33; the implementation diff is unchanged."
+    "Generation 4: refreshed by merge onto main d0cec2a2; the implementation diff is unchanged."
   ],
   "stop_conditions": [
     "Stop if a grant on a view created in the same migration stops producing the view key"

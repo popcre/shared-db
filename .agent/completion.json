@@ -1,27 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3119,
+  "work_issue": 3126,
   "outcome": "ready-for-merge",
-  "pr": 3123,
+  "pr": 3133,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3119/2",
-  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
-  "head_sha": "a89e298e9b225fa3b41e8782314288e8f5b7bf0e",
+  "contract_ref": "refs/db-contracts/3126/1",
+  "contract_sha256": "e46096a9d4e8f2cce209e58dd79171c097c0c6834c357d569ed96c4de4a74c22",
+  "head_sha": "06730de7de165b1d254602c159c77d596f90d44b",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
+      "evidence": "Run at implementation head 06730de7 together with scripts/orchestrator-flow/orchestrator-snapshot.test.mjs and scripts/manage-migration-author-lanes.test.mjs: 634 tests, 634 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
+    "orchestrator-no-progress-alarm.yml cron is '7,37 * * * *', so a 30-minute threshold reports undispatched work before 60 minutes"
   ],
   "stop_conditions_hit": []
 }

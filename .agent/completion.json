@@ -1,72 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3124,
+  "work_issue": 3126,
   "outcome": "ready-for-merge",
-  "pr": 3121,
+  "pr": 3133,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3124/1",
-  "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
-  "head_sha": "bea6bdf0961f014e44ec9a0bf8cc33574cdcd68a",
+  "contract_ref": "refs/db-contracts/3126/1",
+  "contract_sha256": "e46096a9d4e8f2cce209e58dd79171c097c0c6834c357d569ed96c4de4a74c22",
+  "head_sha": "d484de4ff8e116a3985cb59936ee8b288efdf634",
   "files_changed": [
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/agent-work-contract.mjs",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-dispatch-collision.mjs",
-    "scripts/check-handoff-contract.mjs",
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/check-repository-identity-conformance.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/historical_preview_recovery.py",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/review-verdict-artifact.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/read-preview-ledger.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/orchestrator-snapshot.mjs",
-    "scripts/production_apply_review_evidence.py",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_owner_decision_evidence.py",
-    "scripts/reap-merged-worktrees.mjs",
-    "scripts/repair-voided-findings.mjs",
-    "scripts/report-stale-handoffs.mjs",
-    "scripts/repository_identity.py",
-    "scripts/run-governed-review.mjs",
-    "scripts/shared_db_live_proof.py",
-    "scripts/test_repository_identity.py",
-    "scripts/update-required-checks.mjs",
-    "scripts/update-required-checks.test.mjs",
-    "scripts/verify_preview_apply_artifact.py"
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 2723dff5: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
-    },
-    {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
-    },
-    {
-      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
-      "exit_code": 0,
-      "evidence": "Full Python suite at 2723dff5: Ran 1091 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
+      "evidence": "Run at implementation head 06730de7 together with scripts/orchestrator-flow/orchestrator-snapshot.test.mjs and scripts/manage-migration-author-lanes.test.mjs: 634 tests, 634 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
+    "orchestrator-no-progress-alarm.yml cron is '7,37 * * * *', so a 30-minute threshold reports undispatched work before 60 minutes"
   ],
   "stop_conditions_hit": []
 }

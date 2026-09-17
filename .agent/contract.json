@@ -1,48 +1,75 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3104,
+  "work_issue": 3023,
+  "generation": 2,
   "work_type": "structural",
-  "route": "migration",
-  "goal": "Split plm.wb_property in api.db_data_admin_scraped_source_inventory into Warner Submissions (warner_product_catalogue) and Creative (warner_art_assets), and return mapped values (submissions on Creative rows, mapped_creative on Submissions rows) for the Mapping column. Grants, row identities and other arms unchanged.",
-  "base_sha": "df1ce37b32019a910b06871a46712a64fdfa4327",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16: \"I meant #3104\")",
-  "worker": "Claude Opus 5 #3104 migration author b1",
-  "branch": "claude/3104-warner-subs-mapping-b1",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3104-warner-subs-mapping-b1",
+  "route": "shared-db-orchestrator",
+  "goal": "The nightly PopSG crawl's public.refresh_style_guide_matviews call completes inside the unchanged 8s statement timeout at current corpus size, with identical search-document sync semantics.",
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "dispatcher": "Albert Hazan (session request relayed by shared-db orchestrator marker #3106)",
+  "worker": "claude-sub-3023",
+  "branch": "claude/3023-sg-refresh-bounded",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/sg-3023-refresh-bounded",
   "allowed_paths": [
-    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
-    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
-    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".github/live-proofs/3023.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member",
-    "table plm.wb_property"
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
   ],
   "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory"
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
   ],
   "prohibited_actions": [
-    "No manual production SQL; production only via the governed production lane",
-    "No grant, table, data or RLS change",
-    "No migration version other than claimed 20260917005650"
+    "Do not raise any statement timeout",
+    "Do not delete or replay application rows",
+    "Do not write production or dispatch production manually",
+    "Do not change the refresh function signature, grants or caller contract"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "python3 scripts/test_migration_derivation.py",
+    "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "git diff --check"
   ],
   "assumptions": [
-    "Live function body equals 20260914172031 (md5 956fbf9130a49bf0cbc875bbaf0e1c17 verified on production)"
+    "Claim #3113 reserves version 20260917005221 and covers every declared write",
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the full-table sync candidate scan about 11.6s with zero candidates",
+    "Nothing else writes source_identity inputs without updating style_guide_files, so an update trigger observes every identity change"
   ],
   "stop_conditions": [
-    "Stop if the change needs any object beyond api.db_data_admin_scraped_source_inventory"
+    "Claim #3113 ownership changes",
+    "A needed change lies outside the declared objects",
+    "Preview apply or the refresh exceeds the 8s ceiling",
+    "A gate refuses; do not bypass it or raise a timeout"
   ]
 }

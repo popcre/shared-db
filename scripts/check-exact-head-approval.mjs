@@ -231,14 +231,14 @@ export function evaluateExactHeadApproval(input) {
   // the pull request's own changed files -- the same list the documents-only
   // lane reads above, renames carrying their previous name -- and, exactly like
   // that lane, `changedFiles` absent entirely means every caller that predates
-  // the rule behaves as before (one slot). A missing slot is a refusal naming
-  // the slot number, so it fails loudly instead of being invisible.
+  // the rule behaves as before (one slot). An undrawn required slot is a refusal
+  // naming the slot number, so it fails loudly instead of being invisible.
   const migrationsTouched = (input.changedFiles ?? []).some((file) => String(file ?? '').replace(/\\/g, '/').startsWith('supabase/migrations/'))
   const requiredSlots = Object.prototype.hasOwnProperty.call(input, 'changedFiles') && migrationsTouched ? 2 : 1
-  const missingSlots = []
-  for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot)) missingSlots.push(slot)
-  if (missingSlots.length) {
-    throw new ApprovalCheckError(`head ${headSha} is missing required review slot(s) ${missingSlots.join(', ')}: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw the missing slot pinned to this exact head (--assign-reviewer, slot 2 only after slot 1 is assigned) and have that assignment record its own APPROVE.`)
+  const undrawnSlots = []
+  for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot)) undrawnSlots.push(slot)
+  if (undrawnSlots.length) {
+    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw the owed slot pinned to this exact head (--assign-reviewer, slot 2 only after slot 1 is assigned) and have that assignment record its own APPROVE.`)
   }
 
 

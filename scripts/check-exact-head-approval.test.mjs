@@ -605,7 +605,7 @@ test('a migration change refuses on a single slot: slot 2 was never drawn', () =
     assignments: [{ issue: 2478, pr: 2746, headSha: NEW, slot: 1 }],
     evidence: [{ body: `APPROVE ${NEW}` }],
     changedFiles: ['supabase/migrations/20260911212849_shared_style_group_sku_key.sql'],
-  }), (error) => error instanceof ApprovalCheckError && /missing required review slot\(s\) 2/.test(error.message) && /requires 2 independent review slot/.test(error.message))
+  }), (error) => error instanceof ApprovalCheckError && /owes required review slot\(s\) 2/.test(error.message) && /requires 2 independent review slot/.test(error.message))
 })
 
 test('a migration rename still requires two slots: the previous name counts', () => {
@@ -616,7 +616,7 @@ test('a migration rename still requires two slots: the previous name counts', ()
     assignments: [{ issue: 2478, pr: 2746, headSha: NEW, slot: 1 }],
     evidence: [{ body: `APPROVE ${NEW}` }],
     changedFiles: ['docs/moved.md', 'supabase/migrations/20260902120000_add_thing.sql'],
-  }), /missing required review slot\(s\) 2/)
+  }), /owes required review slot\(s\) 2/)
 })
 
 test('a migration change with both slots approved passes and reports the required count', () => {

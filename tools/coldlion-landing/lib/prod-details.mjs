@@ -177,7 +177,10 @@ function stageSql(rows) {
  */
 export function buildProdDetailLoadSql({ run, rows }) {
   const keys = PROD_DETAIL_SPEC.key;
-  const data = PROD_DETAIL_SPEC.fields.map((x) => x.column);
+  // company_code is REQUEST-STAMPED, not a payload field, so it joins the column
+  // list here: the insert must name it or Postgres supplies NULL into the leading
+  // primary-key column (caught live by the 3-key production probe on 2026-09-17).
+  const data = ["company_code", ...PROD_DETAIL_SPEC.fields.map((x) => x.column)];
   const all = [...data, "run_id", "fetched_at", "source_hash", "first_seen_at", "last_seen_at"];
   const join = "t.company_code = s.company_code and t.pkey = s.pkey";
   const naturalKey = `jsonb_build_object('company_code', s.company_code, 'pkey', s.pkey)`;

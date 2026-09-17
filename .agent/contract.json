@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 9,
+  "generation": 10,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
   "goal": "Refuse /proddetails identity-collision keys per key instead of aborting the whole run: live order 20344 falsified the (prod_order_no, prod_line_seq) uniqueness asserted by #2863, and one colliding order must not block the remaining population. Collisions are recorded as FAILED sync_runs carrying refused markers, counted in every reconciliation, and still fail the run non-zero; feed-shape failures stay fatal; transport failures stay retried.",
-  "base_sha": "ec96eb745697dbfa0a6eb2191efae7ab40bcb158",
+  "base_sha": "959100b61b64fc46fd2d0fa623be1efb1932e70f",
   "dispatcher": "owner task instruction to a non-orchestrator source-data session (issue #3180 db-work-scope: work_type source-data, route source-data-session, writes [])",
   "worker": "ZCode GLM 5.3 session executing shared-db issue #3180",
   "branch": "claude/issue-3180-prod-detail-loader",
@@ -47,7 +47,8 @@
     "The complete approved prodOrderNo population is the distinct landed coldlion.prod_history_line set for EDGEHOME (live reading 2026-09-17: 3,761 distinct orders over 61,901 lines; EP001 absent because history landing already excluded it).",
     "The scheduled ColdLion Landing Sync workflow is the sanctioned ongoing refresh vehicle, so the production-detail refresh step rides it after history and masters rather than in a new schedule.",
     "Generation 8: answers governed review round 1 (PR #3233). H1 - refused keys re-entered the refresh recent window through the flat done-set and refusedKeys counted rows; selection now carries the refused state separately and the reconciliation counts distinct orders. L2 - omitted-field fatality pinned by test. L4 - malformed values are per-key refusals, no longer retried-forever transport.",
-    "Generation 9: files_changed now lists the complete base-to-head diff including the two .agent evidence files, as the git-evidence comparison requires once the implementation head advanced past the review-answer commit. No implementation change."
+    "Generation 9: files_changed now lists the complete base-to-head diff including the two .agent evidence files, as the git-evidence comparison requires once the implementation head advanced past the review-answer commit. No implementation change.",
+    "Generation 10: main advanced to 959100b6 (sibling prepack-detail fix, disjoint files); refreshed by merge at cfdd810e, only the .agent evidence files resolved. Implementation diff unchanged; the APPROVE at 093af65d carries per the content-preserving refresh rule."
   ],
   "stop_conditions": [
     "Stop and report if the live feed changes shape: unknown or omitted fields fail the whole run before anything is written.",

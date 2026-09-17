@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3233,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/9",
-  "contract_sha256": "e233ee64ec1c7b0ca8eddfaec852b3fd79e64c429ce1cc639967c86f0b25b9fb",
-  "head_sha": "cac60a025fb60bb8f3e1a8503fcee51c978ce196",
+  "contract_ref": "refs/db-contracts/3180/10",
+  "contract_sha256": "16754f2b6cff319a997e9da5d5a145ee2091931f4ce00b68905443cf12dff240",
+  "head_sha": "cfdd810e4e0ea7d37c562abc498f6c91da2bb1bf",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -33,7 +33,8 @@
     "Live order 20344 returns 10 rows including two with distinct pkeys sharing prodLineSeq 10 (differing itemPkey, prodQty, prodCost, labelCode and timestamps) - the second proven identity is falsified by the source while pkey remains unique; diagnosed read-only on 2026-09-17 with field names only, no row values.",
     "Backfill run 35275308013 landed 269 keys (plus 3 probe keys) before the first collision aborted it; nothing was written for the colliding order, and its sync_run carries the failure.",
     "The unique constraint on (company_code, prod_order_no, prod_line_seq) is database STRUCTURE from #2863; changing it is filed as a separate db-work issue for the orchestrator, not smuggled into this source-data change.",
-    "Governed review round 1 (retained, non-authorizing after a wrapper evidence-publication fault; reconciled) returned REVISE with one High: the flat done-set let refused keys re-enter the refresh recent window nightly and refusedKeys counted rows not distinct orders. Both fixed, with regression tests; the contract stop_conditions no longer contradict the refusal semantics (L1); omitted-field fatality pinned (L2); malformed values reclassified from retried-forever transport to per-key refusal (L4)."
+    "Governed review round 1 (retained, non-authorizing after a wrapper evidence-publication fault; reconciled) returned REVISE with one High: the flat done-set let refused keys re-enter the refresh recent window nightly and refusedKeys counted rows not distinct orders. Both fixed, with regression tests; the contract stop_conditions no longer contradict the refusal semantics (L1); omitted-field fatality pinned (L2); malformed values reclassified from retried-forever transport to per-key refusal (L4).",
+    "Main advanced to 959100b6 (sibling prepack fix, disjoint files) before the guarded merge re-dispatch; refreshed by merge at cfdd810e touching only the .agent evidence files, so the durable APPROVE at 093af65d carries (content-preserving refresh)."
   ],
   "stop_conditions_hit": []
 }

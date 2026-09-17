@@ -1,26 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2362,
+  "work_issue": 3127,
   "outcome": "ready-for-merge",
-  "pr": 3140,
+  "pr": 3135,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2362/2",
-  "contract_sha256": "24a9aa1fa209b45f61fa3a3231ca2aec2fa1cd4b01d966189930c1b8eb5a2036",
-  "head_sha": "09a1511702aa4c88b955f11ee97fe5053adc7fe9",
+  "contract_ref": "refs/db-contracts/3127/1",
+  "contract_sha256": "fb953cc3f5d4fbfae74c9b2e51b5b4e653535450a1f4264b4b54ca5140ee9e27",
+  "head_sha": "074853b30809de0f1a3b0504dc9d0eed2841fa1d",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_activation_mutations.py"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "Run at refreshed implementation head 074853b3: tests 6, pass 6, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 12 activation-evidence guard mutants listed in issue #2362; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "Outcomes returning to an application repository are reported not applicable by the guard (tested)"
   ],
   "stop_conditions_hit": []
 }

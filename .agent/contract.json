@@ -1,54 +1,44 @@
 {
   "schema_version": 1,
-  "generation": 6,
-  "work_issue": 3091,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
-  "base_sha": "4ba3732d6e02d9be95f582b8a2b607e7ea515651",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3091 migration author a7f2",
-  "branch": "claude/3091-milestone-schedule-a7f2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
+  "generation": 1,
+  "work_issue": 3122,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Plan Step 1 of plan_shared_db_popcre_transfer_merge_queue.md under issue 3122 (tracked in 2530): a read-only, redacted repository-transfer baseline script with tests, and one live preflight artifact recording readyToTransfer and exact blockers. Scripts, tests and a verification JSON only; no repository transfer, GitHub settings change, or database access.",
+  "base_sha": "b4a39203fa55e5a11e15d5d01a8c097836e41bda",
+  "dispatcher": "Claude shared-db session for #2530 (owner instruction relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #2530 Step 1 transfer baseline",
+  "branch": "claude/shared-db-2530-12815e",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
   "allowed_paths": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "scripts/capture-repository-transfer-baseline.mjs",
+    "scripts/capture-repository-transfer-baseline.test.mjs",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917005942_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "scripts/capture-repository-transfer-baseline.mjs",
+    "scripts/capture-repository-transfer-baseline.test.mjs",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table plm.\"FactoryTime\""
-  ],
-  "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
-    "No data change to existing tables",
-    "No migration version other than claimed 20260917005942"
+    "No database read or write of any kind",
+    "No repository transfer or GitHub settings change",
+    "No secret value recorded in any file or output"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/capture-repository-transfer-baseline.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
   ],
   "assumptions": [
-    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
+    "Every GitHub call the baseline makes is a read"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the admitted objects"
+    "Stop and report if any step needs a transfer, settings change, or database access"
   ]
 }

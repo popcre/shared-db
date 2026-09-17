@@ -1,27 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3168,
+  "work_issue": 3170,
   "outcome": "ready-for-merge",
-  "pr": 3169,
+  "pr": 3171,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3168/1",
-  "contract_sha256": "5dc63fa52c2468a06835e3ec5e4d864661fb3ec9c41519184c0b7711b411cba8",
-  "head_sha": "5e8b8a23236c664b0b73d04676c4406349bc4c2e",
+  "contract_ref": "refs/db-contracts/3170/1",
+  "contract_sha256": "281f95348ca25635b971a84f6d04ee3bc14976a942514fea32c7ff3864d5dfb4",
+  "head_sha": "758c76b6c30bffc976a3e199cf39ea59da15a130",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "command": "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
       "exit_code": 0,
-      "evidence": "169 passed; class MainLineCustodyOnlyProducerDriftTests: the positive tests and the apply-shaping control fail on main code. Full scripts pytest: 1306 passed, 8 skipped. Read-only dry run of prove_preview_producer_matches_main with live GitHub reads, preview ref 426cca7c (runs 35174395763 and 35175207318), promoted versions 20260917013422 and 20260916232818: refused on main code at 03d540a6 (different shared-supabase-migrations.yml), passes with this change at 03d540a6 and at b2d73ca9."
+      "evidence": "656 pass, 0 fail, 0 skipped. The #3170 resume regression test fails against origin/main code with 'blocked_on is allowed only for relinquished author capacity'. Full author-lease workflow test set: 1458 tests, only failure was the retirement-guard discovery test, fixed by guarding repairResumedClaim."
     }
   ],
   "assumptions_resolved": [
-    "Custody-only tolerance applies only to an exact-main target after the ref is proved an ancestor of exact main; apply-shaping producers remain byte-compared and tolerated paths are not counted as comparisons"
+    "Resume removal now uses the parser's trimmed-line field reading; repair mode changes only relinquish-only residue lines"
   ],
   "stop_conditions_hit": []
 }

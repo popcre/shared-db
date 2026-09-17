@@ -122,9 +122,12 @@ export function rateLimitMaxWaitMs(env = process.env) {
   return Math.min(seconds * 1000, DEFAULT_RATE_LIMIT_MAX_WAIT_MS)
 }
 
-function usesGraphqlQuota(args) {
+// `gh api graphql` spends graphql, `gh api <path>` spends core, and any other gh
+// subcommand (`gh pr view`, `gh run list`, ...) may spend either.
+function quotaBucketsFor(args) {
   const list = (args ?? []).map(String)
-  return list[0] !== 'api' || list[1] === 'graphql'
+  if (list[0] !== 'api') return ['core', 'graphql']
+  return [list[1] === 'graphql' ? 'graphql' : 'core']
 }
 
 /**
@@ -144,11 +147,14 @@ export function rateLimitResetDelayMs(raw, args, nowMs) {
   if (retryAfter !== undefined && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000
   let body = null
   try { body = JSON.parse(text.slice(boundary + 2)) } catch { body = null }
-  const resource = body?.resources?.[usesGraphqlQuota(args) ? 'graphql' : 'core']
   let resetSeconds = null
-  if (resource && Number.isFinite(resource.reset) && Number.isFinite(resource.remaining)) {
-    if (resource.remaining > 0) return 0
-    resetSeconds = resource.reset
+  const buckets = quotaBucketsFor(args)
+  const resources = buckets.map((bucket) => body?.resources?.[bucket])
+  if (resources.every((resource) => resource && Number.isFinite(resource.reset) && Number.isFinite(resource.remaining))) {
+    // A non-api gh command may have spent either bucket: wait for every bucket it could need.
+    const exhausted = resources.filter((resource) => resource.remaining <= 0)
+    if (!exhausted.length) return 0
+    resetSeconds = Math.max(...exhausted.map((resource) => resource.reset))
   } else if (/^\d+$/.test(headers.get('x-ratelimit-reset') ?? '')) {
     resetSeconds = Number(headers.get('x-ratelimit-reset'))
   }
@@ -180,15 +186,9 @@ export function hostQuotaLatch(env = process.env) {
   const dir = env?.GITHUB_QUOTA_LATCH_DIR || path.join(tmpdir(), 'shared-db-github-quota')
   const identity = createHash('sha256').update(String(env?.GH_TOKEN || env?.GITHUB_TOKEN || 'gh-cli-login')).digest('hex').slice(0, 16)
   const file = (bucket) => path.join(dir, `${identity}-${bucket}.json`)
-  // A plain `gh api <path>` spends core and `gh api graphql` spends graphql. Any
-  // other gh subcommand (`gh pr view`, `gh run list`, ...) may spend either, so
-  // it is stopped by EITHER latch; its own exhaustion is recorded as graphql,
-  // matching how rateLimitResetDelayMs reads its reset.
-  const readBuckets = (args) => {
-    const list = (args ?? []).map(String)
-    if (list[0] !== 'api') return ['core', 'graphql']
-    return [list[1] === 'graphql' ? 'graphql' : 'core']
-  }
+  // A non-api gh subcommand is stopped by EITHER latch. When it observes an
+  // exhaustion itself, the caller names the exhausted buckets from the free
+  // rate_limit probe; with no probe both are braked for the short fallback window.
   const readOne = (bucket) => {
     try {
       const row = JSON.parse(readFileSync(file(bucket), 'utf8'))
@@ -200,21 +200,34 @@ export function hostQuotaLatch(env = process.env) {
   }
   return {
     read(args) {
-      const resets = readBuckets(args).map(readOne).filter((value) => value !== null)
+      const resets = quotaBucketsFor(args).map(readOne).filter((value) => value !== null)
       return resets.length ? Math.max(...resets) : null
     },
-    write(args, resetMs) {
+    write(args, resetMs, buckets = quotaBucketsFor(args)) {
       mkdirSync(dir, { recursive: true })
-      const target = file(usesGraphqlQuota(args) ? 'graphql' : 'core')
-      const staging = `${target}.${process.pid}.${Date.now()}.tmp`
-      try {
-        writeFileSync(staging, JSON.stringify({ resetMs }))
-        renameSync(staging, target)
-      } finally {
-        rmSync(staging, { force: true })
+      for (const bucket of buckets) {
+        const target = file(bucket)
+        const staging = `${target}.${process.pid}.${Date.now()}.tmp`
+        try {
+          writeFileSync(staging, JSON.stringify({ resetMs }))
+          renameSync(staging, target)
+        } finally {
+          rmSync(staging, { force: true })
+        }
       }
     },
   }
+}
+
+// The buckets a probe shows exhausted, among those the command could spend.
+// An unreadable body falls back to every bucket the command could spend.
+function exhaustedBuckets(raw, args) {
+  const text = String(raw ?? '').replace(/\r\n/g, '\n')
+  let body = null
+  try { body = JSON.parse(text.slice(text.indexOf('\n\n') + 2)) } catch { body = null }
+  const candidates = quotaBucketsFor(args)
+  const exhausted = candidates.filter((bucket) => Number.isFinite(body?.resources?.[bucket]?.remaining) && body.resources[bucket].remaining <= 0)
+  return exhausted.length ? exhausted : candidates
 }
 
 export function latchedRateLimitError(args, resetMs, wrapError) {
@@ -322,17 +335,16 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
       const exhausted = isRateLimitExhausted(error)
       if (exhausted && !mutating && !rateLimitWaited && maxRateLimitWaitMs > 0) {
         let delay = null
+        let probe = null
         try {
-          delay = rateLimitResetDelayMs(
-            executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] }),
-            args,
-            now(),
-          )
+          probe = executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] })
+          delay = rateLimitResetDelayMs(probe, args, now())
         } catch {
           delay = null // an unreadable reset is refused below, never guessed
         }
         if (quotaLatch) {
-          try { quotaLatch.write(args, now() + (delay ?? UNKNOWN_RESET_LATCH_MS)) } catch { /* the brake is best-effort; the refusal below is not */ }
+          const buckets = delay === null ? quotaBucketsFor(args) : exhaustedBuckets(probe, args)
+          try { quotaLatch.write(args, now() + (delay ?? UNKNOWN_RESET_LATCH_MS), buckets) } catch { /* the brake is best-effort; the refusal below is not */ }
         }
         if (delay !== null && delay <= maxRateLimitWaitMs) {
           rateLimitWaited = true

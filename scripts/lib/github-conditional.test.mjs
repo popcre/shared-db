@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  nextPageEndpoint, parseHttpResponse, sharedConditionalGet, singleFlight,
+  nextPageEndpoint, parseHttpResponse, pollDelayMs, sharedConditionalGet, singleFlight,
 } from './github-conditional.mjs'
 import { hostQuotaLatch, runGitHubCommand } from './github-transport.mjs'
 import { fetchCheckRuns } from '../orchestrator-flow/runner-lanes.mjs'
@@ -56,7 +56,7 @@ test('unchanged polling consumes no primary quota: every repeat poll is a 304', 
   assert.equal(gh.counted, 1, 'twenty unchanged polls cost zero primary-quota requests')
   gh.etag = 'W/"v2"'; gh.body = '{"n":2}'; clock += 30000
   const changed = read()
-  assert.equal(changed.changed, true); assert.equal(changed.body, '{"n":2}'); assert.equal(changed.generation, 2)
+  assert.equal(changed.changed, true); assert.equal(changed.body, '{"n":2}')
   assert.equal(gh.counted, 2)
   rmSync(dir, { recursive: true, force: true })
 })
@@ -113,21 +113,56 @@ test('a crashed lock holder is taken over instead of wedging every reader', () =
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('while the quota latch is active a waiter keeps waiting for the holder instead of timing out or taking over', () => {
+test('while the quota latch is active a waiter waits for the holder; a holder that died mid-wait is still taken over after the reset', () => {
   const dir = scratch(); let clock = Date.now(); let polls = 0
   writeFileSync(path.join(dir, 'k.flight-7.lock'), '')
-  const latched = { read: () => clock + 1 }
+  const reset = clock + 900000
   const r = singleFlight({
     dir, key: 'k', generation: 7, now: () => clock, staleLockMs: 60000, maxWaitMs: 120000,
-    holderMayBeWaiting: () => latched.read() > clock,
+    latchResetMs: () => reset,
     wait: (ms) => {
       clock += ms; polls += 1
-      // The holder finishes after a 15-minute quota wait, well past maxWaitMs and staleLockMs.
-      if (polls === 3600) { writeFileSync(path.join(dir, 'k.flight-7.json'), JSON.stringify({ value: 'shared' })); latched.read = () => 0 }
+      // The holder finishes just after a 15-minute quota wait, well past maxWaitMs and staleLockMs.
+      if (clock > reset + 5000) writeFileSync(path.join(dir, 'k.flight-7.json'), JSON.stringify({ value: 'shared' }))
     },
     read: () => { throw new Error('a waiter must not start its own read') },
   })
   assert.equal(r.value, 'shared'); assert.equal(r.shared, true)
+  // Crashed holder: the lock never clears and no result appears. The waiter takes over
+  // no earlier than staleLockMs after the reset, and never spins in between.
+  const dir2 = scratch(); clock = Date.now(); const reset2 = clock + 900000; let spins = 0
+  writeFileSync(path.join(dir2, 'k.flight-8.lock'), '')
+  const taken = singleFlight({ dir: dir2, key: 'k', generation: 8, now: () => clock, staleLockMs: 60000, latchResetMs: () => reset2, wait: (ms) => { clock += ms; spins += 1 }, read: () => clock })
+  assert.equal(taken.shared, false); assert.ok(taken.value > reset2 + 60000, 'no takeover before the reset plus staleLockMs')
+  assert.ok(spins < 900000 / 250 + 60000 / 25 + 10, `bounded local waits: ${spins}`)
+  rmSync(dir, { recursive: true, force: true }); rmSync(dir2, { recursive: true, force: true })
+})
+
+test('failed polls back off 30/60/120/300s with jitter; x-poll-interval is only a floor', () => {
+  assert.equal(pollDelayMs({ baseMs: 20000, failures: 0, random: () => 0.99 }), 20000, 'no backoff while healthy')
+  assert.equal(pollDelayMs({ baseMs: 20000, pollIntervalHeaderMs: 60000 }), 60000)
+  assert.equal(pollDelayMs({ baseMs: 90000, pollIntervalHeaderMs: 60000 }), 90000)
+  assert.deepEqual([1, 2, 3, 4, 9].map((failures) => pollDelayMs({ baseMs: 20000, failures, random: () => 0 })), [30000, 60000, 120000, 300000, 300000])
+  const high = pollDelayMs({ baseMs: 20000, failures: 4, random: () => 0.999 })
+  assert.ok(high > 300000 && high < 360000, `jitter stays within 20%: ${high}`)
+})
+
+test('a non-api gh command is stopped by either latch and brakes only the bucket the probe shows exhausted', () => {
+  const dir = scratch(); const latchEnv = { GH_TOKEN: 't4', GITHUB_QUOTA_LATCH_DIR: dir }; let clock = 7_000_000; const now = () => clock
+  const resetSeconds = Math.floor((clock + 600000) / 1000)
+  const executor = (_bin, args) => {
+    if (args[2] === 'rate_limit') return `HTTP/2.0 200 OK
+
+${JSON.stringify({ resources: { core: { remaining: 0, reset: resetSeconds }, graphql: { remaining: 900, reset: resetSeconds } } })}`
+    const e = new Error('HTTP 403'); e.stderr = 'API rate limit exceeded for user (HTTP 403)'; throw e
+  }
+  assert.throws(() => runGitHubCommand(['run', 'list'], { executor, quotaLatch: hostQuotaLatch(latchEnv), maxRateLimitWaitMs: 1000, wait: () => {}, reportStderr: () => {}, now }))
+  assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.json')).map((n) => n.replace(/^.*-/, '')), ['core.json'], 'core exhaustion seen by gh run list brakes core, not graphql')
+  let wire = 0
+  assert.throws(() => runGitHubCommand(['api', 'repos/o/r'], { executor: () => { wire += 1 }, quotaLatch: hostQuotaLatch(latchEnv), now }), (e) => e.quotaLatched)
+  assert.throws(() => runGitHubCommand(['pr', 'view', '1'], { executor: () => { wire += 1 }, quotaLatch: hostQuotaLatch(latchEnv), now }), (e) => e.quotaLatched)
+  runGitHubCommand(['api', 'graphql', '-f', 'query=x'], { executor: () => { wire += 1; return '{}' }, quotaLatch: hostQuotaLatch(latchEnv), now })
+  assert.equal(wire, 1)
   rmSync(dir, { recursive: true, force: true })
 })
 

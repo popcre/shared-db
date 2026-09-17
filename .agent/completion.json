@@ -1,26 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2362,
+  "work_issue": 3091,
   "outcome": "ready-for-merge",
-  "pr": 3140,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2362/2",
-  "contract_sha256": "24a9aa1fa209b45f61fa3a3231ca2aec2fa1cd4b01d966189930c1b8eb5a2036",
-  "head_sha": "98a408de7a0d1979d7e3d55a24413120c7218898",
-  "files_changed": [
-    "scripts/test_production_business_risk_gate_activation_mutations.py"
+  "pr": 3110,
+  "migration_versions": [
+    "20260917022233"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3091/9",
+  "contract_sha256": "71953eeae99053140828366bd7d7fb0f24e437214a6dd9097dff2ffa61dfe5da",
+  "head_sha": "d59cad09a11254ba95ae03028bb15e09459c8f69",
+  "files_changed": [
+    "config/db-data-admin-property-source-coverage.json",
+    "supabase/migrations/20260917022233_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table plm.\"FactoryTime\""
+  ],
+  "db_writes": [
+    "index plm.prod_order_header_id_key",
+    "index plm.prod_order_milestone_schedule_status_needed_idx",
+    "index plm.prod_order_milestone_schedule_upsert_key",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.prod_order_milestone_schedule"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "Run at implementation head d59cad09: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK; version 20260917022233 has markers [] and needs no sidecar."
+    },
+    {
+      "command": "local PostgreSQL 18 run of the migration plus contract test on stub plm tables",
+      "exit_code": 0,
+      "evidence": "Migration applied at d5bfa725; both foreign keys created; contract test passed, including rejection of untrimmed stage_name, status and sku; with the sku trim check removed the test failed with \"untrimmed sku was accepted\"."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 12 activation-evidence guard mutants listed in issue #2362; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
   ],
   "stop_conditions_hit": []
 }

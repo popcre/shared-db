@@ -8172,7 +8172,7 @@ test('re-claim of an already dispatched work issue treats dispatch as satisfied'
   const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo(),posted=[]
-  const history=['entered','classified','dispatched'].map((state,index)=>({author_association:'OWNER',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
+  const history=['entered','classified','dispatched'].map((state,index)=>({author_association:'OWNER',author:'u2giants',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
   io.issueComments=()=>history
   io.commentIssue=(_number,body)=>posted.push(body)
   const result=acquireAuthorLane({...opts,task:'#41',objects:['table core.example'],admitIssue:41,claim:true},NOW,io)

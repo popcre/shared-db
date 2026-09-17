@@ -1,24 +1,26 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 2730,
+  "generation": 1,
+  "work_issue": 3212,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Select the newest same-name check run deterministically by check-run id in prove_pr_and_checks, so an older cancelled run can no longer overwrite a newer successful one regardless of API row order (PR #2527 production refusal).",
-  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
-  "dispatcher": "Albert Hazan chat session 2026-09-17 (non-orchestrator sweep)",
-  "worker": "ZCode GLM-5.3 session repo-maintenance sweep 2026-09-17",
-  "branch": "claude/issue-2730-newest-check-selection",
-  "worktree": "C:/repos/shared-db-worktrees/issue-sweep-20260917",
+  "goal": "Keep every shared-db issue labelled exactly one of orchestrator or non-orchestrator: label on issue open/edit/reopen from the db-work-scope work_type, and sweep for blank or double-labelled issues on a schedule.",
+  "base_sha": "985e19b6c7ef5f8dbbf722ca3f773318cf63b987",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (issue label rule)",
+  "worker": "Claude Opus 5 session issue-orch-label-sync 2026-09-17",
+  "branch": "claude/issue-orch-label-sync",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-orch-label-sync",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -26,18 +28,15 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No change to any migration file or workflow file"
+    "No change to any migration file or existing workflow"
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_business_risk_gate"
+    "node --test scripts/sync-issue-orchestrator-label.test.mjs"
   ],
   "assumptions": [
-    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run of that check",
-    "A single same-name row needs no ordering evidence; only two or more rows must carry usable integer ids or the gate refuses",
-    "Generation 2 re-seals the pair after a refresh from main 6aff8344 (other lanes merged, including the #2837 gate change; none touch this change own files); the implementation head is the merge commit 0b2cfbd0b988aba450555724f940686828823ab8."
+    "An issue that already carries exactly one of the two labels keeps it unless the issue is newly opened or its body is edited"
   ],
   "stop_conditions": [
-    "Stop and report if any existing test proves the id-ordering assumption wrong for same-name check runs",
-    "Stop if the exact-head proof or the guarded-merge authorization check would need to change"
+    "Stop if the label rule would need to change an existing guard or workflow"
   ]
 }

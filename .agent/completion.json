@@ -1,27 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2730,
+  "work_issue": 3212,
   "outcome": "ready-for-merge",
-  "pr": 3201,
+  "pr": 3211,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2730/2",
-  "contract_sha256": "0cb4c7ef6e9997e28ac39a491228047e9cb8d406e7a7f85c198b3dd483064a1a",
-  "head_sha": "0b2cfbd0b988aba450555724f940686828823ab8",
+  "contract_ref": "refs/db-contracts/3212/1",
+  "contract_sha256": "9922945a9c1c1bd8071c22c81653421a479ddc1a36678a795268cfe169f3da16",
+  "head_sha": "5bf87040861a79f4d6e9af1be83e7639e9fecae1",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "command": "node --test scripts/sync-issue-orchestrator-label.test.mjs",
       "exit_code": 0,
-      "evidence": "187 tests, 187 pass, 0 fail from the repo root at implementation head 0b2cfbd0 (refresh from main 6aff8344; own files unchanged by the refresh)."
+      "evidence": "10 tests, 10 pass, 0 fail at implementation head 5bf87040."
     }
   ],
   "assumptions_resolved": [
-    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run; selection never depends on API row order."
+    "Fill mode leaves an existing single label alone; authoritative mode runs only on issue opened or body edited."
   ],
   "stop_conditions_hit": []
 }

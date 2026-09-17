@@ -1,22 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3181,
+  "generation": 1,
+  "work_issue": 3195,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Remove the stale absent_from_production_catalog declaration for prod_order_milestone_schedule, which is live on production (run 35179427282, proof on #3091).",
-  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
+  "goal": "Resolve a keyword-less or on-table grant's kind from the CREATE in the same migration so a grant on a newly created table is not refused as an undeclared view write, while grants on views stay detected (#3183).",
+  "base_sha": "4fec003d67bd036ef0e0b265b28b8c7de0aceaa8",
   "dispatcher": "Albert Hazan chat session",
-  "worker": "Claude Opus 5 session bold-kowalevski",
-  "branch": "claude/remove-3091-prod-gap-1789640648",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/rm-3091-gap",
+  "worker": "Claude Opus 5 sub-agent agent-aa5246435e4e6b9b3",
+  "branch": "claude/fix-grant-kind-from-create",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa5246435e4e6b9b3",
   "allowed_paths": [
-    "config/db-data-admin-property-source-coverage.json",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "config/db-data-admin-property-source-coverage.json",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -26,13 +28,12 @@
     "No database write or structure change of any kind"
   ],
   "required_checks": [
-    "node scripts/check-db-data-admin-property-source-coverage.mjs",
-    "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs"
+    "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/check-migration-pr-lease.test.mjs"
   ],
   "assumptions": [
-    "The production catalog contains prod_order_milestone_schedule, so the coverage check would fail while the declaration remains"
+    "A name created in the migration as exactly one of table or view is that kind for every grant in the same migration"
   ],
   "stop_conditions": [
-    "Stop if any other coverage family changes"
+    "Stop if a grant on a view created in the same migration stops producing the view key"
   ]
 }

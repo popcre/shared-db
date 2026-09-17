@@ -1,24 +1,30 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3159,
+  "generation": 2,
+  "work_issue": 3173,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop the production business-risk gate forcing the manual route for routine migrations (#3104 PR #3131, #2866): classify a CREATE OR REPLACE FUNCTION that re-establishes a function exactly as the latest earlier migration left it (same header, comment and grants), and narrowing REVOKEs, as routine, while new functions, header changes, widened grants, intervening grant changes and data changes still report every risk.",
-  "base_sha": "03d540a6ff170a0b0141d9cd10a68ea6497888d0",
-  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3159 subagent",
-  "branch": "claude/3159-risk-gate-routine-fn",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
+  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
+  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
+  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
+  "worker": "Claude Opus 5 #2773 subagent",
+  "branch": "claude/api-fanout-2773-a",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -26,15 +32,16 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No production workflow dispatch"
+    "No production workflow dispatch",
+    "No weakening of collision locks, migration version reservation or serial lanes"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py"
+    "node --test scripts/lib/github-conditional.test.mjs scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "The tokeniser empties function bodies, so the comparison covers header, comment and grants; the body is covered by the required independent review"
+    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
   ],
   "stop_conditions": [
-    "Stop if any widening grant or data change would classify as routine"
+    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
   ]
 }

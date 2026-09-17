@@ -1,31 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 3181,
+  "work_issue": 3173,
   "outcome": "ready-for-merge",
-  "pr": 3176,
+  "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3181/4",
-  "contract_sha256": "2162252d06871b8c8653607350cc76a2b76e165a8450b7bbe64416a90abcf4a1",
-  "head_sha": "91f57bdc719f2fa1cf1903a9cb306a7f104321c5",
+  "contract_ref": "refs/db-contracts/3173/8",
+  "contract_sha256": "42be4090ca8fecab5679d385141b7deae02cea355486f69074666b807ff80408",
+  "head_sha": "56de15fe0228a93688a1096eafa8df256c5c389c",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json"
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
+      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
-    },
-    {
-      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
-      "exit_code": 0,
-      "evidence": "44 pass, 0 fail, 0 skipped."
+      "evidence": "619 passed, 0 failed, 0 skipped at 56de15fe0228a93688a1096eafa8df256c5c389c after refreshing onto current origin/main; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
     }
   ],
   "assumptions_resolved": [
-    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
+    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
   ],
   "stop_conditions_hit": []
 }

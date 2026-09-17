@@ -1,31 +1,58 @@
 {
   "schema_version": 1,
-  "work_issue": 2373,
+  "work_issue": 3199,
   "outcome": "ready-for-merge",
-  "pr": 3213,
+  "pr": 3216,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2373/1",
-  "contract_sha256": "130399b7f43f33693e780bca89b9fbcba56fa9b27d334cf732c4575a72df6b51",
-  "head_sha": "c547455c444a5466ece47bf0c5c49d8c61486d6c",
+  "contract_ref": "refs/db-contracts/3199/9",
+  "contract_sha256": "261437cde7a3df3533e24fcc0855db4b9867b5702ff37d7c66dca3c24a204f25",
+  "head_sha": "64dab1710fdb24750368ce5511e0d6cc5f2acd63",
   "files_changed": [
-    "scripts/test_production_catalog_verification.py"
+    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "plan_orchestrator_required_load_reduction.md",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests",
+      "command": "node --test scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "2 focused tests passed in 0.001 seconds at refreshed implementation head c547455c."
+      "evidence": "7 tests, 7 pass at implementation head 64dab171 — the two review-found hooks now refused and every githubIo function hook classified."
     },
     {
-      "command": "python -m unittest scripts/test_production_catalog_verification.py",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "193 tests passed in 2.273 seconds at refreshed implementation head c547455c."
+      "evidence": "604 tests pass; the lane manager stays byte-identical to main in this pull request."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; zero migrations added."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Every GitHub call goes through scripts/lib/github-transport.mjs."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=308."
+    },
+    {
+      "command": "ai-task-gates check --before pr-wait",
+      "exit_code": 0,
+      "evidence": "pr-wait may start; the exact-head independent review proceeds through this pull request."
     }
   ],
   "assumptions_resolved": [
-    "Both mutation survivors remain reachable on current origin/main and are now directly falsified by focused tests."
+    "origin/main moved four times during implementation; the branch was refreshed by merge before each evidence bind and tests re-run green at each implementation head.",
+    "The Grok 4.6 governed review of head fd7d1327 returned REVISE finding rewriteVersion and commitAndPushReversion missing from the refuse list; generation 9 refuses both and adds the completeness guard classifying every githubIo function hook as known read or refused mutation.",
+    "A1/A2 executed live before this pull request; queue-audit rerun shows no UNLABELLED ISSUES block and no EXPIRED AUTHOR LEASES section."
   ],
   "stop_conditions_hit": []
 }

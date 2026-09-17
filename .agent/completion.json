@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3221,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/2",
-  "contract_sha256": "25dad9ab57062088d36888ae06c4eb0c1d87d66b4d68ff27e527119afa10cb3f",
-  "head_sha": "9d8ce8f6b0ab2b570b5d7c199c21504bc5dc6eec",
+  "contract_ref": "refs/db-contracts/3180/3",
+  "contract_sha256": "f3a3e90d1ff310dbd69093fe49f45f91ef8d5bbfece204ab720bc8e48581d9e9",
+  "head_sha": "a875c5c593172c4c05da6640f86b1bcfca9d7a8d",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -35,7 +35,8 @@
     "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
     "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
     "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
-    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both."
+    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
+    "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758)."
   ],
   "stop_conditions_hit": []
 }

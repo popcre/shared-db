@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
@@ -46,7 +46,8 @@
     "The live /proddetails field union is the 21 fields recorded in docs/coldlion-unit-5b-grain-proof-20260915.md; it was re-derived live on 2026-09-17 (8 keys, 28 rows) and matched exactly, so the unknown-field refusal is keyed to that shape.",
     "The complete approved prodOrderNo population is the distinct landed coldlion.prod_history_line set for EDGEHOME (live reading 2026-09-17: 3,761 distinct orders over 61,901 lines; EP001 absent because history landing already excluded it).",
     "The scheduled ColdLion Landing Sync workflow is the sanctioned ongoing refresh vehicle, so the production-detail refresh step rides it after history and masters rather than in a new schedule.",
-    "Generation 2: main advanced to f06a85c3 when the sibling /prepackDetail loader (#3179, PR #3220) merged; this branch was refreshed by merge (9d8ce8f6), the scheduled workflow now runs history, masters, prepack-detail and prod-detail in one job, and the offline gate covers all four suites (935 tools tests pass on the merged tree)."
+    "Generation 2: main advanced to f06a85c3 when the sibling /prepackDetail loader (#3179, PR #3220) merged; this branch was refreshed by merge (9d8ce8f6), the scheduled workflow now runs history, masters, prepack-detail and prod-detail in one job, and the offline gate covers all four suites (935 tools tests pass on the merged tree).",
+    "Generation 3: main advanced again to 8e5af011 (catalog-verification guards, PR #3213); this branch refreshed by merge (a875c5c5), touching only the .agent evidence files, which are excluded from the content-equivalence comparison. The implementation diff is unchanged and the offline suites are unaffected."
   ],
   "stop_conditions": [
     "Stop and report if the live feed returns unknown or omitted fields, rows for another production order, or either identity twice in one response.",

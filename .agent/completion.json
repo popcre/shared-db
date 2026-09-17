@@ -2,20 +2,16 @@
   "schema_version": 1,
   "work_issue": 3180,
   "outcome": "ready-for-merge",
-  "pr": 3221,
+  "pr": 3230,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/4",
-  "contract_sha256": "99b05149c3e0858477d27e0889a39b9ded16c5c1d8988d8389b0cd9180a238e6",
-  "head_sha": "b7f4e0f1a2ac1808df5da845eb2abdb66879d040",
+  "contract_ref": "refs/db-contracts/3180/5",
+  "contract_sha256": "8e8706c4c82baeb3c292ff09a51eab053b6913e737debf6cec00eb833156267b",
+  "head_sha": "3813848731e6a1f29f77a5335f0f34d7c76d4463",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prod-detail-backfill.yml",
     "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prod-details.mjs",
-    "tools/coldlion-landing/sync-prod-details.mjs"
+    "tools/coldlion-landing/lib/prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -23,12 +19,12 @@
     {
       "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "32 tests, 32 pass, 0 fail on the refreshed head 9d8ce8f6, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules."
+      "evidence": "33 tests, 33 pass, 0 fail on the fix head 38138487, including the new regression asserting the insert names company_code and carries the full 27-column shape."
     },
     {
       "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "165 tests, 165 pass, 0 fail on the refreshed head 9d8ce8f6 — the exact four-suite command the merged scheduled workflow's offline gate runs, proving the combined history+masters+prepack+prod-detail job satisfies every suite's workflow assertions. The full 48-file tools suite (935 tests) also passed on this tree."
+      "evidence": "165 tests, 165 pass, 0 fail on the fix head — the four-suite command the scheduled workflow's offline gate runs."
     }
   ],
   "assumptions_resolved": [
@@ -37,7 +33,8 @@
     "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
     "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
     "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758).",
-    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758)."
+    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758).",
+    "The 3-key production probe (workflow run 35270886056) proved the rest of the path live — target proof against production, 3,761-key harvest, pacing, per-key failure isolation with durable failed-run records, reconciliation zeros, non-zero exit — and wrote nothing to coldlion.prod_detail; the only defect was the omitted company_code column, fixed and regression-tested here."
   ],
   "stop_conditions_hit": []
 }

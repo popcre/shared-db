@@ -1,38 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 3180,
+  "work_issue": 3229,
   "outcome": "ready-for-merge",
-  "pr": 3230,
+  "pr": 3231,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/6",
-  "contract_sha256": "cfdba6c494ad0e9c6dbaf3d22f5552e289ea12d5439f75c98713e986fed265e4",
-  "head_sha": "381384874e82be67bcbbac36d84aee1074254580",
+  "contract_ref": "refs/db-contracts/3229/2",
+  "contract_sha256": "de0808d02c95313b2927846005ea3e4233a20cde1584516e9ebe7cc84aa2136d",
+  "head_sha": "2a0e804d8105c0757d09244f3d35a644172c62a5",
   "files_changed": [
-    "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/lib/prod-details.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/lib/prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
+      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33 tests, 33 pass, 0 fail on the fix head 38138487, including the new regression asserting the insert names company_code and carries the full 27-column shape."
-    },
-    {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
-      "exit_code": 0,
-      "evidence": "165 tests, 165 pass, 0 fail on the fix head — the four-suite command the scheduled workflow's offline gate runs."
+      "evidence": "33/33 pass on this head, with the request-identity test extended to pin both message shapes (asked X, row answers Y) and the blank-answer spelling (blank), proving the refusal names both codes without weakening the abort."
     }
   ],
   "assumptions_resolved": [
-    "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
-    "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
-    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
-    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
-    "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758).",
-    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758).",
-    "The 3-key production probe (workflow run 35270886056) proved the rest of the path live — target proof against production, 3,761-key harvest, pacing, per-key failure isolation with durable failed-run records, reconciliation zeros, non-zero exit — and wrote nothing to coldlion.prod_detail; the only defect was the omitted company_code column, fixed and regression-tested here."
+    "The collision fired on live production data after 1,800 keys had landed cleanly (runs 35264306654 and 35266106746), so the guard is correct and only its evidence was missing.",
+    "Generation 2 follows the main advance to ec96eb74: the branch was refreshed by merge (2a0e804d), the implementation diff is unchanged, and the exact-head APPROVE at 7042a8b5 was recorded with full coverage."
   ],
   "stop_conditions_hit": []
 }

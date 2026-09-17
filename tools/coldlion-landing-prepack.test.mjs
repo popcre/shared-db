@@ -101,11 +101,13 @@ test("a blank natural key is refused, and a fractional quantity refuses rather t
   assert.throws(() => projectPrepackRows([sourceRow({ quantity: 1.5 })], { runId: RUN, fetchedAt: NOW }), /safe integer/);
 });
 
-test("every row must answer the request that fetched it", () => {
+test("every row must answer the request that fetched it, and the refusal names both codes", () => {
   const params = { companyCode: "SYNCO", prepackCode: "PPK0001" };
   assert.doesNotThrow(() => assertRowsAnswerRequest([sourceRow()], params));
-  assert.throws(() => assertRowsAnswerRequest([sourceRow({ companyCode: "OTHER" })], params), /another company/);
-  assert.throws(() => assertRowsAnswerRequest([sourceRow({ prePackCode: "PPK9999" })], params), /another prepack/);
+  assert.throws(() => assertRowsAnswerRequest([sourceRow({ companyCode: "OTHER" })], params), /another company: asked SYNCO, row answers OTHER/);
+  assert.throws(() => assertRowsAnswerRequest([sourceRow({ prePackCode: "PPK9999" })], params), /another prepack code: asked PPK0001, row answers PPK9999/);
+  // A blank answer is named as blank, never as the string "null".
+  assert.throws(() => assertRowsAnswerRequest([sourceRow({ prePackCode: "  " })], params), /row answers \(blank\)/);
 });
 
 // ---------------------------------------------------------------------------------

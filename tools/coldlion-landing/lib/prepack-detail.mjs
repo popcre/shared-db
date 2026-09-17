@@ -110,21 +110,24 @@ export function projectPrepackRows(sourceRows, { runId, fetchedAt } = {}) {
 /**
  * Every row must answer the request that fetched it: the payload carries both
  * `companyCode` and `prePackCode`, and a row naming either one unfaithfully is
- * an identity collision that aborts the run before anything lands.
+ * an identity collision that aborts the run before anything lands. The message
+ * names the requested key and the code the row actually answers — short ERP
+ * codes only, never other row values — so a live refusal is diagnosable from
+ * the run log alone.
  */
 export function assertRowsAnswerRequest(sourceRows, { companyCode, prepackCode }) {
   for (const row of sourceRows) {
     if (String(row.companyCode ?? "").trim() !== String(companyCode).trim()) {
-      throw Object.assign(new Error(`${PREPACK_DETAIL_SPEC.endpoint} returned a row for another company`), {
-        endpoint: PREPACK_DETAIL_SPEC.endpoint,
-        requestParams: { companyCode, prepackCode },
-      });
+      throw Object.assign(
+        new Error(`${PREPACK_DETAIL_SPEC.endpoint} returned a row for another company: asked ${String(companyCode).trim()}, row answers ${String(row.companyCode ?? "").trim() || "(blank)"}`),
+        { endpoint: PREPACK_DETAIL_SPEC.endpoint, requestParams: { companyCode, prepackCode } },
+      );
     }
     if (String(row.prePackCode ?? "").trim() !== String(prepackCode).trim()) {
-      throw Object.assign(new Error(`${PREPACK_DETAIL_SPEC.endpoint} returned a row for another prepack code`), {
-        endpoint: PREPACK_DETAIL_SPEC.endpoint,
-        requestParams: { companyCode, prepackCode },
-      });
+      throw Object.assign(
+        new Error(`${PREPACK_DETAIL_SPEC.endpoint} returned a row for another prepack code: asked ${String(prepackCode).trim()}, row answers ${String(row.prePackCode ?? "").trim() || "(blank)"}`),
+        { endpoint: PREPACK_DETAIL_SPEC.endpoint, requestParams: { companyCode, prepackCode } },
+      );
     }
   }
 }

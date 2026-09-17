@@ -5,7 +5,8 @@ name: Orchestrator no-progress alarm
 # stage transition for more than 120 minutes or nothing closed in four hours, posts one comment
 # on the orchestrator marker naming each stuck outcome, its blocker and the unblock action, with
 # the sealed snapshot a successor resumes from. Transition-only: an alarm already posted on the
-# target issue is never reposted. It reads GitHub and writes one issue comment; nothing else.
+# target issue is never reposted. It also names a ready structural request the queue audit would
+# admit but that has had no `entered` event for more than 30 minutes (issue #3148). It reads GitHub and writes one issue comment; nothing else.
 on:
   schedule:
     - cron: '7,37 * * * *'
@@ -44,7 +45,7 @@ jobs:
         with:
           node-version: '22'
       - name: Prove the alarm before trusting it
-        run: node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs
+        run: node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-snapshot.test.mjs
       - name: Raise the alarm on a new stall
         env:
           GH_TOKEN: ${{ github.token }}

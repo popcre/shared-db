@@ -1,35 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3122,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 3120,
+  "pr": 3145,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3122/1",
-  "contract_sha256": "ada30d7ed4830afeca6fc04e48f581f9c5c0621b7d717e3267087dddf23e8cf2",
-  "head_sha": "6ea8d3b6069fe1c5dc85fc5951a2329fbc55259a",
+  "contract_ref": "refs/db-contracts/2367/1",
+  "contract_sha256": "e9fa7c8a99ef6d6d2f9ad8a46632150d6300ab3e2a77829579a3a9c7af37e998",
+  "head_sha": "3d306bc4d8fe0ca51a4370b9e9af6fc8b7aa6c17",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
-    "scripts/capture-repository-transfer-baseline.mjs",
-    "scripts/capture-repository-transfer-baseline.test.mjs"
+    "scripts/test_production_business_risk_gate_historical_original_runs_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs",
+      "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at implementation head f031a044 (refreshed from main as 6ea8d3b6)."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at f031a044 (refreshed from main as 6ea8d3b6)."
+      "evidence": "Ran 1141 tests, OK (skipped=8). Each listed mutant proven killed by mutate-run-restore per file."
     }
   ],
   "assumptions_resolved": [
-    "The baseline issues only GET requests through the governed GitHub transport; the live run changed nothing."
+    "Sweep positions remapped to current source by guard text; all 49 listed mutants killed with gate source unchanged"
   ],
   "stop_conditions_hit": []
 }

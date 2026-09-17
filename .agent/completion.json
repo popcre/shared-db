@@ -1,28 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3193,
+  "work_issue": 3182,
   "outcome": "ready-for-merge",
-  "pr": 3194,
+  "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3193/1",
-  "contract_sha256": "0f97dd1bd7b749d481775bc6a15acf1dad9136b44bf5e292d1056cc29f5ceb65",
-  "head_sha": "de89d19baa82dbda2c48d0b0504892512476eebf",
+  "contract_ref": "refs/db-contracts/3182/5",
+  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
+  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
   "files_changed": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_production_migration_guard.py",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "With scripts/test_migration_derivation.py and scripts/test_production_business_risk_gate.py: Ran 501 tests, OK. Two of the three new tests fail against main's guard. Workflow text tests (preview-ref, supabase-ref-config, rehearsal-map-parse, preview-mode-guard, automatic-promotion-source): 167 pass, 0 fail, 0 skipped."
+      "evidence": "628 tests, 628 pass, 0 fail at a8df2e63 after merging main 4fec003d."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=305 at a8df2e63."
     }
   ],
   "assumptions_resolved": [
-    "Confirmed #2794's original rehearsal run 35216549909 checked out 8664e6a5, which is PR #2821's merge commit, so the historical-recovery lane applies"
+    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
+    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
+    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
   ],
   "stop_conditions_hit": []
 }

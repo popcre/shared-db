@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3124/1",
   "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
-  "head_sha": "14dde26531f4d81fb84660f907d3cfcf383f66bd",
+  "head_sha": "6b9cb1af033125079de22ebeafa910093d3eea42",
   "files_changed": [
     ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/shared-supabase-migrations.yml",
@@ -52,7 +52,7 @@
     {
       "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 14dde265: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
+      "evidence": "Run at implementation head 6b9cb1af: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
     },
     {
       "command": "node scripts/check-repository-identity-conformance.mjs",
@@ -62,7 +62,7 @@
     {
       "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Full Python suite at 14dde265: Ran 1089 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
+      "evidence": "Full Python suite at 6b9cb1af: Ran 1089 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
     }
   ],
   "assumptions_resolved": [

@@ -201,7 +201,8 @@ export function liveWatchIo(repo, env = process.env) {
 
 export function main(argv = process.argv.slice(2)) {
   const i = argv.indexOf('--repo')
-  const repo = i >= 0 ? argv[i + 1] : currentRepository()
+  // --repo is an assertion: it must agree with GITHUB_REPOSITORY and the verified origin (#2530).
+  const repo = currentRepository(i >= 0 ? argv[i + 1] : undefined)
   const apply = argv.includes('--apply')
   const d = argv.indexOf('--drawn-since')
   const drawnSince = d >= 0 ? argv[d + 1] : null

@@ -106,6 +106,18 @@ jobs:
             echo "::error::Missing scripts/check-main-tip-freshness.test.mjs"; exit 1; }
           node --test scripts/check-main-tip-freshness.test.mjs
 
+      - name: Run the queue hygiene report tests (#3199 Phase A3)
+        # Named explicitly like the freshness gate above. The hygiene report is
+        # a SCHEDULED job, so no pull-request trigger can prove it still refuses
+        # to write: these tests are what prove the subcommand strips every
+        # mutation hook, that a backed-up queue exits 0, and that an unreadable
+        # queue exits 2 instead of degrading into "no findings".
+        run: |
+          set -euo pipefail
+          test -f scripts/queue-hygiene-report.test.mjs || {
+            echo "::error::Missing scripts/queue-hygiene-report.test.mjs"; exit 1; }
+          node --test scripts/queue-hygiene-report.test.mjs
+
       - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
         # Named explicitly, like the freshness gate above: these decide how every
         # governed gate reaches GitHub. The conformance check is the half that

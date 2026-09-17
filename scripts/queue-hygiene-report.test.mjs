@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { claimBody, WORK_LABEL } from './manage-migration-author-lanes.mjs'
 import { main, hygieneReportIo } from './queue-hygiene-report.mjs'
+import { githubIo } from './manage-migration-author-lanes.mjs'
 
 const NOW = new Date('2026-09-17T12:00:00Z')
 
@@ -39,8 +40,28 @@ const MUTATION_HOOKS = [
   'postCommitStatus', 'updateIssue', 'makeOwnerCommit', 'makeReviewVerdictCommit',
   'createRef', 'deleteRef', 'updateRef', 'atomicReviewRefs', 'atomicReviewMutexRelease',
   'reserveVersion', 'createClaim', 'createIssueIn', 'commentIssue', 'closeIssue',
-  'closeClaim', 'contentPreservingRefresh',
+  'closeClaim', 'contentPreservingRefresh', 'rewriteVersion', 'commitAndPushReversion',
 ]
+// Every OTHER function on githubIo, classified by name as a read. A new githubIo
+// hook appears in NEITHER list and fails the classification test below until
+// somebody decides which side it is on — the silent-inheritance gap the governed
+// review of head fd7d1327 caught (rewriteVersion, commitAndPushReversion).
+const KNOWN_READ_HOOKS = new Set([
+  'databasePreviewClassification', 'pullRequestFiles', 'readReviewerOperationRoute', 'countLogicalReviewRequests',
+  'readPrWithReviewContext', 'observedReviewQuota', 'getRateLimit', 'previewApplyRun', 'verifyPreviewApplyArtifact',
+  'readActiveReviewLeases', 'readActiveReviewLeasesOverGit', 'readActiveReviewLeasesOverGraphql', 'readReviewStates',
+  'readReviewRefs', 'readReviewRecords', 'openClaims', 'closedClaimsForWork', 'openWorkIssues', 'openIssueNumbers',
+  'dependencyStates', 'mergeCommitInMain', 'prSources', 'openPulls', 'readPullStates', 'mergeTouchesMigrations',
+  'branchPulls', 'getPr', 'getPrFiles', 'databasePreviewFileSnapshot', 'comparePullRequestFiles', 'getCommitStatus',
+  'closingIssuesForPr', 'prStructuralObjects', 'getFileAt', 'treeFiles', 'previewGateProof', 'getIssue',
+  'getIssueComments', 'getPrReviews', 'readLeaseActivity', 'readReviewerQueue', 'mainSha', 'getCommit',
+  'compareCommits', 'readFindings', 'readRef', 'listRefs', 'listReviewRefsPaged', 'readCommitMessage', 'runState',
+  'issueComments', 'readOutcomeEvidence', 'applicationCommitInDefaultBranch', 'verifyProductionApply',
+  'verifyLiveAssertion', 'verifyGeneratedTypes', 'readArtifactJson', 'readArtifactFiles', 'reversionFiles',
+  'localHead', 'localClean', 'localBranch', 'localWorktreeState', 'verifyArtifact',
+  'currentMaxVersion', 'commandAvailable', 'reviewerDoctor', 'reviewerAdmissionOverrides',
+  'reviewerUsability', 'resolveOrchestratorEngine', 'orchestratorFlowAdapter', 'flowSnapshot',
+])
 
 function fixtureIo({ issues, claims = [], openPulls = [], branchPulls = {} }) {
   const reached = []
@@ -71,6 +92,18 @@ function runReport(fixture) {
     console.error = oldError
   }
 }
+
+test('every githubIo function hook is classified: known read or refused mutation', () => {
+  // The completeness guard the governed review asked for. Nothing on githubIo
+  // may be silent: if this fails, a new hook arrived — decide which list owns it.
+  const functionHooks = Object.keys(githubIo).filter((key) => typeof githubIo[key] === 'function')
+  assert.ok(functionHooks.length > 50, 'the githubIo surface shrank; this classification needs re-derivation')
+  for (const key of functionHooks) {
+    assert.ok(KNOWN_READ_HOOKS.has(key) || MUTATION_HOOKS.includes(key),
+      `githubIo grew hook ${key}: classify it as a known read or add it to MUTATION_HOOKS — never let it pass through silently`)
+  }
+  for (const key of MUTATION_HOOKS) assert.ok(typeof githubIo[key] === 'function', `refused hook ${key} no longer exists on githubIo; prune the list`)
+})
 
 test('every stripped mutation hook throws from the wrapper (dirty-first)', () => {
   for (const name of MUTATION_HOOKS) {

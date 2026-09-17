@@ -54,6 +54,11 @@ export function hygieneReportIo(io) {
     closeIssue: refuse('closeIssue'),
     closeClaim: refuse('closeClaim'),
     contentPreservingRefresh: refuse('contentPreservingRefresh'),
+    // Found by the governed Grok review of head fd7d1327 (REVISE, 2026-09-17):
+    // these two also write — one rewrites files in a worktree, the other runs
+    // git commit + git push — so the refuse list is incomplete without them.
+    rewriteVersion: refuse('rewriteVersion'),
+    commitAndPushReversion: refuse('commitAndPushReversion'),
   }
 }
 

@@ -4113,6 +4113,9 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         self.assertNotIn("migrationTrain", result["governedEvidence"])
 
 
+from production_business_risk_gate import REPOSITORY  # noqa: E402
+
+
 class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
     """#3168: #2870 and #2866 previewed at main-line 426cca7c; main later changed
     custody-only producers (freshness check, lane manager, repository identity,
@@ -4124,11 +4127,11 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
         "jobs:\n  preview:\n    steps:\n"
         "      - run: |\n"
         "          MAIN_SHA=\"$REQUESTED_SHA\" node scripts/check-main-tip-freshness.mjs\n"
-        "          gh api 'repos/u2giants/shared-db/pulls?state=open' \\n"
+        f"          gh api 'repos/{REPOSITORY}/pulls?state=open' \\\n"
         "          python scripts/atomic_migration_apply.py --apply\n"
     )
 
-    def api(self, *, changed=(), absent_at_ref=(), main_line=True, workflows=None):
+    def api(self, *, changed=(), absent_at_ref=(), main_line=True, workflows=None, recovery=None):
         import base64
         ref, main = self.REF, self.MAIN
         workflows = workflows or {}
@@ -4137,10 +4140,13 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
             if endpoint.endswith(f"/compare/{main}...{main}"):
                 return {"status": "identical", "behind_by": 0}
             if "/compare/" in endpoint:
-                self.assertEqual(endpoint, f"repos/u2giants/shared-db/compare/{ref}...{main}")
+                self.assertEqual(endpoint, f"repos/{REPOSITORY}/compare/{ref}...{main}")
                 return ({"status": "ahead", "behind_by": 0} if main_line
                         else {"status": "diverged", "behind_by": 2})
             if "/git/blobs/" in endpoint:
+                if recovery and endpoint.rsplit("/", 1)[1] in recovery:
+                    return {"encoding": "base64", "content": base64.b64encode(
+                        recovery[endpoint.rsplit("/", 1)[1]].encode()).decode()}
                 side = endpoint.rsplit("/", 1)[1]
                 text = workflows[side]
                 return {"encoding": "base64",
@@ -4152,6 +4158,8 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
                     continue
                 if path == PREVIEW_WORKFLOW and workflows:
                     sha = "wf-ref" if r == ref else "wf-main"
+                elif path == "scripts/historical_preview_recovery.py" and recovery:
+                    sha = "rec-ref" if r == ref else "rec-main"
                 else:
                     sha = f"changed-{r}" if path in changed else "same-blob"
                 entries.append({"path": path, "type": "blob", "sha": sha})
@@ -4191,10 +4199,25 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
             self.prove(self.api(changed=("scripts/check-main-tip-freshness.mjs",)),
                        target=authored_merge(self.MAIN))
 
+    def test_recovery_script_tolerates_only_the_repository_identity_move(self):
+        before = f'import sys\nREPO = "{REPOSITORY}"\ndef main():\n    apply()\n'
+        after = ("import sys\ntry:  # run as scripts/<name>.py or imported as scripts.<name>\n"
+                 "    from repository_identity import current_repository\n"
+                 "except ImportError:  # pragma: no cover\n"
+                 "    from scripts.repository_identity import current_repository\n"
+                 "REPO = current_repository()  # never hard-coded (#2530)\n"
+                 "def main():\n    apply()\n")
+        self.prove(self.api(recovery={"rec-ref": before, "rec-main": after}))
+        with self.assertRaisesRegex(RiskGateError, "different scripts/historical_preview_recovery.py"):
+            self.prove(self.api(recovery={"rec-ref": before,
+                                          "rec-main": after.replace("apply()", "skip()")}))
+        with self.assertRaisesRegex(RiskGateError, "different scripts/historical_preview_recovery.py"):
+            self.prove(self.api(recovery={"rec-ref": before, "rec-main": after}, main_line=False))
+
     def test_workflow_differing_only_by_custody_rewrites_passes(self):
         main_wf = (self.BASE_WORKFLOW
                    .replace("freshness.mjs\n", "freshness.mjs --production\n")
-                   .replace("'repos/u2giants/shared-db/pulls?state=open'",
+                   .replace(f"'repos/{REPOSITORY}/pulls?state=open'",
                             '"repos/${GITHUB_REPOSITORY}/pulls?state=open"')
                    + "          # #3153: a comment\n")
         self.prove(self.api(workflows={"wf-ref": self.BASE_WORKFLOW, "wf-main": main_wf}))
@@ -4202,7 +4225,7 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
     def test_workflow_step_change_is_refused_even_on_a_main_line_ref(self):
         for main_wf in (
             self.BASE_WORKFLOW.replace("--apply", "--apply --skip-verify"),
-            self.BASE_WORKFLOW.replace("u2giants/shared-db", "someone/else"),
+            self.BASE_WORKFLOW.replace(REPOSITORY, "someone/else"),
             self.BASE_WORKFLOW + "          echo forged > ledger.json\n",
         ):
             with self.subTest(main_wf=main_wf), self.assertRaisesRegex(

@@ -1038,18 +1038,41 @@ PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
     "config/orchestrator-evidence-schema-v1.json",
     "config/orchestrator-global-invalidators-v1.json",
     "config/review-carry-forward-stored-hashes-v1.json",
-    # Its recovery lane pins run head to an authored merge, never exact main,
-    # so this tolerance never reaches the path that executes it.
-    "scripts/historical_preview_recovery.py",
 ))
+
+# Executes in the preview job's historical-recovery mode, so it is NOT
+# custody-only. Tolerated only when the two versions are identical after the
+# repository identity move (#2530): the resolver import lines and the one REPO
+# assignment, spelled as the resolved slug or through the resolver.
+HISTORICAL_RECOVERY_PRODUCER = "scripts/historical_preview_recovery.py"
+_RECOVERY_IDENTITY_DROPPED_LINES = frozenset((
+    "try:  # run as scripts/<name>.py or imported as scripts.<name>",
+    "from repository_identity import current_repository",
+    "except ImportError:  # pragma: no cover",
+    "from scripts.repository_identity import current_repository",
+))
+
+
+def _recovery_identity_normal_form(text: str) -> list[str]:
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line in _RECOVERY_IDENTITY_DROPPED_LINES:
+            continue
+        if line in {f'REPO = "{REPOSITORY}"', "REPO = current_repository()  # never hard-coded (#2530)"}:
+            line = "REPO = <repository>"
+        lines.append(line)
+    return lines
 
 # The workflow decides which steps exist, so it is NOT custody-only as a whole.
 # It is tolerated only when the two versions are identical after these exact,
 # custody-only rewrites; any other changed line -- a step, a condition, an
 # apply command, an environment value -- still refuses.
 _WORKFLOW_CUSTODY_REWRITES = (
-    # Same repository, spelled literally or through the runner variable.
-    (re.compile(r"""['"]?repos/(?:u2giants/shared-db|\$\{GITHUB_REPOSITORY\})/([^'"\s]*)['"]?"""),
+    # Same repository, spelled literally (the resolved identity) or through the
+    # runner variable.
+    (re.compile(r"""['"]?repos/(?:""" + re.escape(REPOSITORY)
+                + r"""|\$\{GITHUB_REPOSITORY\})/([^'"\s]*)['"]?"""),
      r"repos/<repository>/\1"),
     # The freshness rule is the freshness script's own business.
     (re.compile(r"(scripts/check-main-tip-freshness\.mjs) --production\b"), r"\1"),
@@ -1095,6 +1118,9 @@ def _custody_only_difference(
     if path == PREVIEW_WORKFLOW:
         return _workflow_custody_normal_form(_blob_text(ref_blob, api)) \
             == _workflow_custody_normal_form(_blob_text(target_blob, api))
+    if path == HISTORICAL_RECOVERY_PRODUCER:
+        return _recovery_identity_normal_form(_blob_text(ref_blob, api)) \
+            == _recovery_identity_normal_form(_blob_text(target_blob, api))
     return False
 
 
@@ -1218,7 +1244,8 @@ def prove_preview_producer_matches_main(
                 f"{what} produced evidence with a different {path} than {against}"
             )
             if target.kind != "exact-main" or (
-                path not in PREVIEW_CUSTODY_ONLY_PATHS and path != PREVIEW_WORKFLOW
+                path not in PREVIEW_CUSTODY_ONLY_PATHS
+                and path not in {PREVIEW_WORKFLOW, HISTORICAL_RECOVERY_PRODUCER}
             ):
                 raise mismatch
             # Custody-only drift is tolerated only for a main-line ref (#3168).

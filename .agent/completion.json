@@ -1,30 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 3212,
+  "work_issue": 3174,
   "outcome": "ready-for-merge",
-  "pr": 3211,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3212/3",
-  "contract_sha256": "6d059e35fe9b2bf038a86bb4c8cbf4115075d7355593d8acd230a68aec5d8282",
-  "head_sha": "1798102a5195a9126740f225af2593d2350fa9ca",
+  "pr": 3190,
+  "migration_versions": [
+    "20260917144950"
+  ],
+  "contract_ref": "refs/db-contracts/3174/9",
+  "contract_sha256": "d3b26dec5934e3b919c46a24db56b44a7e31abe6aa68dd400511126176b63d31",
+  "head_sha": "899b0f8b8b28adac1e6e890de24818eb2b660b32",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/issue-orchestrator-label.yml",
-    "scripts/sync-issue-orchestrator-label.mjs",
-    "scripts/sync-issue-orchestrator-label.test.mjs"
+    ".github/live-proofs/3174.sql",
+    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
+    "supabase/tests/sesame_landing_contracts.sql"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table plm.coke_approval_vocabulary_value",
+    "table plm.wwe_creative_brand",
+    "table plm.peanuts_art_program",
+    "table plm.sesame_brand",
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "table plm.sesame_submission_property_option"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/sync-issue-orchestrator-label.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "10 tests, 10 pass, 0 fail at implementation head 1798102a (refresh from main; own files unchanged by the refresh)."
+      "evidence": "Previous head failed only the backdated-version guard (fixed by governed version supersession) and Sesame census A (20 vs 19 sesame_ tables; census now excludes the separate submissions landing). Both re-verified by CI on this head."
     }
   ],
   "assumptions_resolved": [
-    "Fill mode leaves an existing single label alone; authoritative mode runs only on issue opened or body edited."
+    "Production function body md5 matched migration 20260917005650 before derivation.",
+    "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today.",
+    "Migration version superseded to 20260917144950 through --reversion-active-claim; claim #3189 lease version updated by the tool."
   ],
   "stop_conditions_hit": []
 }

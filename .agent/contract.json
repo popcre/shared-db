@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3009,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -13,12 +13,14 @@
   "allowed_paths": [
     "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",
     ".github/live-proofs/3009.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",
     ".github/live-proofs/3009.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],

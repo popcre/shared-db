@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-import { inspect, KNOWN_LICENSED_DIVISION_HEADS } from './check-prepack-exclusion.mjs';
+import { inspect, inspectMigrations, KNOWN_LICENSED_DIVISION_HEADS } from './check-prepack-exclusion.mjs';
 
 // 1. The repository as it stands must pass.
 const result = spawnSync(process.execPath, ['scripts/check-prepack-exclusion.mjs'], {
@@ -106,4 +106,39 @@ assert.ok(
   'a commented-out filter must not satisfy the guard',
 );
 
-console.log('Prepack exclusion test passed: guard verified green on the tree and red on 7 dirty cases.');
+// Only members excluded, heads left in -- the symmetric weakening.
+const membersOnly = CLEAN.replace(/then 'head'/, 'then null');
+assert.ok(
+  inspect(membersOnly).some((f) => f.includes("no longer returns 'head'")),
+  'dropping the head role must fail',
+);
+
+// The retired snapshot reintroduced inside the role function only.
+const snapshotInFunction = CLEAN.replace(
+  'else null',
+  "when exists (select 1 from public.erp_items_current e where e.item_number = p_item_no) then 'member'\n    else null",
+);
+assert.ok(
+  inspect(snapshotInFunction).some((f) => f.includes('plm.prepack_role references public.erp_items_current')),
+  'reintroducing the retired snapshot inside the role function must fail',
+);
+
+// A LATER migration replaces only the role function and never names the view.
+// The newest definition of each object must be judged on its own.
+const fnOnly = CLEAN.slice(0, CLEAN.indexOf('create or replace view')).replace(/then 'member'/, 'then null');
+const split = inspectMigrations([
+  { name: '20260101000000_prepack_exclusion.sql', sql: CLEAN },
+  { name: '20260201000000_weaken_role_only.sql', sql: fnOnly },
+]);
+assert.ok(
+  split.failures.some((f) => f.startsWith('20260201000000_weaken_role_only.sql') && f.includes("no longer returns 'member'")),
+  'a later function-only migration that weakens the role must fail',
+);
+assert.equal(split.view, '20260101000000_prepack_exclusion.sql');
+assert.deepEqual(
+  inspectMigrations([{ name: '20260101000000_prepack_exclusion.sql', sql: CLEAN }]).failures,
+  [],
+  'a correct single migration must produce no failures',
+);
+
+console.log('Prepack exclusion test passed: guard verified green on the tree and red on 10 dirty cases.');

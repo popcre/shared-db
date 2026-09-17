@@ -65,3 +65,25 @@ test('101 migration files are all validated, including the last file',()=>{
   const files=Array.from({length:101},(_,i)=>({filename:`supabase/migrations/20260814170219_${i}.sql`,status:'added',sql:i===100?'alter table core.y add column z int;':'alter table core.x add column z int;'}))
   assert.throws(()=>run({files}),/undeclared.*core.y/)
 })
+// 42ae9758 (#3183) keys a keyword-less or TABLE-keyword grant/revoke as BOTH
+// `table X` and `view X`. #3191: when the same migration CREATES that table and
+// the claim declares the table, the view half is the same claimed object wearing
+// the parser's second name -- and claims cannot be amended, so requiring it
+// blocked every table-creating migration with grants (live on PR #3190).
+test('#3191 a grant on a table the migration itself creates needs no separate view declaration',()=>{
+  for(const sql of [
+    'create table core.x(id bigint);\nrevoke all on table core.x from public, anon, authenticated;\n',
+    'create table core.x(id bigint);\ngrant select on core.x to authenticated;\n',
+  ]){
+    const result=run({files:[file(sql)]})
+    assert.deepEqual(result.objects,['table core.x','view core.x'])
+  }
+})
+test('#3191 the relaxation is gated on the declared table: an undeclared created table still names both keys',()=>{
+  const sql='create table core.x(id bigint);\nrevoke all on table core.x from public;\n'
+  assert.throws(()=>run({claims:[claim({objects:['table core.z']})],files:[file(sql)]}),/undeclared objects: table core\.x, view core\.x/)
+})
+test('#3191 a grant on a relation the migration does not create still requires its view declaration',()=>{
+  const sql='create table core.x(id bigint);\ngrant select on core.y to authenticated;\n'
+  assert.throws(()=>run({files:[file(sql)]}),/undeclared objects: table core\.y, view core\.y/)
+})

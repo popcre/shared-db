@@ -5,7 +5,7 @@ import { createTreeReader } from './lib/github-tree.mjs'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
-import { dispatchObjectKeys } from './check-pr-object-collisions.mjs'
+import { dispatchObjectKeys, extractOperations } from './check-pr-object-collisions.mjs'
 import { parseAuthorLease, REPO } from './manage-migration-author-lanes.mjs'
 import { validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
 
@@ -43,6 +43,18 @@ export function validateMigrationLease({ claims, branch, files, now = new Date()
   const declared=new Set(holder.lease.writes.map(normalize))
   const declaredReads=new Set((holder.lease.reads??[]).map(normalize))
   const actual=new Set()
+  // Since 42ae9758 (#3183) a grant/revoke written without an object-type
+  // keyword -- or with TABLE -- is keyed as BOTH `table X` and `view X`,
+  // because Postgres applies it to whichever relation X turns out to be.
+  // When the SAME migration creates that table and the claim declares the
+  // table, the view half is the parser's second name for the one object the
+  // claim already covers, not a second write; a claim cannot be amended
+  // after creation, so without this every table-creating migration that
+  // grants on the new table is refused (#3191, live on PR #3190). A grant
+  // on a relation the migration does NOT create stays fully declared: that
+  // is a pre-existing object, and its view half still names real work to
+  // serialise against.
+  const grantViewsOnCreatedTables=new Set()
   const versions=new Set()
   for(const file of migrations){
     const version=path.basename(file.filename).slice(0,14)
@@ -50,6 +62,12 @@ export function validateMigrationLease({ claims, branch, files, now = new Date()
     versions.add(version)
     if(!String(file.sql??'').trim()) throw new LeaseCheckError(`${file.filename} returned empty SQL`)
     for(const object of dispatchObjectKeys(file.sql)) actual.add(normalize(object))
+    const operations=extractOperations(file.sql)
+    const createdTables=new Set(operations.filter(op=>op.action==='create'&&op.kind==='table').map(op=>normalize(`table ${op.target}`)))
+    for(const op of operations){
+      if(op.action!=='grant'||op.kind!=='view') continue
+      if(createdTables.has(normalize(`table ${op.target}`))) grantViewsOnCreatedTables.add(normalize(`view ${op.target}`))
+    }
   }
   let historical=null
   if(versions.size===1&&!versions.has(holder.lease.version)){
@@ -63,7 +81,10 @@ export function validateMigrationLease({ claims, branch, files, now = new Date()
   // outlives that reopening, so the merge gate reads the tombstone, not the issue.
   // A successor does not lose anything here: successors take a fresh version.
   if(retirementExists(holder.lease.version)) throw new LeaseCheckError(`migration version ${holder.lease.version} was terminally retired; it can never be merged again. Successor work needs a fresh claim, branch, worktree and migration version.`)
-  const undeclared=[...actual].filter(x=>!declarationCoversActual(declared,x))
+  // The grant-view relaxation is gated on the declared table, never on the
+  // migration alone: an undeclared created table must still be refused naming
+  // BOTH of its keys, so the author sees the table, not a phantom view.
+  const undeclared=[...actual].filter(x=>!declarationCoversActual(declared,x)&&!(grantViewsOnCreatedTables.has(x)&&declared.has(x.replace(/^view /,'table '))))
   if(undeclared.length){
     // Name the read-vs-write mistake explicitly. "undeclared" would send an author
     // hunting for a missing line when the line is there under the wrong heading.

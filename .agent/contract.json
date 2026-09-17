@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 7,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -17,7 +17,8 @@
     ".github/workflows/tools-offline-tests.yml",
     "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
@@ -26,7 +27,8 @@
     ".github/workflows/tools-offline-tests.yml",
     "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -44,8 +46,8 @@
     "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "origin/main moved once during implementation (PR #3211); the branch was refreshed by merge before the evidence bind",
-    "A1/A2 already executed live before this pull request; their gates were verified by queue-audit reruns"
+    "origin/main moved twice during implementation (PR #3211, then PR #3190); the branch was refreshed by merge before each evidence bind.",
+    "The new tools-offline-tests guard step adds a truth-audit-tracked call site (the word Missing in its refusal line), so the pinned audit inventory must be extended in the same pull request; the site is excluded like its freshness-gate twin."
   ],
   "stop_conditions": [
     "Stop if any change would weaken a safety gate or touch the database",

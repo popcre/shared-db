@@ -4,12 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 3216,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/6",
-  "contract_sha256": "29f6c98f1c1bca1e128a41e11f570dd14be3f584d8af796e93a263ffadc90a80",
-  "head_sha": "e1ac4824684942b28b3065e7718a449d0f00227d",
+  "contract_ref": "refs/db-contracts/3199/7",
+  "contract_sha256": "47a414f3bbe3d5e0206c697a4babe2979271ccfdd0869409bfa9cf1985a669fa",
+  "head_sha": "4e7d397a8dafb5daefd4b903683cf370c01cdfbc",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/queue-hygiene-report.yml",
     ".github/workflows/tools-offline-tests.yml",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/queue-hygiene-report.test.mjs"
@@ -41,11 +44,17 @@
       "command": "ai-task-gates check --before pr-wait",
       "exit_code": 0,
       "evidence": "pr-wait may start for effective class reviewer-safety; required gates exact-head-independent-review, local-tests, repository-branch-and-pr, repository-rulebook-full-treatment all proceeding through this pull request."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=308 after registering the new guard-step call site as excluded, matching its freshness-gate twin."
     }
   ],
   "stop_conditions_hit": [],
   "assumptions_resolved": [
-    "origin/main moved twice during implementation (PR #3211, then PR #3190); the branch was refreshed by merge e1ac4824 before this evidence bind (taking main evidence pair at the merge point) and the test suite re-run green there.",
+    "origin/main moved twice during implementation (PR #3211, then PR #3190); the branch was refreshed by merge before each evidence bind and the test suite re-run green at each implementation head.",
+    "The new tools-offline-tests step adds a truth-audit-tracked call site (the word Missing in its refusal line); the pinned inventory was extended in the same pull request, the site excluded like its freshness-gate twin, and the audit re-run green (308 sites).",
     "A1/A2 were executed live before this pull request: seven issues labelled (scope blocks drafted for #3191/#3149/#3148), claim #3089 released through the guarded --release-claim path; queue-audit rerun shows no UNLABELLED ISSUES block and no EXPIRED AUTHOR LEASES section."
   ]
 }

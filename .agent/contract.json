@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3009,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -35,7 +35,9 @@
     "index public.style_guide_library_default_guides_group_uidx",
     "index public.style_guide_library_default_guides_modified_idx",
     "index public.style_guide_library_default_guides_name_idx",
-    "index public.style_guide_library_default_summary_mode_uidx"
+    "index public.style_guide_library_default_summary_mode_uidx",
+    "table public.style_guide_library_default_guides",
+    "table public.style_guide_library_default_summary"
   ],
   "prohibited_actions": [
     "No statement timeout increase",

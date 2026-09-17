@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 3174,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add Coca-Cola Submissions, WWE Creative, Peanuts Creative, Sesame Workshop Creative and Sesame Workshop Submissions sections to api.db_data_admin_scraped_source_inventory, with the new landing table plm.sesame_submission_property_option.",
-  "base_sha": "e2c53f215f3860a4bd19c311261db8a5a3506f5b",
+  "base_sha": "c0238000ade48a9f3996be125d2c766ad77a7550",
   "dispatcher": "claude shared-db orchestrator issue #3174",
   "worker": "Claude Opus 5 issue-3174 migration author lane (claim #3189)",
   "branch": "claude/issue-3174-scraped-sections",
@@ -49,7 +49,8 @@
     "Peanuts rows without a Tenovos source id have no ledger identity and are left out on purpose; production has none today.",
     "Generation 2 exists because main advanced to 23d6142e; the branch was refreshed by merge (a3889133) and main changed no file this PR touches.",
     "Generation 3: refreshed by merge (fce3914f) onto main 1c81b5b6, which carries the #3195 grant-kind reader fix; the migration and live proof are unchanged.",
-    "Generation 4: the migration version was superseded 20260917112114 -> 20260917144950 (claim #3189 supersession 314adcc7) because main gained 20260917112129; claim worktree rebound (1424b1c9); the Sesame NetX landing census test now excludes the separate sesame_submission_ landing table; refreshed onto main e2c53f21."
+    "Generation 4: the migration version was superseded 20260917112114 -> 20260917144950 (claim #3189 supersession 314adcc7) because main gained 20260917112129; claim worktree rebound (1424b1c9); the Sesame NetX landing census test now excludes the separate sesame_submission_ landing table; refreshed onto main e2c53f21.",
+    "Generation 5: refreshed by merge onto main c0238000; the PR's own diff is unchanged."
   ],
   "stop_conditions": [
     "Stop if the lane claim is refused for object collision.",

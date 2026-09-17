@@ -1,26 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 2364,
+  "work_issue": 3009,
   "outcome": "ready-for-merge",
-  "pr": 3142,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2364/1",
-  "contract_sha256": "72eb99284a66b729941fc105578003effc8408f76ff65b859c47b745ff478f61",
-  "head_sha": "087c659f2487cd8b23567f015532d2f904a17408",
-  "files_changed": [
-    "scripts/test_production_business_risk_gate_preview_contents_mutations.py"
+  "pr": 3137,
+  "migration_versions": [
+    "20260917024050"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3009/10",
+  "contract_sha256": "2c119838b84aba7d98f7c5a4a6c4257ee9f8345ade0261a40cb4b9f64ff5df10",
+  "head_sha": "06289bb05f9024204bcd1ff6b38375acd673f53c",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/3009.sql",
+    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_render_queue",
+    "table public.style_guide_files"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2",
+    "function public.refresh_style_guide_library_default_snapshot",
+    "materialized view public.style_guide_library_default_guides",
+    "materialized view public.style_guide_library_default_summary",
+    "index public.style_guide_library_default_guides_group_uidx",
+    "index public.style_guide_library_default_guides_modified_idx",
+    "index public.style_guide_library_default_guides_name_idx",
+    "index public.style_guide_library_default_summary_mode_uidx",
+    "table public.style_guide_library_default_guides",
+    "table public.style_guide_library_default_summary"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "Static checks passed for the added migration."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK; 20260917024050 needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 10 preview-contents guard mutants listed in issue #2364; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "Local PostgreSQL 18 equivalence: 150 default-browse cases match the full body, differing only in tie order the previous body left undefined.",
+    "Read-only production count of active files takes 4.6 s, so totals must come from the five-minute snapshot; the contract test refreshes it before asserting an exact total."
   ],
   "stop_conditions_hit": []
 }

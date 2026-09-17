@@ -1,56 +1,58 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3179,
-  "work_type": "source-data",
-  "route": "source-data-session",
-  "goal": "Load and continuously refresh ColdLion /prepackDetail data in the live coldlion.prepack_detail table created by #2863: extend the existing repository-owned ColdLion landing loader (no second framework), add synthetic offline tests, and wire a bounded, resumable production backfill plus the ongoing scheduled refresh. No database-shape change.",
-  "base_sha": "1d4cb402d4f546fb1845d65d3b93bca82771f875",
-  "dispatcher": "delegated source-data session started from issue #3179 text (non-orchestrator work)",
-  "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-detail-loader",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-detail-3179",
+  "generation": 8,
+  "work_issue": 3199,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement issue #3199 Phase A3: a read-only scheduled Queue Hygiene Report — a write-stripped report module (scripts/queue-hygiene-report.mjs, importing the audit machinery; moved out of the protected lane manager when PR #3215 held that file one lane), a daily read-only queue-hygiene-report.yml workflow modeled on the abandonment audit, offline tests wired into tools-offline-tests.yml, and plan STATUS updates recording the completed A1 labelling and A2 claim release.",
+  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
+  "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
+  "worker": "ZCode (GLM 5.3) repository-maintenance session",
+  "branch": "zcode/3199-queue-hygiene",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
   "allowed_paths": [
-    ".agent/completion.json",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".agent/completion.json",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    ".github/workflows/queue-hygiene-report.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "plan_orchestrator_required_load_reduction.md",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never author a migration or change any database shape; this work changes rows and loader code only (issue #3179 db-work-scope declares writes: []).",
-    "Never run the loader against a database whose connection string does not name the declared COLDLION_EXPECTED_PROJECT_REF; the target is proved immediately before every write.",
-    "Never commit ColdLion row values, harvested key populations, or credentials; fixtures are synthetic and logs carry counts only.",
-    "Never close issue #3179; the originating session owns closure."
+    "No database write or structure change of any kind",
+    "No production workflow dispatch",
+    "No weakening of any safety gate, required check, or caller check",
+    "The scheduled report must hold read-only permissions and write nothing",
+    "No edit to scripts/manage-migration-author-lanes.mjs (protected source held by PR #3215)"
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-prepack.test.mjs",
-    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
-    "bash scripts/check-sql.sh"
+    "node --test scripts/queue-hygiene-report.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "bash scripts/check-sql.sh",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "The /prepackDetail shape and grain are those sampled live on 2026-09-15 (docs/coldlion-unit-5b-grain-proof-20260915.md): a bare JSON array of eighteen fields keyed by (company_code, prepack_code, sequence_no), with itemPrice and ItemPrice as two real properties.",
-    "The complete approved prepackCode population is harvestable from already-landed ColdLion data (issue #3179 required work); coldlion.inventory and coldlion.prod_detail contribute automatically once their own loaders exist.",
-    "Resumability needs no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params.",
-    "A zero-row response for a harvested code is expected and must be counted and named, never silently skipped; malformed responses abort the run before any write."
+    "origin/main moved three times during implementation (PRs #3211, #3190, then the coldlion landing-sync merge); the branch was refreshed by merge before each evidence bind.",
+    "The report was drafted as a subcommand inside the lane manager and moved to its own module when the protected-source collision guard queued it behind the inactive PR #3215; the derivation imports the audit's exported functions and is not a parallel implementation."
   ],
   "stop_conditions": [
-    "Stop and report a blocker if the live dry-run shows a response shape outside the eighteen-field sample or a harvest population too large for the scheduled window.",
-    "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
+    "Stop if any change would weaken a safety gate or touch the database",
+    "Stop if the report cannot be made write-free by construction"
   ]
 }

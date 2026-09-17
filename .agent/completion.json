@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3204,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/1",
-  "contract_sha256": "94c5013bdf4e0bcbf0e37b55527a0670df66147ddb64d1ab48925dd065771f71",
-  "head_sha": "9785e328188153898b9c4b94b53afa10126e1b72",
+  "contract_ref": "refs/db-contracts/3199/2",
+  "contract_sha256": "9ea5c44352f2d698062a6317a545367a1a9c76158401c78e7b22ed48c18f21c1",
+  "head_sha": "227d09862b0220e986a7f14fe5a3bd508212e502",
   "files_changed": [
     "plan_orchestrator_required_load_reduction.md",
     "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md"

@@ -6,13 +6,13 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3122/1",
   "contract_sha256": "ada30d7ed4830afeca6fc04e48f581f9c5c0621b7d717e3267087dddf23e8cf2",
-  "head_sha": "ff84c5e7bfcfd09d8dce2b97b3b70c43b5a853d5",
+  "head_sha": "d8e1573d1b56578e6f411eb150e696568fa4603f",
   "files_changed": ["docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json","scripts/capture-repository-transfer-baseline.mjs","scripts/capture-repository-transfer-baseline.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    { "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs", "exit_code": 0, "evidence": "tests 18, pass 18, fail 0, cancelled 0, skipped 0, todo 0 at implementation head 47dcdb6d, carried to merge head ff84c5e7." },
-    { "command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=295 at 47dcdb6d and ff84c5e7." }
+    { "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs", "exit_code": 0, "evidence": "tests 18, pass 18, fail 0, cancelled 0, skipped 0, todo 0 at implementation head 47dcdb6d, carried to merge head d8e1573d." },
+    { "command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK: call_sites=295 at 47dcdb6d and d8e1573d." }
   ],
   "assumptions_resolved": [
     "The baseline issues only GET requests through the governed GitHub transport; the live run changed nothing."

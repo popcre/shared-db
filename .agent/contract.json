@@ -1,39 +1,44 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2367,
+  "work_issue": 3127,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Kill every surviving guard mutant of scripts/production_business_risk_gate.py listed in issue #2367 (historical-original-runs) with focused falsification tests in one new test file, source unchanged.",
-  "base_sha": "f3bfe4f7b3a0a7acfb885d1d4d5fdef91d687930",
-  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; split into single-issue PRs by coordinator decision",
-  "worker": "Claude Opus 5 #2367 risk-gate mutation coverage",
-  "branch": "claude/2367-risk-gate-mutations-historical_original_runs",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/rg-mut-2367",
+  "goal": "Cut production_applied-to-live_verified time (#3029 target 8): the guarded migration merge refuses a structural migration PR whose outcome returns to shared-db unless its live-proof probe .github/live-proofs/<issue>.sql is in the tree, so the probe is reviewed with the migration instead of in a separate post-production PR.",
+  "base_sha": "0c16ff3f0d00169bbd6a2ef1645a44b98390a215",
+  "dispatcher": "Claude coordinator session for #3029 follow-ups (Albert: spin up a subagent and handle them)",
+  "worker": "Claude Opus 5 #3127 subagent",
+  "branch": "claude/3127-live-proof-probe-with-impl",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a566d1b00d5571f70",
   "allowed_paths": [
-    "scripts/test_production_business_risk_gate_historical_original_runs_mutations.py",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/test_production_business_risk_gate_historical_original_runs_mutations.py",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database change of any kind",
-    "No production workflow dispatch",
-    "No change to scripts/production_business_risk_gate.py"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "python -m unittest scripts/test_*.py"
+    "node --test scripts/check-live-proof-probe.test.mjs"
   ],
   "assumptions": [
-    "A mutant is the guard condition replaced with False, per scripts/mutation_sweep_guards.py; sweep positions were remapped to current source by guard text"
+    "Outcomes returning to an application repository prove from that repository and are out of scope for this guard"
   ],
   "stop_conditions": [
-    "Stop if a listed guard can only be killed by changing the gate source"
+    "Stop if the fix would need a database structure change"
   ]
 }

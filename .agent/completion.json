@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/1",
-  "contract_sha256": "8a94ab18619f6d11a58ebf77f541d25965b1d21c3d2b4666bf7f8b6d19ee4026",
-  "head_sha": "46d045e8814287758ee59351b0c74d99c996ce51",
+  "contract_ref": "refs/db-contracts/3173/2",
+  "contract_sha256": "ef1cfa89c5b02bf1d269f77207f2cbe3ee2fbd311ea587004fb4f4adc3ffaa94",
+  "head_sha": "ac0f6228257be8a82372db98ee85faa205bbfa69",
   "files_changed": [
     "scripts/lib/github-conditional.mjs",
     "scripts/lib/github-conditional.test.mjs",
@@ -20,7 +20,7 @@
     {
       "command": "node --test scripts/lib/github-conditional.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "604 passed, 0 failed, 0 skipped at 46d045e8814287758ee59351b0c74d99c996ce51; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read; exhausted-quota latch stops other callers with 0 wire requests until reset."
+      "evidence": "604 passed, 0 failed, 0 skipped at ac0f6228257be8a82372db98ee85faa205bbfa69; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read; waiters keep waiting through a latched quota wait; exhausted-quota latch stops other callers with 0 wire requests until reset."
     }
   ],
   "assumptions_resolved": [

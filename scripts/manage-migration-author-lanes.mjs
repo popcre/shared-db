@@ -4448,11 +4448,12 @@ function isReviewAssignmentLive(assignment,states,io){
 
 // WHICH REVIEWERS ARE BUSY IN THIS REPOSITORY RIGHT NOW.
 //
-// The constraint being modelled is real and provider-side: `ai-grok-review`
-// holds an in-flight lock PER REPOSITORY, so shared-db can have one live Grok
-// review at a time. That is not a global limit -- five repositories with work
-// can run five Grok reviews at once, and nothing here tries to coordinate across
-// repositories. This function answers only the local question.
+// Locked decision 21 (popcre/ai-devops#401 Step 7A): one reviewer provider may
+// run any number of independent reviews at once, each in its own session,
+// worktree and verdict record. "Busy" is therefore NOT a selection or admission
+// constraint anywhere: it is reported for visibility, stale-lease reaping and
+// repair lookups only. Only a real provider refusal (quota, rate limit, auth,
+// crash) or a Step 7 non-start reroutes a review.
 //
 // A reviewer is busy when it holds a durable assignment whose work is still
 // live: the PR is open, its head is still the head that reviewer was given, and
@@ -4932,19 +4933,16 @@ export function describeMovedAssignmentHead(request,recorded){
   return `the durable reviewer assignment is NOT missing: sequence=${recorded.sequence} reviewer=${recorded.reviewer} for issue #${request.issue} PR #${request.pr} is recorded under head ${recorded.headSha}, and this request names head ${request.headSha}. The PR head moved after that reviewer was assigned, so the exact code that reviewer was given is no longer this PR's head. A replacement would bind a new reviewer -- and later a verdict -- to a commit the failed reviewer never saw, so it is refused. Assign a reviewer to the current code instead: --assign-reviewer --issue ${request.issue} --pr ${request.pr} --head-sha <the PR's current head>. Nothing was lost and nothing needs reconstructing.`
 }
 
-// PRE-CONCURRENCY SERIAL HELPER -- it has NO production caller in this tree (tests
-// only). It treats ANY busy provider as taken, which is the serial-lease rule. The
-// live draw path has a concurrent-mode branch (`concurrentLeases`) plus failed-name,
-// exclusion and excluded-provider filtering that this helper does not have, so it
-// must NOT be reused for a draw without that branch and those filters.
+// Rotation-only helper -- it has NO production caller in this tree (tests only).
+// Per locked decision 21 a provider holding other live reviews is NOT skipped:
+// selection is the plain rotation over eligible reviewers. The live draw path
+// adds failed-name, exclusion and excluded-provider filtering this helper lacks.
 export function pickReviewer(sequence,io){
-  const busy=findBusyReviewers(io)
   const {eligible}=allocatableReviewers(io)
   if(!eligible.length)throw new LaneError('no reviewer is independent from the live orchestrator engine')
   const eligibleNames=new Set(eligible.map((row)=>row.name)),start=(sequence-1)%ACTIVE_REVIEWERS.length
   const ordered=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).filter((row)=>eligibleNames.has(row.name))
-  if(!busy)return ordered[0]
-  return ordered.find((row)=>!busy.has(row.name))??OVERFLOW_REVIEWERS.find((row)=>!busy.has(row.name))??ordered[0]
+  return ordered[0]
 }
 
 // Slot 1 keeps the original, unsuffixed ref namespace so every already-recorded
@@ -5343,7 +5341,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,admissionOptions=n
     // Provider capacity is deliberately not a draw constraint for the exact
     // production protocol.  Lightweight historical fixtures may use short
     // heads, which cannot name a parallel lease and retain old serial rules.
-    const notTaken=(row)=>eligibleNames.has(row.name)&&(concurrentLeases||!busy.has(row.name))&&row.name!==excludedProvider&&!exclusions.has(row.name)
+    const notTaken=(row)=>eligibleNames.has(row.name)&&row.name!==excludedProvider&&!exclusions.has(row.name)
     const reviewer=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
@@ -5357,7 +5355,6 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,admissionOptions=n
       const refusalFor=(name)=>{
         if(unusable.has(name)){const state=unusable.get(name);return `unusable by ai-review-preflight (${state.status??state.failure_class??'unavailable'})`}
         if(!eligibleNames.has(name))return 'conflicts with the live orchestrator engine, or is retired or quarantined'
-        if(!concurrentLeases&&busy.has(name))return 'already holds a live review lease (serial-lease protocol)'
         if(name===excludedProvider)return `already holds slot 1 for this exact head`
         if(exclusions.has(name))return `durably excluded for this PR (${exclusions.get(name).reason})`
         return 'unavailable for an unrecorded reason'
@@ -5953,22 +5950,21 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     let sequence=null, reviewer=null
     for(let offset=0;offset<ACTIVE_REVIEWERS.length;offset+=1){
       const candidateSequence=cursor.sequence+1+offset, candidate=ACTIVE_REVIEWERS[(candidateSequence-1)%ACTIVE_REVIEWERS.length]
-      if(!eligibleNames.has(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||candidate.name===excludedProvider||preflightExclusions.has(candidate.name))continue
+      if(!eligibleNames.has(candidate.name)||failedNames.has(candidate.name)||candidate.name===excludedProvider||preflightExclusions.has(candidate.name))continue
       sequence=candidateSequence;reviewer=candidate;break
     }
     // Compatibility hook for historical configurations that had an overflow
     // provider. The approved 2026-08-28 roster has none.
     if(!reviewer){
-      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&row.name!==excludedProvider&&!preflightExclusions.has(row.name))
+      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&!failedNames.has(row.name)&&row.name!==excludedProvider&&!preflightExclusions.has(row.name))
       if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
     }
     if(!reviewer){
       const failedList=[...failedNames].filter((name)=>ACTIVE_REVIEWERS.some((row)=>row.name===name))
-      const busyList=[...preflightBusy].filter((name)=>!failedNames.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
-      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&!preflightBusy.has(name)&&(!eligibleNames.has(name)||name===excludedProvider||preflightExclusions.has(name)))
+      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&(!eligibleNames.has(name)||name===excludedProvider||preflightExclusions.has(name)))
       const releaseCommand=failedReviewerReleaseCommand(request,{failureCode,failingCheck})
       const compatiblePrefix=request.slot===1?'no other reviewer is available':'no other independent reviewer is available for slot '+request.slot
-      throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)
+      throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)
     }
     const replacementSha=io.makeOwnerCommit(releasedFailureSha
       ?`db-coordination reviewer-replacement sequence=${sequence} reviewer=${reviewer.name} issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=${request.slot} failed-sequence=${request.failedSequence} prior-sequence=${cursor.sequence} failure-ref=${releasedFailureSha}`

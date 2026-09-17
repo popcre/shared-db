@@ -916,7 +916,7 @@ test('10,000 historical assignments do not change bounded availability cost',()=
 })
 
 test('complete assignment stays inside the real wire-attempt budget',()=>{
-  const io=reviewIo();let attempts=0,baseLoaded=false;io.enforceAdmission=true
+  const io=reviewIo();io.requiresExactReviewHeadSha=true;let attempts=0,baseLoaded=false;io.enforceAdmission=true
   const rawGetCommit=io.getCommit
   const active=new Map(),states=new Map()
   ACTIVE_REVIEWERS.slice(0,-1).forEach((reviewer,index)=>{
@@ -961,7 +961,7 @@ test('complete slot-2 assignment stays inside the real wire-attempt budget (issu
   // own pre-mutex cost, so the budget must be sized for slot>=2's real total,
   // not just slot 1's. Before the fix this threw REFUSED at 9 pre-mutex calls
   // + the 13-call mutex-acquisition reserve = 22 > the old 19-request limit.
-  const io=reviewIo();let attempts=0
+  const io=reviewIo();io.requiresExactReviewHeadSha=true;let attempts=0
   const rawGetCommit=io.getCommit
   const active=new Map(),states=new Map()
   ACTIVE_REVIEWERS.slice(0,-2).forEach((reviewer,index)=>{
@@ -1124,21 +1124,48 @@ function busyIo(){
   return {io,heads}
 }
 
-test('every active reviewer busy refuses a new assignment',()=>{
-  const {io}=busyIo()
+// Locked decision 21 (popcre/ai-devops#401 Step 7A): reviewer "busy" is never a
+// reason to wait, refuse or reroute. Every provider holding live unrelated work
+// still admits a new, independent review.
+test('every active reviewer busy still admits a new assignment (decision 21)',()=>{
+  const {io,heads}=busyIo();io.requiresExactReviewHeadSha=true
   assert.deepEqual([...findBusyReviewers(io)].sort(),ACTIVE_REVIEWERS.map((r)=>r.name).sort())
-  assert.throws(()=>assignNextReviewer({issue:9,pr:109,headSha:'abcdef9'},io),/no reviewer is available/)
+  const headSha='ab'.repeat(20);heads.set(109,headSha)
+  const assigned=assignNextReviewer({issue:9,pr:109,headSha},io)
+  assert.ok(ACTIVE_REVIEWERS.some((row)=>row.name===assigned.reviewer))
+  assert.ok(io.refs.has(reviewActiveRef(assigned.reviewer,{issue:9,pr:109,headSha})),'the new lease is keyed per assignment');assert.ok(io.refs.has(reviewActiveRef(assigned.reviewer)),'the provider keeps its other live lease')
 })
 
-test('a busy rotation slot advances to the next free active reviewer',()=>{
-  const {io,heads}=busyIo()
-  // Muse's PR is merged, so muse is free again -- and free means rotation, even
-  // though the sequence would otherwise land elsewhere.
-  const musePr=600+ACTIVE_REVIEWERS.findIndex((r)=>r.name==='muse-spark-1.3-contributor')
-  const openPr=io.getPr
-  io.getPr=(number)=>Number(number)===musePr?{number:musePr,state:'closed',head:{sha:heads.get(musePr)}}:openPr(number)
-  assert.ok(!findBusyReviewers(io).has('muse-spark-1.3-contributor'))
-  assert.equal(pickReviewer(1,io).name,'muse-spark-1.3-contributor')
+test('one provider runs three or more independent live reviews on different PRs at once (decision 21)',()=>{
+  const io=reviewIo(),heads=new Map();io.requiresExactReviewHeadSha=true
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:heads.get(Number(number))}})
+  const perProvider=3,assigned=[]
+  for(let n=0;n<ACTIVE_REVIEWERS.length*perProvider;n+=1){
+    const request={issue:4000+n,pr:4100+n,headSha:(n+16).toString(16).padStart(2,'0').repeat(20)}
+    heads.set(request.pr,request.headSha)
+    assigned.push({request,result:assignNextReviewer(request,io)})
+  }
+  for(const row of ACTIVE_REVIEWERS){
+    const mine=assigned.filter(({result})=>result.reviewer===row.name)
+    assert.equal(mine.length,perProvider,`${row.name} was not admitted ${perProvider} concurrent reviews`)
+    const leaseRefs=new Set(mine.map(({request})=>reviewActiveRef(row.name,request)))
+    assert.equal(leaseRefs.size,perProvider,'each review holds its own assignment-keyed lease')
+    for(const ref of leaseRefs)assert.ok(io.refs.has(ref))
+    assert.equal(new Set(mine.map(({result})=>result.sequence)).size,perProvider,'two same-provider reviews never share a session sequence')
+    assert.equal(new Set(mine.map(({request})=>`${REVIEW_ASSIGNMENT_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`)).size,perProvider,'two same-provider reviews never share an assignment or verdict record')
+  }
+  // A real provider refusal still reroutes: the failed provider is replaced on
+  // that head by a different provider, and its other live reviews are untouched.
+  const victim=assigned[0]
+  const replacement=replaceFailedReviewer({...victim.request,failedSequence:victim.result.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.notEqual(replacement.reviewer,victim.result.reviewer)
+  for(const other of assigned.filter(({result})=>result.reviewer===victim.result.reviewer).slice(1))assert.ok(io.refs.has(reviewActiveRef(other.result.reviewer,other.request)),'the failed provider keeps its unrelated live reviews')
+})
+
+test('a busy rotation slot is NOT skipped: selection ignores busy (decision 21)',()=>{
+  const {io}=busyIo(),idle=reviewIo()
+  assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
+  for(let sequence=1;sequence<=ACTIVE_REVIEWERS.length;sequence+=1)assert.equal(pickReviewer(sequence,io).name,pickReviewer(sequence,idle).name,`sequence ${sequence} was steered by busy state`)
 })
 
 test('a recorded verdict and a moved head both free the reviewer that held them',()=>{
@@ -1723,7 +1750,7 @@ test('three terminal providers do not grow replacement preflight past the fixed 
 })
 
 test('released slot-2 replacement with slot-1 approval and a reinstated reviewer fits the 25-request budget (#2550)',()=>{
-  const io=doctoredIo(),request={issue:2550,pr:2551,headSha:'25'.repeat(20)}
+  const io=doctoredIo(),request={issue:2550,pr:2551,headSha:'25'.repeat(20)};io.requiresExactReviewHeadSha=true
   // Reproduce the live eligibility history: Grok was excluded as terminally
   // unavailable, then returned to this PR only through fresh wrapper-doctor
   // proof. The original exclusion remains immutable beside its reinstatement.
@@ -1755,8 +1782,8 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   const released=releaseFailedReviewer(releasedRequest,io)
   assert.equal(io.refs.get(reviewActiveRef(retiredName))??null,null)
 
-  // The next rotation candidate is busy elsewhere, making the freshly
-  // reinstated Grok record materially necessary to the successful draw.
+  // Other providers hold unrelated live work. Under decision 21 that no longer
+  // steers the draw, so the ordinary rotation name is drawn.
   const busyReviewers=['muse-spark-1.3-contributor','gemini-3.8-flash-high']
   for(const [index,name] of busyReviewers.entries()){
     const busySha=io.makeOwnerCommit(`db-coordination reviewer-lease generation=1 reviewer=${name} issue=9550 pr=${busyPr} head=${busyHead} sequence=${9550+index}`)
@@ -1785,7 +1812,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
 
   const replacement=replaceFailedReviewer(releasedRequest,io)
-  assert.equal(replacement.reviewer,'grok-4.6','the reinstated independent reviewer must be drawable again')
+  assert.equal(replacement.reviewer,'muse-spark-1.3-contributor','busy elsewhere no longer skips the next rotation name (decision 21)')
   assert.equal(replacement.failureSha,released.failureSha,'the replacement must adopt the immutable release record')
   assert.ok(batched.includes(`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}-${slotTwo.sequence}`),'the predecessor failure must ride in the fixed-record batch')
   assert.equal(attempts,23,`released slot-2 replacement wire accounting drifted: ${labels.join(',')}`)
@@ -2314,6 +2341,15 @@ test('replacement exhausts the active rotation, then refuses',()=>{
   assert.throws(()=>replaceFailedReviewer({...replacementRequest,failedSequence},io),/no other reviewer is available/)
 })
 
+test('a replacement is admitted even when every other provider holds live unrelated work (decision 21)',()=>{
+  const io=failedReviewIo();io.requiresExactReviewHeadSha=true
+  for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1)assignNextReviewer({issue:2100+n,pr:2200+n,headSha:`${n+1}`.repeat(40)},io)
+  io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
+  const replacement=replaceFailedReviewer(replacementRequest,io)
+  assert.notEqual(replacement.reviewer,'grok-4.6','the failed provider is still excluded on this head')
+  assert.ok(io.refs.has(reviewActiveRef(replacement.reviewer,{...failedReview,slot:1})),'the replacement holds its own assignment-keyed lease')
+})
+
 test('release frees a terminally failed lease when every reviewer slot is full',()=>{
   const io=failedReviewIo()
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1)assignNextReviewer({issue:2100+n,pr:2200+n,headSha:`${n+1}`.repeat(40)},io)
@@ -2322,12 +2358,6 @@ test('release frees a terminally failed lease when every reviewer slot is full',
   io.atomicReviewRefs=(changes)=>{for(const change of changes)assert.equal(io.refs.get(change.ref)??null,change.expected??null);for(const change of changes){if(change.sha===null)io.refs.delete(change.ref);else io.refs.set(change.ref,change.sha)}}
   io.atomicReviewMutexRelease=(ownerSha)=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
   assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
-  let refusal=null
-  try{replaceFailedReviewer(replacementRequest,io)}catch(error){refusal=error}
-  assert.match(refusal?.message??'',/no replacement reviewer is available|no other reviewer is available/)
-  assert.match(refusal.message,new RegExp(`1 of ${ACTIVE_REVIEWERS.length} already failed on this exact head`))
-  assert.match(refusal.message,new RegExp(`${ACTIVE_REVIEWERS.length-1} of ${ACTIVE_REVIEWERS.length} hold other live leases`))
-  assert.match(refusal.message,/glm-5\.3 #2100\/PR #2200/)
   const cursorBefore=io.refs.get(REVIEW_CURSOR_REF)
   const released=releaseFailedReviewer(replacementRequest,io)
   assert.equal(released.reviewer,'grok-4.6')
@@ -2592,6 +2622,7 @@ test('capacity reports a silence probe and only calls it reclaimable after confi
 
 test('silent reclaim frees a slot even when the entire reviewer pool is occupied',()=>{
   const fixture=silentLeaseIo(),heads=new Map([[fixture.request.pr,fixture.request.headSha]]),baseGetPr=fixture.io.getPr
+  fixture.io.requiresExactReviewHeadSha=true
   ACTIVE_REVIEWERS.filter((row)=>row.name!==fixture.assigned.reviewer).forEach((row,index)=>{
     const issue=2400+index,pr=2500+index,headSha=`${index+2}`.repeat(40),sha=fixture.io.makeOwnerCommit(`db-coordination reviewer-lease generation=${index+2} reviewer=${row.name} issue=${issue} pr=${pr} head=${headSha} sequence=${index+2}`)
     fixture.io.refs.set(reviewActiveRef(row.name),sha);heads.set(pr,headSha)
@@ -2604,7 +2635,7 @@ test('silent reclaim frees a slot even when the entire reviewer pool is occupied
   reclaimSilentReviewer(options,new Date('2026-09-04T14:00:00Z'),fixture.io)
   assert.equal(findBusyReviewers(fixture.io).size,ACTIVE_REVIEWERS.length-1)
   const next={issue:2600,pr:2700,headSha:'f'.repeat(40)};heads.set(next.pr,next.headSha)
-  assert.equal(assignNextReviewer(next,fixture.io).reviewer,fixture.assigned.reviewer)
+  assert.ok(assignNextReviewer(next,fixture.io).reviewer,'a new review is admitted; busy never gates it (decision 21)')
 })
 
 test('a four-minute stale-reclaimable lease is untouchable by both silence commands',()=>{
@@ -2643,12 +2674,12 @@ test('an abandoned head-of-line reviewer ticket expires and cannot wedge later a
   assert.equal(io.refs.has(`${REVIEW_QUEUE_REF_PREFIX}/205-305-1`),false)
 })
 
-test('a failed head-of-line assignment evacuates its own ticket immediately',()=>{
-  const io=reviewIo(),request={issue:207,pr:307,headSha:'c'.repeat(40)}
+test('a head-of-line assignment is admitted while every provider is busy and consumes its own ticket (decision 21)',()=>{
+  const io=reviewIo(),request={issue:207,pr:307,headSha:'c'.repeat(40)};io.requiresExactReviewHeadSha=true
   io.enableReviewerQueue=true;io.getPr=()=>({number:307,state:'open',head:{sha:request.headSha}})
   for(const reviewer of ACTIVE_REVIEWERS){const sha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=20 reviewer=${reviewer.name} issue=999 pr=998 head=${'d'.repeat(40)}`);io.refs.set(reviewActiveRef(reviewer.name),sha)}
   io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
-  assert.throws(()=>assignNextReviewer(request,io),/no reviewer is available/)
+  assert.ok(assignNextReviewer(request,io).reviewer)
   assert.equal(io.refs.has(`${REVIEW_QUEUE_REF_PREFIX}/207-307-1`),false)
 })
 
@@ -3564,10 +3595,10 @@ test('REAL PROCESS RACE: two independent CLIs claiming one object produce exactl
   assert.equal(results.filter(x=>!x.json.ok&&/collision/.test(x.json.error)).length,1)
 })
 
-test('REAL PROCESS RACE: 25 independent CLIs claiming unrelated objects are all admitted (no lane cap)',async()=>{
-  const objects=Array.from({length:25},(_,i)=>`table core.r${i}`)
+test('REAL PROCESS RACE: 100 independent CLIs claiming unrelated objects are all admitted (no lane cap)',async()=>{
+  const objects=Array.from({length:100},(_,i)=>`table core.r${i}`)
   const results=await raceWorkers(objects)
-  assert.equal(results.filter(x=>x.json.ok).length,25)
+  assert.equal(results.filter(x=>x.json.ok).length,100)
   assert.equal(results.filter(x=>!x.json.ok).length,0,'no unrelated author is ever refused for capacity')
 })
 
@@ -5187,7 +5218,7 @@ test('slot 2 lands a different provider than slot 1, and is idempotent on retry'
   assert.deepEqual(assignNextReviewer(request,io),first)
 })
 
-test('slot 2 skips a provider that is busy on unrelated live review work',()=>{
+test('slot 2 may land on a provider busy on unrelated live review work, never on slot 1 (decision 21)',()=>{
   const io=reviewIo(),request={issue:203,pr:303,headSha:'d'.repeat(40)}
   const first=assignNextReviewer(request,io) // grok-4.6
   // Occupy glm-5.3 (the round-robin's next name) with unrelated live work so
@@ -5197,7 +5228,6 @@ test('slot 2 skips a provider that is busy on unrelated live review work',()=>{
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:request.headSha}})
   const second=assignNextReviewer({...request,slot:2},io)
   assert.notEqual(second.reviewer,first.reviewer)
-  assert.notEqual(second.reviewer,'glm-5.3')
 })
 
 test('slot 2 never lands on a provider already assigned slot 1 for this exact head, across the whole roster',()=>{
@@ -6211,9 +6241,16 @@ test('a slot-2 replacement never falls back onto slot 1\'s own reviewer (issue #
   const slotOne=assignNextReviewer(request,io)
   const slotTwo=assignNextReviewer({...request,slot:2},io)
   const failure={failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
-  const firstReplacement=replaceFailedReviewer({...request,slot:2,failedSequence:slotTwo.sequence,...failure},io)
-  // Park every remaining active provider on unrelated live review work, so the
-  // rotation's only untaken, unfailed name left is slot 1's reviewer.
+  let firstReplacement=replaceFailedReviewer({...request,slot:2,failedSequence:slotTwo.sequence,...failure},io)
+  // Busy is not a draw constraint (decision 21), so exhaust the roster by
+  // FAILING every other provider on this head instead of parking them busy.
+  for(;;){
+    assert.notEqual(firstReplacement.reviewer,slotOne.reviewer,'slot 2 replacement fell back onto the slot 1 reviewer')
+    let next=null
+    try{next=replaceFailedReviewer({...request,slot:2,failedSequence:firstReplacement.sequence,...failure},io)}catch(error){assert.match(error.message,/no other independent reviewer is available for slot 2/);break}
+    firstReplacement=next
+  }
+  // Former parking step kept as unrelated live work: it must not change the refusal.
   // Slot 1 holds no live lease at this point: its lease was reclaimed while its
   // assignment record still stands. That is what makes this the dirty case --
   // the ordinary busy check no longer hides slot 1's reviewer, so the slot-1
@@ -6225,7 +6262,6 @@ test('a slot-2 replacement never falls back onto slot 1\'s own reviewer (issue #
     heads.set(pr,headSha)
     io.refs.set(reviewActiveRef(row.name),io.makeOwnerCommit(`db-coordination reviewer-lease generation=${index+1} reviewer=${row.name} issue=${issue} pr=${pr} head=${headSha} sequence=${900+index}`))
   })
-  assert.throws(()=>replaceFailedReviewer({...request,slot:2,failedSequence:firstReplacement.sequence,...failure},io),/no other independent reviewer is available for slot 2/)
   // Slot 1 is untouched by the refusal.
   assert.deepEqual(assignNextReviewer(request,io),slotOne)
 })
@@ -7905,13 +7941,13 @@ test('#2694 a verdict refused on a parallel lease names that lease, not the empt
 // MEDIUM 9. The exhaustion message named "is already assigned to this exact
 // head" as a cause, which `notTaken` does not implement at all. The message now
 // states, per provider, the reason that provider was actually refused.
-test('#2694 the exhaustion refusal states the reason each provider was refused',()=>{
-  const {io}=busyIo()
-  let error=null
-  assert.throws(()=>{try{assignNextReviewer({issue:9,pr:119,headSha:'abcdef9'},io)}catch(caught){error=caught;throw caught}},/no reviewer is available/)
-  for(const row of ACTIVE_REVIEWERS)assert.ok(error.message.includes(row.name),`the refusal must account for ${row.name}`)
-  assert.match(error.message,/already holds a live review lease \(serial-lease protocol\)/)
-  assert.doesNotMatch(error.message,/is already assigned to this exact head/,'no code path implements that cause')
+test('#2694 the exhaustion refusal never names busy as a reason (decision 21)',()=>{
+  const source=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8')
+  assert.equal(source.includes('serial-lease protocol'),false,'the serial-lease refusal reason must not exist')
+  assert.equal(source.includes('hold other live leases'),false,'the replacement exhaustion message must not count busy providers as unavailable')
+  const {io,heads}=busyIo();io.requiresExactReviewHeadSha=true
+  const headSha='ac'.repeat(20);heads.set(119,headSha)
+  assert.ok(assignNextReviewer({issue:9,pr:119,headSha},io).reviewer,'an all-busy roster is not exhaustion')
 })
 
 // LOW 10. Cutover activation backfilled reviewer-keyed refs, so a provider that

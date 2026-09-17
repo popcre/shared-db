@@ -1719,10 +1719,10 @@ have already happened in this repo, more than once.
     documents still runs **every** automated check. It receives the required
     `Migration guarded merge authorization` status from
     `.github/workflows/documents-only-merge-authorization.yml` without dispatching the database
-    guarded-merge workflow or consuming a slot from the small external **database reviewer pool**
-    that exists for migrations.
+    guarded-merge workflow or spending an external **database reviewer** draw, which exists for
+    migrations.
     PR #2034 — a two-file documentation change — spent two reviewer draws, two dead-reviewer
-    replacements and three full review runs, and PR #2070 repeated the shape. That capacity belongs
+    replacements and three full review runs, and PR #2070 repeated the shape. That reviewer work belongs
     to migrations.
 
     **Rulebook files are NOT documents for this purpose and keep the full treatment:** `AGENTS.md`

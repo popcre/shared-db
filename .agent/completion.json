@@ -1,28 +1,33 @@
 {
   "schema_version": 1,
-  "work_issue": 3208,
+  "work_issue": 2837,
   "outcome": "ready-for-merge",
-  "pr": 3209,
+  "pr": 3202,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3208/4",
-  "contract_sha256": "3ecd4931e0c06675dede2ab4422426c5dd45df18b7da3a4f3ffac86a9a04c83f",
-  "head_sha": "a486cd2d3b40170293c8c20c0ea793d24980e95f",
+  "contract_ref": "refs/db-contracts/2837/4",
+  "contract_sha256": "135c578b783101e5b2bafe88da7290c030842d65fc2f5d740a3c3c89c33a3030",
+  "head_sha": "dc85b4d6bc9f5137d8a21333f6252c4b9c0266ee",
   "files_changed": [
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs"
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "node --test scripts/check-exact-head-approval.test.mjs",
       "exit_code": 0,
-      "evidence": "At a486cd2d (review fixes, main merged, truth audit OK at 307): 58 passed, 0 failed, 0 skipped. One notify woke each of 10 waiting processes exactly once with zero upstream reads; unreadable or vanished event/state files never wake and a token wakes once; zero delays still sleep and invalid windows are refused (both new tests hang or fail on the previous head); fallback detected a change in 3 polls; x-poll-interval and failure backoff honoured."
+      "evidence": "60 tests, 60 pass, 0 fail at implementation head dc85b4d6 (second refresh from main c0238000; own files unchanged); truth audit OK call_sites=307."
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/coordination-scenarios.test.mjs scripts/record-review-verdict.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/lib/documents-only-change.test.mjs scripts/lib/pr-content-equivalence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Truth audit OK call_sites=307 at afb53daf against the refreshed main baseline; the 60-test gate suite and the 873-test battery passed at pre-refresh head 0940dbe1 and the refresh touched none of this change own files."
     }
   ],
   "assumptions_resolved": [
-    "Webhook registration stays out of scope; notifyChange is the event entry point"
+    "The required count is judged from the pull request's own changed-file list: supabase/migrations/ means two slots, anything else one, matching AGENTS.md section 4's rule in prose.",
+    "Callers predating the changedFiles field keep the one-slot floor, mirroring the documents-only lane convention."
   ],
   "stop_conditions_hit": []
 }

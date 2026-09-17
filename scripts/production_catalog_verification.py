@@ -565,6 +565,13 @@ def _shape_contract(*, relations=(), indexes=(), constraints=(), routines=(), po
     checks += ["(select count(*) from pg_policies where schemaname='%s' and tablename='%s')=%d" % (*table.split('.',1),sum(1 for owner,_ in policies if owner==table)) for table in policy_tables]
     checks += ["exists (select 1 from pg_trigger where tgrelid=to_regclass('%s') and tgname='%s' and not tgisinternal and tgenabled<>'D')" % row for row in triggers]
     return " and ".join(checks)
+# Issue #2794: the retired DesignFlow PLM import is dropped; the licensing write
+# guard it sat beside must survive, with its triggers on their own relations.
+PLM_IMPORT_RETIREMENT_GUARD_CONTRACT = _shape_contract(
+    relations=('plm.licensing_write_authorization','plm.licensing_write_guard_audit'),
+    routines=('app.enforce_licensing_write_authority()',),
+    triggers=(('core.licensor','licensor_licensing_write_guard'),('core.property','property_licensing_write_guard')),
+) + " and not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='plm' and p.proname='import_master_data')"
 STYLE_TRACKER_TABLES_CONTRACT = _shape_contract(
     relations=('public.style_tracker_rows','plm.style_tracker_value_resolution','plm.style_tracker_item_bridge','public.style_tracker_audit_log','public.style_tracker_user_views','public.style_tracker_audit_log_with_user','public.style_tracker_rows_with_bridge'),
     indexes=tuple('public.'+name for name in ('idx_style_tracker_audit_log_changed_at','idx_style_tracker_audit_log_row','idx_style_tracker_audit_log_sheet','idx_style_tracker_rows_group_id','idx_style_tracker_rows_row_data_gin','idx_style_tracker_rows_sku','idx_style_tracker_rows_source_sheet'))+tuple('plm.'+name for name in ('idx_style_tracker_item_bridge_company','idx_style_tracker_item_bridge_creative_designer','idx_style_tracker_item_bridge_erp_item','idx_style_tracker_item_bridge_match_status','idx_style_tracker_item_bridge_row','idx_style_tracker_item_bridge_sku','idx_style_tracker_item_bridge_style_group','idx_style_tracker_value_resolution_field_value')),
@@ -1026,6 +1033,7 @@ CATALOG_CONTRACTS = {
     "scraped_properties_targeted_submission_label_v1": SCRAPED_PROPERTIES_TARGETED_SUBMISSION_LABEL_CONTRACT,
     "dflow_sequence_ceilings_v1": DFLOW_SEQUENCE_CEILINGS_CONTRACT,
     "popdam_forward_recovery_v1": POPDAM_FORWARD_RECOVERY_CONTRACT,
+    "plm_import_retirement_guard_v1": PLM_IMPORT_RETIREMENT_GUARD_CONTRACT,
     "popdam_query_expansion_rows_v1": """
       (select p.prorows = 32
         from pg_proc p

@@ -1,38 +1,41 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3181,
+  "generation": 1,
+  "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Remove the stale absent_from_production_catalog declaration for prod_order_milestone_schedule, which is live on production (run 35179427282, proof on #3091).",
-  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
-  "dispatcher": "Albert Hazan chat session",
-  "worker": "Claude Opus 5 session bold-kowalevski",
-  "branch": "claude/remove-3091-prod-gap-1789640648",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/rm-3091-gap",
+  "goal": "Write the implementation plan reducing what MUST pass through the shared-db orchestrator without reducing safety (issue #3199): queue hygiene, a self-service additive lane for crm/pim/dam, and a zero-touch audit of the #2758 ephemeral wait chain; reviewed by Grok 4.6 after Muse failed, findings folded in.",
+  "base_sha": "1c81b5b6875ce3b98907143965831f5ab09f6b3e",
+  "dispatcher": "ZCode session relaying Albert's instruction",
+  "worker": "ZCode (GLM 5.3) repository-maintenance session",
+  "branch": "zcode/plan-orchestrator-required-load-reduction",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-plan",
   "allowed_paths": [
-    "config/db-data-admin-property-source-coverage.json",
+    "plan_orchestrator_required_load_reduction.md",
+    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "config/db-data-admin-property-source-coverage.json",
+    "plan_orchestrator_required_load_reduction.md",
+    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch",
+    "No weakening of any safety gate, required check, or caller check"
   ],
   "required_checks": [
-    "node scripts/check-db-data-admin-property-source-coverage.mjs",
-    "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs"
+    "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "The production catalog contains prod_order_milestone_schedule, so the coverage check would fail while the declaration remains"
+    "origin/main moved twice during authoring; all queue counts in the plan cite the command that produces them per the 4.3 owner ruling"
   ],
   "stop_conditions": [
-    "Stop if any other coverage family changes"
+    "Stop if any change would weaken a safety gate or touch the database"
   ]
 }

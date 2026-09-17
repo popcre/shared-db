@@ -5,6 +5,126 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const HISTORICAL_RESTORATIONS = Object.freeze({
+  // #2988. Preview applied these exact bytes in run 35060692115, dispatched at
+  // pre-merge main 3fdd16ef and applied from PR #3007 head bac58c5f before the
+  // pull request merged. The production apply was refused because the merge
+  // commit 86da2d44 carries a new preview-producer sidecar
+  // (scripts/production-verification-sidecars/20260916033914.json) that the
+  // dispatch commit could not have had, so the immutable original apply must be
+  // rebound through this registry rather than replayed. Producer provenance is
+  // complete because this exact version merged from PR #3007 as 86da2d44.
+  '20260916033914': Object.freeze({
+    filename: 'supabase/migrations/20260916033914_dam_order_list_role_free_party_names.sql',
+    name: 'dam_order_list_role_free_party_names',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '35060692115',
+    previewDispatchCommit: '3fdd16effbd154e1602c29aa5610161910138d68',
+    previewAppliedCommit: 'bac58c5f49687c7911d013e1f392fcf5c356e626',
+    sourcePr: 3007,
+    sourceMergeCommit: '86da2d44bcd390b3177f322f947b212c8dc9bbc9',
+    statementBytes: 13874,
+    statementSha256: '568e72b43a86a70cc1001a52331615b8b7d13b5310567d2f29657e77bcc93723',
+    fileSha256: 'e8fbe0874fcb5289f1d60ec5a5c75c541fd234a3015458bb9d9ff26790ad65d0',
+    objects: Object.freeze([
+      'view dam.dam_order_list_customer_directory',
+      'view dam.dam_order_list_vendor_directory',
+      'view api.dam_order_list',
+    ]),
+  }),
+  // #2863. Preview applied these exact bytes in claim-mode run 35047947727,
+  // dispatched at main commit 0a11c42d and bound (instance-binding
+  // appliedCommit) to PR #3008 commit 1595aec0 before the PR merged. The
+  // production apply of this version was refused because the evidence-producing
+  // scripts/manage-migration-author-lanes.mjs at the dispatch commit differs
+  // from the one at merge commit 6c9b149d, so the immutable original apply must
+  // be rebound through this registry rather than replayed. Producer provenance
+  // is complete because this exact version merged from PR #3008 as 6c9b149d.
+  '20260916001944': Object.freeze({
+    filename: 'supabase/migrations/20260916001944_coldlion_prepack_and_prod_detail_landing.sql',
+    name: 'coldlion_prepack_and_prod_detail_landing',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '35047947727',
+    previewDispatchCommit: '0a11c42d3e373fe9b45e826a3015c93bb7cf4704',
+    previewAppliedCommit: '1595aec05565b1a138b6f40e09bda8191fa40acf',
+    sourcePr: 3008,
+    sourceMergeCommit: '6c9b149d8747293cdb306a73262bd341873bc682',
+    statementBytes: 13890,
+    statementSha256: 'f54b6ffb87a38c11201fb61a80c6af61bead7399f41c410a629d02500cee1c91',
+    fileSha256: 'c79374a85369589e3a5ed6e5f58b5ccf495e0ba1ad420f9e589b7bd1dba6aec9',
+    objects: Object.freeze([
+      'table coldlion.prepack_detail',
+      'table coldlion.prod_detail',
+    ]),
+  }),
+  // #2792. Preview applied these exact bytes in claim-mode run 34920902290,
+  // dispatched at and applied from unmerged PR #2930 head a119760e (claim
+  // #2929). The PR was then closed unmerged after a derived-from header changed
+  // the bytes, so the version is RETIRED (production_migration_guard
+  // HARD_BLOCKED / RETIRED_VERSION_REASONS) and reissued as 20260915023506
+  // under claim #2931. This pin exists only so the historical file can live on
+  // main (preview holds the version) without being mistaken for an edit.
+  // Production producer provenance is deliberately NOT registered: no
+  // `sourcePr`/`sourceMergeCommit`, so it can never be promoted.
+  '20260915015414': Object.freeze({
+    filename: 'supabase/migrations/20260915015414_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34920902290',
+    previewDispatchCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    previewAppliedCommit: 'a119760ec139c2d738c23b39c20d94fada2313ae',
+    statementBytes: 15745,
+    statementSha256: 'c60313fac7fa4d5bffdbd6bc2c681d491ca49bf71e8f898f9a7e22ca698e34f5',
+    fileSha256: '1ab60ae6cde98e4d2127cc3615cc76bfb1480b4f537b85d2d6a73959dcd50e02',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
+  // #2792. Preview applied these exact bytes in claim-mode run 34922309051,
+  // dispatched at ffa300c7 and bound (instance-binding appliedCommit) to PR
+  // #2933 commit 0c7ebecf before the PR merged. The migration blob 3f1f8874 is
+  // unchanged on main. Producer provenance is complete because this exact
+  // version merged from PR #2933 as ae295b65.
+  '20260915023506': Object.freeze({
+    filename: 'supabase/migrations/20260915023506_popsg_reconcile_bounded_under_statement_ceiling.sql',
+    name: 'popsg_reconcile_bounded_under_statement_ceiling',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34922309051',
+    previewDispatchCommit: 'ffa300c7918b30a54bb033267596c6a70e66c438',
+    previewAppliedCommit: '0c7ebecf1d8ffb5e0980a279d7e32b9d14a343f4',
+    sourcePr: 2933,
+    sourceMergeCommit: 'ae295b6541e4429b8ac61d8b04a5ae7c22a836b4',
+    statementBytes: 15780,
+    statementSha256: 'ded20c542b4d7498f4925fe8e169aa3846f21a5b8fe0f16f84e958d08c00083b',
+    fileSha256: '6e2c22ecb99464d2584cfc2823b053a300cc59044f3354a634ece0eb40c9d27d',
+    objects: Object.freeze([
+      'function public.preview_stale_sg_files',
+      'function public.reconcile_stale_sg_files_batch',
+    ]),
+  }),
+  // #2879 / #2885 / #2889. Preview applied these exact successor bytes in
+  // post-merge rehearsal run 34827941186 at PR #2886 head ce7eff73. The later
+  // workflow-only repair #2887 changed the evidence-producing workflow, so the
+  // immutable original apply must be rebound through the historical no-write
+  // path rather than replayed. Producer provenance is complete because this
+  // exact version merged from PR #2886 as c0a36970.
+  '20260914075758': Object.freeze({
+    filename: 'supabase/migrations/20260914075758_reissue_dcp_inventory_families.sql',
+    name: 'reissue_dcp_inventory_families',
+    previewProject: 'mvpkijzfmfcxhnzqogzs',
+    previewApplyRun: '34827941186',
+    previewDispatchCommit: 'ce7eff73a2f68ba9309b2b2da4a411f8fef042ae',
+    previewAppliedCommit: 'ce7eff73a2f68ba9309b2b2da4a411f8fef042ae',
+    sourcePr: 2886,
+    sourceMergeCommit: 'c0a369705480a29e64ae6ff22d162022c09e7a7e',
+    statementBytes: 38131,
+    statementSha256: '00872d31763e3ec3a01ace3fe7dca02bb0cfb07f4b60767e8ddedcb0d010cda5',
+    fileSha256: '51dd41075554c1af6896d7e9b1a532313f1bb1aa97e2692dd02afabb8f741f2b',
+    objects: Object.freeze([
+      'function api.source_capture_inventory_exact',
+      'view api.source_capture_inventory',
+    ]),
+  }),
   // #2797 / #2817. Preview applied these exact bytes in claim-mode run
   // 34655606553, dispatched at and applied from PR #2808 commit
   // 916b8005f4588ece389f1f137faf651bd78ef0a2 before the PR merged, because that

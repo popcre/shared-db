@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3009,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -11,14 +11,14 @@
   "branch": "claude/3009-sg-default-browse-snapshot",
   "worktree": "C:/repos/shared-db/.claude/worktrees/wt-3009-sg-default-snapshot",
   "allowed_paths": [
-    "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",
+    "supabase/migrations/20260917022957_popsg_search_v2_default_browse_snapshot.sql",
     ".github/live-proofs/3009.sql",
     "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",
+    "supabase/migrations/20260917022957_popsg_search_v2_default_browse_snapshot.sql",
     ".github/live-proofs/3009.sql",
     "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
     ".agent/contract.json",

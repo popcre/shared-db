@@ -1,56 +1,43 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3179,
-  "work_type": "source-data",
-  "route": "source-data-session",
-  "goal": "Load and continuously refresh ColdLion /prepackDetail data in the live coldlion.prepack_detail table created by #2863: extend the existing repository-owned ColdLion landing loader (no second framework), add synthetic offline tests, and wire a bounded, resumable production backfill plus the ongoing scheduled refresh. No database-shape change.",
-  "base_sha": "1d4cb402d4f546fb1845d65d3b93bca82771f875",
-  "dispatcher": "delegated source-data session started from issue #3179 text (non-orchestrator work)",
+  "work_issue": 3224,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Pass an explicit --pause-ms 1000 on the daily ColdLion Landing Sync's prepack-detail refresh step so the 2,577-code re-read fits the job's 90-minute budget instead of overrunning it at the loader's 3,000ms default.",
+  "base_sha": "f06a85c34fcfe54b71740be589eddb4845e93433",
+  "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-detail-loader",
+  "branch": "claude/issue-3179-prepack-refresh-pacing",
   "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-detail-3179",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never author a migration or change any database shape; this work changes rows and loader code only (issue #3179 db-work-scope declares writes: []).",
-    "Never run the loader against a database whose connection string does not name the declared COLDLION_EXPECTED_PROJECT_REF; the target is proved immediately before every write.",
-    "Never commit ColdLion row values, harvested key populations, or credentials; fixtures are synthetic and logs carry counts only.",
+    "Never author a migration or change any database shape; this is a workflow pacing change only.",
+    "Never weaken a workflow guard: the offline tests still run before any write, the declared target stays beside every credential, and the missing-secret refusals stay.",
+    "Never remove or reorder the history-then-masters-then-prepack sequence.",
     "Never close issue #3179; the originating session owns closure."
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-prepack.test.mjs",
-    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
-    "bash scripts/check-sql.sh"
+    "node --test tools/coldlion-landing-prepack.test.mjs"
   ],
   "assumptions": [
-    "The /prepackDetail shape and grain are those sampled live on 2026-09-15 (docs/coldlion-unit-5b-grain-proof-20260915.md): a bare JSON array of eighteen fields keyed by (company_code, prepack_code, sequence_no), with itemPrice and ItemPrice as two real properties.",
-    "The complete approved prepackCode population is harvestable from already-landed ColdLion data (issue #3179 required work); coldlion.inventory and coldlion.prod_detail contribute automatically once their own loaders exist.",
-    "Resumability needs no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params.",
-    "A zero-row response for a harvested code is expected and must be counted and named, never silently skipped; malformed responses abort the run before any write."
+    "The live dry-run dispatched after PR #3220 merged measured 2,577 distinct harvested prepack codes and ~3.1s per code at the 3,000ms default pace.",
+    "The vendor agreement is serialized one-request-at-a-time; a 1,000ms pause keeps it while landing the full refresh in ~45 minutes beside history+masters' ~8 minutes, inside the 90-minute job budget.",
+    "The backfill workflow already accepts pause_ms per dispatch, so only the scheduled step needs the baked-in pace."
   ],
   "stop_conditions": [
-    "Stop and report a blocker if the live dry-run shows a response shape outside the eighteen-field sample or a harvest population too large for the scheduled window.",
+    "Stop and report a blocker if the measured daily refresh plus history and masters would exceed the job timeout at any acceptable pace.",
     "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

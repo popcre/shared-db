@@ -1,19 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 3179,
+  "work_issue": 3224,
   "outcome": "ready-for-merge",
-  "pr": 3220,
+  "pr": 3225,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3179/1",
-  "contract_sha256": "edf466bbf137f94c77fe90a50ed070acf81e3550dc8ccf21f525e99d30a51e9a",
-  "head_sha": "70283d04b1cf595d8479ea43cf9494c9c6915783",
+  "contract_ref": "refs/db-contracts/3224/1",
+  "contract_sha256": "5b5f16de0f2f3307aa027ac6ef512228d6bb53d30b508b6587ff473d7c25139e",
+  "head_sha": "0d84ab62bf39c9f7c6a99ad0363af2219360693f",
   "files_changed": [
-    ".github/workflows/coldlion-landing-sync.yml",
-    ".github/workflows/coldlion-prepack-backfill.yml",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/README.md",
-    "tools/coldlion-landing/lib/prepack-detail.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -21,23 +16,12 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass: eighteen-field projection, sentinel normalisation, replay idempotence (byte-identical SQL), duplicate and blank-key refusal, fractional-quantity refusal, request-identity guards, zero-row and malformed responses, bounded resumability, load-transaction shape, workflow target/secret/serialisation guards, privacy guards."
-    },
-    {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
-      "exit_code": 0,
-      "evidence": "100/100 pass — the existing ColdLion landing suites are unbroken by the workflow extension (history-then-masters ordering still asserted and still true)."
-    },
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Static guards pass; this pull request adds no migration, so Guard B compared zero new versions against origin/main's newest 20260917144950."
+      "evidence": "33/33 pass on this branch, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, history-then-masters-then-prepack ordering, and the shared coldlion-landing-sync concurrency group."
     }
   ],
   "assumptions_resolved": [
-    "The complete approved prepackCode population IS derivable from already-landed data: the loader harvests coldlion.item_detail, coldlion.prod_history_line and coldlion.order_history_line, and probes coldlion.inventory and coldlion.prod_detail with to_regclass so they contribute once their own loaders exist.",
-    "Resumability needed no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params, exactly as the issue's no-shape-change scope requires.",
-    "Runtime row writes (coldlion.prepack_detail, sync_run, change_log) are deliberately outside this contract's db lists: the contract validator requires non-structural work to declare empty db_reads/db_writes, and the loader's target-proof and transaction guarantees live in the tested loader code and its workflows."
+    "The 2,577-code population and ~3.1s-per-key measurement come from the live production dry-run dispatched after PR #3220 merged (run 35264164570): target proved, five keys fetched live with zero refusals, nothing written.",
+    "Only the scheduled step needed the pace: the backfill workflow already takes pause_ms per dispatch and the bounded production runs pass it explicitly."
   ],
   "stop_conditions_hit": []
 }

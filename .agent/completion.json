@@ -1,58 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3199,
+  "work_issue": 3180,
   "outcome": "ready-for-merge",
-  "pr": 3216,
+  "pr": 3221,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/9",
-  "contract_sha256": "261437cde7a3df3533e24fcc0855db4b9867b5702ff37d7c66dca3c24a204f25",
-  "head_sha": "64dab1710fdb24750368ce5511e0d6cc5f2acd63",
+  "contract_ref": "refs/db-contracts/3180/4",
+  "contract_sha256": "99b05149c3e0858477d27e0889a39b9ded16c5c1d8988d8389b0cd9180a238e6",
+  "head_sha": "b7f4e0f1a2ac1808df5da845eb2abdb66879d040",
   "files_changed": [
-    ".github/workflows/queue-hygiene-report.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "plan_orchestrator_required_load_reduction.md",
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/workflows/coldlion-landing-sync.yml",
+    ".github/workflows/coldlion-prod-detail-backfill.yml",
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prod-details.mjs",
+    "tools/coldlion-landing/sync-prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/queue-hygiene-report.test.mjs",
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "7 tests, 7 pass at implementation head 64dab171 — the two review-found hooks now refused and every githubIo function hook classified."
+      "evidence": "32 tests, 32 pass, 0 fail on the refreshed head 9d8ce8f6, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules."
     },
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "604 tests pass; the lane manager stays byte-identical to main in this pull request."
-    },
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Static checks passed; zero migrations added."
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "Every GitHub call goes through scripts/lib/github-transport.mjs."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=308."
-    },
-    {
-      "command": "ai-task-gates check --before pr-wait",
-      "exit_code": 0,
-      "evidence": "pr-wait may start; the exact-head independent review proceeds through this pull request."
+      "evidence": "165 tests, 165 pass, 0 fail on the refreshed head 9d8ce8f6 — the exact four-suite command the merged scheduled workflow's offline gate runs, proving the combined history+masters+prepack+prod-detail job satisfies every suite's workflow assertions. The full 48-file tools suite (935 tests) also passed on this tree."
     }
   ],
   "assumptions_resolved": [
-    "origin/main moved four times during implementation; the branch was refreshed by merge before each evidence bind and tests re-run green at each implementation head.",
-    "The Grok 4.6 governed review of head fd7d1327 returned REVISE finding rewriteVersion and commitAndPushReversion missing from the refuse list; generation 9 refuses both and adds the completeness guard classifying every githubIo function hook as known read or refused mutation.",
-    "A1/A2 executed live before this pull request; queue-audit rerun shows no UNLABELLED ISSUES block and no EXPIRED AUTHOR LEASES section."
+    "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
+    "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
+    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
+    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
+    "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758).",
+    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758)."
   ],
   "stop_conditions_hit": []
 }

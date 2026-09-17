@@ -1,12 +1,27 @@
 # ColdLion landing loaders
 
-Fills the existing ColdLion master, item, sales-history and production-history
-landing tables from the ColdLion ERP API.
+Fills the existing ColdLion master, item, sales-history, production-history and
+production-detail landing tables from the ColdLion ERP API.
 
 `sync-masters.mjs` takes a complete current-state snapshot and upserts it. It
 does not use history windows or the window ledger. It fetches seasons per
 division, excludes EP001, and reconciles cleared item merchandise-group slots
 without truncating any item table.
+
+`sync-prod-details.mjs` fills `coldlion.prod_detail` from `GET /proddetails`,
+one keyed request per production order. It harvests the complete approved
+`prodOrderNo` population from the landed production history
+(`coldlion.prod_history_line`), skips every order a SUCCEEDED `/proddetails`
+`sync_run` already proves fetched, and lands each order in one transaction with
+both proven identities asserted (`pkey` as the upsert key,
+`(prod_order_no, prod_line_seq)` left to the table's unique constraint so a
+re-keyed vendor row fails visibly instead of merging). Backfill walks
+oldest-first (`--mode backfill`); the scheduled refresh catches new orders and
+re-reads recently-observed ones (`--mode refresh`). The response is a bare
+array; there is no page envelope, and a response containing a row for another
+order is refused. Unknown fields, omitted approved fields, blank identity
+fields and either identity appearing twice in one response all fail the run
+before anything is written.
 
 ## What it does
 
@@ -35,7 +50,7 @@ Supabase project could also have the schema.
 
 The workflows below are the only sanctioned way to run this against the real
 database, and they read exactly two secrets, both of which must exist in this
-repository's Actions secrets before either workflow can start:
+repository's Actions secrets before any of them can start:
 
 | Secret | What it must contain |
 | --- | --- |
@@ -100,7 +115,28 @@ continues where the evidence stops:
 node tools/coldlion-landing/backfill-history.mjs --from 2019-01-01 --limit 50
 ```
 
-Add `--dry-run` to either to see the outstanding work without fetching or
+Production detail — catch up every order the evidence does not already prove
+fetched, oldest first, bounded and resumable:
+
+```bash
+node tools/coldlion-landing/sync-prod-details.mjs --mode backfill --limit 1000
+```
+
+Production detail — ongoing refresh (new orders first, then recently-observed
+ones re-read):
+
+```bash
+node tools/coldlion-landing/sync-prod-details.mjs --mode refresh --limit 2000
+```
+
+Production detail — re-fetch named orders regardless of prior evidence, the
+smallest possible live smoke:
+
+```bash
+node tools/coldlion-landing/sync-prod-details.mjs --mode keys --keys 20000
+```
+
+Add `--dry-run` to any of these to see the outstanding work without fetching or
 writing anything.
 
 ## The vendor behaviours this is built around
@@ -160,6 +196,12 @@ workflow target guard.
 normalisation, duplicate and blank-key refusal, the request-identity guard,
 zero-row and malformed responses, bounded resumability, the shape of the load
 transaction, and both workflows' target and secret guards.
+
+`tools/coldlion-landing-prod-details.test.mjs` covers the /proddetails
+projection, replay determinism, duplicate refusal on both identities, empty
+responses, resumable key selection, the reconciliation read, and the two
+workflows this feed rides on: their triggers, the declared target beside every
+credential, and the offline tests running before any write.
 
 No real ColdLion values appear in this directory. The fixtures are synthetic and
 the loaders print counts, scopes and window dates only — this repository is

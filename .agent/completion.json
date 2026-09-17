@@ -1,31 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3181,
+  "work_issue": 3182,
   "outcome": "ready-for-merge",
-  "pr": 3176,
+  "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3181/5",
-  "contract_sha256": "573c5940dc6288512684f7ea7728ca968afc2c8cd2f2ae6853d18442f7b569d8",
-  "head_sha": "b68ae799cbe52764c7db48fdcceeff4b36c0d365",
+  "contract_ref": "refs/db-contracts/3182/5",
+  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
+  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
+      "evidence": "628 tests, 628 pass, 0 fail at a8df2e63 after merging main 4fec003d."
     },
     {
-      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "44 pass, 0 fail, 0 skipped."
+      "evidence": "truth audit OK: call_sites=305 at a8df2e63."
     }
   ],
   "assumptions_resolved": [
-    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
+    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
+    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
+    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
   ],
   "stop_conditions_hit": []
 }

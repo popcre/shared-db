@@ -1,31 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3127,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 3135,
+  "pr": 3145,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3127/1",
-  "contract_sha256": "fb953cc3f5d4fbfae74c9b2e51b5b4e653535450a1f4264b4b54ca5140ee9e27",
-  "head_sha": "074853b30809de0f1a3b0504dc9d0eed2841fa1d",
+  "contract_ref": "refs/db-contracts/2367/1",
+  "contract_sha256": "e9fa7c8a99ef6d6d2f9ad8a46632150d6300ab3e2a77829579a3a9c7af37e998",
+  "head_sha": "d5d139ba87215798c108a81d9ebfa74281610efd",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/migration-author-lease.yml"
+    "scripts/test_production_business_risk_gate_historical_original_runs_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "Run at refreshed implementation head 074853b3: tests 6, pass 6, fail 0, skipped 0."
+      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally at the new head; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally for all 6 mutants, including each exact-main cardinality subtest on its own with prove_preview_migration_contents patched to fail, and is not committed as an artifact."
     }
   ],
   "assumptions_resolved": [
-    "Outcomes returning to an application repository are reported not applicable by the guard (tested)"
+    "This PR covers only the 6 historical-original-runs guard mutants listed in issue #2367; the other survivors from the 2026-09-04 sweep for this gate are covered by five other single-issue PRs (#3140, #3141, #3142, #3143, #3144), not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here.",
+    "The comment in scripts/production_business_risk_gate.py above these guards says no test can drive them and that deleting them leaves the suite green. After this PR that is no longer true: the new file drives them directly. The comment is left unchanged because this PR does not edit gate source; correcting it is a follow-up for the gate's owner."
   ],
   "stop_conditions_hit": []
 }

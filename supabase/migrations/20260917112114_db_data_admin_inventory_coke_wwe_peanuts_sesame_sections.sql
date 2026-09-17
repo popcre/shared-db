@@ -628,11 +628,13 @@ begin
       union all
       select 'peanuts-creative', 'Peanuts - Creative (Tenovos Art Program)', 'Creative',
              'peanuts_tenovos', 'source.tenovos_art_program',
-             coalesce(a.source_value_id, a.value_key),
+             a.source_value_id,
              a.value_label, null,
              null::timestamptz, a.capture_id::text
       from plm.peanuts_art_program a
       join peanuts_property_latest c on c.id = a.capture_id
+      -- Rows without a Tenovos id have no ledger identity; left out on purpose.
+      where a.source_value_id is not null
 
       union all
       select 'sesame-creative', 'Sesame Workshop - Creative (NetX)', 'Creative',
@@ -1477,7 +1479,7 @@ declare
 begin
   foreach v_key in array array['coca-cola-submissions','wwe-creative','peanuts-creative',
     'sesame-creative','sesame-submissions','wwe-submissions','coca-cola-creative','warner-bros'] loop
-    if position( || v_key ||  in v_def) = 0 then
+    if position('''' || v_key || '''' in v_def) = 0 then
       raise exception '#3174 self-check: section % missing from function body', v_key;
     end if;
   end loop;
@@ -1498,6 +1500,13 @@ begin
   where a.capture_id = (select c.id from plm.peanuts_capture c where c.status = 'complete'
     order by c.source_captured_at desc, c.load_completed_at desc, c.id desc limit 1);
   raise notice '#3174 self-check: Peanuts Creative rows %', v_n;
+
+  if position('coalesce(a.source_value_id' in v_def) > 0
+     or position('a.source_value_id is not null' in v_def) = 0 then
+    raise exception '#3174 self-check: Peanuts rows without a Tenovos id must be excluded';
+  end if;
+  select count(*) into v_n from plm.peanuts_art_program a where a.source_value_id is null;
+  raise notice '#3174 self-check: Peanuts rows without a Tenovos id (excluded) %', v_n;
 
   select count(distinct b.value_label) into v_n from plm.sesame_brand b
   where b.capture_id = (select c.id from plm.sesame_capture c where c.status = 'complete'

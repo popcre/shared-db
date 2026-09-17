@@ -10,8 +10,6 @@
   "contract_sha256": "fcdc84f2d54562d12354047cb3a15daa1431caec5e2a8ec72c06ada3433013a3",
   "head_sha": "d26589f123c216c0c8d1c9c6b84a79d26cad9935",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     ".github/live-proofs/2794.sql",
     ".github/workflows/coldlion-licensor-property-phase6-parallel.yml",
     "AGENTS.md",

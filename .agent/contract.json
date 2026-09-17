@@ -1,28 +1,34 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3146,
+  "generation": 8,
+  "work_issue": 3173,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the automatic production qualifier judge a merged pull request against main as it was before the merge, so a superseded REVISE on an earlier head no longer looks identical to the approved head, while every refusal rule stays fail-closed.",
-  "base_sha": "14464e77f16163589af5abb7d6908b2c6f0b6500",
-  "dispatcher": "Albert Hazan chat request to fix #3146",
-  "worker": "Claude Opus 5 #3146 session",
-  "branch": "claude/issue-3146-carry-latest-verdict",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-3146-carry-latest-verdict",
+  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
+  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
+  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
+  "worker": "Claude Opus 5 #2773 subagent",
+  "branch": "claude/api-fanout-2773-a",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
   "allowed_paths": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs",
+    "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -30,15 +36,16 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "Do not relax the rule that a durable refusal on a content-identical earlier head blocks a carry"
+    "No production workflow dispatch",
+    "No weakening of collision locks, migration version reservation or serial lanes"
   ],
   "required_checks": [
-    "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "The qualifier runs after the merge with current main containing the source head; the merge commit first parent is main as the guarded merge judged it"
+    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
   ],
   "stop_conditions": [
-    "Stop if the fix would let any head carry an APPROVE the guarded merge would refuse"
+    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
   ]
 }

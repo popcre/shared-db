@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process'
-import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport } from './lib/github-transport.mjs'
+import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -1270,6 +1270,8 @@ export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.
     maxBuffer,
     encoding,
     input,
+    // Issue #2773: the real binary shares the host-wide exhaustion latch; a fixture executor never does. A latched refusal sends no request, so it is deliberately not charged to the wire budget above.
+    quotaLatch:executor===execFileSync?hostQuotaLatch():null,
     wrapError:(detail)=>new LaneError(`GitHub command failed: ${detail}`),
   })
 }

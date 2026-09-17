@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3187,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -13,6 +13,7 @@
   "allowed_paths": [
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/reviewer-wire-budget.test.mjs",
     "scripts/test-fixtures/github-wire-fake.mjs",
     ".agent/contract.json",
@@ -21,6 +22,7 @@
   "file_writes": [
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/reviewer-wire-budget.test.mjs",
     "scripts/test-fixtures/github-wire-fake.mjs",
     ".agent/contract.json",

@@ -4,12 +4,13 @@
   "outcome": "ready-for-merge",
   "pr": 3192,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3187/1",
-  "contract_sha256": "cec9f92221caca439393d084a2f113f93df968869f4067c1683d4be67c37fe58",
-  "head_sha": "40cad7e30aea489f509e787bd9d0a16382371123",
+  "contract_ref": "refs/db-contracts/3187/2",
+  "contract_sha256": "9cf518b79c9f04aaeea3d1f4eb06f8501d0702cbd578d17a41ae5873e88fea58",
+  "head_sha": "f534857add37b9e96c381604dc130cb74c8897c8",
   "files_changed": [
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/reviewer-wire-budget.test.mjs",
     "scripts/test-fixtures/github-wire-fake.mjs"
   ],
@@ -19,7 +20,7 @@
     {
       "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "At 40cad7e30aea489f509e787bd9d0a16382371123 the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1220 passed, 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6."
+      "evidence": "At f534857add37b9e96c381604dc130cb74c8897c8 the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1222 passed, 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
     }
   ],
   "assumptions_resolved": [

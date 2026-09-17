@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3127/1",
   "contract_sha256": "fb953cc3f5d4fbfae74c9b2e51b5b4e653535450a1f4264b4b54ca5140ee9e27",
-  "head_sha": "72194d7dbc2bd914a17affb175adb46fb9febff3",
+  "head_sha": "c6fb5c409420f794c3a05e0cf42b58e818f6732e",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -21,7 +21,7 @@
     {
       "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at refreshed implementation head 72194d7d: tests 6, pass 6, fail 0, skipped 0."
+      "evidence": "Run at refreshed implementation head c6fb5c40: tests 6, pass 6, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [

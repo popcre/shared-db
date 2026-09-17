@@ -6,8 +6,9 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3193/1",
   "contract_sha256": "0f97dd1bd7b749d481775bc6a15acf1dad9136b44bf5e292d1056cc29f5ceb65",
-  "head_sha": "51836fa5a138200dc72b7ad422b2952ddb71a6a6",
+  "head_sha": "b16a2505580af1cdc7ee81b6b0491f0e351eae6c",
   "files_changed": [
+    ".agent/contract.json",
     ".github/workflows/shared-supabase-migrations.yml",
     "scripts/production_migration_guard.py",
     "scripts/test_production_migration_guard.py"

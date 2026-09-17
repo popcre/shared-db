@@ -1,54 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2611,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 2823,
-  "migration_versions": [
-    "20260917081048"
-  ],
-  "contract_ref": "refs/db-contracts/2611/10",
-  "contract_sha256": "a10d215ee254441e4f3e3fb22214f21d3b9534d8e9d14d4728c1a7c584fa2f7c",
-  "head_sha": "5c686f09ba49423a79cdae1392ee6ea6653decba",
+  "pr": 3177,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2367/2",
+  "contract_sha256": "6771b8a2622820843b0b278aa92854b3d89ed787180ecf9051035fd385b6bef1",
+  "head_sha": "8224df8a1bb417d65ebcda5d4beaa8afbe25cc1b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/live-proofs/2611.sql",
-    ".github/workflows/prepack-exclusion.yml",
-    "docs/business-rules/product-items-and-identifiers.md",
-    "docs/verification/prepack-exclusion-20260911.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/check-prepack-exclusion.mjs",
-    "scripts/check-prepack-exclusion.test.mjs",
-    "supabase/migrations/20260917081048_prepack_exclusion.sql"
+    "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role",
-    "view plm.item_missing_attribution",
-    "table plm.item_missing_attribution"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "Static checks passed at 5c686f09."
-    },
-    {
-      "command": "node scripts/check-prepack-exclusion.test.mjs",
-      "exit_code": 0,
-      "evidence": "Prepack exclusion test passed at 5c686f09: guard verified green on the tree and red on 10 dirty cases, including a later function-only migration weakening plm.prepack_role."
-    },
-    {
-      "command": "node scripts/check-migration-pr-lease.mjs",
-      "exit_code": 0,
-      "evidence": "PR_NUMBER=2823: Migration claim verified: #2819, version 20260917081048."
+      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
     }
   ],
   "assumptions_resolved": [
-    "Refreshed by merge onto main e0c54faa; version 20260917081048 remains newest on main.",
-    "Throughput truth audit OK at 306 call sites and pass-2 routine rebuild check PASS at 8f7224eb.",
-    "Governed review sequence 3111 (Muse) REVISE at 21cda954: the one High guard finding and Lows 5-7 are fixed; Mediums 2-4 (per-row function cost, unscoped head match, member exclusion breadth) are recorded on the PR for follow-up.",
-    "Governed review sequence 3115 (grok-4.6) APPROVE at 8514a309; the guarded merge then required a live-proof probe, added at 5c686f09 as .github/live-proofs/2611.sql, which needs a fresh review."
+    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change."
   ],
   "stop_conditions_hit": []
 }

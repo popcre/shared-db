@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3221,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/1",
-  "contract_sha256": "3b45b8f3b0f86d75df21f793d1f53cb00e132c103f719ce0d8a9a91021cab844",
-  "head_sha": "42aab3fa217369c143c059bfd3f4241493b3f27d",
+  "contract_ref": "refs/db-contracts/3180/2",
+  "contract_sha256": "25dad9ab57062088d36888ae06c4eb0c1d87d66b4d68ff27e527119afa10cb3f",
+  "head_sha": "9d8ce8f6b0ab2b570b5d7c199c21504bc5dc6eec",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/coldlion-landing-sync.yml",
     ".github/workflows/coldlion-prod-detail-backfill.yml",
     "tools/coldlion-landing-prod-details.test.mjs",
@@ -21,18 +23,19 @@
     {
       "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "32 tests, 32 pass, 0 fail on the work head, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules. The full 48-file tools suite (902 tests) also passed on this head."
+      "evidence": "32 tests, 32 pass, 0 fail on the refreshed head 9d8ce8f6, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules."
     },
     {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "132 tests, 132 pass, 0 fail on the work head — the exact command the contract requires: the two pre-existing landing suites plus the new one, proving the scheduled-sync workflow edits kept every existing workflow assertion (target declarations, offline tests before write, serialisation) while the new suite holds its own."
+      "evidence": "165 tests, 165 pass, 0 fail on the refreshed head 9d8ce8f6 — the exact four-suite command the merged scheduled workflow's offline gate runs, proving the combined history+masters+prepack+prod-detail job satisfies every suite's workflow assertions. The full 48-file tools suite (935 tests) also passed on this tree."
     }
   ],
   "assumptions_resolved": [
     "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
     "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
-    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding."
+    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
+    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both."
   ],
   "stop_conditions_hit": []
 }

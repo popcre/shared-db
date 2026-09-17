@@ -13,7 +13,8 @@
 //      silently degrades into "no findings".
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { main, claimBody, hygieneReportIo, WORK_LABEL } from './manage-migration-author-lanes.mjs'
+import { claimBody, WORK_LABEL } from './manage-migration-author-lanes.mjs'
+import { main, hygieneReportIo } from './queue-hygiene-report.mjs'
 
 const NOW = new Date('2026-09-17T12:00:00Z')
 
@@ -63,7 +64,7 @@ function runReport(fixture) {
   console.log = (...args) => out.push(args.join(' '))
   console.error = (...args) => err.push(args.join(' '))
   try {
-    const code = main(['--queue-hygiene-report'], NOW, fixture.io)
+    const code = main([], NOW, fixture.io)
     return { code, out: out.join('\n'), err: err.join('\n') }
   } finally {
     console.log = oldLog

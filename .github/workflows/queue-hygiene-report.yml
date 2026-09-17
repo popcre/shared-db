@@ -77,7 +77,7 @@ jobs:
         run: |
           set -uo pipefail
           set +e
-          node scripts/manage-migration-author-lanes.mjs --queue-hygiene-report > /tmp/queue-hygiene-report.json 2> /tmp/queue-hygiene-sections.txt
+          node scripts/queue-hygiene-report.mjs > /tmp/queue-hygiene-report.json 2> /tmp/queue-hygiene-sections.txt
           CODE=$?
           set -e
           {

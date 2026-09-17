@@ -996,39 +996,6 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
   return { queues, expiredClaims, skipped, unclassified, malformed, unlabelled, notOrchestratorWork, dependencyCycles, grandfatheredDependencies, blockerCounts:Object.fromEntries(blockerCounts), dispatchable, urgentWaitingCapacity, emptyLanes, fullyAudited:!unclassified.length&&!malformed.length&&!unlabelled.length&&!dependencyCycles.length }
 }
 
-// QUEUE HYGIENE REPORT IO (issue #3199 Phase A3). The interactive `--queue-audit`
-// is an orchestrator instrument, not a monitor: it may comment
-// `urgent_waiting_capacity` on issues and exits non-zero whenever dispatchable
-// work exists, so scheduling THAT would both write from CI and fail daily on the
-// normal backed-up queue this plan exists to relieve. This wrapper removes every
-// mutation hook instead of relying on the report path never reaching one — the
-// same discipline as `reportOnlyFlowIo` for the abandonment audit: a mutation is
-// a thrown error rather than a silent write, so a run that tried to write fails
-// loudly. The refuse list is deliberately explicit: it names every hook on
-// githubIo that creates, updates, deletes or pushes anything.
-export function hygieneReportIo(io) {
-  const refuse = (name) => () => { throw new LaneError(`read-only queue hygiene report must never call ${name}`) }
-  return {
-    ...io,
-    postCommitStatus: refuse('postCommitStatus'),
-    updateIssue: refuse('updateIssue'),
-    makeOwnerCommit: refuse('makeOwnerCommit'),
-    makeReviewVerdictCommit: refuse('makeReviewVerdictCommit'),
-    createRef: refuse('createRef'),
-    deleteRef: refuse('deleteRef'),
-    updateRef: refuse('updateRef'),
-    atomicReviewRefs: refuse('atomicReviewRefs'),
-    atomicReviewMutexRelease: refuse('atomicReviewMutexRelease'),
-    reserveVersion: refuse('reserveVersion'),
-    createClaim: refuse('createClaim'),
-    createIssueIn: refuse('createIssueIn'),
-    commentIssue: refuse('commentIssue'),
-    closeIssue: refuse('closeIssue'),
-    closeClaim: refuse('closeClaim'),
-    contentPreservingRefresh: refuse('contentPreservingRefresh'),
-  }
-}
-
 // RETURN PATH (AGENTS.md 0.0-C). A rejected task is forwarded to the repository
 // that owns it and only then closed here, so the closing comment always carries
 // a live link to where the work actually went. Order is the whole safety
@@ -8214,7 +8181,6 @@ function parseArgs(argv) {
     else if (a === '--complete-outcome') out.completeOutcome = Number(next(i++))
     else if (a === '--audit') out.audit = true
     else if (a === '--queue-audit') out.queueAudit = true
-    else if (a === '--queue-hygiene-report') out.queueHygieneReport = true
     else if (a === '--complete-work') out.completeWork = true
     else if (a === '--assert-exclusive') out.assertExclusive = next(i++)
     else if (a === '--recover-exclusive') out.recoverExclusive = next(i++)
@@ -8377,7 +8343,7 @@ export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
     if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
-    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','rebindClaimWorktree','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','queueHygieneReport','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
+    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','rebindClaimWorktree','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')
     if(selectedPrimary.length>1)throw new LaneError(`choose exactly one primary operation; received ${selectedPrimary.join(', ')}`)
@@ -8671,73 +8637,6 @@ export function main(argv, now = new Date(), io = githubIo) {
       if (result.unlabelled.length) console.error(`UNLABELLED ISSUES: add the \`${WORK_LABEL}\` label to ${result.unlabelled.map((n)=>`#${n}`).join(', ')} — an unlabelled issue is invisible to every label-filtered query`)
       if (!result.fullyAudited) { console.error('EMPTY LANE NOT PROVEN: classify and label every open issue before claiming no eligible work exists'); return 2 }
       return result.malformed.length || result.unlabelled.length || result.dependencyCycles.length || result.expiredClaims.some((row)=>row.queued.length) || result.notOrchestratorWork.some((item)=>item.needsReturnAddress) ? 2 : 0
-    }
-    if (o.queueHygieneReport) {
-      // QUEUE HYGIENE REPORT (issue #3199 Phase A3). Reports ONLY the hygiene
-      // sections the interactive audit also prints — unlabelled issues, expired
-      // author leases, and NOT ORCHESTRATOR WORK aging — and is safe to run on a
-      // schedule: the write hooks are stripped before any read begins
-      // (`hygieneReportIo`), and a merely backed-up queue is NOT a failure, so
-      // this always exits 0 when the report could be produced. A throw (unreadable
-      // GitHub state) falls through to the generic handler and exits 2, which is
-      // correct: an instrument that could not read must never be mistaken for a
-      // clean queue. Exit-non-zero-on-dirty-queue is deliberately NOT implemented
-      // here (plan §8 open question) — the interactive `--queue-audit` already
-      // refuses loudly; decide after a week of daily runs.
-      const reportIo = hygieneReportIo(io)
-      const issues = reportIo.openWorkIssues()
-      const createdAt = new Map(issues.map((issue) => [Number(issue.number), Date.parse(issue.createdAt ?? issue.created_at ?? '')]))
-      const openPulls = reportIo.openPulls?.() ?? []
-      // Pull states are resolved only for the bounded expired-lease set, exactly
-      // as the interactive audit derives them: same reads, same meaning.
-      const claimPullStates = new Map()
-      for (const claim of claims) {
-        const lease = parseAuthorLease(claim.body, now)
-        if (lease.legacy || lease.active || !lease.capacityActive) continue
-        if (openPulls.some((pull) => pull.head?.ref === lease.branch)) { claimPullStates.set(claim.number, 'open'); continue }
-        const historical = reportIo.branchPulls?.(lease.branch) ?? []
-        claimPullStates.set(claim.number, historical.some((pull) => pull.merged_at) ? 'merged' : historical.length ? 'closed-unmerged' : 'none')
-      }
-      const result = buildDynamicQueues(issues, claims, now, reportIo.openIssueNumbers(), null, claimPullStates)
-      const ageDays = (number) => {
-        const created = createdAt.get(Number(number))
-        return Number.isFinite(created) ? Math.floor((now.getTime() - created) / 86400000) : null
-      }
-      const report = {
-        report: 'queue-hygiene',
-        generated_at: now.toISOString(),
-        mutating: false,
-        unlabelled_issues: result.unlabelled,
-        expired_author_leases: result.expiredClaims,
-        not_orchestrator_work: result.notOrchestratorWork.map((item) => ({ ...item, age_days: ageDays(item.issue) })),
-      }
-      console.log(JSON.stringify(report, null, 2))
-      if (result.unlabelled.length) console.error(`UNLABELLED ISSUES: add the \`${WORK_LABEL}\` label to ${result.unlabelled.map((n)=>`#${n}`).join(', ')} — an unlabelled issue is invisible to every label-filtered query`)
-      if (result.expiredClaims.length) {
-        console.error('EXPIRED AUTHOR LEASES: occupancy is locked but no live author lease exists. Inspect and explicitly renew, resume, or close out each claim; expiry never releases object protection.')
-        for (const row of result.expiredClaims) console.error(`  claim #${row.claim}, lane ${row.lane}, expired ${row.expires_at}, PR ${row.pr_state}, queued ${row.queued.length ? row.queued.map((number)=>`#${number}`).join(', ') : 'none'}`)
-      }
-      if (result.notOrchestratorWork.length) {
-        // Aging is the point (plan §9 A3): the orchestrator never acts on these
-        // rows, but the daily report is what stops them accumulating unseen.
-        // Rows keep the actionable/outside split the interactive audit prints so
-        // the two reports never disagree about what a row means.
-        const actionable = result.notOrchestratorWork.filter((item)=>!OUTSIDE_ORCHESTRATOR_EXITS.includes(item.exit))
-        const outside = result.notOrchestratorWork.filter((item)=>OUTSIDE_ORCHESTRATOR_EXITS.includes(item.exit))
-        const describe = (item) => `  #${item.issue} ${item.exit.toUpperCase()} — work_type ${item.workType}, route ${item.route}, age ${ageDays(item.issue) ?? '?'}d${item.blockedOnOwner ? ' [blocked on owner decision]' : ''}`
-        if (actionable.length) {
-          console.error('NOT ORCHESTRATOR WORK (aging): these open issues fail the shape test (AGENTS.md 0.0-C) and are waiting on a reject-or-fork decision.')
-          for (const item of actionable) console.error(describe(item))
-        }
-        if (outside.length) {
-          console.error('OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION (aging): listed for visibility only (owner ruling 2026-08-21, issue #1366); a separately started session owns each one.')
-          for (const item of outside) console.error(describe(item))
-        }
-        const unaddressed = result.notOrchestratorWork.filter((item)=>item.needsReturnAddress)
-        if (unaddressed.length) console.error(`NO RETURN ADDRESS on ${unaddressed.map((item)=>`#${item.issue}`).join(', ')} — a reject with no forwarding address closes into silence.`)
-      }
-      if (!result.unlabelled.length && !result.expiredClaims.length) console.error('Queue hygiene clean: no unlabelled issues, no expired author leases.')
-      return 0
     }
     if (o.assertExclusive) {
       const lease = assertExclusive(o.assertExclusive, {

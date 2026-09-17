@@ -1,30 +1,26 @@
 {
   "schema_version": 1,
-  "work_issue": 3147,
+  "work_issue": 3161,
   "outcome": "ready-for-merge",
-  "pr": 3150,
+  "pr": 3162,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3147/1",
-  "contract_sha256": "63188eee4636e4f83db2612a8c4970504eb900eb788a4625097d344cfb1b6665",
-  "head_sha": "e31e7ef7fbcb9a17df4b4600a18f4863fe14a00e",
+  "contract_ref": "refs/db-contracts/3161/1",
+  "contract_sha256": "0a07c8d3fd846dd12e3b1131c1865bb7b632a56f712ed6749256967b1dabc252",
+  "head_sha": "f7b0b324ede0554f2a225421c03719664e5133f5",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "AGENTS.md",
-    "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs"
+    "scripts/check-skill-drift.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "node --test scripts/check-skill-drift.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at refreshed head e31e7ef7: tests 9, pass 9, fail 0, skipped 0."
+      "evidence": "Run at f7b0b324 against a fresh clone of ai-devops main: tests 3, pass 3, fail 0, skipped 0. Before the fix check-skill-drift --require-skills printed [missing-author-cap]."
     }
   ],
   "assumptions_resolved": [
-    "All seven committed probes under .github/live-proofs/ (2506, 2848, 2860, 2905, 3009, 3023, 3043) pass the tightened shape check"
+    "CI failure on every branch since ai-devops #531 reproduced locally against ai-devops main and fixed by this change."
   ],
   "stop_conditions_hit": []
 }

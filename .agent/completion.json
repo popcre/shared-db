@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3182/4",
-  "contract_sha256": "92414267547d89d56ad3879f20fd76b7425d67beece5d2bc71c17d02555451e4",
-  "head_sha": "a8df2e63bac06405b4531b60a14d22df112a9bed",
+  "contract_ref": "refs/db-contracts/3182/5",
+  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
+  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -29,7 +29,8 @@
   ],
   "assumptions_resolved": [
     "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
-    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change."
+    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
+    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
   ],
   "stop_conditions_hit": []
 }

@@ -1,42 +1,52 @@
 {
-  "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3193,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Make the shared production migration guard name the ledger it actually read, so a preview-job refusal says 'already applied on preview' and points to the historical-recovery lane, without changing any check.",
-  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
-  "dispatcher": "Albert Hazan chat request to fix the #2794 preview re-rehearsal deadlock",
-  "worker": "Claude Opus 5 #3193 session",
-  "branch": "claude/issue-rehearse-applied-evidence-only",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1916a8ff61864114",
   "allowed_paths": [
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py",
-    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "Do not let any already-applied version pass validate_candidates on any ledger"
-  ],
-  "required_checks": [
-    "python -m unittest scripts/test_production_migration_guard.py"
+    ".agent/completion.json",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
   ],
   "assumptions": [
-    "The existing historical-recovery lane already recovers a post-merge rehearsal that ran at the authoring merge commit (AGENTS.md section 6), so no new evidence-only mode is needed"
+    "Claim #2745 was moved off its reused worktree with the guarded --rebind-claim-worktree mode (#3182, PR #3185) to C:/repos/shared-db-worktrees/issue-2478-rebind-3182 at PR head af7b1689; the old worktree was never inspected or touched.",
+    "The backdated version 20260912030028 was superseded through the lane tool as 20260917112129 (supersession 0394af44, head 32f51125).",
+    "Issue #2478 scope now says application_return_to: u2giants/shared-db, because the helper and its two consumers live only in this repository, so the PR carries the read-only probe .github/live-proofs/2478.sql.",
+    "The branch was refreshed by MERGE onto main 74cd0a5c; no behaviour change is intended and the existing contract tests for both consumers are unchanged.",
+    "Generation 9: refreshed by merge onto main 49cabb90; the implementation diff is unchanged."
   ],
+  "base_sha": "49cabb90a765e8cbd27864018fa12a515eed59b0",
+  "branch": "claude/issue-2478-sku-key-reissue",
+  "db_reads": [],
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
+  "dispatcher": "owner request to deliver claim #2745 (audit #3117) after lane-tool fix #3182",
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
+  ],
+  "generation": 9,
+  "goal": "Extract the shared SKU style-group derivation into public.style_group_key_for_sku and have public.rebuild_style_groups_batch and public.reconcile_style_group_drift call it, with no behaviour change.",
+  "prohibited_actions": [
+    "Do not touch the claim's former worktree C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9.",
+    "Do not write or repair any application rows; this is a structural change only.",
+    "Do not run DDL directly against preview or production; apply only through the governed workflows.",
+    "Do not weaken any guard to make a refusal pass."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "node scripts/check-migration-pr-lease.mjs"
+  ],
+  "route": "shared-db-orchestrator",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if the change would let an applied version be applied again or loosen any producer pin"
-  ]
+    "Stop if a guard refusal could only be cleared by weakening the guard.",
+    "Stop if another claim is found to hold any of the three functions."
+  ],
+  "work_issue": 2478,
+  "work_type": "structural",
+  "worker": "claude issue-2478 delivery session (claim #2745)",
+  "worktree": "C:/repos/shared-db-worktrees/issue-2478-rebind-3182"
 }

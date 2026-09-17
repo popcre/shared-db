@@ -1,28 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3193,
+  "work_issue": 2478,
   "outcome": "ready-for-merge",
-  "pr": 3194,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3193/1",
-  "contract_sha256": "0f97dd1bd7b749d481775bc6a15acf1dad9136b44bf5e292d1056cc29f5ceb65",
-  "head_sha": "e514372cb5730e1967ace42e39024aa1a15b8898",
+  "pr": 2846,
+  "migration_versions": [
+    "20260917112129"
+  ],
+  "contract_ref": "refs/db-contracts/2478/9",
+  "contract_sha256": "215d62213bed6757346edcef1839d8e666e0362c590aacea91245906a126702b",
+  "head_sha": "1b62cb9a01ab15f3e7ea575b875bbb5bc2e78bd1",
   "files_changed": [
-    ".github/workflows/shared-supabase-migrations.yml",
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2478.sql",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_production_migration_guard.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "With scripts/test_migration_derivation.py and scripts/test_production_business_risk_gate.py: Ran 501 tests, OK. Two of the three new tests fail against main's guard. Workflow text tests (preview-ref, supabase-ref-config, rehearsal-map-parse, preview-mode-guard, automatic-promotion-source): 167 pass, 0 fail, 0 skipped."
+      "evidence": "Static checks passed at 6fdd9945 after merging main 74cd0a5c."
+    },
+    {
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "exit_code": 0,
+      "evidence": "PR_NUMBER=2846: Migration claim verified: #2745, version 20260917112129."
     }
   ],
   "assumptions_resolved": [
-    "Confirmed #2794's original rehearsal run 35216549909 checked out 8664e6a5, which is PR #2821's merge commit, so the historical-recovery lane applies"
+    "Claim #2745 rebound to the fresh worktree (rebind evidence da406344) and version superseded to 20260917112129 (supersession 0394af44).",
+    "Refreshed by merge onto main 74cd0a5c; the live-proof probe was added for application_return_to u2giants/shared-db.",
+    "files_changed now lists the evidence pair to match Git. Main movement since 74cd0a5c touched no SQL; check-sql last run at 6fdd9945. Refreshed to 1b62cb9a."
   ],
   "stop_conditions_hit": []
 }

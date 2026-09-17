@@ -1,36 +1,28 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3163,
+  "work_issue": 3165,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "#2530 pre-transfer gaps: keep operator-login trust but require the association the current owner implies; read outcome evidence only from the current repository (pre-move slug as redirect alias); mark plan STATUS rows 1-2 done. No transfer, no GitHub setting change, no database action.",
-  "base_sha": "629657fa07d4f741a53a4d9a2df300560aa99aa0",
-  "branch": "claude/shared-db-2530-12815e",
+  "goal": "#2530 pre-transfer gap: outcome lifecycle comments trusted only for operator login u2giants with the association the current owner implies (never wider). No transfer, no GitHub setting change, no database action.",
+  "base_sha": "4b8a61049212468f97753de515997d5af41e28be",
+  "branch": "claude/outcome-owner-trust-4b8a",
   "dispatcher": "Claude #2530 transfer coordination session (owner instruction relayed 2026-09-16: do all the work you can without the actual switchover)",
-  "worker": "Claude Opus 5 #2530 pre-transfer gaps",
+  "worker": "Claude Opus 5 #2530 outcome-lifecycle trust gap",
   "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
   "allowed_paths": [
-    "plan_shared_db_popcre_transfer_merge_queue.md",
     "scripts/check-repository-identity-conformance.mjs",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/work-dependencies.mjs",
-    "scripts/lib/work-dependencies.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "plan_shared_db_popcre_transfer_merge_queue.md",
     "scripts/check-repository-identity-conformance.mjs",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/work-dependencies.mjs",
-    "scripts/lib/work-dependencies.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -40,7 +32,7 @@
     "GitHub reports an organization member's comments on an organization-owned repository as MEMBER"
   ],
   "required_checks": [
-    "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
     "node scripts/check-repository-identity-conformance.mjs"
   ],
   "prohibited_actions": [

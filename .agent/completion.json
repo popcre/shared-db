@@ -1,29 +1,25 @@
 {
   "schema_version": 1,
-  "work_issue": 3163,
+  "work_issue": 3165,
   "outcome": "ready-for-merge",
-  "pr": 3164,
+  "pr": 3166,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3163/1",
-  "contract_sha256": "13990a30577f90b90f45fc608c3a1d0e00f95c26b613a38e4ac0bdc79bac13fa",
-  "head_sha": "cf72485bc392c5ba814f2734714a7afd2fe359de",
+  "contract_ref": "refs/db-contracts/3165/1",
+  "contract_sha256": "82fbc2bc22928af119f0986d94ab18b9e3bc96e44f4fad35172560c32b180c31",
+  "head_sha": "1bb0dcc40bf2534bdc5dd629b5739db5c339d6da",
   "files_changed": [
-    "plan_shared_db_popcre_transfer_merge_queue.md",
     "scripts/check-repository-identity-conformance.mjs",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/work-dependencies.mjs",
-    "scripts/lib/work-dependencies.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "repository-identity/conformance/work-dependencies/admission-outcome/coordination: tests 147 pass 147 fail 0; manage-migration-author-lanes: tests 638 (with identity and dependency suites) pass 638 fail 0, at implementation head 5d8f1250."
+      "evidence": "tests 680 pass 680 fail 0 at implementation head 1bb0dcc4."
     },
     {
       "command": "node scripts/check-repository-identity-conformance.mjs",
@@ -32,7 +28,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Organization-owned repositories report an org member's comments as MEMBER; the trusted login is still required, so no other member or collaborator is admitted."
+    "Organization-owned repositories report an org member comments as MEMBER; the operator login is still required, so no other member, collaborator, or OWNER-association account is admitted."
   ],
   "stop_conditions_hit": []
 }

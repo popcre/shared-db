@@ -1,38 +1,21 @@
 {
   "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3181,
+  "generation": 1,
+  "work_issue": 3183,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Remove the stale absent_from_production_catalog declaration for prod_order_milestone_schedule, which is live on production (run 35179427282, proof on #3091).",
-  "base_sha": "8664e6a5922e40f16b7e7e9a592a7d6498c3c355",
-  "dispatcher": "Albert Hazan chat session",
-  "worker": "Claude Opus 5 session bold-kowalevski",
-  "branch": "claude/remove-3091-prod-gap-1789640648",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/rm-3091-gap",
-  "allowed_paths": [
-    "config/db-data-admin-property-source-coverage.json",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "config/db-data-admin-property-source-coverage.json",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
+  "goal": "Make the lane object reader see the grant on api.licensing_resolution_queue and key keyword-less grants on views as views, as found on PR #2835.",
+  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
+  "dispatcher": "Albert Hazan chat request to fix the lane object reader grant defect",
+  "worker": "Claude Opus 5 #3183 session",
+  "branch": "claude/lane-object-reader-grants-k7q2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/jovial-tesla-da760f",
+  "allowed_paths": ["scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs","scripts/check-dispatch-collision.test.mjs",".agent/contract.json",".agent/completion.json"],
+  "file_writes": ["scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs","scripts/check-dispatch-collision.test.mjs",".agent/contract.json",".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind"
-  ],
-  "required_checks": [
-    "node scripts/check-db-data-admin-property-source-coverage.mjs",
-    "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs"
-  ],
-  "assumptions": [
-    "The production catalog contains prod_order_milestone_schedule, so the coverage check would fail while the declaration remains"
-  ],
-  "stop_conditions": [
-    "Stop if any other coverage family changes"
-  ]
+  "prohibited_actions": ["No database write or structure change of any kind"],
+  "required_checks": ["node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs"],
+  "assumptions": ["Postgres applies a keyword-less GRANT ON name to tables and views alike"],
+  "stop_conditions": ["Stop if the fix removes an existing collision key"]
 }

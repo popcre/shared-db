@@ -1,31 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3181,
+  "work_issue": 3183,
   "outcome": "ready-for-merge",
-  "pr": 3176,
+  "pr": 3184,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3181/3",
-  "contract_sha256": "3a84ba3c66ed33fc3218bd1a9ee04932020de4c2ba0a60107ff43cccf87432fb",
-  "head_sha": "0bf55d6877eea9c5314c7004cc5a8be0bb53d4bb",
-  "files_changed": [
-    "config/db-data-admin-property-source-coverage.json"
-  ],
+  "contract_ref": "refs/db-contracts/3183/1",
+  "contract_sha256": "031accf43ccf806d006f1455ec3839c57170fca0b817c33c38bcc2378d1a60a8",
+  "head_sha": "eb83e18a639d8be1e21accc68278c4cf893d0c3a",
+  "files_changed": ["scripts/check-dispatch-collision.test.mjs","scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs"],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {
-      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
-      "exit_code": 0,
-      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
-    },
-    {
-      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
-      "exit_code": 0,
-      "evidence": "44 pass, 0 fail, 0 skipped."
-    }
-  ],
-  "assumptions_resolved": [
-    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
-  ],
+  "checks": [{"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs", "exit_code": 0, "evidence": "116 pass, 0 fail, 0 skipped; lease and orchestrator-flow suites 934 pass, 0 fail. Real PR #2835 migration now yields grant table+view for all three api views."}],
+  "assumptions_resolved": ["Verified on the real #2835 file that the '--' inside the comment literal hid the resolution_queue grant"],
   "stop_conditions_hit": []
 }

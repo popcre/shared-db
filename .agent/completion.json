@@ -1,29 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2367,
+  "work_issue": 3181,
   "outcome": "ready-for-merge",
-  "pr": 3177,
+  "pr": 3176,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2367/3",
-  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
-  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
+  "contract_ref": "refs/db-contracts/3181/2",
+  "contract_sha256": "6e04c73c365d8974d332ba2fec7527736adbe490c4a855c81c365b23962a8677",
+  "head_sha": "f7a45ec3ce915d5e358727c9e58443cba077441d",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production_business_risk_gate.py"
+    "config/db-data-admin-property-source-coverage.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
       "exit_code": 0,
-      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
+      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
+    },
+    {
+      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "44 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
-    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
+    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
   ],
   "stop_conditions_hit": []
 }

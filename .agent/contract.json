@@ -1,40 +1,38 @@
 {
+  "schema_version": 1,
+  "generation": 2,
+  "work_issue": 3181,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Remove the stale absent_from_production_catalog declaration for prod_order_milestone_schedule, which is live on production (run 35179427282, proof on #3091).",
+  "base_sha": "c705dfdad76275d859ad48cddb7f329956142d42",
+  "dispatcher": "Albert Hazan chat session",
+  "worker": "Claude Opus 5 session bold-kowalevski",
+  "branch": "claude/remove-3091-prod-gap-1789640648",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/rm-3091-gap",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
+    "config/db-data-admin-property-source-coverage.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "assumptions": [
-    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment.",
-    "Generation 3 exists because main advanced to 7a15d152 and conflicted only on the shared .agent pair; the branch was refreshed by MERGE (never rebase) as b0c64a08, with the pair resolved to this lane."
+  "file_writes": [
+    "config/db-data-admin-property-source-coverage.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
-  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
-  "branch": "claude/fix-2367-test-comment",
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; follow-up comment correction for #2367",
-  "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "generation": 3,
-  "goal": "Correct the comment in scripts/production_business_risk_gate.py that wrongly says no test reaches the historical run-map guards; no behavior change.",
   "prohibited_actions": [
-    "No database change of any kind",
-    "No production workflow dispatch",
-    "No executable change to scripts/production_business_risk_gate.py; comment lines only"
+    "No database write or structure change of any kind"
   ],
   "required_checks": [
-    "python -m unittest scripts/test_*.py"
+    "node scripts/check-db-data-admin-property-source-coverage.mjs",
+    "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs"
   ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
+  "assumptions": [
+    "The production catalog contains prod_order_milestone_schedule, so the coverage check would fail while the declaration remains"
+  ],
   "stop_conditions": [
-    "Stop if the correction needs anything beyond a comment change"
-  ],
-  "work_issue": 2367,
-  "work_type": "repo-maintenance",
-  "worker": "Claude Opus 5 #2367 comment correction",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/hungry-noether-ff7235"
+    "Stop if any other coverage family changes"
+  ]
 }

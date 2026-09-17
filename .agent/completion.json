@@ -2,14 +2,16 @@
   "schema_version": 1,
   "work_issue": 3180,
   "outcome": "ready-for-merge",
-  "pr": 3230,
+  "pr": null,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/6",
-  "contract_sha256": "cfdba6c494ad0e9c6dbaf3d22f5552e289ea12d5439f75c98713e986fed265e4",
-  "head_sha": "381384874e82be67bcbbac36d84aee1074254580",
+  "contract_ref": "refs/db-contracts/3180/7",
+  "contract_sha256": "5f12c75e7e22044a7d0bea64c63f2c834bad7238c57c26b68e043fc7518877e0",
+  "head_sha": "1701670fd0e2a5b8496639bfeabf8cf8abd0220e",
   "files_changed": [
     "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/lib/prod-details.mjs"
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prod-details.mjs",
+    "tools/coldlion-landing/sync-prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -17,22 +19,18 @@
     {
       "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "33 tests, 33 pass, 0 fail on the fix head 38138487, including the new regression asserting the insert names company_code and carries the full 27-column shape."
+      "evidence": "36 tests, 36 pass, 0 fail on head 1701670f, including the new per-key refusal semantics: collisions throw refused (not fatal), the CLI records the refusal SQL durably, continues the population, reports refusedKeys, and exits non-zero."
     },
     {
       "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "165 tests, 165 pass, 0 fail on the fix head — the four-suite command the scheduled workflow's offline gate runs."
+      "evidence": "169 tests, 169 pass, 0 fail on the same head; the full 48-file tools suite also passed (939 tests), proving the doneKeysSql/reconciliation changes broke no other landing contract."
     }
   ],
   "assumptions_resolved": [
-    "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
-    "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
-    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding.",
-    "Main advanced to f06a85c3 when the sibling /prepackDetail loader merged (PR #3220); this branch refreshed by merge at 9d8ce8f6, combining both refresh steps into one scheduled job with no semantic overlap — the feeds touch disjoint tables and files except the shared workflow and README, both resolved to carry both.",
-    "Main advanced again to 8e5af011 (PR #3213, catalog-verification guards) while the governed review completed; the branch refreshed by merge at a875c5c5 with only the .agent evidence files touched, so the APPROVE recorded at 959a02fa carries per the content-preserving refresh rule (orchestrator marker #2758).",
-    "Main advanced again to 13efcd77 (queue-hygiene reporting) before the guarded merge re-dispatch; refreshed by merge at b7f4e0f1 touching only the .agent evidence files, so the APPROVE at 959a02fa continues to carry (content-preserving refresh, marker #2758).",
-    "The 3-key production probe (workflow run 35270886056) proved the rest of the path live — target proof against production, 3,761-key harvest, pacing, per-key failure isolation with durable failed-run records, reconciliation zeros, non-zero exit — and wrote nothing to coldlion.prod_detail; the only defect was the omitted company_code column, fixed and regression-tested here."
+    "Live order 20344 returns 10 rows including two with distinct pkeys sharing prodLineSeq 10 (differing itemPkey, prodQty, prodCost, labelCode and timestamps) - the second proven identity is falsified by the source while pkey remains unique; diagnosed read-only on 2026-09-17 with field names only, no row values.",
+    "Backfill run 35275308013 landed 269 keys (plus 3 probe keys) before the first collision aborted it; nothing was written for the colliding order, and its sync_run carries the failure.",
+    "The unique constraint on (company_code, prod_order_no, prod_line_seq) is database STRUCTURE from #2863; changing it is filed as a separate db-work issue for the orchestrator, not smuggled into this source-data change."
   ],
   "stop_conditions_hit": []
 }

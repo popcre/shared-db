@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 7,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
-  "goal": "Load and continuously refresh ColdLion /proddetails data in the live coldlion.prod_detail table created by #2863: extend the existing repository-owned coldlion-landing loader with a keyed /proddetails feed, add synthetic offline tests, add a bounded resumable production backfill plus ongoing scheduled refresh, fail loudly on unknown fields, malformed responses, incomplete key coverage, identity collisions or target mismatch, and commit no ColdLion row values or credentials.",
-  "base_sha": "1d4cb402d4f546fb1845d65d3b93bca82771f875",
+  "goal": "Refuse /proddetails identity-collision keys per key instead of aborting the whole run: live order 20344 falsified the (prod_order_no, prod_line_seq) uniqueness asserted by #2863, and one colliding order must not block the remaining population. Collisions are recorded as FAILED sync_runs carrying refused markers, counted in every reconciliation, and still fail the run non-zero; feed-shape failures stay fatal; transport failures stay retried.",
+  "base_sha": "ec96eb745697dbfa0a6eb2191efae7ab40bcb158",
   "dispatcher": "owner task instruction to a non-orchestrator source-data session (issue #3180 db-work-scope: work_type source-data, route source-data-session, writes [])",
   "worker": "ZCode GLM 5.3 session executing shared-db issue #3180",
   "branch": "claude/issue-3180-prod-detail-loader",
@@ -46,11 +46,7 @@
     "The live /proddetails field union is the 21 fields recorded in docs/coldlion-unit-5b-grain-proof-20260915.md; it was re-derived live on 2026-09-17 (8 keys, 28 rows) and matched exactly, so the unknown-field refusal is keyed to that shape.",
     "The complete approved prodOrderNo population is the distinct landed coldlion.prod_history_line set for EDGEHOME (live reading 2026-09-17: 3,761 distinct orders over 61,901 lines; EP001 absent because history landing already excluded it).",
     "The scheduled ColdLion Landing Sync workflow is the sanctioned ongoing refresh vehicle, so the production-detail refresh step rides it after history and masters rather than in a new schedule.",
-    "Generation 2: main advanced to f06a85c3 when the sibling /prepackDetail loader (#3179, PR #3220) merged; this branch was refreshed by merge (9d8ce8f6), the scheduled workflow now runs history, masters, prepack-detail and prod-detail in one job, and the offline gate covers all four suites (935 tools tests pass on the merged tree).",
-    "Generation 3: main advanced again to 8e5af011 (catalog-verification guards, PR #3213); this branch refreshed by merge (a875c5c5), touching only the .agent evidence files, which are excluded from the content-equivalence comparison. The implementation diff is unchanged and the offline suites are unaffected.",
-    "Generation 4: main advanced to 13efcd77 (queue-hygiene reporting, PR touching workflows and scripts disjoint from this change); refreshed by merge at b7f4e0f1, only the .agent evidence files touched. Implementation diff unchanged.",
-    "Generation 5: the 3-key production probe (run 35270886056) caught the insert omitting the request-stamped company_code, failing every key with a not-null violation before any row landed; the fix names the column and adds a 27-column regression test. Nothing was written to coldlion.prod_detail by the probe.",
-    "Generation 6: corrected the completion report's implementation head SHA (the short SHA 38138487 was expanded wrongly; the true full SHA is 381384874e82be67bcbbac36d84aee1074254580). No implementation change."
+    "Generation 7: the live feed falsified the #2863 unique constraint at order 20344 (two rows, distinct pkeys, shared prodLineSeq 10, differing item/quantities/costs; structural diagnosis 2026-09-17). The unique constraint itself is structure and is filed separately for the orchestrator; this generation changes loader semantics only."
   ],
   "stop_conditions": [
     "Stop and report if the live feed returns unknown or omitted fields, rows for another production order, or either identity twice in one response.",

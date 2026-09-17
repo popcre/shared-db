@@ -1,29 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 3097,
+  "work_issue": 3104,
   "outcome": "ready-for-merge",
-  "pr": 3098,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3097/1",
-  "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
-  "head_sha": "ccfdbef49960e3bef126fafb35890e34aeadfdbb",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+  "pr": 3131,
+  "migration_versions": [
+    "20260917005650"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3104/1",
+  "contract_sha256": "81190f476067a2363e5c74d576b2ea52d799710cb3a47f08e0ac1cecf4519b4e",
+  "head_sha": "a14110d39e9f95d2bf3c9f1d90e3827834ca6511",
+  "files_changed": [
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql"
+  ],
+  "db_reads": [
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member",
+    "table plm.wb_property"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5d7fdc3a: tests 15, pass 15, fail 0, skipped 0."
+      "evidence": "Run at implementation head a14110d3: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK; version 20260917005650 needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "A malformed --drawn-since now throws in dry run and apply; proved by the drawn-since test"
+    "Production function body md5 956fbf9130a49bf0cbc875bbaf0e1c17 equals the 20260914172031 file body, so the re-derivation base is the live definition."
   ],
   "stop_conditions_hit": []
 }

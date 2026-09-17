@@ -10,6 +10,8 @@
   "contract_sha256": "acd2c4a67ac4f3a76a2723ff5342917982fc46c90463843d5cc348e8d78dcf9a",
   "head_sha": "6fdd9945f80d32ef93bedc7b4556a76ecd4a0ce4",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/2478.sql",
     "supabase/migrations/20260917112129_shared_style_group_sku_key.sql"
   ],

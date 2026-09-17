@@ -14,7 +14,7 @@ import { assertLease, evaluateRecovery, formatLeaseMessage, parseLeaseMessage, r
 import { coordinationEvent, formatEventComment, parseEventComment, auditTimeline, renderTimeline } from './db-coordination-events.mjs'
 import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit, reportOnlyFlowIo, abandonmentAuditExit, AUDIT_EXIT_UNVERIFIABLE } from './orchestrator-flow/reconcile.mjs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
-import { currentRepository, isThisRepositoryOrHistorical } from './lib/repository-identity.mjs'
+import { currentRepository, isThisRepositoryOrHistorical, isTrustedOperatorComment, repositoryCommentApiPath } from './lib/repository-identity.mjs'
 
 // `Migration guarded merge authorization` is posted by the guarded merge ITSELF,
 // after this gate has already passed -- see SELF_CONTEXT in
@@ -2228,9 +2228,9 @@ export const githubIo = {
   commentIssue(number, body) { gh(['issue','comment',String(number),'--repo',REPO,'--body',body]) },
   issueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`).map((c)=>({ body:c.body, author_association:c.author_association, author:c.user?.login })) },
   readOutcomeEvidence(ref) {
-    const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(String(ref??''))
-    if(!match)throw new LaneError('outcome evidence must be an exact GitHub issue or pull-request comment URL')
-    return ghJson(['api',`repos/${match[1]}/issues/comments/${match[2]}`])?.body??''
+    let path
+    try{path=repositoryCommentApiPath(ref,REPO)}catch(error){throw new LaneError(`outcome evidence refused: ${error.message}`)}
+    return ghJson(['api',path])?.body??''
   },
   applicationCommitInDefaultBranch(repository,sha) {
     const repo=ghJson(['api',`repos/${repository}`]),branch=repo?.default_branch
@@ -6384,9 +6384,7 @@ export function activateReviewCutover(io=githubIo){return withReviewRequestBudge
 export const ADMISSION_LEGACY_CUTOVER = '2026-09-11T18:00:00Z'
 
 function trustedCompletionComments(comments=[]){return comments.filter((comment)=>{
-  const association=String(comment?.author_association??comment?.authorAssociation??'').toUpperCase()
-  const author=String(comment?.author??comment?.author_login??'').toLowerCase()
-  return association==='OWNER'&&author==='u2giants'
+  return isTrustedOperatorComment(comment,REPO)
 })}
 
 export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-migration-author-lanes', allowLegacy = false, timestamp } = {}) {

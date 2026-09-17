@@ -102,3 +102,42 @@ export function currentRepository(explicit) {
 export function isThisRepositoryOrHistorical(slug, current = currentRepository()) {
   return sameRepository(slug, current) || sameRepository(slug, HISTORICAL_REPOSITORY_SLUG)
 }
+
+// ---------------------------------------------------------------------------
+// Transfer-safe operator trust (#2530, pre-transfer gaps found by Step 2).
+//
+// Completion records are trusted only when GitHub says they were written by the
+// one operator account. That identity is the LOGIN, and it does not change when
+// the repository changes owner. What does change is how GitHub describes that
+// login's relationship to the repository: `OWNER` while the repository belongs to
+// the personal account, `MEMBER` once it belongs to an organization the login is a
+// member of. Requiring `OWNER` forever would silently refuse every genuine record
+// after the transfer; accepting any trusted association would admit any org
+// member or collaborator. So the login stays mandatory and the association must
+// be exactly the one that the CURRENT owner implies -- nothing looser.
+export const TRUSTED_OPERATOR_LOGIN = 'u2giants'
+
+export function expectedOperatorAssociation(repository = currentRepository()) {
+  const owner = parseRepositorySlug(repository).split('/')[0]
+  return owner.toLowerCase() === TRUSTED_OPERATOR_LOGIN ? 'OWNER' : 'MEMBER'
+}
+
+export function isTrustedOperatorComment(comment, repository = currentRepository()) {
+  const association = String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase()
+  const author = String(comment?.author ?? comment?.author_login ?? '').toLowerCase()
+  return author === TRUSTED_OPERATOR_LOGIN && association === expectedOperatorAssociation(repository)
+}
+
+// A durable issue/PR comment URL is read ONLY from this repository. The historical
+// slug is accepted as a redirect alias for links written before the transfer, and
+// the read always targets the current repository, never the repository a link names.
+const COMMENT_URL = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/
+
+export function repositoryCommentApiPath(url, repository = currentRepository()) {
+  const match = COMMENT_URL.exec(String(url ?? ''))
+  if (!match) throw new RepositoryIdentityError('evidence must be an exact GitHub issue or pull-request comment URL')
+  if (!isThisRepositoryOrHistorical(match[1], repository)) {
+    throw new RepositoryIdentityError(`evidence comment belongs to ${match[1]}, not ${repository}; only this repository (or its pre-transfer alias) is read`)
+  }
+  return `repos/${repository}/issues/comments/${match[2]}`
+}

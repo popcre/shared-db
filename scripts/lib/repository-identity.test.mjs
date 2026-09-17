@@ -60,3 +60,42 @@ test('historical slug is accepted only for evidence, alongside the current one',
 test('this checkout resolves to a slug', () => {
   assert.match(currentRepository(), /^[^/]+\/[^/]+$/)
 })
+
+// ---- #2530 pre-transfer gaps: operator trust and evidence-comment repository ----
+import {
+  TRUSTED_OPERATOR_LOGIN, expectedOperatorAssociation, isTrustedOperatorComment, repositoryCommentApiPath,
+} from './repository-identity.mjs'
+
+test('operator trust keeps the login and requires the association the current owner implies', () => {
+  assert.equal(TRUSTED_OPERATOR_LOGIN, 'u2giants')
+  const before = 'u2giants/shared-db', after = 'popcre/shared-db'
+  assert.equal(expectedOperatorAssociation(before), 'OWNER')
+  assert.equal(expectedOperatorAssociation(after), 'MEMBER')
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants', author_association: 'OWNER' }, before), true)
+  assert.equal(isTrustedOperatorComment({ author: 'U2giants', authorAssociation: 'owner' }, before), true)
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants', author_association: 'MEMBER' }, after), true)
+  // not weakened: wrong login, looser association, or the other owner's association all refuse
+  assert.equal(isTrustedOperatorComment({ author: 'someone', author_association: 'OWNER' }, before), false)
+  assert.equal(isTrustedOperatorComment({ author: 'someone', author_association: 'MEMBER' }, after), false)
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants', author_association: 'MEMBER' }, before), false)
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants', author_association: 'COLLABORATOR' }, after), false)
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants', author_association: 'OWNER' }, after), false)
+  assert.equal(isTrustedOperatorComment({ author: 'u2giants' }, before), false)
+  assert.throws(() => expectedOperatorAssociation('not a slug'), RepositoryIdentityError)
+})
+
+test('evidence comments are read only from the current repository, pre-move slug as a redirect alias', () => {
+  const after = 'popcre/shared-db'
+  assert.equal(repositoryCommentApiPath('https://github.com/popcre/shared-db/issues/12#issuecomment-99', after), 'repos/popcre/shared-db/issues/comments/99')
+  // the historical slug is an alias: accepted, but the read targets the CURRENT repository
+  assert.equal(repositoryCommentApiPath('https://github.com/u2giants/shared-db/pull/3#issuecomment-7', after), 'repos/popcre/shared-db/issues/comments/7')
+  assert.equal(repositoryCommentApiPath('https://github.com/U2GIANTS/Shared-DB/issues/3#issuecomment-7', 'u2giants/shared-db'), 'repos/u2giants/shared-db/issues/comments/7')
+  for (const foreign of [
+    'https://github.com/attacker/shared-db/issues/1#issuecomment-5',
+    'https://github.com/popcre/designflow-backend/pull/1#issuecomment-5',
+    'https://github.com/u2giants/other/issues/1#issuecomment-5',
+  ]) assert.throws(() => repositoryCommentApiPath(foreign, after), /not popcre\/shared-db/)
+  for (const malformed of ['', null, 'https://github.com/popcre/shared-db/issues/1', 'https://evil.example/popcre/shared-db/issues/1#issuecomment-5', 'https://github.com/popcre/shared-db/issues/1#issuecomment-5x']) {
+    assert.throws(() => repositoryCommentApiPath(malformed, after), RepositoryIdentityError)
+  }
+})

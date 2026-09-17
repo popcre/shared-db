@@ -1,16 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3183,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 3184,
+  "pr": 3177,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3183/1",
-  "contract_sha256": "031accf43ccf806d006f1455ec3839c57170fca0b817c33c38bcc2378d1a60a8",
-  "head_sha": "e07da097f77b4a13e7ee9d40869cfd77954c132f",
-  "files_changed": ["scripts/check-dispatch-collision.test.mjs","scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs"],
+  "contract_ref": "refs/db-contracts/2367/3",
+  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
+  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/production_business_risk_gate.py"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "checks": [{"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs", "exit_code": 0, "evidence": "116 pass, 0 fail, 0 skipped; lease and orchestrator-flow suites 934 pass, 0 fail. Real PR #2835 migration now yields grant table+view for all three api views."}],
-  "assumptions_resolved": ["Verified on the real #2835 file that the '--' inside the comment literal hid the resolution_queue grant"],
+  "checks": [
+    {
+      "command": "python -m unittest scripts/test_*.py",
+      "exit_code": 0,
+      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
+    }
+  ],
+  "assumptions_resolved": [
+    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
+    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
+  ],
   "stop_conditions_hit": []
 }

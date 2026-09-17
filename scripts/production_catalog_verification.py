@@ -997,6 +997,7 @@ POPDAM_FORWARD_RECOVERY_CONTRACT = _shape_contract(
 CATALOG_CONTRACTS = {
     "popsg_search_v2_bounded_paging_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='4fdbef747897eb7d834b3b23858902ac' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "popsg_search_v2_production_performance_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='83b8190bca2ff2b7e08a5e87651785b3' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
+    "popsg_search_v2_default_timeout_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth','work_mem=64MB']::text[] and md5(p.prosrc)='719d560bf41d61c8441aa806eb9406fa' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "api_rls_realtime_v1": API_RLS_REALTIME_CONTRACT,
     "core_person_role_lookups_v1": """
       not exists (
@@ -4388,6 +4389,232 @@ CATALOG_CONTRACTS["all_licensor_property_source_coverage_v1"] = (
     ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
 )
 
+
+# Issue #2879. Two DCP families predate the source-inventory classifier and
+# must never fall through to `other` in either its exact or browser-safe form.
+DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT = (
+    ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
+    + r" and position('lucasfilm\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('lucasfilm_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and (select count(*) from api.source_capture_inventory where source_system='lucasfilm_dcpvault' and table_name like 'lucasfilm\_dcp\_%')=20"
+    + r" and (select count(*) from api.source_capture_inventory where source_system='twentieth_century_dcpvault' and table_name like 'twentieth_century\_dcp\_%')=20"
+    + r" and not exists (select 1 from api.source_capture_inventory where source_system='other' and (table_name like 'lucasfilm\_dcp\_%' or table_name like 'twentieth_century\_dcp\_%'))"
+)
+CATALOG_CONTRACTS["dcp_inventory_family_classification_v1"] = (
+    DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT
+)
+
+
+# Issue #2744. The unfiltered DB Data Admin Scraped Properties listing.
+#
+# Migration 20260911222514 rewrites api.db_data_admin_scraped_properties in
+# place with pg_get_functiondef, so the reviewed migration text does not restate
+# the body and derive_targets() -- which reads only plainly written CREATE
+# statements -- names no catalog object for it. This contract reads the durable
+# post-apply outcome of that EXECUTE out of the catalog instead.
+#
+# The regression it guards: the style-guide join hashed the FULL plm.dcp_asset
+# row, so a 61 MB build side spilled work_mem to temp and the default page ran
+# over the 8 s authenticated statement_timeout. Projecting the asset to
+# (id, style_guide_id) before the hash build is the whole fix, so the contract
+# asserts the narrow maps are present AND the wide joins are gone -- a partial
+# rewrite that left either wide join behind would otherwise still pass.
+#
+# It is a strict SUPERSET of all_licensor_property_source_coverage_v1, so every
+# assertion #2579, #2576 and #2449 made about this routine is carried forward
+# when this later version supersedes theirs within one ordered batch.
+DCP_NARROW_ASSET_STYLE_MAP_CONTRACT = (
+    ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
+    # Both narrow (id, style_guide_id) asset maps are installed and materialized.
+    + " and position('dcp_asset_style as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('lucasfilm_dcp_asset_style as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('select a.id,a.style_guide_id from plm.dcp_asset a' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('select a.id,a.style_guide_id from plm.lucasfilm_dcp_asset a' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # Both style joins read the narrow map, and neither wide asset join survives.
+    + " and position('join dcp_asset_style a on a.id=r.asset_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join lucasfilm_dcp_asset_style a on a.id=r.asset_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join plm.dcp_asset a on a.id=r.asset_id' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join plm.lucasfilm_dcp_asset a on a.id=r.asset_id' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    # Each page's retained-asset set is evaluated once, not twice.
+    + " and position('page_dcp_retained_assets as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('page_lucasfilm_dcp_retained_assets as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # The superseded wide asset-context shape is gone entirely.
+    + " and position('dcp_asset_context' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    # Style-guide NAMES still resolve, so the narrow map did not cost the label.
+    + " and position('left join plm.dcp_style_guide g on g.id=s.style_guide_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # The authorization boundary and the keyset page ordering survived the rewrite.
+    + " and position('app.require_licensing_manager_access()' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + ' and position(\'l.row_key collate "C" > v_cursor_key collate "C"\' in %s)>0' % _SCRAPED_PROPERTIES_DEF
+)
+CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
+    DCP_NARROW_ASSET_STYLE_MAP_CONTRACT
+)
+
+
+
+# Issue #2863. ColdLion landing unit 5b: the /prepackDetail and /proddetails
+# detail tables.
+#
+# Structure only -- the migration loads no rows and creates no loader -- so what
+# is verified post-apply is the grain. Both keys were proven over a live 2026-09-15
+# sample with ZERO duplicate collapse (docs/coldlion-unit-5b-grain-proof-20260915.md),
+# and /proddetails proved TWO independent identities: the vendor row id pkey and
+# (prodOrderNo, prodLineSeq). Both are asserted here, because a production catalog
+# that carried only the primary key would let a future change drop the second one
+# silently and start collapsing two order lines into one.
+#
+# The landing layer is also unreachable by any application role, so the contract
+# asserts row level security on both tables and the absence of any anon or
+# authenticated grant -- the rule the whole coldlion schema depends on.
+COLDLION_UNIT_5B_LANDING_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    # The proven grain, stated exactly, on both tables.
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+    # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
+    # request-stamped company_code + 5 provenance. No field dropped, none invented.
+    # information_schema views are role-filtered the same way role_table_grants is:
+    # under supabase_read_only_user they return nothing for coldlion, so a column
+    # census there would be unfalsifiable. pg_attribute is the unfiltered catalog.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped)=23"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prod_detail') and a.attnum>0 and not a.attisdropped)=27"
+    # ColdLion emits BOTH itemPrice and ItemPrice; folding them would lose a field.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped and a.attname in ('item_price','item_price_capitalized'))=2"
+    # No application role may reach the landing layer, and RLS is on.
+    #
+    # The grant half deliberately does NOT read information_schema.role_table_grants.
+    # That view is filtered to grants the CURRENT role granted or holds, and the
+    # governed verification connects as supabase_read_only_user, for which it returns
+    # no rows at all -- so a "no rows" test there would be unconditionally true and
+    # could never fail. has_table_privilege() is a catalog function with no such
+    # role-visibility filter and answers the real question on any connection.
+    #
+    # Checking anon and authenticated also covers PUBLIC: has_table_privilege() folds
+    # a privilege held via PUBLIC into every role's answer, and PUBLIC is not a role
+    # name the function accepts.
+    + " and (select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='coldlion' and c.relname in ('prepack_detail','prod_detail'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['coldlion.prepack_detail','coldlion.prod_detail']) t(n) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,t.n,p.v))=0"
+    # RLS with no policy is the second half of the lockdown: a policy added later
+    # would open a path the grant check alone does not describe.
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename in ('prepack_detail','prod_detail'))=0"
+    # D5: no per-row raw archive, and no FK out of the landing schema.
+    + " and (select count(*) from pg_attribute a where a.attrelid in (to_regclass('coldlion.prepack_detail'),to_regclass('coldlion.prod_detail')) and a.attnum>0 and not a.attisdropped and a.attname='raw')=0"
+    + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT
+)
+
+
+# Issue #2988. api.dam_order_list must keep invoker semantics while reading the
+# two party display names through narrow authenticated-only directories, so a
+# signed-in PopDAM user with no app.user_role row stops paying a per-row
+# core.customer / core.factory policy evaluation on every bounded page.
+DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT = (
+    "exists (select 1 from pg_class c where c.oid=to_regclass('api.dam_order_list')"
+    " and c.relkind='v'"
+    " and c.reloptions @> array['security_invoker=true']::text[]"
+    " and position('dam_order_list_customer_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('dam_order_list_vendor_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))=0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))=0"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    # The roles that read this view today must still be able to read it. The
+    # first shape of this repair raised insufficient_privilege from a joined
+    # SECURITY DEFINER helper, which a LEFT JOIN does not swallow, so
+    # service_role and every no-JWT session got 42501 instead of rows. Nothing
+    # in the catalog caught that, so it is pinned here.
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # Both directories are OWNER-evaluated views, never invoker views and never
+    # functions: a view cannot raise, so it cannot abort the order list.
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_customer_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('customer_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('customer_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_vendor_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('vendor_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('vendor_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # The owner reading is only safe while neither source table forces RLS on
+    # its owner, and the repair must not have been bought by widening either
+    # table: both keep exactly the two policies they carry today.
+    " and (select count(*) from pg_class c join pg_namespace n"
+    " on n.oid=c.relnamespace where n.nspname='core'"
+    " and c.relname in ('customer','factory')"
+    " and c.relrowsecurity and not c.relforcerowsecurity"
+    " and c.relowner::regrole::text='postgres')=2"
+    " and (select count(*) from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname in ('shared_read','admin_write'))=4"
+    " and not exists (select 1 from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname not in ('shared_read','admin_write'))"
+    # No SECURITY DEFINER helper of the abandoned first shape may survive.
+    " and to_regprocedure('dam.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('dam.dam_order_list_vendor_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_vendor_directory()') is null"
+)
+CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
+    DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT
+)
+
+
+POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
+    # Issue #3023. The refresh reads search-sync candidates from a narrow queue
+    # fed by a trigger instead of scanning every style guide file.
+    "exists (select 1 from pg_class c where c.oid=to_regclass('public.style_guide_search_sync_queue')"
+    " and c.relkind='r' and c.relrowsecurity"
+    " and not has_table_privilege('anon',c.oid,'SELECT')"
+    " and not has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.style_guide_files_queue_search_sync()')"
+    " and p.prosecdef and md5(p.prosrc)='2b082d5e84238234f3d20669b2931f0c'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE'))"
+    " and exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.style_guide_files')"
+    " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"
+    " and t.tgfoid=to_regprocedure('public.style_guide_files_queue_search_sync()'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')"
+    " and p.prosecdef and md5(p.prosrc)='52b676f90e4500dc323c2f9e6e6f3c97'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
+)
+CATALOG_CONTRACTS["popsg_refresh_search_sync_queue_v1"] = (
+    POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT
+)
 
 if __name__ == "__main__":
     raise SystemExit(main())

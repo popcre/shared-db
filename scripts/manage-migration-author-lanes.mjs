@@ -6800,15 +6800,33 @@ function replaceCapacityState(body, capacityState, blockedOn = null, worktreeSta
   block=capacityMatches.length
     ? block.replace(/^capacity_state:\s*.+$/m,`capacity_state: ${capacityState}`)
     : `${block.replace(/\s*$/,'')}\ncapacity_state: ${capacityState}\n`
-  for(const [field,label] of [['blocked_on','blocked_on'],['worktree_state','worktree_state'],['recovery','recovery']]){
-    const matches=block.match(new RegExp(`^${field}:\\s*.+$`,'gm'))??[]
-    if(matches.length>1)throw new LaneError(`claim ${label} is ambiguous`)
-    if(matches.length)block=block.replace(new RegExp(`^${field}:\\s*.+\\r?\\n?`,'m'),'')
-  }
+  // #3170. The parser trims each lease line, so a relinquish-only field is
+  // recognized even when indented or spaced before the colon. Removal must match
+  // exactly what the parser reads, or resume leaves `worktree_state` behind next to
+  // `capacity_state: active` and every lane command refuses the claim.
+  block=stripRelinquishOnlyFields(block)
   if(blockedOn) block=`${block.replace(/\s*$/,'')}\nblocked_on: ${blockedOn}\n`
   if(worktreeState) block=`${block.replace(/\s*$/,'')}\nworktree_state: ${worktreeState}\n`
   if(recoveryArtifact) block=`${block.replace(/\s*$/,'')}\nrecovery: ${recoveryArtifact}\n`
+  if(capacityState!=='relinquished'&&relinquishOnlyFieldsIn(block).length)throw new LaneError('capacity write would leave relinquish-only fields on a non-relinquished claim')
   return body.slice(0,fences[0].index)+fences[0][0].replace(fences[0][1],()=>block)+body.slice(fences[0].index+fences[0][0].length)
+}
+
+export const RELINQUISH_ONLY_LEASE_FIELDS = Object.freeze(['blocked_on', 'worktree_state', 'recovery'])
+
+function leaseLineField(line) {
+  return /^\s*([a-z_]+)\s*:/.exec(line)?.[1] ?? null
+}
+
+function relinquishOnlyFieldsIn(block) {
+  return block.split('\n').map(leaseLineField).filter((field)=>RELINQUISH_ONLY_LEASE_FIELDS.includes(field))
+}
+
+function stripRelinquishOnlyFields(block) {
+  for(const field of RELINQUISH_ONLY_LEASE_FIELDS){
+    if(relinquishOnlyFieldsIn(block).filter((name)=>name===field).length>1)throw new LaneError(`claim ${field} is ambiguous`)
+  }
+  return block.split('\n').filter((line)=>!RELINQUISH_ONLY_LEASE_FIELDS.includes(leaseLineField(line))).join('\n')
 }
 
 function claimTitleIssues(claim) {
@@ -7034,7 +7052,50 @@ export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
   }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
 }
 
-export function renewalIssueScope(issue, lease, claimIssues=[], { allowClaimSuperset=false, allowIssueExpansion=false }={}) {
+// #3170. REPAIR A CLAIM A RESUME LEFT UNREADABLE. Narrow on purpose: it only
+// removes relinquish-only residue (`blocked_on`, `worktree_state`, `recovery`)
+// from a lease that already declares `capacity_state: active`, only for the
+// claim's own owner, only when the work issue's latest capacity event for this
+// claim is `author_capacity_resumed`, and only when the result parses as an
+// active-capacity lease. It never changes capacity, owner, expiry or objects.
+export function repairResumedClaim(options, now = new Date(), io = githubIo) {
+  for(const key of ['claim','owner'])if(!options[key])throw new LaneError(`resumed-claim repair requires ${key}`)
+  const ownerSha=io.makeOwnerCommit(`db-coordination author-capacity-resume claim=${options.claim} repair=relinquish-residue`)
+  acquireMutex(ownerSha,io,options.mutexAttempts??100)
+  let before,changed=false
+  try{
+    before=io.getIssue(options.claim)
+    if(before?.state!=='open')throw new LaneError(`claim #${options.claim} must be open`)
+    const fences=[...String(before.body??'').matchAll(/```db-author-lease\s*\n([\s\S]*?)```/g)]
+    if(fences.length!==1)throw new LaneError('claim body must contain exactly one manager-owned db-author-lease block')
+    const block=fences[0][1],lines=block.split('\n')
+    const capacity=lines.map((line)=>/^\s*capacity_state\s*:\s*(\S+)\s*$/.exec(line)?.[1]).filter(Boolean)
+    if(capacity.length!==1||capacity[0]!=='active')throw new LaneError('resumed-claim repair applies only to a lease declaring capacity_state: active')
+    const owner=lines.map((line)=>/^\s*owner\s*:\s*(.+?)\s*$/.exec(line)?.[1]).filter(Boolean)
+    if(owner.length!==1||owner[0]!==options.owner)throw new LaneError('claim lease belongs to a different owner')
+    if(!relinquishOnlyFieldsIn(block).length)throw new LaneError('claim carries no relinquish-only residue; nothing to repair')
+    const workIssue=claimWorkIssue(before)
+    const events=(io.getIssueComments?.(workIssue)??[]).flatMap((comment)=>{try{return parseEventComment(comment.body)}catch{return []}})
+      .filter((event)=>Number(event.claim_issue)===Number(options.claim)&&['author_capacity_resumed','author_capacity_relinquished'].includes(event.event_type))
+    if(events.at(-1)?.event_type!=='author_capacity_resumed')throw new LaneError('latest capacity event for this claim is not author_capacity_resumed')
+    const repairedBlock=stripRelinquishOnlyFields(block)
+    const expected=before.body.slice(0,fences[0].index)+fences[0][0].replace(block,()=>repairedBlock)+before.body.slice(fences[0].index+fences[0][0].length)
+    const lease=parseAuthorLease(expected,now)
+    if(lease.legacy||lease.declaredCapacityState!=='active'||!lease.capacityActive||lease.worktreeState||lease.blockedOn||lease.recoveryArtifact)throw new LaneError('repaired lease does not parse as clean active capacity')
+    assertClaimNotRetired(lease.version,'repaired',io)
+    requireOwnedRef(MUTEX_REF,ownerSha,io);changed=true;io.updateIssue(options.claim,{body:expected})
+    requireOwnedRef(MUTEX_REF,ownerSha,io)
+    const after=io.getIssue(options.claim)
+    if(after?.body!==expected)throw new LaneError('repaired claim readback failed')
+    parseAuthorLease(after.body,now)
+    return {claim:Number(options.claim),workIssue,capacityState:lease.capacityState,removedFields:relinquishOnlyFieldsIn(block),repaired:true}
+  }catch(error){
+    if(changed&&io.readRef(MUTEX_REF)===ownerSha)try{io.updateIssue(options.claim,{body:before.body})}catch(rollback){throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`)}
+    throw error
+  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+}
+
+export function renewalIssueScope(issue, lease, claimIssues=[],{ allowClaimSuperset=false, allowIssueExpansion=false }={}) {
   const scope=issue?.state==='open'?parseQueueScope(issue.body):null
   const structural=scope?.status==='ready'&&scope.workType==='structural'&&scope.route==='shared-db-orchestrator'
   const curated=scope?.status==='ready'&&scope.workType==='curated-master-data'&&scope.route==='curated-master-data-governance'
@@ -7849,6 +7910,7 @@ function parseArgs(argv) {
     else if (a === '--recover-expired-claim-from-pr') out.recoverExpiredClaim = true
     else if (a === '--relinquish-author-lease') out.relinquishAuthorLease = true
     else if (a === '--resume-author-lease') out.resumeAuthorLease = true
+    else if (a === '--repair-resumed-claim') out.repairResumedClaim = true
     else if (a === '--flow-audit') out.flowAudit = true
     else if (a === '--reconcile-flow') out.reconcileFlow = true
     else if (a === '--abandonment-audit') out.abandonmentAudit = true
@@ -7960,7 +8022,7 @@ export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
     if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
-    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
+    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')
     if(selectedPrimary.length>1)throw new LaneError(`choose exactly one primary operation; received ${selectedPrimary.join(', ')}`)
@@ -8093,6 +8155,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.recoverExpiredClaim){console.log(JSON.stringify(recoverExpiredClaimFromPr({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.relinquishAuthorLease){console.log(JSON.stringify(relinquishAuthorLease({...o,claim:o.claimNumber??o.claim},now,io),null,2));return 0}
     if(o.resumeAuthorLease){console.log(JSON.stringify(resumeAuthorLease({...o,claim:o.claimNumber??o.claim},now,io),null,2));return 0}
+    if(o.repairResumedClaim){console.log(JSON.stringify(repairResumedClaim({...o,claim:o.claimNumber??o.claim},now,io),null,2));return 0}
     if(o.reissueMergedClaim){console.log(JSON.stringify(reissueMergedStrandedClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.reversionClaim){console.log(JSON.stringify(reversionActiveClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.replaceFailedReviewer){const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}

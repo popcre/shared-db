@@ -8,6 +8,8 @@
   "contract_sha256": "290d0b20450022232700a3aa5a5498e01eb440730a73ac86ee6202bc5dee095e",
   "head_sha": "d1e8d3a62724215eba9617c99ec99a4bfdb30cae",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "AGENTS.md",
     "docs/agents/section-4-anti-collision-rules.md",
     "plan_orchestrator_throughput_phase_2.md",

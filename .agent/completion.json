@@ -8,6 +8,8 @@
   "contract_sha256": "fb953cc3f5d4fbfae74c9b2e51b5b4e653535450a1f4264b4b54ca5140ee9e27",
   "head_sha": "058d1c4df4b47a1958d470fb79eb011c07be50b1",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/check-live-proof-probe.mjs",
     "scripts/check-live-proof-probe.test.mjs",
     ".github/workflows/guarded-migration-merge.yml",

@@ -1,27 +1,64 @@
 {
   "schema_version": 1,
-  "work_issue": 3159,
+  "work_issue": 2794,
   "outcome": "ready-for-merge",
-  "pr": 3167,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3159/1",
-  "contract_sha256": "e08befefa620e62c79a482d2ab29367f1403b1fd8789cb13d5c9b365ecd5649f",
-  "head_sha": "d75a6b05ef37541f9f9fb07bb43441bff0f336bc",
-  "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+  "pr": 2821,
+  "migration_versions": [
+    "20260917081021"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2794/3",
+  "contract_sha256": "cf9ca54c6539402741a13af185097755a385a5ae0030b6ed3a79b7e60b35c249",
+  "head_sha": "afeb3a221c5d79d7edc85043f5566feee10d08f7",
+  "files_changed": [
+    ".github/workflows/coldlion-licensor-property-phase6-parallel.yml",
+    "AGENTS.md",
+    "README.md",
+    "docs/implementation/schema-implementation-notes.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "supabase/migrations/20260917081021_remove_retired_designflow_plm_import.sql",
+    "supabase/tests/licensing_write_authority_guard_contracts.sql",
+    "systemd/plm-sync-alert.service",
+    "systemd/plm-sync.service",
+    "systemd/plm-sync.timer",
+    "tools/coldlion-licensor-property-phase6.test.mjs",
+    "tools/phase6-schedule-map.mjs",
+    "tools/phase6-schedule-map.test.mjs",
+    "tools/run-plm-master-data-sync.sh",
+    "tools/sync-plm-master-data.mjs",
+    "tools/sync-plm-master-data.test.mjs"
+  ],
+  "db_reads": [
+    "catalog pg_proc",
+    "catalog pg_depend",
+    "catalog pg_trigger"
+  ],
+  "db_writes": [
+    "function plm.import_master_data(jsonb,jsonb)"
+  ],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "182 passed, 0 failed, 0 skipped at d10664b7 (includes merged #3168 tests); routine-classification tests including the real #3104/#2866 migrations are a hard gate; fail-closed controls cover header literal changes, schema-wide ACL, default-privilege and rename changes, and unparseable earlier migrations. Full scripts pytest: 1319 passed, 8 skipped."
+      "evidence": "Static checks passed at head 6e4e097c (merged tree on main 4d5bbb9f, migration re-reserved as 20260917081021): 1 added migration, verify-cost guard passed, EOL reference guard passed."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=294 at head 6e4e097c; inventory re-derived with the discovery function after merging main, dropping only the removed phase6 designflow site."
+    },
+    {
+      "command": "node --test tools/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "870 tests, 870 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo, read from the runner summary at head 6e4e097c."
     }
   ],
   "assumptions_resolved": [
-    "Function bodies are emptied by the tokeniser; the re-establishment match compares full header, comment and grant statements only, and the body is left to the required independent review"
+    "The drop is authorised rather than an archive: the issue says to remove the DesignFlow PLM sync completely and to drop the guarded importer once no callers remain, and the object is a raise-only #1090 retirement stub holding no rows, history or audit trail, so there is no data to dispose of.",
+    "Nothing still reads the importer. Production catalog evidence recorded in the migration header shows zero referencing functions, zero referencing views, zero non-normal pg_depend rows and proacl limited to postgres, measured with a positive control of 2 so the zeros are genuine absences rather than a silently broken predicate.",
+    "The migration re-proves this at apply time: it refuses to drop unless the body is still the #1090 retirement stub and no non-normal dependants exist, drops without cascade so an unexpected dependant fails loudly, and then verifies the licensing write-authority guard is still intact.",
+    "The licensing write-authority guard survives untouched and its contract test is unchanged in behaviour. Its comment previously claimed absence was 'asserted and enforced' and 'strictly stronger'; the slot-1 review was right that this overclaimed, because there is no else-raise and absence is the silent success path. The comment now states that plainly and points at the migration's own post-drop RAISE as the actual unconditional enforcement. Prose only: no test logic was changed and no guard was weakened. Still-present-as-the-#1090-stub remains a hard failure; present with a pre-retirement body is recorded with an explicit notice because the from-empty CI replay resurrects it via pass 2 (20260723183000 redeclares the routine after every pass-1 migration) and the pass-2 order repair cannot express absence, since a drop leaves no routine definition to snapshot. That harness gap is filed as #2833 rather than worked around here. The revived-importer replay block proving a rebuilt importer still cannot bypass the table guard is deliberately retained.",
+    "The Phase 6 workflow, schedule map and test edits were forced rather than optional, because those steps executed the deleted tool and test file and would have left main red."
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [],
+  "evidence_note": "Fourth refresh after lane resume (abandonment audit #3116). Merged main 4d5bbb9f by merge, not rebase; version 20260911225801 was backdated and re-reserved through the lane tool as 20260917081021."
 }

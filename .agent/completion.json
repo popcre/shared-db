@@ -1,27 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3159,
+  "work_issue": 3170,
   "outcome": "ready-for-merge",
-  "pr": 3167,
+  "pr": 3171,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3159/1",
-  "contract_sha256": "e08befefa620e62c79a482d2ab29367f1403b1fd8789cb13d5c9b365ecd5649f",
-  "head_sha": "d10664b726cb429769a2b68a822c9ea99736f22f",
+  "contract_ref": "refs/db-contracts/3170/1",
+  "contract_sha256": "281f95348ca25635b971a84f6d04ee3bc14976a942514fea32c7ff3864d5dfb4",
+  "head_sha": "758c76b6c30bffc976a3e199cf39ea59da15a130",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "command": "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
       "exit_code": 0,
-      "evidence": "182 passed, 0 failed, 0 skipped at d10664b7 (includes merged #3168 tests); routine-classification tests including the real #3104/#2866 migrations are a hard gate; fail-closed controls cover header literal changes, schema-wide ACL, default-privilege and rename changes, and unparseable earlier migrations. Full scripts pytest: 1319 passed, 8 skipped."
+      "evidence": "656 pass, 0 fail, 0 skipped. The #3170 resume regression test fails against origin/main code with 'blocked_on is allowed only for relinquished author capacity'. Full author-lease workflow test set: 1458 tests, only failure was the retirement-guard discovery test, fixed by guarding repairResumedClaim."
     }
   ],
   "assumptions_resolved": [
-    "Function bodies are emptied by the tokeniser; the re-establishment match compares full header, comment and grant statements only, and the body is left to the required independent review"
+    "Resume removal now uses the parser's trimmed-line field reading; repair mode changes only relinquish-only residue lines"
   ],
   "stop_conditions_hit": []
 }

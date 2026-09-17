@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3202,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2837/1",
-  "contract_sha256": "ebeb350422e7978c2096a4169ed82e83cb86f1589add217bfb5194f0bbb03e1a",
-  "head_sha": "0400f2e9406e7e3dbc35c3cc5a6a6c8693e38b2b",
+  "contract_ref": "refs/db-contracts/2837/2",
+  "contract_sha256": "f831d4f8f25abaf3f0425cb1e04922425ba49b18406307ceac49cb9d379004fd",
+  "head_sha": "0940dbe1e6dbaa64415e14d137d9014f944fa840",
   "files_changed": [
     "scripts/check-exact-head-approval.mjs",
     "scripts/check-exact-head-approval.test.mjs"
@@ -17,12 +17,12 @@
     {
       "command": "node --test scripts/check-exact-head-approval.test.mjs",
       "exit_code": 0,
-      "evidence": "60 tests, 60 pass, 0 fail at implementation head 0400f2e9 on base b2633a33, including 5 new issue-2837 tests (migration single-slot refusal naming slot 2, rename previous-name counts, both-slots approval with required_slots 2, scripts-only one-slot floor, absent-file-list legacy behavior)."
+      "evidence": "60 tests, 60 pass, 0 fail at implementation head 0940dbe1 on base b2633a33, including 5 new issue-2837 tests (migration single-slot refusal naming slot 2, rename previous-name counts, both-slots approval with required_slots 2, scripts-only one-slot floor, absent-file-list legacy behavior)."
     },
     {
       "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/coordination-scenarios.test.mjs scripts/record-review-verdict.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/lib/documents-only-change.test.mjs scripts/lib/pr-content-equivalence.test.mjs",
       "exit_code": 0,
-      "evidence": "864 tests, 864 pass, 0 fail across the gate, lane manager, coordination, verdict, governed-review and evidence-pair suites with this change present."
+      "evidence": "873 tests, 873 pass, 0 fail across the gate, lane manager, coordination, verdict, governed-review and evidence-pair suites at implementation head 0940dbe1; scripts/check-throughput-truth-audit.mjs reports call_sites=305 with the reworded refusal."
     }
   ],
   "assumptions_resolved": [

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 2837,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -35,7 +35,8 @@
   "assumptions": [
     "AGENTS.md 6.x section 4 is the authority for the count: migrations need two independent reviews, scripts/docs/CI one",
     "A pull request that touches supabase/migrations/ is a migration change for this purpose, judged from the same changed-file list the documents-only lane reads, renames carrying their previous name",
-    "changedFiles absent entirely keeps the previous one-slot behavior for callers that predate the field, mirroring the documents-only lane convention"
+    "changedFiles absent entirely keeps the previous one-slot behavior for callers that predate the field, mirroring the documents-only lane convention",
+    "Generation 2 re-seals the pair after the refusal wording was kept outside the truth-audit sentinel vocabulary; the implementation head is 0940dbe1e6dbaa64415e14d137d9014f944fa840."
   ],
   "stop_conditions": [
     "Stop and report if any existing test shows a change that touches supabase/migrations/ legitimately merging with fewer than two drawn review slots",

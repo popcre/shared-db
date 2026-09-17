@@ -114,6 +114,7 @@ jobs:
           node scripts/check-main-tip-freshness.mjs --contains
           node scripts/check-pr-object-collisions.mjs
           node scripts/check-migration-pr-lease.mjs
+          node scripts/check-live-proof-probe.mjs
           # Re-proven under the lock: a reviewer can withdraw, or a refusal can
           # land, between the first pass and the merge itself.
           node scripts/check-exact-head-approval.mjs

@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 3137,
   "migration_versions": [
-    "20260917011016"
+    "20260917022957"
   ],
-  "contract_ref": "refs/db-contracts/3009/3",
-  "contract_sha256": "521a4290864ec32a6ff4082e5057d600e18d55e16ce0b98fae8360eecbc104a0",
-  "head_sha": "4d586d3d13c5b361c64168f5e51ed51d6cfa8615",
+  "contract_ref": "refs/db-contracts/3009/4",
+  "contract_sha256": "a5b76dc1246f78c700ae946904247d312e9972daba51a524cecd7cdffc5b5ae2",
+  "head_sha": "ac54d8ac94cc6798c535fbaf6bc653cb8943b963",
   "files_changed": [
     ".agent/contract.json",
     ".github/live-proofs/3009.sql",
-    "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",
+    "supabase/migrations/20260917022957_popsg_search_v2_default_browse_snapshot.sql",
     "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"
   ],
   "db_reads": [
@@ -41,7 +41,7 @@
     {
       "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "status OK, 58 sidecars; 20260917011016 needs no sidecar."
+      "evidence": "status OK, 58 sidecars; 20260917022957 needs no sidecar."
     }
   ],
   "assumptions_resolved": [

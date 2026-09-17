@@ -12,8 +12,8 @@ export const REVIEW_RESERVATION_PREFIX='refs/db-reviewer-reservations'
 // one provider once.
 export function executionKey(reviewer){
   if(!reviewer?.name||!reviewer?.wrapper)throw new ReviewerAllocationError('reviewer name and wrapper are required')
-  const provider=String(reviewer.provider??reviewer.wrapper).toLowerCase().replace(/[^a-z0-9.-]+/g,'-')
-  return `${provider}:${String(reviewer.wrapper).toLowerCase()}`
+  const provider=String(reviewer.provider??reviewer.wrapper).toLowerCase().replace(/[^a-z0-9.-]+/g,'-').replace(/\.{2,}/g,'.')
+  return `${provider}:${String(reviewer.wrapper).toLowerCase().replace(/[^a-z0-9.-]+/g,'-').replace(/\.{2,}/g,'.')}`
 }
 
 export function approvedExecutionCandidates({active,overflow=[],prohibited=[]}){

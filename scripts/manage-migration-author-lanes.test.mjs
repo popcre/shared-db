@@ -1184,16 +1184,19 @@ test('a recorded verdict and a moved head both free the reviewer that held them'
   assert.ok(!findBusyReviewers(movedIo).has('grok-4.6'))
 })
 
-test('an unreadable busy probe keeps the rotation',()=>{
-  // FAIL OPEN. A probe that cannot read GitHub must never silently send every
-  // review to the provider that costs money per run.
+test('an unreadable busy probe reports null, never an empty busy set',()=>{
+  // Every production caller refuses on null; see the findBusyReviewers header.
   const {io}=busyIo()
   const blind={...io,readRef:()=>{throw new Error('HTTP 500')}}
   assert.equal(findBusyReviewers(blind),null)
-  assert.equal(pickReviewer(1,blind).name,'grok-4.6')
   const noReadRef={...io};delete noReadRef.readRef
   assert.equal(findBusyReviewers(noReadRef),null)
-  assert.equal(pickReviewer(2,noReadRef).name,'glm-5.3')
+})
+
+test('the rotation helper ignores busy state entirely (no same-reviewer ceiling)',()=>{
+  const {io}=busyIo()
+  const blind={...io,readRef:()=>{throw new Error('HTTP 500')}}
+  assert.equal(pickReviewer(1,blind).name,pickReviewer(1,io).name,'an unreadable probe and a readable one pick the same provider')
 })
 
 test('retired reviewer names stay resolvable so historical review evidence never orphans',()=>{
@@ -2275,7 +2278,7 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
 // which stranded a failed review with no replacement at all after N-1 assignments,
 // for ANY N -- and after the #1290 roster change that was TWO intervening
 // assignments, the natural rest point of a three-name parallel dispatch (Grok takes
-// a PR and holds ai-grok-review's per-repo in-flight lock, GLM the next, Muse the
+// a PR and -- at the time -- held ai-grok-review's per-repo in-flight lock, since removed, GLM the next, Muse the
 // third, cursor on a multiple of three).
 //
 // Roster length was never the fix. An earlier version of this test asserted

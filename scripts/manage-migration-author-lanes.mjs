@@ -411,7 +411,9 @@ export const REVIEWERS = Object.freeze([
 //
 // The actual fix landed in #1297: `replaceFailedReviewer` now SKIPS every provider
 // that already failed on the exact head and advances the cursor past it, refusing
-// only when no other active reviewer is left. Roster length therefore buys CAPACITY
+// only when no other active reviewer is left. Roster length therefore buys independence
+// and failure substitution, not concurrency (there is no per-provider ceiling since
+// issue #3130). Historically it bought CAPACITY
 // -- three reviews in flight, and for most of 2026-08-19 the rotation was
 // effectively Grok alone because ai-grok-review then held a per-REPOSITORY in-flight
 // lock (removed under the 2026-09-16 owner ruling, issue #3130) -- and nothing else.
@@ -4461,9 +4463,12 @@ function isReviewAssignmentLive(assignment,states,io){
 // no verdict has landed for that head. Anything else -- a merged or closed PR, a
 // head that moved on, a recorded verdict -- frees the provider.
 //
-// FAIL OPEN, DELIBERATELY. If the refs cannot be listed, this returns null and
-// the caller keeps the ordinary rotation. A busy probe that cannot read GitHub
-// must never invent availability.
+// NULL MEANS UNREADABLE, AND EVERY CALLER FAILS CLOSED ON IT. If the refs cannot
+// be listed this returns null; the draw, release, replacement, reap, capacity
+// report and start watch all refuse rather than proceed. No caller may treat null
+// as "nobody is busy" -- a probe that cannot read GitHub must never invent
+// availability. (Before issue #3130 the test-only rotation helper kept rotating on
+// null; it no longer reads this at all.)
 export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={}){
   if(typeof io.readRef!=='function')return null
   let cutover

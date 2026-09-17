@@ -35,5 +35,7 @@ test('distinct reviews spread across providers with no global execution lock',()
 test('reservation refs are legal git refnames',()=>{
   const ref=reviewReservationRef(executionKey(active[0]),request(3))
   assert.ok(!ref.includes(':'),ref)
+  const hostile=reviewReservationRef(executionKey({name:'x',wrapper:'ai:odd ..wrap~^?*[',provider:'p:q..r'}),request(4))
+  assert.ok(!/:|\/\/|\.\.|[ ~^?*[\\]/.test(hostile),hostile)
   assert.ok(!/\/\/|\.\.|[ ~^?*[\\]/.test(ref),ref)
 })

@@ -9,9 +9,9 @@ owner: zcode/plan-orchestrator-required-load-reduction
 **What this is.** Tracking the program to reduce what MUST pass through the
 shared-db orchestrator session without reducing safety: queue hygiene
 (labels, expired-claim close-out, read-only report workflow), a self-service
-additive lane for app-owned schemas (`crm`/`pim`/`dam` + brand-new schemas
-only), and a zero-touch audit of the #2758 ephemeral route's merge→production
-hops. The controlling document is
+additive lane confined to the existing `crm`/`pim`/`dam` schemas (brand-new
+schemas were dropped after review), and a zero-touch audit of the #2758
+ephemeral route's merge→production hops. The controlling document is
 [`plan_orchestrator_required_load_reduction.md`](../plan_orchestrator_required_load_reduction.md) —
 **read its STATUS table first.** Issue: [#3199](https://github.com/u2giants/shared-db/issues/3199).
 
@@ -36,5 +36,7 @@ before working (`ai-task-gates start --class …`).
 
 **Do not:** re-plan #2530 here, parallelize the serial lanes, add an
 auto-label bot, loosen the Phase B boundary into shared schemas, or weaken
-any caller check in the guarded merge workflow (Step B3's safe default is
-"change nothing"; #2530's queue owns that hop).
+any caller check in the guarded merge workflow. Merging: any
+write-authenticated session may dispatch the guarded merge for an approved,
+green PR (locked in plan §8 — the workflow, not the caller, is the gate);
+#2530's queue still owns the serialization end-state.

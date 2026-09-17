@@ -4,12 +4,10 @@
   "outcome": "ready-for-merge",
   "pr": 3186,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2368/1",
-  "contract_sha256": "f7204a1c62961432d96622130f81c6210be4d40ff09fc5fbef7ef4d05bbf1dbb",
+  "contract_ref": "refs/db-contracts/2368/2",
+  "contract_sha256": "64b0e305cb3f452968b14560edebd70d391a6ac783c8d27f34b6414770e3aba3",
   "head_sha": "f2743dfcd77fffb78536f682aedeb6ba332c1105",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "scripts/test_production_apply_review_evidence.py",
     "scripts/test_production_migration_guard.py"
   ],

@@ -1008,6 +1008,33 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         self.assertEqual(len(seen), 2)
         self.assertTrue(all("/git/trees/" in e for e in seen))
 
+    def test_unrelated_coverage_manifest_change_does_not_refuse_promotion(self):
+        """#2870 and #2866 regression: runs 35176603519 and 35178225764 (both
+        previewed at 426cca7c) refused because #3110 edited
+        config/db-data-admin-property-source-coverage.json after the preview ran.
+        No preview-job step reads that manifest, so a difference in it alone must
+        not refuse, while a real producer difference beside it still does."""
+        ref, main = "1" * 40, "3" * 40
+        manifest = "config/db-data-admin-property-source-coverage.json"
+        self.assertNotIn(manifest, PREVIEW_PRODUCER_PATHS)
+        self.assertIn(manifest, PREVIEW_RUNTIME_DATA_EXEMPTIONS)
+
+        def api_for(forged):
+            def api(endpoint):
+                r = tree_ref(endpoint)
+                paths = list(PREVIEW_PRODUCER_PATHS) + [manifest]
+                return {"truncated": False, "tree": [
+                    {"path": p, "type": "blob",
+                     "sha": "forged-blob" if (r == ref and p in forged) else "same-blob"}
+                    for p in paths
+                ]}
+            return api
+
+        prove_preview_producer_matches_main(ref, exact_main(main), main, api_for({manifest}))
+        with self.assertRaisesRegex(RiskGateError, "different supabase/config.toml than exact main"):
+            prove_preview_producer_matches_main(
+                ref, exact_main(main), main, api_for({manifest, "supabase/config.toml"}))
+
     def test_the_tree_sourced_producer_pin_still_refuses_both_dirty_cases(self):
         """A green run on clean input proves nothing; feed it known-dirty input.
 
@@ -1876,6 +1903,8 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         "supabase/tests",
         "supabase/ci-bootstrap",
         "config/production-risk-policy-activation.json",
+        # #2870 / run 35176603519: read only by the validate job's coverage check.
+        "config/db-data-admin-property-source-coverage.json",
         # Issue #1366 Step 4. All three are static text: two document a field
         # contract that hand-rolled code in scripts/agent-work-contract.mjs
         # actually enforces, and the third is a pull-request-workflow flag whose

@@ -798,6 +798,18 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "HEAD == origin/main before executing; prove_activation additionally "
         "re-reads it against main. Pinning it here would assert nothing new."
     ),
+    "config/db-data-admin-property-source-coverage.json": (
+        "Never read by the preview job. Its only reader is "
+        "scripts/check-db-data-admin-property-source-coverage.mjs, run by the "
+        "validate job of shared-supabase-migrations.yml, which is a pull-request "
+        "check, not the preview rehearsal. No migration, apply helper, catalog "
+        "verifier or sidecar reads it, so its bytes cannot shape preview "
+        "evidence. It was pinned by #2579; that pin refused #2870's production "
+        "promotion (run 35176603519) and #2866's (run 35178225764) only "
+        "because unrelated PR #3110 edited the "
+        "manifest after the preview ran. If a preview-job tool ever reads it, the "
+        "phrase check on this reason fails and it must be pinned again."
+    ),
     "config/agent-work-contract.schema.json": (
         "Never read by the preview job, and in fact read by no job at all - not "
         "the preview lane, not production, not this gate. Validation for agent "
@@ -2790,13 +2802,10 @@ def main() -> int:
     return 0 if result.get("productionPromotionAllowed", result["automaticPromotionAllowed"]) else 3
 
 PREVIEW_PRODUCER_PATHS += (
-    # Issue #2579. The sidecar binds migration 20260910155753, and the coverage
-    # manifest is repository source read by an offline CI validator. Both are
-    # pinned rather than exempted: the test's own instruction is to pin anything
-    # a tool in the preview job could read, and pinning is the stricter answer.
-    # Issue #2988. The sidecar binds migration 20260916033914 and is read by the
-    # catalog verifier in preview, so it is pinned like every other sidecar.
-    "config/db-data-admin-property-source-coverage.json",
+    # config/db-data-admin-property-source-coverage.json was pinned here by
+    # #2579 and is now EXEMPTED instead (see PREVIEW_RUNTIME_DATA_EXEMPTIONS):
+    # no step of the preview job reads it, so pinning it refused #2870's
+    # promotion when unrelated PR #3110 edited it after the preview ran.
     # Invoked by check-sql.sh during preview; pin the reviewed parser so the
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",

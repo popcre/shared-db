@@ -1299,7 +1299,7 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       - uses: supabase/setup-cli@v1
         with:
           version: 2.105.0
@@ -1496,7 +1496,7 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       # BEFORE ANY CREDENTIAL IS USED. With the automatic risk policy active, the
       # business-risk gate cannot run without the merged source PR. Run 34615626046
       # was dispatched without it and died much later on a bare `test -n` that named
@@ -1761,8 +1761,10 @@ jobs:
         run: |
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
-          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs
+          # #3153: exact equality refused every apply once any commit landed.
+          # The production freshness rule tolerates only documentation, .agent
+          # evidence and test files; every other move still refuses.
+          MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
       # The freeze revokes authorization on the head of EVERY open pull request,
       # including PRs with nothing to do with this promotion. Two things were wrong
       # with the first version of this step (issue #2116):

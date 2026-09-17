@@ -1,40 +1,53 @@
 {
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3174,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add Coca-Cola Submissions, WWE Creative, Peanuts Creative, Sesame Workshop Creative and Sesame Workshop Submissions sections to api.db_data_admin_scraped_source_inventory, with the new landing table plm.sesame_submission_property_option.",
+  "base_sha": "c705dfdad76275d859ad48cddb7f329956142d42",
+  "dispatcher": "claude shared-db orchestrator issue #3174",
+  "worker": "Claude Opus 5 issue-3174 migration author lane (claim #3189)",
+  "branch": "claude/issue-3174-scraped-sections",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a62ecbe202c69cc64",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".github/live-proofs/3174.sql",
+    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
   ],
-  "assumptions": [
-    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment.",
-    "Generation 3 exists because main advanced to 7a15d152 and conflicted only on the shared .agent pair; the branch was refreshed by MERGE (never rebase) as b0c64a08, with the pair resolved to this lane."
-  ],
-  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
-  "branch": "claude/fix-2367-test-comment",
-  "db_reads": [],
-  "db_writes": [],
-  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; follow-up comment correction for #2367",
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".github/live-proofs/3174.sql",
+    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
   ],
-  "generation": 3,
-  "goal": "Correct the comment in scripts/production_business_risk_gate.py that wrongly says no test reaches the historical run-map guards; no behavior change.",
+  "db_reads": [
+    "table plm.coke_approval_vocabulary_value",
+    "table plm.wwe_creative_brand",
+    "table plm.peanuts_art_program",
+    "table plm.sesame_brand",
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "table plm.sesame_submission_property_option"
+  ],
   "prohibited_actions": [
-    "No database change of any kind",
-    "No production workflow dispatch",
-    "No executable change to scripts/production_business_risk_gate.py; comment lines only"
+    "Never run direct production DDL; production reaches the database only through the governed promotion lane.",
+    "Never change existing inventory arms, row keys or grants.",
+    "Never rebase this branch; refresh from main with a merge."
   ],
   "required_checks": [
-    "python -m unittest scripts/test_*.py"
+    "bash scripts/check-sql.sh"
   ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
+  "assumptions": [
+    "The live production function body equals migration 20260917005650 (md5 verified), so it is the derivation source.",
+    "Peanuts rows without a Tenovos source id have no ledger identity and are left out on purpose; production has none today."
+  ],
   "stop_conditions": [
-    "Stop if the correction needs anything beyond a comment change"
-  ],
-  "work_issue": 2367,
-  "work_type": "repo-maintenance",
-  "worker": "Claude Opus 5 #2367 comment correction",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/hungry-noether-ff7235"
+    "Stop if the lane claim is refused for object collision.",
+    "Stop on anything other than an explicit independent APPROVE."
+  ]
 }

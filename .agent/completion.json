@@ -1,29 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 2367,
+  "work_issue": 3174,
   "outcome": "ready-for-merge",
-  "pr": 3177,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2367/3",
-  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
-  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production_business_risk_gate.py"
+  "pr": 3190,
+  "migration_versions": [
+    "20260917112114"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3174/1",
+  "contract_sha256": "88491a3d7a3db2d033070f339a9ad7d2244ce119a9d0e19e4adae4caa0302615",
+  "head_sha": "46ddec03d09a2583fe0be7fe3684e092d65db5b6",
+  "files_changed": [
+    ".github/live-proofs/3174.sql",
+    "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
+  ],
+  "db_reads": [
+    "table plm.coke_approval_vocabulary_value",
+    "table plm.wwe_creative_brand",
+    "table plm.peanuts_art_program",
+    "table plm.sesame_brand",
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "table plm.sesame_submission_property_option"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
+      "evidence": "Static checks passed at 46ddec03 (all SQL migration guards passed)."
     }
   ],
   "assumptions_resolved": [
-    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
-    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
+    "Production function body md5 matched migration 20260917005650 before derivation.",
+    "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today."
   ],
   "stop_conditions_hit": []
 }

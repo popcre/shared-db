@@ -1,54 +1,40 @@
 {
-  "schema_version": 1,
-  "generation": 9,
-  "work_issue": 3091,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Add plm.prod_order_milestone_schedule (Production Tracking step 4) with FKs to plm.\"ProdOrderHeader\"(id) and plm.\"FactoryTime\"(id), a unique upsert index, a status/needed_date scan index, and the unique index on ProdOrderHeader.id the FK requires; regenerate types.",
-  "base_sha": "426cca7c052e9fda2e5c71a8d1bb0226f4c52333",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16)",
-  "worker": "Claude Opus 5 #3091 migration author a7f2",
-  "branch": "claude/3091-milestone-schedule-a7f2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3091-milestone-schedule-a7f2",
+  "work_issue": 3126,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make the no-progress alarm report standard work still undispatched (entered or classified) after 30 minutes, so the half-hourly alarm fires inside the 1-hour dispatch target.",
+  "base_sha": "0c16ff3f0d00169bbd6a2ef1645a44b98390a215",
+  "dispatcher": "Claude orchestrator session for #3029 (owner request relayed: spin up a subagent and handle them)",
+  "worker": "Claude Opus 5 agent-a8989295cf8ae84e7 #3126",
+  "branch": "claude/3126-dispatch-stall-alarm",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a8989295cf8ae84e7",
   "allowed_paths": [
-    "supabase/migrations/20260917022233_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917022233_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "config/db-data-admin-property-source-coverage.json",
-    "types/database.types.ts",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table plm.\"FactoryTime\""
-  ],
-  "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No manual production command or workflow dispatch; production only via the automatic merged-main lane",
-    "No data change to existing tables",
-    "No migration version other than claimed 20260917022233"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
   ],
   "assumptions": [
-    "plm.\"ProdOrderHeader\".id holds no duplicates (migration guard raises otherwise)"
+    "The alarm workflow runs at minutes 7 and 37 of every hour"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the admitted objects"
-  ]
+    "Stop if the fix would need a database change"
+  ],
+  "generation": 1,
+  "schema_version": 1
 }

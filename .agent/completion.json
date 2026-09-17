@@ -1,49 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3091,
+  "work_issue": 3126,
   "outcome": "ready-for-merge",
-  "pr": 3110,
-  "migration_versions": [
-    "20260917022233"
-  ],
-  "contract_ref": "refs/db-contracts/3091/9",
-  "contract_sha256": "71953eeae99053140828366bd7d7fb0f24e437214a6dd9097dff2ffa61dfe5da",
-  "head_sha": "d59cad09a11254ba95ae03028bb15e09459c8f69",
+  "pr": 3133,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3126/1",
+  "contract_sha256": "e46096a9d4e8f2cce209e58dd79171c097c0c6834c357d569ed96c4de4a74c22",
+  "head_sha": "d484de4ff8e116a3985cb59936ee8b288efdf634",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json",
-    "supabase/migrations/20260917022233_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "types/database.types.ts"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
-  "db_reads": [
-    "table plm.\"FactoryTime\""
-  ],
-  "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head d59cad09: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "status OK; version 20260917022233 has markers [] and needs no sidecar."
-    },
-    {
-      "command": "local PostgreSQL 18 run of the migration plus contract test on stub plm tables",
-      "exit_code": 0,
-      "evidence": "Migration applied at d5bfa725; both foreign keys created; contract test passed, including rejection of untrimmed stage_name, status and sku; with the sku trim check removed the test failed with \"untrimmed sku was accepted\"."
+      "evidence": "Run at implementation head 06730de7 together with scripts/orchestrator-flow/orchestrator-snapshot.test.mjs and scripts/manage-migration-author-lanes.test.mjs: 634 tests, 634 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
+    "orchestrator-no-progress-alarm.yml cron is '7,37 * * * *', so a 30-minute threshold reports undispatched work before 60 minutes"
   ],
   "stop_conditions_hit": []
 }

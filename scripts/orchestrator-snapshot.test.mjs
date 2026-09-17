@@ -33,6 +33,13 @@ test('121-minute idle outcome appears in stalled_outcomes; 120 does not', () => 
   assert.equal(result.active_outcomes, 2)
 })
 
+test('issue 3126 undispatched work stalls after 30 minutes so the half-hourly alarm fires inside the 1-hour dispatch target', () => {
+  const events = [event(800, 'entered', 31), event(801, 'classified', 31), event(802, 'classified', 30), event(803, 'dispatched', 31)]
+  const result = stalledOutcomes(events, { now: NOW })
+  assert.deepEqual(result.stalled_outcomes.map((row) => [row.work_issue, row.state]).sort((a, b) => a[0] - b[0]), [[800, 'entered'], [801, 'classified']])
+  assert.equal(stalledOutcomes([event(801, 'classified', 31), event(801, 'dispatched', 5)], { now: NOW }).stalled_outcomes.length, 0)
+})
+
 test('issue 3027 a stalled outcome carries its named hold and the formatted hold line', () => {
   const hold = { kind: 'claim', holder: 'claim #60', objects: ['table core.shared'] }
   const result = stalledOutcomes([{ ...event(800, 'blocked', 130), hold_reason: hold }], { now: NOW })

@@ -38,8 +38,7 @@ import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { isDocumentPath } from './lib/documents-only-change.mjs'
-import { REPO, parseQueueScope, parseAuthorLease, githubIo } from './manage-migration-author-lanes.mjs'
-import { openClaimIssues } from './check-migration-pr-lease.mjs'
+import { REPO, parseQueueScope, resolveAdmittedIssueForPr } from './manage-migration-author-lanes.mjs'
 
 export const SELF_SERVICE_ROUTE = 'self-service-additive'
 export const BOUNDARY_SCHEMAS = Object.freeze(['crm', 'pim', 'dam'])
@@ -248,13 +247,16 @@ const ghJson = (args) => {
 }
 const treeReader = createTreeReader({ wrapError: (detail) => new LaneBoundaryError(`GitHub read failed: ${detail}`) })
 
-export function workIssueRouteOf(claim, { getIssue, parseScope }) {
-  const issues = String(claim.title ?? '').match(/#(\d+)/g) ?? []
-  if (issues.length !== 1) throw new LaneBoundaryError(`claim #${claim.number} does not identify exactly one work issue`)
-  const number = Number(issues[0].slice(1))
-  const issue = getIssue(number)
+export function workIssueRouteOf(pr, { resolve = resolveAdmittedIssueForPr, getIssue, parseScope }) {
+  // The ONE sanctioned PR->work-issue resolver (also used by the automatic
+  // production promotion): it follows the PR's closing-issue linkage and runs
+  // the real admission, so this gate never grows a parallel claim-matching
+  // rule the lease check does not know about.
+  const resolved = resolve(Number(pr))
+  if (resolved.admission !== 'admitted') throw new LaneBoundaryError(`pull request #${pr} does not resolve to an admitted work issue (${resolved.admission})`)
+  const issue = getIssue(resolved.issue)
   const scope = parseScope(issue.body)
-  return { number, scope }
+  return { number: resolved.issue, scope }
 }
 
 export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
@@ -272,13 +274,10 @@ export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
       if (rows.length < 100) break
     }
     if (Number(pr.changed_files) !== files.length) throw new LaneBoundaryError(`incomplete PR pagination: expected ${pr.changed_files}, received ${files.length}`)
-    const claims = openClaimIssues(ghJson(['api', '--paginate', '--slurp', `repos/${REPO}/issues?state=open&per_page=100`]).flat())
-    const now = new Date()
-    const mine = claims.filter((claim) => {
-      try { const lease = parseAuthorLease(claim.body, now); return !lease.legacy && lease.branch === pr.head.ref } catch { return false }
+    const { number: workNumber, scope } = workIssueRouteOf(number, {
+      getIssue: (issueNumber) => ghJson(['api', `repos/${REPO}/issues/${issueNumber}`]),
+      parseScope: parseQueueScope,
     })
-    if (mine.length !== 1) throw new LaneBoundaryError(`pull request branch ${pr.head.ref} must have exactly one active claim; found ${mine.length} — the lease check owns this rule, this gate only reads it`)
-    const { number: workNumber, scope } = workIssueRouteOf(mine[0], { getIssue: githubIo.getIssue, parseScope: parseQueueScope })
     if (!scope || scope.route !== SELF_SERVICE_ROUTE) {
       console.log(`Work issue #${workNumber} route is ${scope?.route ?? 'unclassified'}; the self-service boundary does not apply.`)
       return 0

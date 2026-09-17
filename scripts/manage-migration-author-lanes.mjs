@@ -5547,6 +5547,7 @@ export function rebindClaimWorktree(options,now=new Date(),io=githubIo){
   const request={issue:Number(options.issue),claim:Number(options.claim),pr:Number(options.pr),owner:String(options.owner??''),branch:String(options.branch??''),worktree:String(options.worktree??''),targetWorktree:String(options.targetWorktree??''),headSha:String(options.headSha??'')}
   if(!Number.isInteger(request.issue)||request.issue<=0||!Number.isInteger(request.claim)||request.claim<=0||!Number.isInteger(request.pr)||request.pr<=0||!request.owner||!request.branch||!request.worktree||!request.targetWorktree||!/^[0-9a-f]{40}$/.test(request.headSha))throw new LaneError('claim worktree rebind requires exact issue, claim, PR, owner, branch, current worktree, target worktree, and 40-character lowercase head')
   if(/[\r\n`]/.test(request.targetWorktree)||request.targetWorktree!==request.targetWorktree.trim())throw new LaneError('target worktree path contains a forbidden character')
+  if(/[\s`]/.test(request.branch))throw new LaneError('claim branch contains a forbidden character')
   if(normalizeWorktreePath(request.worktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('target worktree must differ from the recorded claim worktree')
   const verifyTarget=()=>{
     if(!io.localClean(request.targetWorktree))throw new LaneError('target worktree is absent or dirty')
@@ -5565,10 +5566,15 @@ export function rebindClaimWorktree(options,now=new Date(),io=githubIo){
     return lease
   }
   const current=io.getIssue(request.claim),currentLease=proveOwnership(current),ref=claimWorktreeRebindRef(request.claim,currentLease.version,request.targetWorktree)
+  // The evidence ref is keyed by the NORMALIZED target while its digests hash the exact
+  // spelling, so a case or slash variant of an already-bound target is refused by name
+  // here instead of surfacing as a confusing digest mismatch.
+  if(currentLease.worktree!==request.targetWorktree&&normalizeWorktreePath(currentLease.worktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('claim already names this target worktree with a different spelling; pass the exact recorded path')
   if(currentLease.worktree===request.targetWorktree){
     const priorSha=io.readRef(ref);if(!priorSha)throw new LaneError('claim already names the target worktree without durable rebind evidence')
     const prior=parseClaimWorktreeRebind(io.getCommit(priorSha))
     if(prior.issue!==request.issue||prior.claim!==request.claim||prior.pr!==request.pr||prior.version!==currentLease.version||prior.fromDigest!==sha256(request.worktree)||prior.toDigest!==sha256(request.targetWorktree))throw new LaneError('durable claim worktree rebind does not match this request')
+    if(prior.headSha!==request.headSha)throw new LaneError(`claim was already rebound at head ${prior.headSha}; the PR head has since changed, so this re-run is not the recorded rebind and needs no action`)
     return {...prior,worktree:request.targetWorktree,rebindSha:priorSha,idempotent:true}
   }
   if(currentLease.worktree!==request.worktree)throw new LaneError('claim worktree changed')

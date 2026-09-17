@@ -8483,6 +8483,30 @@ test('issue 3182: claim already naming the target without evidence is refused, a
   assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,bare),/without durable rebind evidence/)
 })
 
+test('issue 3182: re-run at a changed head, a respelled target, or a malformed branch is refused, not reported idempotent',()=>{
+  const io=rebindIo();rebindClaimWorktree(rebindArgs,NOW,io)
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,headSha:'b'.repeat(40)},NOW,io),/already rebound at head a{40}/)
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,targetWorktree:rebindArgs.targetWorktree.toUpperCase()},NOW,io),/different spelling/)
+  const branch=rebindIo(),original=branch.issue.body
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,branch:'codex/issue-764\nworktree: C:/evil'},NOW,branch),/branch contains a forbidden character/)
+  assert.equal(branch.issue.body,original)
+})
+
+test('issue 3182: rebind refuses a retired version, a missing permanent reservation, and orphan evidence',async()=>{
+  const {resetRetirementSnapshot}=await import('./manage-migration-author-lanes.mjs')
+  const retired=rebindIo(),retiredOriginal=retired.issue.body
+  retired.refs.set(`refs/db-claims-retired/${retired.old}`,'9'.repeat(40));retired.readCommitMessage=()=>null
+  resetRetirementSnapshot()
+  try{assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,retired),/retire/i)}finally{resetRetirementSnapshot()}
+  assert.equal(retired.issue.body,retiredOriginal)
+  const unreserved=rebindIo(),unreservedOriginal=unreserved.issue.body;unreserved.refs.delete(`refs/db-claims/${unreserved.old}`)
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,unreserved),/permanent version reservation is unreadable/)
+  assert.equal(unreserved.issue.body,unreservedOriginal);assert.equal(unreserved.refs.has(MUTEX_REF),false)
+  const orphan=rebindIo(),orphanOriginal=orphan.issue.body;orphan.refs.set(claimWorktreeRebindRef(1056,orphan.old,rebindArgs.targetWorktree),'8'.repeat(40))
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,orphan),/evidence already exists for this target but the claim does not name it/)
+  assert.equal(orphan.issue.body,orphanOriginal);assert.equal(orphan.refs.has(MUTEX_REF),false)
+})
+
 test('issue 3182: REAL main command wires --rebind-claim-worktree with every identity field',()=>{
   const io=rebindIo(),args=['--rebind-claim-worktree','--issue','764','--claim-number','1056','--owner',rebindArgs.owner,'--branch',rebindArgs.branch,'--worktree',rebindArgs.worktree,'--target-worktree',rebindArgs.targetWorktree,'--pr','1047','--head-sha',rebindArgs.headSha]
   assert.equal(main(args,NOW,io),0)

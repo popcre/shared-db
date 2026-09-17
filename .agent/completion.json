@@ -1,31 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 3127,
+  "work_issue": 3148,
   "outcome": "ready-for-merge",
-  "pr": 3135,
+  "pr": 3151,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3127/1",
-  "contract_sha256": "fb953cc3f5d4fbfae74c9b2e51b5b4e653535450a1f4264b4b54ca5140ee9e27",
-  "head_sha": "074853b30809de0f1a3b0504dc9d0eed2841fa1d",
+  "contract_ref": "refs/db-contracts/3148/1",
+  "contract_sha256": "c4d93a3c22c77ebb97ca66292016d0a73e40bdc78a35935bb92fd2138137d366",
+  "head_sha": "b30a190768a885467f63969524a44750e95806c2",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/migration-author-lease.yml"
+    "scripts/orchestrator-snapshot.mjs",
+    "scripts/orchestrator-snapshot.test.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.mjs",
+    "scripts/orchestrator-flow/no-progress-alarm.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at refreshed implementation head 074853b3: tests 6, pass 6, fail 0, skipped 0."
+      "evidence": "Run at implementation head b30a1907: tests 29, pass 29, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "Outcomes returning to an application repository are reported not applicable by the guard (tested)"
+    "Sealed snapshot digest unchanged: unentered requests are returned outside the sealed input (resume test still VALID)"
   ],
   "stop_conditions_hit": []
 }

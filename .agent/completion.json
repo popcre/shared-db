@@ -1,40 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 3104,
+  "work_issue": 2870,
   "outcome": "ready-for-merge",
-  "pr": 3131,
+  "pr": 2872,
   "migration_versions": [
-    "20260917005650"
+    "20260917013422"
   ],
-  "contract_ref": "refs/db-contracts/3104/3",
-  "contract_sha256": "0d4ed43058c1e2fbc2b1b9e506144496759b0c9ca852bd95e78ece4eb4145b76",
-  "head_sha": "3dcb2de2f71c609d968e03dec25ccebb8a3036dc",
+  "contract_ref": "refs/db-contracts/2870/8",
+  "contract_sha256": "d614dbafef9480bcedfa7719182ee8d8a1f11c7afeefd79ed6d266e62dacdab8",
+  "head_sha": "6d907fcf2373577bacd922d3457bb79124f3936d",
   "files_changed": [
-    "docs/db-data-admin-scraped-properties.md",
-    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260917013422.json",
+    "supabase/migrations/20260917013422_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
   ],
-  "db_reads": [
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member",
-    "table plm.wb_property"
-  ],
+  "db_reads": [],
   "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory"
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head a14110d3: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
+      "evidence": "Static checks (bash scripts/check-sql.sh) passed at head de204c98, after merging main 4ba3732d and adding the sidecar column assertions."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "ephemeral preview-equivalent database contract test",
       "exit_code": 0,
-      "evidence": "status OK; version 20260917005650 needs no sidecar."
+      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Sidecar validator returned status OK at head de204c98 and load_behavior_sidecars parsed both typed column checks."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against current main."
     }
   ],
   "assumptions_resolved": [
-    "Production function body md5 956fbf9130a49bf0cbc875bbaf0e1c17 equals the 20260914172031 file body, so the re-derivation base is the live definition."
+    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
+    "The migration performs DDL only and contains no application-row write.",
+    "Claim version 20260914032423 was superseded to 20260916232835 and then, per orchestrator decision after main advanced past it, to 20260917013422 (20260916232835 permanently retired and reverted on the preview ledger only) through the governed supersession tool because the old version sorted behind current main."
   ],
   "stop_conditions_hit": []
 }

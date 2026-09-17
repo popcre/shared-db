@@ -68,7 +68,7 @@ export const ALLOWLIST = {
   'scripts/lib/work-dependencies.test.mjs': [2, FIXTURE],
   'scripts/manage-migration-author-lanes.test.mjs': [16, FIXTURE],
   'scripts/migration-retirement-tombstones.test.mjs': [2, FIXTURE],
-  'scripts/orchestrator-flow/admission-outcome.test.mjs': [18, FIXTURE],
+  'scripts/orchestrator-flow/admission-outcome.test.mjs': [19, FIXTURE],
   'scripts/orchestrator-flow/preview-route-canary.test.mjs': [1, FIXTURE],
   'scripts/orchestrator-flow/qualify-change.test.mjs': [1, FIXTURE],
   'scripts/orchestrator-flow/runner-lanes.test.mjs': [7, FIXTURE],

@@ -1,30 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 3212,
+  "work_issue": 2373,
   "outcome": "ready-for-merge",
-  "pr": 3211,
+  "pr": 3213,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3212/3",
-  "contract_sha256": "6d059e35fe9b2bf038a86bb4c8cbf4115075d7355593d8acd230a68aec5d8282",
-  "head_sha": "1798102a5195a9126740f225af2593d2350fa9ca",
+  "contract_ref": "refs/db-contracts/2373/1",
+  "contract_sha256": "130399b7f43f33693e780bca89b9fbcba56fa9b27d334cf732c4575a72df6b51",
+  "head_sha": "ad4c94954e35e1c3520e357c6ae065cbfa879188",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/issue-orchestrator-label.yml",
-    "scripts/sync-issue-orchestrator-label.mjs",
-    "scripts/sync-issue-orchestrator-label.test.mjs"
+    "scripts/test_production_catalog_verification.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/sync-issue-orchestrator-label.test.mjs",
+      "command": "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests",
       "exit_code": 0,
-      "evidence": "10 tests, 10 pass, 0 fail at implementation head 1798102a (refresh from main; own files unchanged by the refresh)."
+      "evidence": "2 focused tests passed in 0.000 seconds at refreshed implementation head ad4c9495."
+    },
+    {
+      "command": "python -m unittest scripts/test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "193 tests passed in 1.741 seconds at refreshed implementation head ad4c9495."
     }
   ],
   "assumptions_resolved": [
-    "Fill mode leaves an existing single label alone; authoritative mode runs only on issue opened or body edited."
+    "Both mutation survivors remain reachable on current origin/main and are now directly falsified by focused tests."
   ],
   "stop_conditions_hit": []
 }

@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3228,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/10",
-  "contract_sha256": "bbf4672fc44aac3b2ec587f1a2f639963b4184f72f6180156e160a167160c31f",
+  "contract_ref": "refs/db-contracts/3199/11",
+  "contract_sha256": "1f7cd42b163234efcf456463889969220aef13ef4605f9a55b4ba23893958db2",
   "head_sha": "81fd7e569861d3f9d4bd6bb693d104ca90a6ce3c",
   "files_changed": [
     ".github/workflows/guarded-migration-merge.yml",

@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 10,
+  "generation": 11,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Implement issue #3199 Phases B and C: the self-service additive lane (fail-closed boundary classifier over the production tokenizer, route admission across the lane machinery and admission, merge-time enforcement inside the guarded merge, route-sync guard, AGENTS.md documentation) and the #2758 ephemeral-route hop table with C2 no-code-change outcome.",
-  "base_sha": "13efcd77496db37ee2f1d80ab86e5b5e35e30ac5",
+  "base_sha": "13efcd77aec38257d4efe073ee0f729ebb647e33",
   "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
   "worker": "ZCode (GLM 5.3) repository-maintenance session",
   "branch": "zcode/3199-self-service-lane-v2",

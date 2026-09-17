@@ -59,6 +59,8 @@ class DirectRecordShapeGuardTests(unittest.TestCase):
 
 class EndToEndOriginalRunGuardTests(unittest.TestCase):
     def setUp(self):
+        # The method name only satisfies TestCase.__init__; that base test is never
+        # run. Every test here calls run_historical_prove_preview directly.
         self.fixture = base.ProductionBusinessRiskGateTests(
             "test_original_run_against_the_deleted_preview_is_still_accepted"
         )
@@ -82,8 +84,13 @@ class EndToEndOriginalRunGuardTests(unittest.TestCase):
                     current.with_name(f"{VERSION}_release_b.sql").write_bytes(current.read_bytes())
                 return real(**kwargs)
 
+            # prove_preview_migration_contents repeats this cardinality check with the
+            # same message, so it must never be reached: the refusal has to come from
+            # prove_historical_original_apply_runs itself.
+            twin = AssertionError("refusal came from the later content check, not the original-run binding")
             with self.subTest(case=case), \
                  mock.patch.object(gate, "prove_historical_original_apply_runs", side_effect=reshape_main_then_prove) as spy, \
+                 mock.patch.object(gate, "prove_preview_migration_contents", side_effect=twin), \
                  self.assertRaisesRegex(RiskGateError, "absent or ambiguous on exact main"):
                 self.fixture.run_historical_prove_preview()
             spy.assert_called_once()

@@ -1,49 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3091,
+  "work_issue": 3119,
   "outcome": "ready-for-merge",
-  "pr": 3110,
-  "migration_versions": [
-    "20260916231838"
-  ],
-  "contract_ref": "refs/db-contracts/3091/3",
-  "contract_sha256": "2b946ce569ff8ae56f60d6f1d076a3cea9328fc4a2e96b3e6726e3713a9b8fca",
-  "head_sha": "528235618125dc1dab1d1043ed54cb114241d354",
+  "pr": 3123,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3119/2",
+  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
+  "head_sha": "a89e298e9b225fa3b41e8782314288e8f5b7bf0e",
   "files_changed": [
-    "config/db-data-admin-property-source-coverage.json",
-    "supabase/migrations/20260916231838_plm_prod_order_milestone_schedule.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
-    "types/database.types.ts"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
-  "db_reads": [
-    "table plm.\"FactoryTime\""
-  ],
-  "db_writes": [
-    "index plm.prod_order_header_id_key",
-    "index plm.prod_order_milestone_schedule_status_needed_idx",
-    "index plm.prod_order_milestone_schedule_upsert_key",
-    "table plm.\"ProdOrderHeader\"",
-    "table plm.prod_order_milestone_schedule"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
       "exit_code": 0,
-      "evidence": "Run at implementation head 52823561: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "status OK; version 20260916231838 has markers [] and needs no sidecar."
-    },
-    {
-      "command": "local PostgreSQL 18 run of the migration plus contract test on stub plm tables",
-      "exit_code": 0,
-      "evidence": "Migration applied; both foreign keys created (FK to a unique index is accepted); contract test passed and failed as expected when service_role was granted select."
+      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
     }
   ],
   "assumptions_resolved": [
-    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
+    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
   ],
   "stop_conditions_hit": []
 }

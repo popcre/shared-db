@@ -3642,6 +3642,31 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "COMMENT ON COLUMN public.t.c IS NULL;",
         ], [])
 
+    def test_check_on_a_new_column_reports_only_downtime(self):
+        """#3119: run 35163423338 refused #3036 with every risk for this shape.
+        A CHECK on an all-NULL new column loses no data and changes no access,
+        but Postgres still scans the table to validate it."""
+        downtime = [RISK_TEXT["expected_downtime"]]
+        for body in [
+            "alter table plm.item add column product_type text null, add column product_type_status"
+            " text null constraint item_product_type_status_check check (product_type_status in"
+            " ('a', 'b', 'c')), add column product_type_read_at timestamptz null;"
+            " comment on column plm.item.product_type_status is 'x';",
+            "alter table public.t add column s text check (s in ('a'));",
+        ]:
+            with self.subTest(body=body):
+                self.assertEqual(self.classify(body), downtime)
+        self.assert_allowed([], [
+            "alter table public.t add column s text check (other in ('a'));",
+            "alter table public.t add column s text check (s in ('a')), drop column old;",
+            "alter table public.t add column s text not null check (s in ('a'));",
+            "alter table public.t add column s text default 'a' check (s in ('a'));",
+            "alter table public.t add column s text check (s in (select v from public.u));",
+            "alter table public.t add column s text check (public.f(s));",
+            "alter table public.t add column s text check (s in ('a')); grant all on public.t to anon;",
+            "alter table public.t add column s text check (s in ('a')); delete from public.t;",
+        ])
+
     def test_an_unknown_statement_reports_every_risk(self):
         """Nothing outside ALLOWLIST is modelled, so nothing outside it is excused."""
         self.assert_allowed([], [

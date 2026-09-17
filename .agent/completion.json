@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3204,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/3",
-  "contract_sha256": "403b9926b006b79c2de813c0a414bded26925597ad7967125538ea8151e2cadd",
-  "head_sha": "1be47b029adcf744f6c24e228d97f7ca7ebbacb9",
+  "contract_ref": "refs/db-contracts/3199/4",
+  "contract_sha256": "c9c0b21b4ad4fca4f047b7940d22b8da21cfa7b9630a6f50339e73219b15645a",
+  "head_sha": "410b658a75a478c12eb4c486879a763fa09fb1fe",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,7 +19,7 @@
     {
       "command": "ai-task-gates check --before pr-wait",
       "exit_code": 0,
-      "evidence": "At implementation head 9785e328188153898b9c4b94b53afa10126e1b72 the effective class is reviewer-safety (escalated from prose by the plan file) with required gates exact-head-independent-review, local-tests, repository-branch-and-pr, repository-rulebook-full-treatment. Exact-head independent review: Grok 4.6 (grok-4.6-build, session 01a0afc1-854d-7be2-9bab-f2202f92063c) reviewed the plan at head 4f848c9f (verdict sound-with-changes, $0.427 + $0.096 for the address-confirmation turn), every material finding was folded in, and the final confirmation at head 9785e328 returned CONFIRMED with exact-head verdict sound (reviews preserved on the authoring worktree under .ai/reviews/grok-orchestrator-load-plan-review-*.md). Local tests: node scripts/agent-work-contract.mjs --validate-contract passed; no code is changed by this PR so the offline suites are exercised via the required contexts on PR #3204. Branch and PR: zcode/plan-orchestrator-required-load-reduction -> PR #3204. Rulebook treatment: this .agent pair plus the handoff contract block (issue 3199, status OPEN)."
+      "evidence": "At implementation head 410b658a75a478c12eb4c486879a763fa09fb1fe the effective task class is reviewer-safety (escalated from prose by the plan file) with required gates exact-head-independent-review, local-tests, repository-branch-and-pr, repository-rulebook-full-treatment. Independent review chain, all by Grok 4.6 (grok-4.6-build, session 01a0afc1-854d-7be2-9bab-f2202f92063c, $0.581 total across three turns): the plan was reviewed at 4f848c9f (sound-with-changes), every material finding folded in, and confirmed sound at 9785e328 (the only later change being the handoff de-staling that reviewer itself requested). Two main-movement refreshes then merged cleanly (1be47b02, 2f8606ed) touching no content file - only the .agent pair and merge commits. The governed slot-1 review at head 2f8606ed (durable verdict refs/db-review-verdicts/3210-3204-2f8606edfd19959db3952cf2f2375e3d3e155631, sequence 3168) returned REVISE with three findings; commit 410b658a addresses finding 2 (B2 now names renewalIssueScope) and finding 3 (Phase B ordering rule: B1+B2+B3 land as one change or B3 first), and this rewritten evidence record addresses finding 1 (stale pre-refresh head prose). A fresh exact-head governed review of 410b658a's descendant is required before merge and is recorded on the PR. Local tests: node scripts/agent-work-contract.mjs --validate-contract passed; no code is changed by this PR so the offline suites are exercised via the required contexts on PR #3204. Branch and PR: zcode/plan-orchestrator-required-load-reduction -> PR #3204. Rulebook treatment: this .agent pair plus the handoff contract block (issue 3199, status OPEN)."
     }
   ],
   "assumptions_resolved": [

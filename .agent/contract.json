@@ -1,40 +1,51 @@
 {
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
   ],
   "assumptions": [
-    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment.",
-    "Generation 3 exists because main advanced to 7a15d152 and conflicted only on the shared .agent pair; the branch was refreshed by MERGE (never rebase) as b0c64a08, with the pair resolved to this lane."
+    "Claim #2745 was moved off its reused worktree with the guarded --rebind-claim-worktree mode (#3182, PR #3185) to C:/repos/shared-db-worktrees/issue-2478-rebind-3182 at PR head af7b1689; the old worktree was never inspected or touched.",
+    "The backdated version 20260912030028 was superseded through the lane tool as 20260917112129 (supersession 0394af44, head 32f51125).",
+    "Issue #2478 scope now says application_return_to: u2giants/shared-db, because the helper and its two consumers live only in this repository, so the PR carries the read-only probe .github/live-proofs/2478.sql.",
+    "The branch was refreshed by MERGE onto main c705dfda; no behaviour change is intended and the existing contract tests for both consumers are unchanged."
   ],
-  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
-  "branch": "claude/fix-2367-test-comment",
+  "base_sha": "c705dfdad76275d859ad48cddb7f329956142d42",
+  "branch": "claude/issue-2478-sku-key-reissue",
   "db_reads": [],
-  "db_writes": [],
-  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; follow-up comment correction for #2367",
-  "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    ".agent/contract.json",
-    ".agent/completion.json"
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
   ],
-  "generation": 3,
-  "goal": "Correct the comment in scripts/production_business_risk_gate.py that wrongly says no test reaches the historical run-map guards; no behavior change.",
+  "dispatcher": "owner request to deliver claim #2745 (audit #3117) after lane-tool fix #3182",
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
+  ],
+  "generation": 6,
+  "goal": "Extract the shared SKU style-group derivation into public.style_group_key_for_sku and have public.rebuild_style_groups_batch and public.reconcile_style_group_drift call it, with no behaviour change.",
   "prohibited_actions": [
-    "No database change of any kind",
-    "No production workflow dispatch",
-    "No executable change to scripts/production_business_risk_gate.py; comment lines only"
+    "Do not touch the claim's former worktree C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9.",
+    "Do not write or repair any application rows; this is a structural change only.",
+    "Do not run DDL directly against preview or production; apply only through the governed workflows.",
+    "Do not weaken any guard to make a refusal pass."
   ],
   "required_checks": [
-    "python -m unittest scripts/test_*.py"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-migration-pr-lease.mjs"
   ],
-  "route": "repo-maintenance",
+  "route": "shared-db-orchestrator",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop if the correction needs anything beyond a comment change"
+    "Stop if a guard refusal could only be cleared by weakening the guard.",
+    "Stop if another claim is found to hold any of the three functions."
   ],
-  "work_issue": 2367,
-  "work_type": "repo-maintenance",
-  "worker": "Claude Opus 5 #2367 comment correction",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/hungry-noether-ff7235"
+  "work_issue": 2478,
+  "work_type": "structural",
+  "worker": "claude issue-2478 delivery session (claim #2745)",
+  "worktree": "C:/repos/shared-db-worktrees/issue-2478-rebind-3182"
 }

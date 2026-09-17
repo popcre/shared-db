@@ -1,29 +1,39 @@
 {
   "schema_version": 1,
-  "work_issue": 2367,
+  "work_issue": 2478,
   "outcome": "ready-for-merge",
-  "pr": 3177,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2367/3",
-  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
-  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
+  "pr": 2846,
+  "migration_versions": [
+    "20260917112129"
+  ],
+  "contract_ref": "refs/db-contracts/2478/6",
+  "contract_sha256": "e029e9280972ea3dc7986bb6cf9f4ddf608819b09842aa00d0f510ea7d8e136c",
+  "head_sha": "8243ccd7691a598c9e870b5b984fa14f212f7d21",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production_business_risk_gate.py"
+    ".github/live-proofs/2478.sql",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
+      "evidence": "Static checks passed at 8243ccd7 after merging main c705dfda."
+    },
+    {
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "exit_code": 0,
+      "evidence": "PR_NUMBER=2846: Migration claim verified: #2745, version 20260917112129."
     }
   ],
   "assumptions_resolved": [
-    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
-    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
+    "Claim #2745 rebound to the fresh worktree (rebind evidence da406344) and version superseded to 20260917112129 (supersession 0394af44).",
+    "Refreshed by merge onto main c705dfda; the live-proof probe was added for application_return_to u2giants/shared-db."
   ],
   "stop_conditions_hit": []
 }

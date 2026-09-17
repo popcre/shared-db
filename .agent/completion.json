@@ -1,32 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3173,
+  "work_issue": 3193,
   "outcome": "ready-for-merge",
-  "pr": 3172,
+  "pr": 3194,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/8",
-  "contract_sha256": "42be4090ca8fecab5679d385141b7deae02cea355486f69074666b807ff80408",
-  "head_sha": "56de15fe0228a93688a1096eafa8df256c5c389c",
+  "contract_ref": "refs/db-contracts/3193/1",
+  "contract_sha256": "0f97dd1bd7b749d481775bc6a15acf1dad9136b44bf5e292d1056cc29f5ceb65",
+  "head_sha": "51836fa5a138200dc72b7ad422b2952ddb71a6a6",
   "files_changed": [
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/lib/github-transport.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "python -m unittest scripts/test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "619 passed, 0 failed, 0 skipped at 56de15fe0228a93688a1096eafa8df256c5c389c after refreshing onto current origin/main; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
+      "evidence": "With scripts/test_migration_derivation.py and scripts/test_production_business_risk_gate.py: Ran 501 tests, OK. Two of the three new tests fail against main's guard. Workflow text tests (preview-ref, supabase-ref-config, rehearsal-map-parse, preview-mode-guard, automatic-promotion-source): 167 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
+    "Confirmed #2794's original rehearsal run 35216549909 checked out 8664e6a5, which is PR #2821's merge commit, so the historical-recovery lane applies"
   ],
   "stop_conditions_hit": []
 }

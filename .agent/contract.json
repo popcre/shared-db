@@ -1,21 +1,20 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3152,
+  "generation": 1,
+  "work_issue": 3158,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut request-to-live time (#3148, child #3152): the no-progress alarm also names a ready structural request that has sat more than 30 minutes without entering the outcome ledger, the largest measured remaining wait, with its unblock action.",
-  "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
-  "dispatcher": "Claude coordinator session for #3148 (Albert: spin up a subagent and handle them)",
-  "worker": "Claude Opus 5 #3148 subagent",
-  "branch": "claude/3148-r2l-sinks-af65",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-af650115bded9de14",
+  "goal": "Close the no-progress alarm blind spot (#3158): a ready request that has recorded entered but has no owning db-claim yet is watched with the same event thresholds.",
+  "base_sha": "388bbe56d630a02ee19cc9daa4cd4e82b55724df",
+  "dispatcher": "Claude coordinator session (Albert: spin up a subagent and handle them)",
+  "worker": "Claude Opus 5 #3158 subagent",
+  "branch": "claude/3158-entered-unclaimed-alarm",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a9498a99068a2e115",
   "allowed_paths": [
     "scripts/orchestrator-snapshot.mjs",
     "scripts/orchestrator-snapshot.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -24,7 +23,6 @@
     "scripts/orchestrator-snapshot.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -38,7 +36,7 @@
     "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
   ],
   "assumptions": [
-    "The sealed snapshot digest must not change, so unentered requests are returned beside the input, not inside it"
+    "The sealed snapshot digest must not change, so unclaimed events are returned beside the input, not inside it"
   ],
   "stop_conditions": [
     "Stop if the fix would need a database structure change"

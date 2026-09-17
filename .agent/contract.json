@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 10,
+  "generation": 11,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
   "goal": "Refuse /proddetails identity-collision keys per key instead of aborting the whole run: live order 20344 falsified the (prod_order_no, prod_line_seq) uniqueness asserted by #2863, and one colliding order must not block the remaining population. Collisions are recorded as FAILED sync_runs carrying refused markers, counted in every reconciliation, and still fail the run non-zero; feed-shape failures stay fatal; transport failures stay retried.",
-  "base_sha": "959100b61b64fc46fd2d0fa623be1efb1932e70f",
+  "base_sha": "644fe066c8122d19b9384ba36fd058855ce7462c",
   "dispatcher": "owner task instruction to a non-orchestrator source-data session (issue #3180 db-work-scope: work_type source-data, route source-data-session, writes [])",
   "worker": "ZCode GLM 5.3 session executing shared-db issue #3180",
   "branch": "claude/issue-3180-prod-detail-loader",
@@ -48,7 +48,8 @@
     "The scheduled ColdLion Landing Sync workflow is the sanctioned ongoing refresh vehicle, so the production-detail refresh step rides it after history and masters rather than in a new schedule.",
     "Generation 8: answers governed review round 1 (PR #3233). H1 - refused keys re-entered the refresh recent window through the flat done-set and refusedKeys counted rows; selection now carries the refused state separately and the reconciliation counts distinct orders. L2 - omitted-field fatality pinned by test. L4 - malformed values are per-key refusals, no longer retried-forever transport.",
     "Generation 9: files_changed now lists the complete base-to-head diff including the two .agent evidence files, as the git-evidence comparison requires once the implementation head advanced past the review-answer commit. No implementation change.",
-    "Generation 10: main advanced to 959100b6 (sibling prepack-detail fix, disjoint files); refreshed by merge at cfdd810e, only the .agent evidence files resolved. Implementation diff unchanged; the APPROVE at 093af65d carries per the content-preserving refresh rule."
+    "Generation 10: main advanced to 959100b6 (sibling prepack-detail fix, disjoint files); refreshed by merge at cfdd810e, only the .agent evidence files resolved. Implementation diff unchanged; the APPROVE at 093af65d carries per the content-preserving refresh rule.",
+    "Generation 11: main advanced to 644fe066 (sibling prepack refresh pacing) and touched the shared scheduled-sync workflow, so this branch merged it and added the same budget arithmetic for the production-detail refresh (PROD_DETAIL_ARGS --pause-ms 1000, requests still serialized; 2000-order limit at 3s alone would overrun the 90-minute job). A fresh exact-head review follows because main edited a file this pull request also edits."
   ],
   "stop_conditions": [
     "Stop and report if the live feed changes shape: unknown or omitted fields fail the whole run before anything is written.",

@@ -227,10 +227,6 @@ create index style_guide_library_default_guides_name_idx
   on public.style_guide_library_default_guides (sort_name, entity_key);
 
 -- Internal read models: only the SECURITY DEFINER search function reads them.
-revoke all on public.style_guide_library_default_summary from public, anon, authenticated;
-revoke all on public.style_guide_library_default_guides from public, anon, authenticated;
-grant select on public.style_guide_library_default_summary to service_role;
-grant select on public.style_guide_library_default_guides to service_role;
 
 create or replace function public.refresh_style_guide_library_default_snapshot()
 returns void

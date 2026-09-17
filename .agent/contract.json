@@ -1,46 +1,42 @@
 {
-  "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3152,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Cut request-to-live time (#3148, child #3152): the no-progress alarm also names a ready structural request that has sat more than 30 minutes without entering the outcome ledger, the largest measured remaining wait, with its unblock action.",
-  "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
-  "dispatcher": "Claude coordinator session for #3148 (Albert: spin up a subagent and handle them)",
-  "worker": "Claude Opus 5 #3148 subagent",
-  "branch": "claude/3148-r2l-sinks-af65",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-af650115bded9de14",
-  "allowed_paths": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
-  ],
-  "required_checks": [
-    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
-  ],
-  "assumptions": [
-    "The sealed snapshot digest must not change, so unentered requests are returned beside the input, not inside it"
-  ],
-  "stop_conditions": [
-    "Stop if the fix would need a database structure change"
-  ]
+ "schema_version": 1,
+ "generation": 1,
+ "work_issue": 3147,
+ "work_type": "repo-maintenance",
+ "route": "repo-maintenance",
+ "goal": "Close the four PR #3135 review follow-ups on the live-proof probe gate: refuse a PR that deletes or renames away its own probe, test the I/O layer through an injectable main(), tighten the probe shape check to what the live proof accepts, and document .github/live-proofs/ in AGENTS.md.",
+ "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
+ "dispatcher": "Claude coordinator session for #3029 follow-ups (Albert: spin up a subagent and handle them)",
+ "worker": "Claude Opus 5 #3147 subagent",
+ "branch": "claude/3147-probe-gate-followups",
+ "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a468e1849d7ef6d6c",
+ "allowed_paths": [
+  "scripts/check-live-proof-probe.mjs",
+  "scripts/check-live-proof-probe.test.mjs",
+  "AGENTS.md",
+  ".agent/contract.json",
+  ".agent/completion.json"
+ ],
+ "file_writes": [
+  "scripts/check-live-proof-probe.mjs",
+  "scripts/check-live-proof-probe.test.mjs",
+  "AGENTS.md",
+  ".agent/contract.json",
+  ".agent/completion.json"
+ ],
+ "db_reads": [],
+ "db_writes": [],
+ "prohibited_actions": [
+  "No database write or structure change of any kind",
+  "No production workflow dispatch"
+ ],
+ "required_checks": [
+  "node --test scripts/check-live-proof-probe.test.mjs"
+ ],
+ "assumptions": [
+  "Every committed probe under .github/live-proofs/ must still pass the tightened shape check"
+ ],
+ "stop_conditions": [
+  "Stop if the fix would need a database structure change"
+ ]
 }

@@ -1,75 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 2794,
+  "work_issue": 3181,
   "outcome": "ready-for-merge",
-  "pr": 2821,
-  "migration_versions": [
-    "20260917102139"
-  ],
-  "contract_ref": "refs/db-contracts/2794/6",
-  "contract_sha256": "fcdc84f2d54562d12354047cb3a15daa1431caec5e2a8ec72c06ada3433013a3",
-  "head_sha": "88bb7b9e4ce6551eb48b6a315f8571679639f5a2",
+  "pr": 3176,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3181/3",
+  "contract_sha256": "3a84ba3c66ed33fc3218bd1a9ee04932020de4c2ba0a60107ff43cccf87432fb",
+  "head_sha": "0bf55d6877eea9c5314c7004cc5a8be0bb53d4bb",
   "files_changed": [
-    ".github/live-proofs/2794.sql",
-    ".github/workflows/coldlion-licensor-property-phase6-parallel.yml",
-    "AGENTS.md",
-    "README.md",
-    "config/production-verification-sidecar-registry.json",
-    "docs/implementation/schema-implementation-notes.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260917102139.json",
-    "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260917102139_remove_retired_designflow_plm_import.sql",
-    "supabase/tests/licensing_write_authority_guard_contracts.sql",
-    "systemd/plm-sync-alert.service",
-    "systemd/plm-sync.service",
-    "systemd/plm-sync.timer",
-    "tools/coldlion-licensor-property-phase6.test.mjs",
-    "tools/phase6-schedule-map.mjs",
-    "tools/phase6-schedule-map.test.mjs",
-    "tools/run-plm-master-data-sync.sh",
-    "tools/sync-plm-master-data.mjs",
-    "tools/sync-plm-master-data.test.mjs"
+    "config/db-data-admin-property-source-coverage.json"
   ],
-  "db_reads": [
-    "catalog pg_proc",
-    "catalog pg_depend",
-    "catalog pg_trigger"
-  ],
-  "db_writes": [
-    "function plm.import_master_data(jsonb,jsonb)"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node scripts/check-db-data-admin-property-source-coverage.mjs",
       "exit_code": 0,
-      "evidence": "Static checks passed at head 88bb7b9e (main c705dfda merged, migration re-reserved as 20260917102139): 1 added migration, verify-cost guard passed, EOL reference guard passed."
+      "evidence": "DB Data Admin Property-source coverage passed: 38 families, 15 exposed, 332 plm tables classified."
     },
     {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "command": "node --test scripts/check-db-data-admin-property-source-coverage.test.mjs scripts/check-main-tip-freshness.test.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=305 at head 88bb7b9e."
-    },
-    {
-      "command": "node --test tools/*.test.mjs",
-      "exit_code": 0,
-      "evidence": "870 tests, 870 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo at head 88bb7b9e."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
-      "exit_code": 0,
-      "evidence": "status OK, 60 sidecars at head 88bb7b9e; 20260917102139 loads with its sidecar."
+      "evidence": "44 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "The drop is authorised rather than an archive: the issue says to remove the DesignFlow PLM sync completely and to drop the guarded importer once no callers remain, and the object is a raise-only #1090 retirement stub holding no rows, history or audit trail, so there is no data to dispose of.",
-    "Nothing still reads the importer. Production catalog evidence recorded in the migration header shows zero referencing functions, zero referencing views, zero non-normal pg_depend rows and proacl limited to postgres, measured with a positive control of 2 so the zeros are genuine absences rather than a silently broken predicate.",
-    "The migration re-proves this at apply time: it refuses to drop unless the body is still the #1090 retirement stub and no non-normal dependants exist, drops without cascade so an unexpected dependant fails loudly, and then verifies the licensing write-authority guard is still intact.",
-    "The licensing write-authority guard survives untouched and its contract test is unchanged in behaviour. Its comment previously claimed absence was 'asserted and enforced' and 'strictly stronger'; the slot-1 review was right that this overclaimed, because there is no else-raise and absence is the silent success path. The comment now states that plainly and points at the migration's own post-drop RAISE as the actual unconditional enforcement. Prose only: no test logic was changed and no guard was weakened. Still-present-as-the-#1090-stub remains a hard failure; present with a pre-retirement body is recorded with an explicit notice because the from-empty CI replay resurrects it via pass 2 (20260723183000 redeclares the routine after every pass-1 migration) and the pass-2 order repair cannot express absence, since a drop leaves no routine definition to snapshot. That harness gap is filed as #2833 rather than worked around here. The revived-importer replay block proving a rebuilt importer still cannot bypass the table guard is deliberately retained.",
-    "The Phase 6 workflow, schedule map and test edits were forced rather than optional, because those steps executed the deleted tool and test file and would have left main red.",
-    "Slot-1 review (glm, seq 3116) was right that the post-apply catalog verifier derives no target from this drop and would fail enforcing mode after a clean apply. Fixed with the sidecar route built for drops (#2029/#2043): hash-bound sidecar, named contract, registry declaration, regenerated detector digest. Live-proof trigger checks are now bound to core.licensor and core.property. The permanently unreachable DesignFlow leg of the taxonomy parallel-observation gate is pre-existing since #1090 and is left to a follow-up."
+    "Production proof for prod_order_milestone_schedule is run 35179427282 recorded on #3091"
   ],
-  "stop_conditions_hit": [],
-  "evidence_note": "Generation 5: sidecar fix on top of main e0c54faa; merge, never rebase."
+  "stop_conditions_hit": []
 }

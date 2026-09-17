@@ -51,13 +51,13 @@ begin
   -- the drop happened. What it does catch is the two ways absence is violated.
   --
   -- The unconditional absence check lives in the migration itself
-  -- (20260911225801), whose post-drop block RAISEs if to_regprocedure still
+  -- (20260917081021), whose post-drop block RAISEs if to_regprocedure still
   -- resolves the importer. That runs at apply time on a forward-only database
   -- and is the enforcement; this file is a conditioned corroboration of it.
   --
   -- Absence is asserted where it is assertable, and NOT asserted unconditionally,
   -- for a reason that was measured rather than assumed. On the from-empty CI
-  -- replay, migration 20260911225801 applies cleanly in pass 1 and the function is
+  -- replay, migration 20260917081021 applies cleanly in pass 1 and the function is
   -- genuinely dropped. But 20260723183000_step11_bounded_production_forward.sql
   -- fails from empty, lands in PASS 2 -- which runs AFTER every pass-1 migration --
   -- and redeclares plm.import_master_data with its pre-retirement body. The
@@ -70,7 +70,7 @@ begin
   --
   -- So: absent is the contract, and it is enforced by the migration's own
   -- post-drop RAISE rather than by this block. Present-and-still-the-#1090-stub
-  -- means 20260911225801 did not do its job and IS a failure. Present with a
+  -- means 20260917081021 did not do its job and IS a failure. Present with a
   -- pre-retirement body can only be the pass-2 resurrection, which is recorded
   -- loudly here instead of being asserted away or silently tolerated.
   --
@@ -81,7 +81,7 @@ begin
                 pg_get_functiondef(to_regprocedure('plm.import_master_data(jsonb,jsonb)'))) > 0 then
       raise exception
         'retired DesignFlow importer plm.import_master_data is still present as the '
-        '#1090 retirement stub: migration 20260911225801 did not remove it';
+        '#1090 retirement stub: migration 20260917081021 did not remove it';
     end if;
     raise notice
       'RECORDED: plm.import_master_data is present with a PRE-RETIREMENT body after '

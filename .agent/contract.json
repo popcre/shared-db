@@ -1,28 +1,24 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3158,
+  "work_issue": 3168,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Close the no-progress alarm blind spot (#3158): a ready request that has recorded entered but has no owning db-claim yet is watched with the same event thresholds.",
-  "base_sha": "388bbe56d630a02ee19cc9daa4cd4e82b55724df",
-  "dispatcher": "Claude coordinator session (Albert: spin up a subagent and handle them)",
-  "worker": "Claude Opus 5 #3158 subagent",
-  "branch": "claude/3158-entered-unclaimed-alarm",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a9498a99068a2e115",
+  "goal": "Stop the production risk gate's preview producer pin refusing #2870 and #2866, whose previews ran at main-line 426cca7c, over later main changes to custody-only producers: for an exact-main target and a ref proved an ancestor of exact main, tolerate an explicit custody-only producer set and a workflow that differs only by explicit custody rewrites, while apply-shaping producers and non-main-line refs still refuse.",
+  "base_sha": "03d540a6ff170a0b0141d9cd10a68ea6497888d0",
+  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
+  "worker": "Claude Opus 5 #3168 subagent",
+  "branch": "claude/producer-pin-custody",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
   "allowed_paths": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -33,18 +29,12 @@
     "No production workflow dispatch"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
+    "python -m pytest -q scripts/test_production_business_risk_gate.py"
   ],
   "assumptions": [
-    "The sealed snapshot digest must not change, so unclaimed events are returned beside the input, not inside it"
+    "A preview ref contained in exact main ran reviewed main-line copies of custody-only producers, which never execute, derive or write the applied SQL or its evidence"
   ],
   "stop_conditions": [
-    "Stop if the fix would need a database structure change"
+    "Stop if an apply-shaping producer difference or a non-main-line ref would pass the pin"
   ]
 }
-
-
-
-
-
-

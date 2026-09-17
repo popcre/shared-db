@@ -1,24 +1,26 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3199,
+  "generation": 3,
+  "work_issue": 3212,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Write the implementation plan reducing what MUST pass through the shared-db orchestrator without reducing safety (issue #3199): queue hygiene, a self-service additive lane for crm/pim/dam, and a zero-touch audit of the #2758 ephemeral wait chain; reviewed by Grok 4.6 after Muse failed, findings folded in.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
-  "dispatcher": "ZCode session relaying Albert's instruction",
-  "worker": "ZCode (GLM 5.3) repository-maintenance session",
-  "branch": "zcode/plan-orchestrator-required-load-reduction",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-plan",
+  "goal": "Keep every shared-db issue labelled exactly one of orchestrator or non-orchestrator: label on issue open/edit/reopen from the db-work-scope work_type, and sweep for blank or double-labelled issues on a schedule.",
+  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (issue label rule)",
+  "worker": "Claude Opus 5 session issue-orch-label-sync 2026-09-17",
+  "branch": "claude/issue-orch-label-sync",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-orch-label-sync",
   "allowed_paths": [
-    "plan_orchestrator_required_load_reduction.md",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "plan_orchestrator_required_load_reduction.md",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -26,16 +28,16 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of any safety gate, required check, or caller check"
+    "No change to any migration file or existing workflow"
   ],
   "required_checks": [
-    "ai-task-gates check --before pr-wait"
+    "node --test scripts/sync-issue-orchestrator-label.test.mjs"
   ],
   "assumptions": [
-    "origin/main moved twice during authoring; all queue counts in the plan cite the command that produces them per the 4.3 owner ruling"
+    "An issue that already carries exactly one of the two labels keeps it unless the issue is newly opened or its body is edited",
+    "Generation 3 re-seals the pair after a refresh from main 4b115d33; none of the merged changes touch this change's own files; the implementation head is the merge commit 1798102a5195a9126740f225af2593d2350fa9ca."
   ],
   "stop_conditions": [
-    "Stop if any change would weaken a safety gate or touch the database"
+    "Stop if the label rule would need to change an existing guard or workflow"
   ]
 }

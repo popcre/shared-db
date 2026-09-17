@@ -90,4 +90,11 @@ jobs:
           if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); fi
           node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
+          # The prepack refresh re-asks every harvested code daily (2,577 on
+          # 2026-09-17). The loader's 3s default pace was sized for the heavy
+          # paged history pulls; at that pace this one-at-a-time keyed lookup
+          # feed would need ~2h13m and overrun the job's 90-minute budget. 1s
+          # keeps the vendor agreement (serialized requests) and lands the
+          # whole refresh in ~45 minutes beside history+masters' ~8.
+          PREPACK_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"

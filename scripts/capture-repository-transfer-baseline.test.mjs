@@ -172,6 +172,13 @@ test('a local-only destination Actions policy names every third-party action it 
   assert.ok(build(world).blockers.includes('destination-actions-policy-disallows: actions/checkout, supabase/setup-cli'))
 })
 
+test('a selected-repositories destination Actions policy blocks readiness even when all actions are allowed', () => {
+  const world = fakeWorld({ 'orgs/popcre/actions/permissions': { enabled_repositories: 'selected', allowed_actions: 'all' } })
+  const { blockers, readyToTransfer } = build(world)
+  assert.ok(blockers.includes('destination-actions-policy-disallows: selected-repositories policy does not enable a transferred repository automatically'))
+  assert.equal(readyToTransfer, false)
+})
+
 test('active lanes, active runs, an open marker and missing owner approval each block readiness', () => {
   const world = fakeWorld({
     [`repos/${SOURCE}/git/ref/db-coordination/merge`]: { ref: 'refs/db-coordination/merge' },

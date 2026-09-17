@@ -323,6 +323,7 @@ export function captureTarget(gh, source, destination, usedActions, sourceRepo) 
   if (orgActions.ok) {
     const policy = orgActions.value
     if (policy.enabled_repositories === 'none') disallowed = ['actions disabled for organization repositories']
+    else if (policy.enabled_repositories === 'selected') disallowed = ['selected-repositories policy does not enable a transferred repository automatically']
     else if (policy.allowed_actions === 'local_only') disallowed = usedActions.filter((a) => !a.startsWith('./'))
     else if (policy.allowed_actions === 'selected') disallowed = ['selected-actions policy requires manual allowlist comparison']
   }

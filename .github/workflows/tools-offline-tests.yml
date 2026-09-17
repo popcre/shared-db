@@ -120,6 +120,13 @@ jobs:
           done
           node --test scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs
           node scripts/check-github-transport-conformance.mjs
+          # Repository identity (#2530): no new hard-coded owner/name slug. Tests first,
+          # so the checker is proven able to refuse a live hard-code before its verdict.
+          for f in scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs; do
+            test -f "$f" || { echo "::error::Missing $f"; exit 1; }
+          done
+          node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs
+          node scripts/check-repository-identity-conformance.mjs
 
       - name: Refuse to run with any production authorization present
         run: |

@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { START_SLO_MS, createDurableStartRerouteAdapter, dispatchQueuedReroute, reserveReviewerReroute, reviewerStartDecision } from './start-reroute.mjs'
 import { dispatchSubref, liveIo as canaryLiveIo } from './start-reroute-canary.mjs'
 import { runGitHubCommand } from '../lib/github-transport.mjs'
+import { currentRepository } from '../lib/repository-identity.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const MANAGER = path.resolve(HERE, '..', 'manage-migration-author-lanes.mjs')
@@ -197,7 +198,7 @@ export function liveWatchIo(repo, env = process.env) {
 
 export function main(argv = process.argv.slice(2)) {
   const i = argv.indexOf('--repo')
-  const repo = i >= 0 ? argv[i + 1] : 'u2giants/shared-db'
+  const repo = i >= 0 ? argv[i + 1] : currentRepository()
   const apply = argv.includes('--apply')
   const d = argv.indexOf('--drawn-since')
   const drawnSince = d >= 0 ? argv[d + 1] : null

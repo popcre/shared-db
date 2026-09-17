@@ -12,6 +12,7 @@
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { ghJson, runGitHubCommand } from './lib/github-transport.mjs'
+import { currentRepository, RepositoryIdentityError } from './lib/repository-identity.mjs'
 
 export class DispatchError extends Error {}
 export const WORKFLOW = '.github/workflows/shared-supabase-migrations.yml'
@@ -29,7 +30,7 @@ export function parseArgs(argv) {
     '--owner-decision-run-id': 'ownerDecisionRunId', '--source-pr': 'sourcePr', '--work-issue': 'workIssue',
     '--merged-pr-issue-binding': 'mergedPrIssueBinding', '--derivation-override': 'derivationOverride', '--repo': 'repo',
   }
-  const out = { dispatch: false, repo: 'u2giants/shared-db' }
+  const out = { dispatch: false, repo: undefined }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dispatch') { out.dispatch = true; continue }
     const key = flags[argv[i]]
@@ -50,6 +51,7 @@ export function parseArgs(argv) {
       if (out[k] !== undefined) throw new DispatchError(`a dry-run takes no ${k}; the workflow ignores it`)
     }
   }
+  try { out.repo = currentRepository(out.repo) } catch (error) { if (error instanceof RepositoryIdentityError) throw new DispatchError(error.message); throw error }
   return out
 }
 

@@ -1,43 +1,41 @@
 {
   "schema_version": 1,
-  "generation": 6,
-  "work_issue": 3208,
+  "generation": 1,
+  "work_issue": 2372,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part D): an event-aware host-wide watcher wakes each waiter once per change with no request, and its fallback polls through shared conditional reads with x-poll-interval and failure backoff, never busy-looping.",
-  "base_sha": "985e19b6c7ef5f8dbbf722ca3f773318cf63b987",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-d",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-d",
+  "goal": "Add focused falsification coverage proving owner-decision evidence rejects an unmerged or mismatched source commit and rejects an immutable artifact that differs from the fresh authenticated owner ruling.",
+  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "dispatcher": "Codex root session acting on Albert's request to resolve six unblocked non-orchestrator issues",
+  "worker": "Codex root session issue #2372 lane",
+  "branch": "codex/issue-2372-artifact-proof",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2372-artifact-proof-20260917/shared-db",
   "allowed_paths": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/test_production_owner_decision_evidence.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/test_production_owner_decision_evidence.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
+    "No database read, write, or structure change",
     "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No weakening or removal of owner-decision refusal guards"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "python -m unittest scripts.test_production_owner_decision_evidence -v",
+    "GITHUB_REPOSITORY=u2giants/shared-db python scripts/mutation_sweep_guards.py --file scripts/production_owner_decision_evidence.py --command 'python -m unittest scripts.test_production_owner_decision_evidence' --workers 2 --max-seconds 180"
   ],
   "assumptions": [
-    "Webhook registration on GitHub needs repository settings and is out of scope; the notify hook is the event entry point"
+    "Issue #2372 remains open, ready, unassigned, and has no open pull request or dependency"
   ],
   "stop_conditions": [
-    "Stop if a wake could be reported without an event or generation change"
+    "Stop if either assigned mutation survives",
+    "Stop if live ownership or a dependency appears"
   ]
 }

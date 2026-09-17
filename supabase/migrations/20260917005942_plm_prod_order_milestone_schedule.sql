@@ -42,6 +42,8 @@ CREATE TABLE plm.prod_order_milestone_schedule (
   first_past_due_at timestamptz,
   CONSTRAINT prod_order_milestone_schedule_stage_name_not_blank_check
     CHECK (btrim(stage_name) <> '' AND stage_name = btrim(stage_name)),
+  CONSTRAINT prod_order_milestone_schedule_sku_trimmed_check
+    CHECK (sku = btrim(sku)),
   CONSTRAINT prod_order_milestone_schedule_status_not_blank_check
     CHECK (btrim(status) <> '' AND status = btrim(status)),
   CONSTRAINT prod_order_milestone_schedule_days_nonnegative_check

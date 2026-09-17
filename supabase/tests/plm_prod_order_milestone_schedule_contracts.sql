@@ -77,5 +77,12 @@ begin
       raise exception 'untrimmed status was accepted';
     exception when check_violation then null;
     end;
+
+    begin
+      insert into plm.prod_order_milestone_schedule(prod_order_header_id, stage_name, sku, status)
+      values (header_id, 'zztest Trim Sku', 'ZZTEST-SKU ', 'Pending');
+      raise exception 'untrimmed sku was accepted';
+    exception when check_violation then null;
+    end;
   end;
 end $$;

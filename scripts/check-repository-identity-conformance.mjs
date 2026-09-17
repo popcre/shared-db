@@ -58,7 +58,7 @@ export const ALLOWLIST = {
   'scripts/check-exact-head-approval.test.mjs': [3, FIXTURE],
   'scripts/check-github-transport-conformance.test.mjs': [1, FIXTURE],
   'scripts/check-handoff-contract.test.mjs': [2, FIXTURE],
-  'scripts/check-live-proof-probe.test.mjs': [4, 'issue-body fixtures and the historical return-to name (#2530)'],
+  'scripts/check-live-proof-probe.test.mjs': [4, 'issue-body fixtures at lines 12, 18, 24 and 46: three historical return-to cases and the transferred-name test (#2530)'],
   'scripts/check-intake-pointer.test.mjs': [1, FIXTURE],
   'scripts/check-orchestrator-marker.test.mjs': [1, FIXTURE],
   'scripts/check-pr-object-collisions.test.mjs': [2, FIXTURE],

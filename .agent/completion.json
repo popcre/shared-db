@@ -1,31 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3187,
+  "work_issue": 3195,
   "outcome": "ready-for-merge",
-  "pr": 3192,
+  "pr": 3196,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3187/6",
-  "contract_sha256": "b2651bcdc688548217e4ad53fdc2757861f32b7a4b362d27c44706762ae4d1f1",
-  "head_sha": "ac1a9b39e3fecb6c981a35b62ea01cde5619e96c",
+  "contract_ref": "refs/db-contracts/3195/4",
+  "contract_sha256": "c94ba5125f858e980e43fb04dbc195744f16d0354696428a024a94bbb41c2333",
+  "head_sha": "70b9457a4cb8aa69a57cc29b4bfe995fe2a09321",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    ".github/workflows/pr-object-collision.yml",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/check-migration-pr-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "At ac1a9b39e3fecb6c981a35b62ea01cde5619e96c the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1282 passed (now including the throughput-guard suites; truth audit OK at 307 call sites), 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
+      "evidence": "131 pass, 0 fail, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "git ls-remote with a ref pattern measured 1.1s against 1.4s for one gh api read on 2026-09-17; no API quota used"
+    "PR #3190 migration at dff65de9 now yields exactly the claim #3189 writes: function api.db_data_admin_scraped_source_inventory, table plm.sesame_submission_property_option"
   ],
   "stop_conditions_hit": []
 }

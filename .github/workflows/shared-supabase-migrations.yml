@@ -749,15 +749,13 @@ jobs:
           # cannot resolve. Same code path as production, judged against preview's
           # own ledger.
           #
-          # READ THE FAILURE TEXT CAREFULLY. The guard is shared, and its messages
-          # are worded for production -- "already applied on production" here means
-          # ALREADY APPLIED ON PREVIEW, because `--remote-ledger` is preview's
-          # ledger, read by this job seconds ago. The wording is not corrected here
-          # because this job does not own scripts/; the check itself is correct.
+          # `--ledger-name preview` makes the shared guard name the ledger it read
+          # (issue #3193): `--remote-ledger` is preview's ledger, read seconds ago.
           python scripts/production_migration_guard.py preflight \
             --repo "$GITHUB_WORKSPACE" \
             --allowlist "$PREVIEW_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/preview-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/preview-ledger-before.txt" \
+            --ledger-name preview
       - name: Build bounded checkout
         if: (inputs.historical_preview_source_pr == '' && inputs.historical_preview_source_pr_map == '')
         env:
@@ -769,7 +767,8 @@ jobs:
             --output "$RUNNER_TEMP/bounded-preview" \
             --commit-sha "$COMMIT_SHA" \
             --allowlist "$PREVIEW_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/preview-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/preview-ledger-before.txt" \
+            --ledger-name preview
       # THE HONEST DRY-RUN. It runs against the BOUNDED checkout, so what it
       # prints is exactly what an apply of this same allowlist would do -- not the
       # whole pending queue, which is what the old bare `db push --dry-run`

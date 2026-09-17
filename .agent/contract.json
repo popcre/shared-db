@@ -1,49 +1,40 @@
 {
   "schema_version": 1,
-  "generation": 6,
-  "work_issue": 3187,
+  "generation": 4,
+  "work_issue": 3195,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part B): normal reviewer assignment and replacement use at most 10 API requests, proven by a wire-level fixture.",
-  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-b",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-b",
+  "goal": "Resolve a keyword-less or on-table grant's kind from the CREATE in the same migration so a grant on a newly created table is not refused as an undeclared view write, while grants on views stay detected (#3183).",
+  "base_sha": "d0cec2a26ead5f368a15957969c44f7d46784f32",
+  "dispatcher": "Albert Hazan chat session",
+  "worker": "Claude Opus 5 sub-agent agent-aa5246435e4e6b9b3",
+  "branch": "claude/fix-grant-kind-from-create",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa5246435e4e6b9b3",
   "allowed_paths": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    ".github/workflows/pr-object-collision.yml",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    ".github/workflows/pr-object-collision.yml",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No database write or structure change of any kind"
   ],
   "required_checks": [
-    "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/check-migration-pr-lease.test.mjs"
   ],
   "assumptions": [
-    "git ls-remote with ref patterns costs no GitHub API quota and takes about the same time as one API read (measured 1.1s against 1.4s on 2026-09-17)"
+    "A name created in the migration as exactly one of table or view is that kind for every grant in the same migration",
+    "Generation 4: refreshed by merge onto main d0cec2a2; the implementation diff is unchanged."
   ],
   "stop_conditions": [
-    "Stop if any change makes an unreadable ref or commit read as absent, or weakens a safety lock"
+    "Stop if a grant on a view created in the same migration stops producing the view key"
   ]
 }

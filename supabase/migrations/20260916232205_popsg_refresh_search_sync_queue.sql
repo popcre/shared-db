@@ -14,6 +14,17 @@
 -- a flag there rewrites every index entry (about 3.7 ms per row). Signature,
 -- return shape, grants, batch bound and caller contract are unchanged. No
 -- timeout changes.
+-- Review of PR #3118: the eight-second limit is set on the authenticator role
+-- (the API path the crawler calls through), not on the postgres role that
+-- applies migrations, so the one-time seed at the end of this file (about 12 s
+-- read-only on production) runs without a timeout change. It runs while the
+-- trigger's table lock is held, so no concurrent change can slip between the
+-- seed and the trigger; apply outside the nightly crawl window.
+-- Accepted gap: a search document deleted out-of-band, or a file written with
+-- triggers disabled, is not requeued until its next identity change. Nothing in
+-- the repository does either; re-running the seed statement repairs it. A
+-- per-call sweep is not added because the cheapest missing-document anti-join
+-- alone takes about 3.7 s on production.
 
 create table if not exists public.style_guide_search_sync_queue (
   style_guide_file_id uuid primary key,

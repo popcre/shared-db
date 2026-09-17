@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3148,
+  "work_issue": 3152,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut request-to-live time (#3148): the no-progress alarm also names a ready structural request that has sat more than 30 minutes without entering the outcome ledger, the largest measured remaining wait, with its unblock action.",
+  "goal": "Cut request-to-live time (#3148, child #3152): the no-progress alarm also names a ready structural request that has sat more than 30 minutes without entering the outcome ledger, the largest measured remaining wait, with its unblock action.",
   "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
   "dispatcher": "Claude coordinator session for #3148 (Albert: spin up a subagent and handle them)",
   "worker": "Claude Opus 5 #3148 subagent",

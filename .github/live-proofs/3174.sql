@@ -1,9 +1,9 @@
--- Live proof for #3174 (migration 20260917112114). Read-only.
+-- Live proof for #3174 (migration 20260917144950). Read-only.
 -- Proves: the migration is in production's ledger; the inventory function carries the
 -- five new sections; plm.sesame_submission_property_option exists with RLS and no
 -- client read grant; the latest complete Peanuts capture yields 19 Tenovos-id rows.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917112114')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917144950')
   and position('''coca-cola-submissions''' in pg_get_functiondef('api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0
   and position('''wwe-creative''' in pg_get_functiondef('api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0
   and position('''peanuts-creative''' in pg_get_functiondef('api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0

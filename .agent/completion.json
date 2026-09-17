@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/4",
-  "contract_sha256": "e1e589a5351d4543fa0be213a314999fefe024a6b0ac0ac04690c062460b1b29",
-  "head_sha": "ccf8f19e73e69ac9901323d6db25d2ace1aedb80",
+  "contract_ref": "refs/db-contracts/3173/5",
+  "contract_sha256": "50fcfdaecc5bcd49dd45f11805c91b3ae44d3b31f05724a1cf391dbbd78ca3c9",
+  "head_sha": "a37bda4306389183a815baaf56dad121044c285a",
   "files_changed": [
     "scripts/lib/github-conditional.mjs",
     "scripts/lib/github-conditional.test.mjs",
@@ -22,7 +22,7 @@
     {
       "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "619 passed, 0 failed, 0 skipped at ccf8f19e73e69ac9901323d6db25d2ace1aedb80; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read; waiters keep waiting through a latched quota wait; exhausted-quota latch stops other callers with 0 wire requests until reset; failed check-run polls back off 30/60/120/300s with jitter and honor x-poll-interval; a crashed holder during a latched wait is taken over after reset plus stale window."
+      "evidence": "619 passed, 0 failed, 0 skipped at a37bda4306389183a815baaf56dad121044c285a; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
     }
   ],
   "assumptions_resolved": [

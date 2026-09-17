@@ -1,28 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 3170,
+  "work_issue": 2611,
   "outcome": "ready-for-merge",
-  "pr": 3171,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3170/1",
-  "contract_sha256": "281f95348ca25635b971a84f6d04ee3bc14976a942514fea32c7ff3864d5dfb4",
-  "head_sha": "758c76b6c30bffc976a3e199cf39ea59da15a130",
+  "pr": 2823,
+  "migration_versions": [
+    "20260917081048"
+  ],
+  "contract_ref": "refs/db-contracts/2611/8",
+  "contract_sha256": "fc188ffea9ccb1760ae6c0cfffee2b1aa2e0ccea92bea0d031a0dbfa030a93f7",
+  "head_sha": "c2d1e2609c323d382c71dd52d7e60d70f9b2c71a",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/coordination-scenarios.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs"
+    ".github/workflows/prepack-exclusion.yml",
+    "docs/business-rules/product-items-and-identifiers.md",
+    "docs/verification/prepack-exclusion-20260911.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-prepack-exclusion.mjs",
+    "scripts/check-prepack-exclusion.test.mjs",
+    "supabase/migrations/20260917081048_prepack_exclusion.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role",
+    "view plm.item_missing_attribution",
+    "table plm.item_missing_attribution"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "656 pass, 0 fail, 0 skipped. The #3170 resume regression test fails against origin/main code with 'blocked_on is allowed only for relinquished author capacity'. Full author-lease workflow test set: 1458 tests, only failure was the retirement-guard discovery test, fixed by guarding repairResumedClaim."
+      "evidence": "Static checks passed at c2d1e260."
+    },
+    {
+      "command": "node scripts/check-prepack-exclusion.test.mjs",
+      "exit_code": 0,
+      "evidence": "Prepack exclusion test passed at c2d1e260: guard verified green on the tree and red on 10 dirty cases, including a later function-only migration weakening plm.prepack_role."
+    },
+    {
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "exit_code": 0,
+      "evidence": "PR_NUMBER=2823: Migration claim verified: #2819, version 20260917081048."
     }
   ],
   "assumptions_resolved": [
-    "Resume removal now uses the parser's trimmed-line field reading; repair mode changes only relinquish-only residue lines"
+    "Refreshed by merge onto main a447584d with no conflicts; version 20260917081048 remains newest on main.",
+    "Throughput truth audit re-run OK at 306 call sites at c2d1e260.",
+    "Governed review sequence 3111 (Muse) returned REVISE at 21cda954 on one High guard finding; fixed in c2d1e260 together with Lows 5-7. Mediums 2-4 are SQL performance/scoping/business-scope observations left for follow-up, not blockers."
   ],
   "stop_conditions_hit": []
 }

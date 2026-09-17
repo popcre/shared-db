@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "work_issue": 2530,
+  "work_issue": 3124,
   "outcome": "ready-for-merge",
   "pr": 3121,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2530/1",
-  "contract_sha256": "d0b59efd4ced2f1e1c8160599a73907ebf4a4666b8663358cb3de7ac754a3fb0",
+  "contract_ref": "refs/db-contracts/3124/1",
+  "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
   "head_sha": "bf0744f61d021cb2b45d5ffb43879df72ba68af0",
   "files_changed": [
     ".github/workflows/guarded-migration-merge.yml",

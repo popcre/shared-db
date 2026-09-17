@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2530,
+  "work_issue": 3124,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Plan Step 2: resolve this repository identity (explicit, GITHUB_REPOSITORY, verified origin) instead of hard-coding the owner/name slug; conformance check with exact allowlist. No transfer, no GitHub setting change, no database action.",
   "base_sha": "b4a39203fa55e5a11e15d5d01a8c097836e41bda",
   "dispatcher": "Claude #2530 transfer coordination session (owner instruction relayed 2026-09-16: do all the work you can without the actual switchover)",
-  "worker": "Claude Opus 5 #2530 Step 2 repository identity",
+  "worker": "Claude Opus 5 #3124 (#2530 Step 2) repository identity",
   "branch": "claude/shared-db-2530-step2-7c41",
   "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-step2-7c41",
   "allowed_paths": [

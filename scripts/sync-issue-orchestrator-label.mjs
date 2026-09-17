@@ -26,7 +26,7 @@ export const ORCH = 'orchestrator'
 export const NON_ORCH = 'non-orchestrator'
 export const ORCH_WORK_TYPES = new Set(['structural', 'curated-master-data'])
 export const COORDINATION_LABELS = new Set(['orchestrator-marker', 'orchestrator-alarm', 'db-claim'])
-export const MISSING_SCOPE_MARKER = '<!-- issue-orch-label-sync:missing-scope -->'
+export const MISSING_SCOPE_MARKER = '<!-- issue-orch-label-sync:scope-absent -->'
 const SCOPE_FENCE = /```db-work-scope\s*\n([\s\S]*?)```/g
 
 export function scopeWorkType(body = '') {

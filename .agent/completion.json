@@ -1,28 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3170,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 3171,
+  "pr": 3177,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3170/1",
-  "contract_sha256": "281f95348ca25635b971a84f6d04ee3bc14976a942514fea32c7ff3864d5dfb4",
-  "head_sha": "758c76b6c30bffc976a3e199cf39ea59da15a130",
+  "contract_ref": "refs/db-contracts/2367/3",
+  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
+  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/coordination-scenarios.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
+      "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "656 pass, 0 fail, 0 skipped. The #3170 resume regression test fails against origin/main code with 'blocked_on is allowed only for relinquished author capacity'. Full author-lease workflow test set: 1458 tests, only failure was the retirement-guard discovery test, fixed by guarding repairResumedClaim."
+      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
     }
   ],
   "assumptions_resolved": [
-    "Resume removal now uses the parser's trimmed-line field reading; repair mode changes only relinquish-only residue lines"
+    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
+    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
   ],
   "stop_conditions_hit": []
 }

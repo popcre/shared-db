@@ -1,42 +1,40 @@
 {
-  "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3170,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Stop author-capacity resume leaving relinquish-only fields (blocked_on, worktree_state, recovery) on an active claim, and add a narrow owner-only --repair-resumed-claim mode that removes that residue after a recorded author_capacity_resumed event, so claim #2834 can be made readable again.",
-  "base_sha": "4d5bbb9f6bb1426a3c10b874bc58edc2a71eb523",
-  "dispatcher": "Claude coordinator session for shared-db lane unblock",
-  "worker": "Claude Opus 5 #3170 subagent",
-  "branch": "claude/fix-resume-worktree-state",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a556e3304fe07721f",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/coordination-scenarios.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/coordination-scenarios.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No hand edit of a fenced claim block"
-  ],
-  "required_checks": [
-    "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs"
   ],
   "assumptions": [
-    "A lease line the parser reads after trimming must be removed by resume under the same reading"
+    "Generation 2 exists because generation 1 landed its test file (PR #3145) and a stale code comment in scripts/production_business_risk_gate.py still claimed no test reaches the historical run-map guards; this generation corrects only that comment.",
+    "Generation 3 exists because main advanced to 7a15d152 and conflicted only on the shared .agent pair; the branch was refreshed by MERGE (never rebase) as b0c64a08, with the pair resolved to this lane."
   ],
+  "base_sha": "7a15d1528cc55796280105d6446ebb7a3ea2e6e4",
+  "branch": "claude/fix-2367-test-comment",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; follow-up comment correction for #2367",
+  "file_writes": [
+    "scripts/production_business_risk_gate.py",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "generation": 3,
+  "goal": "Correct the comment in scripts/production_business_risk_gate.py that wrongly says no test reaches the historical run-map guards; no behavior change.",
+  "prohibited_actions": [
+    "No database change of any kind",
+    "No production workflow dispatch",
+    "No executable change to scripts/production_business_risk_gate.py; comment lines only"
+  ],
+  "required_checks": [
+    "python -m unittest scripts/test_*.py"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if the repair mode could change capacity, owner, expiry, or claimed objects"
-  ]
+    "Stop if the correction needs anything beyond a comment change"
+  ],
+  "work_issue": 2367,
+  "work_type": "repo-maintenance",
+  "worker": "Claude Opus 5 #2367 comment correction",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/hungry-noether-ff7235"
 }

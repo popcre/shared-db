@@ -1,26 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 2366,
+  "work_issue": 3153,
   "outcome": "ready-for-merge",
-  "pr": 3144,
+  "pr": 3155,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2366/1",
-  "contract_sha256": "63120320b0931738e4d9a07766f6a49a6b8d8278cda80217a3f77b9c31d4f987",
-  "head_sha": "be3e03bcd01919db6a597195a18f07af6550baed",
+  "contract_ref": "refs/db-contracts/3153/2",
+  "contract_sha256": "7694d975ca4c729f5a2d969f8025ce5d4dc5f7d4ebf43e87b493f9ef121a3a8d",
+  "head_sha": "7283dbffc6ccb930d0b98a23838c0679d051ba4f",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_governed_supersession_mutations.py"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
+      "evidence": "162 passed, 0 failed, 0 skipped; new #2870/#2866 regression test fails on main and passes here. Full scripts pytest: 1248 passed, 8 skipped."
+    },
+    {
+      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 25, pass 25, fail 0, skipped 0; the #3091 production-mode test cannot import on main."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 9 governed-supersession guard mutants listed in issue #2366; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "The coverage manifest's only reader is the validate job; the 'Never read by the preview job' phrase test passes",
+    "No production job step in shared-supabase-migrations.yml runs pytest or node --test, and no non-test script imports a test file"
   ],
   "stop_conditions_hit": []
 }

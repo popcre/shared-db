@@ -1,46 +1,21 @@
 {
-  "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
-  "assumptions": [
-    "The recorded worktree of claim #2745 is used by another session with uncommitted work, so the rebind never inspects or touches the old worktree.",
-    "Renewal of an active lease is refused by design, so rebind requires an active lease and asks for renewal first otherwise.",
-    "Generation 3 binds the fixes for the governed review REVISE at 73828438.",
-    "Generation 4: refreshed by merge onto main 4fec003d; the implementation diff is unchanged.",
-    "Generation 5: refreshed by merge onto main ae714512; the implementation diff is unchanged."
-  ],
-  "base_sha": "ae7145128de84a5237560528004c9fdf411d9633",
-  "branch": "claude/issue-3182-rebind-claim-worktree",
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3198,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make the migration author lease check accept a grant/revoke on a table the same migration file creates when the claim declares that table, restoring PR #3190 (claim #3189), without relaxing the declaration requirement for grants on pre-existing relations.",
+  "base_sha": "4fec003d67bd036ef0e0b265b28b8c7de0aceaa8",
+  "dispatcher": "Albert Hazan chat request to fix the lease check refusing grants on created tables",
+  "worker": "ZCode (GLM-5.3) #3198 session",
+  "branch": "claude/fix-lease-grant-created-table",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/fix-lease-grant-table-3191-090754",
+  "allowed_paths": ["scripts/check-migration-pr-lease.mjs","scripts/check-migration-pr-lease.test.mjs",".agent/contract.json",".agent/completion.json"],
+  "file_writes": ["scripts/check-migration-pr-lease.mjs","scripts/check-migration-pr-lease.test.mjs",".agent/contract.json",".agent/completion.json"],
   "db_reads": [],
   "db_writes": [],
-  "dispatcher": "owner request to unstick claim #2745 (audit #3117)",
-  "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
-  "generation": 5,
-  "goal": "Add a guarded --rebind-claim-worktree mode to the lane manager that moves a live claim to a new clean worktree on the claim branch at the exact open PR head, with owner proof, mutex, exact readback, rollback and create-only evidence, covered by tests.",
-  "prohibited_actions": [
-    "Do not inspect, modify or clean the claim's previously recorded worktree.",
-    "Do not weaken any existing lane guard, renewal refusal or supersession check.",
-    "Do not change any database structure or data."
-  ],
-  "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
-  ],
-  "route": "repo-maintenance",
-  "schema_version": 1,
-  "stop_conditions": [
-    "Stop if moving the claim could only be done by bypassing owner proof or the mutex."
-  ],
-  "work_issue": 3182,
-  "work_type": "repo-maintenance",
-  "worker": "claude issue-3182 lane tooling session",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a652a18e111c40487"
+  "prohibited_actions": ["No database write or structure change of any kind", "No change to check-pr-object-collisions.mjs grant dual-keying"],
+  "required_checks": ["node --test scripts/check-migration-pr-lease.test.mjs", "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs"],
+  "assumptions": ["A migration cannot create a table and a view with the same qualified name, so a view key on a table created in the same file can only come from grant/revoke dual-keying", "Claims cannot be amended after creation, so the view half must be covered lease-side"],
+  "stop_conditions": ["Stop if the fix would relax the view declaration requirement for a relation the migration does not create", "Stop if the collision guard's dual-keying would need to change"]
 }

@@ -1,36 +1,19 @@
 {
   "schema_version": 1,
-  "work_issue": 3182,
+  "work_issue": 3198,
   "outcome": "ready-for-merge",
-  "pr": 3185,
+  "pr": 3200,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3182/5",
-  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
-  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/3198/1",
+  "contract_sha256": "9a29e3c0787cd76b3d4ec28fd085f449498873f71af6c201c3f47da79cdc61dd",
+  "head_sha": "c67b2739aec59565290be35e536f02e8755bf2b6",
+  "files_changed": ["scripts/check-migration-pr-lease.mjs","scripts/check-migration-pr-lease.test.mjs"],
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
-      "exit_code": 0,
-      "evidence": "628 tests, 628 pass, 0 fail at a8df2e63 after merging main 4fec003d."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=305 at a8df2e63."
-    }
+    {"command": "node --test scripts/check-migration-pr-lease.test.mjs", "exit_code": 0, "evidence": "22 pass, 0 fail at merged head c67b2739, including the three new #3191 tests: grant on a created table needs no view declaration (TABLE-keyword and keyword-less forms), the relaxation is gated on the declared table, and a grant on a relation the migration does not create still requires its view declaration."},
+    {"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs", "exit_code": 0, "evidence": "110 pass, 0 fail at merged head c67b2739; the collision reader is untouched. Also verified offline: the exact PR #3190 statement shape (create table + revoke all on table plm.sesame_submission_property_option) now validates against a claim declaring only the table, while an existing-relation grant still refuses with both keys named."}
   ],
-  "assumptions_resolved": [
-    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
-    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
-    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
-  ],
+  "assumptions_resolved": ["Confirmed from the parser that a `view X` key alongside `create table X` in one file can only be produced by grant/revoke dual-keying (42ae9758), since extractOperations keys create-table and grants independently", "Confirmed claims are immutable after creation, so the coverage must come from the lease-side check"],
   "stop_conditions_hit": []
 }

@@ -1,44 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3174,
+  "work_issue": 3179,
   "outcome": "ready-for-merge",
-  "pr": 3190,
-  "migration_versions": [
-    "20260917144950"
-  ],
-  "contract_ref": "refs/db-contracts/3174/9",
-  "contract_sha256": "d3b26dec5934e3b919c46a24db56b44a7e31abe6aa68dd400511126176b63d31",
-  "head_sha": "899b0f8b8b28adac1e6e890de24818eb2b660b32",
+  "pr": 3220,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3179/1",
+  "contract_sha256": "edf466bbf137f94c77fe90a50ed070acf81e3550dc8ccf21f525e99d30a51e9a",
+  "head_sha": "70283d04b1cf595d8479ea43cf9494c9c6915783",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
-    "supabase/tests/sesame_landing_contracts.sql"
+    ".github/workflows/coldlion-landing-sync.yml",
+    ".github/workflows/coldlion-prepack-backfill.yml",
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prepack-detail.mjs",
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
-  "db_reads": [
-    "table plm.coke_approval_vocabulary_value",
-    "table plm.wwe_creative_brand",
-    "table plm.peanuts_art_program",
-    "table plm.sesame_brand",
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member"
-  ],
-  "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory",
-    "table plm.sesame_submission_property_option"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
+    {
+      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "exit_code": 0,
+      "evidence": "33/33 pass: eighteen-field projection, sentinel normalisation, replay idempotence (byte-identical SQL), duplicate and blank-key refusal, fractional-quantity refusal, request-identity guards, zero-row and malformed responses, bounded resumability, load-transaction shape, workflow target/secret/serialisation guards, privacy guards."
+    },
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs",
+      "exit_code": 0,
+      "evidence": "100/100 pass — the existing ColdLion landing suites are unbroken by the workflow extension (history-then-masters ordering still asserted and still true)."
+    },
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Previous head failed only the backdated-version guard (fixed by governed version supersession) and Sesame census A (20 vs 19 sesame_ tables; census now excludes the separate submissions landing). Both re-verified by CI on this head."
+      "evidence": "Static guards pass; this pull request adds no migration, so Guard B compared zero new versions against origin/main's newest 20260917144950."
     }
   ],
   "assumptions_resolved": [
-    "Production function body md5 matched migration 20260917005650 before derivation.",
-    "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today.",
-    "Migration version superseded to 20260917144950 through --reversion-active-claim; claim #3189 lease version updated by the tool."
+    "The complete approved prepackCode population IS derivable from already-landed data: the loader harvests coldlion.item_detail, coldlion.prod_history_line and coldlion.order_history_line, and probes coldlion.inventory and coldlion.prod_detail with to_regclass so they contribute once their own loaders exist.",
+    "Resumability needed no schema change: every successful run records the cumulative covered key set in coldlion.sync_run.request_params, exactly as the issue's no-shape-change scope requires.",
+    "Runtime row writes (coldlion.prepack_detail, sync_run, change_log) are deliberately outside this contract's db lists: the contract validator requires non-structural work to declare empty db_reads/db_writes, and the loader's target-proof and transaction guarantees live in the tested loader code and its workflows."
   ],
   "stop_conditions_hit": []
 }

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { coordinationEvent, formatEventComment } from './db-coordination-events.mjs'
 import { buildOrchestratorSnapshot, verifyOrchestratorSnapshot } from './orchestrator-flow/orchestrator-snapshot.mjs'
-import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, runSnapshotCycle, stalledOutcomes } from './orchestrator-snapshot.mjs'
+import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, readyRequestCandidates, runSnapshotCycle, stalledOutcomes, stalledRequests } from './orchestrator-snapshot.mjs'
 
 const NOW = '2026-09-15T12:00:00.000Z'
 const minutesAgo = (m) => new Date(Date.parse(NOW) - m * 60000).toISOString()
@@ -25,6 +25,25 @@ function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CL
     issueComments: (_repo, issue) => comments[issue] ?? [],
   }
 }
+
+test('issue 3148 a ready structural request with no ledger event alarms after 30 minutes; blocked, dependent, claimed and entered ones do not', () => {
+  const scope = (status, extra = '') => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: shared-db-orchestrator\n' + extra + 'writes:\n- table core.a\n```'
+  const base = fakeIo()
+  const issues = [
+    { number: 950, body: scope('ready'), created_at: minutesAgo(31), labels: [{ name: 'db-work' }], comments: 0 },
+    { number: 951, body: scope('blocked'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 952, body: scope('ready', 'depends_on: #953\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 953, body: 'dependency', created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 954, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 1 },
+    { number: 955, body: scope('ready'), created_at: minutesAgo(30), labels: [], comments: 0 },
+    { number: 956, body: scope('ready'), created_at: minutesAgo(600), labels: [{ name: 'db-claim' }], comments: 0 },
+  ]
+  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue), [950, 954, 955])
+  const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
+  const { unentered } = gatherLiveInput('o/r', io)
+  assert.deepEqual(unentered.map((row) => row.work_issue), [950, 955])
+  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[950, 'requested', 31]])
+})
 
 test('121-minute idle outcome appears in stalled_outcomes; 120 does not', () => {
   const events = [event(800, 'dispatched', 121), event(801, 'dispatched', 120)].map((e) => ({ ...e }))

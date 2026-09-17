@@ -37,6 +37,16 @@ test('an outcome without a transition for over 120 minutes fires exactly one ala
   assert.equal(fake.posts.length, 1)
 })
 
+test('issue 3148 a ready request that never entered the ledger is named in the alarm with its unblock action', () => {
+  const fake = io(input({ events: [] }))
+  fake.gatherLiveInput = () => ({ input: input({ events: [] }), sessionStarted: null, unentered: [{ work_issue: 3036, created_at: '2026-09-16T11:51:07Z' }] })
+  assert.equal(runAlarm({ repo: 'r', now: '2026-09-16T12:21:00.000Z' }, fake).status, 'quiet')
+  const fired = runAlarm({ repo: 'r', now: '2026-09-16T12:23:00.000Z' }, fake)
+  assert.equal(fired.status, 'posted'); assert.deepEqual(fired.stalled, [3036])
+  assert.match(fake.posts[0].body, /#3036 has been `requested` for 31 minutes/)
+  assert.match(fake.posts[0].body, /Unblock: orchestrator admits it/)
+})
+
 test('an untrusted comment carrying the alarm key cannot suppress the alarm', () => {
   const fake = io()
   const planted = runAlarm({ repo: 'r', now: '2026-09-16T10:01:00.000Z', dryRun: true }, fake)

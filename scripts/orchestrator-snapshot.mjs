@@ -112,6 +112,42 @@ export function stalledOutcomes(outcomeEvents, { now, ownedIssues = null, stallM
   }
 }
 
+/**
+ * Ready structural requests the ledger has never seen (issue #3148). The event alarm above only
+ * sees issues with outcome events, so a ready `db-work-scope` issue waiting for admission was
+ * invisible: #3036 sat 11.4 hours and #2860 23.5 hours between creation and `entered`. An open,
+ * unclaimed issue whose scope is `status: ready`, `work_type: structural`,
+ * `route: shared-db-orchestrator`, with no open `depends_on` issue, is a candidate.
+ */
+export function readyRequestCandidates(issues = []) {
+  const open = new Set(issues.filter((issue) => !issue.pull_request).map((issue) => Number(issue.number)))
+  return issues.filter((issue) => !issue.pull_request && !labelNames(issue).includes('db-claim')).flatMap((issue) => {
+    const fences = [...String(issue.body ?? '').matchAll(/```db-work-scope\s*\n([\s\S]*?)```/g)]
+    if (fences.length !== 1) return []
+    const fields = new Map()
+    for (const line of fences[0][1].split(/\r?\n/)) {
+      const match = /^\s*([a-z_]+):\s*(.*)$/.exec(line)
+      if (match && !fields.has(match[1])) fields.set(match[1], match[2].trim())
+    }
+    if (fields.get('status') !== 'ready' || fields.get('work_type') !== 'structural' || fields.get('route') !== 'shared-db-orchestrator') return []
+    const dependsOn = String(fields.get('depends_on') ?? '').split(',').map((v) => Number(v.trim().replace(/^#/, ''))).filter((n) => Number.isInteger(n) && n > 0)
+    if (dependsOn.some((n) => open.has(n))) return []
+    return [{ work_issue: Number(issue.number), created_at: issue.created_at ?? issue.createdAt }]
+  })
+}
+
+/** Candidates with no outcome event, older than the dispatch threshold, as stalled rows in state `requested`. */
+export function stalledRequests(unentered = [], { now, dispatchStallMinutes = DISPATCH_STALL_MINUTES } = {}) {
+  const nowMs = Date.parse(now)
+  if (Number.isNaN(nowMs)) throw new SnapshotCallerError('now must be an ISO instant')
+  return unentered.flatMap((row) => {
+    const at = Date.parse(row.created_at)
+    if (Number.isNaN(at)) return []
+    const minutes = Math.max(0, Math.floor((nowMs - at) / MINUTE))
+    return minutes > dispatchStallMinutes ? [{ work_issue: row.work_issue, state: 'requested', last_transition_at: new Date(at).toISOString(), minutes_since_transition: minutes }] : []
+  }).sort((a, b) => b.minutes_since_transition - a.minutes_since_transition || a.work_issue - b.work_issue)
+}
+
 /** The key that decides whether anything is worth reporting. Minute counters are excluded. */
 export function reportKey(snapshot, alarms) {
   return sha256(canonicalJson({
@@ -242,6 +278,9 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
   const toRead = ownedIssues.filter((issue) => listedCommentCount.get(issue) !== 0)
   const commentsByIssue = io.issueCommentsMany ? io.issueCommentsMany(repo, toRead) : new Map(toRead.map((issue) => [issue, io.issueComments(repo, issue)]))
   const outcomeEvents = ownedIssues.flatMap((issue) => outcomeEventsFromComments(commentsByIssue.get(issue) ?? []).filter((event) => owned.has(event.work_issue) && (event.work_issue === issue || claims.some((claim) => claim.issue === issue))))
+  const candidates = readyRequestCandidates(issues).filter((row) => !owned.has(row.work_issue))
+  const candidateComments = candidates.length ? (io.issueCommentsMany ? io.issueCommentsMany(repo, candidates.map((row) => row.work_issue)) : new Map(candidates.map((row) => [row.work_issue, io.issueComments(repo, row.work_issue)]))) : new Map()
+  const unentered = candidates.filter((row) => outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).length === 0)
   const leaseRefs = io.matchingRefs(repo, REVIEWER_LEASE_PREFIX)
   const stageRefs = io.matchingRefs(repo, 'db-coordination').filter((ref) => STAGE_LOCK_REFS.includes(ref.ref))
   return {
@@ -255,6 +294,8 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
       eligible_queue: issues.filter((issue) => labelNames(issue).some((name) => QUEUE_LABELS.includes(name))).map((issue) => ({ issue: issue.number, labels: labelNames(issue).filter((name) => QUEUE_LABELS.includes(name)).sort() })),
     },
     sessionStarted: resolved?.routing?.started ?? null,
+    // Kept out of `input` so the sealed snapshot digest is unchanged.
+    unentered,
   }
 }
 

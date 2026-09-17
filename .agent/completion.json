@@ -1,30 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3147,
+  "work_issue": 3153,
   "outcome": "ready-for-merge",
-  "pr": 3150,
+  "pr": 3155,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3147/1",
-  "contract_sha256": "63188eee4636e4f83db2612a8c4970504eb900eb788a4625097d344cfb1b6665",
-  "head_sha": "e31e7ef7fbcb9a17df4b4600a18f4863fe14a00e",
+  "contract_ref": "refs/db-contracts/3153/2",
+  "contract_sha256": "7694d975ca4c729f5a2d969f8025ce5d4dc5f7d4ebf43e87b493f9ef121a3a8d",
+  "head_sha": "50bbd3980ea68d569a7cbf551e84fc7f3a02df50",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "AGENTS.md",
-    "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs"
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Run at refreshed head e31e7ef7: tests 9, pass 9, fail 0, skipped 0."
+      "evidence": "162 passed, 0 failed, 0 skipped; new #2870/#2866 regression test fails on main and passes here. Full scripts pytest: 1248 passed, 8 skipped."
+    },
+    {
+      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 25, pass 25, fail 0, skipped 0; the #3091 production-mode test cannot import on main."
     }
   ],
   "assumptions_resolved": [
-    "All seven committed probes under .github/live-proofs/ (2506, 2848, 2860, 2905, 3009, 3023, 3043) pass the tightened shape check"
+    "The coverage manifest's only reader is the validate job; the 'Never read by the preview job' phrase test passes",
+    "No production job step in shared-supabase-migrations.yml runs pytest or node --test, and no non-test script imports a test file"
   ],
   "stop_conditions_hit": []
 }

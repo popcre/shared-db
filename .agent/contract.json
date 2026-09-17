@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3229,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Name the requested code and the received code in the ColdLion /prepackDetail loader's identity-collision refusals, so a live refusal is diagnosable from the run log alone. Fail-closed behaviour unchanged.",
-  "base_sha": "bf16ed5ad206106dc35f7c943f5e240834332665",
+  "base_sha": "ec96eb745697dbfa0a6eb2191efae7ab40bcb158",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
   "branch": "claude/issue-3179-prepack-identity-evidence",
@@ -35,7 +35,8 @@
   ],
   "assumptions": [
     "The identity collision is real vendor behaviour: Actions run 35268207688 aborted on a production response after 1,800 codes had landed cleanly through the same guard.",
-    "Short ERP codes (a prepack code and a company code) are operational evidence, not personal or licensed data, and naming exactly one pair in an error message respects the public-repo rules."
+    "Short ERP codes (a prepack code and a company code) are operational evidence, not personal or licensed data, and naming exactly one pair in an error message respects the public-repo rules.",
+    "Generation 2 exists because main advanced to ec96eb74 (PR #3230, the sibling /proddetails company_code fix, rewrote the shared .agent pair files); the branch was refreshed by merge (2a0e804d), this pull request touches no file main changed, and the reviewed head 7042a8b5 remains an ancestor whose own non-evidence diff is byte-identical."
   ],
   "stop_conditions": [
     "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."

@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3231,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3229/1",
-  "contract_sha256": "408c31b604b435db5937ef31da95b2a1fc452e3465ba173adb8baae223a79d60",
-  "head_sha": "7c80a764b6c15d804c0bc5fe539d28c8b3bf1596",
+  "contract_ref": "refs/db-contracts/3229/2",
+  "contract_sha256": "de0808d02c95313b2927846005ea3e4233a20cde1584516e9ebe7cc84aa2136d",
+  "head_sha": "2a0e804d8105c0757d09244f3d35a644172c62a5",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "tools/coldlion-landing-prepack.test.mjs",
     "tools/coldlion-landing/lib/prepack-detail.mjs"
   ],
@@ -17,11 +19,12 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass on this head, with the request-identity test extended to pin both message shapes ('asked X, row answers Y') and the blank-answer spelling '(blank)', proving the refusal names both codes without weakening the abort."
+      "evidence": "33/33 pass on this head, with the request-identity test extended to pin both message shapes (asked X, row answers Y) and the blank-answer spelling (blank), proving the refusal names both codes without weakening the abort."
     }
   ],
   "assumptions_resolved": [
-    "The collision fired on live production data after 1,800 keys had landed cleanly (runs 35264306654 and 35266106746), so the guard is correct and only its evidence was missing."
+    "The collision fired on live production data after 1,800 keys had landed cleanly (runs 35264306654 and 35266106746), so the guard is correct and only its evidence was missing.",
+    "Generation 2 follows the main advance to ec96eb74: the branch was refreshed by merge (2a0e804d), the implementation diff is unchanged, and the exact-head APPROVE at 7042a8b5 was recorded with full coverage."
   ],
   "stop_conditions_hit": []
 }

@@ -5,12 +5,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  FAILURE_BACKOFF_SECONDS, nextPageEndpoint, parseHttpResponse, pollDelayMs, sharedConditionalGet, singleFlight, waitForGeneration,
+  nextPageEndpoint, parseHttpResponse, sharedConditionalGet, singleFlight,
 } from './github-conditional.mjs'
 import { hostQuotaLatch, runGitHubCommand } from './github-transport.mjs'
 import { fetchCheckRuns } from '../orchestrator-flow/runner-lanes.mjs'
@@ -61,22 +61,11 @@ test('unchanged polling consumes no primary quota: every repeat poll is a 304', 
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('x-poll-interval is surfaced and is a floor, never a ceiling', () => {
+test('x-poll-interval is surfaced to the caller', () => {
   const dir = scratch(); const gh = fakeGitHub({ pollInterval: 60 })
   const r = sharedConditionalGet('repos/o/r/events', { env, dir, executor: gh.executor, now: () => 0 })
   assert.equal(r.pollIntervalMs, 60000)
-  assert.equal(pollDelayMs({ baseMs: 20000, pollIntervalHeaderMs: r.pollIntervalMs }), 60000)
-  assert.equal(pollDelayMs({ baseMs: 90000, pollIntervalHeaderMs: r.pollIntervalMs }), 90000)
   rmSync(dir, { recursive: true, force: true })
-})
-
-test('healthy polls keep their interval; failures back off 30/60/120/300s with bounded jitter', () => {
-  assert.deepEqual(FAILURE_BACKOFF_SECONDS, [30, 60, 120, 300])
-  assert.equal(pollDelayMs({ baseMs: 20000, failures: 0, random: () => 0.99 }), 20000, 'no backoff while healthy: work must not wait longer')
-  const low = [1, 2, 3, 4, 9].map((failures) => pollDelayMs({ baseMs: 20000, failures, random: () => 0 }))
-  assert.deepEqual(low, [30000, 60000, 120000, 300000, 300000])
-  const high = pollDelayMs({ baseMs: 20000, failures: 4, random: () => 0.999 })
-  assert.ok(high > 300000 && high < 360000, `jitter stays within 20%: ${high}`)
 })
 
 test('ten simultaneous identical readers in separate processes make one upstream read per generation', async () => {
@@ -124,17 +113,32 @@ test('a crashed lock holder is taken over instead of wedging every reader', () =
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('one observed change wakes every waiter exactly once; a missed wake times out without a busy loop', () => {
-  const dir = scratch(); const gh = fakeGitHub(); const endpoint = 'repos/o/r/commits/abc/check-runs'
-  sharedConditionalGet(endpoint, { env, dir, executor: gh.executor, now: () => 0 })
-  let clock = 0; const sleeps = []
-  const idle = waitForGeneration(endpoint, 1, { env, dir, timeoutMs: 30000, now: () => clock, wait: (ms) => { sleeps.push(ms); clock += ms } })
-  assert.equal(idle.woken, false); assert.equal(sleeps.length, 30, 'one local file check per second, never a spin'); assert.equal(gh.calls.length, 1, 'waiting makes no request')
-  gh.etag = 'W/"v2"'
-  sharedConditionalGet(endpoint, { env, dir, executor: gh.executor, now: () => 60000 })
-  const woken = Array.from({ length: 10 }, () => waitForGeneration(endpoint, 1, { env, dir, timeoutMs: 30000, wait: () => { throw new Error('must not sleep once changed') } }))
-  assert.ok(woken.every((w) => w.woken && w.generation === 2))
-  assert.equal(gh.calls.length, 2, 'ten woken waiters were told by one read')
+test('while the quota latch is active a waiter keeps waiting for the holder instead of timing out or taking over', () => {
+  const dir = scratch(); let clock = Date.now(); let polls = 0
+  writeFileSync(path.join(dir, 'k.flight-7.lock'), '')
+  const latched = { read: () => clock + 1 }
+  const r = singleFlight({
+    dir, key: 'k', generation: 7, now: () => clock, staleLockMs: 60000, maxWaitMs: 120000,
+    holderMayBeWaiting: () => latched.read() > clock,
+    wait: (ms) => {
+      clock += ms; polls += 1
+      // The holder finishes after a 15-minute quota wait, well past maxWaitMs and staleLockMs.
+      if (polls === 3600) { writeFileSync(path.join(dir, 'k.flight-7.json'), JSON.stringify({ value: 'shared' })); latched.read = () => 0 }
+    },
+    read: () => { throw new Error('a waiter must not start its own read') },
+  })
+  assert.equal(r.value, 'shared'); assert.equal(r.shared, true)
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('staging files are removed even when the rename fails', () => {
+  const dir = scratch(); const latchEnv = { GH_TOKEN: 't3', GITHUB_QUOTA_LATCH_DIR: dir }
+  const latch = hostQuotaLatch(latchEnv)
+  latch.write(['api', 'x'], 1)
+  const target = readdirLatch(dir); rmSync(target)
+  mkdirSync(target); writeFileSync(path.join(target, 'occupied'), '') // a non-empty directory where the file belongs makes rename fail
+  assert.throws(() => latch.write(['api', 'x'], 2))
+  assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), [])
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -163,11 +167,10 @@ test('rate-limit exhaustion seen by one caller stops every other caller until re
   // Every other caller -- other sessions, reads and writes alike -- is stopped locally.
   for (const args of [['api', 'repos/o/r/pulls/2'], ['api', '-X', 'POST', 'repos/o/r/git/refs', '-f', 'ref=x'], ['pr', 'view', '1']]) {
     let wire = 0
-    const bucketArgs = args[0] === 'pr' ? ['api', 'repos/o/r'] : args
-    assert.throws(() => runGitHubCommand(bucketArgs, { executor: () => { wire += 1; return '{}' }, quotaLatch: hostQuotaLatch(latchEnv), reportStderr: () => {}, now }), (e) => e.rateLimitExhausted && e.quotaLatched)
+    assert.throws(() => runGitHubCommand(args, { executor: () => { wire += 1; return '{}' }, quotaLatch: hostQuotaLatch(latchEnv), reportStderr: () => {}, now }), (e) => e.rateLimitExhausted && e.quotaLatched)
     assert.equal(wire, 0, `latched caller made a wire request: ${args.join(' ')}`)
   }
-  // The graphql bucket is separate and is not stopped by a core exhaustion.
+  // `gh api graphql` spends only graphql, so a core exhaustion does not stop it.
   let graph = 0
   runGitHubCommand(['api', 'graphql', '-f', 'query=x'], { executor: () => { graph += 1; return '{}' }, quotaLatch: hostQuotaLatch(latchEnv), now })
   assert.equal(graph, 1)

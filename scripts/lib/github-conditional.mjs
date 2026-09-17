@@ -7,7 +7,7 @@
 // watching the same head made ten identical reads every interval against one
 // shared 5,000-request hourly bucket.
 //
-// Three rules remove that waste without making any wait longer:
+// Two rules remove that waste without making any wait longer:
 //
 //   1. CONDITIONAL. Every poll sends the stored ETag. GitHub answers an
 //      unchanged resource with HTTP 304, which does NOT count against the
@@ -15,20 +15,16 @@
 //      flat across three consecutive 304s while each 200 raised it by one).
 //      The cached body is returned byte-for-byte.
 //   2. SINGLE-FLIGHT, HOST-WIDE. Identical reads from any process on this
-//      machine within one snapshot generation share ONE upstream request. The
+//      machine within one 5-second window share ONE upstream request. The
 //      first caller takes an exclusive lock file; every other caller waits
-//      locally (no network) for the result that caller writes.
-//   3. BROADCAST. A read that observes a change bumps the resource generation.
-//      Waiters block on the local state file, so one observed change wakes
-//      every waiter once; a missed wake falls back to the caller's normal
-//      interval, never to a busy loop.
+//      locally (no network) for the result that caller writes. Windows are
+//      fixed, so two callers straddling a boundary may still make two reads.
 //
-// The poll interval is never lengthened while a resource is healthy: an
-// unchanged poll is free, so waiting longer would only make work slower. The
-// exponential 30/60/120/300-second schedule with jitter applies to consecutive
-// FAILED polls only, and GitHub's own x-poll-interval is honoured as a floor.
-// Quota exhaustion is handled by the host-wide latch in github-transport.mjs,
-// which stops every caller until the reset.
+// The poll interval is never lengthened: an unchanged poll is free, so waiting
+// longer would only make work slower. Quota exhaustion is handled by the
+// host-wide latch in github-transport.mjs, which stops every caller until the
+// reset; while that latch is active a waiter keeps waiting for the holder's
+// delayed result instead of timing out or taking over its lock.
 //
 // Nothing here judges a response. A cached body is exactly the bytes GitHub
 // last returned for that ETag, and every caller still validates it as before.
@@ -42,18 +38,6 @@ import path from 'node:path'
 import { hostQuotaLatch, runGitHubCommand } from './github-transport.mjs'
 
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-
-export const FAILURE_BACKOFF_SECONDS = [30, 60, 120, 300]
-
-/** Delay before the next poll after `failures` consecutive failed polls. */
-export function pollDelayMs({ baseMs, failures = 0, pollIntervalHeaderMs = 0, random = Math.random }) {
-  let delay = Math.max(Number(baseMs) || 0, Number(pollIntervalHeaderMs) || 0)
-  if (failures > 0) {
-    const step = FAILURE_BACKOFF_SECONDS[Math.min(failures, FAILURE_BACKOFF_SECONDS.length) - 1] * 1000
-    delay = Math.max(delay, step) + Math.floor(random() * step * 0.2)
-  }
-  return delay
-}
 
 /** Split a `gh api -i` response into status, lower-cased headers, and body. */
 export function parseHttpResponse(raw) {
@@ -86,16 +70,22 @@ function readJsonFile(file) {
 
 function writeJsonAtomic(file, value) {
   const staging = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
-  writeFileSync(staging, JSON.stringify(value))
-  renameSync(staging, file)
+  try {
+    writeFileSync(staging, JSON.stringify(value))
+    renameSync(staging, file)
+  } finally {
+    rmSync(staging, { force: true })
+  }
 }
 
 /**
  * Run `read` at most once per (key, generation) across every process on the
  * host. Callers that lose the race wait locally for the winner's result. A lock
- * older than `staleLockMs` (a crashed holder) is taken over.
+ * older than `staleLockMs` (a crashed holder) is taken over. While `holderMayBeWaiting()`
+ * is true (the host quota latch is active, so a live holder may be sleeping until
+ * the reset) a waiter neither times out nor takes the lock over.
  */
-export function singleFlight({ dir, key, generation, read, wait = sleepSync, now = Date.now, staleLockMs = 60000, maxWaitMs = 120000 }) {
+export function singleFlight({ dir, key, generation, read, wait = sleepSync, now = Date.now, staleLockMs = 60000, maxWaitMs = 120000, holderMayBeWaiting = () => false }) {
   mkdirSync(dir, { recursive: true })
   const resultFile = path.join(dir, `${key}.flight-${generation}.json`)
   const lockFile = path.join(dir, `${key}.flight-${generation}.lock`)
@@ -110,6 +100,9 @@ export function singleFlight({ dir, key, generation, read, wait = sleepSync, now
       if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error
       let age
       try { age = now() - statSync(lockFile).mtimeMs } catch { continue }
+      let holderWaiting = false
+      try { holderWaiting = Boolean(holderMayBeWaiting()) } catch { holderWaiting = false }
+      if (holderWaiting) { wait(250); continue }
       if (age > staleLockMs) { rmSync(lockFile, { force: true }); continue }
       if (now() - started > maxWaitMs) throw new Error(`shared GitHub read did not finish within ${maxWaitMs}ms (lock ${lockFile})`)
       wait(25)
@@ -166,6 +159,8 @@ export function sharedConditionalGet(endpoint, {
   now = Date.now,
   wait = sleepSync,
   windowMs = 5000,
+  // A fixture executor never touches the machine's latch unless one is passed.
+  quotaLatch = executor === execFileSync ? hostQuotaLatch(env) : null,
 } = {}) {
   mkdirSync(dir, { recursive: true })
   const key = sharedReadKey(endpoint, env)
@@ -173,12 +168,13 @@ export function sharedConditionalGet(endpoint, {
   const generation = Math.floor(now() / windowMs)
   const flight = singleFlight({
     dir, key, generation, wait, now,
+    holderMayBeWaiting: () => (quotaLatch?.read(['api', endpoint]) ?? 0) > now(),
     read: () => {
       const state = readJsonFile(stateFile)
       const args = ['api', '-i']
       if (state?.etag && typeof state.body === 'string') args.push('-H', `If-None-Match: ${state.etag}`)
       args.push(endpoint)
-      const response = parseHttpResponse(runGitHubCommand(args, { executor: acceptNotModified(executor), quotaLatch: executor === execFileSync ? hostQuotaLatch(env) : null }))
+      const response = parseHttpResponse(runGitHubCommand(args, { executor: acceptNotModified(executor), quotaLatch }))
       const header = response.headers.get('x-poll-interval') ?? ''
       const pollIntervalMs = /^\d+$/.test(header) ? Number(header) * 1000 : 0
       if (response.status === 304) {
@@ -198,20 +194,4 @@ export function sharedConditionalGet(endpoint, {
 export function nextPageEndpoint(link) {
   const match = /<https:\/\/api\.github\.com\/([^>]+)>;\s*rel="next"/.exec(String(link ?? ''))
   return match ? match[1] : null
-}
-
-/**
- * Block until the shared generation for `endpoint` moves past `seenGeneration`
- * or `timeoutMs` passes. Reads only a local file; makes no request.
- */
-export function waitForGeneration(endpoint, seenGeneration, { env = process.env, dir = defaultSharedDir(env), timeoutMs, now = Date.now, wait = sleepSync, checkEveryMs = 1000 } = {}) {
-  const stateFile = path.join(dir, `${sharedReadKey(endpoint, env)}.state.json`)
-  const deadline = now() + Math.max(0, Number(timeoutMs) || 0)
-  for (;;) {
-    const generation = Number(readJsonFile(stateFile)?.generation ?? 0)
-    if (generation > Number(seenGeneration ?? 0)) return { woken: true, generation }
-    const left = deadline - now()
-    if (left <= 0) return { woken: false, generation }
-    wait(Math.min(checkEveryMs, left))
-  }
 }

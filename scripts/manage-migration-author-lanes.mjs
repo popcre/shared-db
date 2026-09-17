@@ -1253,7 +1253,7 @@ export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.
     maxBuffer,
     encoding,
     input,
-    // Issue #2773: the real binary shares the host-wide exhaustion latch; a fixture executor never does.
+    // Issue #2773: the real binary shares the host-wide exhaustion latch; a fixture executor never does. A latched refusal sends no request, so it is deliberately not charged to the wire budget above.
     quotaLatch:executor===execFileSync?hostQuotaLatch():null,
     wrapError:(detail)=>new LaneError(`GitHub command failed: ${detail}`),
   })

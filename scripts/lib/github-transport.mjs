@@ -179,23 +179,40 @@ export function hostQuotaLatch(env = process.env) {
   if (String(env?.GITHUB_QUOTA_LATCH ?? '').toLowerCase() === 'off') return null
   const dir = env?.GITHUB_QUOTA_LATCH_DIR || path.join(tmpdir(), 'shared-db-github-quota')
   const identity = createHash('sha256').update(String(env?.GH_TOKEN || env?.GITHUB_TOKEN || 'gh-cli-login')).digest('hex').slice(0, 16)
-  const file = (args) => path.join(dir, `${identity}-${usesGraphqlQuota(args) ? 'graphql' : 'core'}.json`)
+  const file = (bucket) => path.join(dir, `${identity}-${bucket}.json`)
+  // A plain `gh api <path>` spends core and `gh api graphql` spends graphql. Any
+  // other gh subcommand (`gh pr view`, `gh run list`, ...) may spend either, so
+  // it is stopped by EITHER latch; its own exhaustion is recorded as graphql,
+  // matching how rateLimitResetDelayMs reads its reset.
+  const readBuckets = (args) => {
+    const list = (args ?? []).map(String)
+    if (list[0] !== 'api') return ['core', 'graphql']
+    return [list[1] === 'graphql' ? 'graphql' : 'core']
+  }
+  const readOne = (bucket) => {
+    try {
+      const row = JSON.parse(readFileSync(file(bucket), 'utf8'))
+      return Number.isFinite(row?.resetMs) ? row.resetMs : null
+    } catch (error) {
+      if (error?.code !== 'ENOENT') rmSync(file(bucket), { force: true })
+      return null
+    }
+  }
   return {
     read(args) {
-      try {
-        const row = JSON.parse(readFileSync(file(args), 'utf8'))
-        return Number.isFinite(row?.resetMs) ? row.resetMs : null
-      } catch (error) {
-        if (error?.code !== 'ENOENT') rmSync(file(args), { force: true })
-        return null
-      }
+      const resets = readBuckets(args).map(readOne).filter((value) => value !== null)
+      return resets.length ? Math.max(...resets) : null
     },
     write(args, resetMs) {
       mkdirSync(dir, { recursive: true })
-      const target = file(args)
+      const target = file(usesGraphqlQuota(args) ? 'graphql' : 'core')
       const staging = `${target}.${process.pid}.${Date.now()}.tmp`
-      writeFileSync(staging, JSON.stringify({ resetMs }))
-      renameSync(staging, target)
+      try {
+        writeFileSync(staging, JSON.stringify({ resetMs }))
+        renameSync(staging, target)
+      } finally {
+        rmSync(staging, { force: true })
+      }
     },
   }
 }

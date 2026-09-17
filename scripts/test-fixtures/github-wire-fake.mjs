@@ -78,7 +78,7 @@ function handleGit(a,opts){
   const s=load(), args=a[0]==='-C'?a.slice(2):a, sub=args[0]
   if(sub==='remote'&&args[1]==='get-url'){log('git-local','remote get-url');return `https://github.com/${REPO}.git`}
   if(sub==='cat-file'&&args[1]==='--batch'){log('git-local','cat-file --batch');const parts=[];for(const sha of String(opts?.input??'').split(nl).filter(Boolean)){const c=s.commits[sha];if(!c){parts.push(Buffer.from(sha+' missing'+nl));continue}const body=Buffer.from('tree '+c.tree+nl+(c.parents??[]).map(p=>'parent '+p+nl).join('')+'author A <a@x> 1789000000 +0000'+nl+'committer A <a@x> 1789000000 +0000'+nl+nl+c.message);parts.push(Buffer.from(sha+' commit '+body.length+nl),body,Buffer.from(nl))}return Buffer.concat(parts)}
-  if(sub==='cat-file'){log('git-local','cat-file');if(!s.commits[String(args.at(-1)).replace('^{commit}','')])fail('missing');return ''}
+  if(sub==='cat-file'){log('git-local','cat-file');if(!s.commits[String(args.at(-1)).replace('^{commit}','')])fail('unknown commit');return ''}
   if(sub==='fetch'){log('git-wire','fetch');return ''}
   if(sub==='ls-remote'){log('git-wire','ls-remote');return Object.entries(s.refs).map(([r,t])=>`${t}\t${r}`).join('\n')+'\n'}
   if(sub==='push'){

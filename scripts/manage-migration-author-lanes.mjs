@@ -1365,12 +1365,12 @@ export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>A
   throw new LaneError(`git ref listing failed: ${String(lastError?.stderr??lastError?.message??lastError).trim().split('\n')[0]}`)
 }
 // Issue #3187: commit messages for refs already listed over git are read over git
-// too. Objects missing locally are fetched once, by exact SHA, in one `git fetch`
+// too. Objects absent locally are fetched once, by exact SHA, in one `git fetch`
 // (the same hydration atomicReviewRefs already relies on). A commit that is still
-// missing after the fetch, or an unparseable object, throws: never "no lease".
+// absent after the fetch, or an unparseable object, throws: never "no lease".
 export function parseGitCommitBatch(output){
   const buffer=Buffer.isBuffer(output)?output:Buffer.from(String(output??''),'utf8')
-  const commits=new Map(),missing=[]
+  const commits=new Map(),unfetched=[]
   let offset=0
   while(offset<buffer.length){
     const newline=buffer.indexOf(10,offset)
@@ -1379,7 +1379,7 @@ export function parseGitCommitBatch(output){
     offset=newline+1
     if(!header.trim())continue
     const absent=/^([0-9a-f]{40}) missing$/.exec(header)
-    if(absent){missing.push(absent[1]);continue}
+    if(absent){unfetched.push(absent[1]);continue}
     const match=/^([0-9a-f]{40}) (\w+) (\d+)$/.exec(header)
     if(!match)throw new LaneError('git commit batch output is malformed')
     const size=Number(match[3]),raw=buffer.subarray(offset,offset+size)
@@ -1391,7 +1391,7 @@ export function parseGitCommitBatch(output){
     const committer=/^committer .* (\d+) ([+-]\d{4})$/m.exec(headers)
     commits.set(match[1],{message,committedDate:committer?new Date(Number(committer[1])*1000).toISOString():null})
   }
-  return {commits,missing}
+  return {commits,unfetched}
 }
 export function readGitCommits(shas,{run=execFileSync}={}){
   const unique=[...new Set(shas.map((sha)=>String(sha).toLowerCase()))]
@@ -1402,11 +1402,11 @@ export function readGitCommits(shas,{run=execFileSync}={}){
     catch(error){if(error instanceof LaneError)throw error;throw new LaneError(`git commit read failed: ${String(error?.stderr??error?.message??error).trim().split('\n')[0]}`)}
   }
   let result=batch()
-  if(result.missing.length){
-    try{run('git',['fetch','--no-tags','-q','origin',...result.missing],{encoding:'utf8',stdio:['ignore','pipe','pipe']})}
-    catch(error){throw new LaneError(`git could not hydrate commits ${result.missing.join(', ')}: ${String(error?.stderr??error?.message??error).trim().split('\n')[0]}`)}
+  if(result.unfetched.length){
+    try{run('git',['fetch','--no-tags','-q','origin',...result.unfetched],{encoding:'utf8',stdio:['ignore','pipe','pipe']})}
+    catch(error){throw new LaneError(`git could not hydrate commits ${result.unfetched.join(', ')}: ${String(error?.stderr??error?.message??error).trim().split('\n')[0]}`)}
     result=batch()
-    if(result.missing.length)throw new LaneError(`git commits ${result.missing.join(', ')} are unreadable after fetch`)
+    if(result.unfetched.length)throw new LaneError(`git commits ${result.unfetched.join(', ')} are unreadable after fetch`)
   }
   return result.commits
 }

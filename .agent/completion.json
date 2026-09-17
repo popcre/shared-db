@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3147/1",
   "contract_sha256": "63188eee4636e4f83db2612a8c4970504eb900eb788a4625097d344cfb1b6665",
-  "head_sha": "ec704f8621e862bfb3b93633d0c6a550188c8873",
+  "head_sha": "5abeaacb0172c9fd7f9fd39c926063ab37749f99",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,11 +20,11 @@
     {
       "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at refreshed head ec704f86: tests 9, pass 9, fail 0, skipped 0."
+      "evidence": "Run at refreshed head 5abeaacb: tests 9, pass 9, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "All six committed probes under .github/live-proofs/ (2506, 2848, 2860, 2905, 3023, 3043) pass the tightened shape check"
+    "All seven committed probes under .github/live-proofs/ (2506, 2848, 2860, 2905, 3009, 3023, 3043) pass the tightened shape check"
   ],
   "stop_conditions_hit": []
 }

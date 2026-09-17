@@ -28,6 +28,7 @@ import { OUTCOME_STATES, trustedOutcomeComments } from './orchestrator-flow/outc
 import { formatHoldReason } from './lib/hold-reason.mjs'
 import { parseEventComment } from './db-coordination-events.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
+import { currentRepository } from './lib/repository-identity.mjs'
 import { buildDynamicQueues, githubIo as laneIo, parseQueueScope } from './manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from './lib/work-dependencies.mjs'
 
@@ -323,7 +324,7 @@ export function main(argv = process.argv.slice(2), { io = defaultIo, stdout = co
   try {
     const value = (name) => { const index = argv.indexOf(name); return index >= 0 && argv[index + 1] ? argv[index + 1] : null }
     if (!argv.includes('--orchestrator-snapshot')) throw new SnapshotCallerError('--orchestrator-snapshot is required')
-    const repo = value('--repo') ?? 'u2giants/shared-db'
+    const repo = currentRepository(value('--repo'))
     const now = value('--now') ?? new Date().toISOString()
     const stateDir = value('--state-dir')
     if (stateDir && !path.isAbsolute(stateDir)) throw new SnapshotCallerError('--state-dir must be an absolute path')

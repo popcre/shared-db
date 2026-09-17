@@ -6,10 +6,12 @@
   "migration_versions": [
     "20260917112114"
   ],
-  "contract_ref": "refs/db-contracts/3174/2",
-  "contract_sha256": "3f6f907e919d11fb52180c318524f81e4e16598a416cdc75cf9e8118fdda2e8a",
-  "head_sha": "a388913370a1a499fdef27931e2485f2ddb6c3ce",
+  "contract_ref": "refs/db-contracts/3174/3",
+  "contract_sha256": "e45570aaf88dc93cb947cf003f3ae80c93c51f412b1e5ec866477d0432a37cc4",
+  "head_sha": "fce3914ff29275d71460a93f7eaa731a9ee57b8e",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/3174.sql",
     "supabase/migrations/20260917112114_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql"
   ],
@@ -29,7 +31,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 46ddec03; the refresh merge a3889133 from main 23d6142e changed no file this PR touches."
+      "evidence": "Static checks passed at 46ddec03; the refresh merge a3889133 from main 23d6142e changed no file this PR touches; refresh fce3914f onto main 1c81b5b6 likewise leaves the migration and live proof unchanged."
     }
   ],
   "assumptions_resolved": [

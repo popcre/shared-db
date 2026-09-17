@@ -130,6 +130,18 @@ AI sessions from breaking each other through the one database they all depend on
 > runs on every push to `main`, daily, and on demand: workflow `Migration Ledger Drift`
 > ([`.github/workflows/migration-ledger-drift.yml`](.github/workflows/migration-ledger-drift.yml)).
 
+> ## ⚠️ A structural migration returning to shared-db carries its live-proof probe
+>
+> When a structural outcome's `db-work-scope` says `application_return_to: u2giants/shared-db`,
+> its migration pull request must also commit `.github/live-proofs/<work_issue>.sql`: ONE
+> read-only `SELECT`/`WITH` statement returning one row with a boolean column aliased `passed`.
+> The `Shared DB Live Proof` workflow ([`.github/workflows/shared-db-live-proof.yml`](.github/workflows/shared-db-live-proof.yml))
+> runs that committed file against production once it applies. The guarded migration merge runs
+> `node scripts/check-live-proof-probe.mjs` and refuses the pull request (exit `2`) if the probe is
+> absent from both the pull request and `main`, if the pull request deletes or renames it away, or
+> if its shape cannot pass (#3127, #3147). Outcomes returning to an application repository prove
+> themselves from that repository.
+
 > ## ⚠️ Before you report that a scrape or loader "landed nothing"
 >
 > **An empty table is not proof that a capture never ran — it is proof that *that

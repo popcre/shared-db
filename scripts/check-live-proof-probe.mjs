@@ -37,17 +37,33 @@ export function scopeField(body, name) {
 
 export function probePath(workIssue) { return `.github/live-proofs/${workIssue}.sql` }
 
-// A probe the live-proof workflow could accept must select a `passed` column.
-// Its row count and value are proven only at live-proof time, on production.
-export function probeLooksUsable(sql) {
-  const text = String(sql ?? '')
-  return /\bselect\b/i.test(text) && /\bpassed\b/i.test(text)
+// Offline shape check, mirroring what scripts/shared_db_live_proof.py accepts:
+// ONE read statement whose result is a column named `passed`. Its row count,
+// sole-column shape and value are proven only at live-proof time, on production.
+// Returns null when usable, otherwise the reason it is not.
+const WRITE_WORD = /\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|copy|vacuum)\b/i
+export function stripSqlNoise(sql) {
+  return String(sql ?? '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/"(?:[^"]|"")*"/g, (m) => (/^"passed"$/i.test(m) ? 'passed' : '""'))
 }
+export function probeShapeProblem(sql) {
+  const text = stripSqlNoise(sql).trim().replace(/;\s*$/, '').trim()
+  if (!text) return 'is empty'
+  if (text.includes(';')) return 'holds more than one statement'
+  if (!/^(select|with)\b/i.test(text)) return 'does not start with SELECT or WITH'
+  if (WRITE_WORD.test(text)) return 'contains a write keyword'
+  if (!/\bas\s+passed\b/i.test(text) && !/^select\s+passed\s+from\b/i.test(text)) return 'returns no column named "passed"'
+  return null
+}
+export function probeLooksUsable(sql) { return probeShapeProblem(sql) === null }
 
 // Pure decision; inputs are gathered by the caller so the rule is testable offline.
 // Fail closed: a migration pull request with no contract, a structural outcome with
 // no return address, or a probe that cannot pass all refuse here.
-export function evaluateProbe({ contract, changedFiles, readIssueBody, readProbe, isCodeTruthRestoration = () => false }) {
+export function evaluateProbe({ contract, changedFiles, removedFiles = [], readIssueBody, readProbe, isCodeTruthRestoration = () => false }) {
   const migrations = changedFiles.filter((f) => f.startsWith('supabase/migrations/') && f.endsWith('.sql'))
   if (!migrations.length) return { relevant: false, reason: 'no migration file changed' }
   // Same exemption as the lease gate: a code-truth restoration re-records history
@@ -61,40 +77,70 @@ export function evaluateProbe({ contract, changedFiles, readIssueBody, readProbe
   if (!returnTo) throw new ProbeCheckError(`structural outcome #${issue} has no application_return_to in its db-work-scope`)
   if (returnTo !== SHARED_DB) return { relevant: false, reason: `outcome #${issue} returns to ${returnTo}` }
   const path = probePath(issue)
+  // Without this, a pull request deleting (or renaming away) its own probe still
+  // passed through the main fallback, and merging it would remove the probe.
+  if (removedFiles.includes(path)) {
+    throw new ProbeCheckError(`#${issue} returns to ${SHARED_DB} but this pull request deletes or renames ${path}; the merge would leave no live-proof probe`)
+  }
   const sql = readProbe(path)
   if (sql === null || sql === undefined) {
     throw new ProbeCheckError(`#${issue} returns to ${SHARED_DB} but ${path} is not in this pull request or on main. ` +
       'Commit the read-only live-proof probe (one row with a boolean "passed" column) in this migration pull request, ' +
       'so the live proof can run the moment production applies instead of waiting on a separate reviewed pull request.')
   }
-  if (!probeLooksUsable(sql)) throw new ProbeCheckError(`${path} does not select a "passed" column; the live proof would refuse it`)
+  const problem = probeShapeProblem(sql)
+  if (problem) throw new ProbeCheckError(`${path} ${problem}; the live proof needs one read-only statement returning a boolean "passed" column`)
   return { relevant: true, issue, path }
 }
 
-function git(args) { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) }
+function defaultGit(args) { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) }
 
-export function main() {
+// Parses `git diff --name-status` output. Deleted paths and rename sources are removed.
+export function parseNameStatus(text) {
+  const changed = []
+  const removed = []
+  for (const line of String(text ?? '').split(/\r?\n/).filter(Boolean)) {
+    const [status, ...paths] = line.split('\t')
+    const kind = status[0]
+    if (kind === 'D') removed.push(paths[0])
+    else if (kind === 'R') { removed.push(paths[0]); changed.push(paths[1]) }
+    else if (kind === 'C') changed.push(paths[1])
+    else if (kind === 'A' || kind === 'M' || kind === 'T') changed.push(paths[0])
+  }
+  return { changed, removed }
+}
+
+// The I/O layer. Every dependency is injectable so it is tested offline.
+export function main({
+  git = defaultGit,
+  fileExists = existsSync,
+  readFile = (p) => readFileSync(p, 'utf8'),
+  gh = runGitHubCommand,
+  log = console.log,
+  error = console.error,
+} = {}) {
   try {
-    const contract = existsSync('.agent/contract.json') ? JSON.parse(readFileSync('.agent/contract.json', 'utf8')) : null
-    const changedFiles = git(['diff', '--name-only', '--diff-filter=AMR', 'origin/main...HEAD']).split(/\r?\n/).filter(Boolean)
+    const contract = fileExists('.agent/contract.json') ? JSON.parse(readFile('.agent/contract.json')) : null
+    const { changed, removed } = parseNameStatus(git(['diff', '--name-status', '-M', 'origin/main...HEAD']))
     const result = evaluateProbe({
       contract,
-      changedFiles,
-      readIssueBody: (n) => runGitHubCommand(['api', `repos/${SHARED_DB}/issues/${n}`, '--jq', '.body'],
+      changedFiles: changed,
+      removedFiles: removed,
+      readIssueBody: (n) => gh(['api', `repos/${SHARED_DB}/issues/${n}`, '--jq', '.body'],
         { wrapError: (d) => new ProbeCheckError(`GitHub read failed: ${d}`) }),
       // main may have moved past this branch under the --contains freshness rule.
       readProbe: (p) => {
-        if (existsSync(p)) return readFileSync(p, 'utf8')
+        if (fileExists(p)) return readFile(p)
         try { return git(['show', `origin/main:${p}`]) } catch { return null }
       },
       isCodeTruthRestoration: (f) => {
-        try { return validateHistoricalRestorationFile(f, readFileSync(f, 'utf8')).codeTruthOnly === true } catch { return false }
+        try { return validateHistoricalRestorationFile(f, readFile(f)).codeTruthOnly === true } catch { return false }
       },
     })
-    console.log(result.relevant ? `Live-proof probe present: ${result.path}.` : `Live-proof probe check not applicable: ${result.reason}.`)
+    log(result.relevant ? `Live-proof probe present: ${result.path}.` : `Live-proof probe check not applicable: ${result.reason}.`)
     return 0
   } catch (e) {
-    console.error(`REFUSED: ${e.message}`)
+    error(`REFUSED: ${e.message}`)
     return 2
   }
 }

@@ -2,45 +2,51 @@
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
   ],
   "assumptions": [
-    "The recorded worktree of claim #2745 is used by another session with uncommitted work, so the rebind never inspects or touches the old worktree.",
-    "Renewal of an active lease is refused by design, so rebind requires an active lease and asks for renewal first otherwise.",
-    "Generation 3 binds the fixes for the governed review REVISE at 73828438.",
-    "Generation 4: refreshed by merge onto main 4fec003d; the implementation diff is unchanged.",
-    "Generation 5: refreshed by merge onto main ae714512; the implementation diff is unchanged."
+    "Claim #2745 was moved off its reused worktree with the guarded --rebind-claim-worktree mode (#3182, PR #3185) to C:/repos/shared-db-worktrees/issue-2478-rebind-3182 at PR head af7b1689; the old worktree was never inspected or touched.",
+    "The backdated version 20260912030028 was superseded through the lane tool as 20260917112129 (supersession 0394af44, head 32f51125).",
+    "Issue #2478 scope now says application_return_to: u2giants/shared-db, because the helper and its two consumers live only in this repository, so the PR carries the read-only probe .github/live-proofs/2478.sql.",
+    "The branch was refreshed by MERGE onto main 74cd0a5c; no behaviour change is intended and the existing contract tests for both consumers are unchanged.",
+    "Generation 9: refreshed by merge onto main 49cabb90; the implementation diff is unchanged."
   ],
-  "base_sha": "ae7145128de84a5237560528004c9fdf411d9633",
-  "branch": "claude/issue-3182-rebind-claim-worktree",
+  "base_sha": "49cabb90a765e8cbd27864018fa12a515eed59b0",
+  "branch": "claude/issue-2478-sku-key-reissue",
   "db_reads": [],
-  "db_writes": [],
-  "dispatcher": "owner request to unstick claim #2745 (audit #3117)",
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
+  "dispatcher": "owner request to deliver claim #2745 (audit #3117) after lane-tool fix #3182",
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql",
+    ".github/live-proofs/2478.sql"
   ],
-  "generation": 5,
-  "goal": "Add a guarded --rebind-claim-worktree mode to the lane manager that moves a live claim to a new clean worktree on the claim branch at the exact open PR head, with owner proof, mutex, exact readback, rollback and create-only evidence, covered by tests.",
+  "generation": 9,
+  "goal": "Extract the shared SKU style-group derivation into public.style_group_key_for_sku and have public.rebuild_style_groups_batch and public.reconcile_style_group_drift call it, with no behaviour change.",
   "prohibited_actions": [
-    "Do not inspect, modify or clean the claim's previously recorded worktree.",
-    "Do not weaken any existing lane guard, renewal refusal or supersession check.",
-    "Do not change any database structure or data."
+    "Do not touch the claim's former worktree C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9.",
+    "Do not write or repair any application rows; this is a structural change only.",
+    "Do not run DDL directly against preview or production; apply only through the governed workflows.",
+    "Do not weaken any guard to make a refusal pass."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
-    "node scripts/check-throughput-truth-audit.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-migration-pr-lease.mjs"
   ],
-  "route": "repo-maintenance",
+  "route": "shared-db-orchestrator",
   "schema_version": 1,
   "stop_conditions": [
-    "Stop if moving the claim could only be done by bypassing owner proof or the mutex."
+    "Stop if a guard refusal could only be cleared by weakening the guard.",
+    "Stop if another claim is found to hold any of the three functions."
   ],
-  "work_issue": 3182,
-  "work_type": "repo-maintenance",
-  "worker": "claude issue-3182 lane tooling session",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a652a18e111c40487"
+  "work_issue": 2478,
+  "work_type": "structural",
+  "worker": "claude issue-2478 delivery session (claim #2745)",
+  "worktree": "C:/repos/shared-db-worktrees/issue-2478-rebind-3182"
 }

@@ -1,36 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3182,
+  "work_issue": 2478,
   "outcome": "ready-for-merge",
-  "pr": 3185,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3182/5",
-  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
-  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
+  "pr": 2846,
+  "migration_versions": [
+    "20260917112129"
+  ],
+  "contract_ref": "refs/db-contracts/2478/9",
+  "contract_sha256": "215d62213bed6757346edcef1839d8e666e0362c590aacea91245906a126702b",
+  "head_sha": "1b62cb9a01ab15f3e7ea575b875bbb5bc2e78bd1",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".github/live-proofs/2478.sql",
+    "supabase/migrations/20260917112129_shared_style_group_sku_key.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "628 tests, 628 pass, 0 fail at a8df2e63 after merging main 4fec003d."
+      "evidence": "Static checks passed at 6fdd9945 after merging main 74cd0a5c."
     },
     {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "command": "node scripts/check-migration-pr-lease.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=305 at a8df2e63."
+      "evidence": "PR_NUMBER=2846: Migration claim verified: #2745, version 20260917112129."
     }
   ],
   "assumptions_resolved": [
-    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
-    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
-    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
+    "Claim #2745 rebound to the fresh worktree (rebind evidence da406344) and version superseded to 20260917112129 (supersession 0394af44).",
+    "Refreshed by merge onto main 74cd0a5c; the live-proof probe was added for application_return_to u2giants/shared-db.",
+    "files_changed now lists the evidence pair to match Git. Main movement since 74cd0a5c touched no SQL; check-sql last run at 6fdd9945. Refreshed to 1b62cb9a."
   ],
   "stop_conditions_hit": []
 }

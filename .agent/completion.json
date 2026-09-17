@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3225,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3224/3",
-  "contract_sha256": "c7bb6e07541d9be07d861ee7c7c6afc574890aed0e9e9678cd373e8520f6815a",
-  "head_sha": "b68003558f7cb246b320d000ce98af5ce65ec073",
+  "contract_ref": "refs/db-contracts/3224/4",
+  "contract_sha256": "1ee1221744dbaebd62f21f75f4984d9e4eb201c81208760a8ec381c808328af1",
+  "head_sha": "e29695015ee7d674f1dd6d6731b7db2dfc44e5ad",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -18,12 +18,13 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, step ordering, and the shared coldlion-landing-sync concurrency group. Re-verified on the refreshed branch whose workflow also carries the #3221 prod-detail step."
+      "evidence": "33/33 pass including the workflow guard tests; re-verified on the twice-refreshed branch whose workflow also carries the #3221 prod-detail step and whose loader now carries the #3229 enriched identity messages from main."
     }
   ],
   "assumptions_resolved": [
-    "The 2,577-code population and ~1.05s-per-key at the 1,000ms pace come from the live dry-run (run 35264164570) and two successful bounded backfill runs (35264306654: 900 keys/3,589 rows; 35266106746: 900 keys/3,545 rows).",
-    "Generation 3 follows the second main advance (ec96eb74): branch refreshed by merge (b6800355); the pacing line and the prod-detail step coexist unchanged."
+    "The 2,577-key population and the ~1.05s-per-key pace come from the live dry-run (35264164570) and two successful bounded backfills (35264306654, 35266106746).",
+    "Generation 4 follows two further main advances (ec96eb74, 959100b6); each refresh conflicted only on the shared .agent pair, which this generation regenerates. The pacing change and its coexisting steps are unchanged.",
+    "An exact-head APPROVE with full coverage exists at ancestor bb70de74 (durable verdict refs/db-review-verdicts/3224-3225-bb70de74e93d7b81d716e3ead82fda757e1e571e); this head changes only the .agent evidence and the merge from main."
   ],
   "stop_conditions_hit": []
 }

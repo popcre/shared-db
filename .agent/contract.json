@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3224,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Pass an explicit --pause-ms 1000 on the daily ColdLion Landing Sync's prepack-detail refresh step so the 2,577-code re-read fits the job's 90-minute budget instead of overrunning it at the loader's 3,000ms default.",
-  "base_sha": "ec96eb745697dbfa0a6eb2191efae7ab40bcb158",
+  "base_sha": "959100b61b64fc46fd2d0fa623be1efb1932e70f",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
   "branch": "claude/issue-3179-prepack-refresh-pacing",
@@ -34,7 +34,7 @@
   "assumptions": [
     "The live dry-run dispatched after PR #3220 merged measured 2,577 distinct harvested prepack codes and ~3.1s per key at the 3,000ms default pace.",
     "The vendor agreement is serialized one-request-at-a-time; a 1,000ms pause keeps it while landing the full refresh in ~45 minutes beside history+masters' ~8 minutes, inside the 90-minute job budget.",
-    "Generation 3 exists because main advanced to ec96eb74 (PR #3230, the sibling /proddetails company_code fix, rewrote the shared .agent pair files); the branch was refreshed by merge (b6800355) and the pacing change plus the coexisting prod-detail step carry over unchanged."
+    "Generations 3 and 4 exist because main advanced twice more (ec96eb74 via #3230, then 959100b6 via #3231 merging the sibling identity-evidence pair and loader files); each time the branch was refreshed by merge (b6800355, then e2969501) and only the shared .agent pair conflicted, resolved by regenerating this pair. The pacing change itself is unchanged and now coexists with the enriched identity messages on main."
   ],
   "stop_conditions": [
     "Stop and report a blocker if the measured daily refresh plus history, masters and prod-detail would exceed the job timeout at any acceptable pace.",

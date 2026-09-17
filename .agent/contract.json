@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 4,
-  "work_issue": 2837,
+  "generation": 2,
+  "work_issue": 2730,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Give the exact-head approval gate a required minimum slot count derived from the pull request's own changed files, so a never-drawn slot 2 on a migration change fails loudly instead of being invisible (PR #2746 merged on one approval).",
+  "goal": "Select the newest same-name check run deterministically by check-run id in prove_pr_and_checks, so an older cancelled run can no longer overwrite a newer successful one regardless of API row order (PR #2527 production refusal).",
   "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
   "dispatcher": "Albert Hazan chat session 2026-09-17 (non-orchestrator sweep)",
   "worker": "ZCode GLM-5.3 session repo-maintenance sweep 2026-09-17",
-  "branch": "claude/issue-2837-minimum-review-slots",
+  "branch": "claude/issue-2730-newest-check-selection",
   "worktree": "C:/repos/shared-db-worktrees/issue-sweep-20260917",
   "allowed_paths": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -26,22 +26,18 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No weakening of any existing refusal, of the documents-only lane, of the returned-slot rule, or of the carry-forward rules",
     "No change to any migration file or workflow file"
   ],
   "required_checks": [
-    "node --test scripts/check-exact-head-approval.test.mjs"
+    "python -m unittest scripts.test_production_business_risk_gate"
   ],
   "assumptions": [
-    "AGENTS.md 6.x section 4 is the authority for the count: migrations need two independent reviews, scripts/docs/CI one",
-    "A pull request that touches supabase/migrations/ is a migration change for this purpose, judged from the same changed-file list the documents-only lane reads, renames carrying their previous name",
-    "changedFiles absent entirely keeps the previous one-slot behavior for callers that predate the field, mirroring the documents-only lane convention",
-    "Generation 2 re-seals the pair after the refusal wording was kept outside the truth-audit sentinel vocabulary; the implementation head is 0940dbe1e6dbaa64415e14d137d9014f944fa840.",
-    "Generation 3 re-seals the pair after a refresh from main e2c53f21 (main merged #3192, #3194, #3196 and the #2827 docs change; none touch this change own files); the implementation head is the merge commit afb53dafdf763c250269941c891b4d08353d4964.",
-    "Generation 4 re-seals after a further refresh from main c0238000 (other lanes merged; none touch this change own files); the implementation head is the merge commit dc85b4d6bc9f5137d8a21333f6252c4b9c0266ee."
+    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run of that check",
+    "A single same-name row needs no ordering evidence; only two or more rows must carry usable integer ids or the gate refuses",
+    "Generation 2 re-seals the pair after a refresh from main 6aff8344 (other lanes merged, including the #2837 gate change; none touch this change own files); the implementation head is the merge commit 0b2cfbd0b988aba450555724f940686828823ab8."
   ],
   "stop_conditions": [
-    "Stop and report if any existing test shows a change that touches supabase/migrations/ legitimately merging with fewer than two drawn review slots",
-    "Stop if the returned-slot or carry-forward enforcement would need to be weakened to admit the minimum"
+    "Stop and report if any existing test proves the id-ordering assumption wrong for same-name check runs",
+    "Stop if the exact-head proof or the guarded-merge authorization check would need to change"
   ]
 }

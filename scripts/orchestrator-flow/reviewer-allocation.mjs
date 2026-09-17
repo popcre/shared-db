@@ -28,7 +28,8 @@ export function approvedExecutionCandidates({active,overflow=[],prohibited=[]}){
 function requestRecord(request,candidates){return {schema_version:1,issue:Number(request.issue),pr:Number(request.pr),head_sha:String(request.head_sha),bundle_id:String(request.bundle_id),eligible_execution_keys:candidates.map((row)=>row.execution_key)}}
 
 export function reviewReservationRef(executionKeyValue,request){
-  return `${REVIEW_RESERVATION_PREFIX}/${executionKeyValue}/${Number(request.issue)}-${Number(request.pr)}-${String(request.head_sha).toLowerCase()}-${String(request.bundle_id).slice(0,16)}`
+  // A colon is not legal in a git refname, so provider and wrapper become path segments.
+  return `${REVIEW_RESERVATION_PREFIX}/${String(executionKeyValue).replace(':','/')}/${Number(request.issue)}-${Number(request.pr)}-${String(request.head_sha).toLowerCase()}-${String(request.bundle_id).slice(0,16)}`
 }
 
 export function allocateReviewer(request,policy,io){
@@ -37,9 +38,13 @@ export function allocateReviewer(request,policy,io){
   const contextDenied=new Set(policy.context_denied??[]);candidates=candidates.filter((row)=>!contextDenied.has(row.name))
   if(!candidates.length)throw new ReviewerAllocationError('no approved reviewer execution context is eligible')
   // Active reviewers first; overflow only when no active reviewer exists. Another
-  // live review by the same provider never removes it from the choice.
+  // live review by the same provider never removes it from the choice. Load is
+  // spread without any ceiling: the starting provider is derived from the exact
+  // review, so distinct reviews rotate across providers deterministically.
   const active=candidates.filter((row)=>!row.overflow)
-  const choices=active.length?active:candidates
+  const pool=active.length?active:candidates
+  const start=parseInt(sha256(`${Number(request.issue)}-${Number(request.pr)}-${String(request.head_sha).toLowerCase()}-${request.bundle_id}`).slice(0,8),16)%pool.length
+  const choices=[...pool.slice(start),...pool.slice(0,start)]
   for(const candidate of choices){
     const record={...requestRecord(request,candidates),reviewer:candidate.name,wrapper:candidate.wrapper,execution_key:candidate.execution_key,overflow:candidate.overflow}
     const digest=sha256(canonicalJson(record)),ref=reviewReservationRef(candidate.execution_key,request)

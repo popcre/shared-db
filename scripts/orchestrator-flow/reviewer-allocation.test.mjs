@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateReviewer, approvedExecutionCandidates, executionKey } from './reviewer-allocation.mjs'
+import { allocateReviewer, approvedExecutionCandidates, executionKey, reviewReservationRef } from './reviewer-allocation.mjs'
 
 const active=[{name:'grok',wrapper:'ai-grok',provider:'grok'},{name:'glm-a',wrapper:'ai-glm',provider:'glm'},{name:'glm-alias',wrapper:'ai-glm',provider:'glm'}],overflow=[{name:'codex',wrapper:'ai-codex',provider:'codex'}]
 const request=(issue=1)=>({issue,pr:issue+10,head_sha:issue.toString(16).padStart(40,'a'),bundle_id:'b'.repeat(64)})
@@ -22,4 +22,18 @@ test('the same exact review is never reserved twice by one provider',()=>{
   const io=ioFixture(),only=[active[0]]
   allocateReviewer(request(1),{active:only},io)
   assert.throws(()=>allocateReviewer(request(1),{active:only},io),/already reserved/)
+})
+
+test('distinct reviews spread across providers with no global execution lock',()=>{
+  const io=ioFixture(),assigned=[]
+  for(let n=1;n<=20;n++)assigned.push(allocateReviewer(request(n),{active,overflow},io))
+  const providers=new Set(assigned.map((row)=>row.execution_key))
+  assert.equal(providers.size,2,'both active execution keys hold reservations at the same time')
+  assert.ok(!providers.has(executionKey(overflow[0])),'overflow is not used while an active reviewer exists')
+})
+
+test('reservation refs are legal git refnames',()=>{
+  const ref=reviewReservationRef(executionKey(active[0]),request(3))
+  assert.ok(!ref.includes(':'),ref)
+  assert.ok(!/\/\/|\.\.|[ ~^?*[\\]/.test(ref),ref)
 })

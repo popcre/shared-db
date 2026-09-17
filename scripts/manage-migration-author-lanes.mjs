@@ -413,8 +413,8 @@ export const REVIEWERS = Object.freeze([
 // that already failed on the exact head and advances the cursor past it, refusing
 // only when no other active reviewer is left. Roster length therefore buys CAPACITY
 // -- three reviews in flight, and for most of 2026-08-19 the rotation was
-// effectively Grok alone because ai-grok-review holds a per-REPOSITORY in-flight
-// lock -- and nothing else.
+// effectively Grok alone because ai-grok-review then held a per-REPOSITORY in-flight
+// lock (removed under the 2026-09-16 owner ruling, issue #3130) -- and nothing else.
 //
 // Capacity is worth having on its own terms: twice on 2026-08-19 a second reviewer
 // overturned the first's conclusion, once by refuting an author's design rationale

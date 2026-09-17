@@ -790,12 +790,22 @@ test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous e
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true
   io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:heads.get(Number(pr)),ref:'codex/x'}})
+  // Production lists live v2 leases; without this the busy set would be blind to them.
+  const rawGetCommit=io.getCommit
+  io.readActiveReviewLeases=()=>new Map([...io.refs.entries()].filter(([ref])=>ref.startsWith(REVIEW_ACTIVE_REF_PREFIX)).map(([ref,sha])=>[ref,{sha,commit:rawGetCommit(sha)}]))
   const assigned=[]
+  let drawsWhileAllBusy=0
   for(let n=0;n<ACTIVE_REVIEWERS.length*10;n++){
     const request={issue:4000+n,pr:5000+n,headSha:(0xb00+n).toString(16).padStart(40,'c')}
     heads.set(request.pr,request.headSha)
+    if(n>=ACTIVE_REVIEWERS.length){
+      const busy=findBusyReviewers(io)
+      assert.deepEqual([...busy].sort(),ACTIVE_REVIEWERS.map((r)=>r.name).sort(),'every active reviewer is visibly live')
+      drawsWhileAllBusy++
+    }
     assigned.push(assignNextReviewer(request,io))
   }
+  assert.ok(drawsWhileAllBusy>8*ACTIVE_REVIEWERS.length,'draws keep succeeding while every reviewer already has a live review')
   for(const row of ACTIVE_REVIEWERS){
     const mine=assigned.filter((a)=>a.reviewer===row.name)
     assert.ok(mine.length>8,`${row.name} must hold more than eight concurrent reviews`)
@@ -5206,6 +5216,9 @@ test('slot 2 lands a different provider than slot 1, and is idempotent on retry'
   assert.deepEqual(assignNextReviewer(request,io),first)
 })
 
+// LEGACY SHORT-HEAD FIXTURE PROTOCOL ONLY: reviewIo() sets no requiresExactReviewHeadSha, so
+// one lease ref per reviewer makes a provider unable to take a second review here. Production
+// (exact-head leases) has no busy state; see the owner ruling 2026-09-16 test.
 test('slot 2 skips a provider that is busy on unrelated live review work',()=>{
   const io=reviewIo(),request={issue:203,pr:303,headSha:'d'.repeat(40)}
   const first=assignNextReviewer(request,io) // grok-4.6

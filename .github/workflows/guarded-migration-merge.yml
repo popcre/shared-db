@@ -66,6 +66,8 @@ jobs:
           # the two. This copy was a fast fail that cost a full scan of every open
           # pull request against the shared Actions quota.
           node scripts/check-migration-pr-lease.mjs
+          # #3127: a structural outcome returning to shared-db carries its live-proof probe.
+          node scripts/check-live-proof-probe.mjs
           # An assignment is not an approval, and an approval of an earlier head
           # is not an approval of these bytes (#1816).
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node scripts/check-exact-head-approval.mjs

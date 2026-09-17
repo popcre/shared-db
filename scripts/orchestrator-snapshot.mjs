@@ -296,7 +296,10 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
   const dependencyStates = references.length && io.dependencyStates ? io.dependencyStates(references) : null
   const candidates = readyRequestCandidates(issues, { dependencyStates }).filter((row) => !owned.has(row.work_issue))
   const candidateComments = candidates.length ? (io.issueCommentsMany ? io.issueCommentsMany(repo, candidates.map((row) => row.work_issue)) : new Map(candidates.map((row) => [row.work_issue, io.issueComments(repo, row.work_issue)]))) : new Map()
-  const unentered = candidates.filter((row) => outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).length === 0)
+  const candidateEvents = new Map(candidates.map((row) => [row.work_issue, outcomeEventsFromComments(candidateComments.get(row.work_issue) ?? []).filter((event) => event.work_issue === row.work_issue)]))
+  const unentered = candidates.filter((row) => candidateEvents.get(row.work_issue).length === 0)
+  // Entered but no owning claim yet (#3158): neither the owned-event alarm nor the unentered alarm sees these.
+  const unclaimedEvents = candidates.flatMap((row) => candidateEvents.get(row.work_issue))
   const leaseRefs = io.matchingRefs(repo, REVIEWER_LEASE_PREFIX)
   const stageRefs = io.matchingRefs(repo, 'db-coordination').filter((ref) => STAGE_LOCK_REFS.includes(ref.ref))
   return {
@@ -312,6 +315,7 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
     sessionStarted: resolved?.routing?.started ?? null,
     // Kept out of `input` so the sealed snapshot digest is unchanged.
     unentered,
+    unclaimedEvents,
   }
 }
 

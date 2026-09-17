@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260917112129"
   ],
-  "contract_ref": "refs/db-contracts/2478/7",
-  "contract_sha256": "aa02e758991438487a8e696649179a7814b7582d06e033cdc3cbb3c76bbb8187",
-  "head_sha": "69b503a8f24bfae88ce70569b661b588810f375c",
+  "contract_ref": "refs/db-contracts/2478/8",
+  "contract_sha256": "acd2c4a67ac4f3a76a2723ff5342917982fc46c90463843d5cc348e8d78dcf9a",
+  "head_sha": "6fdd9945f80d32ef93bedc7b4556a76ecd4a0ce4",
   "files_changed": [
     ".github/live-proofs/2478.sql",
     "supabase/migrations/20260917112129_shared_style_group_sku_key.sql"
@@ -23,7 +23,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 69b503a8 after merging main 8664e6a5."
+      "evidence": "Static checks passed at 6fdd9945 after merging main 74cd0a5c."
     },
     {
       "command": "node scripts/check-migration-pr-lease.mjs",
@@ -33,7 +33,7 @@
   ],
   "assumptions_resolved": [
     "Claim #2745 rebound to the fresh worktree (rebind evidence da406344) and version superseded to 20260917112129 (supersession 0394af44).",
-    "Refreshed by merge onto main 8664e6a5; the live-proof probe was added for application_return_to u2giants/shared-db."
+    "Refreshed by merge onto main 74cd0a5c; the live-proof probe was added for application_return_to u2giants/shared-db."
   ],
   "stop_conditions_hit": []
 }

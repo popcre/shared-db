@@ -4113,5 +4113,76 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         self.assertNotIn("migrationTrain", result["governedEvidence"])
 
 
+class RoutineFunctionReestablishmentTests(unittest.TestCase):
+    """#3159: #3104 (PR #3131) and #2866 were forced onto the manual route because a
+    behavior-preserving CREATE OR REPLACE FUNCTION with its unchanged grants, and any
+    narrowing REVOKE, reported every risk. Real widening stays fail-closed."""
+
+    EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
+                         RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
+
+    FN = """create or replace function api.inv(p_kind text, p_search text default null)
+returns jsonb language plpgsql stable security definer set search_path to ''
+as $$ begin return jsonb_build_object('kind', p_kind); end; $$;
+comment on function api.inv(text,text) is 'inventory';
+revoke all on function api.inv(text,text) from public, anon, service_role;
+grant execute on function api.inv(text,text) to authenticated;
+"""
+
+    def classify(self, migrations):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "supabase/migrations").mkdir(parents=True)
+            for version, body in migrations:
+                (root / f"supabase/migrations/{version}_x.sql").write_text(body, encoding="utf-8")
+            return classify_sql(root, [migrations[-1][0]])
+
+    def test_the_real_3104_and_2866_migrations_are_routine(self):
+        root = Path(__file__).resolve().parents[1]
+        for version in ["20260917005650", "20260914172031"]:
+            if not list(root.glob(f"supabase/migrations/{version}_*.sql")):
+                self.skipTest("migration not on this tree")
+            self.assertEqual(classify_sql(root, [version]), [], version)
+
+    def test_body_only_replacement_with_the_same_header_and_grants_is_routine(self):
+        changed_body = self.FN.replace("'kind', p_kind", "'kind', upper(p_kind)")
+        self.assertEqual(self.classify([("20260101000000", self.FN), ("20260201000000", changed_body)]), [])
+
+    def test_a_narrowing_revoke_alone_is_routine(self):
+        self.assertEqual(self.classify([("20260201000000",
+            "revoke execute on function api.inv(text,text) from anon, authenticated;\n"
+            "revoke select on table core.thing from anon;")]), [])
+
+    def assert_every_risk(self, migrations):
+        self.assertEqual(self.classify(migrations), self.EVERY_RISK)
+
+    def test_a_new_function_with_no_earlier_migration_reports_every_risk(self):
+        self.assert_every_risk([("20260201000000", self.FN)])
+
+    def test_security_definer_added_reports_every_risk(self):
+        before = self.FN.replace("security definer ", "")
+        self.assert_every_risk([("20260101000000", before), ("20260201000000", self.FN)])
+
+    def test_a_return_type_change_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN.replace("returns jsonb", "returns text"))])
+
+    def test_a_grant_widened_to_anon_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "grant execute on function api.inv(text,text) to anon;\n")])
+
+    def test_an_intervening_migration_that_changed_grants_breaks_the_match(self):
+        narrowed = "revoke execute on function api.inv(text,text) from authenticated;\n"
+        self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", narrowed),
+                                ("20260201000000", self.FN)])
+
+    def test_a_standalone_grant_reports_every_risk(self):
+        self.assert_every_risk([("20260201000000", "grant execute on function api.inv(text,text) to authenticated;")])
+
+    def test_a_replacement_bundled_with_a_data_change_still_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "delete from core.thing;\n")])
+
+
 if __name__ == "__main__":
     unittest.main()

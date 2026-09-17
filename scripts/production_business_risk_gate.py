@@ -2051,8 +2051,92 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         raw = matches[0].read_text(encoding="utf-8")
-        reasons.update(_classify_statements(sql_top_level_statements(raw)))
+        reasons.update(_classify_statements(
+            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version)))
     return sorted(reasons)
+
+
+# ROUTINE FUNCTION RE-ESTABLISHMENT AND NARROWING REVOKES (#3159). #3104 (PR
+# #3131) and #2866 were forced onto the manual route because every CREATE OR
+# REPLACE FUNCTION outside the narrow create_function shape, and every GRANT or
+# REVOKE, reported all three risks. Two shapes are now recognised, and both stay
+# fail-closed on anything that could widen access or lose data:
+#
+#   1. REVOKE on named functions or tables. Removing a privilege can only
+#      narrow access; it never rewrites data or holds a long lock.
+#   2. A function RE-ESTABLISHED exactly as the latest earlier migration that
+#      touched it left it. Every statement of this migration naming the function
+#      must be a CREATE OR REPLACE FUNCTION, COMMENT, GRANT or REVOKE on it, and the whole
+#      ordered list must equal, byte for byte after normalisation, the list of
+#      statements naming it in the most recent earlier migration. Bodies are
+#      emptied by the tokeniser, so the comparison covers the full header
+#      (arguments, defaults, return type, SECURITY DEFINER, SET search_path) and
+#      every grant, but never the body; the body is what the required
+#      independent review reads. Because the latest earlier migration is the one
+#      compared, any later migration that changed the function's privileges
+#      breaks the match. A new function, a changed header, a new role, or a
+#      different grant order all still report every risk.
+_ROLE_LIST = rf"{_ALLOW_IDENT}(?: ?, ?{_ALLOW_IDENT})*"
+_FUNCTION_REF = rf"{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+NARROWING_REVOKE = re.compile(
+    rf"revoke (?:grant option for )?[a-z ,]+ on (?:function {_FUNCTION_REF}(?: ?, ?{_FUNCTION_REF})*"
+    rf"|(?:table )?{_ALLOW_QUALIFIED}(?: ?, ?{_ALLOW_QUALIFIED})*) from {_ROLE_LIST}(?: (?:cascade|restrict))?")
+_REPLACE_FUNCTION = re.compile(rf"create or replace function ({_ALLOW_QUALIFIED}) ?\(.*")
+_FUNCTION_PRIVILEGE = re.compile(
+    rf"(?:grant|revoke) [a-z ,]+ on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} (?:to|from) {_ROLE_LIST}")
+
+_FUNCTION_COMMENT = re.compile(rf"comment on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} is (?:''|null)")
+
+
+def _names_object(statement: str, name: str) -> bool:
+    return re.search(rf'(?<![a-z0-9_$."]){re.escape(name)}(?![a-z0-9_$"])', statement) is not None
+
+
+class _PriorMigrations:
+    """Statements of every migration on this tree older than ``version``, newest first."""
+
+    def __init__(self, repo_root: Path, version: str):
+        self.files = sorted(
+            (path for path in (Path(repo_root) / "supabase/migrations").glob("*.sql")
+             if re.fullmatch(r"\d{14}", path.name[:14]) and path.name[:14] < version),
+            key=lambda path: path.name, reverse=True)
+        self._cache: dict[Path, list[str] | None] = {}
+
+    def latest_touching(self, name: str) -> list[str] | None:
+        """The ordered statements naming ``name`` in the newest earlier migration that names it.
+
+        None when no earlier migration names it, or when a newer one cannot be
+        parsed (it might name it, so nothing older can be trusted).
+        """
+        for path in self.files:
+            if path not in self._cache:
+                self._cache[path] = sql_top_level_statements(path.read_text(encoding="utf-8"))
+            statements = self._cache[path]
+            if statements is None:
+                return None
+            touching = [s for s in statements if _names_object(s, name)]
+            if touching:
+                return touching
+        return None
+
+
+def _reestablished_functions(statements: list[str], prior: "_PriorMigrations | None") -> set[int]:
+    """Indexes of statements that re-establish a function exactly as before (#3159)."""
+    if prior is None:
+        return set()
+    excused: set[int] = set()
+    names = {m.group(1) for s in statements if (m := _REPLACE_FUNCTION.fullmatch(s))}
+    for name in names:
+        touching = [(i, s) for i, s in enumerate(statements) if _names_object(s, name)]
+        if not all(
+            (m := _REPLACE_FUNCTION.fullmatch(s) or _FUNCTION_PRIVILEGE.fullmatch(s)
+             or _FUNCTION_COMMENT.fullmatch(s)) and m.group(1) == name
+            for _, s in touching
+        ):
+            continue
+        if prior.latest_touching(name) == [s for _, s in touching]:
+            excused.update(i for i, _ in touching)
+    return excused
 
 
 def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
@@ -2093,7 +2177,7 @@ def new_column_check_risks(statement: str) -> frozenset | None:
     return NEW_COLUMN_CHECK_RISKS if checked else None
 
 
-def _classify_statements(statements: list[str] | None) -> set[str]:
+def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None) -> set[str]:
     """All three risks unless EVERY statement is recognised. Unparsed is all."""
     every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
@@ -2101,7 +2185,10 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         return every
     new_tables: set[str] = set()
     reasons: set[str] = set()
-    for s in statements:
+    reestablished = _reestablished_functions(statements, prior)
+    for index, s in enumerate(statements):
+        if index in reestablished or NARROWING_REVOKE.fullmatch(s):
+            continue
         entry = allowlist_entry(s, new_tables)
         if entry is None:
             partial = new_column_check_risks(s)

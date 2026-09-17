@@ -1,6 +1,6 @@
 ---
-issue: 3199                            # the issue that proves this done
-status: OPEN                           # OPEN or BLOCKED — never DONE, see below
+issue: 3199
+status: OPEN
 owner: zcode/plan-orchestrator-required-load-reduction
 ---
 
@@ -17,12 +17,16 @@ hops. The controlling document is
 
 **Where it stands.** Plan authored 2026-09-17 (this session, task class
 `prose`, worktree `C:\repos\shared-db\.claude\worktrees\orchestrator-load-plan`,
-branch `zcode/plan-orchestrator-required-load-reduction`). **The Muse Spark
-1.3 opinion the owner asked for has NOT been obtained:** `ai-muse` failed
-twice on 2026-09-17 with "Muse returned malformed event output" (sessions
-`orchestrator-load-plan-review` and `-2`, both left fenced per protocol;
-incomplete evidence under `.ai/reviews/`). Retrying the review is the first
-open item before this plan's phases start. No phase has been executed.
+branch `zcode/plan-orchestrator-required-load-reduction`). Second opinion
+obtained: Muse Spark 1.3 could not complete (`ai-muse` failed three times,
+"Muse returned malformed event output"; incident
+`20260917T141421Z-edge-dev-muse-4088612`), and the owner authorized
+substituting Grok 4.6, whose verdict was **sound-with-changes** ($0.43,
+review preserved at `.ai/reviews/grok-orchestrator-load-plan-review-20260917T142326Z-4117926.md`
+on the authoring worktree). Every material finding is folded into the plan
+(wrong A2 command, A3 write-safety, B2 route mechanism, B1 classifier holes,
+B3 merge-time enforcement, and the merge-dispatch right now locked in §8).
+No phase has been executed.
 
 **Next exact action.** A fresh session starts at plan Step A1: `git fetch
 origin --prune`, re-run `node scripts/manage-migration-author-lanes.mjs

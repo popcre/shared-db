@@ -1,29 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 3097,
+  "work_issue": 2870,
   "outcome": "ready-for-merge",
-  "pr": 3098,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3097/1",
-  "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
-  "head_sha": "ccfdbef49960e3bef126fafb35890e34aeadfdbb",
+  "pr": 2872,
+  "migration_versions": [
+    "20260916232835"
+  ],
+  "contract_ref": "refs/db-contracts/2870/7",
+  "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
+  "head_sha": "c60383c3695884162c6586b734ae479801eef919",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260916232835.json",
+    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5d7fdc3a: tests 15, pass 15, fail 0, skipped 0."
+      "evidence": "Static checks (bash scripts/check-sql.sh) passed at head c60383c3, after merging main df1ce37b and adding the sidecar column assertions."
+    },
+    {
+      "command": "ephemeral preview-equivalent database contract test",
+      "exit_code": 0,
+      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Sidecar validator returned status OK at head c60383c3 and load_behavior_sidecars parsed both typed column checks."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against current main."
     }
   ],
   "assumptions_resolved": [
-    "A malformed --drawn-since now throws in dry run and apply; proved by the drawn-since test"
+    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
+    "The migration performs DDL only and contains no application-row write.",
+    "Claim version 20260914032423 was superseded to 20260916232835 through the governed supersession tool because the old version sorted behind current main."
   ],
   "stop_conditions_hit": []
 }

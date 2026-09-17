@@ -1,43 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 2368,
+  "generation": 1,
+  "work_issue": 3146,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add focused falsification coverage for every production refusal guard assigned by issues #2368, #2369, and #2370 without weakening any refusal.",
-  "base_sha": "14464e77f161",
-  "dispatcher": "Albert Hazan requested the six oldest non-orchestrator issues be completed",
-  "worker": "Codex non-orchestrator repository-maintenance session",
-  "branch": "codex/issues-2368-2370",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issues-2368-2370-shared-db",
+  "goal": "Make the automatic production qualifier judge a merged pull request against main as it was before the merge, so a superseded REVISE on an earlier head no longer looks identical to the approved head, while every refusal rule stays fail-closed.",
+  "base_sha": "14464e77f16163589af5abb7d6908b2c6f0b6500",
+  "dispatcher": "Albert Hazan chat request to fix #3146",
+  "worker": "Claude Opus 5 #3146 session",
+  "branch": "claude/issue-3146-carry-latest-verdict",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-3146-carry-latest-verdict",
   "allowed_paths": [
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/test_production_apply_review_evidence.py",
-    "scripts/test_production_migration_guard.py"
+    ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/test_production_apply_review_evidence.py",
-    "scripts/test_production_migration_guard.py"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Do not weaken, remove, bypass, or replace any production refusal guard.",
-    "Do not modify production code or database state.",
-    "Do not touch tests outside the two assigned guard suites."
+    "No database write or structure change of any kind",
+    "Do not relax the rule that a durable refusal on a content-identical earlier head blocks a carry"
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_apply_review_evidence scripts.test_production_migration_guard"
+    "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "Issues #2368, #2369, and #2370 are one bounded test-only outcome because they cover adjacent survivors in the same production guard suites.",
-    "GitHub CI supplies the authoritative Linux full-suite run because the local Windows host has no WSL distribution."
+    "The qualifier runs after the merge with current main containing the source head; the merge commit first parent is main as the guarded merge judged it"
   ],
   "stop_conditions": [
-    "Stop if any assigned survivor requires changing production behavior rather than testing the existing refusal.",
-    "Stop if the exact-head independent reviewer does not approve."
-  ],
-  "generation": 1
+    "Stop if the fix would let any head carry an APPROVE the guarded merge would refuse"
+  ]
 }

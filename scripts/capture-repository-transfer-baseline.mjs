@@ -108,7 +108,7 @@ export function redactionAudit(value, trail = '$') {
 
 export function parseSlug(slug, flag) {
   const match = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/.exec(String(slug ?? ''))
-  if (!match) throw new BaselineError(`${flag} must be owner/name, got: ${slug ?? '<missing>'}`)
+  if (!match) throw new BaselineError(`${flag} must be owner/name, got: ${slug ?? '<absent>'}`)
   return { owner: match[1], name: match[2], slug: `${match[1]}/${match[2]}` }
 }
 
@@ -174,7 +174,7 @@ export function classifyReadiness({ target, operational, ownerApprovalComment })
   if (target.destinationOwnerType !== 'Organization') {
     blockers.push(`target-owner-not-organization: ${target.destinationOwner} type is ${target.destinationOwnerType ?? 'unreadable'}`)
   }
-  if (target.sourceAdmin !== true) blockers.push('source-admin-missing: authenticated user lacks admin on the source repository')
+  if (target.sourceAdmin !== true) blockers.push('source-admin-absent: authenticated user lacks admin on the source repository')
   if (target.destinationCanCreateRepository !== true) {
     blockers.push(`destination-create-right-unproven: ${target.destinationCreateEvidence}`)
   }

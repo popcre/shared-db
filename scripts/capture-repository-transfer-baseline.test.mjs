@@ -162,7 +162,7 @@ test('missing source admin, destination create right and unreadable Actions poli
     'orgs/popcre/actions/permissions': () => new Error('GitHub command failed: gh: must be an org admin (HTTP 403)'),
   })
   const { blockers } = build(world)
-  assert.ok(blockers.includes('source-admin-missing: authenticated user lacks admin on the source repository'))
+  assert.ok(blockers.includes('source-admin-absent: authenticated user lacks admin on the source repository'))
   assert.ok(blockers.some((b) => b.startsWith('destination-create-right-unproven: membership state=pending role=member')))
   assert.ok(blockers.includes('destination-actions-policy-unverified: GitHub command failed: gh: must be an org admin (HTTP 403)'))
 })

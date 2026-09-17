@@ -115,10 +115,10 @@ jobs:
         # known-dirty tree before its verdict on the real tree is believed.
         run: |
           set -euo pipefail
-          for f in scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs; do
+          for f in scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-watch.test.mjs; do
             test -f "$f" || { echo "::error::Missing $f"; exit 1; }
           done
-          node --test scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs
+          node --test scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-watch.test.mjs
           node scripts/check-github-transport-conformance.mjs
           # Repository identity (#2530): no new hard-coded owner/name slug. Tests first,
           # so the checker is proven able to refuse a live hard-code before its verdict.

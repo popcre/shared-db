@@ -10,7 +10,6 @@
   "contract_sha256": "521a4290864ec32a6ff4082e5057d600e18d55e16ce0b98fae8360eecbc104a0",
   "head_sha": "4d586d3d13c5b361c64168f5e51ed51d6cfa8615",
   "files_changed": [
-    ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/3009.sql",
     "supabase/migrations/20260917011016_popsg_search_v2_default_browse_snapshot.sql",

@@ -2043,20 +2043,54 @@ def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
     return None
 
 
+# ADD COLUMN ... CHECK on the column being added (#3119, run 35163423338). The
+# new column is NULL in every existing row and a CHECK passes on NULL, so no
+# data can be lost and no grant changes. It is NOT catalog-only: Postgres scans
+# the whole table under ACCESS EXCLUSIVE to validate the constraint, so this
+# shape still reports expected downtime. The CHECK body may only compare the
+# added column itself against literal values; anything else is unrecognised.
+_NEW_COLUMN_ACTION = re.compile(
+    rf"add column (?:if not exists )?({_ALLOW_IDENT}) {_BUILTIN_COLUMN_TYPE}(?: null)?"
+    rf"(?: (?:constraint {_ALLOW_IDENT} )?check ?\( ?({_ALLOW_IDENT}) (?:not )?in ?\( ?''(?: ?, ?'')* ?\) ?\))?")
+NEW_COLUMN_CHECK_RISKS = frozenset({RISK_TEXT["expected_downtime"]})
+
+
+def new_column_check_risks(statement: str) -> frozenset | None:
+    """Risks of an ADD COLUMN list whose CHECKs bind only their own new column, or None."""
+    m = re.fullmatch(rf"alter table (?:only )?{_ALLOW_QUALIFIED} (.+)", statement)
+    if not m:
+        return None
+    checked = False
+    for action in _split_top_level_commas(m.group(1)):
+        column = _NEW_COLUMN_ACTION.fullmatch(action)
+        if not column:
+            return None
+        if column.group(2) is not None:
+            if column.group(2) != column.group(1):
+                return None
+            checked = True
+    return NEW_COLUMN_CHECK_RISKS if checked else None
+
+
 def _classify_statements(statements: list[str] | None) -> set[str]:
-    """All three risks unless EVERY statement is on ALLOWLIST. Unparsed is all."""
+    """All three risks unless EVERY statement is recognised. Unparsed is all."""
     every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
     if statements is None:
         return every
     new_tables: set[str] = set()
+    reasons: set[str] = set()
     for s in statements:
         entry = allowlist_entry(s, new_tables)
         if entry is None:
-            return every
+            partial = new_column_check_risks(s)
+            if partial is None:
+                return every
+            reasons.update(partial)
+            continue
         if entry == "create_table":
             new_tables.add(ALLOWLIST["create_table"].fullmatch(s).group(1))
-    return set()
+    return reasons
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:

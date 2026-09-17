@@ -1,72 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 3124,
+  "work_issue": 3023,
   "outcome": "ready-for-merge",
-  "pr": 3121,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3124/1",
-  "contract_sha256": "ef526b787130840fce1e96f5d657f4b8ad7ed37b4c4544f6e33db345a0c49489",
-  "head_sha": "c098caad1696a759e9ee6340cf8d19de5feebebf",
-  "files_changed": [
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/agent-work-contract.mjs",
-    "scripts/check-destructive-analysis.mjs",
-    "scripts/check-dispatch-collision.mjs",
-    "scripts/check-handoff-contract.mjs",
-    "scripts/check-orchestrator-marker.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/check-repository-identity-conformance.test.mjs",
-    "scripts/dispatch-production-apply.mjs",
-    "scripts/historical_preview_recovery.py",
-    "scripts/lib/repository-identity.mjs",
-    "scripts/lib/repository-identity.test.mjs",
-    "scripts/lib/review-verdict-artifact.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/read-preview-ledger.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/select-preview-route.mjs",
-    "scripts/orchestrator-flow/start-reroute-canary.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/production_apply_review_evidence.py",
-    "scripts/production_business_risk_gate.py",
-    "scripts/production_owner_decision_evidence.py",
-    "scripts/reap-merged-worktrees.mjs",
-    "scripts/repair-voided-findings.mjs",
-    "scripts/report-stale-handoffs.mjs",
-    "scripts/repository_identity.py",
-    "scripts/run-governed-review.mjs",
-    "scripts/shared_db_live_proof.py",
-    "scripts/test_repository_identity.py",
-    "scripts/update-required-checks.mjs",
-    "scripts/update-required-checks.test.mjs",
-    "scripts/verify_preview_apply_artifact.py"
+  "pr": 3118,
+  "migration_versions": [
+    "20260917005221"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3023/2",
+  "contract_sha256": "d93bb4913c0cc20328aea2be8ce41f0dea59c027737e1dd752f16718e7e4db0c",
+  "head_sha": "233ee3c6313a53aa2af4656222cbdaef7ff4491a",
+  "files_changed": [
+    ".github/live-proofs/3023.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head c098caad: tests 13, pass 13, fail 0, skipped 0 (identity 8, conformance 5 incl. live hard-code positive control)."
+      "evidence": "Static checks passed for the added migration."
     },
     {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "command": "python3 scripts/test_migration_derivation.py",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (50 entries)."
+      "evidence": "OK."
     },
     {
-      "command": "python -m unittest scripts/test_repository_identity.py scripts/test_production_business_risk_gate.py",
+      "command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Full Python suite at c098caad: Ran 1089 tests, OK (skipped=8). Full Node suite: tests 3224, pass 3223, fail 1 (check-issue-505 test; its expected string is absent from production_business_risk_gate.py on main too, pre-existing), skipped 0."
+      "evidence": "367 passed, 307 subtests passed, zero failures or skips."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK, 57 sidecars, detector baseline hash matches."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "51 tests, 51 passed, 0 failed, 0 skipped."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
     }
   ],
   "assumptions_resolved": [
-    "GITHUB_REPOSITORY and actions/checkout origin agree in Actions; helpers fail closed if not"
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the old candidate scan about 11.6s with zero candidates, removed by the queue.",
+    "Reconcile deactivates file and document together, and reactivation fires the trigger, so contract 14 semantics hold."
   ],
   "stop_conditions_hit": []
 }

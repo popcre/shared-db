@@ -11,7 +11,8 @@ select (
   and to_regclass('plm.licensing_write_authorization') is not null
   and to_regclass('plm.licensing_write_guard_audit') is not null
   and to_regprocedure('app.enforce_licensing_write_authority()') is not null
-  and (select count(*) from pg_trigger
-       where not tgisinternal
-         and tgname in ('licensor_licensing_write_guard', 'property_licensing_write_guard')) >= 2
+  and exists (select 1 from pg_trigger where not tgisinternal
+              and tgrelid = to_regclass('core.licensor') and tgname = 'licensor_licensing_write_guard')
+  and exists (select 1 from pg_trigger where not tgisinternal
+              and tgrelid = to_regclass('core.property') and tgname = 'property_licensing_write_guard')
 ) as passed

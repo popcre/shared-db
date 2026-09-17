@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "migration_version": "20260917081021",
+  "migration_sha256": "b88841552a5a9b544645cbbbe26101d47cefb233f8e6e88e644015ef027e10e5",
+  "checks": [
+    {
+      "id": "plm_import_master_data_absent",
+      "kind": "catalog_absence",
+      "object": "plm.import_master_data(jsonb,jsonb)",
+      "expected_count": 1
+    },
+    {
+      "id": "plm_import_retirement_guard_contract",
+      "kind": "catalog_contract",
+      "contract": "plm_import_retirement_guard_v1",
+      "expected_count": 1
+    }
+  ]
+}

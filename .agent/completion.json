@@ -1,29 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 3146,
+  "work_issue": 2368,
   "outcome": "ready-for-merge",
-  "pr": 3178,
+  "pr": 3186,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3146/1",
-  "contract_sha256": "81bcc7864911a7e69f3808b283d8627f3a20571ea6655b11210a6cf361c4fba3",
-  "head_sha": "31619c959805bef6d79b095f13a50965c669ca1f",
+  "contract_ref": "refs/db-contracts/2368/1",
+  "contract_sha256": "f7204a1c62961432d96622130f81c6210be4d40ff09fc5fbef7ef4d05bbf1dbb",
+  "head_sha": "f2743dfcd77fffb78536f682aedeb6ba332c1105",
   "files_changed": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/test_production_apply_review_evidence.py",
+    "scripts/test_production_migration_guard.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "python -m unittest scripts.test_production_apply_review_evidence scripts.test_production_migration_guard",
       "exit_code": 0,
-      "evidence": "666 pass, 0 fail, 0 skipped. The new #3146 test fails on origin/main code (17 pass, 1 fail). Full author-lease workflow test set: 1430 pass, 0 fail, 0 skipped. Live replay: PR #3118 and #2872 refused against current main and carried from their approved heads against the merge commit first parent."
+      "evidence": "302 tests passed in 61.589 seconds at f2743dfc after merging current origin/main."
     }
   ],
   "assumptions_resolved": [
-    "Confirmed the qualifier runs post-merge: 01f73d19 is identical to merged head 72517a6f against origin/main but not against merge commit 4ba3732d^1"
+    "The focused implementation diff is unchanged from Muse-approved d3ed746d; a fresh same-session review is required for merged implementation head f2743dfc.",
+    "All assigned refusal branches in issues #2368, #2369, and #2370 have focused falsification coverage."
   ],
   "stop_conditions_hit": []
 }

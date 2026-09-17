@@ -254,6 +254,11 @@ class GuardTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(GuardError):
                 parse_allowlist(value)
 
+    def test_allowlist_rejects_whitespace_entries_and_non_version_text(self) -> None:
+        for value in (" ", "20260727010000, ", "not-a-version"):
+            with self.subTest(value=value), self.assertRaises(GuardError):
+                parse_allowlist(value)
+
     def test_the_block_list_matches_the_governed_retirements(self) -> None:
         # Three kinds, deliberately together. 20260726190000/20260726200000 are the
         # already-applied Master Data pair. 20260729120000 is the third kind:
@@ -553,6 +558,22 @@ class GuardTests(unittest.TestCase):
                         parse_allowlist(",".join(subset))
                     self.assertIn("6.5", str(caught.exception))
 
+    def test_fr_ship_set_is_unassemblable_when_no_removal_version_exists(self) -> None:
+        held = sorted(FR_SHIP_SET_HOLD)[0]
+        with patch("production_migration_guard.FR_REMOVAL_VERSIONS", set()):
+            with self.assertRaises(GuardError) as caught:
+                parse_allowlist(held)
+        self.assertIn("No FR removal migration exists yet", str(caught.exception))
+
+    def test_local_migrations_rejects_a_non_version_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "not-a-version.sql").write_text("select 1;", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "invalid migration filename"):
+                local_migrations(repo)
+
     def test_the_real_fr_removal_version_is_registered_by_name(self) -> None:
         """Issue #1339: the hold releases by DATA, and this is that data.
 
@@ -816,6 +837,42 @@ class GuardTests(unittest.TestCase):
                 ],
             )
 
+    def test_prepare_refuses_an_existing_output_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "already-there"
+            output.mkdir()
+            ledger = root / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
+            with (
+                patch("production_migration_guard.parse_remote_versions", return_value=set()),
+                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
+                patch("production_migration_guard.local_migrations", return_value={"20260727020000": root / "migration.sql"}),
+                patch("production_migration_guard.validate_candidates"),
+                patch("production_migration_guard.preflight_batch"),
+                self.assertRaisesRegex(GuardError, "bounded checkout already exists"),
+            ):
+                prepare(root, output, "a" * 40, "20260727020000", ledger)
+
+    def test_prepare_refuses_a_pruned_checkout_with_the_wrong_file_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "bounded"
+            ledger = root / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
+            source = {"20260727020000": root / "migration.sql"}
+            bounded = {"20260727020000": output / "migration.sql"}
+            with (
+                patch("production_migration_guard.parse_remote_versions", return_value=set()),
+                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
+                patch("production_migration_guard.local_migrations", side_effect=[source, bounded, {}]),
+                patch("production_migration_guard.validate_candidates"),
+                patch("production_migration_guard.preflight_batch"),
+                patch("production_migration_guard.subprocess.run"),
+                self.assertRaisesRegex(GuardError, "does not match the approved file set"),
+            ):
+                prepare(root, output, "a" * 40, "20260727020000", ledger)
+
 
 class AssertBoundedTests(unittest.TestCase):
     """The re-check that licenses --include-all at the point of use."""
@@ -1065,6 +1122,14 @@ class ContentManifestTests(unittest.TestCase):
             with self.assertRaises(GuardError) as caught:
                 assert_bounded(root, "20260727020000", ledger)
             self.assertIn("unreadable/corrupt", str(caught.exception))
+
+    def test_a_non_object_manifest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._prepared(root, ("20260727010000_applied.sql",))
+            manifest_path(root).write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "not a JSON object"):
+                assert_content_manifest(root)
 
     def test_compute_content_manifest_is_byte_precise(self) -> None:
         # A line-ending change is real byte drift and must register as one.
@@ -2843,6 +2908,14 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             ),
             {"core.character"},
         )
+
+    def test_f5_duplicate_restoration_declaration_is_rejected(self) -> None:
+        raw = (
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+        )
+        with self.assertRaisesRegex(GuardError, "duplicate retired-object restoration"):
+            retired_object_restorations(raw)
 
     def test_f5_restoration_declaration_requires_the_exact_prior_drop(self) -> None:
         raw = (

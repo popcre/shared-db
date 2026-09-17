@@ -1,40 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 2373,
+  "generation": 3,
+  "work_issue": 3212,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Add focused falsification coverage proving that the production catalog verifier refuses unknown privilege kinds and non-object strict-key inputs.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
-  "dispatcher": "Codex root session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
-  "worker": "Codex issue #2373 subagent",
-  "branch": "codex/issue-2373-catalog-guards",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2373-catalog-guards/shared-db",
+  "goal": "Keep every shared-db issue labelled exactly one of orchestrator or non-orchestrator: label on issue open/edit/reopen from the db-work-scope work_type, and sweep for blank or double-labelled issues on a schedule.",
+  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (issue label rule)",
+  "worker": "Claude Opus 5 session issue-orch-label-sync 2026-09-17",
+  "branch": "claude/issue-orch-label-sync",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/issue-orch-label-sync",
   "allowed_paths": [
-    "scripts/test_production_catalog_verification.py",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/test_production_catalog_verification.py",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs",
+    ".github/workflows/issue-orchestrator-label.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read, write, or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening, removal, or bypass of catalog-verifier refusal behavior"
+    "No database write or structure change of any kind",
+    "No change to any migration file or existing workflow"
   ],
   "required_checks": [
-    "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests"
+    "node --test scripts/sync-issue-orchestrator-label.test.mjs"
   ],
   "assumptions": [
-    "The two issue-listed mutation survivors still map to PrivilegeExpectation.__init__ and _strict_keys on current origin/main"
+    "An issue that already carries exactly one of the two labels keeps it unless the issue is newly opened or its body is edited",
+    "Generation 3 re-seals the pair after a refresh from main 4b115d33; none of the merged changes touch this change's own files; the implementation head is the merge commit 1798102a5195a9126740f225af2593d2350fa9ca."
   ],
   "stop_conditions": [
-    "Stop if issue #2373 gains an active owner or blocker",
-    "Stop if either refusal guard is unreachable or requires production-code changes beyond focused test coverage"
+    "Stop if the label rule would need to change an existing guard or workflow"
   ]
 }

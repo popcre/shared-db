@@ -4279,7 +4279,15 @@ function finalizeReviewMutex(ownerSha,io){
     if(io.atomicReviewMutexRelease){
       requireOwnedRef(MUTEX_REF,ownerSha,io)
       io.atomicReviewMutexRelease(ownerSha)
-      if(io.readReviewRefs([MUTEX_REF]).get(MUTEX_REF)!==null)throw new LaneError(`release of ${MUTEX_REF} could not be proved after atomic deletion`)
+      // Issue #3187: the atomic deletion was accepted against ownerSha, so release is proved once
+      // the ref no longer names OUR owner commit. A rival acquiring it inside the readback window
+      // (seen live on #3192) is still a proved release; a lagging read is re-read, never assumed.
+      let released=false
+      for(let attempt=0;attempt<3&&!released;attempt++){
+        if(attempt)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1000*attempt)
+        released=io.readReviewRefs([MUTEX_REF]).get(MUTEX_REF)!==ownerSha
+      }
+      if(!released)throw new LaneError(`release of ${MUTEX_REF} could not be proved after atomic deletion`)
       return true
     }
     return releaseOwnedRef(MUTEX_REF,ownerSha,io)

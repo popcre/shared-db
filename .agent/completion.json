@@ -8,8 +8,10 @@
   "contract_sha256": "9ea5c44352f2d698062a6317a545367a1a9c76158401c78e7b22ed48c18f21c1",
   "head_sha": "227d09862b0220e986a7f14fe5a3bd508212e502",
   "files_changed": [
-    "plan_orchestrator_required_load_reduction.md",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
+    "plan_orchestrator_required_load_reduction.md"
   ],
   "db_reads": [],
   "db_writes": [],

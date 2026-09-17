@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3158/1",
   "contract_sha256": "959289caae7cee1212324c4fdeec3a69da11beb34225f70ea5028c06a17a0610",
-  "head_sha": "e04e1a079ca874671c87f52fde66c4885e138767",
+  "head_sha": "5e87026ef56b0bc348f3ca5564fd2a7453bb487e",
   "files_changed": [
     "scripts/orchestrator-snapshot.mjs",
     "scripts/orchestrator-snapshot.test.mjs",
@@ -19,7 +19,7 @@
     {
       "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation e04e1a07: tests 30, pass 30, fail 0, skipped 0."
+      "evidence": "Run at implementation e04e1a07, refreshed over main ab1e3fa8 at 5e87026e: tests 30, pass 30, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [

@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/2870/7",
   "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
-  "head_sha": "3d93ce495f61f45e46a624be89057930724d860c",
+  "head_sha": "9ee87805a02e04c7c837afd7780d0fceb9f5fdd4",
   "files_changed": [
     "config/production-verification-sidecar-registry.json",
     "scripts/production-verification-sidecars/20260916232835.json",
@@ -26,7 +26,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at head 69481379 after the current-main refresh and version supersession to 20260916232835."
+      "evidence": "Static checks (bash scripts/check-sql.sh) passed at head 9ee87805, after merging main e7c2b214 and adding the sidecar column assertions."
     },
     {
       "command": "ephemeral preview-equivalent database contract test",
@@ -36,7 +36,7 @@
     {
       "command": "node scripts/check-production-verification-sidecars.mjs",
       "exit_code": 0,
-      "evidence": "Sidecar validator returned status OK with the sidecar declared in the registry."
+      "evidence": "Sidecar validator returned status OK at head 9ee87805 and load_behavior_sidecars parsed both typed column checks."
     },
     {
       "command": "git diff --check",

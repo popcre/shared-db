@@ -1,30 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3206,
+  "generation": 4,
+  "work_issue": 2837,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part C): the idempotent reviewer assignment retry and both silent-reclaim routes use at most 10 API requests with no explicit quota call, proven by the wire fixture.",
-  "base_sha": "e2c53f215f3860a4bd19c311261db8a5a3506f5b",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-c",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-c",
+  "goal": "Give the exact-head approval gate a required minimum slot count derived from the pull request's own changed files, so a never-drawn slot 2 on a migration change fails loudly instead of being invisible (PR #2746 merged on one approval).",
+  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (non-orchestrator sweep)",
+  "worker": "ZCode GLM-5.3 session repo-maintenance sweep 2026-09-17",
+  "branch": "claude/issue-2837-minimum-review-slots",
+  "worktree": "C:/repos/shared-db-worktrees/issue-sweep-20260917",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -32,16 +26,22 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No weakening of any existing refusal, of the documents-only lane, of the returned-slot rule, or of the carry-forward rules",
+    "No change to any migration file or workflow file"
   ],
   "required_checks": [
-    "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "node --test scripts/check-exact-head-approval.test.mjs"
   ],
   "assumptions": [
-    "The in-mutex fresh PR read and activity re-proof stay REST/GraphQL as before; only the pre-mutex PR read is folded into one GraphQL request"
+    "AGENTS.md 6.x section 4 is the authority for the count: migrations need two independent reviews, scripts/docs/CI one",
+    "A pull request that touches supabase/migrations/ is a migration change for this purpose, judged from the same changed-file list the documents-only lane reads, renames carrying their previous name",
+    "changedFiles absent entirely keeps the previous one-slot behavior for callers that predate the field, mirroring the documents-only lane convention",
+    "Generation 2 re-seals the pair after the refusal wording was kept outside the truth-audit sentinel vocabulary; the implementation head is 0940dbe1e6dbaa64415e14d137d9014f944fa840.",
+    "Generation 3 re-seals the pair after a refresh from main e2c53f21 (main merged #3192, #3194, #3196 and the #2827 docs change; none touch this change own files); the implementation head is the merge commit afb53dafdf763c250269941c891b4d08353d4964.",
+    "Generation 4 re-seals after a further refresh from main c0238000 (other lanes merged; none touch this change own files); the implementation head is the merge commit dc85b4d6bc9f5137d8a21333f6252c4b9c0266ee."
   ],
   "stop_conditions": [
-    "Stop if any change makes an unreadable ref or commit read as absent, or weakens a safety lock"
+    "Stop and report if any existing test shows a change that touches supabase/migrations/ legitimately merging with fewer than two drawn review slots",
+    "Stop if the returned-slot or carry-forward enforcement would need to be weakened to admit the minimum"
   ]
 }

@@ -1,27 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 3119,
+  "work_issue": 3023,
   "outcome": "ready-for-merge",
-  "pr": 3123,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3119/2",
-  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
-  "head_sha": "a89e298e9b225fa3b41e8782314288e8f5b7bf0e",
-  "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+  "pr": 3118,
+  "migration_versions": [
+    "20260917005221"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3023/2",
+  "contract_sha256": "d93bb4913c0cc20328aea2be8ce41f0dea59c027737e1dd752f16718e7e4db0c",
+  "head_sha": "233ee3c6313a53aa2af4656222cbdaef7ff4491a",
+  "files_changed": [
+    ".github/live-proofs/3023.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260917005221.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
+    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "table public.style_guide_files",
+    "table public.style_guide_search_sync_queue",
+    "function public.style_guide_files_queue_search_sync",
+    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
+    "function public.refresh_style_guide_matviews"
+  ],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
+      "evidence": "Static checks passed for the added migration."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "OK."
+    },
+    {
+      "command": "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "367 passed, 307 subtests passed, zero failures or skips."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK, 57 sidecars, detector baseline hash matches."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "51 tests, 51 passed, 0 failed, 0 skipped."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
     }
   ],
   "assumptions_resolved": [
-    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
+    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the old candidate scan about 11.6s with zero candidates, removed by the queue.",
+    "Reconcile deactivates file and document together, and reactivation fires the trigger, so contract 14 semantics hold."
   ],
   "stop_conditions_hit": []
 }

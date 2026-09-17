@@ -35,6 +35,6 @@
   "stop_conditions": [
     "Stop if the fix would need a database change"
   ],
-  "schema_version": 1,
-  "generation": 1
+  "generation": 1,
+  "schema_version": 1
 }

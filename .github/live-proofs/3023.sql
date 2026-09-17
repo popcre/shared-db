@@ -1,4 +1,4 @@
--- Live proof for #3023 (migration 20260916232205). Read-only.
+-- Live proof for #3023 (migration 20260917005221). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger, and the queue table (RLS on,
 --      hidden from API roles), its trigger, and the refresh function body
@@ -7,7 +7,7 @@
 --      completed, with its aggregate refresh recorded.
 with fixed as (select timestamptz '2026-09-17 00:00:00+00' as since)
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260916232205')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917005221')
   and exists (select 1 from pg_class c where c.oid = to_regclass('public.style_guide_search_sync_queue')
               and c.relrowsecurity
               and not has_table_privilege('authenticated', c.oid, 'SELECT')

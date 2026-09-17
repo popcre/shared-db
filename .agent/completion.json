@@ -1,31 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3158,
+  "work_issue": 3165,
   "outcome": "ready-for-merge",
-  "pr": 3160,
+  "pr": 3166,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3158/1",
-  "contract_sha256": "959289caae7cee1212324c4fdeec3a69da11beb34225f70ea5028c06a17a0610",
-  "head_sha": "b8b2ce5f3cf11192d06754bc708c265a1b62ef1c",
+  "contract_ref": "refs/db-contracts/3165/2",
+  "contract_sha256": "8f27a2eb30b1185f656067f47e0bcd05276a39eab4a5918cc705d2f13fbc34cb",
+  "head_sha": "f59af06cdd2f4d70260b8ce80ba21044e192f643",
   "files_changed": [
-    ".agent/contract.json",
-    ".agent/completion.json",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs"
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/orchestrator-snapshot.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation e04e1a07, refreshed over main 03d540a6 at b8b2ce5f (fifth refresh, main moved again): tests 30, pass 30, fail 0, skipped 0."
+      "evidence": "tests 698 pass 698 fail 0 at implementation head f59af06c."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (52 entries)."
     }
   ],
   "assumptions_resolved": [
-    "Sealed snapshot digest unchanged: unclaimed events are returned outside the sealed input"
+    "Organization-owned repositories report an org member comments as MEMBER; the operator login is still required, so no other member, collaborator, or OWNER-association account is admitted."
   ],
   "stop_conditions_hit": []
 }

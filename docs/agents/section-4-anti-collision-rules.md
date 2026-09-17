@@ -417,9 +417,13 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
-   No reviewer is overflow. If every eligible
-   reviewer is busy, the allocator records an ordered
-   `review-wait`; it does not duplicate an assignment or invent availability.
+   No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,
+   2026-09-16).** One reviewer provider may run any number of independent
+   reviews at the same time; each exact review (issue, PR, head, slot) holds its
+   own lease ref, so a live review never makes its provider wait, reroute, or
+   queue. Independence still applies per head (slot 2 never draws slot 1's
+   provider), a reviewer never reviews its own orchestrator engine, and a
+   provider `ai-review-preflight` does not report `usable` is not drawn.
 
    A reviewer that is truthfully unusable for one pull request is excluded with
    `--exclude-reviewer --issue <issue> --pr <pr> --reviewer <name> --reason

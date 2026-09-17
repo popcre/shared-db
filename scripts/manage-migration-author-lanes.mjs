@@ -519,9 +519,9 @@ export function reviewerKnownNonReading(name, reviewers=REVIEWERS){
 // DeepSeek were added as active rotation providers then. NEITHER IS ACTIVE NOW:
 // DeepSeek was retired for fabricated reviews, and Codex on 2026-09-06 for an
 // exhausted account (see RETIRED_REVIEWERS above, which is the only roster that
-// decides this). No overflow provider remains; when all execution keys are
-// occupied, assignment fails closed and the Phase 2 allocator records an ordered
-// durable wait.
+// decides this). No overflow provider remains. A provider with live reviews is
+// never "occupied": one reviewer may run any number of concurrent reviews
+// (owner ruling 2026-09-16), so there is no ordered wait for a free reviewer.
 //
 // It is listed in REVIEWERS like every other name, so a cursor commit naming it
 // still resolves to a wrapper forever (`REVIEWERS.find(...)` at parse time is
@@ -4446,13 +4446,15 @@ function isReviewAssignmentLive(assignment,states,io){
   return pr?.state==='open'&&pr?.head?.sha===assignment.headSha&&!verdict
 }
 
-// WHICH REVIEWERS ARE BUSY IN THIS REPOSITORY RIGHT NOW.
+// WHICH REVIEWERS HOLD LIVE REVIEW LEASES IN THIS REPOSITORY RIGHT NOW.
 //
-// The constraint being modelled is real and provider-side: `ai-grok-review`
-// holds an in-flight lock PER REPOSITORY, so shared-db can have one live Grok
-// review at a time. That is not a global limit -- five repositories with work
-// can run five Grok reviews at once, and nothing here tries to coordinate across
-// repositories. This function answers only the local question.
+// This is a REPORT, not a capacity gate. Owner ruling 2026-09-16: one reviewer
+// may run any number of reviews at once, so the production draw
+// (`requiresExactReviewHeadSha`, one lease ref per exact review) never skips a
+// provider because it appears here. The set feeds stale-lease release, silence
+// and start watches, and the capacity report. Only the legacy short-head fixture
+// protocol, which stores one lease ref per reviewer and so physically cannot
+// hold two, still treats a listed name as taken.
 //
 // A reviewer is busy when it holds a durable assignment whose work is still
 // live: the PR is open, its head is still the head that reviewer was given, and
@@ -4932,19 +4934,17 @@ export function describeMovedAssignmentHead(request,recorded){
   return `the durable reviewer assignment is NOT missing: sequence=${recorded.sequence} reviewer=${recorded.reviewer} for issue #${request.issue} PR #${request.pr} is recorded under head ${recorded.headSha}, and this request names head ${request.headSha}. The PR head moved after that reviewer was assigned, so the exact code that reviewer was given is no longer this PR's head. A replacement would bind a new reviewer -- and later a verdict -- to a commit the failed reviewer never saw, so it is refused. Assign a reviewer to the current code instead: --assign-reviewer --issue ${request.issue} --pr ${request.pr} --head-sha <the PR's current head>. Nothing was lost and nothing needs reconstructing.`
 }
 
-// PRE-CONCURRENCY SERIAL HELPER -- it has NO production caller in this tree (tests
-// only). It treats ANY busy provider as taken, which is the serial-lease rule. The
-// live draw path has a concurrent-mode branch (`concurrentLeases`) plus failed-name,
-// exclusion and excluded-provider filtering that this helper does not have, so it
-// must NOT be reused for a draw without that branch and those filters.
+// ROTATION HELPER -- it has NO production caller in this tree (tests only). A live
+// review never makes its provider busy (owner ruling 2026-09-16: no ceiling on
+// concurrent reviews by one reviewer), so it returns the plain rotation slot. The
+// live draw path adds failed-name, exclusion and excluded-provider filtering that
+// this helper does not have, so it must NOT be reused for a draw.
 export function pickReviewer(sequence,io){
-  const busy=findBusyReviewers(io)
   const {eligible}=allocatableReviewers(io)
   if(!eligible.length)throw new LaneError('no reviewer is independent from the live orchestrator engine')
   const eligibleNames=new Set(eligible.map((row)=>row.name)),start=(sequence-1)%ACTIVE_REVIEWERS.length
   const ordered=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).filter((row)=>eligibleNames.has(row.name))
-  if(!busy)return ordered[0]
-  return ordered.find((row)=>!busy.has(row.name))??OVERFLOW_REVIEWERS.find((row)=>!busy.has(row.name))??ordered[0]
+  return ordered[0]??OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name))
 }
 
 // Slot 1 keeps the original, unsuffixed ref namespace so every already-recorded

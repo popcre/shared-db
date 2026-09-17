@@ -786,6 +786,26 @@ test('reviewer cursor advances atomically through the durable round robin',()=>{
   assert.ok(io.refs.has(REVIEW_CURSOR_REF))
 })
 
+test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous exact-head reviews, each on its own lease',()=>{
+  const io=withAtomicRefs(reviewIo()),heads=new Map()
+  io.requiresExactReviewHeadSha=true
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:heads.get(Number(pr)),ref:'codex/x'}})
+  const assigned=[]
+  for(let n=0;n<ACTIVE_REVIEWERS.length*10;n++){
+    const request={issue:4000+n,pr:5000+n,headSha:(0xb00+n).toString(16).padStart(40,'c')}
+    heads.set(request.pr,request.headSha)
+    assigned.push(assignNextReviewer(request,io))
+  }
+  for(const row of ACTIVE_REVIEWERS){
+    const mine=assigned.filter((a)=>a.reviewer===row.name)
+    assert.ok(mine.length>8,`${row.name} must hold more than eight concurrent reviews`)
+    const refs=mine.map((a)=>reviewActiveRef(a.reviewer,a))
+    assert.equal(new Set(refs).size,mine.length,'no two reviews share a lease ref')
+    for(const [i,ref] of refs.entries())assert.equal(io.refs.get(ref),io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${mine[i].issue}-${mine[i].pr}-${mine[i].headSha}`),'every concurrent review keeps its own live lease')
+  }
+  assert.equal(githubIo.requiresExactReviewHeadSha,true,'production always uses the per-review lease protocol')
+})
+
 test('#2694 exact-head assignments let one reviewer hold concurrent independent reviews without overwriting either lease',()=>{
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true
@@ -1124,21 +1144,20 @@ function busyIo(){
   return {io,heads}
 }
 
-test('every active reviewer busy refuses a new assignment',()=>{
+// LEGACY SHORT-HEAD FIXTURE PROTOCOL ONLY. Its lease ref is one per reviewer, so it
+// physically cannot store a second lease. Production (githubIo) always uses the
+// exact-head per-review lease and has no same-reviewer ceiling -- proved by the
+// "more than eight simultaneous exact-head reviews" test above.
+test('legacy short-head protocol cannot store a second lease for one reviewer',()=>{
   const {io}=busyIo()
   assert.deepEqual([...findBusyReviewers(io)].sort(),ACTIVE_REVIEWERS.map((r)=>r.name).sort())
   assert.throws(()=>assignNextReviewer({issue:9,pr:109,headSha:'abcdef9'},io),/no reviewer is available/)
 })
 
-test('a busy rotation slot advances to the next free active reviewer',()=>{
-  const {io,heads}=busyIo()
-  // Muse's PR is merged, so muse is free again -- and free means rotation, even
-  // though the sequence would otherwise land elsewhere.
-  const musePr=600+ACTIVE_REVIEWERS.findIndex((r)=>r.name==='muse-spark-1.3-contributor')
-  const openPr=io.getPr
-  io.getPr=(number)=>Number(number)===musePr?{number:musePr,state:'closed',head:{sha:heads.get(musePr)}}:openPr(number)
-  assert.ok(!findBusyReviewers(io).has('muse-spark-1.3-contributor'))
-  assert.equal(pickReviewer(1,io).name,'muse-spark-1.3-contributor')
+test('a live review never moves the rotation off a busy provider (no same-reviewer ceiling)',()=>{
+  const {io}=busyIo()
+  assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
+  ACTIVE_REVIEWERS.forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
 })
 
 test('a recorded verdict and a moved head both free the reviewer that held them',()=>{

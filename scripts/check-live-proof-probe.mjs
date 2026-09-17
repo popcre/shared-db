@@ -12,7 +12,7 @@
 //
 // So the probe must ride in the implementation pull request, reviewed together
 // with the migration. This guard, run by the guarded migration merge, refuses a
-// structural migration pull request whose work issue returns to u2giants/shared-db
+// structural migration pull request whose work issue returns to this repository (shared-db)
 // when the probe is absent from both the pull request tree and main. An outcome
 // returning to an application repository proves itself from that repository and
 // is not judged here.
@@ -21,8 +21,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
+import { currentRepository, isThisRepositoryOrHistorical } from './lib/repository-identity.mjs'
 
-export const SHARED_DB = 'u2giants/shared-db'
 const SCOPE_FENCE = /```db-work-scope\s*\n([\s\S]*?)```/g
 
 export class ProbeCheckError extends Error {}
@@ -47,7 +47,7 @@ export function probeLooksUsable(sql) {
 // Pure decision; inputs are gathered by the caller so the rule is testable offline.
 // Fail closed: a migration pull request with no contract, a structural outcome with
 // no return address, or a probe that cannot pass all refuse here.
-export function evaluateProbe({ contract, changedFiles, readIssueBody, readProbe, isCodeTruthRestoration = () => false }) {
+export function evaluateProbe({ contract, changedFiles, readIssueBody, readProbe, isCodeTruthRestoration = () => false, repository }) {
   const migrations = changedFiles.filter((f) => f.startsWith('supabase/migrations/') && f.endsWith('.sql'))
   if (!migrations.length) return { relevant: false, reason: 'no migration file changed' }
   // Same exemption as the lease gate: a code-truth restoration re-records history
@@ -59,11 +59,13 @@ export function evaluateProbe({ contract, changedFiles, readIssueBody, readProbe
   if (!Number.isInteger(issue) || issue <= 0) throw new ProbeCheckError('structural contract has no valid work_issue')
   const returnTo = scopeField(readIssueBody(issue), 'application_return_to')
   if (!returnTo) throw new ProbeCheckError(`structural outcome #${issue} has no application_return_to in its db-work-scope`)
-  if (returnTo !== SHARED_DB) return { relevant: false, reason: `outcome #${issue} returns to ${returnTo}` }
+  // Resolved only here, so a pull request with no structural outcome never needs an identity (#2530).
+  repository ??= currentRepository()
+  if (!isThisRepositoryOrHistorical(returnTo, repository)) return { relevant: false, reason: `outcome #${issue} returns to ${returnTo}` }
   const path = probePath(issue)
   const sql = readProbe(path)
   if (sql === null || sql === undefined) {
-    throw new ProbeCheckError(`#${issue} returns to ${SHARED_DB} but ${path} is not in this pull request or on main. ` +
+    throw new ProbeCheckError(`#${issue} returns to ${repository} but ${path} is not in this pull request or on main. ` +
       'Commit the read-only live-proof probe (one row with a boolean "passed" column) in this migration pull request, ' +
       'so the live proof can run the moment production applies instead of waiting on a separate reviewed pull request.')
   }
@@ -80,7 +82,7 @@ export function main() {
     const result = evaluateProbe({
       contract,
       changedFiles,
-      readIssueBody: (n) => runGitHubCommand(['api', `repos/${SHARED_DB}/issues/${n}`, '--jq', '.body'],
+      readIssueBody: (n) => runGitHubCommand(['api', `repos/${currentRepository()}/issues/${n}`, '--jq', '.body'],
         { wrapError: (d) => new ProbeCheckError(`GitHub read failed: ${d}`) }),
       // main may have moved past this branch under the --contains freshness rule.
       readProbe: (p) => {

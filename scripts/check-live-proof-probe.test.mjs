@@ -41,3 +41,11 @@ test('fails closed on a missing contract, work issue or return address', () => {
   assert.throws(() => evaluateProbe({ contract, changedFiles: migration, readIssueBody: () => '```db-work-scope\nwork_type: structural\n```', readProbe: never }), /application_return_to/)
   assert.throws(() => scopeField(scope('a/b') + scope('c/d'), 'application_return_to'), ProbeCheckError)
 })
+
+test('a transferred repository name and the historical name both count as this repository (#2530)', () => {
+  for (const returnTo of ['popcre/shared-db', 'u2giants/shared-db']) {
+    assert.throws(() => evaluateProbe({ contract, changedFiles: migration, readIssueBody: () => scope(returnTo), readProbe: () => null, repository: 'popcre/shared-db' }), ProbeCheckError)
+  }
+  const r = evaluateProbe({ contract, changedFiles: migration, readIssueBody: () => scope('popcre/popdam3'), readProbe: never, repository: 'popcre/shared-db' })
+  assert.equal(r.relevant, false)
+})

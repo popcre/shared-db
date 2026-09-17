@@ -1,53 +1,49 @@
 {
   "schema_version": 1,
-  "work_issue": 2870,
+  "work_issue": 3091,
   "outcome": "ready-for-merge",
-  "pr": 2872,
+  "pr": 3110,
   "migration_versions": [
-    "20260917013422"
+    "20260917022233"
   ],
-  "contract_ref": "refs/db-contracts/2870/8",
-  "contract_sha256": "d614dbafef9480bcedfa7719182ee8d8a1f11c7afeefd79ed6d266e62dacdab8",
-  "head_sha": "6d907fcf2373577bacd922d3457bb79124f3936d",
+  "contract_ref": "refs/db-contracts/3091/9",
+  "contract_sha256": "71953eeae99053140828366bd7d7fb0f24e437214a6dd9097dff2ffa61dfe5da",
+  "head_sha": "d59cad09a11254ba95ae03028bb15e09459c8f69",
   "files_changed": [
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production-verification-sidecars/20260917013422.json",
-    "supabase/migrations/20260917013422_add_dflow_prod_cutover_columns.sql",
-    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
+    "config/db-data-admin-property-source-coverage.json",
+    "supabase/migrations/20260917022233_plm_prod_order_milestone_schedule.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_contracts.sql",
+    "types/database.types.ts"
   ],
-  "db_reads": [],
+  "db_reads": [
+    "table plm.\"FactoryTime\""
+  ],
   "db_writes": [
-    "column dflow_prod.comments.app_comment_id",
-    "column dflow_prod.users.app_profile_id",
-    "table dflow_prod.comments",
-    "table dflow_prod.users"
+    "index plm.prod_order_header_id_key",
+    "index plm.prod_order_milestone_schedule_status_needed_idx",
+    "index plm.prod_order_milestone_schedule_upsert_key",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.prod_order_milestone_schedule"
   ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks (bash scripts/check-sql.sh) passed at head de204c98, after merging main 4ba3732d and adding the sidecar column assertions."
+      "evidence": "Run at implementation head d59cad09: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
-      "command": "ephemeral preview-equivalent database contract test",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
+      "evidence": "status OK; version 20260917022233 has markers [] and needs no sidecar."
     },
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "command": "local PostgreSQL 18 run of the migration plus contract test on stub plm tables",
       "exit_code": 0,
-      "evidence": "Sidecar validator returned status OK at head de204c98 and load_behavior_sidecars parsed both typed column checks."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors against current main."
+      "evidence": "Migration applied at d5bfa725; both foreign keys created; contract test passed, including rejection of untrimmed stage_name, status and sku; with the sku trim check removed the test failed with \"untrimmed sku was accepted\"."
     }
   ],
   "assumptions_resolved": [
-    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
-    "The migration performs DDL only and contains no application-row write.",
-    "Claim version 20260914032423 was superseded to 20260916232835 and then, per orchestrator decision after main advanced past it, to 20260917013422 (20260916232835 permanently retired and reverted on the preview ledger only) through the governed supersession tool because the old version sorted behind current main."
+    "Migration DO guard raises before creating the unique index if plm.\"ProdOrderHeader\".id has duplicates."
   ],
   "stop_conditions_hit": []
 }

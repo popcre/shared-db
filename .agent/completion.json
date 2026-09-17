@@ -1,14 +1,17 @@
 {
   "schema_version": 1,
-  "work_issue": 3206,
+  "work_issue": 3187,
   "outcome": "ready-for-merge",
-  "pr": 3207,
+  "pr": 3192,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3206/1",
-  "contract_sha256": "58579f87c1ecea4fb0dcb831528d7905d2da047d92fda03762e1175caad2ef0f",
-  "head_sha": "88a406a4e746ab5162059b49c78cf7f6e3c7d108",
+  "contract_ref": "refs/db-contracts/3187/7",
+  "contract_sha256": "5ef942a4647fc5a77253da056d974295cfc59b2222f8c5bc194afa2e480e713b",
+  "head_sha": "dbcd75ba09472544b17b5b309ee5193b04851b0e",
   "files_changed": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     "scripts/reviewer-wire-budget.test.mjs",
     "scripts/test-fixtures/github-wire-fake.mjs"
   ],
@@ -18,11 +21,11 @@
     {
       "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "At 88a406a4: 623 passed, 0 failed, 0 skipped; CI collision and author-lease lists 1252 passed, 0 failed, 0 skipped; truth audit OK at 307. Wire fixture: idempotent assignment retry 7 API requests, unstarted silent reclaim 5 (was 9 with explicit rate_limit), confirmed silent reclaim 9 (was 13); both reclaim tests fail on origin/main."
+      "evidence": "At dbcd75ba09472544b17b5b309ee5193b04851b0e the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1282 passed (now including the throughput-guard suites; truth audit OK at 307 call sites), 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
     }
   ],
   "assumptions_resolved": [
-    "Only the pre-mutex PR read was folded; the in-mutex fresh PR read and activity re-proof are unchanged"
+    "git ls-remote with a ref pattern measured 1.1s against 1.4s for one gh api read on 2026-09-17; no API quota used"
   ],
   "stop_conditions_hit": []
 }

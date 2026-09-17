@@ -4,10 +4,11 @@
   "outcome": "ready-for-merge",
   "pr": 3151,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3152/1",
-  "contract_sha256": "76c7c3479d97ca765cafb50ea09a75a262d0a92352f372dbd65fb72e6e622485",
-  "head_sha": "d25ccf68bf6cf6530b278cafd959b41af23556de",
+  "contract_ref": "refs/db-contracts/3152/2",
+  "contract_sha256": "bab0c00d496bfaf31fef92a69bde8492c79cc62dff29b57fc35eb0916ce5419b",
+  "head_sha": "36740d7d7698bccc5542b843b3bae38d5107266b",
   "files_changed": [
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/completion.json",
     ".agent/contract.json",
     "scripts/orchestrator-snapshot.mjs",
@@ -21,7 +22,7 @@
     {
       "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head d25ccf68 (after review counterexamples added): tests 29, pass 29, fail 0, skipped 0."
+      "evidence": "Run at implementation head 36740d7d (queue-audit candidacy, workflow guard): tests 29, pass 29, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [

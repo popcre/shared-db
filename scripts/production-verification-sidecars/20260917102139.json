@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20260917081021",
-  "migration_sha256": "b88841552a5a9b544645cbbbe26101d47cefb233f8e6e88e644015ef027e10e5",
+  "migration_version": "20260917102139",
+  "migration_sha256": "b13cf2257456d739e2eeb5d6d87eda9b5d9f9f4a29018c57933ac7298a13787d",
   "checks": [
     {
       "id": "plm_import_master_data_absent",

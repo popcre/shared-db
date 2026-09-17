@@ -1,51 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 3199,
+  "work_issue": 3174,
   "outcome": "ready-for-merge",
-  "pr": 3216,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/6",
-  "contract_sha256": "29f6c98f1c1bca1e128a41e11f570dd14be3f584d8af796e93a263ffadc90a80",
-  "head_sha": "fc6f406d4246a9b5714857efa68ca97a3145d2cf",
-  "files_changed": [
-    ".github/workflows/queue-hygiene-report.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "plan_orchestrator_required_load_reduction.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/queue-hygiene-report.test.mjs"
+  "pr": 3190,
+  "migration_versions": [
+    "20260917144950"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3174/9",
+  "contract_sha256": "d3b26dec5934e3b919c46a24db56b44a7e31abe6aa68dd400511126176b63d31",
+  "head_sha": "899b0f8b8b28adac1e6e890de24818eb2b660b32",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/3174.sql",
+    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
+    "supabase/tests/sesame_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.coke_approval_vocabulary_value",
+    "table plm.wwe_creative_brand",
+    "table plm.peanuts_art_program",
+    "table plm.sesame_brand",
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "table plm.sesame_submission_property_option"
+  ],
   "checks": [
-    {
-      "command": "node --test scripts/queue-hygiene-report.test.mjs",
-      "exit_code": 0,
-      "evidence": "6 tests, 6 pass, 0 fail at implementation head fc6f406d (verified again after the origin/main refresh merge)."
-    },
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "604 tests, 604 pass, 0 fail at implementation head fc6f406d — the lane-manager change adds one subcommand and touches no existing branch."
-    },
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed; zero migrations added by this change."
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "284 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
-    },
-    {
-      "command": "ai-task-gates check --before pr-wait",
-      "exit_code": 0,
-      "evidence": "pr-wait may start for effective class reviewer-safety; required gates exact-head-independent-review, local-tests, repository-branch-and-pr, repository-rulebook-full-treatment all proceeding through this pull request."
+      "evidence": "Previous head failed only the backdated-version guard (fixed by governed version supersession) and Sesame census A (20 vs 19 sesame_ tables; census now excludes the separate submissions landing). Both re-verified by CI on this head."
     }
   ],
-  "stop_conditions_hit": [],
   "assumptions_resolved": [
-    "origin/main moved once during implementation (PR #3211 merged); the branch was refreshed by merge fc6f406d before this evidence bind and both test suites re-run green there.",
-    "A1/A2 were executed live before this pull request: seven issues labelled (scope blocks drafted for #3191/#3149/#3148), claim #3089 released through the guarded --release-claim path; queue-audit rerun shows no UNLABELLED ISSUES block and no EXPIRED AUTHOR LEASES section."
-  ]
+    "Production function body md5 matched migration 20260917005650 before derivation.",
+    "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today.",
+    "Migration version superseded to 20260917144950 through --reversion-active-claim; claim #3189 lease version updated by the tool."
+  ],
+  "stop_conditions_hit": []
 }

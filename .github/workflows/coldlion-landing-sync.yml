@@ -1,14 +1,21 @@
-# Scheduled ColdLion masters, history and production-detail sync.
+# Scheduled ColdLion masters, history, prepack and production-detail sync.
 #
 # Re-reads the most recent grid windows every run. A window already proven loaded
 # is skipped; a window that is not is completed. Trailing more than one window is
 # deliberate — an order edited days after it was written falls in an older window,
 # and a sync that only ever looked at the current week would never see it.
 #
-# The production-detail step runs AFTER the history step of this same job, so the
-# orders landed moments ago are immediately eligible for /proddetails: it fetches
-# every order with no SUCCEEDED run yet, then re-reads recently-observed ones —
-# the same trailing-window philosophy as the history re-read above it.
+# Since issue #3179 the same run also refreshes coldlion.prepack_detail: it
+# re-harvests the prepackCode population from the tables landed above and re-asks
+# every code, so recipe edits and removals are observed. The initial bounded
+# backfill lives in coldlion-prepack-backfill.yml, manual dispatch only.
+#
+# Since issue #3180 the same run also refreshes coldlion.prod_detail, AFTER the
+# history step of this same job, so the orders landed moments ago are immediately
+# eligible for /proddetails: it fetches every order with no SUCCEEDED run yet,
+# then re-reads recently-observed ones — the same trailing-window philosophy as
+# the history re-read above it. The initial bounded backfill lives in
+# coldlion-prod-detail-backfill.yml, manual dispatch only.
 #
 # This workflow WRITES to the shared database. Two rules follow from that:
 #   1. It is never triggered by a pull request or a push. Schedule and manual
@@ -65,7 +72,7 @@ jobs:
         run: psql --version
 
       - name: Run the offline contract tests before touching anything
-        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prod-details.test.mjs
+        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs
 
       - name: Refuse to run without an explicit target
         env:
@@ -85,24 +92,16 @@ jobs:
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
           COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
           WINDOWS: ${{ github.event.inputs.windows || '3' }}
+          PROD_DETAIL_LIMIT: ${{ github.event.inputs.prod_detail_limit || '2000' }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
           ARGS=(--windows "$WINDOWS")
           MASTER_ARGS=()
-          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); fi
+          PREPACK_ARGS=()
+          PROD_DETAIL_ARGS=(--mode refresh --limit "$PROD_DETAIL_LIMIT")
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); PROD_DETAIL_ARGS+=(--dry-run); fi
           node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
-
-      - name: Refresh production detail
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
-          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
-          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
-          PROD_DETAIL_LIMIT: ${{ github.event.inputs.prod_detail_limit || '2000' }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
-        run: |
-          set -euo pipefail
-          ARGS=(--mode refresh --limit "$PROD_DETAIL_LIMIT")
-          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
-          node tools/coldlion-landing/sync-prod-details.mjs "${ARGS[@]}"
+          node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"
+          node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"

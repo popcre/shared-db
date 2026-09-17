@@ -2547,6 +2547,7 @@ export const githubIo = {
     return execFileSync('git',['-C',worktree,'rev-parse','HEAD'],{encoding:'utf8'}).trim()
   },
   localHead(worktree){return execFileSync('git',['-C',worktree,'rev-parse','HEAD'],{encoding:'utf8'}).trim()},
+  localBranch(worktree){return execFileSync('git',['-C',worktree,'symbolic-ref','--quiet','--short','HEAD'],{encoding:'utf8'}).trim()},
   localWorktreeState(worktree){
     if(!existsSync(worktree))return {state:'absent'}
     const clean=execFileSync('git',['-C',worktree,'status','--porcelain'],{encoding:'utf8'}).split(/\r?\n/).filter(Boolean).every((line)=>line.slice(3).replaceAll('\\','/').startsWith('.ai/'))
@@ -3145,7 +3146,7 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
     const message=commit?.message ?? commit?.commit?.message ?? ''
     const dateText=commit?.committer?.date ?? commit?.commit?.committer?.date
     const acquiredAt=new Date(dateText)
-    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
+    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-worktree-rebind|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
     if(Number.isNaN(acquiredAt.valueOf()))throw new LaneError('refusing recovery: mutex owner time is unreadable')
     const age=now-acquiredAt
     if(age<minAgeMs)throw new LaneError(`refusing recovery: mutex is only ${Math.max(0,Math.floor(age/1000))} seconds old`)
@@ -5738,6 +5739,95 @@ export function supersedeActiveClaimVersion(options,now=new Date(),io=githubIo){
 
 export const reversionActiveClaim=supersedeActiveClaimVersion
 
+// Issue #3182. A live claim is bound to the worktree it was authored in. When that
+// path is later reused by another session, every worktree-bound operation (version
+// supersession, reviewer preflight) refuses forever and there was no way to move
+// the claim. This moves ONLY the lease `worktree:` line to a fresh clean worktree
+// that is on the claim branch at the exact open PR head, after owner proof, under
+// the coordination mutex, with an exact readback and create-only evidence. The
+// recorded old worktree is never inspected or touched: it may hold another
+// session's uncommitted work.
+export const CLAIM_WORKTREE_REBIND_REF_PREFIX='refs/db-claim-worktree-rebinds/'
+export function normalizeWorktreePath(value){return String(value??'').trim().replaceAll('\\','/').replace(/\/+$/,'').toLowerCase()}
+export function claimWorktreeRebindRef(claim,version,targetWorktree){return `${CLAIM_WORKTREE_REBIND_REF_PREFIX}${Number(claim)}-${version}-${sha256(normalizeWorktreePath(targetWorktree)).slice(0,16)}`}
+function parseClaimWorktreeRebind(commit){
+  const message=commit?.message??commit?.commit?.message??''
+  const match=/^db-coordination claim-worktree-rebound issue=(\d+) claim=(\d+) pr=(\d+) version=(\d{14}) head=([0-9a-f]{40}) from-sha256=([0-9a-f]{64}) to-sha256=([0-9a-f]{64})$/i.exec(message.split('\n')[0])
+  if(!match)throw new LaneError('claim worktree rebind evidence is unreadable')
+  return {issue:Number(match[1]),claim:Number(match[2]),pr:Number(match[3]),version:match[4],headSha:match[5],fromDigest:match[6],toDigest:match[7]}
+}
+function leaseWithoutWorktree(lease){const {worktree,...rest}=lease;return canonicalJson({...rest,expiresAt:rest.expiresAt?.toISOString?.()??null})}
+export function rebindClaimWorktree(options,now=new Date(),io=githubIo){
+  const request={issue:Number(options.issue),claim:Number(options.claim),pr:Number(options.pr),owner:String(options.owner??''),branch:String(options.branch??''),worktree:String(options.worktree??''),targetWorktree:String(options.targetWorktree??''),headSha:String(options.headSha??'')}
+  if(!Number.isInteger(request.issue)||request.issue<=0||!Number.isInteger(request.claim)||request.claim<=0||!Number.isInteger(request.pr)||request.pr<=0||!request.owner||!request.branch||!request.worktree||!request.targetWorktree||!/^[0-9a-f]{40}$/.test(request.headSha))throw new LaneError('claim worktree rebind requires exact issue, claim, PR, owner, branch, current worktree, target worktree, and 40-character lowercase head')
+  if(/[\r\n`]/.test(request.targetWorktree)||request.targetWorktree!==request.targetWorktree.trim())throw new LaneError('target worktree path contains a forbidden character')
+  if(/[\s`]/.test(request.branch))throw new LaneError('claim branch contains a forbidden character')
+  if(normalizeWorktreePath(request.worktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('target worktree must differ from the recorded claim worktree')
+  const verifyTarget=()=>{
+    if(!io.localClean(request.targetWorktree))throw new LaneError('target worktree is absent or dirty')
+    if(io.localHead(request.targetWorktree)!==request.headSha)throw new LaneError('target worktree is not at the exact PR head')
+    if(typeof io.localBranch!=='function'||io.localBranch(request.targetWorktree)!==request.branch)throw new LaneError('target worktree is not on the claim branch')
+  }
+  const verifyPr=()=>{const pr=io.getPr(request.pr);if(pr?.state!=='open'||pr.head?.sha!==request.headSha||pr.head?.ref!==request.branch)throw new LaneError('open PR exact head or branch changed')}
+  const proveOwnership=(claim)=>{
+    if(claim?.state!=='open'||Number(claim.number)!==request.claim)throw new LaneError(`claim #${request.claim} is not open`)
+    if(workstreamKey(claim.title)!==`#${request.issue}`)throw new LaneError(`claim title does not identify exact issue #${request.issue}: ${JSON.stringify(claim.title??'')}`)
+    const lease=parseAuthorLease(claim.body,now)
+    if(lease.legacy)throw new LaneError('legacy claim leases cannot be rebound')
+    if(lease.owner!==request.owner)throw new LaneError('claim owner changed')
+    if(lease.branch!==request.branch)throw new LaneError('claim branch changed')
+    assertClaimNotRetired(lease.version,'rebound',io)
+    return lease
+  }
+  const current=io.getIssue(request.claim),currentLease=proveOwnership(current),ref=claimWorktreeRebindRef(request.claim,currentLease.version,request.targetWorktree)
+  // The evidence ref is keyed by the NORMALIZED target while its digests hash the exact
+  // spelling, so a case or slash variant of an already-bound target is refused by name
+  // here instead of surfacing as a confusing digest mismatch.
+  if(currentLease.worktree!==request.targetWorktree&&normalizeWorktreePath(currentLease.worktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('claim already names this target worktree with a different spelling; pass the exact recorded path')
+  if(currentLease.worktree===request.targetWorktree){
+    const priorSha=io.readRef(ref);if(!priorSha)throw new LaneError('claim already names the target worktree without durable rebind evidence')
+    const prior=parseClaimWorktreeRebind(io.getCommit(priorSha))
+    if(prior.issue!==request.issue||prior.claim!==request.claim||prior.pr!==request.pr||prior.version!==currentLease.version||prior.fromDigest!==sha256(request.worktree)||prior.toDigest!==sha256(request.targetWorktree))throw new LaneError('durable claim worktree rebind does not match this request')
+    if(prior.headSha!==request.headSha)throw new LaneError(`claim was already rebound at head ${prior.headSha}; the PR head has since changed, so this re-run is not the recorded rebind and needs no action`)
+    return {...prior,worktree:request.targetWorktree,rebindSha:priorSha,idempotent:true}
+  }
+  if(currentLease.worktree!==request.worktree)throw new LaneError('claim worktree changed')
+  if(!currentLease.active||currentLease.declaredCapacityState!=='active')throw new LaneError('claim lease is expired or not active; renew or resume it before rebinding')
+  verifyPr();verifyTarget()
+  const ownerSha=io.makeOwnerCommit(`db-coordination claim-worktree-rebind issue=${request.issue} claim=${request.claim} pr=${request.pr} head=${request.headSha}`)
+  acquireMutex(ownerSha,io)
+  let before,bodyChanged=false,rebindSha,refCreated=false
+  try{
+    before=io.getIssue(request.claim);const lease=proveOwnership(before)
+    if(lease.worktree!==request.worktree)throw new LaneError('claim worktree changed')
+    if(!lease.active||lease.declaredCapacityState!=='active')throw new LaneError('claim lease is expired or not active; renew or resume it before rebinding')
+    if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
+    if(io.readRef(ref))throw new LaneError('durable rebind evidence already exists for this target but the claim does not name it')
+    verifyPr()
+    const versions=migrationVersions(io.getPrFiles(request.pr));if(versions.length>1||(versions.length===1&&versions[0]!==lease.version))throw new LaneError('PR migration does not match the claim version')
+    verifyTarget()
+    requireOwnedRef(MUTEX_REF,ownerSha,io)
+    const newBody=replaceLeaseLocation(before.body,request.branch,request.targetWorktree)
+    bodyChanged=true;io.updateIssue(request.claim,{body:newBody})
+    const after=io.getIssue(request.claim),afterLease=parseAuthorLease(after?.body??'',now)
+    if(after?.state!=='open'||after.title!==before.title||after.body!==newBody||afterLease.worktree!==request.targetWorktree||leaseWithoutWorktree(afterLease)!==leaseWithoutWorktree(lease))throw new LaneError('rebound claim exact readback failed')
+    verifyPr();verifyTarget()
+    requireOwnedRef(MUTEX_REF,ownerSha,io)
+    rebindSha=io.makeOwnerCommit(`db-coordination claim-worktree-rebound issue=${request.issue} claim=${request.claim} pr=${request.pr} version=${lease.version} head=${request.headSha} from-sha256=${sha256(request.worktree)} to-sha256=${sha256(request.targetWorktree)}`)
+    if(!io.createRef(ref,rebindSha))throw new LaneError('durable claim worktree rebind evidence could not be created')
+    refCreated=true
+    if(readRefAfterWrite(ref,rebindSha,io)!==rebindSha)throw new LaneError('durable claim worktree rebind evidence could not be read back')
+    return {issue:request.issue,claim:request.claim,pr:request.pr,version:lease.version,headSha:request.headSha,worktree:request.targetWorktree,rebindSha,idempotent:false}
+  }catch(error){
+    if(io.readRef(MUTEX_REF)!==ownerSha)throw new LaneError(`${error.message}; ROLLBACK NOT ATTEMPTED because mutex ownership was lost`)
+    const failures=[]
+    if(refCreated)try{if(io.readRef(ref)===rebindSha)releaseOwnedRef(ref,rebindSha,io)}catch(e){failures.push(e.message)}
+    if(bodyChanged)try{io.updateIssue(request.claim,{body:before.body});if(io.getIssue(request.claim)?.body!==before.body)throw new LaneError('claim body rollback readback failed')}catch(e){failures.push(e.message)}
+    if(failures.length)throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${failures.join('; ')}`)
+    throw error
+  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+}
+
 function parseMergedClaimReissue(commit){
   const message=commit?.message??commit?.commit?.message??''
   const match=/^db-coordination merged-claim-reissued issue=(\d+) claim=(\d+) source-pr=(\d+) old=(\d{14}) new=(\d{14}) old-ref=([0-9a-f]{7,40}) new-ref=([0-9a-f]{7,40}) merge=([0-9a-f]{40})$/i.exec(message)
@@ -8136,6 +8226,7 @@ function parseArgs(argv) {
     else if (a === '--json') out.json = true
     else if (['--propose-train','--validate-train','--authorize-train','--dispatch-train','--close-train','--verify-train-dispatch','--train-proof','--authorization-digest','--target-identity','--target','--commit-sha','--allowlist','--failed-applied-prefix'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if (a === '--reissue-merged-stranded-claim') out.reissueMergedClaim = true
+    else if (a === '--rebind-claim-worktree') out.rebindClaimWorktree = true
     else if (a === '--reversion-active-claim' || a === '--supersede-active-claim-version') out.reversionClaim = true
     else if (a === '--confirm-stale') out.confirmStale = true
     else if (/^--acquire-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.acquireExclusive = a.slice(10)
@@ -8238,7 +8329,7 @@ export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
     if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
-    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
+    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','rebindClaimWorktree','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')
     if(selectedPrimary.length>1)throw new LaneError(`choose exactly one primary operation; received ${selectedPrimary.join(', ')}`)
@@ -8373,6 +8464,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.resumeAuthorLease){console.log(JSON.stringify(resumeAuthorLease({...o,claim:o.claimNumber??o.claim},now,io),null,2));return 0}
     if(o.repairResumedClaim){console.log(JSON.stringify(repairResumedClaim({...o,claim:o.claimNumber??o.claim},now,io),null,2));return 0}
     if(o.reissueMergedClaim){console.log(JSON.stringify(reissueMergedStrandedClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
+    if(o.rebindClaimWorktree){console.log(JSON.stringify(rebindClaimWorktree({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.reversionClaim){console.log(JSON.stringify(reversionActiveClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.replaceFailedReviewer){const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}
     if(o.releaseFailedReviewer){console.log(JSON.stringify(releaseFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},io),null,2));return 0}

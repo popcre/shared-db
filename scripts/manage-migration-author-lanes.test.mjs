@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migration-author-lanes.mjs'
+import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -8465,3 +8466,121 @@ test('#3187 mutex release still refuses when the lock keeps naming our owner com
   assert.throws(()=>assignNextReviewer({issue:1767,pr:1800,headSha:"a".repeat(40),admissionOptions:{pr:1800}},io),/could not be proved after atomic deletion/)
 })
 
+
+// Issue #3182: guarded --rebind-claim-worktree.
+function rebindIo(overrides={}){
+  const io=reversionIo()
+  const target='C:/repos/shared-db/.claude/worktrees/issue-764-rebind-fresh'
+  io.targetWorktree=target
+  io.inspected=[]
+  io.localClean=(worktree)=>{io.inspected.push(worktree);return true}
+  io.localHead=(worktree)=>{io.inspected.push(worktree);return io.head}
+  io.localBranch=(worktree)=>{io.inspected.push(worktree);return 'codex/issue-764-sequence-repair'}
+  io.getPrFiles=()=>[{filename:`supabase/migrations/${io.old}_repair.sql`}]
+  return Object.assign(io,overrides)
+}
+const rebindArgs={issue:764,claim:1056,pr:1047,owner:'issue_764_sequence_repair/session-1053',branch:'codex/issue-764-sequence-repair',worktree:'C:\\repos\\shared-db-worktrees\\issue-764-sequence-repair',targetWorktree:'C:/repos/shared-db/.claude/worktrees/issue-764-rebind-fresh',headSha:'a'.repeat(40)}
+
+test('issue 3182: rebind moves only the lease worktree, records evidence, and never inspects the old worktree',()=>{
+  const io=rebindIo(),before=parseAuthorLease(io.issue.body,NOW),result=rebindClaimWorktree(rebindArgs,NOW,io),after=parseAuthorLease(io.issue.body,NOW)
+  assert.equal(result.idempotent,false)
+  assert.equal(after.worktree,rebindArgs.targetWorktree)
+  for(const key of ['version','owner','branch','capacityState','declaredCapacityState','active'])assert.equal(after[key],before[key],key)
+  assert.equal(after.expiresAt.toISOString(),before.expiresAt.toISOString())
+  assert.deepEqual(after.writes,before.writes)
+  const ref=claimWorktreeRebindRef(1056,io.old,rebindArgs.targetWorktree)
+  assert.equal(io.refs.get(ref),result.rebindSha)
+  assert.match(io.getCommit(result.rebindSha).message,/^db-coordination claim-worktree-rebound issue=764 claim=1056 pr=1047 version=20260816044638 /)
+  assert.equal(io.refs.has(MUTEX_REF),false,'mutex must be released')
+  assert.ok(io.inspected.length>0)
+  assert.ok(io.inspected.every((worktree)=>worktree===rebindArgs.targetWorktree),'old worktree must never be inspected')
+  const again=rebindClaimWorktree(rebindArgs,NOW,io)
+  assert.equal(again.idempotent,true);assert.equal(again.rebindSha,result.rebindSha)
+})
+
+test('issue 3182: rebind refuses without exact owner proof, PR head, and a clean target on the claim branch',()=>{
+  const cases=[
+    [{owner:'someone-else'},{},/claim owner changed/],
+    [{branch:'other/branch'},{},/claim branch changed/],
+    [{worktree:'C:/elsewhere'},{},/claim worktree changed/],
+    [{issue:765},{},/claim title does not identify exact issue #765/],
+    [{claim:999},{getIssue:()=>({number:999,state:'closed',title:'x',body:''})},/not open/],
+    [{headSha:'c'.repeat(40)},{},/exact head/],
+    [{targetWorktree:'c:/repos/shared-db-worktrees/issue-764-sequence-repair/'},{},/must differ/],
+    [{},{localClean:()=>false},/absent or dirty/],
+    [{},{localHead:()=>'d'.repeat(40)},/not at the exact PR head/],
+    [{},{localBranch:()=>'main'},/not on the claim branch/],
+    [{},{localBranch:undefined},/not on the claim branch/],
+    [{},{getPrFiles:()=>[{filename:'supabase/migrations/20260816050000_other.sql'}]},/does not match the claim version/],
+    [{headSha:'A'.repeat(40)},{},/40-character lowercase head/],
+    [{targetWorktree:''},{},/requires exact/],
+  ]
+  for(const [args,overrides,pattern] of cases){
+    const io=rebindIo(overrides),original=io.issue.body
+    assert.throws(()=>rebindClaimWorktree({...rebindArgs,...args},NOW,io),pattern,JSON.stringify(args))
+    assert.equal(io.issue.body,original,'claim body must be unchanged after refusal')
+    assert.equal(io.refs.has(MUTEX_REF),false)
+  }
+})
+
+test('issue 3182: rebind refuses expired or relinquished leases and asks for renewal first',()=>{
+  const io=rebindIo()
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,new Date('2026-08-17T00:00:00Z'),io),/renew or resume it before rebinding/)
+  const relinquished=rebindIo();relinquished.issue.body=relinquished.issue.body.replace('capacity_state: active','capacity_state: relinquished\nblocked_on: #1\nworktree_state: dirty')
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,relinquished),/renew or resume it before rebinding/)
+})
+
+test('issue 3182: rebind rolls back the claim body when readback or evidence fails',()=>{
+  const io=rebindIo(),original=io.issue.body,baseUpdate=io.updateIssue;let first=true
+  io.updateIssue=(number,fields)=>{const result=baseUpdate(number,fields);if(first){first=false;io.issue.title='CLAIM: #764 tampered'}return result}
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,io),/exact readback failed/)
+  assert.equal(io.issue.body,original)
+  const evidence=rebindIo(),evidenceOriginal=evidence.issue.body
+  evidence.createRef=(ref,sha)=>{if(ref.startsWith('refs/db-claim-worktree-rebinds/'))return false;if(evidence.refs.has(ref))return false;evidence.refs.set(ref,sha);return true}
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,evidence),/could not be created/)
+  assert.equal(evidence.issue.body,evidenceOriginal)
+  assert.equal(evidence.refs.has(MUTEX_REF),false)
+})
+
+test('issue 3182: rebind never rolls back after losing the mutex',()=>{
+  const io=rebindIo(),baseUpdate=io.updateIssue
+  io.updateIssue=(number,fields)=>{const result=baseUpdate(number,fields);io.refs.set(MUTEX_REF,'successor');return result}
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,io),/ROLLBACK NOT ATTEMPTED/)
+})
+
+test('issue 3182: claim already naming the target without evidence is refused, and mismatched evidence is refused',()=>{
+  const io=rebindIo();rebindClaimWorktree(rebindArgs,NOW,io)
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,pr:1048},NOW,io),/does not match this request/)
+  const bare=rebindIo();bare.issue.body=bare.issue.body.replace(/^worktree: .*$/m,`worktree: ${rebindArgs.targetWorktree}`)
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,bare),/without durable rebind evidence/)
+})
+
+test('issue 3182: re-run at a changed head, a respelled target, or a malformed branch is refused, not reported idempotent',()=>{
+  const io=rebindIo();rebindClaimWorktree(rebindArgs,NOW,io)
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,headSha:'b'.repeat(40)},NOW,io),/already rebound at head a{40}/)
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,targetWorktree:rebindArgs.targetWorktree.toUpperCase()},NOW,io),/different spelling/)
+  const branch=rebindIo(),original=branch.issue.body
+  assert.throws(()=>rebindClaimWorktree({...rebindArgs,branch:'codex/issue-764\nworktree: C:/evil'},NOW,branch),/branch contains a forbidden character/)
+  assert.equal(branch.issue.body,original)
+})
+
+test('issue 3182: rebind refuses a retired version, a missing permanent reservation, and orphan evidence',async()=>{
+  const {resetRetirementSnapshot}=await import('./manage-migration-author-lanes.mjs')
+  const retired=rebindIo(),retiredOriginal=retired.issue.body
+  retired.refs.set(`refs/db-claims-retired/${retired.old}`,'9'.repeat(40));retired.readCommitMessage=()=>null
+  resetRetirementSnapshot()
+  try{assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,retired),/retire/i)}finally{resetRetirementSnapshot()}
+  assert.equal(retired.issue.body,retiredOriginal)
+  const unreserved=rebindIo(),unreservedOriginal=unreserved.issue.body;unreserved.refs.delete(`refs/db-claims/${unreserved.old}`)
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,unreserved),/permanent version reservation is unreadable/)
+  assert.equal(unreserved.issue.body,unreservedOriginal);assert.equal(unreserved.refs.has(MUTEX_REF),false)
+  const orphan=rebindIo(),orphanOriginal=orphan.issue.body;orphan.refs.set(claimWorktreeRebindRef(1056,orphan.old,rebindArgs.targetWorktree),'8'.repeat(40))
+  assert.throws(()=>rebindClaimWorktree(rebindArgs,NOW,orphan),/evidence already exists for this target but the claim does not name it/)
+  assert.equal(orphan.issue.body,orphanOriginal);assert.equal(orphan.refs.has(MUTEX_REF),false)
+})
+
+test('issue 3182: REAL main command wires --rebind-claim-worktree with every identity field',()=>{
+  const io=rebindIo(),args=['--rebind-claim-worktree','--issue','764','--claim-number','1056','--owner',rebindArgs.owner,'--branch',rebindArgs.branch,'--worktree',rebindArgs.worktree,'--target-worktree',rebindArgs.targetWorktree,'--pr','1047','--head-sha',rebindArgs.headSha]
+  assert.equal(main(args,NOW,io),0)
+  assert.equal(parseAuthorLease(io.issue.body,NOW).worktree,rebindArgs.targetWorktree)
+})

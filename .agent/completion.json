@@ -1,31 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3187,
+  "work_issue": 3182,
   "outcome": "ready-for-merge",
-  "pr": 3192,
+  "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3187/4",
-  "contract_sha256": "0900f6b6bd5559272e98b6e077cee1df0eae9b79b6da0c936574c91e4dbc4cfc",
-  "head_sha": "544c6f8ed89b26f06c7f40436d8d626d67272096",
+  "contract_ref": "refs/db-contracts/3182/5",
+  "contract_sha256": "01001c53cb6855b8ae0019fc31bb2c5e3c7fe1dc47b62ad0f8e22d03cd1d30a9",
+  "head_sha": "1d8ad8792a2fe908473e3f13445bedec7823d758",
   "files_changed": [
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    ".github/workflows/pr-object-collision.yml",
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/reviewer-wire-budget.test.mjs",
-    "scripts/test-fixtures/github-wire-fake.mjs"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "At 544c6f8ed89b26f06c7f40436d8d626d67272096 the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1273 passed (now including the throughput-guard suites; truth audit OK at 307 call sites), 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
+      "evidence": "628 tests, 628 pass, 0 fail at a8df2e63 after merging main 4fec003d."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=305 at a8df2e63."
     }
   ],
   "assumptions_resolved": [
-    "git ls-remote with a ref pattern measured 1.1s against 1.4s for one gh api read on 2026-09-17; no API quota used"
+    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
+    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change.",
+    "Main movement was documentation only (ae714512); tests last run at a8df2e63. Refreshed to 1d8ad879."
   ],
   "stop_conditions_hit": []
 }

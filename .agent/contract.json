@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3152,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -15,6 +15,7 @@
     "scripts/orchestrator-snapshot.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -23,6 +24,7 @@
     "scripts/orchestrator-snapshot.test.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.mjs",
     "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],

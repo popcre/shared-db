@@ -26,8 +26,9 @@ function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CL
   }
 }
 
-test('issue 3148 a ready structural request with no ledger event alarms after 30 minutes; blocked, dependent, claimed and entered ones do not', () => {
-  const scope = (status, extra = '') => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: shared-db-orchestrator\n' + extra + 'writes:\n- table core.a\n```'
+test('issue 3148 only a request the queue audit itself would admit alarms after 30 minutes', () => {
+  const admission = 'service_class: standard-application\nchange_type: migration\napplication_return_to: u2giants/example-app\nlive_assertion: authenticated create-and-read succeeds\ngenerated_types: not-applicable\npriority: 5\n'
+  const scope = (status, extra = '', fields = admission) => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: shared-db-orchestrator\n' + fields + extra + 'writes:\n  - table core.a\n```'
   const base = fakeIo()
   const issues = [
     { number: 950, body: scope('ready'), created_at: minutesAgo(31), labels: [{ name: 'db-work' }], comments: 0 },
@@ -41,13 +42,20 @@ test('issue 3148 a ready structural request with no ledger event alarms after 30
     { number: 958, body: scope('ready').replace('route: shared-db-orchestrator', 'route: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 959, body: scope('ready') + '\n' + scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 960, body: scope('ready', 'depends_on: #9999\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 961, body: scope('ready', '', 'priority: 5\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 800, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
   ]
-  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue), [950, 954, 955, 960, 800])
-  const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
+  // Without dependency proof the audit's fallback treats an absent #9999 as not open.
+  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue).sort(), [800, 950, 954, 955, 960])
+  // With the proof, a nonexistent dependency withholds #960 exactly as the queue does.
+  const dependencyStates = { 953: { exists: true, open: true }, 9999: { exists: false } }
+  assert.deepEqual(readyRequestCandidates(issues, { dependencyStates }).map((row) => row.work_issue).sort(), [800, 950, 954, 955])
+  let asked = null
+  const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], dependencyStates: (numbers) => { asked = numbers; return dependencyStates }, issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
   const { unentered } = gatherLiveInput('o/r', io)
-  assert.deepEqual(unentered.map((row) => row.work_issue).sort(), [950, 955, 960], 'a closed dependency does not block; a request owned through a claim title (#800) is excluded')
-  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[960, 'requested', 600], [950, 'requested', 31]])
+  assert.deepEqual(asked, [953, 9999])
+  assert.deepEqual(unentered.map((row) => row.work_issue).sort(), [950, 955], 'entered #954 and claim-title-owned #800 are excluded')
+  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[950, 'requested', 31]])
 })
 
 test('121-minute idle outcome appears in stalled_outcomes; 120 does not', () => {

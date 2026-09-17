@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 8,
+  "generation": 9,
   "work_issue": 3009,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Make the unfiltered PopSG v2 default browse (files and guides) complete well under the 8 s authenticated statement timeout by serving totals, facets and guide rows from a refreshed snapshot, without raising any timeout.",
-  "base_sha": "e460bd2c9bd1ebe826792dbbc65fc8c76454ecb5",
+  "base_sha": "c6d09dd1dc80539b70f128c466e1788fc9e967a6",
   "dispatcher": "shared-db orchestrator u2giants/shared-db#3106 relaying Albert Hazan owner chat: finish #3009 ASAP",
   "worker": "Claude Opus 5 #3009 author (claude-3009-author)",
   "branch": "claude/3009-sg-default-browse-snapshot",

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3126/1",
   "contract_sha256": "e46096a9d4e8f2cce209e58dd79171c097c0c6834c357d569ed96c4de4a74c22",
-  "head_sha": "e737297cc83dab4846ee1fc280e9c6cab64d0443",
+  "head_sha": "8544825aabf485313079c41c7d59efc88832c936",
   "files_changed": [
     "scripts/orchestrator-snapshot.mjs",
     "scripts/orchestrator-snapshot.test.mjs"

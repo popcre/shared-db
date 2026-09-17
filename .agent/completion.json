@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2367,
+  "work_issue": 2365,
   "outcome": "ready-for-merge",
-  "pr": 3145,
+  "pr": 3143,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2367/1",
-  "contract_sha256": "e9fa7c8a99ef6d6d2f9ad8a46632150d6300ab3e2a77829579a3a9c7af37e998",
-  "head_sha": "d5d139ba87215798c108a81d9ebfa74281610efd",
+  "contract_ref": "refs/db-contracts/2365/1",
+  "contract_sha256": "40375c95984fdc733c300067798043ab077b21c807077b6c453a4ae06eb98aaf",
+  "head_sha": "f7d8ea0203c48ccf6e6e35d4c8461448d414d87c",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_historical_original_runs_mutations.py"
+    "scripts/test_production_business_risk_gate_governed_reconciliation_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -16,12 +16,11 @@
     {
       "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "python -m unittest scripts/test_*.py: Ran 1105 tests, OK (skipped=8) locally at the new head; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally for all 6 mutants, including each exact-main cardinality subtest on its own with prove_preview_migration_contents patched to fail, and is not committed as an artifact."
+      "evidence": "python -m unittest scripts/test_*.py: Ran 1141 tests, OK (skipped=8) locally with the new file present; CI reruns the suite. The per-mutant kill proof (mutate guard to False, run the new file, confirm failure, restore source) was run locally and is not committed as an artifact."
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 6 historical-original-runs guard mutants listed in issue #2367; the other survivors from the 2026-09-04 sweep for this gate are covered by five other single-issue PRs (#3140, #3141, #3142, #3143, #3144), not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here.",
-    "The comment in scripts/production_business_risk_gate.py above these guards says no test can drive them and that deleting them leaves the suite green. After this PR that is no longer true: the new file drives them directly. The comment is left unchanged because this PR does not edit gate source; correcting it is a follow-up for the gate's owner."
+    "This PR covers only the 8 governed-reconciliation guard mutants listed in issue #2365; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
   ],
   "stop_conditions_hit": []
 }

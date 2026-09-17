@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3187,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -11,6 +11,7 @@
   "branch": "claude/api-fanout-2773-b",
   "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-b",
   "allowed_paths": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
@@ -20,6 +21,7 @@
     ".agent/completion.json"
   ],
   "file_writes": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",

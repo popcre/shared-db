@@ -4,10 +4,11 @@
   "outcome": "ready-for-merge",
   "pr": 3192,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3187/3",
-  "contract_sha256": "ffe625ddd35c062e73bada8f7107ede977cd4c07fb99b13aea611f84645d58be",
-  "head_sha": "025f471eafee140d7b320a878534bc6d075164ac",
+  "contract_ref": "refs/db-contracts/3187/4",
+  "contract_sha256": "0900f6b6bd5559272e98b6e077cee1df0eae9b79b6da0c936574c91e4dbc4cfc",
+  "head_sha": "544c6f8ed89b26f06c7f40436d8d626d67272096",
   "files_changed": [
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".github/workflows/pr-object-collision.yml",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
@@ -20,7 +21,7 @@
     {
       "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "At 025f471eafee140d7b320a878534bc6d075164ac the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1222 passed, 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
+      "evidence": "At 544c6f8ed89b26f06c7f40436d8d626d67272096 the pr-object-collision and migration-author-lease test lists plus both conformance suites: 1273 passed (now including the throughput-guard suites; truth audit OK at 307 call sites), 0 failed, 0 skipped. Wire fixture: slot 1 assignment 8 API requests (was 24), slot 2 8, release 5, replacement 7; the same test fails when its limit is lowered to 6. Mutex release readback now proves release as no-longer-our-owner-commit; a rival acquiring inside the readback window (live on #3192) no longer false-refuses, and the new test fails on the old code."
     }
   ],
   "assumptions_resolved": [

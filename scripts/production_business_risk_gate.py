@@ -1008,6 +1008,122 @@ def independent_sidecar_paths(
     return frozenset(independent)
 
 
+# CUSTODY-ONLY PRODUCERS (#3168). These files run in the preview job BEFORE or
+# AROUND the apply -- lane acquisition, tip freshness, orchestrator identity,
+# collision and capacity bookkeeping, evidence-reuse policy -- but none of them
+# executes, derives or writes the migration SQL, the ledgers, the content
+# manifest or the instance binding. They are pinned so a FORGED ref cannot run a
+# doctored copy. A preview dispatched at a commit that exact main CONTAINS ran
+# reviewed main-line copies of them, so a later main commit changing one of them
+# does not change what the rehearsal proved. #2870 and #2866 were refused for
+# exactly that: both previews ran at main-line 426cca7c, and main later changed
+# the freshness check, the lane manager and the repository identity helpers.
+# The tolerance applies ONLY to an exact-main target and ONLY after the ref is
+# proved an ancestor of exact main. Everything that shapes the apply --
+# guard, derivation, atomic apply, instance binding, allowlist, supabase
+# config, orphan reconciliations, every sidecar of an overlapping version --
+# stays compared byte for byte, and a tolerated path is never counted as a
+# comparison, so the zero-comparison refusal still holds.
+PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/repository_identity.py",
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/db-coordination-events.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/lib/open-pr-files.mjs",
+    "config/orchestrator-evidence-schema-v1.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "config/review-carry-forward-stored-hashes-v1.json",
+))
+
+# Executes in the preview job's historical-recovery mode, so it is NOT
+# custody-only. Tolerated only when the two versions are identical after the
+# repository identity move (#2530): the resolver import lines and the one REPO
+# assignment, spelled as the resolved slug or through the resolver.
+HISTORICAL_RECOVERY_PRODUCER = "scripts/historical_preview_recovery.py"
+_RECOVERY_IDENTITY_DROPPED_LINES = frozenset((
+    "try:  # run as scripts/<name>.py or imported as scripts.<name>",
+    "from repository_identity import current_repository",
+    "except ImportError:  # pragma: no cover",
+    "from scripts.repository_identity import current_repository",
+))
+
+
+def _recovery_identity_normal_form(text: str) -> list[str]:
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line in _RECOVERY_IDENTITY_DROPPED_LINES:
+            continue
+        if line in {f'REPO = "{REPOSITORY}"', "REPO = current_repository()  # never hard-coded (#2530)"}:
+            line = "REPO = <repository>"
+        lines.append(line)
+    return lines
+
+# The workflow decides which steps exist, so it is NOT custody-only as a whole.
+# It is tolerated only when the two versions are identical after these exact,
+# custody-only rewrites; any other changed line -- a step, a condition, an
+# apply command, an environment value -- still refuses.
+_WORKFLOW_CUSTODY_REWRITES = (
+    # Same repository, spelled literally (the resolved identity) or through the
+    # runner variable.
+    (re.compile(r"""['"]?repos/(?:""" + re.escape(REPOSITORY)
+                + r"""|\$\{GITHUB_REPOSITORY\})/([^'"\s]*)['"]?"""),
+     r"repos/<repository>/\1"),
+    # The freshness rule is the freshness script's own business.
+    (re.compile(r"(scripts/check-main-tip-freshness\.mjs) --production\b"), r"\1"),
+)
+_WORKFLOW_CUSTODY_DROPPED_LINES = frozenset((
+    # The production job's exact-tip equality, replaced by the freshness rule.
+    'test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"',
+))
+
+
+def _workflow_custody_normal_form(text: str) -> list[str]:
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line in _WORKFLOW_CUSTODY_DROPPED_LINES:
+            continue
+        for pattern, replacement in _WORKFLOW_CUSTODY_REWRITES:
+            line = pattern.sub(replacement, line)
+        lines.append(line)
+    return lines
+
+
+def _blob_text(sha: str, api: Callable[[str], Any]) -> str:
+    try:
+        blob = api(f"repos/{REPOSITORY}/git/blobs/{sha}")
+    except Exception as exc:  # noqa: BLE001 - unreadable content must fail closed
+        raise RiskGateError(f"preview producer blob {sha} is unreadable") from exc
+    if not isinstance(blob, dict) or blob.get("encoding") != "base64" \
+            or not isinstance(blob.get("content"), str):
+        raise RiskGateError(f"preview producer blob {sha} is unreadable")
+    import base64
+    try:
+        return base64.b64decode(blob["content"]).decode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        raise RiskGateError(f"preview producer blob {sha} is unreadable") from exc
+
+
+def _custody_only_difference(
+    path: str, ref_blob: str, target_blob: str, api: Callable[[str], Any]
+) -> bool:
+    if path in PREVIEW_CUSTODY_ONLY_PATHS:
+        return True
+    if path == PREVIEW_WORKFLOW:
+        return _workflow_custody_normal_form(_blob_text(ref_blob, api)) \
+            == _workflow_custody_normal_form(_blob_text(target_blob, api))
+    if path == HISTORICAL_RECOVERY_PRODUCER:
+        return _recovery_identity_normal_form(_blob_text(ref_blob, api)) \
+            == _recovery_identity_normal_form(_blob_text(target_blob, api))
+    return False
+
+
 def prove_preview_producer_matches_main(
     ref: str, target: ProvedTarget, main_sha: str, api: Callable[[str], Any], *,
     what: str = "preview run", against: str = "exact main",
@@ -1088,6 +1204,7 @@ def prove_preview_producer_matches_main(
     entries_at_target = tracked_tree_at(target.sha, api)
     present_at_ref, present_at_target = entries_at_ref.keys(), entries_at_target.keys()
     compared = 0
+    main_line_proved = False
     for path in PREVIEW_PRODUCER_PATHS:
         at_ref, at_target = path in present_at_ref, path in present_at_target
         if not at_ref and not at_target:
@@ -1104,18 +1221,47 @@ def prove_preview_producer_matches_main(
             # preview proof is still valid. Not counted as a comparison.
             continue
         if at_ref != at_target:
-            raise PreviewProducerMismatch(
+            mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with {path} "
                 f"{'present' if at_ref else 'absent'} where {against} has it "
                 f"{'present' if at_target else 'absent'}"
             )
-        if (
-            blob_sha_from_tree(path, ref, entries_at_ref)
-            != blob_sha_from_tree(path, target.sha, entries_at_target)
-        ):
-            raise PreviewProducerMismatch(
+            # A custody-only helper added or removed on main after a main-line
+            # preview (#3168: repository identity helpers arrived after 426cca7c).
+            if target.kind != "exact-main" or path not in PREVIEW_CUSTODY_ONLY_PATHS:
+                raise mismatch
+            if not main_line_proved:
+                try:
+                    prove_applied_commit_is_main_line(ref, main_sha, api)
+                except RiskGateError as exc:
+                    raise mismatch from exc
+                main_line_proved = True
+            continue
+        ref_blob = blob_sha_from_tree(path, ref, entries_at_ref)
+        target_blob = blob_sha_from_tree(path, target.sha, entries_at_target)
+        if ref_blob != target_blob:
+            mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with a different {path} than {against}"
             )
+            if target.kind != "exact-main" or (
+                path not in PREVIEW_CUSTODY_ONLY_PATHS
+                and path not in {PREVIEW_WORKFLOW, HISTORICAL_RECOVERY_PRODUCER}
+            ):
+                raise mismatch
+            # Custody-only drift is tolerated only for a main-line ref (#3168).
+            if not main_line_proved:
+                try:
+                    prove_applied_commit_is_main_line(ref, main_sha, api)
+                except RiskGateError as exc:
+                    raise mismatch from exc
+                main_line_proved = True
+            try:
+                tolerated = _custody_only_difference(path, ref_blob, target_blob, api)
+            except RiskGateError as exc:
+                raise mismatch from exc
+            if not tolerated:
+                raise mismatch
+            continue
         compared += 1
     # A PIN THAT COMPARED NOTHING IS NOT A PIN. The skip above is the only rule
     # in this function that can silently do nothing, and anything that makes both

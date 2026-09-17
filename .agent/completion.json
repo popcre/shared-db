@@ -1,36 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3165,
+  "work_issue": 3168,
   "outcome": "ready-for-merge",
-  "pr": 3166,
+  "pr": 3169,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3165/2",
-  "contract_sha256": "8f27a2eb30b1185f656067f47e0bcd05276a39eab4a5918cc705d2f13fbc34cb",
-  "head_sha": "f59af06cdd2f4d70260b8ce80ba21044e192f643",
+  "contract_ref": "refs/db-contracts/3168/1",
+  "contract_sha256": "5dc63fa52c2468a06835e3ec5e4d864661fb3ec9c41519184c0b7711b411cba8",
+  "head_sha": "5e8b8a23236c664b0b73d04676c4406349bc4c2e",
   "files_changed": [
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/orchestrator-snapshot.test.mjs",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "tests 698 pass 698 fail 0 at implementation head f59af06c."
-    },
-    {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (52 entries)."
+      "evidence": "169 passed; class MainLineCustodyOnlyProducerDriftTests: the positive tests and the apply-shaping control fail on main code. Full scripts pytest: 1306 passed, 8 skipped. Read-only dry run of prove_preview_producer_matches_main with live GitHub reads, preview ref 426cca7c (runs 35174395763 and 35175207318), promoted versions 20260917013422 and 20260916232818: refused on main code at 03d540a6 (different shared-supabase-migrations.yml), passes with this change at 03d540a6 and at b2d73ca9."
     }
   ],
   "assumptions_resolved": [
-    "Organization-owned repositories report an org member comments as MEMBER; the operator login is still required, so no other member, collaborator, or OWNER-association account is admitted."
+    "Custody-only tolerance applies only to an exact-main target after the ref is proved an ancestor of exact main; apply-shaping producers remain byte-compared and tolerated paths are not counted as comparisons"
   ],
   "stop_conditions_hit": []
 }

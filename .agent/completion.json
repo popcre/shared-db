@@ -1,27 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3119,
+  "work_issue": 3097,
   "outcome": "ready-for-merge",
-  "pr": 3123,
+  "pr": 3098,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3119/2",
-  "contract_sha256": "17301053f4f526b631285ecaee99636844caf72e6c41086406fd8772bb8e42f5",
-  "head_sha": "d17bc0b1cdacc63ea1f61ca74f8b5f6d3ecdedc8",
+  "contract_ref": "refs/db-contracts/3097/1",
+  "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
+  "head_sha": "ccfdbef49960e3bef126fafb35890e34aeadfdbb",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py -k \"allowlist or new_column or unknown_statement or refused_production\"",
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head d17bc0b1: 10 passed, 151 deselected, 87 subtests passed. Full file locally: 158 passed, 3 failed that fail identically on unmodified main b4a39203."
+      "evidence": "Run at implementation head 5d7fdc3a: tests 15, pass 15, fail 0, skipped 0."
     }
   ],
   "assumptions_resolved": [
-    "Inline CHECK on ADD COLUMN is validated by a table scan, so only expected downtime is reported, not data loss or access change"
+    "A malformed --drawn-since now throws in dry run and apply; proved by the drawn-since test"
   ],
   "stop_conditions_hit": []
 }

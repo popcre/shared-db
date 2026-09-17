@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3233,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3180/7",
-  "contract_sha256": "5f12c75e7e22044a7d0bea64c63f2c834bad7238c57c26b68e043fc7518877e0",
-  "head_sha": "1701670fd0e2a5b8496639bfeabf8cf8abd0220e",
+  "contract_ref": "refs/db-contracts/3180/8",
+  "contract_sha256": "d3b8c57dc126f338d8b8f36d96ab57324695eea8b1afa1f0f592a89650b4c729",
+  "head_sha": "cac60a025fb60bb8f3e1a8503fcee51c978ce196",
   "files_changed": [
     "tools/coldlion-landing-prod-details.test.mjs",
     "tools/coldlion-landing/README.md",
@@ -19,18 +19,19 @@
     {
       "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "36 tests, 36 pass, 0 fail on head 1701670f, including the new per-key refusal semantics: collisions throw refused (not fatal), the CLI records the refusal SQL durably, continues the population, reports refusedKeys, and exits non-zero."
+      "evidence": "38 tests, 38 pass, 0 fail on head cac60a02: the H1 regression test proves a refused key is never re-selected by refresh however recent; the omitted-field fatality is pinned (L2); malformed values refuse the key (L4)."
     },
     {
       "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "169 tests, 169 pass, 0 fail on the same head; the full 48-file tools suite also passed (939 tests), proving the doneKeysSql/reconciliation changes broke no other landing contract."
+      "evidence": "The four-suite offline gate command passes on the same head; the full 48-file tools suite passed (941 tests)."
     }
   ],
   "assumptions_resolved": [
     "Live order 20344 returns 10 rows including two with distinct pkeys sharing prodLineSeq 10 (differing itemPkey, prodQty, prodCost, labelCode and timestamps) - the second proven identity is falsified by the source while pkey remains unique; diagnosed read-only on 2026-09-17 with field names only, no row values.",
     "Backfill run 35275308013 landed 269 keys (plus 3 probe keys) before the first collision aborted it; nothing was written for the colliding order, and its sync_run carries the failure.",
-    "The unique constraint on (company_code, prod_order_no, prod_line_seq) is database STRUCTURE from #2863; changing it is filed as a separate db-work issue for the orchestrator, not smuggled into this source-data change."
+    "The unique constraint on (company_code, prod_order_no, prod_line_seq) is database STRUCTURE from #2863; changing it is filed as a separate db-work issue for the orchestrator, not smuggled into this source-data change.",
+    "Governed review round 1 (retained, non-authorizing after a wrapper evidence-publication fault; reconciled) returned REVISE with one High: the flat done-set let refused keys re-enter the refresh recent window nightly and refusedKeys counted rows not distinct orders. Both fixed, with regression tests; the contract stop_conditions no longer contradict the refusal semantics (L1); omitted-field fatality pinned (L2); malformed values reclassified from retried-forever transport to per-key refusal (L4)."
   ],
   "stop_conditions_hit": []
 }

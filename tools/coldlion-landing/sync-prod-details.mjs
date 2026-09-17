@@ -123,18 +123,19 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
 
   let harvested = [];
   let done = new Set();
+  let refusedKeys = new Set();
   if (args.mode === "keys") {
     harvested = args.keys.map((prodOrderNo) => ({ prodOrderNo, firstObserved: "", lastObserved: "" }));
   } else {
     harvested = parseHarvest(read(harvestSql(args.company)));
-    done = parseDoneKeys(read(doneKeysSql(args.company)));
+    ({ done, refused: refusedKeys } = parseDoneKeys(read(doneKeysSql(args.company))));
   }
   const selection = args.mode === "keys"
     ? harvested
-    : selectKeys({ harvested, done, mode: args.mode, from: args.from, recentDays: args.recentDays, limit: args.limit });
+    : selectKeys({ harvested, done, refused: refusedKeys, mode: args.mode, from: args.from, recentDays: args.recentDays, limit: args.limit });
 
   const outstanding = harvested.filter((entry) => !done.has(entry.prodOrderNo)).length;
-  console.log(`${args.mode}: population ${harvested.length}, already succeeded ${done.size}, outstanding ${outstanding}, selected ${selection.length}${args.from ? ` (first observed on/after ${args.from})` : ""}`);
+  console.log(`${args.mode}: population ${harvested.length}, answered ${done.size} (refused ${refusedKeys.size}), outstanding ${outstanding}, selected ${selection.length}${args.from ? ` (first observed on/after ${args.from})` : ""}`);
   if (args.dryRun) {
     for (const entry of selection.slice(0, 10)) console.log(`  would fetch prodOrderNo ${entry.prodOrderNo}`);
     if (selection.length > 10) console.log(`  … and ${selection.length - 10} more`);

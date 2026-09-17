@@ -133,7 +133,14 @@ export function projectProdDetailRows(sourceRows, { runId, fetchedAt, companyCod
   const rows = [];
   for (const source of sourceRows) {
     const row = { company_code: companyCode };
-    for (const field of PROD_DETAIL_SPEC.fields) row[field.column] = converters[field.type](source[field.api]);
+    try {
+      for (const field of PROD_DETAIL_SPEC.fields) row[field.column] = converters[field.type](source[field.api]);
+    } catch (error) {
+      // A malformed VALUE (a non-ISO timestamp, a non-finite number) is one key's
+      // data, not a feed-shape change: the 21 fields arrived, one value is bad.
+      // Classified as transport it would be retried forever; it is a refusal.
+      throw refusal(new Error(`/proddetails returned a malformed value for production order ${prodOrderNo}: ${error.message}`));
+    }
     row.source_hash = sourceHash(source);
     row.source_raw = source;
     row.run_id = runId;
@@ -291,15 +298,21 @@ export function harvestSql(companyCode) {
 }
 
 /**
- * Keys a run must not fetch again: SUCCEEDED runs, plus keys REFUSED for an identity
- * collision. Zero-row keys count as done (they were asked and answered); refused keys
- * count as answered too — re-fetching them cannot change the answer until the
- * falsified-unique-constraint ruling lands, and a nightly schedule that re-fails the
- * same key forever is alert fatigue, not safety. Transport failures are NOT here:
- * those keys stay outstanding and are retried by the next run.
+ * Keys a run must not fetch again, WITH their answer state: SUCCEEDED, plus keys
+ * REFUSED for an identity collision. Zero-row keys count as done (they were asked and
+ * answered); refused keys count as answered too — re-fetching them cannot change the
+ * answer until the falsified-unique-constraint ruling lands, and a nightly schedule
+ * that re-fails the same key forever is alert fatigue, not safety. Transport failures
+ * are NOT here: those keys stay outstanding and are retried by the next run.
+ *
+ * The state is kept SEPARATE (never folded into one flat set) because refresh mode
+ * re-reads recently-observed answered keys — and a refused key must not re-enter that
+ * list even when it is recent (live order 20344 always is). Found by the governed
+ * review of PR #3233 round 1 as H1.
  */
 export function doneKeysSql(companyCode) {
-  return `select (request_params->>'prodOrderNo')
+  return `select (request_params->>'prodOrderNo'),
+       case when status = 'failed' then 'refused' else 'succeeded' end
   from coldlion.sync_run
  where endpoint = '/proddetails'
    and company_code = ${sqlText(companyCode)}
@@ -323,11 +336,14 @@ export function parseHarvest(rows) {
 
 export function parseDoneKeys(rows) {
   const done = new Set();
-  for (const [rawKey] of rows) {
+  const refused = new Set();
+  for (const [rawKey, state] of rows) {
     const key = bigint(rawKey.trim());
-    if (key !== null) done.add(key);
+    if (key === null) continue;
+    done.add(key);
+    if (String(state ?? "").trim() === "refused") refused.add(key);
   }
-  return done;
+  return { done, refused };
 }
 
 /**
@@ -337,10 +353,12 @@ export function parseDoneKeys(rows) {
  * in one deterministic order and re-dispatching continues where the evidence stops.
  * refresh: never-fetched keys first, then recently-observed keys re-read newest first —
  * the same trailing-window philosophy as the history sync (an order edited after it was
- * written is re-read), bounded by the limit.
+ * written is re-read), bounded by the limit. REFUSED keys never re-enter either list:
+ * they are answered, and re-asking cannot change the answer (PR #3233 review H1).
  */
-export function selectKeys({ harvested, done, mode, from, recentDays, limit }) {
-  const neverFetched = harvested.filter((entry) => !done.has(entry.prodOrderNo));
+export function selectKeys({ harvested, done, refused, mode, from, recentDays, limit }) {
+  const answered = done;
+  const neverFetched = harvested.filter((entry) => !answered.has(entry.prodOrderNo));
   // Oldest first in every mode, so a bounded run walks the population in one
   // deterministic order and two runs never disagree about what comes next.
   neverFetched.sort((a, b) => a.firstObserved.localeCompare(b.firstObserved) || (a.prodOrderNo - b.prodOrderNo));
@@ -352,7 +370,7 @@ export function selectKeys({ harvested, done, mode, from, recentDays, limit }) {
   }
   const cutoff = new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const recent = harvested
-    .filter((entry) => done.has(entry.prodOrderNo) && entry.lastObserved.slice(0, 10) >= cutoff)
+    .filter((entry) => answered.has(entry.prodOrderNo) && !refused.has(entry.prodOrderNo) && entry.lastObserved.slice(0, 10) >= cutoff)
     .sort((a, b) => b.lastObserved.localeCompare(a.lastObserved) || (a.prodOrderNo - b.prodOrderNo));
   const selection = [...outstanding, ...recent];
   return limit === null ? selection : selection.slice(0, limit);
@@ -376,7 +394,7 @@ select (select count(*) from done),
        (select coalesce(sum(n), 0) from landed),
        (select count(*) from coldlion.prod_detail where company_code = ${sqlText(companyCode)}),
        (select count(distinct pkey) from coldlion.prod_detail where company_code = ${sqlText(companyCode)}),
-       (select count(*) from coldlion.sync_run
+       (select count(distinct (request_params->>'prodOrderNo')::bigint) from coldlion.sync_run
          where endpoint = '/proddetails' and company_code = ${sqlText(companyCode)}
            and status = 'failed' and request_params->>'refused' = ${sqlText(REFUSAL_REASON)})`;
 }

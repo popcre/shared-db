@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 7,
+  "generation": 8,
   "work_issue": 3180,
   "work_type": "source-data",
   "route": "source-data-session",
@@ -46,11 +46,12 @@
     "The live /proddetails field union is the 21 fields recorded in docs/coldlion-unit-5b-grain-proof-20260915.md; it was re-derived live on 2026-09-17 (8 keys, 28 rows) and matched exactly, so the unknown-field refusal is keyed to that shape.",
     "The complete approved prodOrderNo population is the distinct landed coldlion.prod_history_line set for EDGEHOME (live reading 2026-09-17: 3,761 distinct orders over 61,901 lines; EP001 absent because history landing already excluded it).",
     "The scheduled ColdLion Landing Sync workflow is the sanctioned ongoing refresh vehicle, so the production-detail refresh step rides it after history and masters rather than in a new schedule.",
-    "Generation 7: the live feed falsified the #2863 unique constraint at order 20344 (two rows, distinct pkeys, shared prodLineSeq 10, differing item/quantities/costs; structural diagnosis 2026-09-17). The unique constraint itself is structure and is filed separately for the orchestrator; this generation changes loader semantics only."
+    "Generation 8: answers governed review round 1 (PR #3233). H1 - refused keys re-entered the refresh recent window through the flat done-set and refusedKeys counted rows; selection now carries the refused state separately and the reconciliation counts distinct orders. L2 - omitted-field fatality pinned by test. L4 - malformed values are per-key refusals, no longer retried-forever transport."
   ],
   "stop_conditions": [
-    "Stop and report if the live feed returns unknown or omitted fields, rows for another production order, or either identity twice in one response.",
-    "Stop and report if the backfill reconciliation disagrees with the API-side evidence after a run.",
-    "Stop and report on any workflow or gate refusal; never weaken a guard to proceed."
+    "Stop and report if the live feed changes shape: unknown or omitted fields fail the whole run before anything is written.",
+    "Stop and report if the reconciliation disagrees with the API-side evidence after a run.",
+    "Stop and report on any workflow or gate refusal; never weaken a guard to proceed.",
+    "Refuse - do not stop the run for - any single order whose response carries an identity collision or a malformed value; record it and let the population proceed."
   ]
 }

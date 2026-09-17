@@ -93,10 +93,19 @@ test("projection normalises sentinels, stamps the company, and hashes the comple
 test("unknown and omitted fields fail loudly and fatally", () => {
   assert.throws(() => projected([sourceRow({ newPrivateField: "x" })]), /unreviewed field/);
   const missing = sourceRow(); delete missing.wipQty;
-  assert.throws(() => projected([missing]), /omitted approved field/);
-  for (const bad of [sourceRow({ newPrivateField: "x" })]) {
+  for (const bad of [sourceRow({ newPrivateField: "x" }), missing]) {
     try { projected([bad]); assert.fail("must throw"); }
     catch (error) { assert.equal(error.fatal, true, "a feed-shape failure is fatal for the whole run"); }
+  }
+  assert.throws(() => projected([missing]), /omitted approved field/);
+});
+
+test("a malformed value is a per-key refusal, not retried-forever transport", () => {
+  try { projected([sourceRow({ createdTime: "not-a-timestamp" })]); assert.fail("must throw"); }
+  catch (error) {
+    assert.equal(error.refused, "identity-collision");
+    assert.equal(error.fatal, undefined);
+    assert.match(error.message, /malformed value/);
   }
 });
 
@@ -216,28 +225,42 @@ const HARVEST = [
 test("harvest and resume parsing tolerate Windows psql line endings", () => {
   const harvested = parseHarvest([["30001\r", "2026-01-01T00:00:00\r", "2026-09-17T06:00:00\r"], [" 30002 ", "2026-06-01T00:00:00", "2026-06-01T00:00:00"]]);
   assert.deepEqual(harvested.map((entry) => entry.prodOrderNo), [30001, 30002]);
-  const done = parseDoneKeys([["30001\r"]]);
-  assert.deepEqual([...done], [30001]);
+  const { done, refused } = parseDoneKeys([["30001\r", "succeeded"], ["30002\r", "refused"], ["30003", "succeeded"]]);
+  assert.deepEqual([...done].sort(), [30001, 30002, 30003], "succeeded and refused are both answered");
+  assert.deepEqual([...refused], [30002], "the refused state survives separately for refresh selection");
   assert.throws(() => parseHarvest([["\r", "x", "y"]]), /blank key/);
 });
 
 test("backfill selects never-fetched keys oldest first and honours the bounds", () => {
   const done = new Set([30001]);
-  const selection = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: null, recentDays: 21, limit: null });
+  const selection = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: null, recentDays: 21, limit: null });
   assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30004, 30003], "oldest observation first, done keys skipped");
-  const bounded = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: null, recentDays: 21, limit: 2 });
+  const bounded = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: null, recentDays: 21, limit: 2 });
   assert.deepEqual(bounded.map((entry) => entry.prodOrderNo), [30002, 30004]);
-  const scoped = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: "2026-08-31", recentDays: 21, limit: null });
+  const scoped = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: "2026-08-31", recentDays: 21, limit: null });
   assert.deepEqual(scoped.map((entry) => entry.prodOrderNo), [30004, 30003], "only orders first observed on/after --from");
 });
 
 test("refresh catches never-fetched keys first, then recently-observed ones newest first", () => {
   const done = new Set([30001, 30004]);
-  const selection = selectKeys({ harvested: HARVEST, done, mode: "refresh", from: null, recentDays: 21, limit: null });
+  const selection = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "refresh", from: null, recentDays: 21, limit: null });
   assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30003, 30001, 30004],
     "30002/30003 never fetched (oldest first); 30001/30004 re-read newest-observed first");
-  const staleOnly = selectKeys({ harvested: HARVEST, done: new Set([30002]), mode: "refresh", from: null, recentDays: 1, limit: null });
+  const staleOnly = selectKeys({ harvested: HARVEST, done: new Set([30002]), refused: new Set(), mode: "refresh", from: null, recentDays: 1, limit: null });
   assert.deepEqual(staleOnly.map((entry) => entry.prodOrderNo).includes(30002), false, "a fetched key observed long ago is not re-read");
+});
+
+test("refresh never re-reads a refused key, however recent it is", () => {
+  // PR #3233 review H1: the colliding order is always inside the recent window, and a
+  // flat done-set let it re-enter every nightly refresh — duplicate refusals, alerts
+  // and inflating counts forever. The refused state must exclude it from re-read.
+  const done = new Set([30001, 30004]);
+  const refused = new Set([30004]);
+  const selection = selectKeys({ harvested: HARVEST, done, refused, mode: "refresh", from: null, recentDays: 21, limit: null });
+  assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30003, 30001],
+    "30004 is answered-but-refused and never re-selected");
+  const backfill = selectKeys({ harvested: HARVEST, done, refused, mode: "backfill", from: null, recentDays: 21, limit: null });
+  assert.deepEqual(backfill.map((entry) => entry.prodOrderNo), [30002, 30003], "backfill never re-fetches it either");
 });
 
 test("the harvest reads the landed history and the resume set reads the run evidence", () => {
@@ -276,6 +299,8 @@ test("reconciliation agrees only when the API side and the table tell one story"
   assert.equal(droppedZeroRow.agrees, false, "a zero-row key must never be counted as landed");
   assert.match(reconcileSql("SYNCO"), /count\(distinct pkey\)/);
   assert.match(reconcileSql("SYNCO"), /rows_fetched = 0/);
+  assert.match(reconcileSql("SYNCO"), /count\(distinct \(request_params->>'prodOrderNo'\)::bigint\)/,
+    "refusedKeys counts DISTINCT orders, not refusal rows, so repeats can never inflate it");
   assert.match(reconcileSql("SYNCO"), /request_params->>'refused' = 'identity-collision'/);
 });
 
@@ -349,7 +374,7 @@ function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["
     queryRows: (sql) => {
       if (sql.includes("count(distinct pkey)")) return [reconcile];
       if (sql.includes("prod_history_line")) return harvest.map((entry) => [String(entry.prodOrderNo), entry.firstObserved, entry.lastObserved]);
-      if (sql.includes("sync_run")) return done.map((key) => [String(key)]);
+      if (sql.includes("sync_run")) return done.map((key) => [String(key), "succeeded"]);
       throw new Error(`unexpected read: ${sql.slice(0, 60)}`);
     },
     runSql: () => {},
@@ -362,7 +387,7 @@ function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["
 test("a dry run reads evidence, fetches nothing and writes nothing", async () => {
   const deps = cliDependencies({ done: [30001] });
   const io = capture(() => main(["--mode", "backfill", "--dry-run"], deps));
-  assert.match(io.output, /population 4, already succeeded 1, outstanding 3, selected 3/);
+  assert.match(io.output, /population 4, answered 1 \(refused 0\), outstanding 3, selected 3/);
   assert.equal(deps.readApiKeyCalled, undefined);
 });
 

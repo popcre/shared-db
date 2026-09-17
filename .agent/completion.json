@@ -1,44 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 3174,
+  "work_issue": 3180,
   "outcome": "ready-for-merge",
-  "pr": 3190,
-  "migration_versions": [
-    "20260917144950"
-  ],
-  "contract_ref": "refs/db-contracts/3174/9",
-  "contract_sha256": "d3b26dec5934e3b919c46a24db56b44a7e31abe6aa68dd400511126176b63d31",
-  "head_sha": "899b0f8b8b28adac1e6e890de24818eb2b660b32",
+  "pr": 3221,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3180/1",
+  "contract_sha256": "3b45b8f3b0f86d75df21f793d1f53cb00e132c103f719ce0d8a9a91021cab844",
+  "head_sha": "42aab3fa217369c143c059bfd3f4241493b3f27d",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/live-proofs/3174.sql",
-    "supabase/migrations/20260917144950_db_data_admin_inventory_coke_wwe_peanuts_sesame_sections.sql",
-    "supabase/tests/sesame_landing_contracts.sql"
+    ".github/workflows/coldlion-landing-sync.yml",
+    ".github/workflows/coldlion-prod-detail-backfill.yml",
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prod-details.mjs",
+    "tools/coldlion-landing/sync-prod-details.mjs"
   ],
-  "db_reads": [
-    "table plm.coke_approval_vocabulary_value",
-    "table plm.wwe_creative_brand",
-    "table plm.peanuts_art_program",
-    "table plm.sesame_brand",
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member"
-  ],
-  "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory",
-    "table plm.sesame_submission_property_option"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "Previous head failed only the backdated-version guard (fixed by governed version supersession) and Sesame census A (20 vs 19 sesame_ tables; census now excludes the separate submissions landing). Both re-verified by CI on this head."
+      "evidence": "32 tests, 32 pass, 0 fail on the work head, covering projection, replay determinism, duplicate refusal on both identities, empty responses, resumable selection, reconciliation, CLI failure semantics and both workflows' target/secret/offline-test-before-write/serialisation rules. The full 48-file tools suite (902 tests) also passed on this head."
+    },
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "exit_code": 0,
+      "evidence": "132 tests, 132 pass, 0 fail on the work head — the exact command the contract requires: the two pre-existing landing suites plus the new one, proving the scheduled-sync workflow edits kept every existing workflow assertion (target declarations, offline tests before write, serialisation) while the new suite holds its own."
     }
   ],
   "assumptions_resolved": [
-    "Production function body md5 matched migration 20260917005650 before derivation.",
-    "Production plm.peanuts_art_program has 19 rows and none without a Tenovos source id, so the exclusion drops nothing today.",
-    "Migration version superseded to 20260917144950 through --reversion-active-claim; claim #3189 lease version updated by the tool."
+    "The 2026-09-17 live re-derivation (8 distinct orders, 28 rows, field names and counts only) matched the 2026-09-15 grain proof exactly: 21 fields, pkey unique 28/28, (prodOrderNo, prodLineSeq) unique 28/28, blank patterns consistent.",
+    "The landed-history harvest read 3,761 distinct EDGEHOME production orders over 61,901 landed lines (CW001 3161 + cw001 5, EH001 452, SP001 143), confirming the complete approved key population and its size for bounded backfill runs.",
+    "coldlion.prod_detail was empty with zero prior /proddetails runs before this work, so the first backfill run is the initial population and every key is outstanding."
   ],
   "stop_conditions_hit": []
 }

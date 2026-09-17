@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3122/1",
   "contract_sha256": "ada30d7ed4830afeca6fc04e48f581f9c5c0621b7d717e3267087dddf23e8cf2",
-  "head_sha": "ac7e358f2fbd27c536de7fc1542badef33854d62",
+  "head_sha": "f031a044d2e0727561ac28a7d4d946e64500313d",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,12 +20,12 @@
     {
       "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 18, pass 18, fail 0, cancelled 0, skipped 0, todo 0 at implementation head 47dcdb6d, carried to merge head ac7e358f."
+      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at implementation head f031a044."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at 47dcdb6d and ac7e358f."
+      "evidence": "truth audit OK: call_sites=295 at f031a044."
     }
   ],
   "assumptions_resolved": [

@@ -42,8 +42,8 @@ comment on table plm.sesame_submission_property_option is
   'Resolves nothing to core.*.';
 
 alter table plm.sesame_submission_property_option enable row level security;
-revoke all on plm.sesame_submission_property_option from public, anon, authenticated;
-grant select, insert, update on plm.sesame_submission_property_option to service_role;
+revoke all on table plm.sesame_submission_property_option from public, anon, authenticated;
+grant select, insert, update on table plm.sesame_submission_property_option to service_role;
 
 create or replace function api.db_data_admin_scraped_source_inventory(
   p_entity_kind text,

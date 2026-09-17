@@ -1,28 +1,31 @@
 {
   "schema_version": 1,
-  "work_issue": 3208,
+  "work_issue": 2373,
   "outcome": "ready-for-merge",
-  "pr": 3209,
+  "pr": 3213,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3208/6",
-  "contract_sha256": "56b4af17d902f0e9b66c97a19fd9a9ce4f52d04f3a12c587a0fea97c050b57c4",
-  "head_sha": "1f69912c46548189bceb0137ec2ba76ffa0d307f",
+  "contract_ref": "refs/db-contracts/2373/1",
+  "contract_sha256": "130399b7f43f33693e780bca89b9fbcba56fa9b27d334cf732c4575a72df6b51",
+  "head_sha": "b6dd586bc517430251a1016443a115ffdf2bf437",
   "files_changed": [
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs"
+    "scripts/test_production_catalog_verification.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests",
       "exit_code": 0,
-      "evidence": "At 1f69912c (review fixes, main merged, truth audit OK at 307): 58 passed, 0 failed, 0 skipped. One notify woke each of 10 waiting processes exactly once with zero upstream reads; unreadable or vanished event/state files never wake and a token wakes once; zero delays still sleep and invalid windows are refused (both new tests hang or fail on the previous head); fallback detected a change in 3 polls; x-poll-interval and failure backoff honoured."
+      "evidence": "2 focused tests passed; each directly exercises one issue-listed refusal guard with an input that the remaining code would otherwise accept."
+    },
+    {
+      "command": "python -m unittest scripts/test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "193 tests passed in 2.038 seconds."
     }
   ],
   "assumptions_resolved": [
-    "Webhook registration stays out of scope; notifyChange is the event entry point"
+    "Both mutation survivors remain reachable on current origin/main and are now directly falsified by focused tests."
   ],
   "stop_conditions_hit": []
 }

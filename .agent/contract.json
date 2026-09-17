@@ -1,43 +1,40 @@
 {
   "schema_version": 1,
-  "generation": 6,
-  "work_issue": 3208,
+  "generation": 1,
+  "work_issue": 2373,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part D): an event-aware host-wide watcher wakes each waiter once per change with no request, and its fallback polls through shared conditional reads with x-poll-interval and failure backoff, never busy-looping.",
-  "base_sha": "985e19b6c7ef5f8dbbf722ca3f773318cf63b987",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-d",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-d",
+  "goal": "Add focused falsification coverage proving that the production catalog verifier refuses unknown privilege kinds and non-object strict-key inputs.",
+  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "dispatcher": "Codex root session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
+  "worker": "Codex issue #2373 subagent",
+  "branch": "codex/issue-2373-catalog-guards",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2373-catalog-guards/shared-db",
   "allowed_paths": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/test_production_catalog_verification.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/test_production_catalog_verification.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
+    "No database read, write, or structure change of any kind",
     "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No weakening, removal, or bypass of catalog-verifier refusal behavior"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests"
   ],
   "assumptions": [
-    "Webhook registration on GitHub needs repository settings and is out of scope; the notify hook is the event entry point"
+    "The two issue-listed mutation survivors still map to PrivilegeExpectation.__init__ and _strict_keys on current origin/main"
   ],
   "stop_conditions": [
-    "Stop if a wake could be reported without an event or generation change"
+    "Stop if issue #2373 gains an active owner or blocker",
+    "Stop if either refusal guard is unreachable or requires production-code changes beyond focused test coverage"
   ]
 }

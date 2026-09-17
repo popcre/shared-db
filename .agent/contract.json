@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 8,
+  "generation": 9,
   "work_issue": 3174,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add Coca-Cola Submissions, WWE Creative, Peanuts Creative, Sesame Workshop Creative and Sesame Workshop Submissions sections to api.db_data_admin_scraped_source_inventory, with the new landing table plm.sesame_submission_property_option.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "base_sha": "f943d40410984525445267b04a677663ec89276a",
   "dispatcher": "claude shared-db orchestrator issue #3174",
   "worker": "Claude Opus 5 issue-3174 migration author lane (claim #3189)",
   "branch": "claude/issue-3174-scraped-sections",
@@ -53,7 +53,8 @@
     "Generation 5: refreshed by merge onto main c0238000; the PR's own diff is unchanged.",
     "Generation 6: refreshed by merge onto main 6aff8344; the PR's own diff is unchanged.",
     "Generation 7: refreshed by merge onto main 985e19b6; the PR's own diff is unchanged.",
-    "Generation 8: refreshed by merge onto main ccfe1371; the PR's own diff is unchanged."
+    "Generation 8: refreshed by merge onto main ccfe1371; the PR's own diff is unchanged.",
+    "Generation 9: refreshed by merge onto main f943d404; the PR's own diff is unchanged."
   ],
   "stop_conditions": [
     "Stop if the lane claim is refused for object collision.",

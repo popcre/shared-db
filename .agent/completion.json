@@ -1,75 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 2794,
+  "work_issue": 3146,
   "outcome": "ready-for-merge",
-  "pr": 2821,
-  "migration_versions": [
-    "20260917102139"
-  ],
-  "contract_ref": "refs/db-contracts/2794/6",
-  "contract_sha256": "fcdc84f2d54562d12354047cb3a15daa1431caec5e2a8ec72c06ada3433013a3",
-  "head_sha": "d26589f123c216c0c8d1c9c6b84a79d26cad9935",
+  "pr": 3178,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3146/1",
+  "contract_sha256": "81bcc7864911a7e69f3808b283d8627f3a20571ea6655b11210a6cf361c4fba3",
+  "head_sha": "31619c959805bef6d79b095f13a50965c669ca1f",
   "files_changed": [
-    ".github/live-proofs/2794.sql",
-    ".github/workflows/coldlion-licensor-property-phase6-parallel.yml",
-    "AGENTS.md",
-    "README.md",
-    "config/production-verification-sidecar-registry.json",
-    "docs/implementation/schema-implementation-notes.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    "scripts/production-verification-sidecars/20260917102139.json",
-    "scripts/production_catalog_verification.py",
-    "supabase/migrations/20260917102139_remove_retired_designflow_plm_import.sql",
-    "supabase/tests/licensing_write_authority_guard_contracts.sql",
-    "systemd/plm-sync-alert.service",
-    "systemd/plm-sync.service",
-    "systemd/plm-sync.timer",
-    "tools/coldlion-licensor-property-phase6.test.mjs",
-    "tools/phase6-schedule-map.mjs",
-    "tools/phase6-schedule-map.test.mjs",
-    "tools/run-plm-master-data-sync.sh",
-    "tools/sync-plm-master-data.mjs",
-    "tools/sync-plm-master-data.test.mjs"
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs"
   ],
-  "db_reads": [
-    "catalog pg_proc",
-    "catalog pg_depend",
-    "catalog pg_trigger"
-  ],
-  "db_writes": [
-    "function plm.import_master_data(jsonb,jsonb)"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Static checks passed at head d26589f1 (main 14464e77 merged, migration re-reserved as 20260917102139): 1 added migration, verify-cost guard passed, EOL reference guard passed."
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=305 at head d26589f1."
-    },
-    {
-      "command": "node --test tools/*.test.mjs",
-      "exit_code": 0,
-      "evidence": "870 tests, 870 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo at head d26589f1."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs",
-      "exit_code": 0,
-      "evidence": "status OK, 60 sidecars at head d26589f1; 20260917102139 loads with its sidecar."
+      "evidence": "666 pass, 0 fail, 0 skipped. The new #3146 test fails on origin/main code (17 pass, 1 fail). Full author-lease workflow test set: 1430 pass, 0 fail, 0 skipped. Live replay: PR #3118 and #2872 refused against current main and carried from their approved heads against the merge commit first parent."
     }
   ],
   "assumptions_resolved": [
-    "The drop is authorised rather than an archive: the issue says to remove the DesignFlow PLM sync completely and to drop the guarded importer once no callers remain, and the object is a raise-only #1090 retirement stub holding no rows, history or audit trail, so there is no data to dispose of.",
-    "Nothing still reads the importer. Production catalog evidence recorded in the migration header shows zero referencing functions, zero referencing views, zero non-normal pg_depend rows and proacl limited to postgres, measured with a positive control of 2 so the zeros are genuine absences rather than a silently broken predicate.",
-    "The migration re-proves this at apply time: it refuses to drop unless the body is still the #1090 retirement stub and no non-normal dependants exist, drops without cascade so an unexpected dependant fails loudly, and then verifies the licensing write-authority guard is still intact.",
-    "The licensing write-authority guard survives untouched and its contract test is unchanged in behaviour. Its comment previously claimed absence was 'asserted and enforced' and 'strictly stronger'; the slot-1 review was right that this overclaimed, because there is no else-raise and absence is the silent success path. The comment now states that plainly and points at the migration's own post-drop RAISE as the actual unconditional enforcement. Prose only: no test logic was changed and no guard was weakened. Still-present-as-the-#1090-stub remains a hard failure; present with a pre-retirement body is recorded with an explicit notice because the from-empty CI replay resurrects it via pass 2 (20260723183000 redeclares the routine after every pass-1 migration) and the pass-2 order repair cannot express absence, since a drop leaves no routine definition to snapshot. That harness gap is filed as #2833 rather than worked around here. The revived-importer replay block proving a rebuilt importer still cannot bypass the table guard is deliberately retained.",
-    "The Phase 6 workflow, schedule map and test edits were forced rather than optional, because those steps executed the deleted tool and test file and would have left main red.",
-    "Slot-1 review (glm, seq 3116) was right that the post-apply catalog verifier derives no target from this drop and would fail enforcing mode after a clean apply. Fixed with the sidecar route built for drops (#2029/#2043): hash-bound sidecar, named contract, registry declaration, regenerated detector digest. Live-proof trigger checks are now bound to core.licensor and core.property. The permanently unreachable DesignFlow leg of the taxonomy parallel-observation gate is pre-existing since #1090 and is left to a follow-up."
+    "Confirmed the qualifier runs post-merge: 01f73d19 is identical to merged head 72517a6f against origin/main but not against merge commit 4ba3732d^1"
   ],
-  "stop_conditions_hit": [],
-  "evidence_note": "Generation 5: sidecar fix on top of main e0c54faa; merge, never rebase."
+  "stop_conditions_hit": []
 }

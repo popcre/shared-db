@@ -8,6 +8,8 @@
   "contract_sha256": "cb56a0d6ab8be0ba2630135a6993cf5d4eedfded689f7b0cc97a0d534c22c42e",
   "head_sha": "3703073605df9227e472cbd52c537f8048d669c1",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "config/db-data-admin-property-source-coverage.json"
   ],
   "db_reads": [],

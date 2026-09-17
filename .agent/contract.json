@@ -1,53 +1,45 @@
 {
-  "work_issue": 3130,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Remove every reviewer and author concurrency ceiling (owner ruling 2026-09-16) while keeping collision locks, version reservation and the serial preview, merge and promotion lanes.",
-  "base_sha": "f3bfe4f7b3a0a7acfb885d1d4d5fdef91d687930",
-  "dispatcher": "Albert Hazan owner instruction relayed in chat 2026-09-16",
-  "worker": "Claude Opus 5 repo-maintenance session #3130",
-  "branch": "claude/remove-concurrency-ceilings-7a",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3154,
+  "work_type": "structural",
+  "route": "migration",
+  "goal": "Add btree index plm.prod_order_milestone_schedule_factory_time_id_idx on plm.prod_order_milestone_schedule(factory_time_id) supporting the #3091 foreign key. Additive; no data, grant or RLS change.",
+  "base_sha": "48f2c6926ebc6ee7dbb585ef37741b1e9061852c",
+  "dispatcher": "Claude shared-db orchestrator (owner instruction relayed 2026-09-17)",
+  "worker": "Claude Opus 5 #3154 migration author b2",
+  "branch": "claude/3154-factory-time-idx-b2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3d47360f234754dd",
   "allowed_paths": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    "plan_orchestrator_throughput_phase_2.md",
-    "plan_reviewer_assignment_api_budget.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.test.mjs",
+    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "AGENTS.md",
-    "docs/agents/section-4-anti-collision-rules.md",
-    "plan_orchestrator_throughput_phase_2.md",
-    "plan_reviewer_assignment_api_budget.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.mjs",
-    "scripts/orchestrator-flow/reviewer-allocation.test.mjs",
+    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
+    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "index plm.prod_order_milestone_schedule_factory_time_id_idx",
+    "table plm.prod_order_milestone_schedule"
+  ],
   "prohibited_actions": [
-    "No database write of any kind",
-    "No production workflow dispatch",
-    "No removal of exact-object collision locks, version reservation, or serial preview/merge/promotion lanes"
+    "No manual production command; production only via the automatic merged-main lane or its governed reviewer-approved recovery dispatch",
+    "No data, grant or RLS change",
+    "No migration version other than claimed 20260917035654"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/manage-migration-author-lanes.test.mjs"
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
   ],
   "assumptions": [
-    "githubIo.requiresExactReviewHeadSha is true in production, so each exact review has its own lease"
+    "plm.prod_order_milestone_schedule is small enough that a non-concurrent index build takes a negligible lock"
   ],
   "stop_conditions": [
-    "Stop if removing a ceiling would weaken a collision or serial safety lane"
-  ],
-  "generation": 1,
-  "schema_version": 1
+    "Stop if the change needs anything beyond the admitted index"
+  ]
 }

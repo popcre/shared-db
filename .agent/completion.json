@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3225,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3224/2",
-  "contract_sha256": "a157371d2d25d47c1c71473a66dd483ab83c12b8f6f4607dbe30091fb46d7414",
-  "head_sha": "2abebe4b49a68c024da5cfb33a5ba1a9eefe65e7",
+  "contract_ref": "refs/db-contracts/3224/3",
+  "contract_sha256": "c7bb6e07541d9be07d861ee7c7c6afc574890aed0e9e9678cd373e8520f6815a",
+  "head_sha": "b68003558f7cb246b320d000ce98af5ce65ec073",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -18,12 +18,12 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, history-then-masters-then-prepack ordering, and the shared coldlion-landing-sync concurrency group. Re-verified on the refreshed branch whose workflow now also carries the #3221 prod-detail step after prepack."
+      "evidence": "33/33 pass, including the workflow guard tests: offline tests before any write, declared target beside every credential, missing-secret refusals, step ordering, and the shared coldlion-landing-sync concurrency group. Re-verified on the refreshed branch whose workflow also carries the #3221 prod-detail step."
     }
   ],
   "assumptions_resolved": [
-    "The 2,577-code population and ~3.1s-per-key measurement come from the live production dry-run (run 35264164570) and the two successful bounded backfill runs (35264306654: 900 keys/3,589 rows; 35266106746: 900 keys/3,545 rows) at the 1,000ms pace.",
-    "The branch was refreshed by merge onto main bf16ed5a (2abebe4b) after PR #3221 added the /proddetails refresh to the same job; the pacing line and the prod-detail step coexist and the earlier reviewed head is superseded by this one."
+    "The 2,577-code population and ~1.05s-per-key at the 1,000ms pace come from the live dry-run (run 35264164570) and two successful bounded backfill runs (35264306654: 900 keys/3,589 rows; 35266106746: 900 keys/3,545 rows).",
+    "Generation 3 follows the second main advance (ec96eb74): branch refreshed by merge (b6800355); the pacing line and the prod-detail step coexist unchanged."
   ],
   "stop_conditions_hit": []
 }

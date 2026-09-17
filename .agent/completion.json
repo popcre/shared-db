@@ -1,35 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 3122,
+  "work_issue": 3104,
   "outcome": "ready-for-merge",
-  "pr": 3120,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3122/1",
-  "contract_sha256": "ada30d7ed4830afeca6fc04e48f581f9c5c0621b7d717e3267087dddf23e8cf2",
-  "head_sha": "6ea8d3b6069fe1c5dc85fc5951a2329fbc55259a",
-  "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
-    "scripts/capture-repository-transfer-baseline.mjs",
-    "scripts/capture-repository-transfer-baseline.test.mjs"
+  "pr": 3131,
+  "migration_versions": [
+    "20260917005650"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3104/3",
+  "contract_sha256": "0d4ed43058c1e2fbc2b1b9e506144496759b0c9ca852bd95e78ece4eb4145b76",
+  "head_sha": "3dcb2de2f71c609d968e03dec25ccebb8a3036dc",
+  "files_changed": [
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql"
+  ],
+  "db_reads": [
+    "table plm.dcp_opa_property_resolution",
+    "table plm.dcp_opa_property_resolution_member",
+    "table plm.wb_property"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at implementation head f031a044 (refreshed from main as 6ea8d3b6)."
+      "evidence": "Run at implementation head a14110d3: Static checks passed. Set DATABASE_URL to run migrations against a disposable database."
     },
     {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=295 at f031a044 (refreshed from main as 6ea8d3b6)."
+      "evidence": "status OK; version 20260917005650 needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "The baseline issues only GET requests through the governed GitHub transport; the live run changed nothing."
+    "Production function body md5 956fbf9130a49bf0cbc875bbaf0e1c17 equals the 20260914172031 file body, so the re-derivation base is the live definition."
   ],
   "stop_conditions_hit": []
 }

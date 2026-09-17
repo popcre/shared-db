@@ -1,27 +1,30 @@
 {
   "schema_version": 1,
-  "work_issue": 3159,
+  "work_issue": 2773,
   "outcome": "ready-for-merge",
-  "pr": 3167,
+  "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3159/1",
-  "contract_sha256": "e08befefa620e62c79a482d2ab29367f1403b1fd8789cb13d5c9b365ecd5649f",
-  "head_sha": "d75a6b05ef37541f9f9fb07bb43441bff0f336bc",
+  "contract_ref": "refs/db-contracts/2773/1",
+  "contract_sha256": "da28272a2f68f43af494e14b4968eca7b3355b171dac367bbd80b4c86cca144c",
+  "head_sha": "46d045e8814287758ee59351b0c74d99c996ce51",
   "files_changed": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py"
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
+      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "182 passed, 0 failed, 0 skipped at d10664b7 (includes merged #3168 tests); routine-classification tests including the real #3104/#2866 migrations are a hard gate; fail-closed controls cover header literal changes, schema-wide ACL, default-privilege and rename changes, and unparseable earlier migrations. Full scripts pytest: 1319 passed, 8 skipped."
+      "evidence": "604 passed, 0 failed, 0 skipped at 46d045e8814287758ee59351b0c74d99c996ce51; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read; exhausted-quota latch stops other callers with 0 wire requests until reset."
     }
   ],
   "assumptions_resolved": [
-    "Function bodies are emptied by the tokeniser; the re-establishment match compares full header, comment and grant statements only, and the body is left to the required independent review"
+    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
   ],
   "stop_conditions_hit": []
 }

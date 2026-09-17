@@ -8,6 +8,6 @@
     }
   ],
   "migration_sha256": "719d2d3200071f7207f17c8d211cee381ec0f40ccc7f3752900c57eb24baad1b",
-  "migration_version": "20260916232205",
+  "migration_version": "20260917005221",
   "schema_version": 1
 }

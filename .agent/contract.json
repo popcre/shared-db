@@ -1,58 +1,40 @@
 {
   "schema_version": 1,
-  "generation": 8,
-  "work_issue": 3199,
+  "generation": 1,
+  "work_issue": 2373,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement issue #3199 Phase A3: a read-only scheduled Queue Hygiene Report — a write-stripped report module (scripts/queue-hygiene-report.mjs, importing the audit machinery; moved out of the protected lane manager when PR #3215 held that file one lane), a daily read-only queue-hygiene-report.yml workflow modeled on the abandonment audit, offline tests wired into tools-offline-tests.yml, and plan STATUS updates recording the completed A1 labelling and A2 claim release.",
-  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
-  "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
-  "worker": "ZCode (GLM 5.3) repository-maintenance session",
-  "branch": "zcode/3199-queue-hygiene",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
+  "goal": "Add focused falsification coverage proving that the production catalog verifier refuses unknown privilege kinds and non-object strict-key inputs.",
+  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "dispatcher": "Codex root session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
+  "worker": "Codex issue #2373 subagent",
+  "branch": "codex/issue-2373-catalog-guards",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2373-catalog-guards/shared-db",
   "allowed_paths": [
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs",
-    ".github/workflows/queue-hygiene-report.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "plan_orchestrator_required_load_reduction.md",
+    "scripts/test_production_catalog_verification.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/queue-hygiene-report.mjs",
-    "scripts/queue-hygiene-report.test.mjs",
-    ".github/workflows/queue-hygiene-report.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "plan_orchestrator_required_load_reduction.md",
+    "scripts/test_production_catalog_verification.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
+    "No database read, write, or structure change of any kind",
     "No production workflow dispatch",
-    "No weakening of any safety gate, required check, or caller check",
-    "The scheduled report must hold read-only permissions and write nothing",
-    "No edit to scripts/manage-migration-author-lanes.mjs (protected source held by PR #3215)"
+    "No weakening, removal, or bypass of catalog-verifier refusal behavior"
   ],
   "required_checks": [
-    "node --test scripts/queue-hygiene-report.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "bash scripts/check-sql.sh",
-    "node scripts/check-github-transport-conformance.mjs",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "ai-task-gates check --before pr-wait"
+    "python -m unittest scripts.test_production_catalog_verification.StructuralInputGuardTests"
   ],
   "assumptions": [
-    "origin/main moved three times during implementation (PRs #3211, #3190, then the coldlion landing-sync merge); the branch was refreshed by merge before each evidence bind.",
-    "The report was drafted as a subcommand inside the lane manager and moved to its own module when the protected-source collision guard queued it behind the inactive PR #3215; the derivation imports the audit's exported functions and is not a parallel implementation."
+    "The two issue-listed mutation survivors still map to PrivilegeExpectation.__init__ and _strict_keys on current origin/main"
   ],
   "stop_conditions": [
-    "Stop if any change would weaken a safety gate or touch the database",
-    "Stop if the report cannot be made write-free by construction"
+    "Stop if issue #2373 gains an active owner or blocker",
+    "Stop if either refusal guard is unreachable or requires production-code changes beyond focused test coverage"
   ]
 }

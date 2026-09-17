@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3181/1",
   "contract_sha256": "cb56a0d6ab8be0ba2630135a6993cf5d4eedfded689f7b0cc97a0d534c22c42e",
-  "head_sha": "cccb3a2e34ef9bdb44f54c74ee6210fbc9457f82",
+  "head_sha": "3703073605df9227e472cbd52c537f8048d669c1",
   "files_changed": [
     "config/db-data-admin-property-source-coverage.json"
   ],

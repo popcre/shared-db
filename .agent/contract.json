@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2366,
+  "work_issue": 2363,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Kill every surviving guard mutant of scripts/production_business_risk_gate.py listed in issue #2366 (governed-supersession) with focused falsification tests in one new test file, source unchanged.",
+  "goal": "Kill every surviving guard mutant of scripts/production_business_risk_gate.py listed in issue #2363 (source-identity) with focused falsification tests in one new test file, source unchanged.",
   "base_sha": "4ba3732d6e02d9be95f582b8a2b607e7ea515651",
   "dispatcher": "Albert Hazan owner chat instruction 2026-09-16 (take the 6 non-orchestrator shared-db issues that block the most), relayed by parent session; split into single-issue PRs by coordinator decision",
-  "worker": "Claude Opus 5 #2366 risk-gate mutation coverage",
-  "branch": "claude/2366-risk-gate-mutations-governed_supersession",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/rg-mut-2366",
+  "worker": "Claude Opus 5 #2363 risk-gate mutation coverage",
+  "branch": "claude/2363-risk-gate-mutations-source_identity",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/rg-mut-2363",
   "allowed_paths": [
-    "scripts/test_production_business_risk_gate_governed_supersession_mutations.py",
+    "scripts/test_production_business_risk_gate_source_identity_mutations.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/test_production_business_risk_gate_governed_supersession_mutations.py",
+    "scripts/test_production_business_risk_gate_source_identity_mutations.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],

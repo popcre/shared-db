@@ -1,0 +1,33 @@
+## The gap
+
+Owner ruling, `docs/business-rules/product-items-and-identifiers.md:23`:
+
+> **Settled — Albert Hazan, 2026-09-06.** A prepack is not an Item. ... Prepacks must be excluded from any population being assessed for missing Licensor or Property, not chased for attribution.
+
+> `:25` — "Reporting an assortment head as an Item with missing Licensor data is a false defect."
+
+**It exists only as prose.** Verified 2026-09-08 across every migration, every function body (`pg_proc` scan for "prepack" returned empty), and every script: nothing filters on prepack. `scripts/popsg-property-psg1-inventory.cjs` and `scripts/popsg-property-psg2-proposals.cjs` contain no prepack or assortment reference at all and do not read `erp_items_current` or `api.plm_item_list`. The exclusion is being applied by hand, if at all — so every missing-Licensor count we have produced since 2026-09-06 may carry false defects.
+
+## Outcome
+
+Implement the exclusion in code so the ruling holds without anyone remembering it, and so a count cannot silently regress.
+
+- Decide and document the single authoritative "is this an assortment head" test. Today `public.erp_items_current.prepack_code` marks HEADS; `plm."itemDetail".prepack_code_fk` marks MEMBERS. They are not interchangeable and have been confused before.
+- Apply it in the missing-Licensor / missing-Property population scripts and in whatever view or function serves those populations.
+- Add a test that fails if a known assortment head reappears in a missing-attribution population.
+
+## Depends on
+
+`#2610` — the head flag is currently only in a frozen 2026-05-21 DesignFlow snapshot. Implementing the filter against a source that is about to be repointed hard-codes the wrong column. Settle the live source first, or write the filter behind one function so the source swap is a one-line change.
+
+```db-work-scope
+status: ready
+work_type: structural
+route: shared-db-orchestrator
+priority: 35
+depends_on:
+writes:
+  - function plm.prepack_role
+  - view plm.item_missing_attribution
+```
+

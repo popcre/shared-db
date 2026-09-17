@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3212,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Keep every shared-db issue labelled exactly one of orchestrator or non-orchestrator: label on issue open/edit/reopen from the db-work-scope work_type, and sweep for blank or double-labelled issues on a schedule.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
   "dispatcher": "Albert Hazan chat session 2026-09-17 (issue label rule)",
   "worker": "Claude Opus 5 session issue-orch-label-sync 2026-09-17",
   "branch": "claude/issue-orch-label-sync",
@@ -35,7 +35,7 @@
   ],
   "assumptions": [
     "An issue that already carries exactly one of the two labels keeps it unless the issue is newly opened or its body is edited",
-    "Generation 2 re-seals the pair after a refresh from main ccfe1371; none of the merged changes touch this change's own files; the implementation head is the merge commit 6ec919249543809ed1a76d5c1c90393e78b5af3b."
+    "Generation 3 re-seals the pair after a refresh from main 4b115d33; none of the merged changes touch this change's own files; the implementation head is the merge commit 1798102a5195a9126740f225af2593d2350fa9ca."
   ],
   "stop_conditions": [
     "Stop if the label rule would need to change an existing guard or workflow"

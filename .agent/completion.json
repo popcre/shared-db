@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "work_issue": 2365,
+  "work_issue": 2366,
   "outcome": "ready-for-merge",
-  "pr": 3143,
+  "pr": 3144,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2365/1",
-  "contract_sha256": "40375c95984fdc733c300067798043ab077b21c807077b6c453a4ae06eb98aaf",
-  "head_sha": "cbcfc6142e6c51a9ff27df3b2e9a45a24cb8192a",
+  "contract_ref": "refs/db-contracts/2366/1",
+  "contract_sha256": "63120320b0931738e4d9a07766f6a49a6b8d8278cda80217a3f77b9c31d4f987",
+  "head_sha": "be3e03bcd01919db6a597195a18f07af6550baed",
   "files_changed": [
-    "scripts/test_production_business_risk_gate_governed_reconciliation_mutations.py"
+    "scripts/test_production_business_risk_gate_governed_supersession_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -20,7 +20,7 @@
     }
   ],
   "assumptions_resolved": [
-    "This PR covers only the 8 governed-reconciliation guard mutants listed in issue #2365; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
+    "This PR covers only the 9 governed-supersession guard mutants listed in issue #2366; the other survivors from the 2026-09-04 sweep for this gate are covered by the sibling single-issue PRs #3140-#3145, not by this diff. docs/verification/guard-mutation-sweep-20260904.json is not refreshed here."
   ],
   "stop_conditions_hit": []
 }

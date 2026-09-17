@@ -109,7 +109,7 @@ jobs:
           REQUESTED_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
-          test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo u2giants/shared-db --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+          test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
           git fetch origin main
           node scripts/check-main-tip-freshness.mjs --contains
           node scripts/check-pr-object-collisions.mjs
@@ -118,7 +118,7 @@ jobs:
           # Re-proven under the lock: a reviewer can withdraw, or a refusal can
           # land, between the first pass and the merge itself.
           node scripts/check-exact-head-approval.mjs
-          gh api "repos/u2giants/shared-db/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
           # The status write above and the mergeability GitHub evaluates below are
           # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked
           # GitHub to honour an approval it had not recorded yet, so every attempt was
@@ -138,7 +138,7 @@ jobs:
           # which is indistinguishable from "not green yet", so a broken token spent a
           # full minute of the exclusive lock looking like eventual consistency (#1201).
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            observed="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/u2giants/shared-db/commits/$REQUESTED_SHA/status"               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+            observed="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$REQUESTED_SHA/status"               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
             [ "$observed" = 'success' ] && break
             echo "authorization not visible yet (attempt $attempt, observed='${observed:-none}'); waiting"
             sleep 6
@@ -149,7 +149,7 @@ jobs:
           # the repository-wide merge lock for two more minutes before failing (#1201).
           merged=0
           for attempt in 1 2 3 4 5; do
-            if gh pr merge "${{ inputs.pull_request }}" --repo u2giants/shared-db --merge --match-head-commit "${{ inputs.head_sha }}" 2>"$RUNNER_TEMP/merge-error.txt"; then
+            if gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}" 2>"$RUNNER_TEMP/merge-error.txt"; then
               merged=1; break
             fi
             cat "$RUNNER_TEMP/merge-error.txt"
@@ -158,7 +158,7 @@ jobs:
               break
             fi
             echo "guarded merge attempt $attempt hit the known authorization propagation delay; re-proving the head and retrying"
-            test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo u2giants/shared-db --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+            test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
             git fetch origin main
             node scripts/check-main-tip-freshness.mjs --contains
             sleep 10
@@ -170,7 +170,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
-        run: gh api "repos/u2giants/shared-db/statuses/$REQUESTED_SHA" -f state=failure -f context='Migration guarded merge authorization' -f description='Guarded merge failed; authorization revoked before lock release'
+        run: gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=failure -f context='Migration guarded merge authorization' -f description='Guarded merge failed; authorization revoked before lock release'
       - name: Release the exclusive merge lane with ownership proof
         if: always() && steps.merge_lock.outputs.owner_sha != '' && (steps.guarded_merge.outcome == 'success' || steps.revoke_authorization.outcome == 'success')
         env:

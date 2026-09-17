@@ -15,6 +15,10 @@ import json
 import re
 import subprocess
 import sys
+try:  # run as scripts/<name>.py or imported as scripts.<name>
+    from repository_identity import current_repository
+except ImportError:  # pragma: no cover
+    from scripts.repository_identity import current_repository
 import tempfile
 import time
 import zipfile
@@ -30,7 +34,7 @@ from historical_preview_recovery import prove_pr_authored
 from preview_instance_binding import verify as verify_preview_instance_binding
 from production_owner_decision_evidence import TRANSIENT_GITHUB_ERRORS, verify_artifact as verify_owner_decision
 
-REPOSITORY = "u2giants/shared-db"
+REPOSITORY = current_repository()  # never hard-coded (#2530)
 # The production database's identity. It is deliberately a constant and NOT
 # configurable: this value exists so the gate can refuse evidence that claims a
 # PRODUCTION write was a preview rehearsal. The PREVIEW ref is the opposite --
@@ -641,6 +645,11 @@ PREVIEW_PRODUCER_PATHS = (
     # decides tip acceptance and whether two heads carry the same pull request
     # diff, so an unpinned copy could wave any tip or any refresh through.
     "scripts/lib/pr-content-equivalence.mjs",
+    # Repository identity helpers (#2530). Imported by the manager and by the
+    # preview-job Python entry points; they decide which repository every API
+    # call reads, so an unpinned copy could point evidence reads elsewhere.
+    "scripts/lib/repository-identity.mjs",
+    "scripts/repository_identity.py",
     # Invoked by the manager before preview preparation to prove the live sole
     # orchestrator identity. Its result gates whether preparation may proceed.
     "scripts/check-orchestrator-marker.mjs",

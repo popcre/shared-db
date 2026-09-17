@@ -1787,11 +1787,11 @@ jobs:
         run: |
           set -euo pipefail
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" \
-            api --paginate 'repos/u2giants/shared-db/pulls?state=open&per_page=100' \
+            api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[].head.sha' | sort -u > "$RUNNER_TEMP/open-pr-heads"
           while IFS= read -r head_sha; do
             [ -n "$head_sha" ] || continue
-            gh api "repos/u2giants/shared-db/statuses/$head_sha" \
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
               -f state=failure \
               -f context='Migration guarded merge authorization' \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
@@ -2153,7 +2153,7 @@ jobs:
             # swallowing the failure would print "left as-is" and exit 0 while a head
             # this run revoked stays red forever -- the exact outcome #2116 exists to
             # kill, with a misleading audit line on top. Fail the step and say why.
-            if ! current="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/u2giants/shared-db/commits/$head_sha/status" \
+            if ! current="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$head_sha/status" \
               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | "\(.state)|\(.description)"')"; then
               echo "$head_sha: could not READ the authorization status, so this freeze's revocation may still stand. Re-run guarded-migration-merge.yml for this head." >&2
               exit 1
@@ -2164,7 +2164,7 @@ jobs:
               echo "$head_sha: left as-is (state='${state:-none}')"
               continue
             fi
-            gh api "repos/u2giants/shared-db/statuses/$head_sha" \
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
               -f state=pending \
               -f context='Migration guarded merge authorization' \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \

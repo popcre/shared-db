@@ -1,48 +1,57 @@
 {
-  "schema_version": 1,
-  "generation": 3,
-  "work_issue": 3104,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Split plm.wb_property in api.db_data_admin_scraped_source_inventory into Warner Submissions (warner_product_catalogue) and Creative (warner_art_assets), and return mapped values (submissions on Creative rows, mapped_creative on Submissions rows) for the Mapping column. Grants, row identities and other arms unchanged.",
-  "base_sha": "8f23bbb7aba7a705e48e638d1343fc12857f976e",
-  "dispatcher": "Claude shared-db orchestrator marker #3106 (owner instruction relayed 2026-09-16: \"I meant #3104\")",
-  "worker": "Claude Opus 5 #3104 migration author b1",
-  "branch": "claude/3104-warner-subs-mapping-b1",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/3104-warner-subs-mapping-b1",
   "allowed_paths": [
-    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
-    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260917013422_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
+    "scripts/production-verification-sidecars/20260917013422.json",
+    "config/production-verification-sidecar-registry.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "file_writes": [
-    "supabase/migrations/20260917005650_db_data_admin_inventory_warner_submissions_mapped_values.sql",
-    "docs/db-data-admin-scraped-properties.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+  "assumptions": [
+    "dflow_prod.users and dflow_prod.comments already exist in the preview and production-shaped schemas.",
+    "The two columns remain nullable UUIDs with no defaults and no foreign keys for exact cutover compatibility.",
+    "Generated types remain a required post-preview application-return artifact; shared-db cannot truthfully generate the dflow_prod contract before this migration reaches preview."
   ],
-  "db_reads": [
-    "table plm.dcp_opa_property_resolution",
-    "table plm.dcp_opa_property_resolution_member",
-    "table plm.wb_property"
-  ],
+  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
+  "branch": "codex/issue-2870-cutover-columns",
+  "db_reads": [],
   "db_writes": [
-    "function api.db_data_admin_scraped_source_inventory"
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
   ],
+  "dispatcher": "Claude shared-db orchestrator (marker #3106)",
+  "file_writes": [
+    "supabase/migrations/20260917013422_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql",
+    "scripts/production-verification-sidecars/20260917013422.json",
+    "config/production-verification-sidecar-registry.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "generation": 8,
+  "goal": "Add the two missing nullable UUID columns required for the DesignFlow production cutover without row writes or foreign keys.",
   "prohibited_actions": [
-    "No manual production SQL; production only via the governed production lane",
-    "No grant, table, data or RLS change",
-    "No migration version other than claimed 20260917005650"
+    "Do not write application rows.",
+    "Do not add foreign keys, defaults, indexes, or non-null constraints.",
+    "Do not alter another session's PR, branch, claim, worktree, or reviewer lease."
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "ephemeral preview-equivalent database contract test",
+    "node scripts/check-production-verification-sidecars.mjs",
+    "git diff --check"
   ],
-  "assumptions": [
-    "Live function body equals 20260914172031 (md5 956fbf9130a49bf0cbc875bbaf0e1c17 verified on production)"
-  ],
+  "route": "shared-db-orchestrator",
+  "schema_version": 1,
   "stop_conditions": [
-    "Stop if the change needs any object beyond api.db_data_admin_scraped_source_inventory"
-  ]
+    "Stop if either parent table is absent.",
+    "Stop if compatibility requires row writes or a foreign key.",
+    "Stop if the reserved migration version collides."
+  ],
+  "work_issue": 2870,
+  "work_type": "structural",
+  "worker": "subagent:issue-2870-cutover-columns",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2870-cutover-columns/shared-db"
 }

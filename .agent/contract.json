@@ -1,34 +1,26 @@
 {
   "schema_version": 1,
-  "generation": 8,
-  "work_issue": 3173,
+  "generation": 1,
+  "work_issue": 3193,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads.",
-  "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-a",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/reverent-matsumoto-968317",
+  "goal": "Make the shared production migration guard name the ledger it actually read, so a preview-job refusal says 'already applied on preview' and points to the historical-recovery lane, without changing any check.",
+  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
+  "dispatcher": "Albert Hazan chat request to fix the #2794 preview re-rehearsal deadlock",
+  "worker": "Claude Opus 5 #3193 session",
+  "branch": "claude/issue-rehearse-applied-evidence-only",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1916a8ff61864114",
   "allowed_paths": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-transport.mjs",
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py",
+    ".github/workflows/shared-supabase-migrations.yml",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -36,16 +28,15 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "Do not let any already-applied version pass validate_candidates on any ledger"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs"
+    "python -m unittest scripts/test_production_migration_guard.py"
   ],
   "assumptions": [
-    "An authenticated HTTP 304 does not count against the primary quota (verified live 2026-09-17)"
+    "The existing historical-recovery lane already recovers a post-merge rehearsal that ran at the authoring merge commit (AGENTS.md section 6), so no new evidence-only mode is needed"
   ],
   "stop_conditions": [
-    "Stop if any change lengthens a healthy poll interval or weakens a safety lock"
+    "Stop if the change would let an applied version be applied again or loosen any producer pin"
   ]
 }

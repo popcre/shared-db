@@ -63,5 +63,19 @@ begin
       raise exception 'blank stage name was accepted';
     exception when check_violation then null;
     end;
+
+    begin
+      insert into plm.prod_order_milestone_schedule(prod_order_header_id, stage_name, status)
+      values (header_id, 'zztest Mass Production Start ', 'Pending');
+      raise exception 'untrimmed stage name was accepted';
+    exception when check_violation then null;
+    end;
+
+    begin
+      insert into plm.prod_order_milestone_schedule(prod_order_header_id, stage_name, status)
+      values (header_id, 'zztest Trim Status', ' Pending');
+      raise exception 'untrimmed status was accepted';
+    exception when check_violation then null;
+    end;
   end;
 end $$;

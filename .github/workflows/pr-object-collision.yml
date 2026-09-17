@@ -93,7 +93,7 @@ jobs:
       # this one job precisely so they cannot drift apart. This step adds no new
       # required status context -- the job name is unchanged.
       - name: Unit-test the dispatch-time collision checker (shares the parser)
-        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
+        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
 
       - name: Check the GitHub API quota before scanning open pull requests
         env:

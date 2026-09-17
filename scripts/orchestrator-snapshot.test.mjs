@@ -9,7 +9,7 @@ import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEve
 
 const NOW = '2026-09-15T12:00:00.000Z'
 const minutesAgo = (m) => new Date(Date.parse(NOW) - m * 60000).toISOString()
-const ownerComment = (event) => ({ author_association: 'OWNER', body: formatEventComment(event) })
+const ownerComment = (event) => ({ author_association: 'OWNER', author: 'u2giants', body: formatEventComment(event) })
 const event = (issue, state, minutes) => coordinationEvent({ eventType: state, workIssue: issue, actor: 'test', timestamp: minutesAgo(minutes) })
 
 function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CLAIM: issue-802-columns']], leases = [], locks = [] } = {}) {
@@ -96,6 +96,8 @@ test('only trusted, well-formed outcome events are read', () => {
   const events = outcomeEventsFromComments([
     ownerComment(event(800, 'dispatched', 5)),
     { author_association: 'NONE', body: formatEventComment(event(800, 'merged', 1)) },
+    { author_association: 'OWNER', body: formatEventComment(event(800, 'merged', 2)) },
+    { author_association: 'OWNER', author: 'mallory', body: formatEventComment(event(800, 'merged', 3)) },
     { author_association: 'OWNER', body: '```db-coordination-event\nnot json\n```' },
   ])
   assert.deepEqual(events.map((e) => e.event_type), ['dispatched'])

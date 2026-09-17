@@ -65,7 +65,7 @@ export function writeFileAtomic(file, text) {
 
 const labelNames = (issue) => (issue?.labels ?? []).map((label) => (typeof label === 'string' ? label : label?.name)).filter(Boolean)
 
-/** Outcome events from trusted OWNER comments; a malformed block is skipped, never fatal. */
+/** Outcome events from trusted operator comments (login plus owner-implied association, #2530); a malformed block is skipped, never fatal. */
 export function outcomeEventsFromComments(comments = []) {
   const events = []
   for (const comment of trustedOutcomeComments(comments)) {
@@ -233,7 +233,7 @@ export const defaultIo = {
   openIssues: (repo) => ghPages(`repos/${repo}/issues?state=open&per_page=100`),
   openPullRequests: (repo) => JSON.parse(gh(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '200', '--json', 'number,headRefOid,statusCheckRollup'])),
   matchingRefs: (repo, prefix) => JSON.parse(gh(['api', `repos/${repo}/git/matching-refs/${prefix}`])),
-  issueComments: (repo, issue) => ghPages(`repos/${repo}/issues/${issue}/comments?per_page=100`),
+  issueComments: (repo, issue) => ghPages(`repos/${repo}/issues/${issue}/comments?per_page=100`).map((c) => ({ ...c, author: c.user?.login })),
   // One GraphQL read for every owned issue's comments instead of one paginated
   // REST read per issue. An issue whose comments do not fit one page, or that
   // GraphQL cannot resolve, falls back to the REST reader so nothing is dropped
@@ -243,14 +243,14 @@ export const defaultIo = {
     const result = new Map()
     for (let start = 0; start < issues.length; start += 25) {
       const chunk = issues.slice(start, start + 25)
-      const fields = 'comments(first:100){pageInfo{hasNextPage} nodes{authorAssociation body}}'
+      const fields = 'comments(first:100){pageInfo{hasNextPage} nodes{authorAssociation author{login} body}}'
       const query = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${chunk.map((n) => `i${Number(n)}:issueOrPullRequest(number:${Number(n)}){...on Issue{${fields}} ...on PullRequest{${fields}}}`).join(' ')}}}`
       let data = null
       try { data = JSON.parse(gh(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`]))?.data?.repository ?? null } catch { data = null }
       for (const n of chunk) {
         const connection = data?.[`i${Number(n)}`]?.comments
         if (!connection || connection.pageInfo?.hasNextPage || !Array.isArray(connection.nodes)) { result.set(n, defaultIo.issueComments(repo, n)); continue }
-        result.set(n, connection.nodes.map((node) => ({ author_association: node.authorAssociation, body: node.body })))
+        result.set(n, connection.nodes.map((node) => ({ author_association: node.authorAssociation, author: node.author?.login, body: node.body })))
       }
     }
     return result

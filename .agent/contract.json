@@ -1,50 +1,51 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3158,
+  "generation": 2,
+  "work_issue": 3165,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Close the no-progress alarm blind spot (#3158): a ready request that has recorded entered but has no owning db-claim yet is watched with the same event thresholds.",
-  "base_sha": "388bbe56d630a02ee19cc9daa4cd4e82b55724df",
-  "dispatcher": "Claude coordinator session (Albert: spin up a subagent and handle them)",
-  "worker": "Claude Opus 5 #3158 subagent",
-  "branch": "claude/3158-entered-unclaimed-alarm",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a9498a99068a2e115",
+  "goal": "#2530 pre-transfer gap: outcome lifecycle comments trusted only for operator login u2giants with the association the current owner implies (never wider). No transfer, no GitHub setting change, no database action.",
+  "base_sha": "4b8a61049212468f97753de515997d5af41e28be",
+  "branch": "claude/outcome-owner-trust-4b8a",
+  "dispatcher": "Claude #2530 transfer coordination session (owner instruction relayed 2026-09-16: do all the work you can without the actual switchover)",
+  "worker": "Claude Opus 5 #2530 outcome-lifecycle trust gap",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
   "allowed_paths": [
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     "scripts/orchestrator-snapshot.mjs",
     "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     "scripts/orchestrator-snapshot.mjs",
     "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
+  "assumptions": [
+    "GitHub reports an organization member's comments on an organization-owned repository as MEMBER"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs"
+    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/orchestrator-snapshot.test.mjs",
+    "node scripts/check-repository-identity-conformance.mjs"
   ],
-  "assumptions": [
-    "The sealed snapshot digest must not change, so unclaimed events are returned beside the input, not inside it"
+  "prohibited_actions": [
+    "No repository transfer or GitHub setting change",
+    "No database read or write of any kind",
+    "No production workflow dispatch",
+    "No change to the guarded merge direct-merge behavior"
   ],
   "stop_conditions": [
-    "Stop if the fix would need a database structure change"
+    "Stop if the change needs a GitHub setting change or database action"
   ]
 }
-
-
-
-
-
-

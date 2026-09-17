@@ -37,12 +37,17 @@ test('issue 3148 a ready structural request with no ledger event alarms after 30
     { number: 954, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 1 },
     { number: 955, body: scope('ready'), created_at: minutesAgo(30), labels: [], comments: 0 },
     { number: 956, body: scope('ready'), created_at: minutesAgo(600), labels: [{ name: 'db-claim' }], comments: 0 },
+    { number: 957, body: scope('ready').replace('work_type: structural', 'work_type: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 958, body: scope('ready').replace('route: shared-db-orchestrator', 'route: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 959, body: scope('ready') + '\n' + scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 960, body: scope('ready', 'depends_on: #9999\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 800, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
   ]
-  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue), [950, 954, 955])
+  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue), [950, 954, 955, 960, 800])
   const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
   const { unentered } = gatherLiveInput('o/r', io)
-  assert.deepEqual(unentered.map((row) => row.work_issue), [950, 955])
-  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[950, 'requested', 31]])
+  assert.deepEqual(unentered.map((row) => row.work_issue).sort(), [950, 955, 960], 'a closed dependency does not block; a request owned through a claim title (#800) is excluded')
+  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[960, 'requested', 600], [950, 'requested', 31]])
 })
 
 test('121-minute idle outcome appears in stalled_outcomes; 120 does not', () => {

@@ -71,6 +71,28 @@ Current-state masters — safe to re-run at any time:
 node tools/coldlion-landing/sync-masters.mjs
 ```
 
+Prepack detail — enumerated, not paged (issue #3179). Every run harvests the
+complete `prepackCode` population from the tables this loader family has already
+landed (`coldlion.item_detail`, `coldlion.prod_history_line`,
+`coldlion.order_history_line`, plus `coldlion.inventory` and
+`coldlion.prod_detail` once their own loaders exist), then asks
+`/prepackDetail?companyCode=..&prepackCode=..` once per code:
+
+```bash
+node tools/coldlion-landing/sync-prepack-detail.mjs --limit 150   # bounded, resumable backfill
+node tools/coldlion-landing/sync-prepack-detail.mjs               # full refresh (the scheduled mode)
+node tools/coldlion-landing/sync-prepack-detail.mjs --reconcile   # read-only reconciliation report
+```
+
+Resumability lives in `coldlion.sync_run.request_params`: each successful run
+records the cumulative covered key set, so an interrupted backfill continues
+exactly where the evidence stops — re-dispatch until the run prints
+`pending 0`. A zero-row response for a harvested code is expected and is
+counted, named on the run and alerted; it is never silently skipped. A removed
+recipe sequence is deleted (with change_log evidence) only for codes the run
+actually asked, so the landing table tracks the vendor's current state without
+ever touching codes it did not question.
+
 Backfill — resumable from the ledger, so re-running after an interruption
 continues where the evidence stops:
 
@@ -132,6 +154,12 @@ as part of the tools offline suite.
 master response shapes, unknown-field refusal, settled projections, five-part
 merchandise-group identity, item-slot clearing, re-runnable upserts, and the
 workflow target guard.
+
+`tools/coldlion-landing-prepack.test.mjs` covers the eighteen-field
+`/prepackDetail` projection, the duplicate-cased price pair, sentinel
+normalisation, duplicate and blank-key refusal, the request-identity guard,
+zero-row and malformed responses, bounded resumability, the shape of the load
+transaction, and both workflows' target and secret guards.
 
 No real ColdLion values appear in this directory. The fixtures are synthetic and
 the loaders print counts, scopes and window dates only — this repository is

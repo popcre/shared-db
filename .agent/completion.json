@@ -1,28 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 3208,
+  "work_issue": 2730,
   "outcome": "ready-for-merge",
-  "pr": 3209,
+  "pr": 3201,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3208/5",
-  "contract_sha256": "31d2056c9157ab757db9a10146eded79ddd86f99ab5d543f5b07608594f21165",
-  "head_sha": "aa81fe2dbe663bd67942365bb4b52867eafd17dd",
+  "contract_ref": "refs/db-contracts/2730/2",
+  "contract_sha256": "0cb4c7ef6e9997e28ac39a491228047e9cb8d406e7a7f85c198b3dd483064a1a",
+  "head_sha": "0b2cfbd0b988aba450555724f940686828823ab8",
   "files_changed": [
-    ".github/workflows/tools-offline-tests.yml",
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs",
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
       "exit_code": 0,
-      "evidence": "At aa81fe2d (review fixes, main merged, truth audit OK at 307): 58 passed, 0 failed, 0 skipped. One notify woke each of 10 waiting processes exactly once with zero upstream reads; unreadable or vanished event/state files never wake and a token wakes once; zero delays still sleep and invalid windows are refused (both new tests hang or fail on the previous head); fallback detected a change in 3 polls; x-poll-interval and failure backoff honoured."
+      "evidence": "187 tests, 187 pass, 0 fail from the repo root at implementation head 0b2cfbd0 (refresh from main 6aff8344; own files unchanged by the refresh)."
     }
   ],
   "assumptions_resolved": [
-    "Webhook registration stays out of scope; notifyChange is the event entry point"
+    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run; selection never depends on API row order."
   ],
   "stop_conditions_hit": []
 }

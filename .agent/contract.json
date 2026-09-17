@@ -1,26 +1,24 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3208,
+  "generation": 2,
+  "work_issue": 2730,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part D): an event-aware host-wide watcher wakes each waiter once per change with no request, and its fallback polls through shared conditional reads with x-poll-interval and failure backoff, never busy-looping.",
-  "base_sha": "6aff83440c75f22cbf8902049babb6d29525b83d",
-  "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
-  "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-d",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-d",
+  "goal": "Select the newest same-name check run deterministically by check-run id in prove_pr_and_checks, so an older cancelled run can no longer overwrite a newer successful one regardless of API row order (PR #2527 production refusal).",
+  "base_sha": "b2633a337008c8a11e5776f2e5cad3efa9137200",
+  "dispatcher": "Albert Hazan chat session 2026-09-17 (non-orchestrator sweep)",
+  "worker": "ZCode GLM-5.3 session repo-maintenance sweep 2026-09-17",
+  "branch": "claude/issue-2730-newest-check-selection",
+  "worktree": "C:/repos/shared-db-worktrees/issue-sweep-20260917",
   "allowed_paths": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -28,16 +26,18 @@
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of collision locks, migration version reservation or serial lanes"
+    "No change to any migration file or workflow file"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "python -m unittest scripts.test_production_business_risk_gate"
   ],
   "assumptions": [
-    "Webhook registration on GitHub needs repository settings and is out of scope; the notify hook is the event entry point"
+    "GitHub check-run ids are unique and assigned in increasing creation order, so the greatest id per name is the newest run of that check",
+    "A single same-name row needs no ordering evidence; only two or more rows must carry usable integer ids or the gate refuses",
+    "Generation 2 re-seals the pair after a refresh from main 6aff8344 (other lanes merged, including the #2837 gate change; none touch this change own files); the implementation head is the merge commit 0b2cfbd0b988aba450555724f940686828823ab8."
   ],
   "stop_conditions": [
-    "Stop if a wake could be reported without an event or generation change"
+    "Stop and report if any existing test proves the id-ordering assumption wrong for same-name check runs",
+    "Stop if the exact-head proof or the guarded-merge authorization check would need to change"
   ]
 }

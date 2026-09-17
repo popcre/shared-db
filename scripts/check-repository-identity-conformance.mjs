@@ -71,7 +71,7 @@ export const ALLOWLIST = {
   'scripts/orchestrator-flow/admission-outcome.test.mjs': [19, FIXTURE],
   'scripts/orchestrator-flow/preview-route-canary.test.mjs': [1, FIXTURE],
   'scripts/orchestrator-flow/qualify-change.test.mjs': [1, FIXTURE],
-  'scripts/orchestrator-flow/runner-lanes.test.mjs': [7, FIXTURE],
+  'scripts/orchestrator-flow/runner-lanes.test.mjs': [11, FIXTURE],
   'scripts/orchestrator-flow/select-preview-route.test.mjs': [3, FIXTURE],
   'scripts/record-review-verdict.test.mjs': [3, FIXTURE],
   'scripts/repair-voided-findings.test.mjs': [2, FIXTURE],

@@ -43,7 +43,7 @@ function files(endpoint, env, dir) {
 
 /**
  * Current shared position for a resource, read from local files only. A field is
- * null when its file is missing or unreadable (for example mid-replace on Windows);
+ * null when its file is absent or unreadable (for example mid-replace on Windows);
  * null never counts as a change, so a transient read failure can neither wake a
  * waiter nor make the same token wake it twice.
  */

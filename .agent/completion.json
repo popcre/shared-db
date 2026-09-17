@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3182/2",
   "contract_sha256": "757f0fff8cf95ede204e15ad127d011d319882f8e7ea7a788fcca58e6f06efcd",
-  "head_sha": "8e69e3b9ac85b219955059f86e42d957177ecce6",
+  "head_sha": "01ded3c05a365cccb265fd20c403d3198d542532",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,16 +19,17 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "626 tests, 626 pass, 0 fail at 8e69e3b9 after merging main 23d6142e."
+      "evidence": "628 tests, 628 pass, 0 fail at 01ded3c0 on main 23d6142e."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=305 at 8e69e3b9."
+      "evidence": "truth audit OK: call_sites=305 at 01ded3c0."
     }
   ],
   "assumptions_resolved": [
-    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge."
+    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge.",
+    "Review REVISE at 73828438 addressed: re-run head check, respelled-target refusal, branch character guard, and tests for retired version, missing reservation, orphan evidence and head change."
   ],
   "stop_conditions_hit": []
 }

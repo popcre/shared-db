@@ -23,6 +23,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonicalJson } from './evidence-bundle.mjs'
 import { OrchestratorSnapshotError, snapshotInputs, verifyOrchestratorSnapshot } from './orchestrator-snapshot.mjs'
+import { currentRepository } from '../lib/repository-identity.mjs'
 import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../orchestrator-snapshot.mjs'
 
 export const FALLBACK_TITLE = 'Orchestrator no-progress alarm (no orchestrator marker)'
@@ -176,7 +177,7 @@ export const liveIo = {
 
 export function main(argv = process.argv.slice(2), { io = liveIo, stdout = console.log, stderr = console.error } = {}) {
   const value = (name) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : null }
-  const repo = value('--repo') ?? 'u2giants/shared-db'
+  const repo = currentRepository(value('--repo'))
   const now = value('--now') || new Date().toISOString()
   try {
     if (Number.isNaN(Date.parse(now))) throw new Error('--now must be an ISO instant')

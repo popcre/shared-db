@@ -1,42 +1,40 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3193,
+  "generation": 4,
+  "work_issue": 3195,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the shared production migration guard name the ledger it actually read, so a preview-job refusal says 'already applied on preview' and points to the historical-recovery lane, without changing any check.",
-  "base_sha": "23d6142e079a805d86a7e5a0cf4324897c732bcd",
-  "dispatcher": "Albert Hazan chat request to fix the #2794 preview re-rehearsal deadlock",
-  "worker": "Claude Opus 5 #3193 session",
-  "branch": "claude/issue-rehearse-applied-evidence-only",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a1916a8ff61864114",
+  "goal": "Resolve a keyword-less or on-table grant's kind from the CREATE in the same migration so a grant on a newly created table is not refused as an undeclared view write, while grants on views stay detected (#3183).",
+  "base_sha": "d0cec2a26ead5f368a15957969c44f7d46784f32",
+  "dispatcher": "Albert Hazan chat session",
+  "worker": "Claude Opus 5 sub-agent agent-aa5246435e4e6b9b3",
+  "branch": "claude/fix-grant-kind-from-create",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-aa5246435e4e6b9b3",
   "allowed_paths": [
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_migration_guard.py",
-    "scripts/test_production_migration_guard.py",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "Do not let any already-applied version pass validate_candidates on any ledger"
+    "No database write or structure change of any kind"
   ],
   "required_checks": [
-    "python -m unittest scripts/test_production_migration_guard.py"
+    "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/check-migration-pr-lease.test.mjs"
   ],
   "assumptions": [
-    "The existing historical-recovery lane already recovers a post-merge rehearsal that ran at the authoring merge commit (AGENTS.md section 6), so no new evidence-only mode is needed"
+    "A name created in the migration as exactly one of table or view is that kind for every grant in the same migration",
+    "Generation 4: refreshed by merge onto main d0cec2a2; the implementation diff is unchanged."
   ],
   "stop_conditions": [
-    "Stop if the change would let an applied version be applied again or loosen any producer pin"
+    "Stop if a grant on a view created in the same migration stops producing the view key"
   ]
 }

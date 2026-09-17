@@ -10,12 +10,35 @@
   "worker": "Claude Opus 5 #2530 Step 1 transfer baseline",
   "branch": "claude/shared-db-2530-12815e",
   "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
-  "allowed_paths": ["scripts/capture-repository-transfer-baseline.mjs","scripts/capture-repository-transfer-baseline.test.mjs","docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",".agent/contract.json",".agent/completion.json"],
-  "file_writes": ["scripts/capture-repository-transfer-baseline.mjs","scripts/capture-repository-transfer-baseline.test.mjs","docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",".agent/contract.json",".agent/completion.json"],
+  "allowed_paths": [
+    "scripts/capture-repository-transfer-baseline.mjs",
+    "scripts/capture-repository-transfer-baseline.test.mjs",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
+  "file_writes": [
+    "scripts/capture-repository-transfer-baseline.mjs",
+    "scripts/capture-repository-transfer-baseline.test.mjs",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
+    ".agent/contract.json",
+    ".agent/completion.json"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["No database read or write of any kind","No repository transfer or GitHub settings change","No secret value recorded in any file or output"],
-  "required_checks": ["node --test scripts/capture-repository-transfer-baseline.test.mjs","node scripts/check-throughput-truth-audit.mjs"],
-  "assumptions": ["Every GitHub call the baseline makes is a read"],
-  "stop_conditions": ["Stop and report if any step needs a transfer, settings change, or database access"]
+  "prohibited_actions": [
+    "No database read or write of any kind",
+    "No repository transfer or GitHub settings change",
+    "No secret value recorded in any file or output"
+  ],
+  "required_checks": [
+    "node --test scripts/capture-repository-transfer-baseline.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "Every GitHub call the baseline makes is a read"
+  ],
+  "stop_conditions": [
+    "Stop and report if any step needs a transfer, settings change, or database access"
+  ]
 }

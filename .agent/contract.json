@@ -1,45 +1,55 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3154,
-  "work_type": "structural",
-  "route": "migration",
-  "goal": "Add btree index plm.prod_order_milestone_schedule_factory_time_id_idx on plm.prod_order_milestone_schedule(factory_time_id) supporting the #3091 foreign key. Additive; no data, grant or RLS change.",
-  "base_sha": "48f2c6926ebc6ee7dbb585ef37741b1e9061852c",
-  "dispatcher": "Claude shared-db orchestrator (owner instruction relayed 2026-09-17)",
-  "worker": "Claude Opus 5 #3154 migration author b2",
-  "branch": "claude/3154-factory-time-idx-b2",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a3d47360f234754dd",
+  "work_issue": 3163,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "#2530 pre-transfer gaps: keep operator-login trust but require the association the current owner implies; read outcome evidence only from the current repository (pre-move slug as redirect alias); mark plan STATUS rows 1-2 done. No transfer, no GitHub setting change, no database action.",
+  "base_sha": "629657fa07d4f741a53a4d9a2df300560aa99aa0",
+  "branch": "claude/shared-db-2530-12815e",
+  "dispatcher": "Claude #2530 transfer coordination session (owner instruction relayed 2026-09-16: do all the work you can without the actual switchover)",
+  "worker": "Claude Opus 5 #2530 pre-transfer gaps",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
   "allowed_paths": [
-    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/work-dependencies.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917035654_plm_prod_order_milestone_schedule_factory_time_idx.sql",
-    "supabase/tests/plm_prod_order_milestone_schedule_factory_time_idx_contracts.sql",
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/work-dependencies.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [
-    "index plm.prod_order_milestone_schedule_factory_time_id_idx",
-    "table plm.prod_order_milestone_schedule"
-  ],
-  "prohibited_actions": [
-    "No manual production command; production only via the automatic merged-main lane or its governed reviewer-approved recovery dispatch",
-    "No data, grant or RLS change",
-    "No migration version other than claimed 20260917035654"
+  "db_writes": [],
+  "assumptions": [
+    "GitHub reports an organization member's comments on an organization-owned repository as MEMBER"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+    "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-repository-identity-conformance.mjs"
   ],
-  "assumptions": [
-    "plm.prod_order_milestone_schedule is small enough that a non-concurrent index build takes a negligible lock"
+  "prohibited_actions": [
+    "No repository transfer or GitHub setting change",
+    "No database read or write of any kind",
+    "No production workflow dispatch",
+    "No change to the guarded merge direct-merge behavior"
   ],
   "stop_conditions": [
-    "Stop if the change needs anything beyond the admitted index"
+    "Stop if the change needs a GitHub setting change or database action"
   ]
 }

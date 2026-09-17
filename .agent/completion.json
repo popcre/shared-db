@@ -1,50 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 2611,
+  "work_issue": 3159,
   "outcome": "ready-for-merge",
-  "pr": 2823,
-  "migration_versions": [
-    "20260917081048"
-  ],
-  "contract_ref": "refs/db-contracts/2611/8",
-  "contract_sha256": "fc188ffea9ccb1760ae6c0cfffee2b1aa2e0ccea92bea0d031a0dbfa030a93f7",
-  "head_sha": "c2d1e2609c323d382c71dd52d7e60d70f9b2c71a",
+  "pr": 3167,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3159/1",
+  "contract_sha256": "e08befefa620e62c79a482d2ab29367f1403b1fd8789cb13d5c9b365ecd5649f",
+  "head_sha": "d75a6b05ef37541f9f9fb07bb43441bff0f336bc",
   "files_changed": [
-    ".github/workflows/prepack-exclusion.yml",
-    "docs/business-rules/product-items-and-identifiers.md",
-    "docs/verification/prepack-exclusion-20260911.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/check-prepack-exclusion.mjs",
-    "scripts/check-prepack-exclusion.test.mjs",
-    "supabase/migrations/20260917081048_prepack_exclusion.sql"
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role",
-    "view plm.item_missing_attribution",
-    "table plm.item_missing_attribution"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "python -m pytest -q scripts/test_production_business_risk_gate.py",
       "exit_code": 0,
-      "evidence": "Static checks passed at c2d1e260."
-    },
-    {
-      "command": "node scripts/check-prepack-exclusion.test.mjs",
-      "exit_code": 0,
-      "evidence": "Prepack exclusion test passed at c2d1e260: guard verified green on the tree and red on 10 dirty cases, including a later function-only migration weakening plm.prepack_role."
-    },
-    {
-      "command": "node scripts/check-migration-pr-lease.mjs",
-      "exit_code": 0,
-      "evidence": "PR_NUMBER=2823: Migration claim verified: #2819, version 20260917081048."
+      "evidence": "182 passed, 0 failed, 0 skipped at d10664b7 (includes merged #3168 tests); routine-classification tests including the real #3104/#2866 migrations are a hard gate; fail-closed controls cover header literal changes, schema-wide ACL, default-privilege and rename changes, and unparseable earlier migrations. Full scripts pytest: 1319 passed, 8 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Refreshed by merge onto main a447584d with no conflicts; version 20260917081048 remains newest on main.",
-    "Throughput truth audit re-run OK at 306 call sites at c2d1e260.",
-    "Governed review sequence 3111 (Muse) returned REVISE at 21cda954 on one High guard finding; fixed in c2d1e260 together with Lows 5-7. Mediums 2-4 are SQL performance/scoping/business-scope observations left for follow-up, not blockers."
+    "Function bodies are emptied by the tokeniser; the re-establishment match compares full header, comment and grant statements only, and the body is left to the required independent review"
   ],
   "stop_conditions_hit": []
 }

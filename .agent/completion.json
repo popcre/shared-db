@@ -1,32 +1,29 @@
 {
   "schema_version": 1,
-  "work_issue": 3173,
+  "work_issue": 2367,
   "outcome": "ready-for-merge",
-  "pr": 3172,
+  "pr": 3177,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3173/5",
-  "contract_sha256": "50fcfdaecc5bcd49dd45f11805c91b3ae44d3b31f05724a1cf391dbbd78ca3c9",
-  "head_sha": "a37bda4306389183a815baaf56dad121044c285a",
+  "contract_ref": "refs/db-contracts/2367/3",
+  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
+  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
   "files_changed": [
-    "scripts/lib/github-conditional.mjs",
-    "scripts/lib/github-conditional.test.mjs",
-    "scripts/lib/github-transport.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.mjs",
-    "scripts/orchestrator-flow/runner-lanes.test.mjs",
-    "scripts/check-repository-identity-conformance.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "python -m unittest scripts/test_*.py",
       "exit_code": 0,
-      "evidence": "619 passed, 0 failed, 0 skipped at a37bda4306389183a815baaf56dad121044c285a; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
+      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
     }
   ],
   "assumptions_resolved": [
-    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
+    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
+    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
   ],
   "stop_conditions_hit": []
 }

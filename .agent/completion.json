@@ -1,29 +1,34 @@
 {
   "schema_version": 1,
-  "work_issue": 3146,
+  "work_issue": 3182,
   "outcome": "ready-for-merge",
-  "pr": 3178,
+  "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3146/1",
-  "contract_sha256": "81bcc7864911a7e69f3808b283d8627f3a20571ea6655b11210a6cf361c4fba3",
-  "head_sha": "31619c959805bef6d79b095f13a50965c669ca1f",
+  "contract_ref": "refs/db-contracts/3182/1",
+  "contract_sha256": "ccdcf862d6c9e73560547e1e08b8d6e04fbcd089f6af605df07c9bab2f850265",
+  "head_sha": "1d7acf76a74df3bfe1cea53b29c1ed84cc55c541",
   "files_changed": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "666 pass, 0 fail, 0 skipped. The new #3146 test fails on origin/main code (17 pass, 1 fail). Full author-lease workflow test set: 1430 pass, 0 fail, 0 skipped. Live replay: PR #3118 and #2872 refused against current main and carried from their approved heads against the merge commit first parent."
+      "evidence": "626 tests, 626 pass, 0 fail at 1d7acf76 after merging main 7a15d152."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=306 at 1d7acf76."
     }
   ],
   "assumptions_resolved": [
-    "Confirmed the qualifier runs post-merge: 01f73d19 is identical to merged head 72517a6f against origin/main but not against merge commit 4ba3732d^1"
+    "Refreshed by merge onto main 7a15d152 before sealing; checks re-run after the merge."
   ],
   "stop_conditions_hit": []
 }

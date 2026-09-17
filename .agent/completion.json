@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3023/1",
   "contract_sha256": "351250a80e34784bf9aebb03fa6a43c61268cc5f505660b6c20542751516828c",
-  "head_sha": "2940e295e595809b0eeeb2bd9a15977b08797221",
+  "head_sha": "25f14faef09a17f78b2db5439ca4dbf267cc62ea",
   "files_changed": [
     ".github/live-proofs/3023.sql",
     "config/production-verification-sidecar-registry.json",

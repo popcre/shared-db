@@ -1,128 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 2866,
+  "work_issue": 2870,
   "outcome": "ready-for-merge",
-  "pr": 2869,
+  "pr": 2872,
   "migration_versions": [
-    "20260916232818"
+    "20260916232835"
   ],
-  "contract_ref": "refs/db-contracts/2866/10",
-  "contract_sha256": "daef608e5f56a21a7c2865413af1857b7debed3424a2d3e21f82b09da90a971e",
-  "head_sha": "f8a74923f38dbccd66a9ff3c950e513de534cfd5",
+  "contract_ref": "refs/db-contracts/2870/7",
+  "contract_sha256": "85f57ec3aae68ff469ba5b33ed47e1555d43c1e8bb8ef92a17f6742c44f01bba",
+  "head_sha": "3d93ce495f61f45e46a624be89057930724d860c",
   "files_changed": [
     "config/production-verification-sidecar-registry.json",
-    "scripts/production-verification-sidecars/20260916232818.json",
-    "supabase/migrations/20260916232818_hts_rag_insert_provenance.sql",
-    "supabase/tests/hts_rag_shared_schema_contract.sql"
+    "scripts/production-verification-sidecars/20260916232835.json",
+    "supabase/migrations/20260916232835_add_dflow_prod_cutover_columns.sql",
+    "supabase/tests/dflow_prod_cutover_columns_contract.sql"
   ],
   "db_reads": [],
   "db_writes": [
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_rulings",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_rulings",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_rulings",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_rulings",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_rulings",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_rulings",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_product_examples",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_precedents",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_precedents",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_precedents",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_precedents",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_precedents",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_precedents",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_precedent_rulings",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_extraction_jobs",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_determinations",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_determinations",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_determinations",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_determinations",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_determinations",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_determinations",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_provider_responses",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_review_events",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_review_events",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_review_events",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_review_events",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_review_events",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_review_events",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_product_family_allowlist",
-    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_debate_runs",
-    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_debate_runs",
-    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_debate_runs",
-    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_debate_runs",
-    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_debate_runs",
-    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_debate_runs"
+    "column dflow_prod.comments.app_comment_id",
+    "column dflow_prod.users.app_profile_id",
+    "table dflow_prod.comments",
+    "table dflow_prod.users"
   ],
   "checks": [
     {
-      "command": "ai-task-gates check --before review",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Repository task gate passed for shared-db structural review after the current-main refresh."
+      "evidence": "Static checks passed at head 69481379 after the current-main refresh and version supersession to 20260916232835."
     },
     {
-      "command": "scripts/check-sql.sh",
+      "command": "ephemeral preview-equivalent database contract test",
       "exit_code": 0,
-      "evidence": "Static SQL checks passed after merging origin/main and superseding the backdated version to 20260916232818."
+      "evidence": "Migration and test SQL bodies are byte-identical to the earlier CI-replayed head apart from the version; exact-head CI reruns the full replay."
     },
     {
-      "command": "database contract tests for hts_rag_shared_schema_contract.sql",
+      "command": "node scripts/check-production-verification-sidecars.mjs",
       "exit_code": 0,
-      "evidence": "GitHub Actions ephemeral database run 34802691072 succeeded from empty and passed the full contract suite."
-    },
-    {
-      "command": "production verification sidecar validation",
-      "exit_code": 0,
-      "evidence": "check_production_verification_sidecars.py OK with 57 declared sidecars including 20260916232818 in the registry."
+      "evidence": "Sidecar validator returned status OK with the sidecar declared in the registry."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors."
-    },
-    {
-      "command": "exact object and claim guards",
-      "exit_code": 0,
-      "evidence": "Claim #2867 verified for migration 20260916232818 and the pull-request object collision guard reported no collisions."
-    },
-    {
-      "command": "python -m unittest scripts.test_production_business_risk_gate scripts.test_verify_preview_apply_artifact",
-      "exit_code": 0,
-      "evidence": "165 tests passed after the current-main refresh."
-    },
-    {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "538 coordination tests passed after the refresh."
+      "evidence": "No whitespace errors against current main."
     }
   ],
   "assumptions_resolved": [
-    "Separate SELECT, INSERT, and UPDATE policies preserve shared reads and bounded cross-environment updates while binding inserts to each worker role's own environment.",
-    "The ephemeral database contract passed all 20 own-environment inserts and rejected all 20 cross-environment inserts across the ten tables."
+    "Both new columns are nullable UUIDs without defaults or foreign keys, and the SQL contract proves that exact shape.",
+    "The migration performs DDL only and contains no application-row write.",
+    "Claim version 20260914032423 was superseded to 20260916232835 through the governed supersession tool because the old version sorted behind current main."
   ],
   "stop_conditions_hit": []
 }

@@ -79,7 +79,7 @@ export const postedKeys = (comments) => new Set(comments.filter(trustedComment).
 
 export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryRun = false }, io) {
   // Read failures other than "no orchestrator" throw here, so the CLI exits 1.
-  const { input, sessionStarted, unentered = [] } = io.gatherLiveInput(repo)
+  const { input, sessionStarted, unentered = [], unclaimedEvents = [] } = io.gatherLiveInput(repo)
   let raw
   if (input.marker) raw = runSnapshotCycle(input, { now, previous: null, sessionStarted }).output
   else {
@@ -87,7 +87,9 @@ export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryR
     raw = { snapshot: null, ...stalledOutcomes(input.outcome_events, { now, ownedIssues, sessionStarted }) }
   }
   // Ready requests that never entered the ledger alarm on the same 30-minute threshold (#3148).
-  raw = { ...raw, stalled_outcomes: [...raw.stalled_outcomes, ...stalledRequests(unentered, { now })] }
+  // Requests that entered the ledger but have no owning claim yet use the same event thresholds (#3158).
+  const unclaimed = stalledOutcomes(unclaimedEvents, { now }).stalled_outcomes
+  raw = { ...raw, stalled_outcomes: [...raw.stalled_outcomes, ...stalledRequests(unentered, { now }), ...unclaimed] }
   // Zero closures only counts once outcomes have existed for the whole four-hour window.
   const earliest = Math.min(...input.outcome_events.map((e) => Date.parse(e.timestamp)).filter((n) => !Number.isNaN(n)))
   const output = { ...raw, zero_closures_4h: raw.zero_closures_4h && Date.parse(now) - earliest >= ZERO_CLOSURE_WINDOW_MINUTES * 60000 }

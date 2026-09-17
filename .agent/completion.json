@@ -1,32 +1,53 @@
 {
   "schema_version": 1,
-  "work_issue": 3152,
+  "work_issue": 3009,
   "outcome": "ready-for-merge",
-  "pr": 3151,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3152/2",
-  "contract_sha256": "bab0c00d496bfaf31fef92a69bde8492c79cc62dff29b57fc35eb0916ce5419b",
-  "head_sha": "36740d7d7698bccc5542b843b3bae38d5107266b",
+  "pr": 3137,
+  "migration_versions": [
+    "20260917024050"
+  ],
+  "contract_ref": "refs/db-contracts/3009/10",
+  "contract_sha256": "2c119838b84aba7d98f7c5a4a6c4257ee9f8345ade0261a40cb4b9f64ff5df10",
+  "head_sha": "06289bb05f9024204bcd1ff6b38375acd673f53c",
   "files_changed": [
-    ".github/workflows/orchestrator-no-progress-alarm.yml",
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/orchestrator-snapshot.mjs",
-    "scripts/orchestrator-snapshot.test.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.mjs",
-    "scripts/orchestrator-flow/no-progress-alarm.test.mjs"
+    ".github/live-proofs/3009.sql",
+    "supabase/migrations/20260917024050_popsg_search_v2_default_browse_snapshot.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_render_queue",
+    "table public.style_guide_files"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2",
+    "function public.refresh_style_guide_library_default_snapshot",
+    "materialized view public.style_guide_library_default_guides",
+    "materialized view public.style_guide_library_default_summary",
+    "index public.style_guide_library_default_guides_group_uidx",
+    "index public.style_guide_library_default_guides_modified_idx",
+    "index public.style_guide_library_default_guides_name_idx",
+    "index public.style_guide_library_default_summary_mode_uidx",
+    "table public.style_guide_library_default_guides",
+    "table public.style_guide_library_default_summary"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-snapshot.test.mjs scripts/orchestrator-flow/no-progress-alarm.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Run at implementation head 36740d7d (queue-audit candidacy, workflow guard): tests 29, pass 29, fail 0, skipped 0."
+      "evidence": "Static checks passed for the added migration."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "status OK; 20260917024050 needs no sidecar."
     }
   ],
   "assumptions_resolved": [
-    "Sealed snapshot digest unchanged: unentered requests are returned outside the sealed input (resume test still VALID)"
+    "Local PostgreSQL 18 equivalence: 150 default-browse cases match the full body, differing only in tie order the previous body left undefined.",
+    "Read-only production count of active files takes 4.6 s, so totals must come from the five-minute snapshot; the contract test refreshes it before asserting an exact total."
   ],
   "stop_conditions_hit": []
 }

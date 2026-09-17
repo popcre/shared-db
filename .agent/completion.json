@@ -1,29 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3097,
+  "work_issue": 3122,
   "outcome": "ready-for-merge",
-  "pr": 3098,
+  "pr": 3120,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3097/1",
-  "contract_sha256": "98140b80dd1ef88598b1e528e25017209defe11bb85965acc7d365210fdf6309",
-  "head_sha": "ccfdbef49960e3bef126fafb35890e34aeadfdbb",
+  "contract_ref": "refs/db-contracts/3122/1",
+  "contract_sha256": "ada30d7ed4830afeca6fc04e48f581f9c5c0621b7d717e3267087dddf23e8cf2",
+  "head_sha": "6ea8d3b6069fe1c5dc85fc5951a2329fbc55259a",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T000343Z.json",
+    "scripts/capture-repository-transfer-baseline.mjs",
+    "scripts/capture-repository-transfer-baseline.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
+      "command": "node --test scripts/capture-repository-transfer-baseline.test.mjs",
       "exit_code": 0,
-      "evidence": "Run at implementation head 5d7fdc3a: tests 15, pass 15, fail 0, skipped 0."
+      "evidence": "tests 19, pass 19, fail 0, cancelled 0, skipped 0, todo 0 at implementation head f031a044 (refreshed from main as 6ea8d3b6)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=295 at f031a044 (refreshed from main as 6ea8d3b6)."
     }
   ],
   "assumptions_resolved": [
-    "A malformed --drawn-since now throws in dry run and apply; proved by the drawn-since test"
+    "The baseline issues only GET requests through the governed GitHub transport; the live run changed nothing."
   ],
   "stop_conditions_hit": []
 }

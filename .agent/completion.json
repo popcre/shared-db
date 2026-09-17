@@ -8,8 +8,6 @@
   "contract_sha256": "6771b8a2622820843b0b278aa92854b3d89ed787180ecf9051035fd385b6bef1",
   "head_sha": "8224df8a1bb417d65ebcda5d4beaa8afbe25cc1b",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "scripts/production_business_risk_gate.py"
   ],
   "db_reads": [],

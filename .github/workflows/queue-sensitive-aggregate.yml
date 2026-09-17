@@ -1,0 +1,38 @@
+# Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
+#
+# "Tools offline tests" and "Promotion contract tests (offline)" can be re-run on another free
+# GitHub-hosted lane (workflow_dispatch input `lane`) when the preferred runner never picks the job
+# up. A replacement run reports "<context> [lane <label>]", so this job is the one stable context:
+# it passes only when every registered assertion has exactly one successful run for the PR head,
+# and it refuses when an assertion is absent, duplicated or failed. Lanes are declared in
+# scripts/orchestrator-flow/runner-lanes.json. Read-only: it only lists check runs.
+
+name: Queue-Sensitive Checks Aggregate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: queue-sensitive-aggregate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  aggregate:
+    name: Queue-sensitive checks (aggregate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require every queue-sensitive assertion exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/orchestrator-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50

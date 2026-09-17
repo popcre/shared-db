@@ -56,6 +56,7 @@ cannot resurrect an unproven definition.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -174,6 +175,174 @@ def later_only_routines(migration: Path, migrations_dir: Path, schemas: set[str]
     }
 
 
+_DROP_ROUTINE = re.compile(
+    r"(?is)\bdrop[ \t\r\n]+(function|procedure|routine)[ \t\r\n]+"
+    r"(?:if[ \t\r\n]+exists[ \t\r\n]+)?([^;]*?)"
+    r"(?:[ \t\r\n]+(?:cascade|restrict))?[ \t\r\n]*;"
+)
+
+def _strip_literals(text: str) -> str:
+    """Blank out dollar-quoted bodies and single-quoted strings.
+
+    A drop written as data -- `select apply('drop function f(int)');` or inside a
+    function body -- is not a top-level drop; parsing it would emit a broken row.
+    Such drops are simply not replayed, which is the pre-existing behaviour.
+    """
+    text = re.sub(r"(?s)(\$[A-Za-z_0-9]*\$).*?\1", " ", text)
+    return re.sub(r"(?s)'(?:[^']|'')*'", "''", text)
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    items: list[str] = []
+    depth = 0
+    start = 0
+    quoted = False
+    for index, char in enumerate(text):
+        if char == '"':
+            quoted = not quoted
+        elif quoted:
+            continue
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            items.append(text[start:index])
+            start = index + 1
+    items.append(text[start:])
+    return [item.strip() for item in items if item.strip()]
+
+
+def routine_drops(path: Path) -> list[tuple[str, str]]:
+    """(routine name, statement) for every top-level routine drop, in file order.
+
+    A drop keeps its exact target text -- `schema.name(arg types)` -- so replaying
+    it removes exactly the signature the later migration removed, never an
+    overload it left alone.
+    """
+    text = _strip_literals(_strip_comments(path.read_text(encoding="utf-8")))
+    found: list[tuple[str, str]] = []
+    for match in _DROP_ROUTINE.finditer(text):
+        kind = match.group(1).lower()
+        for item in _split_top_level_commas(match.group(2)):
+            name = _norm(item.split("(", 1)[0])
+            target = re.sub(r"\s+", " ", item)
+            found.append((name, f"drop {kind} if exists {target};"))
+    return found
+
+
+def later_drops(
+    migration: Path, migrations_dir: Path, applied: set[str]
+) -> dict[str, list[str]]:
+    """Drops a pass-2 file could undo: routines it creates that a later APPLIED
+    migration dropped.
+
+    In a real database the later drop follows this file's create, so the routine
+    is gone. In the replay this file runs after the drop and resurrects it
+    (20260905104802 recreating public.deactivate_stale_sg_files after
+    20260915111317 retired it). Returns routine -> drop statements.
+
+    Whether a later migration RE-CREATED that exact identity is not guessed from
+    SQL text here (argument names, modes and defaults make identities unreliable
+    to compare statically). See `redeclared_after_drop` for which drops replay
+    unconditionally and which are guarded on the catalog. Only proven-applied
+    later migrations count.
+    """
+    current = declared_routines(migration)
+    if not current:
+        return {}
+    pending: dict[str, list[str]] = {}
+    for later in sorted(migrations_dir.glob("*.sql")):
+        if later.name <= migration.name or later.name not in applied:
+            continue
+        for name, stmt in routine_drops(later):
+            if name in current and stmt not in pending.setdefault(name, []):
+                pending[name].append(stmt)
+    return {name: stmts for name, stmts in pending.items() if stmts}
+
+
+def redeclared_after_drop(
+    migration: Path, migrations_dir: Path, applied: set[str]
+) -> set[str]:
+    """Routines with a later applied drop that a migration AT OR AFTER that drop re-declares.
+
+    THE CATALOG CANNOT ANSWER "WAS IT DROPPED" ON ITS OWN (issue #2959). The
+    captured pre-adoption baseline is loaded BETWEEN pass 1 and pass 2, so a
+    routine a pass-1 migration dropped can be back in the catalog before any
+    pass-2 file runs -- the baseline put it there, not a later migration. PR
+    #2958: 20260915130626 dropped public.deactivate_stale_sg_files(text, uuid)
+    in pass 1, the baseline re-created it, and a presence guard skipped the drop.
+
+    So a drop whose routine NO applied migration re-declares at or after the
+    dropping file replays unconditionally: the file history alone proves the
+    routine's final state is dropped. Only a routine re-declared from the dropping
+    file onward (same identity or a new overload -- not decidable from text) keeps
+    the catalog guard evaluated before the pass-2 file runs. That residual guard
+    can still be fooled by a baseline copy of the exact dropped identity; it is
+    the only case left undecided statically.
+    """
+    current = declared_routines(migration)
+    ordered = [
+        path for path in sorted(migrations_dir.glob("*.sql"))
+        if path.name > migration.name and path.name in applied
+    ]
+    redeclared: set[str] = set()
+    for index, later in enumerate(ordered):
+        dropped = {name for name, _ in routine_drops(later)} & current
+        if not dropped:
+            continue
+        for following in ordered[index:]:
+            redeclared |= dropped & declared_routines(following)
+    return redeclared
+
+
+_ARG_MODES = {"in", "out", "inout", "variadic"}
+# First words of built-in type names that are written as several words, so a
+# leading word here is part of the type, never a parameter name.
+_MULTIWORD_TYPE_STARTS = {"double", "character", "char", "varchar", "bit", "timestamp", "time", "interval", "national"}
+
+
+def _lookup_signature(target: str, kind: str) -> str:
+    """The `name(type, ...)` text regprocedure accepts for a drop target.
+
+    A drop may name its parameters, give modes and defaults
+    (`f(in p text, q uuid default null)`); PostgreSQL accepts that in DROP, but
+    `to_regprocedure` resolves only argument TYPES, so the guard would never find
+    the routine and would drop one a later migration re-created (GLM Low finding
+    on #2948). OUT arguments are not part of a function's identity and are left
+    out; a procedure keeps them.
+    """
+    if "(" not in target:
+        return target
+    name, args = target.split("(", 1)
+    types: list[str] = []
+    for arg in _split_top_level_commas(args.rsplit(")", 1)[0]):
+        arg = re.split(r"(?is)\s+default\s+|\s*=", arg, maxsplit=1)[0].strip()
+        tokens = arg.split()
+        if tokens and tokens[0].lower() in _ARG_MODES:
+            mode = tokens.pop(0).lower()
+            if mode == "out" and kind != "procedure":
+                continue
+        if (
+            len(tokens) > 1
+            and re.fullmatch(IDENT, tokens[0], flags=re.I)
+            and tokens[0].lower() not in _MULTIWORD_TYPE_STARTS
+        ):
+            tokens.pop(0)
+        if tokens:
+            types.append(" ".join(tokens))
+    return f"{name.rstrip()}({', '.join(types)})"
+
+
+def _drop_row(routine: str, stmt: str, guarded: bool = True) -> str:
+    target = stmt.split(" if exists ", 1)[1].rstrip(";")
+    lookup = "to_regprocedure" if "(" in target else "to_regproc"
+    target = _lookup_signature(target, stmt.split()[1])
+    quote = lambda value: "'" + value.replace("'", "''") + "'"
+    row = f"select 5 as ord, {quote(stmt)} as stmt, '' as s, {quote(routine)} as f, '' as a"
+    return f"{row} where {lookup}({quote(target)}) is null" if guarded else row
+
+
 def _literals(names: set[str] | dict[str, list[str]]) -> str:
     return ", ".join(
         "'" + name.replace('"', "").replace("'", "''") + "'" for name in sorted(names)
@@ -183,9 +352,21 @@ def _literals(names: set[str] | dict[str, list[str]]) -> str:
 def snapshot_query(
     collisions: dict[str, list[str]],
     privilege_routines: set[str] | None = None,
+    drops: dict[str, list[str]] | None = None,
+    guarded: set[str] | None = None,
 ) -> str:
-    """One query whose rows are the SQL statements that restore later truth."""
+    """One query whose rows are the SQL statements that restore later truth.
+
+    Later drops are replayed last (ord 5), after bodies and grants. A routine in
+    `guarded` (default: every dropped routine) replays its drop only if the exact
+    signature is absent from the catalog when this snapshot is taken; any other
+    drop replays unconditionally (see `redeclared_after_drop`).
+    """
     parts: list[str] = []
+    if drops:
+        for routine in sorted(drops):
+            for stmt in drops[routine]:
+                parts.append(_drop_row(routine, stmt, guarded is None or routine in guarded))
     if collisions:
         parts.append(
             "select x.ord, x.stmt, n.nspname as s, p.proname as f, "
@@ -228,7 +409,112 @@ def snapshot_query(
     )
 
 
+# ---------------------------------------------------------------------------
+# Delivery preflight: rebuild check (issue #2728, popcre/ai-devops#401 Step 5).
+#
+# The contract-test lane discovers a broken pass-2 rebuild only after review.
+# This static check runs before review for any change that drops or replaces a
+# routine: every older migration that touches an affected routine is treated as
+# a pass-2 file (any of them may fail from empty), and the routine set after
+# "straight replay, in order" is compared with the set after "every other file,
+# then this one, then the repair rows this script emits". A difference means the
+# rebuild would not reproduce the straight replay, and the preflight refuses.
+#
+# The model is routine NAMES, not full identities: overloads that differ only
+# in argument types collapse to one name. It proves the repair emits a drop or
+# restoration wherever one is needed; the PostgreSQL catalog tests prove what
+# those rows do to exact signatures.
+# ---------------------------------------------------------------------------
+def routine_events(path: Path) -> list[tuple[str, str]]:
+    """("create"|"drop", routine name) in file order, outside literals and comments."""
+    text = _strip_literals(_strip_comments(path.read_text(encoding="utf-8")))
+    events: list[tuple[int, str, str]] = [
+        (match.start(), "create", _norm(match.group(1))) for match in ROUTINE.finditer(text)
+    ]
+    for match in _DROP_ROUTINE.finditer(text):
+        for item in _split_top_level_commas(match.group(2)):
+            events.append((match.start(), "drop", _norm(item.split("(", 1)[0])))
+    return [(kind, name) for _, kind, name in sorted(events, key=lambda event: event[0])]
+
+
+def _replay(files: list[Path], state: set[str] | None = None) -> set[str]:
+    state = set() if state is None else state
+    for path in files:
+        for kind, name in routine_events(path):
+            (state.add if kind == "create" else state.discard)(name)
+    return state
+
+
+def rebuild_mismatches(
+    migrations_dir: Path, changed: list[str], repair=None
+) -> list[dict[str, object]]:
+    """Every older pass-2 candidate whose repaired rebuild differs from straight replay.
+
+    `changed` names the migrations a pull request adds or edits. Only routines
+    those files drop or create are judged. `repair(migration, dir, applied)`
+    returns routine -> drop statements to replay (default: `later_drops`), so a
+    test can prove an absent repair is caught.
+    """
+    repair = repair or later_drops
+    ordered = sorted(migrations_dir.glob("*.sql"))
+    names = {path.name for path in ordered}
+    targets = [name for name in changed if name in names]
+    affected: set[str] = set()
+    for name in targets:
+        affected |= {routine for _, routine in routine_events(migrations_dir / name)}
+    if not affected:
+        return []
+    straight = _replay(ordered) & affected
+    newest_target = max(targets)
+    mismatches: list[dict[str, object]] = []
+    for migration in ordered:
+        if migration.name > newest_target:
+            break
+        touched = {routine for _, routine in routine_events(migration)} & affected
+        if not touched:
+            continue
+        rest = [path for path in ordered if path != migration]
+        state = _replay(rest)
+        before = set(state)
+        _replay([migration], state)
+        applied = names - {migration.name}
+        drops = repair(migration, migrations_dir, applied)
+        guarded = redeclared_after_drop(migration, migrations_dir, applied) if drops else set()
+        for routine in drops:
+            if routine not in guarded or routine not in before:
+                state.discard(routine)
+        # Proven later definitions are restored only for routines still present.
+        for routine in later_collisions(migration, migrations_dir):
+            if routine in before:
+                state.add(routine)
+        rebuilt = state & affected
+        if rebuilt != straight:
+            mismatches.append({
+                "pass2_migration": migration.name,
+                "resurrected": sorted(rebuilt - straight),
+                "lost": sorted(straight - rebuilt),
+            })
+    return mismatches
+
+
+def rebuild_check_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="check_pass2_routine_supersession.py --rebuild-check")
+    parser.add_argument("--rebuild-check", action="store_true", required=True)
+    parser.add_argument("--migrations-dir", type=Path, required=True)
+    parser.add_argument("changed", nargs="*")
+    args = parser.parse_args(argv)
+    if not args.migrations_dir.is_dir():
+        print(f"REBUILD CHECK: migrations directory {args.migrations_dir} is unreadable", file=sys.stderr)
+        return 2
+    mismatches = rebuild_mismatches(args.migrations_dir, [Path(name).name for name in args.changed])
+    print(json.dumps({"status": "BLOCKED" if mismatches else "PASS", "mismatches": mismatches},
+                     separators=(",", ":")))
+    return 1 if mismatches else 0
+
+
 def main() -> int:
+    if "--rebuild-check" in sys.argv[1:]:
+        return rebuild_check_main(sys.argv[1:])
     parser = argparse.ArgumentParser()
     parser.add_argument("migration", type=Path)
     parser.add_argument("--migrations-dir", type=Path, required=True)
@@ -271,8 +557,19 @@ def main() -> int:
         for routine, files in sorted(unproven.items()):
             print(f"  {routine}: unproven later file(s) {', '.join(files)}", file=sys.stderr)
 
-    if not proven and not privilege_routines:
+    drops = later_drops(args.migration, args.migrations_dir, applied)
+
+    if not proven and not privilege_routines and not drops:
         return 0
+
+    if drops:
+        print(
+            f"PASS-2 ORDER REPAIR: {args.migration.name} re-creates routines that "
+            "later APPLIED migrations dropped. The drops are replayed after it:",
+            file=sys.stderr,
+        )
+        for routine, stmts in sorted(drops.items()):
+            print(f"  {routine}: {' '.join(stmts)}", file=sys.stderr)
 
     if proven:
         print(
@@ -293,7 +590,8 @@ def main() -> int:
         for routine in sorted(privilege_routines):
             print(f"  {routine}", file=sys.stderr)
 
-    print(snapshot_query(proven, privilege_routines))
+    guarded = redeclared_after_drop(args.migration, args.migrations_dir, applied) if drops else set()
+    print(snapshot_query(proven, privilege_routines, drops, guarded))
     return 0
 
 

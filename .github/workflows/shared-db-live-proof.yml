@@ -1,0 +1,51 @@
+name: Shared DB Live Proof
+
+# Produces the durable live-proof artifact that --complete-outcome re-derives
+# for an outcome whose application_return_to is u2giants/shared-db (#2906).
+# Read-only: the probe runs through the Management API with read_only: true.
+on:
+  workflow_dispatch:
+    inputs:
+      work_issue: {description: "Structural work issue whose live assertion to prove", required: true, type: string}
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bind to main and read the issue scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORK_ISSUE: ${{ inputs.work_issue }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$WORK_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/gh-read.mjs --out "$RUNNER_TEMP/issue.json" api "repos/$GITHUB_REPOSITORY/issues/$WORK_ISSUE"
+      - name: Run the committed probe read-only against production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          WORK_ISSUE: ${{ inputs.work_issue }}
+        run: |
+          set -euo pipefail
+          python scripts/shared_db_live_proof.py \
+            --work-issue "$WORK_ISSUE" \
+            --issue-json "$RUNNER_TEMP/issue.json" \
+            --probe ".github/live-proofs/$WORK_ISSUE.sql" \
+            --commit-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/live-proof/db-live-proof.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shared-db-live-proof-${{ inputs.work_issue }}-${{ github.sha }}
+          path: ${{ runner.temp }}/live-proof/db-live-proof.json
+          if-no-files-found: error
+          retention-days: 90

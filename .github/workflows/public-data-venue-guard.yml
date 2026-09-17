@@ -1,0 +1,41 @@
+# Guard: licensed and internal data artifacts stay out of this PUBLIC repository.
+#
+# Issue #2390: scripts/public-data-venue.test.mjs existed since PR #1871 but ran in no workflow,
+# so PR #2340 merged eight flagged files with every check green.
+#
+# Design rules, same as the other repo-wide guards here:
+#   1. NO `paths:` filter - the guard inspects every tracked file, not just the diff.
+#   2. A UNIQUE check-run name.
+#
+# An admin must make `Public data venue guard` a required context; branch protection is not
+# editable from a workflow or an agent session.
+
+name: Public Data Venue Guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-data-venue-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Public data venue guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check tracked files against the public data venue rules
+        run: node --test scripts/public-data-venue.test.mjs

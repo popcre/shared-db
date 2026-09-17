@@ -16,13 +16,47 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { conflicts, parseQueueScope, buildDynamicQueues } from './manage-migration-author-lanes.mjs'
+import { assertLaneAvailable, claimBody, conflicts, parseAuthorLease, parseQueueScope, buildDynamicQueues, relinquishAuthorLease, resumeAuthorLease, repairResumedClaim } from './manage-migration-author-lanes.mjs'
 import { classifyDependency } from './lib/work-dependencies.mjs'
 import { contractHash, reconcileReportWithContract, validateContract } from './agent-work-contract.mjs'
 import { auditTimeline } from './db-coordination-events.mjs'
 
 const NOW = new Date('2026-08-23T12:00:00Z')
 const scope = (body) => ['```db-work-scope', 'status: ready', 'work_type: structural', 'route: shared-db-orchestrator', 'service_class: standard-application', 'change_type: migration', 'application_return_to: u2giants/example-app', 'live_assertion: authenticated create-and-read succeeds', 'generated_types: not-applicable', 'priority: 5', 'depends_on:', body, '```'].join('\n')
+
+test('abandoned absent work frees only capacity and cannot resume without recovery',()=>{
+  const version='20260908123232',claimNumber=2574,refs=new Map([[`refs/db-claims/${version}`,'reservation']]),issues=new Map()
+  const claim={number:claimNumber,state:'open',title:'CLAIM: #2503 bootstrap fixture',body:claimBody({version,objects:['table plm.sample'],owner:'shared-db.orch/agent-2503',branch:'codex/issue-2503-bootstrap',worktree:'C:/repos/shared-db-worktrees/issue-2503-bootstrap',expiresAt:new Date('2026-08-24T00:00:00Z')})}
+  issues.set(claimNumber,claim);issues.set(2503,{number:2503,state:'open',body:''});issues.set(2301,{number:2301,state:'open',body:''})
+  let serial=0
+  const io={
+    makeOwnerCommit:()=>`owner-${++serial}`,createRef:(name,sha)=>{if(refs.has(name))return false;refs.set(name,sha);return true},readRef:name=>refs.get(name)??null,deleteRef:name=>refs.delete(name),getCommitMessage:()=>'',
+    // #2301 Step 3: resuming asks the retirement namespace once. Answer from the
+    // fixture's own ref store rather than returning [] -- a hard-coded "nothing
+    // is retired" would make this scenario pass for the wrong reason.
+    listRefs:(prefix)=>[...refs].filter(([name])=>name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
+    openClaims:()=>[structuredClone(claim)],getIssue:number=>structuredClone(issues.get(Number(number))),updateIssue:(number,{body})=>{issues.get(Number(number)).body=body;claim.body=body},
+    localWorktreeState:()=>({state:'absent'}),prSources:()=>[],commentIssue:()=>{},
+    // The recovery artifact must be DEREFERENCEABLE, not merely well-shaped;
+    // only this one reference exists in the fixture's object store.
+    verifyArtifact:(reference)=>reference==='artifact:'+'a'.repeat(40)?{kind:'git-object',type:'blob'}:null,
+  }
+  relinquishAuthorLease({claim:claimNumber,owner:'shared-db.orch/agent-2503',blockedOn:'issue:#2301',worktreeState:'absent'},NOW,io)
+  const protectedState=assertLaneAvailable([claim],['table plm.other'],NOW)
+  assert.equal(protectedState.active.length,0)
+  assert.equal(protectedState.protected.length,1)
+  assert.throws(()=>assertLaneAvailable([claim],['table plm.sample'],NOW),/object collision/)
+  assert.throws(()=>resumeAuthorLease({claim:claimNumber,owner:'shared-db.orch/agent-2503',leaseHours:12},NOW,io),/proven-clean worktree or --recovery-artifact/)
+  // A recovery reference of exactly the right shape that names nothing real is
+  // refused; otherwise the recovery gate would only be checking spelling.
+  assert.throws(()=>resumeAuthorLease({claim:claimNumber,owner:'shared-db.orch/agent-2503',leaseHours:12,recoveryArtifact:'artifact:'+'9'.repeat(40)},NOW,io),/cannot be dereferenced/)
+  resumeAuthorLease({claim:claimNumber,owner:'shared-db.orch/agent-2503',leaseHours:12,recoveryArtifact:'artifact:'+'a'.repeat(40)},NOW,io)
+  const resumed=parseAuthorLease(claim.body,NOW)
+  assert.equal(resumed.capacityActive,true)
+  assert.equal(resumed.worktreeState,null)
+  assert.equal(refs.get(`refs/db-claims/${version}`),'reservation')
+  assert.equal(claim.state,'open')
+})
 
 // --- CONFLICT SCENARIOS ----------------------------------------------------
 
@@ -301,4 +335,46 @@ test('the queue honours the conflict matrix end to end', () => {
     { number: 3, title: 'w', body: scope('writes:\n  - table core.shared') },
   ], [], NOW)
   assert.equal(mixed.dispatchable.length, 1, 'a writer must serialise against a reader')
+})
+
+// #3170. Claim #2834 was left with `capacity_state: active` next to
+// `worktree_state: absent`, which made every lane command refuse it.
+function residueFixture(leaseTail){
+  const version='20260912000806',claimNumber=2834,owner='claude/issue-2357-licensing-apis'
+  const refs=new Map([[`refs/db-claims/${version}`,'reservation']]),comments=[]
+  const base=claimBody({version,objects:['table api.sample'],owner,branch:'claude/issue-2357-branch',worktree:'C:/repos/x',expiresAt:new Date('2026-08-24T00:00:00Z')})
+  const claim={number:claimNumber,state:'open',title:'CLAIM: #2357 fixture',body:base.replace('capacity_state: active\n',leaseTail)}
+  let serial=0
+  const io={
+    makeOwnerCommit:()=>`owner-${++serial}`,createRef:(name,sha)=>{if(refs.has(name))return false;refs.set(name,sha);return true},readRef:name=>refs.get(name)??null,deleteRef:name=>refs.delete(name),getCommitMessage:()=>'',
+    listRefs:(prefix)=>[...refs].filter(([name])=>name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
+    openClaims:()=>[structuredClone(claim)],getIssue:number=>Number(number)===claimNumber?structuredClone(claim):{number,state:'open',body:''},updateIssue:(number,{body})=>{claim.body=body},
+    localWorktreeState:()=>({state:'clean'}),prSources:()=>[],commentIssue:(issue,body)=>comments.push({issue,body}),getIssueComments:()=>comments.map(({body})=>({body})),verifyArtifact:()=>null,
+  }
+  return {claim,io,owner,claimNumber,comments,refs}
+}
+
+test('resume removes indented relinquish-only fields the parser still reads (#3170)',()=>{
+  const {claim,io,owner,claimNumber}=residueFixture('capacity_state: relinquished\n  worktree_state: absent\n  blocked_on: issue:#3114\n')
+  assert.equal(parseAuthorLease(claim.body,NOW).capacityState,'relinquished')
+  resumeAuthorLease({claim:claimNumber,owner,leaseHours:12},NOW,io)
+  const lease=parseAuthorLease(claim.body,NOW)
+  assert.equal(lease.capacityState,'active')
+  assert.equal(lease.worktreeState,null)
+  assert.doesNotMatch(claim.body,/worktree_state|blocked_on|recovery:/)
+})
+
+test('repair-resumed-claim clears residue only after a recorded resume (#3170)',()=>{
+  const {claim,io,owner,claimNumber,comments,refs}=residueFixture('capacity_state: active\nworktree_state: absent\n')
+  assert.throws(()=>parseAuthorLease(claim.body,NOW),/worktree_state is allowed only for relinquished author capacity/)
+  assert.throws(()=>repairResumedClaim({claim:claimNumber,owner},NOW,io),/not author_capacity_resumed/)
+  assert.throws(()=>repairResumedClaim({claim:claimNumber,owner:'someone-else'},NOW,io),/different owner/)
+  comments.push({issue:2357,body:'```db-coordination-event\n'+JSON.stringify({schema_version:2,event_id:'f36f9658feafb80a',event_type:'author_capacity_resumed',timestamp:NOW.toISOString(),work_issue:2357,actor:owner,result:'succeeded',claim_issue:claimNumber,detail:'guarded capacity resume'})+'\n```'})
+  const before=claim.body
+  const result=repairResumedClaim({claim:claimNumber,owner},NOW,io)
+  assert.deepEqual(result.removedFields,['worktree_state'])
+  assert.equal(claim.body,before.replace('worktree_state: absent\n',''))
+  assert.equal(parseAuthorLease(claim.body,NOW).capacityActive,true)
+  assert.throws(()=>repairResumedClaim({claim:claimNumber,owner},NOW,io),/nothing to repair/)
+  assert.equal(refs.has('refs/db-coordination/author-acquisition'),false)
 })

@@ -1,64 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 2478,
+  "work_issue": 3170,
   "outcome": "ready-for-merge",
-  "pr": 2846,
-  "migration_versions": [
-    "20260912030028"
-  ],
-  "contract_ref": "refs/db-contracts/2478/5",
-  "contract_sha256": "bfdced19ea5f24f9bfaab7a0fb83cd3e2446c0aca89445199ec3269b266ba0c2",
-  "head_sha": "78e0ff95b29f57a5ed25136898f75321834ae426",
+  "pr": 3171,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3170/1",
+  "contract_sha256": "281f95348ca25635b971a84f6d04ee3bc14976a942514fea32c7ff3864d5dfb4",
+  "head_sha": "758c76b6c30bffc976a3e199cf39ea59da15a130",
   "files_changed": [
-    "supabase/migrations/20260912030028_shared_style_group_sku_key.sql"
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function public.style_group_key_for_sku",
-    "function public.rebuild_style_groups_batch",
-    "function public.reconcile_style_group_drift"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
       "exit_code": 0,
-      "evidence": "Static checks passed. Guard B: no migration sorts before the base branch's newest version 20260911221304 (source: git:origin/main). Guard B2 explicitly did NOT run: no ledger source is configured locally, so nothing was compared against what the databases have actually applied."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "status OK over 50 sidecars; version 20260912030028 scanned with zero verification markers, so it owes no sidecar."
-    },
-    {
-      "command": "node scripts/check-applied-migration-edit.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "Run with a real SUPABASE_ACCESS_TOKEN injected from 1Password vault vibe_coding. Reported: 1 migration file touched, added only; no version touched is present in the preview or production ledger without sanction, so no applied migration was edited. Without the token the same command is exit 2 UNKNOWN and compares nothing."
-    },
-    {
-      "command": "node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs",
-      "exit_code": 0,
-      "evidence": "Guard unit suites passed with no failures."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "Run verbatim in the branch worktree; exit 0, no whitespace or conflict-marker defects. (The branch-range form git diff --check origin/main...HEAD was also run and also exited 0.)"
-    },
-    {
-      "command": "diff -u <origin/main:20260911212849_shared_style_group_sku_key.sql> <20260912030028_shared_style_group_sku_key.sql>",
-      "exit_code": 1,
-      "evidence": "Exit 1 means 'differs', which is the expected result. Exactly two hunks: the header names the new reserved version, and public.style_group_key_for_sku becomes CREATE OR REPLACE instead of a bare CREATE. No other line differs from the already-merged basis."
-    },
-    {
-      "command": "local PostgreSQL helper parity contracts",
-      "exit_code": 0,
-      "evidence": "RAN AND PASSED in CI, on an ephemeral PostgreSQL database, at this branch's head f67b06cfebd3d079d72895b6520363b6fd6bb4dc. Workflow .github/workflows/database-contract-tests.yml, job 'supabase/tests against an ephemeral database' (job 103488853808 of run https://github.com/u2giants/shared-db/actions/runs/34669767504), conclusion success. Step 'Run every supabase/tests/*.sql' executes each contract file as 'begin; \\ir <file> rollback;' under psql -v ON_ERROR_STOP=1, and the two parity contracts for these three functions are in supabase/tests. Verbatim job log: '2026-09-12T03:19:38.0197820Z PASS style_group_drift_reconciler_contracts.sql' and '2026-09-12T03:19:38.0711263Z PASS style_group_key_for_sku_contracts.sql', with real in-test output including 'style_group_key_for_sku_contracts.sql:67: NOTICE:  SKU parity: 220 synthetic cases passed' and 'style_group_drift_reconciler_contracts.sql:409: NOTICE:  OK: both group-drift directions, orphan references and both effective-tag directions are detected, and a converged fixture reports none.' Step summary: files executed 195, passed 182, FAILED 0. Neither file appears in supabase/tests/ci-quarantine.txt, so neither result was exempted from failing the job. The exit code recorded here is the observed CI result for these two files, not a locally produced one. The earlier report of exit 2 / DID NOT RUN rested on an incomplete premise: a from-scratch local apply does die on the missing public.assets, but CI does not take that path -- step 'Apply the captured pre-adoption baseline' applies supabase/ci-bootstrap/010_pre_adoption_baseline.sql, which carries 'CREATE TABLE IF NOT EXISTS public.assets (' at line 1831, migrations that failed in pass 1 re-run in pass 2 on top of it, and 020_test_fixture_seed.sql then seeds the fixture rows. No guard, quarantine entry or schema stub was added, changed or bypassed to obtain this result."
+      "evidence": "656 pass, 0 fail, 0 skipped. The #3170 resume regression test fails against origin/main code with 'blocked_on is allowed only for relinquished author capacity'. Full author-lease workflow test set: 1458 tests, only failure was the retirement-guard discovery test, fixed by guarding repairResumedClaim."
     }
   ],
   "assumptions_resolved": [
-    "Claim #2745 was reused, not duplicated; the governed --reissue-merged-stranded-claim moved it from 20260911212849 to 20260912030028 and wrote refs/db-claim-retirements/2745-20260911212849.",
-    "The dispatch's premise that 20260911214438 is #2478's dead version file is false: that file is 20260911214438_plm_factory_time_templates.sql and belongs to issue #2724. 20260911214438 is only the sort floor. The dispatch's conclusion that a new version file is needed still holds, because 20260911212849 merged via PR #2746 without ever being promoted to production.",
-    "20260911212849 is deliberately not declared as a derived-from base, because it will never appear in the production ledger and a declared base absent from the target refuses promotion."
+    "Resume removal now uses the parser's trimmed-line field reading; repair mode changes only relinquish-only residue lines"
   ],
   "stop_conditions_hit": []
 }

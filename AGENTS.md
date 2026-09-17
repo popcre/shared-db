@@ -37,8 +37,9 @@ The guarded row-application work is planned in [`plan_historical_mg_reclassifica
 
 ## Active contracts and implementation plans
 
+- **Product-type reader (issue #3024):** [`plan_product_type_reader.md`](plan_product_type_reader.md). Read its STATUS table first. Hardens the item-description product-type reader to zero wrong answers on the full live catalog, then stores the value on `plm.item` (owner ruling 2026-09-16: never on `coldlion.item_header`).
 - **Transfer `shared-db` to `popcre` and activate GitHub's native merge queue (issue #2530):** [`plan_shared_db_popcre_transfer_merge_queue.md`](plan_shared_db_popcre_transfer_merge_queue.md). Read its STATUS table first. This is repository-maintenance work outside the structure/schema orchestrator. It separates transfer compatibility, the owner-authorized repository move, settings/credential reconciliation, and queue activation so direct guarded merging remains available throughout. Do not cherry-pick closed PR #1950, weaken required checks, assume transfer-back is available, or invent a migration for acceptance proof.
-- **Author-lane abandonment lifecycle (issue #2301):** [`plan_author_lane_abandonment_lifecycle.md`](plan_author_lane_abandonment_lifecycle.md). Read its STATUS table first. Repository-maintenance work outside the structure/schema orchestrator. It preserves every object/version claim while allowing evidence-backed capacity relinquishment, adds recovery-gated resume and immutable retirement tombstones, and forbids expiry-only release, ref deletion, automatic PR closure, or worktree mutation.
+- **Author-lane abandonment lifecycle (issue #2301):** [`plan_author_lane_abandonment_lifecycle.md`](plan_author_lane_abandonment_lifecycle.md). Read its STATUS table first. Repository-maintenance work outside the structure/schema orchestrator. It preserves every object/version claim while allowing evidence-backed capacity relinquishment, adds recovery-gated resume and immutable retirement tombstones, and forbids expiry-only release, ref deletion, automatic PR closure, or worktree mutation. Steps 1–5 have landed. **An expired lease is not an abandoned lane:** detect with the read-only `node scripts/manage-migration-author-lanes.mjs --abandonment-audit`, which cannot write on any code path and exits `0` clean, `2` expired, `3` unverifiable, with `3` outranking `2` — a run that could not read everything concludes nothing. The same report runs hourly as the `Author Lane Abandonment Audit` workflow, which holds only `read` scopes and files no issue and no comment; never call `--reconcile-flow` or any other mutating lane command from a scheduled job. Before any lane is touched, open an abandonment audit issue from `.github/ISSUE_TEMPLATE/author-lane-abandonment.md`, and fill in its required `abandonment-audit` fence: an absent or incomplete fence is read as no evidence at all, so no guarded command is suggested and a relinquish falls through to the ordinary-blocker path with none of the exact-tuple revalidation. Both guarded commands take `--claim-number <n>`, never a bare `--claim` (that is the boolean that claims a lane), and acting on abandonment evidence is refused without an explicit `--worktree-state`. **Authority boundary:** the orchestrator may retire work where the worktree is `clean`, or `absent` with its absence proven and its durable branch/PR evidence complete; Albert alone decides whether potentially recoverable `dirty` or `remote` uncommitted work may be abandoned. Both procedures — quarantine/recovery and terminal retirement — are written out in [`docs/agents/section-4-anti-collision-rules.md`](docs/agents/section-4-anti-collision-rules.md).
 - **Database efficiency and Data API security program (issue #2209):** [`plan_database_efficiency_and_api_security.md`](plan_database_efficiency_and_api_security.md). Read its STATUS table first. It is the evidence-gated umbrella plan for Supabase advisor findings, expensive rebuilds, effective-tag churn, foreign-key/index review, RLS and privileged-API validation, maintenance statistics, and replication attribution. It authorizes no bulk fix: each structural change must be split into its own orchestrator issue, while application scheduling/batching changes remain with the owning application repo. The unused-index decision for four high-churn tables remains frozen under issue #1966 until its 2026-09-17 delta reading.
 - PopDAM OrderList linked to Master Data: [`plan_popdam_order_list.md`](plan_popdam_order_list.md). Read its STATUS table first. Do not re-derive or re-plan completed steps.
 - **Companywide business rules (read before interpreting business meaning):** start at [`docs/business-rules/application-map.md`](docs/business-rules/application-map.md). Licensing Master Data starts at [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md); its detailed architecture remains in [`docs/core-master-data-consolidation-aim.md`](docs/core-master-data-consolidation-aim.md).
@@ -51,7 +52,8 @@ The guarded row-application work is planned in [`plan_historical_mg_reclassifica
 - **Reviewer-assignment GitHub API budget (issue #1767, complete):** [`plan_reviewer_assignment_api_budget.md`](plan_reviewer_assignment_api_budget.md). Read its STATUS table and verification link before investigating regressions; do not reimplement it or test scale by scanning live historical assignment refs. Slot 1 is capped at 19 requests, while mandatory slot 2 has a documented 22-request normal-path ceiling after PR #1813.
 - **Reviewer lease capacity truth (issues #2058 and #1851):** [`plan_reviewer_lease_capacity_truth.md`](plan_reviewer_lease_capacity_truth.md). Read its STATUS table first — do not re-derive its root cause or re-plan its steps. Repository-maintenance work that authorizes **no** database change; implement it in a fresh isolated session outside the structure/schema orchestrator. It releases terminally failed reviewer slots without requiring a replacement draw, timestamps leases, adds a read-only capacity report, and makes the exhaustion refusal name its true cause. Never hand-delete a `refs/db-review-active/*` ref and never post a synthetic verdict to free capacity — both were considered and rejected, and both silently un-review a database change.
 - **Orchestrator throughput Phase 2 (issue #1738):** [`plan_orchestrator_throughput_phase_2.md`](plan_orchestrator_throughput_phase_2.md). Read its STATUS table first. It uses the completed `shared-db.orch` transcript to separate protected claims from worker capacity, preserve content-addressed evidence across unrelated `main` movement, schedule shared-preview dependencies, and qualify routes before expensive gates. This is repository-maintenance work outside the structure/schema orchestrator.
-  Phase 2 is active: protected claims never disappear when author capacity is relinquished; preview dependencies are waits, not successful checks. Before manual preview dispatch resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and use only the matching instruction. Historical recovery is apply-only; historical dry-run proves nothing. `--repair-preview-ready <ready-id> --issue <n>` may repair only a v2-bound stale wrong digest; a corrupt live digest stops for owner decision without mutation. Reviewer reservations serialize approved provider/wrapper execution keys and create durable ordered waits when all eligible reviewers are busy. The live orchestrator engine is always excluded: Codex cannot review a Codex-orchestrated change, and Claude cannot review a Claude-orchestrated change. Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438) after a recorded live re-qualification; Kimi K3 was unpaused on 2026-09-07 (PR #2483) and is drawable again; Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485) by owner instruction and is not drawable. The gate this repo enforces before any reviewer runs is `reviewerExecutionPreflight`, which runs the wrapper's own `doctor` and refuses rather than report ready on a probe it never ran.
+  **No concurrency ceilings (owner ruling, 2026-09-16):** any number of migration authors may hold leases, any number of sub-agents may run, and one reviewer may run any number of reviews at once. The only admission controls are exact-object collision locks, unique migration version reservation, and the one-at-a-time preview apply, guarded merge, and production promotion lanes — those are safety isolation, not caps. Never reintroduce a count limit. Two physical limits remain and fail closed: the live-lease listing (`REVIEW_REF_ROW_LIMIT` and the GraphQL command size); the sanctioned response is `--reap-abandoned-review-leases --apply-recovery`, never a cap. The capacity report and start watch also refuse loudly past their per-lease read budget; that degrades reporting only, never draws.
+  Phase 2 is active: protected claims never disappear when author capacity is relinquished; preview dependencies are waits, not successful checks. Before manual preview dispatch resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and use only the matching instruction. Historical recovery is apply-only; historical dry-run proves nothing. `--repair-preview-ready <ready-id> --issue <n>` may repair only a v2-bound stale wrong digest; a corrupt live digest stops for owner decision without mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or wait queue (issue #3130). The live orchestrator engine is always excluded: Codex cannot review a Codex-orchestrated change, and Claude cannot review a Claude-orchestrated change. Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438) after a recorded live re-qualification; Kimi K3 was unpaused on 2026-09-07 (PR #2483) and is drawable again; Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485) by owner instruction and is not drawable. The gate this repo enforces before any reviewer runs is `reviewerExecutionPreflight`, which runs the wrapper's own `doctor` and refuses rather than report ready on a probe it never ran.
 - **Making throughput guards tell the truth (hash-bound verification sidecars, typed catalog truth, regression corpus and causal blocker measures):** [`plan_orchestrator_throughput_guard_truth.md`](plan_orchestrator_throughput_guard_truth.md). Read its STATUS table first — do not re-derive its analysis or re-plan its steps. Repository-maintenance work that authorizes **no** database change; do not route it to the structure/schema orchestrator. It preserves every refusal while separating migration-file, ledger and live-catalog evidence so “not derivable” is never reported as “absent.”
 - **Paramount capture validation after the 2026-08-24 preview rehearsal:** [`fix_Paramount_capture_against_preview.md`](fix_Paramount_capture_against_preview.md). **Complete — do not re-run it to make the document current.** The three required migrations and the JSON-null repair are on preview, and the full Paramount capture succeeded and was verified there. The JSON-null structural repair alone was later promoted to production under separate owner authorization (issue #1418). No production Paramount *data capture* has been authorized or performed; that remains a separate owner decision.
 - OrderList source contract: [`docs/app-migration-notes/popdam-order-list.md`](docs/app-migration-notes/popdam-order-list.md), with formula detail in [`docs/app-migration-notes/popdam-order-list-formula-audit-20260807.md`](docs/app-migration-notes/popdam-order-list-formula-audit-20260807.md). Owner ruling: Google OrderList and future Coldlion rows are the same orders; `plm.item` is the ultimate item list. One canonical order/line must retain separate Google and Coldlion source refs.
@@ -62,8 +64,14 @@ shares the Supabase database**: PM/PIM `poppim-web`, CRM `popcrm-web`, DAM
 touching code or the database. It exists to stop separate
 AI sessions from breaking each other through the one database they all depend on.
 
-> **Started in `shared-db` and you are not the orchestrator? Stop and hand over.**
-> This repo runs **one orchestrator session**, which dispatches every task to
+> **The orchestrator takes ONLY database-SHAPE changes (§0.0-C) and curated Master
+> Data loads. Nothing else is ever sent to it** — not proofs, monitoring, reports,
+> tooling, scripts, docs, or repository maintenance, however small. The session
+> that owns that outcome does it. When in doubt, it does not go to the orchestrator.
+>
+> **Started in `shared-db` and you are not the orchestrator?** Stop mutating the
+> database. Hand over only unfinished shape work; keep everything else.
+> This repo runs **one orchestrator session**, which dispatches structural work to
 > sub-agents in isolated worktrees.
 > **To find out who that is and where to send work, run
 > `node scripts/check-orchestrator-marker.mjs --resolve` — §11c.** It is the only
@@ -122,6 +130,18 @@ AI sessions from breaking each other through the one database they all depend on
 > drift, **2 = could not check, which is never "no drift"**. It also
 > runs on every push to `main`, daily, and on demand: workflow `Migration Ledger Drift`
 > ([`.github/workflows/migration-ledger-drift.yml`](.github/workflows/migration-ledger-drift.yml)).
+
+> ## ⚠️ A structural migration returning to shared-db carries its live-proof probe
+>
+> When a structural outcome's `db-work-scope` says `application_return_to: u2giants/shared-db`,
+> its migration pull request must also commit `.github/live-proofs/<work_issue>.sql`: ONE
+> read-only `SELECT`/`WITH` statement returning one row with a boolean column aliased `passed`.
+> The `Shared DB Live Proof` workflow ([`.github/workflows/shared-db-live-proof.yml`](.github/workflows/shared-db-live-proof.yml))
+> runs that committed file against production once it applies. The guarded migration merge runs
+> `node scripts/check-live-proof-probe.mjs` and refuses the pull request (exit `2`) if the probe is
+> absent from both the pull request and `main`, if the pull request deletes or renames it away, or
+> if its shape cannot pass (#3127, #3147). Outcomes returning to an application repository prove
+> themselves from that repository.
 
 > ## ⚠️ Before you report that a scrape or loader "landed nothing"
 >
@@ -422,7 +442,7 @@ Among eligible structural issues, service class orders urgent application work b
 application work and maintenance. Already-started work nearest direct live verification finishes
 before new work; work that releases the largest number of direct and chained blockers follows,
 then older creation time and issue number. An urgent item never preempts a started claim or bypasses
-the eight-author/shared-stage gates. `urgent-application` additionally requires a structured impact
+the shared-stage gates. `urgent-application` additionally requires a structured impact
 block proving one of: a live outage, a blocked application release, a security exposure, or an
 owner-declared business deadline. The numeric `priority:` field remains required for compatibility but does
 not override this order.
@@ -467,7 +487,8 @@ and then the canonical infrastructure runbook it links.
 ## 0.2 `data.designflow.app` means DB Data Admin — never the retired system
 
 `https://data.designflow.app` is the permanent production hostname of **DB Data
-Admin**, implemented in this repository at `apps/db-data-admin/`. The retired
+Admin**, implemented in `u2giants/popdam3` at `apps/db-data-admin/` (moved
+from this repository on 2026-09-16, popdam3 PR #135). The retired
 legacy application previously used that DNS name, but it has no remaining
 runtime, credential, database, API, import, rollback, proxy, or ownership
 relationship to it.
@@ -486,7 +507,8 @@ DB Data Admin's grid headers already implement the **AG Grid Multi Filter
 equivalent (Text Filter + Set Filter with a searchable checkbox list of distinct
 values)**. The reusable, framework-free logic is
 `apps/db-data-admin/src/lib/grid-filters.ts`; the React header UI is
-`FilterHeader` in `apps/db-data-admin/src/DataAdmin.tsx`.
+`FilterHeader` in `apps/db-data-admin/src/DataAdmin.tsx` — both in `u2giants/popdam3`
+since 2026-09-16.
 
 Before building any column-filter UI in ANY POP app, read
 [`docs/db-data-admin-column-multi-filter.md`](docs/db-data-admin-column-multi-filter.md).
@@ -899,8 +921,19 @@ Merge a `shared-db` PR **only when every item is true**:
 5. The change is additive, or any removal was explicitly approved.
 
 Then: merge to `main` (this auto-syncs the `shared-db/` folder into all apps) and
-promote to **production only in an approved window**. Docs-only PRs (no schema
-change) need just items 1 and "it reads correctly" — merge them promptly.
+run the governed merged-main preview rehearsal. For one source PR, a successful
+rehearsal automatically qualifies and dispatches the existing serial production
+lane. No session or owner names migration versions or artifact IDs for that
+ordinary path. Missing, stale, multi-source, failed, or ambiguous evidence stops
+before dispatch with **ENGINEER ACTION REQUIRED**. The production job still
+re-proves current main, the durable exact-head verdict, guarded merge, immutable
+preview evidence, the one open independently admitted structural work issue linked
+by GitHub to the source PR, exact target, bounded allowlist, fresh dry-run,
+all five machine-derived business-risk conclusions clear, exclusive lock, and
+post-apply ledger/catalog result. This narrow path authorizes no manual
+production command, manual workflow dispatch, other repository, or bypass.
+Docs-only PRs (no schema change) need just items 1 and "it reads correctly" —
+merge them promptly.
 
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 
@@ -972,6 +1005,8 @@ that may be edited after the fact.
 
 ### 5.2 A red check on `main` can be a STALE verdict — the domain-ownership guard scans more than its trigger watches (learned 2026-07-31)
 
+> **Moved 2026-09-16:** the DB Data Admin application, its deploy workflow and its launch-readiness check now live in [`u2giants/popdam3`](https://github.com/u2giants/popdam3) at `apps/db-data-admin`, `.github/workflows/db-data-admin.yml` and `scripts/db-data-admin/` (popdam3 PR #135). This repository no longer builds or deploys it. The history below is kept; the only domain-ownership run in this repository is now `domain-ownership.yml`.
+
 **Read this before you debug a failing check on `main`.** The `DB Data Admin` workflow
 (`.github/workflows/db-data-admin.yml`) has a `verify` job whose first step,
 *"Enforce DB Data Admin domain ownership"*, runs `scripts/check-domain-ownership.mjs`. That
@@ -1025,9 +1060,8 @@ docs PR. The correct permanent fix is a separate, tiny `domain-ownership` workfl
 filter, `on: pull_request` plus `on: push` to `main`, one job that runs
 `scripts/check-domain-ownership.test.mjs` and then `scripts/check-domain-ownership.mjs`. Its
 check-run name is **`Domain ownership`** and it is one of the six required contexts on `main`
-(§6.7). Verified green against the `main` tip on 2026-08-09. The duplicate invocation still
-inside `db-data-admin.yml` is left there deliberately — it is cheap, and removing it would
-weaken that workflow's own self-check.
+(§6.7). Verified green against the `main` tip on 2026-08-09. (The former duplicate invocation inside
+`db-data-admin.yml` left this repository with that workflow on 2026-09-16.)
 
 *(This paragraph said "Not yet built" until 2026-08-09, four days after it was built, while
 §6.7 of this same file already relied on the workflow existing. Issue #657. If you are adding
@@ -1723,10 +1757,11 @@ have already happened in this repo, more than once.
     `scripts/check-documents-only-merge-authorization.mjs` separately permits plan files and
     declarative routing pointers in AGENTS, task-router, and skill files. It inspects the actual
     changed hunks and accepts only link-only list/table rows whose labels literally name the local
-    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. A
-    fail-closed refusal posts a separate visible diagnostic that directs the pull request to guarded
-    code checks without competing for the required context. Ordinary mixed/code pull requests write
-    only that diagnostic; if the same commit already carries this workflow's lightweight success, or
+    Markdown target; free-form or behavior-changing instructions stay on the guarded code path. An
+    ordinary mixed/code pull request gets a separate, green `Not applicable` diagnostic (and a green
+    job) that directs it to guarded code checks without competing for the required context (#2838:
+    a routine red trained everyone to ignore this check). Red on that diagnostic now means a genuine
+    refusal: a moved head, a production freeze, or an unreadable comparison. If the same commit already carries this workflow's lightweight success, or
     if its base is retargeted, the command explicitly revokes that required status before guarded
     checks re-authorize the new comparison. Thus an unreadable,
     over-ceiling, retargeted, or non-prose comparison cannot strand an absent or stale-green result. The

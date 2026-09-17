@@ -1,55 +1,42 @@
 {
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3170,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Stop author-capacity resume leaving relinquish-only fields (blocked_on, worktree_state, recovery) on an active claim, and add a narrow owner-only --repair-resumed-claim mode that removes that residue after a recorded author_capacity_resumed event, so claim #2834 can be made readable again.",
+  "base_sha": "4d5bbb9f6bb1426a3c10b874bc58edc2a71eb523",
+  "dispatcher": "Claude coordinator session for shared-db lane unblock",
+  "worker": "Claude Opus 5 #3170 subagent",
+  "branch": "claude/fix-resume-worktree-state",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a556e3304fe07721f",
   "allowed_paths": [
-    "supabase/migrations/20260912030028_shared_style_group_sku_key.sql",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "assumptions": [
-    "Generation 5: claim #2745's version 20260911212849 merged to main via PR #2746 but was never promoted to production, because the merge gate drew only one reviewer slot (#2837). The version string is permanently spent and its file stays in the tree unapplied, so re-adding that file would be an empty diff.",
-    "The claim was reissued onto 20260912030028 by scripts/manage-migration-author-lanes.mjs --reissue-merged-stranded-claim; retirement evidence refs/db-claim-retirements/2745-20260911212849.",
-    "The dispatch's premise that #2478's dead version file is 20260911214438 is factually wrong: that file is 20260911214438_plm_factory_time_templates.sql and belongs to issue #2724. 20260911214438 is only the floor the new version must sort after.",
-    "20260911212849 is deliberately NOT declared as a derived-from base: it will never be present in the production ledger, and a declared base absent from the target refuses promotion.",
-    "public.style_group_key_for_sku is CREATE OR REPLACE rather than a bare CREATE because 20260911212849 still applies first on any fresh or ephemeral database.",
-    "The supabase/tests parity contracts for these three functions are already on main from PR #2746 and are unchanged by this generation."
-  ],
-  "base_sha": "54e1e3c62fc5615de2297e5e12cfd397be598ae4",
-  "branch": "claude/issue-2478-sku-key-reissue",
-  "db_reads": [],
-  "db_writes": [
-    "function public.style_group_key_for_sku",
-    "function public.rebuild_style_groups_batch",
-    "function public.reconcile_style_group_drift"
-  ],
-  "dispatcher": "shared-db orchestrator marker #2758",
   "file_writes": [
-    "supabase/migrations/20260912030028_shared_style_group_sku_key.sql",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "generation": 5,
-  "goal": "Re-declare the shared SKU derivation helper and its two consumers under a fresh reserved version 20260912030028, because claim #2745's previous version merged to main without ever being promoted to production. No behavior change.",
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No production DDL, no direct database writes, no preview dispatch, no merge or promotion.",
-    "No second claim for issue #2478; claim #2745 is reused.",
-    "No hand-chosen version number and no hand-edited fenced claim block.",
-    "No changes to issues #2705, #2709, #2290, the #2543 residual, #2678, #2427, or to PR #2825 or PR #2842 or any file they touch.",
-    "No weakening, bypassing or deletion of any guard to make a check pass."
+    "No database write or structure change of any kind",
+    "No hand edit of a fenced claim block"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "local PostgreSQL helper parity contracts",
-    "git diff --check"
+    "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs"
   ],
-  "route": "shared-db-orchestrator",
-  "schema_version": 1,
+  "assumptions": [
+    "A lease line the parser reads after trimming must be removed by resume under the same reading"
+  ],
   "stop_conditions": [
-    "Object overlap with another open claim, or changed source definitions on main.",
-    "Old/new grouping parity mismatch.",
-    "Consumer behavior or security changes beyond helper delegation.",
-    "Any required check that cannot pass without weakening a guard."
-  ],
-  "work_issue": 2478,
-  "work_type": "structural",
-  "worker": "claude-2758-2478",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/recursing-poincare-85d3a9"
+    "Stop if the repair mode could change capacity, owner, expiry, or claimed objects"
+  ]
 }

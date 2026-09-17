@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { coordinationEvent, formatEventComment } from './db-coordination-events.mjs'
 import { buildOrchestratorSnapshot, verifyOrchestratorSnapshot } from './orchestrator-flow/orchestrator-snapshot.mjs'
-import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, runSnapshotCycle, stalledOutcomes } from './orchestrator-snapshot.mjs'
+import { claimTitleIssues, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, readyRequestCandidates, runSnapshotCycle, stalledOutcomes, stalledRequests } from './orchestrator-snapshot.mjs'
 
 const NOW = '2026-09-15T12:00:00.000Z'
 const minutesAgo = (m) => new Date(Date.parse(NOW) - m * 60000).toISOString()
@@ -26,11 +26,50 @@ function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CL
   }
 }
 
+test('issue 3148 only a request the queue audit itself would admit alarms after 30 minutes', () => {
+  const admission = 'service_class: standard-application\nchange_type: migration\napplication_return_to: u2giants/example-app\nlive_assertion: authenticated create-and-read succeeds\ngenerated_types: not-applicable\npriority: 5\n'
+  const scope = (status, extra = '', fields = admission) => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: shared-db-orchestrator\n' + fields + extra + 'writes:\n  - table core.a\n```'
+  const base = fakeIo()
+  const issues = [
+    { number: 950, body: scope('ready'), created_at: minutesAgo(31), labels: [{ name: 'db-work' }], comments: 0 },
+    { number: 951, body: scope('blocked'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 952, body: scope('ready', 'depends_on: #953\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 953, body: 'dependency', created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 954, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 1 },
+    { number: 955, body: scope('ready'), created_at: minutesAgo(30), labels: [], comments: 0 },
+    { number: 956, body: scope('ready'), created_at: minutesAgo(600), labels: [{ name: 'db-claim' }], comments: 0 },
+    { number: 957, body: scope('ready').replace('work_type: structural', 'work_type: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 958, body: scope('ready').replace('route: shared-db-orchestrator', 'route: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 959, body: scope('ready') + '\n' + scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 960, body: scope('ready', 'depends_on: #9999\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 961, body: scope('ready', '', 'priority: 5\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 800, body: scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
+  ]
+  // Without dependency proof the audit's fallback treats an absent #9999 as not open.
+  assert.deepEqual(readyRequestCandidates(issues).map((row) => row.work_issue).sort(), [800, 950, 954, 955, 960])
+  // With the proof, a nonexistent dependency withholds #960 exactly as the queue does.
+  const dependencyStates = { 953: { exists: true, open: true }, 9999: { exists: false } }
+  assert.deepEqual(readyRequestCandidates(issues, { dependencyStates }).map((row) => row.work_issue).sort(), [800, 950, 954, 955])
+  let asked = null
+  const io = { ...base, openIssues: () => [...base.openIssues(), ...issues], dependencyStates: (numbers) => { asked = numbers; return dependencyStates }, issueComments: (_repo, issue) => (issue === 954 ? [ownerComment(event(954, 'entered', 500))] : []) }
+  const { unentered } = gatherLiveInput('o/r', io)
+  assert.deepEqual(asked, [953, 9999])
+  assert.deepEqual(unentered.map((row) => row.work_issue).sort(), [950, 955], 'entered #954 and claim-title-owned #800 are excluded')
+  assert.deepEqual(stalledRequests(unentered, { now: NOW }).map((row) => [row.work_issue, row.state, row.minutes_since_transition]), [[950, 'requested', 31]])
+})
+
 test('121-minute idle outcome appears in stalled_outcomes; 120 does not', () => {
   const events = [event(800, 'dispatched', 121), event(801, 'dispatched', 120)].map((e) => ({ ...e }))
   const result = stalledOutcomes(events, { now: NOW })
   assert.deepEqual(result.stalled_outcomes.map((row) => [row.work_issue, row.minutes_since_transition]), [[800, 121]])
   assert.equal(result.active_outcomes, 2)
+})
+
+test('issue 3126 undispatched work stalls after 30 minutes so the half-hourly alarm fires inside the 1-hour dispatch target', () => {
+  const events = [event(800, 'entered', 31), event(801, 'classified', 31), event(802, 'classified', 30), event(803, 'dispatched', 31)]
+  const result = stalledOutcomes(events, { now: NOW })
+  assert.deepEqual(result.stalled_outcomes.map((row) => [row.work_issue, row.state]).sort((a, b) => a[0] - b[0]), [[800, 'entered'], [801, 'classified']])
+  assert.equal(stalledOutcomes([event(801, 'classified', 31), event(801, 'dispatched', 5)], { now: NOW }).stalled_outcomes.length, 0)
 })
 
 test('issue 3027 a stalled outcome carries its named hold and the formatted hold line', () => {

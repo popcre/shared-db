@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3185,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3182/1",
-  "contract_sha256": "ccdcf862d6c9e73560547e1e08b8d6e04fbcd089f6af605df07c9bab2f850265",
-  "head_sha": "1d7acf76a74df3bfe1cea53b29c1ed84cc55c541",
+  "contract_ref": "refs/db-contracts/3182/2",
+  "contract_sha256": "757f0fff8cf95ede204e15ad127d011d319882f8e7ea7a788fcca58e6f06efcd",
+  "head_sha": "8e69e3b9ac85b219955059f86e42d957177ecce6",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -17,16 +17,16 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/exclusive-lease.test.mjs",
       "exit_code": 0,
-      "evidence": "626 tests, 626 pass, 0 fail at 1d7acf76 after merging main 7a15d152."
+      "evidence": "626 tests, 626 pass, 0 fail at 8e69e3b9 after merging main 23d6142e."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=306 at 1d7acf76."
+      "evidence": "truth audit OK: call_sites=305 at 8e69e3b9."
     }
   ],
   "assumptions_resolved": [
-    "Refreshed by merge onto main 7a15d152 before sealing; checks re-run after the merge."
+    "Refreshed by merge onto main 23d6142e before sealing; checks re-run after the merge."
   ],
   "stop_conditions_hit": []
 }

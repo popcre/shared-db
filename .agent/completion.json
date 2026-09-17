@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "work_issue": 2773,
+  "work_issue": 3173,
   "outcome": "ready-for-merge",
   "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2773/1",
-  "contract_sha256": "da28272a2f68f43af494e14b4968eca7b3355b171dac367bbd80b4c86cca144c",
+  "contract_ref": "refs/db-contracts/3173/1",
+  "contract_sha256": "8a94ab18619f6d11a58ebf77f541d25965b1d21c3d2b4666bf7f8b6d19ee4026",
   "head_sha": "46d045e8814287758ee59351b0c74d99c996ce51",
   "files_changed": [
     "scripts/lib/github-conditional.mjs",

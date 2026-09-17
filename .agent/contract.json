@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2773,
+  "work_issue": 3173,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads with failure-only backoff.",
+  "goal": "Cut GitHub request traffic without slowing work (#2773 part A): host-wide quota latch stopping every caller until reset, and ETag conditional single-flight shared check-run reads with failure-only backoff.",
   "base_sha": "e0c54faa03617cf6779b296afd88931109330de7",
   "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
   "worker": "Claude Opus 5 #2773 subagent",

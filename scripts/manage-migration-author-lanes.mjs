@@ -1905,6 +1905,20 @@ export const githubIo = {
     return snapshot
   },
   countLogicalReviewRequests:true,
+  // Issue #3206 (Refs #2773): the silent-reclaim pre-mutex PR read. One GraphQL request
+  // carries the PR facts the activity fingerprint needs, the main commit base the
+  // owner commits are built on, and the GraphQL quota, replacing a REST PR read, a
+  // main ref read, a main commit read and the explicit rate_limit pair.
+  readPrWithReviewContext(number){
+    const data=ghJson(['api','graphql','-f','query=query($owner:String!,$name:String!,$pr:Int!){rateLimit{remaining limit resetAt} repository(owner:$owner,name:$name){defaultBranchRef{target{oid ... on Commit{tree{oid}}}} pullRequest(number:$pr){state merged isDraft headRefOid}}}','-F',`owner=${REPO_OWNER}`,'-F',`name=${REPO_NAME}`,'-F',`pr=${Number(number)}`])
+    if(data?.errors?.length)throw new LaneError('reviewer PR snapshot returned GraphQL errors')
+    recordReviewGraphQuota(data?.data?.rateLimit)
+    const base=data?.data?.repository?.defaultBranchRef?.target,row=data?.data?.repository?.pullRequest
+    if(reviewWireBudget&&base?.oid&&base?.tree?.oid)reviewCommitBase={head:base.oid,tree:base.tree.oid}
+    if(!row?.headRefOid||!row?.state)return null
+    const state=String(row.state).toLowerCase()
+    return {state:state==='merged'?'closed':state,merged:row.merged===true,draft:row.isDraft===true,head:{sha:String(row.headRefOid)}}
+  },
   observedReviewQuota(){
     const {core,graphql}=observedReviewQuota
     return core&&graphql?{remaining:core.remaining,reset:core.reset,graphRemaining:graphql.remaining,graphReset:graphql.reset}:null
@@ -4783,7 +4797,7 @@ function newestActivityTimestamp(rows,fields){
 export const OWN_START_ONLY_ACTIVITY='not-counted-own-start-marker-only'
 export function activityFingerprintForLease(lease,io,{freshPr=false,ownStartOnly=false}={}){
   if(typeof io?.readLeaseActivity!=='function')throw new LaneError('reviewer activity is unreadable; silence cannot be observed')
-  const pr=freshPr&&typeof io.__freshGetPr==='function'?io.__freshGetPr(lease.pr):io.getPr(lease.pr)
+  const pr=freshPr&&typeof io.__freshGetPr==='function'?io.__freshGetPr(lease.pr):reviewWireBudget&&typeof io.readPrWithReviewContext==='function'?io.readPrWithReviewContext(lease.pr):io.getPr(lease.pr)
   if(!pr?.state||!pr?.head?.sha)throw new LaneError('reviewer PR activity is unreadable; silence cannot be observed')
   if(ownStartOnly){
     const facts={issue:Number(lease.issue),pr:Number(lease.pr),headSha:String(lease.headSha).toLowerCase(),slot:Number(lease.slot??1),sequence:Number(lease.sequence),prState:String(pr.state).toLowerCase(),currentHead:String(pr.head.sha).toLowerCase(),draft:pr.draft===true,verdictPresent:hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease)),activity:OWN_START_ONLY_ACTIVITY}

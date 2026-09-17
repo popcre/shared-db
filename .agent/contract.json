@@ -1,26 +1,30 @@
 {
   "schema_version": 1,
   "generation": 2,
-  "work_issue": 3208,
+  "work_issue": 3206,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Cut GitHub request traffic without slowing work (#2773 part D): an event-aware host-wide watcher wakes each waiter once per change with no request, and its fallback polls through shared conditional reads with x-poll-interval and failure backoff, never busy-looping.",
+  "goal": "Cut GitHub request traffic without slowing work (#2773 part C): the idempotent reviewer assignment retry and both silent-reclaim routes use at most 10 API requests with no explicit quota call, proven by the wire fixture.",
   "base_sha": "e2c53f215f3860a4bd19c311261db8a5a3506f5b",
   "dispatcher": "Claude coordinator session relaying Albert's #2773 instruction",
   "worker": "Claude Opus 5 #2773 subagent",
-  "branch": "claude/api-fanout-2773-d",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-d",
+  "branch": "claude/api-fanout-2773-c",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/api-fanout-2773-c",
   "allowed_paths": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs",
+    "scripts/test-fixtures/github-wire-fake.mjs",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/lib/github-watch.mjs",
-    "scripts/lib/github-watch.test.mjs",
-    ".github/workflows/tools-offline-tests.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs",
+    "scripts/test-fixtures/github-wire-fake.mjs",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
@@ -32,12 +36,12 @@
     "No weakening of collision locks, migration version reservation or serial lanes"
   ],
   "required_checks": [
-    "node --test scripts/lib/github-watch.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs"
+    "node --test scripts/reviewer-wire-budget.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/check-github-transport-conformance.test.mjs"
   ],
   "assumptions": [
-    "Webhook registration on GitHub needs repository settings and is out of scope; the notify hook is the event entry point"
+    "The in-mutex fresh PR read and activity re-proof stay REST/GraphQL as before; only the pre-mutex PR read is folded into one GraphQL request"
   ],
   "stop_conditions": [
-    "Stop if a wake could be reported without an event or generation change"
+    "Stop if any change makes an unreadable ref or commit read as absent, or weakens a safety lock"
   ]
 }

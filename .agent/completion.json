@@ -1,29 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 2367,
+  "work_issue": 3173,
   "outcome": "ready-for-merge",
-  "pr": 3177,
+  "pr": 3172,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2367/3",
-  "contract_sha256": "c780b64f4437065fd342b7f99543eb4878d98becdcd90574bcb128dab78d982f",
-  "head_sha": "b0c64a08a1202395770846ce0112bb58265d70fd",
+  "contract_ref": "refs/db-contracts/3173/6",
+  "contract_sha256": "bdfb82d77fec435737f6094a936ab8dea562427fe6df2c0514b1ecfa5ac8898e",
+  "head_sha": "34064d7b75d4580cff4f3cad7d5caf4e15c9aebc",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/production_business_risk_gate.py"
+    "scripts/lib/github-conditional.mjs",
+    "scripts/lib/github-conditional.test.mjs",
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts/test_*.py",
+      "command": "node --test scripts/lib/github-conditional.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Ran 1170 tests; OK (skipped=8) at 8224df8a."
+      "evidence": "619 passed, 0 failed, 0 skipped at 34064d7b75d4580cff4f3cad7d5caf4e15c9aebc after refreshing onto current origin/main; repository identity conformance 5 passed, 0 failed and live checker confirmed 52 exact-count entries; duplicate Link headers are joined and structurally parsed, malformed or off-domain next links refuse, and 404/401/permission 403 errors fail immediately while classified transient/quota failures alone back off; 20 unchanged polls bill 1 request (was 20); 10 concurrent processes share 1 upstream read."
     }
   ],
   "assumptions_resolved": [
-    "Only comment lines in scripts/production_business_risk_gate.py changed; no executable change.",
-    "Branch refreshed by merge from main 7a15d152 as b0c64a08; unit tests were run at 8224df8a and main changed no file this PR touches."
+    "HTTP 304 with If-None-Match left x-ratelimit-used unchanged in a live check on 2026-09-17"
   ],
   "stop_conditions_hit": []
 }

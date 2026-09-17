@@ -8387,3 +8387,9 @@ test('the no-progress alarm fallback label is a coordination label the queue aud
   const { FALLBACK_LABEL } = await import('./orchestrator-flow/no-progress-alarm.mjs')
   assert.ok(COORDINATION_LABELS.has(FALLBACK_LABEL))
 })
+
+test('#2530: outcome evidence is never read from a repository other than this one', () => {
+  assert.throws(() => githubIo.readOutcomeEvidence('https://github.com/attacker/shared-db/issues/1#issuecomment-5'), /outcome evidence refused: .*only this repository/)
+  assert.throws(() => githubIo.readOutcomeEvidence('https://github.com/popcre/designflow-backend/pull/1#issuecomment-5'), /outcome evidence refused/)
+  assert.throws(() => githubIo.readOutcomeEvidence('not a url'), /outcome evidence refused: evidence must be an exact GitHub/)
+})

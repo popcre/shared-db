@@ -1,48 +1,55 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3153,
+  "generation": 1,
+  "work_issue": 3163,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop unrelated main movement refusing production promotion (#2870, #2866, #3091): exempt config/db-data-admin-property-source-coverage.json, which no preview-job step reads, from the preview producer pin, and let production jobs accept a main tip that moved only by documentation, .agent evidence or test files, while migrations, workflows, config and gate code still refuse.",
-  "base_sha": "a95612117455b6c8ce917d4ab8a622113e3dfd8f",
-  "dispatcher": "Claude coordinator session for #2870/#2866/#3091 production promotion",
-  "worker": "Claude Opus 5 #3153 subagent",
-  "branch": "claude/prod-gate-config-scope-a1",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-abf04d315f53ce03f",
+  "goal": "#2530 pre-transfer gaps: keep operator-login trust but require the association the current owner implies; read outcome evidence only from the current repository (pre-move slug as redirect alias); mark plan STATUS rows 1-2 done. No transfer, no GitHub setting change, no database action.",
+  "base_sha": "629657fa07d4f741a53a4d9a2df300560aa99aa0",
+  "branch": "claude/shared-db-2530-12815e",
+  "dispatcher": "Claude #2530 transfer coordination session (owner instruction relayed 2026-09-16: do all the work you can without the actual switchover)",
+  "worker": "Claude Opus 5 #2530 pre-transfer gaps",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-2530-12815e",
   "allowed_paths": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/work-dependencies.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs",
-    ".github/workflows/shared-supabase-migrations.yml",
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/lib/repository-identity.test.mjs",
+    "scripts/lib/work-dependencies.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch"
+  "assumptions": [
+    "GitHub reports an organization member's comments on an organization-owned repository as MEMBER"
   ],
   "required_checks": [
-    "python -m pytest -q scripts/test_production_business_risk_gate.py",
-    "node --test scripts/check-main-tip-freshness.test.mjs"
+    "node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-repository-identity-conformance.mjs"
   ],
-  "assumptions": [
-    "No preview-job step reads config/db-data-admin-property-source-coverage.json; the exemption phrase test enforces this",
-    "No production job step runs a test file or reads .agent evidence"
+  "prohibited_actions": [
+    "No repository transfer or GitHub setting change",
+    "No database read or write of any kind",
+    "No production workflow dispatch",
+    "No change to the guarded merge direct-merge behavior"
   ],
   "stop_conditions": [
-    "Stop if a preview-job tool reads the coverage manifest"
+    "Stop if the change needs a GitHub setting change or database action"
   ]
 }

@@ -31,7 +31,7 @@ const PROSE = 'comment or message prose naming the repository, not a value the c
 // Exact counts. Update deliberately, with a reason, when a count changes.
 export const ALLOWLIST = {
   'scripts/lib/repository-identity.mjs': [1, 'HISTORICAL_REPOSITORY_SLUG: accepted only for pre-transfer evidence URLs'],
-  'scripts/lib/repository-identity.test.mjs': [7, 'tests the historical slug and the old-origin remote form'],
+  'scripts/lib/repository-identity.test.mjs': [12, 'tests the historical slug, the old-origin remote form, and pre-transfer operator trust and comment aliases'],
   'scripts/repository_identity.py': [1, 'HISTORICAL_REPOSITORY_SLUG: accepted only for pre-transfer evidence URLs'],
   'scripts/test_repository_identity.py': [5, 'tests the historical slug and the old-origin remote form'],
   'scripts/check-repository-identity-conformance.test.mjs': [5, 'positive controls for the detector'],

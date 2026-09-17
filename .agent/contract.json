@@ -1,75 +1,40 @@
 {
-  "schema_version": 1,
-  "work_issue": 3023,
-  "generation": 2,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "The nightly PopSG crawl's public.refresh_style_guide_matviews call completes inside the unchanged 8s statement timeout at current corpus size, with identical search-document sync semantics.",
-  "base_sha": "31a1fe725059502caf620d005c82f7fd832dd498",
-  "dispatcher": "Albert Hazan (session request relayed by shared-db orchestrator marker #3106)",
-  "worker": "claude-sub-3023",
-  "branch": "claude/3023-sg-refresh-bounded",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/sg-3023-refresh-bounded",
+  "work_issue": 3097,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Reject a malformed --drawn-since in the reviewer start watcher in every mode, so a dry run can never silently hide reviewer non-starts.",
+  "base_sha": "0af173a0410b11e516ace44ec64cd98a938eab96",
+  "dispatcher": "Claude #3027 Step 7 live acceptance session (owner approval relayed 2026-09-16)",
+  "worker": "Claude Opus 5 #3027 Step 7 start watcher follow-up",
+  "branch": "claude/3027-watch-drawn-since-validate",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3027-watch-validate",
   "allowed_paths": [
-    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
-    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
-    "scripts/production-verification-sidecars/20260917005221.json",
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_catalog_verification.py",
-    "scripts/test_production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    ".github/live-proofs/3023.sql",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql",
-    "supabase/tests/popsg_bounded_crawl_and_search_contracts.sql",
-    "scripts/production-verification-sidecars/20260917005221.json",
-    "config/production-verification-sidecar-registry.json",
-    "scripts/production_catalog_verification.py",
-    "scripts/test_production_catalog_verification.py",
-    "docs/verification/throughput-guard-truth-baseline-20260828.json",
-    ".github/live-proofs/3023.sql",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
-  "db_reads": [
-    "table public.style_guide_search_documents",
-    "table public.style_guide_pdf_text",
-    "table public.style_guide_crawl_runs",
-    "materialized view public.style_guide_file_groups",
-    "materialized view public.style_guide_folders"
-  ],
-  "db_writes": [
-    "table public.style_guide_files",
-    "table public.style_guide_search_sync_queue",
-    "function public.style_guide_files_queue_search_sync",
-    "trigger trg_style_guide_files_queue_search_sync on public.style_guide_files",
-    "function public.refresh_style_guide_matviews"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "Do not raise any statement timeout",
-    "Do not delete or replay application rows",
-    "Do not write production or dispatch production manually",
-    "Do not change the refresh function signature, grants or caller contract"
+    "No database write of any kind",
+    "No production workflow dispatch"
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "python3 scripts/test_migration_derivation.py",
-    "python3 -m pytest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py scripts/test_production_business_risk_gate.py",
-    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-    "git diff --check"
+    "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],
   "assumptions": [
-    "Claim #3113 reserves version 20260917005221 and covers every declared write",
-    "Read-only production EXPLAIN ANALYZE: matview refreshes about 2.6s together; the full-table sync candidate scan about 11.6s with zero candidates",
-    "Nothing else writes source_identity inputs without updating style_guide_files, so an update trigger observes every identity change"
+    "Date.parse is the parser watchOnce already uses for --drawn-since"
   ],
   "stop_conditions": [
-    "Claim #3113 ownership changes",
-    "A needed change lies outside the declared objects",
-    "Preview apply or the refresh exceeds the 8s ceiling",
-    "A gate refuses; do not bypass it or raise a timeout"
-  ]
+    "Stop if the fix would need a database change"
+  ],
+  "generation": 1,
+  "schema_version": 1
 }

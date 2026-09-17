@@ -77,6 +77,7 @@ export const ALLOWLIST = {
   'scripts/repository-maintenance-authorization.test.mjs': [5, FIXTURE],
   'scripts/run-governed-review.test.mjs': [18, FIXTURE],
   'scripts/test_production_business_risk_gate.py': [26, FIXTURE],
+  'scripts/test_production_business_risk_gate_activation_mutations.py': [1, FIXTURE],
   'scripts/test_shared_db_live_proof.py': [1, FIXTURE],
   'scripts/update-required-checks.test.mjs': [2, 'mirror-document fixture'],
   'tools/dispatch-coldlion-taxonomy-alerts.test.mjs': [6, FIXTURE],

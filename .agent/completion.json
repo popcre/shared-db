@@ -1,29 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3146,
+  "work_issue": 3183,
   "outcome": "ready-for-merge",
-  "pr": 3178,
+  "pr": 3184,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3146/1",
-  "contract_sha256": "81bcc7864911a7e69f3808b283d8627f3a20571ea6655b11210a6cf361c4fba3",
-  "head_sha": "31619c959805bef6d79b095f13a50965c669ca1f",
-  "files_changed": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/3183/1",
+  "contract_sha256": "031accf43ccf806d006f1455ec3839c57170fca0b817c33c38bcc2378d1a60a8",
+  "head_sha": "e07da097f77b4a13e7ee9d40869cfd77954c132f",
+  "files_changed": ["scripts/check-dispatch-collision.test.mjs","scripts/check-pr-object-collisions.mjs","scripts/check-pr-object-collisions.test.mjs"],
   "db_reads": [],
   "db_writes": [],
-  "checks": [
-    {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "666 pass, 0 fail, 0 skipped. The new #3146 test fails on origin/main code (17 pass, 1 fail). Full author-lease workflow test set: 1430 pass, 0 fail, 0 skipped. Live replay: PR #3118 and #2872 refused against current main and carried from their approved heads against the merge commit first parent."
-    }
-  ],
-  "assumptions_resolved": [
-    "Confirmed the qualifier runs post-merge: 01f73d19 is identical to merged head 72517a6f against origin/main but not against merge commit 4ba3732d^1"
-  ],
+  "checks": [{"command": "node --test scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/lib/open-pr-files.test.mjs", "exit_code": 0, "evidence": "116 pass, 0 fail, 0 skipped; lease and orchestrator-flow suites 934 pass, 0 fail. Real PR #2835 migration now yields grant table+view for all three api views."}],
+  "assumptions_resolved": ["Verified on the real #2835 file that the '--' inside the comment literal hid the resolution_queue grant"],
   "stop_conditions_hit": []
 }

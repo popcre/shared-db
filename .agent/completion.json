@@ -1,17 +1,16 @@
 {
   "schema_version": 1,
-  "work_issue": 3229,
+  "work_issue": 3224,
   "outcome": "ready-for-merge",
-  "pr": 3231,
+  "pr": 3225,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3229/2",
-  "contract_sha256": "de0808d02c95313b2927846005ea3e4233a20cde1584516e9ebe7cc84aa2136d",
-  "head_sha": "2a0e804d8105c0757d09244f3d35a644172c62a5",
+  "contract_ref": "refs/db-contracts/3224/4",
+  "contract_sha256": "1ee1221744dbaebd62f21f75f4984d9e4eb201c81208760a8ec381c808328af1",
+  "head_sha": "e29695015ee7d674f1dd6d6731b7db2dfc44e5ad",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -19,12 +18,13 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass on this head, with the request-identity test extended to pin both message shapes (asked X, row answers Y) and the blank-answer spelling (blank), proving the refusal names both codes without weakening the abort."
+      "evidence": "33/33 pass including the workflow guard tests; re-verified on the twice-refreshed branch whose workflow also carries the #3221 prod-detail step and whose loader now carries the #3229 enriched identity messages from main."
     }
   ],
   "assumptions_resolved": [
-    "The collision fired on live production data after 1,800 keys had landed cleanly (runs 35264306654 and 35266106746), so the guard is correct and only its evidence was missing.",
-    "Generation 2 follows the main advance to ec96eb74: the branch was refreshed by merge (2a0e804d), the implementation diff is unchanged, and the exact-head APPROVE at 7042a8b5 was recorded with full coverage."
+    "The 2,577-key population and the ~1.05s-per-key pace come from the live dry-run (35264164570) and two successful bounded backfills (35264306654, 35266106746).",
+    "Generation 4 follows two further main advances (ec96eb74, 959100b6); each refresh conflicted only on the shared .agent pair, which this generation regenerates. The pacing change and its coexisting steps are unchanged.",
+    "An exact-head APPROVE with full coverage exists at ancestor bb70de74 (durable verdict refs/db-review-verdicts/3224-3225-bb70de74e93d7b81d716e3ead82fda757e1e571e); this head changes only the .agent evidence and the merge from main."
   ],
   "stop_conditions_hit": []
 }

@@ -1,44 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3229,
+  "generation": 4,
+  "work_issue": 3224,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Name the requested code and the received code in the ColdLion /prepackDetail loader's identity-collision refusals, so a live refusal is diagnosable from the run log alone. Fail-closed behaviour unchanged.",
-  "base_sha": "ec96eb745697dbfa0a6eb2191efae7ab40bcb158",
+  "goal": "Pass an explicit --pause-ms 1000 on the daily ColdLion Landing Sync's prepack-detail refresh step so the 2,577-code re-read fits the job's 90-minute budget instead of overrunning it at the loader's 3,000ms default.",
+  "base_sha": "959100b61b64fc46fd2d0fa623be1efb1932e70f",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-identity-evidence",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-evidence-3229",
+  "branch": "claude/issue-3179-prepack-refresh-pacing",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-detail-3179",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never weaken the identity guard: a row answering another request still aborts the run before anything lands; only the message changes.",
-    "Never author a migration or change any database shape.",
-    "Never put row values other than the requested and received codes into any message, log, or committed file.",
+    "Never author a migration or change any database shape; this is a workflow pacing change only.",
+    "Never weaken a workflow guard: the offline tests still run before any write, the declared target stays beside every credential, and the missing-secret refusals stay.",
+    "Never remove or reorder the history-then-masters-then-prepack-then-prod-details sequence.",
     "Never close issue #3179; the originating session owns closure."
   ],
   "required_checks": [
     "node --test tools/coldlion-landing-prepack.test.mjs"
   ],
   "assumptions": [
-    "The identity collision is real vendor behaviour: Actions run 35268207688 aborted on a production response after 1,800 codes had landed cleanly through the same guard.",
-    "Short ERP codes (a prepack code and a company code) are operational evidence, not personal or licensed data, and naming exactly one pair in an error message respects the public-repo rules.",
-    "Generation 2 exists because main advanced to ec96eb74 (PR #3230, the sibling /proddetails company_code fix, rewrote the shared .agent pair files); the branch was refreshed by merge (2a0e804d), this pull request touches no file main changed, and the reviewed head 7042a8b5 remains an ancestor whose own non-evidence diff is byte-identical."
+    "The live dry-run dispatched after PR #3220 merged measured 2,577 distinct harvested prepack codes and ~3.1s per key at the 3,000ms default pace.",
+    "The vendor agreement is serialized one-request-at-a-time; a 1,000ms pause keeps it while landing the full refresh in ~45 minutes beside history+masters' ~8 minutes, inside the 90-minute job budget.",
+    "Generations 3 and 4 exist because main advanced twice more (ec96eb74 via #3230, then 959100b6 via #3231 merging the sibling identity-evidence pair and loader files); each time the branch was refreshed by merge (b6800355, then e2969501) and only the shared .agent pair conflicted, resolved by regenerating this pair. The pacing change itself is unchanged and now coexists with the enriched identity messages on main."
   ],
   "stop_conditions": [
+    "Stop and report a blocker if the measured daily refresh plus history, masters and prod-detail would exceed the job timeout at any acceptable pace.",
     "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

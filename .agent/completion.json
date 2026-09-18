@@ -1,38 +1,47 @@
 {
   "schema_version": 1,
-  "work_issue": 3191,
+  "work_issue": 3283,
   "outcome": "ready-for-merge",
-  "pr": 3277,
-  "migration_versions": [
-    "20260918180012"
-  ],
-  "contract_ref": "refs/db-contracts/3191/1",
-  "contract_sha256": "ff0ce773c22b934ca885795131c6caf3449c3c5667f1c53d4194efb6ad802dcd",
-  "head_sha": "e0819067a53df6a5ccf1909d6d362321caeb99b1",
+  "pr": 3284,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3283/2",
+  "contract_sha256": "5d8abbe9d86ba9f42105c6f51f2d461bb70d1f62b217c07acfa926965739b7ee",
+  "head_sha": "6518de24550a62c10d0b31f52bdcf1aa300acb7e",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "supabase/tests against an ephemeral database",
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
       "exit_code": 0,
-      "evidence": "PR #3277 check passed at 239335c8 (contains implementation e0819067)"
+      "evidence": "46 pass, 0 fail, 0 skipped; the 2 new tests fail on the previous code"
     },
     {
-      "command": "SQL migration guards",
+      "command": "python -m pytest -q scripts/test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "PR #3277 check passed at 239335c8 (contains implementation e0819067)"
+      "evidence": "275 passed, 356 subtests passed"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "exit 0"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "exit 0"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "exit 0"
     }
   ],
   "assumptions_resolved": [
-    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
-    "Review (qwen slot 1, REVISE at 209ebc35) addressed: grant guarded on pg_roles existence as a static GRANT; comment states the SECURITY DEFINER RLS-bypass it confers."
+    "The reservation record has no time field and its ref is keyed by the draw sequence, so the retry reuses the same reservation (confirmed in start-reroute.mjs reserveAndDispatch and by the end-to-end test)."
   ],
   "stop_conditions_hit": []
 }

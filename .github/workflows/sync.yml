@@ -19,6 +19,11 @@ name: Sync shared-db to consumers
 on:
   push:
     branches: [main]
+  # Guarded merges land as github-actions using the workflow token, and GitHub
+  # starts no `push` workflow for a push made with that token — so a guarded
+  # merge previously left every consumer stale (#3264). The guarded merge
+  # workflow dispatches this trigger on main right after its own merge lands.
+  workflow_dispatch: {}
 
 permissions:
   contents: read

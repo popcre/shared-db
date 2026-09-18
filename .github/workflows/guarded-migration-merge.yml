@@ -37,6 +37,9 @@ permissions:
   # `none`, so without this the read is a 403 and every merge dies at the pre-flight
   # -- a parseable workflow that still cannot merge.
   checks: read
+  # Scoped to this job only: lets the post-merge step below dispatch
+  # sync.yml (workflow_dispatch is allowed from GITHUB_TOKEN, unlike push).
+  actions: write
   # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
   # file unparseable, and because this workflow is the ONLY path to `main`, every
   # merge in the repository was refused at dispatch with HTTP 422. The pre-flight
@@ -184,6 +187,15 @@ jobs:
             sleep 10
           done
           test "$merged" = '1'
+      - name: Start the consumer sync for the merge that just landed
+        # The merge above pushed to main as github-actions; GitHub starts no
+        # `push` workflow for that token, so sync.yml never fires on its own
+        # (#3264). Dispatch it explicitly, only after a real merge, and fail
+        # the job loudly if the dispatch itself fails.
+        if: steps.guarded_merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" --ref main
       - name: Revoke authorization if the guarded merge did not complete
         id: revoke_authorization
         if: failure() && steps.merge_lock.outputs.owner_sha != ''

@@ -12,7 +12,7 @@
 | Step | Requirement | Verdict |
 |---|---|---|
 | 2 | Safe version re-reservation without closing a PR | PROVEN (live, 2026-09-16) |
-| 2 | Named lease/conflict admission; no unrelated production hold | NOT PROVEN — `hold_reason` is not implemented on main |
+| 2 | Named lease/conflict admission; no unrelated production hold | PROVEN (live, 2026-09-17/18) — see "Step 2 named holds: PROVEN LIVE" below (#3241) |
 | 2A | Authenticated sender-to-receiver no-database-preview canary | PROVEN (live, PR #3022, 26 s) |
 | 2A | Ten-minute target | PROVEN for prose PRs (7 m 13 s, 59 s); not measured for no-DB code PRs |
 | 4 | Successor verifies and resumes from a live snapshot | PROVEN (live read-only canary) |

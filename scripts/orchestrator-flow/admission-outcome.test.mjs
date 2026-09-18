@@ -4,7 +4,7 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
 import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
-import { advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
+import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
@@ -882,4 +882,35 @@ test('outcome comments trust only the operator login with the owner-implied asso
   const forged = { body: formatEventComment(outcomeEvent({ issue: 41, state: 'entered', actor: 'forger', timestamp: '2026-09-11T00:00:00Z' })), author: 'mallory', author_association: 'OWNER' }
   assert.equal(outcomeHistory([forged], 41).events.length, 0)
   assert.equal(outcomeHistory([{ ...forged, author: 'u2giants', author_association: OPERATOR_ASSOCIATION }], 41).events.length, 1)
+})
+
+test('self-service-additive admission confines writes to the {crm,pim,dam} app-owned schemas (#3199 round-2 review)', () => {
+  const laneBody = (object) => scopeBody({ object }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  const shared = issue(laneBody('table core.customer_ext'))
+  assert.throws(() => evaluateAdmission(shared, parseQueueScope(shared.body), null), /writes outside the \{crm,pim,dam\} app-owned schemas: table core\.customer_ext/)
+  const schemaless = issue(laneBody('schema crm'))
+  assert.throws(() => evaluateAdmission(schemaless, parseQueueScope(schemaless.body), null), /writes outside the \{crm,pim,dam\}/)
+  const inBoundary = issue(laneBody('table crm.note'))
+  assert.equal(evaluateAdmission(inBoundary, parseQueueScope(inBoundary.body), null).admitted, true)
+})
+
+test('the outcome lifecycle completes BOTH structural routes (#3199 round-2 review High)', () => {
+  const build = (route) => {
+    const io = { getIssue: () => issue(scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', `route: ${route}`), 41) }
+    return io
+  }
+  // The self-service route must clear the same route gate the orchestrator
+  // route clears; before the fix this threw 'only an admitted structural
+  // outcome can complete' for route self-service-additive.
+  const admitted = scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  for (const route of ['shared-db-orchestrator', 'self-service-additive']) {
+    const row = issue(admitted)
+    const io = { getIssue: () => row }
+    // Advance far enough that only the route gate is under test: a
+    // non-structural route still refuses at the gate itself.
+    assert.throws(() => completeOutcome({ issue: 41, evidenceRef: 'x', actor: 't' }, { ...io, parseScope: parseQueueScope, issueComments: () => [], readOutcomeEvidence: () => { throw new OutcomeError('unreached') } }), /not production_applied|outcome history is invalid|unreadable|unreached/)
+  }
+  // A non-structural scope is still refused at the gate, by name. parseScope
+  // is stubbed so the gate itself is what is under test, not the fence parser.
+  assert.throws(() => completeOutcome({ issue: 41, evidenceRef: 'x', actor: 't' }, { getIssue: () => issue('body'), parseScope: () => ({ workType: 'repo-maintenance', route: 'repo-maintenance' }), issueComments: () => [], readOutcomeEvidence: () => '' }), /only an admitted structural outcome can complete/)
 })

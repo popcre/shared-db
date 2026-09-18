@@ -1,46 +1,44 @@
 {
   "schema_version": 1,
-  "work_issue": 3255,
+  "work_issue": 3242,
   "outcome": "ready-for-merge",
-  "pr": 3256,
+  "pr": 3243,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3255/2",
-  "contract_sha256": "05341045155a5672e4ccd4a798d0010e887927cb6cd1fe81e5ee03291830d2cf",
-  "head_sha": "5a9cc8a30066c85f72e78086a52e9934a12b8a19",
+  "contract_ref": "refs/db-contracts/3242/2",
+  "contract_sha256": "18ab6395f3f543a9c11db8e747f2ccc5ae7cdda5a4bfabcf934d27abc33349c9",
+  "head_sha": "ecb17dc86f571fc01e34d3c3afb89c742949de8a",
   "files_changed": [
-    "scripts/check-repository-identity-conformance.mjs",
-    "scripts/coordination-scenarios.test.mjs",
-    "scripts/dispatch-production-apply.test.mjs",
-    "scripts/lib/work-dependencies.test.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
-    "scripts/repository-maintenance-authorization.test.mjs",
-    "scripts/run-governed-review.test.mjs",
-    "scripts/test_production_business_risk_gate.py",
-    "scripts/test_production_business_risk_gate_activation_mutations.py"
+    ".github/workflows/reviewer-start-watch.yml",
+    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
+    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
+      "exit_code": 0,
+      "evidence": "reviewer-start-watch 21/21 (5 new: per-slot reroute count, budget-exhausted skip with no manager call, unreadable history refuses, under-budget slot still rerouted, failing pass exits 1); start-reroute 23/23."
+    },
+    {
+      "command": "python -m pytest -q scripts/test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "275 passed, 356 subtests passed; includes the rule that no scheduled workflow calls a mutating lane flag such as --reconcile-flow."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "clean with the new workflow present (no gh api, no literal repository slug)."
+    },
+    {
       "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (48 entries)."
-    },
-    {
-      "command": "GITHUB_REPOSITORY=popcre/shared-db node --test scripts/coordination-scenarios.test.mjs scripts/dispatch-production-apply.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/run-governed-review.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 836, pass 836, fail 0 on head 5a9cc8a3."
-    },
-    {
-      "command": "python -m unittest scripts/test_production_business_risk_gate.py scripts/test_production_business_risk_gate_activation_mutations.py",
-      "exit_code": 0,
-      "evidence": "OK on head 5a9cc8a3."
+      "evidence": "clean with the new workflow present."
     }
   ],
   "assumptions_resolved": [
-    "Every failure reproduced on untouched main and came only from fixtures pinning u2giants/shared-db or the OWNER association; no production code changed."
+    "A live dry run of the watcher costs one GitHub GraphQL call for the lease read plus one ref listing, so a 5-minute schedule is well inside the GITHUB_TOKEN budget.",
+    "Contract generation 1 was published before the implementation commit; the earlier unpublished draft commit b94fccba was discarded and the implementation re-committed on current main 579f8fe0 after publication."
   ],
   "stop_conditions_hit": []
 }

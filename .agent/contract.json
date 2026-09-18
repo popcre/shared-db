@@ -38,5 +38,5 @@
     "stop if the watcher reroutes slot 1 or any lease other than the staged slot 2",
     "stop if the change would need to touch a file outside allowed_paths"
   ],
-  "generation": 5
+  "generation": 6
 }

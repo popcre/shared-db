@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3286,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3242/5",
-  "contract_sha256": "359f6da554f37e80170b59b135440bc2fe8f2cf27280cff3435ffefc7cb7696a",
-  "head_sha": "025aaeb7801cf3f1bdcb92f1aec1f663c5d7dfb5",
+  "contract_ref": "refs/db-contracts/3242/6",
+  "contract_sha256": "84d0a3d30153acd91cbacd9d295812179de339c0360117d55ec269d025110dc3",
+  "head_sha": "dede9df6b1c3975cad450b8bccbda00379425a13",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "tests/verification/shared-db-throughput/2026-09-18-step-7-unattended-reroute.md"
   ],
   "db_reads": [],

@@ -8,6 +8,8 @@
   "contract_sha256": "f9fe3cf80081635b3b31fa12b3cf3a7c9c16bad4d67288ddb1e717c71d0abe2e",
   "head_sha": "51d77f3cc61edfe4c4eab000d581fc3fba2f4706",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/pii-forward-guard.yml",
     ".github/workflows/shared-db-live-proof.yml",
     ".github/workflows/sync.yml",

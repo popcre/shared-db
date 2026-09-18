@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3256,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3255/1",
-  "contract_sha256": "ab286666d2b65d9c5d70268866ac6c3f9ae251344df7285fe638a997e554be66",
+  "contract_ref": "refs/db-contracts/3255/2",
+  "contract_sha256": "05341045155a5672e4ccd4a798d0010e887927cb6cd1fe81e5ee03291830d2cf",
   "head_sha": "5a9cc8a30066c85f72e78086a52e9934a12b8a19",
   "files_changed": [
     "scripts/check-repository-identity-conformance.mjs",
@@ -23,9 +23,24 @@
   "db_reads": [],
   "db_writes": [],
   "checks": [
-    {"command": "node scripts/check-repository-identity-conformance.mjs", "exit_code": 0, "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (48 entries)."},
-    {"command": "GITHUB_REPOSITORY=popcre/shared-db node --test (reproduce, documents-only, author-lease, collision, SQL-guard suites)", "exit_code": 0, "evidence": "1054/1054, 36/36, 1449/1449, 739/739, 326/326 pass with the variable set and unset; Python 1180 OK, 8 skipped."}
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (48 entries)."
+    },
+    {
+      "command": "GITHUB_REPOSITORY=popcre/shared-db node --test scripts/coordination-scenarios.test.mjs scripts/dispatch-production-apply.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 836, pass 836, fail 0 on head 5a9cc8a3."
+    },
+    {
+      "command": "python -m unittest scripts/test_production_business_risk_gate.py scripts/test_production_business_risk_gate_activation_mutations.py",
+      "exit_code": 0,
+      "evidence": "OK on head 5a9cc8a3."
+    }
   ],
-  "assumptions_resolved": ["Every failure reproduced on untouched main and came only from fixtures pinning u2giants/shared-db or the OWNER association; no production code changed."],
+  "assumptions_resolved": [
+    "Every failure reproduced on untouched main and came only from fixtures pinning u2giants/shared-db or the OWNER association; no production code changed."
+  ],
   "stop_conditions_hit": []
 }

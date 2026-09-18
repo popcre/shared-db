@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3255,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -10,12 +10,51 @@
   "worker": "Claude sub-agent of chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
   "branch": "claude/3255-post-transfer-fixtures",
   "worktree": "C:/repos/shared-db/.claude/worktrees/fix-3255-14505",
-  "allowed_paths": [".agent/completion.json",".agent/contract.json","scripts/check-repository-identity-conformance.mjs","scripts/coordination-scenarios.test.mjs","scripts/dispatch-production-apply.test.mjs","scripts/lib/work-dependencies.test.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/admission-outcome.test.mjs","scripts/orchestrator-flow/preview-route-canary.test.mjs","scripts/repository-maintenance-authorization.test.mjs","scripts/run-governed-review.test.mjs","scripts/test_production_business_risk_gate.py","scripts/test_production_business_risk_gate_activation_mutations.py"],
-  "file_writes": [".agent/completion.json",".agent/contract.json","scripts/check-repository-identity-conformance.mjs","scripts/coordination-scenarios.test.mjs","scripts/dispatch-production-apply.test.mjs","scripts/lib/work-dependencies.test.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/admission-outcome.test.mjs","scripts/orchestrator-flow/preview-route-canary.test.mjs","scripts/repository-maintenance-authorization.test.mjs","scripts/run-governed-review.test.mjs","scripts/test_production_business_risk_gate.py","scripts/test_production_business_risk_gate_activation_mutations.py"],
+  "allowed_paths": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/repository-maintenance-authorization.test.mjs",
+    "scripts/run-governed-review.test.mjs",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate_activation_mutations.py"
+  ],
+  "file_writes": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/repository-maintenance-authorization.test.mjs",
+    "scripts/run-governed-review.test.mjs",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate_activation_mutations.py"
+  ],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": ["Never change production code or loosen a guard to make a test pass.", "Never remove a test that exercises the historical repository alias."],
-  "required_checks": ["GITHUB_REPOSITORY=popcre/shared-db node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/orchestrator-flow/*.test.mjs", "node scripts/check-repository-identity-conformance.mjs"],
-  "assumptions": ["Failures reproduce on untouched main and come only from fixtures pinning u2giants/shared-db or the OWNER association."],
-  "stop_conditions": ["Stop and report if a failure reveals a real production-code defect."]
+  "prohibited_actions": [
+    "Never change production code or loosen a guard to make a test pass.",
+    "Never remove a test that exercises the historical repository alias."
+  ],
+  "required_checks": [
+    "GITHUB_REPOSITORY=popcre/shared-db node --test scripts/coordination-scenarios.test.mjs scripts/dispatch-production-apply.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/run-governed-review.test.mjs",
+    "python -m unittest scripts/test_production_business_risk_gate.py scripts/test_production_business_risk_gate_activation_mutations.py",
+    "node scripts/check-repository-identity-conformance.mjs"
+  ],
+  "assumptions": [
+    "Failures reproduce on untouched main and come only from fixtures pinning u2giants/shared-db or the OWNER association."
+  ],
+  "stop_conditions": [
+    "Stop and report if a failure reveals a real production-code defect."
+  ]
 }

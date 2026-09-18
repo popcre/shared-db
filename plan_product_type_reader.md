@@ -6,8 +6,8 @@ Handoff for this plan: [`HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type
 
 | # | Step | State | Evidence |
 |---|------|-------|----------|
-| 0 | Plan written, issue opened | ✅ done 2026-09-16 | this file; issue u2giants/shared-db#3024 |
-| 0a | Orchestrator ticket #3036 opened for columns | ✅ done 2026-09-16 | issue u2giants/shared-db#3036 |
+| 0 | Plan written, issue opened | ✅ done 2026-09-16 | this file; issue popcre/shared-db#3024 |
+| 0a | Orchestrator ticket #3036 opened for columns | ✅ done 2026-09-16 | issue popcre/shared-db#3036 |
 | 1 | Move reader into a permanent module | ⬜ open | — |
 | 2 | Build the full-catalog gold set | ⬜ open | — |
 | 3 | Measure baseline accuracy | ⬜ open | — |
@@ -44,7 +44,7 @@ legal/customs matter.
 
 ### 2. What this application is
 
-`u2giants/shared-db` (this repo) governs the *structure* of POP Creations' shared Supabase database
+`popcre/shared-db` (this repo) governs the *structure* of POP Creations' shared Supabase database
 (project `qsllyeztdwjgirsysgai`), used by PIM `poppim-web`, CRM `popcrm-web`, DAM `popdam-web` and the
 `popcre/designflow-*` PLM repos. Read `AGENTS.md` first. Issue #3024 is `repo-maintenance` scope — the
 umbrella for the reader work; the column change itself is orchestrator issue #3036. Schema changes go only through

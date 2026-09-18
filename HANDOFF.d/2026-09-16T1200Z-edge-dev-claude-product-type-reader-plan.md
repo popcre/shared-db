@@ -14,4 +14,6 @@ Owner ruling 2026-09-16: the new value lives on `plm.item`, not `coldlion.item_h
 Columns LANDED via orchestrator issue popcre/shared-db#3036 — closed COMPLETED 2026-09-17
 (PR #3108 merged 2026-09-16, migration `20260916231639`). See plan STATUS step 7.
 
-Nothing else was changed in this session besides this handoff, the plan, and an AGENTS.md pointer.
+Nothing else was changed in the original 2026-09-16 session besides this handoff, the plan, and an
+AGENTS.md pointer (commit `638a61ef`). The 2026-09-18 correction session changed only the status
+lines above and carries the `.agent` evidence pair on its pull request (#3281).

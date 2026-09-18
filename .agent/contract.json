@@ -1,77 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 18,
+  "generation": 19,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Implement issue #3199 Phases B and C: the self-service additive lane (fail-closed boundary classifier over the production tokenizer, route admission across the lane machinery and admission, merge-time enforcement inside the guarded merge, route-sync guard, AGENTS.md documentation) and the #2758 ephemeral-route hop table with C2 no-code-change outcome.",
-  "base_sha": "13efcd77aec38257d4efe073ee0f729ebb647e33",
+  "goal": "Close issue #3199 (Phase D): flip the remaining plan STATUS rows to done — B1-B4 and C1 landed as PR #3228, C2 already recorded — and retire the paired handoff file HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md in the same change that closes the tracking issue.",
+  "base_sha": "c8dd3baa87309abd11fa05d33d412aec37897cfd",
   "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
   "worker": "ZCode (GLM 5.3) repository-maintenance session",
-  "branch": "zcode/3199-self-service-lane-v2",
+  "branch": "zcode/3199-closeout",
   "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
   "allowed_paths": [
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "AGENTS.md",
-    "docs/agents/ephemeral-route-hop-table.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
-    "scripts/check-lane-route-sync.test.mjs",
-    "scripts/check-self-service-additive-lane.mjs",
-    "scripts/check-self-service-additive-lane.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_self_service_boundary_lexing.py",
+    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "AGENTS.md",
-    "docs/agents/ephemeral-route-hop-table.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
     "plan_orchestrator_required_load_reduction.md",
-    "scripts/check-lane-route-sync.test.mjs",
-    "scripts/check-self-service-additive-lane.mjs",
-    "scripts/check-self-service-additive-lane.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/production_business_risk_gate.py",
-    "scripts/test_self_service_boundary_lexing.py",
+    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
     ".agent/contract.json",
-    ".agent/completion.json",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database write or structure change of any kind",
     "No production workflow dispatch",
-    "No weakening of any safety gate, required check, or caller check",
-    "NON_STRUCTURAL_EXITS stays untouched",
-    "The lane boundary never grows beyond {crm,pim,dam}"
+    "No weakening of any safety gate"
   ],
   "required_checks": [
-    "node --test scripts/check-self-service-additive-lane.test.mjs",
     "node --test scripts/check-lane-route-sync.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "python -m unittest scripts.test_self_service_boundary_lexing",
-    "python -m unittest scripts.test_production_preview_skip",
-    "node scripts/check-throughput-truth-audit.mjs",
-    "bash scripts/check-sql.sh",
     "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "Phase B edits the protected coordination source scripts/manage-migration-author-lanes.mjs; PR #3228 queues behind #3215 and #3217 on that file by design.",
-    "The classifier consumes the production tokenizer through new output views only; the default folded view is byte-identical for every existing consumer (pinned by tests)."
+    "The repository transferred from u2giants to popcre overnight (issue #2530); u2giants URLs redirect and all issue/PR numbers remain valid.",
+    "PR #3228 (B1-B4, C1) was completed and merged by another session overnight (contract generations 16-18, durable verdicts at each head); its landed state was re-verified on main before this closing change."
   ],
   "stop_conditions": [
-    "Stop if any change would weaken a safety gate or touch the database",
-    "Stop if the boundary classifier cannot be made fail-closed"
+    "Stop if any fact about the merged state of #3216/#3228 fails re-verification"
   ]
 }

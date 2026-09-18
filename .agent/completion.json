@@ -1,17 +1,15 @@
 {
   "schema_version": 1,
-  "work_issue": 3235,
+  "work_issue": 3245,
   "outcome": "ready-for-merge",
-  "pr": 3236,
+  "pr": 3246,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3235/2",
-  "contract_sha256": "25b5b1b95095571d12febb947495748afcbc2ce2228c1f1e4a97fdf2947636a4",
-  "head_sha": "02a0ddd95b637894f8f388c20eb8a5c96b8dc701",
+  "contract_ref": "refs/db-contracts/3245/1",
+  "contract_sha256": "747bc72308abaf54de742e6df4abdf397996dcb66a44c436635fcea2d475daa1",
+  "head_sha": "5d6d088af3a966fc01228b67e664416030d5b2a1",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -19,12 +17,11 @@
     {
       "command": "node --test tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "34/34 pass, with a new test pinning the live drift shape verbatim (asked PPk133, row answers PPK133 passes; the landed key keeps the row spelling; a different code still refuses; a blank asked key refuses; the company comparison stays case-sensitive)."
+      "evidence": "37/37 pass, with three new pins: both harvest spellings asked and both answering the row spelling collect to one row with coverage holding; a sibling-answered zero-row spelling is accounted; differing bytes for one grain across two spellings refuse loudly."
     }
   ],
   "assumptions_resolved": [
-    "The drift was vendor-side cross-feed inconsistency, proved by the enriched refusal in run 35288752430 naming both spellings; the harvest stores vendor-emitted values verbatim (exact-trim, no case change), so PPk133 came from a ColdLion feed.",
-    "Generation 2 follows the documentation-only main advance to 079fed75 (#3237, #3238); the branch was refreshed by merge (02a0ddd9) and the implementation diff is unchanged."
+    "The two-spelling harvest shape was proved live: run 35288752430 refused naming asked PPk133 vs row answers PPK133; run 35294603177 passed the case-folded guard and refused on the cross-key count, which only happens when both spellings are distinct harvest keys answering one spelling."
   ],
   "stop_conditions_hit": []
 }

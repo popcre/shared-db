@@ -1,0 +1,65 @@
+# Every shared-db issue carries exactly one of `orchestrator` / `non-orchestrator`.
+#
+# Owner rule (Albert, 2026-09-17): "nothing blank". Runs on every issue open, edit,
+# reopen, and label removal, and sweeps all issues every two hours (at least daily) so anything an event missed is
+# caught. Classification lives in scripts/sync-issue-orchestrator-label.mjs; its tests
+# run first in the same job.
+
+name: Issue Orchestrator Label
+
+on:
+  issues:
+    types: [opened, edited, reopened, unlabeled]
+  schedule:
+    - cron: '47 */2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/sync-issue-orchestrator-label.mjs
+      - scripts/sync-issue-orchestrator-label.test.mjs
+      - .github/workflows/issue-orchestrator-label.yml
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-orchestrator-label-${{ github.event.issue.number || github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    name: Issue orchestrator label
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the classifier
+        run: node --test scripts/sync-issue-orchestrator-label.test.mjs
+
+      - name: Label the issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          # The rule overrides an existing label only for a new issue or an edited body;
+          # otherwise an existing single label (a person's or the backfill's call) stands.
+          MODE: ${{ (github.event.action == 'opened' || (github.event.action == 'edited' && github.event.changes.body != null)) && '--authoritative' || '' }}
+        run: node scripts/sync-issue-orchestrator-label.mjs --issue "$ISSUE" $MODE
+
+      - name: Sweep every issue
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sync-issue-orchestrator-label.mjs --all --max-changes 300
+
+      - name: Dry-run sweep (pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sync-issue-orchestrator-label.mjs --all --dry-run

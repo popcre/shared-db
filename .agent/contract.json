@@ -1,38 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3266,
+  "work_issue": 3273,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Mark #2530 plan Step 6 done in the STATUS table, citing the proven consumer sync.",
-  "base_sha": "ce92a63cb2dcd5391b7025717ef5551c82f18ec4",
-  "dispatcher": "Albert own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
-  "worker": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
-  "branch": "claude/3266-plan-step6-done",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/plan6-3266-31009",
+  "goal": "Implement the stale-place rule in scripts/check-pr-source-collisions.mjs: a non-draft open PR editing scripts/manage-migration-author-lanes.mjs no longer precedes a newer PR when it has had no activity for 24+ hours, its latest checks are failing or it conflicts with main, and the newer PR's session has posted a dated nudge comment on it naming the stale state; it reclaims its place once refreshed and green.",
+  "base_sha": "bd647f6ad701f51b8d0263614b1d73763f2f6f2d",
+  "dispatcher": "repo-maintenance session for issue #3273",
+  "worker": "kimi",
+  "branch": "kimi/issue-3273-stale-place-rule",
+  "worktree": "C:/repos/shared-db-wt-3273",
   "allowed_paths": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs"
   ],
   "file_writes": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never touch a database, preview or production target.",
-    "Change only the Step 6 STATUS row."
+    "do not touch any migration or database object",
+    "do not weaken the collision check: a skip requires all three stale-place conditions and any unreadable signal means no skip",
+    "do not edit another session's handoff, worktree, branch, or claim",
+    "do not change the protected source path set or the activation-order priority rule"
   ],
   "required_checks": [
-    "node scripts/check-repository-identity-conformance.mjs"
+    "node --test scripts/check-pr-source-collisions.test.mjs",
+    "node --test scripts/*.test.mjs",
+    "node scripts/check-cancelled-work.mjs"
   ],
   "assumptions": [
-    "Sync run 35351543065 on f9809546 finished success for all nine consumers."
+    "the stale-place rule relaxes queue order only within scripts/check-pr-source-collisions.mjs; no other gate changes",
+    "a dated nudge comment is an issue comment on the stale PR carrying the machine-readable stale-place nudge marker that names the newer PR number",
+    "GitHub pull detail (updated_at, mergeable), check runs, and issue comments are the activity, health, and nudge signals"
   ],
   "stop_conditions": [
-    "Stop and report on any gate refusal; never weaken a guard to proceed."
+    "stop if the rule cannot be implemented without editing files outside allowed_paths",
+    "stop if a test fails for a reason unrelated to these two files",
+    "stop if implementing the rule would require weakening fail-closed behaviour on unreadable signals"
   ]
 }

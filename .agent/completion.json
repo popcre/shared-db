@@ -1,28 +1,39 @@
 {
   "schema_version": 1,
-  "work_issue": 3266,
+  "work_issue": 3273,
   "outcome": "ready-for-merge",
-  "pr": 3267,
+  "pr": 3274,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3266/2",
-  "contract_sha256": "be0b8462f8ad8c90a6e75e03545f1487da8810cd841d0500b9cfcbe8fa37614f",
-  "head_sha": "b90b2e9b00d36bb3fd9a892cb325e2a55c2da7bc",
+  "contract_ref": "refs/db-contracts/3273/1",
+  "contract_sha256": "29b63f652b5aa505f5ac82ad0beaa21b2654021137c705b49ec67daf3d0c39df",
+  "head_sha": "37cbdedd9d99a4dbb35a94461795a8d56ea0794c",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "command": "node --test scripts/check-pr-source-collisions.test.mjs",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (45 entries), on head 2ffb377b."
+      "evidence": "tests 16, pass 16, fail 0 — nudge-gated skip, nudge gating (absent/wrong-number/undated), reclaim-after-refresh, green-recent-never-skipped, conflict-only condition (b), fail-closed on unreadable signals, nudge-never-refreshes, marker parse/refuse, latestChecksFailing, conflictsWithMain, gather wiring."
+    },
+    {
+      "command": "node --test scripts/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "all 72 test files run in 5 chunks; zero regressions — the only failures (check-issue-505-licensor-code-forward-repair 1, check-sql 1, check-workflow-automatic-promotion-source 4, orchestrator-snapshot 5, refresh-code-pr-branch 1) reproduce identically on a clean origin/main worktree at 5b9b301f3, pre-existing environment/fixture issues (cf. #3255)."
+    },
+    {
+      "command": "node scripts/check-cancelled-work.mjs",
+      "exit_code": 0,
+      "evidence": "OK — no cancelled instruction reintroduced (2 row(s) checked)."
     }
   ],
   "assumptions_resolved": [
-    "Sync run 35351543065 on f9809546: all nine consumer jobs success (#2530 comment 5730865894)."
+    "the rule relaxes queue order only inside scripts/check-pr-source-collisions.mjs; no other gate was touched",
+    "a dated nudge is an issue comment on the stale PR carrying the machine-readable stale-place-nudge marker naming the newer PR number; the gate cannot bind a comment to a session, so the marker is the enforceable proxy (documented in the rule header)",
+    "GitHub pull detail, pull commits, issue comments, timeline and check runs proved sufficient for the activity, health and nudge signals; all are gathered only for overlapping predecessors and any unreadable read throws, which main() turns into a refusal"
   ],
   "stop_conditions_hit": []
 }

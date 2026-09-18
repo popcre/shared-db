@@ -41,5 +41,5 @@
     "stop if the DOCTOR_TIMEOUT contract test in run-governed-review.test.mjs fails against the appended hint",
     "stop if the doctorTimeoutFailingChecks unit test cannot express the wrapper-specific hint without matching real doctor output"
   ],
-  "generation": 2
+  "generation": 3
 }

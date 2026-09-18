@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3217,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2828/2",
-  "contract_sha256": "71ed251df0d89611fbc1e34bc4b77c997e0b0e74d4d6f006ad4192420c20e9ae",
-  "head_sha": "8cba101bdf74cb7267f081d14c76cc44d5a3cb92",
+  "contract_ref": "refs/db-contracts/2828/3",
+  "contract_sha256": "3b6e1ef679ff4834654cd0c450d5cc6f02559b00bcb4f7326333f9cf523b8e63",
+  "head_sha": "7a059b1a9b138d06b7a14f62836f72cbecbeed17",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
@@ -27,7 +29,7 @@
   ],
   "assumptions_resolved": [
     "PROVENANCE, STATED PLAINLY: the implementation (59e7467d) was written by a ZCode session BEFORE any contract was published; generation 1 was published by that same session mid-packaging with a base_sha that names no real commit, and generation 2 corrects the base to the true fork point 4b115d33. No pre-work ordering is claimed for this contract.",
-    "The evidence pair was finished and the branch refreshed onto current main by a successor ZCode repo-maintenance session clearing the protected-source serialization chain (#3215 -> #3217) so issue #3232 can merge; the implementation diff is unchanged by the refresh.",
+    "The evidence pair was finished and the branch refreshed onto current main twice (8cba101b, then 7a059b1a after #3215 merged; the test import line was resolved to carry both closedClaimAuthoredOnMain from main and doctorTimeoutFailingChecks from this branch) by a successor ZCode repo-maintenance session clearing the protected-source serialization chain so issue #3232 can merge; the implementation diff is unchanged by the refreshes.",
     "The primary #2828 defect (the ai-glm doctor spawn-shape timeout) is repaired in popcre/ai-devops by a separately reviewed change, not here."
   ],
   "stop_conditions_hit": []

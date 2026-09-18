@@ -1,41 +1,44 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3199,
+  "generation": 1,
+  "work_issue": 3245,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Write the implementation plan reducing what MUST pass through the shared-db orchestrator without reducing safety (issue #3199): queue hygiene, a self-service additive lane for crm/pim/dam, and a zero-touch audit of the #2758 ephemeral wait chain; reviewed by Grok 4.6 after Muse failed, findings folded in.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
-  "dispatcher": "ZCode session relaying Albert's instruction",
-  "worker": "ZCode (GLM 5.3) repository-maintenance session",
-  "branch": "zcode/plan-orchestrator-required-load-reduction",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-plan",
+  "goal": "Fold case in the /prepackDetail loader key-coverage accounting and collect each vendor row once when two harvest spellings of one drifted key are both asked, so the #3179 backfill can complete.",
+  "base_sha": "f048cca84c40edaae7814545e205e07bd76ebb51",
+  "dispatcher": "delegated source-data session continuing issue #3179 production phase",
+  "worker": "Claude GLM 5.3 source-data session, issue #3179",
+  "branch": "claude/issue-3179-prepack-coverage-case",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-cover-3245",
   "allowed_paths": [
-    "plan_orchestrator_required_load_reduction.md",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "file_writes": [
-    "plan_orchestrator_required_load_reduction.md",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    "tools/coldlion-landing-prepack.test.mjs",
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No production workflow dispatch",
-    "No weakening of any safety gate, required check, or caller check"
+    "Never collapse rows that differ for one grain: identical bytes across two spellings are one row, differing bytes refuse loudly.",
+    "Never let rowsFetched under-report: it keeps the raw fetch count so nothing landed is hidden.",
+    "Never author a migration or change any database shape.",
+    "Never close issue #3179; the originating session owns closure."
   ],
   "required_checks": [
-    "ai-task-gates check --before pr-wait"
+    "node --test tools/coldlion-landing-prepack.test.mjs"
   ],
   "assumptions": [
-    "origin/main moved twice during authoring; all queue counts in the plan cite the command that produces them per the 4.3 owner ruling"
+    "The harvest holds both spellings of the drifted key as distinct codes, both answering the row spelling (runs 35288752430 and 35294603177 together prove the shape).",
+    "rowsFetched reports raw fetched rows while the returned sourceRows are deduplicated; the run notes and the landed counts stay honest about both."
   ],
   "stop_conditions": [
-    "Stop if any change would weaken a safety gate or touch the database"
+    "Stop and report a blocker if the deduplicated load ever disagrees with the API totals by more than the counted zero-row keys.",
+    "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

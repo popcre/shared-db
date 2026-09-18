@@ -1,0 +1,100 @@
+# Guard: queue hygiene — unlabelled issues, expired author leases, aging
+# non-orchestrator work (issue #3199 Phase A3).
+#
+# WHY THIS WORKFLOW EXISTS
+# ------------------------
+# The interactive `--queue-audit` is an orchestrator instrument, not a monitor.
+# It may comment `urgent_waiting_capacity` on issues, and it exits 2 whenever
+# dispatchable structural work exists — which is the NORMAL backed-up state this
+# whole program exists to relieve. Scheduling THAT would write from CI and fail
+# daily on a healthy-but-busy queue. The queue instead kept losing work to
+# administrative silence: on 2026-09-17 ten issues (including #2530, the
+# highest-leverage relief plan) were invisible to every label-filtered query
+# for want of a `db-work` label, and one merged PR's claim (#3089) sat expired
+# and unclosed. Nobody looks for those; this report looks every day.
+#
+# THE INVARIANT THIS FILE PROMISES
+# -------------------------------
+# THIS JOB WRITES NOTHING. No issue, no comment, no label, no commit, no ref.
+# Structurally, not behaviorally: the subcommand strips every mutation hook
+# before any read begins (`hygieneReportIo`), so a mutation is a thrown error
+# rather than a silent write — the same discipline as the abandonment audit.
+# Granting any `write` permission here would make that promise a matter of what
+# the steps happen to do; withholding it makes the promise structural.
+#
+# A BACKED-UP QUEUE DOES NOT FAIL THIS JOB. Only an unreadable report does
+# (exit != 0 means the instrument could not read the queue — never mistake a
+# red run here for "no findings", and never read a green one as "queue empty").
+# Exit-non-zero-on-dirty-queue is deliberately not implemented; the interactive
+# `--queue-audit` already refuses loudly. Revisit only if the daily report
+# proves too easy to ignore (plan §8 open question).
+#
+# NO `push:` OR `pull_request:` TRIGGER, ON PURPOSE. Hygiene is created by time
+# passing and by other sessions' omissions, not by anyone changing a file, so
+# no commit-shaped trigger can catch it and a `paths:` filter would be
+# dishonest (AGENTS.md 5.2).
+
+name: Queue Hygiene Report
+
+on:
+  schedule:
+    # Daily, off the top of the hour to stay out of the crowd.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+# READ ONLY, AND THAT IS LOAD-BEARING. See the invariant above.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: queue-hygiene-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Queue hygiene report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A guard whose own tests are not run is a guard nobody has proven fires.
+      # These specifically prove the report strips every mutation hook, that a
+      # backed-up queue exits 0, and that an unreadable queue exits 2 rather
+      # than degrading into "no findings".
+      - name: Prove the report is read-only and fails closed
+        run: node --test scripts/queue-hygiene-report.test.mjs
+
+      - name: Report queue hygiene
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/queue-hygiene-report.mjs > /tmp/queue-hygiene-report.json 2> /tmp/queue-hygiene-sections.txt
+          CODE=$?
+          set -e
+          {
+            echo "## Queue hygiene report"
+            echo
+            cat /tmp/queue-hygiene-sections.txt
+            echo
+            echo '<details><summary>Machine-readable report</summary>'
+            echo
+            echo '```json'
+            cat /tmp/queue-hygiene-report.json
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$CODE" in
+            0) echo "Report produced. Findings, if any, are in the JSON and the sections above; a backed-up queue is not a failure." ;;
+            *) echo "::error::The queue hygiene report COULD NOT RUN (exit ${CODE}). Nothing was proven about the queue — do not read this as a clean report." ;;
+          esac
+          exit "$CODE"

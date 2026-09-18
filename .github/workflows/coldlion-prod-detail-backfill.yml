@@ -1,0 +1,88 @@
+# Manual ColdLion production-detail backfill (issue #3180).
+#
+# Fetches /proddetails once per distinct production order harvested from the landed
+# production history, oldest first, skipping every key a SUCCEEDED sync_run already
+# proves fetched. It is resumable BY EVIDENCE: an interrupted, cancelled or timed-out
+# run is re-dispatched and continues where the evidence stops.
+#
+# Manual dispatch only. A backfill is a decision about how much vendor traffic to
+# spend, and it is not something a schedule or a merge should start.
+#
+# The per-run limit exists so the full population is a series of bounded runs rather
+# than one run racing a job timeout. Re-dispatch until "outstanding" is 0.
+
+name: ColdLion Prod Detail Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maximum production orders to fetch in this run'
+        required: false
+        default: '1000'
+      from:
+        description: 'Only orders first observed in landed history on/after this date (YYYY-MM-DD)'
+        required: false
+      dry_run:
+        description: 'Report outstanding work without fetching or writing'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Shares its group with the scheduled sync and the history backfill: all three write
+# the coldlion landing tables, and two of them racing is a race with no upside.
+concurrency:
+  group: coldlion-landing-sync
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill production detail
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-prod-details.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Backfill
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.limit }}
+          FROM: ${{ github.event.inputs.from }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=(--mode backfill --limit "${LIMIT:-1000}")
+          if [ -n "${FROM:-}" ]; then
+            printf '%s' "$FROM" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
+              || { echo "::error::from must be YYYY-MM-DD."; exit 1; }
+            ARGS+=(--from "$FROM")
+          fi
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+          node tools/coldlion-landing/sync-prod-details.mjs "${ARGS[@]}"

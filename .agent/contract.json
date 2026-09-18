@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3235,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Fold case on the prepack code in the ColdLion /prepackDetail request-identity guard, so vendor cross-feed case drift (PPk133 vs PPK133) no longer aborts the backfill while genuinely different codes still refuse.",
-  "base_sha": "57a2c400ef3af9530c9e99a6723b76ab2e5e2922",
+  "base_sha": "079fed75949a9785cc2b61923cf672cec9751031",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
   "branch": "claude/issue-3179-prepack-case-drift",
@@ -36,7 +36,8 @@
   ],
   "assumptions": [
     "The drift is vendor-side cross-feed inconsistency: the harvest spelling came from a ColdLion feed this repository landed verbatim (exact-trim, no case change), and /prepackDetail echoed the same real key with different casing (run 35288752430: asked PPk133, row answers PPK133).",
-    "Landing the row's spelling keeps one identity: the on-conflict grain keys on the staged row, so a replay through either harvest spelling upserts onto the same row."
+    "Landing the row's spelling keeps one identity: the on-conflict grain keys on the staged row, so a replay through either harvest spelling upserts onto the same row.",
+    "Generation 2 exists because main advanced to 079fed75 (two documentation-only pull requests, #3237 and #3238); the branch was refreshed by merge and the implementation diff is unchanged."
   ],
   "stop_conditions": [
     "Stop and report a blocker if folding case ever lets two DIFFERENT real codes match (a collision other than case drift still aborts, so this would indicate a guard defect).",

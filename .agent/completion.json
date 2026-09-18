@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3236,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3235/1",
-  "contract_sha256": "ff9c1be9758971917b2102045753ea4cd1bac75d7cd02a7ca5c059f44475f277",
-  "head_sha": "d54293d855648cf4375e644ac690db7afefed68a",
+  "contract_ref": "refs/db-contracts/3235/2",
+  "contract_sha256": "25b5b1b95095571d12febb947495748afcbc2ce2228c1f1e4a97fdf2947636a4",
+  "head_sha": "02a0ddd95b637894f8f388c20eb8a5c96b8dc701",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "tools/coldlion-landing-prepack.test.mjs",
     "tools/coldlion-landing/lib/prepack-detail.mjs"
   ],
@@ -21,7 +23,8 @@
     }
   ],
   "assumptions_resolved": [
-    "The drift was vendor-side cross-feed inconsistency, proved by the enriched refusal in run 35288752430 naming both spellings; the harvest stores vendor-emitted values verbatim (exact-trim, no case change), so PPk133 came from a ColdLion feed."
+    "The drift was vendor-side cross-feed inconsistency, proved by the enriched refusal in run 35288752430 naming both spellings; the harvest stores vendor-emitted values verbatim (exact-trim, no case change), so PPk133 came from a ColdLion feed.",
+    "Generation 2 follows the documentation-only main advance to 079fed75 (#3237, #3238); the branch was refreshed by merge (02a0ddd9) and the implementation diff is unchanged."
   ],
   "stop_conditions_hit": []
 }

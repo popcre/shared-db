@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 2530,
+  "generation": 1,
+  "work_issue": 3280,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Execute #2530 plan Step 7: rebuild the merge queue implementation on current main — queue contract script, merge-queue-gate workflow, merge_group coverage for every required context, exact-SHA preview rehearsal status publishing, dual-mode guarded merge lane, fail-closed activation script with queue-only rollback, and the operations document. Do not activate the ruleset from this branch.",

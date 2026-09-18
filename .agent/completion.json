@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "work_issue": 2530,
+  "work_issue": 3280,
   "outcome": "ready-for-merge",
   "pr": 3279,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2530/2",
-  "contract_sha256": "2cf90f26a110e33d0c4e41dc01c543da601170c69e4ab19a27257255f8d79cb9",
+  "contract_ref": "refs/db-contracts/3280/1",
+  "contract_sha256": "62b349f1e90baf6f61fbcaadda4e06cd4b4f4c457038c097ddf8679030de4aa7",
   "head_sha": "04237a967ab398dedb70ca05d0f2bca1e98ff08f",
   "files_changed": [
     ".github/workflows/agent-work-contract.yml",

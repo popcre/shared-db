@@ -192,7 +192,7 @@ the business-rules topic named above; this plan is the build order for it.
    current-week-only poll. Hence: trailing re-read + forward scan.
 3. **The ERP's `startDate` is its own value, not the sheet's Start Ship Date** (e.g. ERP
    2026-12-04 vs sheet 2026-11-21). Expected divergence; map ERP values, never sheet values.
-4. **`poNumber` zero-padding is inconsistent** (`"0001220303"` and `"80838550"` both live).
+4. **`poNumber` zero-padding is inconsistent** (a 10-digit zero-padded value and an 8-digit value both observed live 2026-09-17; synthetic shapes `"0001234567"` / `"87654321"`).
    Normalize by stripping leading zeros before any join.
 5. **Order Type and Ship To are one field**: the routing code in `warehouseCode`/`warehouseDesc`
    — `FOB`, `POECA`/POE CALIFORNIA, `POEGA`/POE GA Savannah, `POEVA`/POE GA Norfolk, bare `POE`,

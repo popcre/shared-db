@@ -118,7 +118,7 @@ the sheet's own vocabulary (Order Type: FOB 6,811 / POE 2,154 / MDDP 403 rows; S
 | `POEVA` | POE GA Norfolk | port of entry, Norfolk (code says VA, description says GA — as returned) |
 | `POE` | POE | bare port-of-entry code, destination unstated |
 | `DDPNJ` / `DDPMD` / `DDPPA` / `DDPOH` / `DDPNC` / `DDPCA` / `DDPGA` | DDP + state | delivered duty paid, trucked to the customer's state |
-| `MDDP` | MDDP | Miami? DDP variant (sheet pairs it with NINGBO) |
+| `MDDP` | MDDP | DDP variant; the expansion is Unknown (sheet pairs it with NINGBO) |
 | `DES001` | Deco Signs | drop-ship/destination code |
 | `ANT001` | ANTHONY'S WAREHOUSE | POP-side warehouse |
 | `WMFC` | Walmart Fulfillment Center | |
@@ -163,8 +163,10 @@ five "missing" sheet orders through the production side found every one of them 
 entered weeks earlier — and corrected an earlier note here that had blamed JamieLynn's entry
 timing. The misses had three real causes, each now a rule:
 
-1. **Customer-PO numbers are zero-padded inconsistently.** The ERP carries `"0001220303"`
-   (10-digit) and `"80838550"` (8-digit) in the same fields. Any join against a sheet-typed
+1. **Customer-PO numbers are zero-padded inconsistently.** The ERP carries a 10-digit
+   zero-padded value (synthetic shape: `"0001234567"`) and an ordinary 8-digit value
+   (synthetic shape: `"87654321"`) in the same fields — observed on the live feed
+   2026-09-17. Any join against a sheet-typed
    customer PO must normalize by stripping leading zeros first.
 2. **The ERP's `startDate` is its own value, not the sheet's Start Ship Date.** Same orders:
    ERP 2026-12-04 vs sheet 2026-11-21; ERP 2026-10-02 and 2026-10-30 vs sheet 2026-10-10. The

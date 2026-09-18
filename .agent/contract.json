@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 13,
+  "generation": 14,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -25,7 +25,8 @@
     "scripts/production_business_risk_gate.py",
     "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
   ],
   "file_writes": [
     ".github/workflows/guarded-migration-merge.yml",

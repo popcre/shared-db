@@ -1,0 +1,156 @@
+# Reviewer start watcher, run unattended (issue #3242, programme popcre/ai-devops#401 Step 7).
+#
+# WHY THIS WORKFLOW EXISTS
+# ------------------------
+# A governed reviewer that is drawn but never starts holds its review slot until the
+# ordinary two-hour silence path notices. scripts/orchestrator-flow/reviewer-start-watch.mjs
+# finds such a lease once it is past the 10-minute start SLO with no start marker of its
+# own, returns the slot through the governed unstarted silence path and draws the next
+# eligible provider. Until this workflow it only ran when a person typed it, so the SLO
+# was enforced only while somebody happened to be watching.
+#
+# WHAT IT MAY CHANGE
+# ------------------
+# Only what the watcher itself writes: create-only refs under refs/db-start-reroutes/,
+# and the lane manager's probe, reclaim and replacement records for the one overdue
+# lease. A started review (its own refs/db-review-started marker), a stale lease, a lease
+# with a verdict, a lease with unreadable evidence, and every lease drawn before
+# DRAWN_SINCE are left alone. A slot that has already been rerouted automatically
+# AUTO_REROUTES_PER_SLOT times is left to the ordinary silence path, so a slot whose
+# replacements never start either cannot churn forever. It files no issue and no comment.
+#
+# CADENCE. GitHub's schedule is not a clock here: this public repository's crons fire
+# every three to four hours whatever they ask for (a */10 cron ran at 00:03, 04:36 and
+# 09:11 on 2026-09-18). So one applying run is a relay leg: it passes every
+# PASS_INTERVAL_SECONDS for LEG_MINUTES, then dispatches the next leg on its own and
+# ends. A non-start is caught at the first pass after its 10-minute SLO. The cron is only
+# the restart net: a scheduled run first looks for a live leg (running or queued) and ends
+# at once when one exists, so cron firings never stack extra legs behind the relay. Only a
+# leg on the default branch relays. No push or pull_request trigger: a lease goes
+# overdue because time passes, not because a file changed.
+#
+# EXIT CODE. Non-zero when any reroute or resumed dispatch in a pass failed, and when the
+# next leg could not be dispatched. A failed leg dispatches no successor, so a failing
+# watcher is a red run that waits for the cron rather than a stream of red runs.
+#
+# Owner: the popcre/ai-devops#401 session chain. Retire when a reviewer runner service
+# enforces the start SLO itself.
+
+name: Reviewer Start Watch
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Reroute overdue non-starts as a relay leg (false = one report-only pass)'
+        type: boolean
+        default: true
+
+# contents: write creates the reroute and lane refs; issues: write lets the lane
+# manager's governed replacement update the work issue as it does for a person;
+# actions: write dispatches the next relay leg.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+  actions: write
+  checks: read
+  statuses: read
+
+env:
+  # The transition guard: leases drawn before the watcher ran unattended stay on the
+  # ordinary silence path. Every governed runner has written start markers since
+  # 2026-09-16T19:35:13Z (#3082), so any later instant is safe.
+  DRAWN_SINCE: '2026-09-18T02:00:00Z'
+  # One relay leg: a pass every PASS_INTERVAL_SECONDS for LEG_MINUTES, inside the job's
+  # 355-minute timeout with room for the last pass and the hand-off.
+  PASS_INTERVAL_SECONDS: '60'
+  LEG_MINUTES: '330'
+
+jobs:
+  # Restart net: a scheduled run starts a leg only when no other run of this workflow is
+  # running or queued. A failed look is a red run and starts nothing.
+  relay-check:
+    name: Relay liveness check
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.look.outputs.needed }}
+    steps:
+      - id: look
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live=0
+          for status in in_progress queued pending waiting requested; do
+            n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow reviewer-start-watch.yml --status "$status" --limit 20 --json databaseId               --jq "[.[] | select(.databaseId != ${GITHUB_RUN_ID})] | length")
+            live=$(( live + n ))
+          done
+          if [ "$live" -gt 0 ]; then needed=false; else needed=true; fi
+          echo "needed=${needed}" >> "$GITHUB_OUTPUT"
+          echo "Live relay legs besides this run: ${live}; start a leg: ${needed}." >> "$GITHUB_STEP_SUMMARY"
+
+  watch:
+    name: Reviewer start watch
+    needs: relay-check
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.relay-check.outputs.needed == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    # One leg at a time, and never cancel a leg mid-reroute: the next one waits (pending).
+    concurrency:
+      group: reviewer-start-watch
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the watcher's decisions before trusting them
+        run: node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs
+
+      - name: Reroute reviewers that never started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Reviewer start watch (apply=$APPLY)"
+            echo
+            echo 'Passes whose leases were all waiting, skipped or already started are listed by time only.'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          args=(--drawn-since "$DRAWN_SINCE")
+          if [ "$APPLY" = "true" ]; then args+=(--apply); fi
+          deadline=$(( $(date +%s) + LEG_MINUTES * 60 ))
+          while :; do
+            node scripts/orchestrator-flow/reviewer-start-watch.mjs "${args[@]}" > /tmp/pass.json
+            CODE=$?
+            acted=$(node -e 'const j=require("/tmp/pass.json");console.log(j.leases.filter((l)=>!/^(wait|skip|keep-active)/.test(String(l.action))).length)' 2>/dev/null || echo unreadable)
+            echo "pass $(date -u +%FT%TZ) exit=${CODE} acted=${acted}"
+            if [ "$CODE" -ne 0 ] || [ "$acted" != "0" ]; then
+              cat /tmp/pass.json
+              { echo '```json'; cat /tmp/pass.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $(date -u +%FT%TZ) no action" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            if [ "$CODE" -ne 0 ]; then echo "::error::A reroute or resumed dispatch failed (exit ${CODE}); its error is in the JSON above."; exit "$CODE"; fi
+            if [ "$APPLY" != "true" ] || [ "$(date +%s)" -ge "$deadline" ]; then break; fi
+            sleep "$PASS_INTERVAL_SECONDS"
+          done
+
+      - name: Dispatch the next relay leg
+        # A schedule payload carries no repository object, so the default branch is named here.
+        if: ${{ (github.event_name == 'schedule' || inputs.apply) && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run reviewer-start-watch.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f apply=true
+          echo "Next leg dispatched on ${GITHUB_REF_NAME}." >> "$GITHUB_STEP_SUMMARY"

@@ -20,6 +20,20 @@ test('sync.yml accepts workflow_dispatch alongside its push trigger', () => {
     'sync.yml must keep the push trigger and add workflow_dispatch')
 })
 
+test('sync.yml refuses to run for any ref other than main, so a manual dispatch cannot target a branch', () => {
+  const jobsIdx = syncYml.indexOf('jobs:')
+  const jobBlock = syncYml.slice(jobsIdx, syncYml.indexOf('steps:'))
+  assert.match(jobBlock, /if:\s*github\.ref == 'refs\/heads\/main'/,
+    'the sync job must gate on github.ref == refs/heads/main so workflow_dispatch cannot sync a non-main ref')
+})
+
+test('sync.yml pins its source checkout to main', () => {
+  const checkoutIdx = syncYml.indexOf('Checkout canonical source')
+  const nextStepIdx = syncYml.indexOf('- name:', checkoutIdx + 1)
+  const checkoutBlock = syncYml.slice(checkoutIdx, nextStepIdx)
+  assert.match(checkoutBlock, /ref: main/, 'the canonical source checkout must pin ref: main')
+})
+
 test('guarded merge dispatches sync.yml only after its own merge step succeeds', () => {
   const dispatchIdx = guardedMerge.indexOf('gh workflow run sync.yml')
   assert.ok(dispatchIdx > -1, 'guarded merge workflow must dispatch sync.yml after merging')

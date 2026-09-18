@@ -35,6 +35,12 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # A manual workflow_dispatch takes whatever ref the caller names; without
+    # this gate a write collaborator (or any actions:write token) could
+    # dispatch this job on an unmerged branch and push it straight to every
+    # consumer, bypassing main's protection entirely. The guarded-merge
+    # dispatch always passes --ref main, so it is unaffected (#3264 review).
+    if: github.ref == 'refs/heads/main'
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     strategy:
@@ -56,6 +62,7 @@ jobs:
       - name: Checkout canonical source
         uses: actions/checkout@v4
         with:
+          ref: main
           path: source
           fetch-depth: 1
 

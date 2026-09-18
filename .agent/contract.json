@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 7,
   "work_issue": 3264,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -39,7 +39,8 @@
     "node scripts/check-github-transport-conformance.mjs"
   ],
   "assumptions": [
-    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push; no concurrency change is needed."
+    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push; no concurrency change is needed.",
+    "origin/main moved during exact-head review with unrelated, non-documentation changes; a merge-from-main (7cc559b2355ca87ed354807a0300b9b86b2623f1) was required. The reviewed non-.agent diff stayed byte-identical across the merge, so the durable APPROVE verdict recorded at ea4d3ae15b7d8bdd596a1df28baeadb7e6c4fc28 carries forward."
   ],
   "stop_conditions": [
     "Stop and report if the consumer sync still does not start after a guarded merge lands through this fix.",

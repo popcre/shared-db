@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3228,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/14",
-  "contract_sha256": "40af9f156b3ba99a7fab41c7824b68bb715e8110b5efe616258d493e832c76e4",
-  "head_sha": "946894e9f3a1aea0db2e7ef38faafeba4dc0dc9b",
+  "contract_ref": "refs/db-contracts/3199/15",
+  "contract_sha256": "e4a7f50719fc98bc5f3589441c4303497cdbd967598a5f58550f20fd8fa4da4d",
+  "head_sha": "bee7c7a7a84634a64e01214a51aa4d66e11f7dcb",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -22,6 +22,7 @@
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
     "scripts/production_business_risk_gate.py",
     "scripts/test_self_service_boundary_lexing.py"
   ],
@@ -74,7 +75,8 @@
     "The tokenizer gained output-only parameters; the default view is pinned byte-identical so every existing ALLOWLIST consumer is unaffected.",
     "Phase A merged first as PR #3216 (13efcd77); this branch is cut from that merged main, not stacked on the A3 branch.",
     "Generation 12 follows the main advance through #3246, #3215 and #3217; the branch was refreshed by merge (3ef56c4d) — the lanes manager and test file auto-merged with those changes — and the completion was re-verified at the merged head by a successor ZCode session clearing the protected-source chain for #3232.",
-    "Review round 2 (governed Grok REVISE at 5acb1b4e) was answered in-repo at 946894e9: the Critical routing fork (derivePrOperationRoute, pinned by test), both High boundary bypasses (single-quoted bodies refuse by name; the grant role-list grammar terminates before WITH GRANT OPTION), the empty-file refusal, the {crm,pim,dam} admission confinement, the swapped truth-audit dispositions, and the python alias fallback. One recorded residual: the merge-time route is read from the live issue body rather than a pinned claim field (defense in depth; exact-head review still required)."
+    "Review round 2 (governed Grok REVISE at 5acb1b4e) was answered in-repo at 946894e9: the Critical routing fork (derivePrOperationRoute, pinned by test), both High boundary bypasses (single-quoted bodies refuse by name; the grant role-list grammar terminates before WITH GRANT OPTION), the empty-file refusal, the {crm,pim,dam} admission confinement, the swapped truth-audit dispositions, and the python alias fallback. One recorded residual: the merge-time route is read from the live issue body rather than a pinned claim field (defense in depth; exact-head review still required).",
+    "Review round 3 (governed Qwen REVISE at dbec1c67) answered at bee7c7a7: completeOutcome accepts both structural routes (H1) with an outcome route test; comment_on requires a boundary-qualified target (M1) with fixtures; the add-column lock rationale is documented (M2); the queue audit runs dependency and admission checks for the self-service bucket (M3); the router entry, stale wordings, dead code and evidence inaccuracies (round-2 L3/L4/L5) are corrected. The lane fixture file now carries 25 tests."
   ],
   "stop_conditions_hit": []
 }

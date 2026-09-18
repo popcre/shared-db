@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 14,
+  "generation": 15,
   "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -26,7 +26,8 @@
     "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs"
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
   "file_writes": [
     ".github/workflows/guarded-migration-merge.yml",
@@ -43,7 +44,8 @@
     "scripts/production_business_risk_gate.py",
     "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],

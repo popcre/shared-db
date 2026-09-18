@@ -1,38 +1,54 @@
 {
-  "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3266,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Mark #2530 plan Step 6 done in the STATUS table, citing the proven consumer sync.",
-  "base_sha": "ce92a63cb2dcd5391b7025717ef5551c82f18ec4",
-  "dispatcher": "Albert own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
-  "worker": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
-  "branch": "claude/3266-plan-step6-done",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/plan6-3266-31009",
-  "allowed_paths": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
-  ],
-  "file_writes": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "Never touch a database, preview or production target.",
-    "Change only the Step 6 STATUS row."
-  ],
-  "required_checks": [
-    "node scripts/check-repository-identity-conformance.mjs"
-  ],
-  "assumptions": [
-    "Sync run 35351543065 on f9809546 finished success for all nine consumers."
-  ],
-  "stop_conditions": [
-    "Stop and report on any gate refusal; never weaken a guard to proceed."
-  ]
+    "schema_version": 1,
+    "generation": 1,
+    "work_issue": 3262,
+    "work_type": "repo-maintenance",
+    "route": "repo-maintenance",
+    "goal": "Land the ColdLion automatic order intake plan (plan_coldlion_order_intake.md), its settled business-rules authority section, and its AGENTS.md/HANDOFF.d registration as a prose-only change set, so an implementing session can start Phase A0 from main",
+    "base_sha": "de17b011f5eeacc441892365bccc7b78a009f157",
+    "dispatcher": "zcode session for issue #3262 (same session wrote the plan and ran the Qwen/Grok/Muse audits)",
+    "worker": "zcode",
+    "branch": "claude/order-intake-plan-docs",
+    "worktree": "C:/repos/shared-db-wt-3248",
+    "allowed_paths": [
+        "AGENTS.md",
+        "docs/business-rules/application-map.md",
+        "docs/business-rules/erp-orders-and-source-meaning.md",
+        "docs/business-rules/master-data-access.md",
+        "plan_coldlion_order_intake.md",
+        "HANDOFF.d/2026-09-17T1440Z-edge-dev-zcode-order-intake-plan.md",
+        ".agent/contract.json",
+        ".agent/completion.json"
+    ],
+    "file_writes": [
+        "AGENTS.md",
+        "docs/business-rules/application-map.md",
+        "docs/business-rules/erp-orders-and-source-meaning.md",
+        "docs/business-rules/master-data-access.md",
+        "plan_coldlion_order_intake.md",
+        "HANDOFF.d/2026-09-17T1440Z-edge-dev-zcode-order-intake-plan.md",
+        ".agent/contract.json",
+        ".agent/completion.json"
+    ],
+    "db_reads": [],
+    "db_writes": [],
+    "prohibited_actions": [
+        "no database access of any kind",
+        "no workflow, script, or test changes",
+        "no migration files",
+        "no edits outside allowed_paths"
+    ],
+    "required_checks": [
+        "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/contract.json",
+        "node scripts/check-handoff-contract.mjs",
+        "node scripts/agent-work-contract.mjs --validate-completion --report-file .agent/completion.json --contract-file .agent/contract.json"
+    ],
+    "assumptions": [
+        "The repo's classifiers treat AGENTS.md and plan_*.md as rulebook files, so this prose change set rides the agent work contract pair rather than the documents-only exemption; PR #3248's checks demonstrated this on 2026-09-18.",
+        "The .agent pair currently on main is issue #3199's merged evidence; the enforced-mode check requires each pull request to carry its own pair, so replacing both files here is the designed behavior, not a collision."
+    ],
+    "stop_conditions": [
+        "stop and report rather than weaken a check if the handoff contract or agent work contract refuses any part of the change set",
+        "stop if main moved and the rebase is no longer clean rather than force-pushing over reviewed work"
+    ]
 }

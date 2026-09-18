@@ -8,8 +8,6 @@
   "contract_sha256": "9ce6e522634ff317736426d44cc269a0020d03be0a54f52c2072064314ca22dd",
   "head_sha": "2ffb377b496c0d79ae3f2bc5d6783bd01360687e",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "db_reads": [],

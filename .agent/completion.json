@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3267,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3266/1",
-  "contract_sha256": "9ce6e522634ff317736426d44cc269a0020d03be0a54f52c2072064314ca22dd",
-  "head_sha": "2ffb377b496c0d79ae3f2bc5d6783bd01360687e",
+  "contract_ref": "refs/db-contracts/3266/2",
+  "contract_sha256": "be0b8462f8ad8c90a6e75e03545f1487da8810cd841d0500b9cfcbe8fa37614f",
+  "head_sha": "b90b2e9b00d36bb3fd9a892cb325e2a55c2da7bc",
   "files_changed": [
     "plan_shared_db_popcre_transfer_merge_queue.md"
   ],

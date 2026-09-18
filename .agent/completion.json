@@ -1,28 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 3266,
+  "work_issue": 3264,
   "outcome": "ready-for-merge",
-  "pr": 3267,
+  "pr": 3268,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3266/2",
-  "contract_sha256": "be0b8462f8ad8c90a6e75e03545f1487da8810cd841d0500b9cfcbe8fa37614f",
-  "head_sha": "b90b2e9b00d36bb3fd9a892cb325e2a55c2da7bc",
+  "contract_ref": "refs/db-contracts/3264/7",
+  "contract_sha256": "783e824590d7e6e1a4bc347ed105f73bb3a2890f3f3ada905d313f7d0c94acc9",
+  "head_sha": "7cc559b2355ca87ed354807a0300b9b86b2623f1",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/sync.yml",
+    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "command": "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (45 entries), on head 2ffb377b."
+      "evidence": "tests 6, pass 6, fail 0"
+    },
+    {
+      "command": "node --test scripts/check-lane-route-sync.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 4, pass 4, fail 0"
+    },
+    {
+      "command": "node --test scripts/lib/documents-only-change.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 22, pass 22, fail 0"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "GitHub transport conformance: 295 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
     }
   ],
   "assumptions_resolved": [
-    "Sync run 35351543065 on f9809546: all nine consumer jobs success (#2530 comment 5730865894)."
+    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push."
   ],
   "stop_conditions_hit": []
 }

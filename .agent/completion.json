@@ -8,6 +8,8 @@
   "contract_sha256": "c9353194e618b95f94ebb9693e8ecd27205899cd32e43475db4e5de9434bc7d3",
   "head_sha": "e16bbbe82962d4a881e34f0df38f3ee37f389093",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
     "plan_orchestrator_required_load_reduction.md"
   ],

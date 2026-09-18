@@ -1,27 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 3249,
+  "work_issue": 3251,
   "outcome": "ready-for-merge",
-  "pr": 3250,
+  "pr": 3252,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3249/1",
-  "contract_sha256": "f50a2b4565ad03fe6ec40239e7b37c0ec48c1b6e488e8afd52d8fc9490f27f11",
-  "head_sha": "0b37ae08ebed93c7829de0b227ff6b08860502d8",
+  "contract_ref": "refs/db-contracts/3251/1",
+  "contract_sha256": "12f928998cc06a80f08c9a1a847825e6f242aebdb9f6992fdc64b7d18e2043de",
+  "head_sha": "07217fbc74505995492b61bb5788f15c78a78fbc",
   "files_changed": [
-    ".github/workflows/coldlion-landing-sync.yml"
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/lib/prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prod-details.test.mjs tools/coldlion-landing-prepack.test.mjs",
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "75 tests, 75 pass, 0 fail on head 0b37ae08: both feed suites whose workflow assertions cover the edited file still hold, including the timeout-presence guard."
+      "evidence": "39 tests, 39 pass, 0 fail on head 07217fb, including the new regression pinning distinct-on(prod_order_no) at the latest succeeded run."
+    },
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "exit_code": 0,
+      "evidence": "176 tests, 176 pass, 0 fail on the same head - the four-suite offline gate command."
     }
   ],
   "assumptions_resolved": [
-    "The cancelled dispatch run (35303647480) proved the phases live: prod-detail had completed 1,263 keys in ~39 min (~1.9s/key) when the 90-minute job ceiling hit; history+masters+prepack consumed ~49 min before it.",
-    "150 minutes covers the ~116-minute worst case with margin; the concurrency group (cancel-in-progress false) still serializes the lane."
+    "Live evidence from run 35312282365 (2026-09-18): the landed table stayed consistent (tableRows=17303=distinctPkey; 3,263 recent keys re-read idempotently; refusedKeys=8) while the run-counting read double-counted; the guard refused rather than reporting a false agreement, which is the safe direction."
   ],
   "stop_conditions_hit": []
 }

@@ -1,40 +1,43 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3249,
+  "work_issue": 3251,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Raise the nightly ColdLion Landing Sync job ceiling from 90 to 150 minutes so the prepack and production-detail refreshes fit: live measurement on 2026-09-18 put worst case at ~116 minutes and the run was cancelled mid-prod-detail-refresh.",
-  "base_sha": "57a2c400ef3af9530c9e99a6723b76ab2e5e2922",
-  "dispatcher": "owner task instruction continuation for shared-db #3180 (source-data session; #3249 is the repo-maintenance lane for this diff)",
+  "goal": "Make the /proddetails reconciliation count keys, not sync_run rows: the refresh regime re-reads answered orders, and the first live refresh (2026-09-18, run 35312282365) failed its own agreement check on 7,016 runs over 3,753 keys while the landed table was perfect.",
+  "base_sha": "1886fb38ac01fdaf3c1d8515b50afd6440726df1",
+  "dispatcher": "owner task instruction continuation for shared-db #3180 (source-data session; #3251 is the repo-maintenance lane for this diff)",
   "worker": "ZCode GLM 5.3 session executing shared-db issue #3180",
-  "branch": "claude/issue-3180-sync-job-budget",
+  "branch": "claude/issue-3180-reconcile-per-key",
   "worktree": "C:/repos/shared-db/.claude/worktrees/prod-detail-3180",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml"
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/lib/prod-details.mjs"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml"
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/lib/prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never weaken or remove the stall-killing timeout (#1266); only raise it to a measured ceiling.",
-    "Never change the workflow's triggers, secrets handling, target declarations, offline-gate-before-write ordering, or concurrency serialization."
+    "Never weaken the agreement predicate: it must still detect a missing table row, a pkey collapse, and a zero-row key counted as landed.",
+    "Never touch the landed table, the workflow triggers, or any guard."
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-prod-details.test.mjs tools/coldlion-landing-prepack.test.mjs"
+    "node --test tools/coldlion-landing-prod-details.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
   ],
   "assumptions": [
-    "Live measurement 2026-09-18, dispatch run 35303647480, cancelled at the 90-minute job timeout while the prod-detail refresh was mid-flight: setup+offline gate ~4 min, history ~2, masters ~4, prepack ~43, prod-detail ~1.9s/key (1,263 keys in ~39 min before cancellation) with up to 2,000 recent orders selected.",
-    "150 minutes = ~116 worst case + margin, and the concurrency group (cancel-in-progress false) still serializes the lane."
+    "Live evidence 2026-09-18 run 35312282365: keysDone=7016, rowsFetchedTotal=28765, keysLanded=3753, rowsLandedTotal=17303, tableRows=17303, distinctPkey=17303, refusedKeys=8 - the table was consistent; only the run-counting read was wrong.",
+    "distinct-on(prod_order_no) ordered by finished_at desc makes each key counted once at its latest succeeded run, whose fetched rows equal the rows that run's upsert landed."
   ],
   "stop_conditions": [
-    "Stop and report if the raised budget is still exceeded by a real run.",
+    "Stop and report if the per-key reconciliation still disagrees on a real run.",
     "Stop and report on any gate refusal; never weaken a guard to proceed."
   ]
 }

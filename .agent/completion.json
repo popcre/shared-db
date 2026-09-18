@@ -1,45 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3264,
+  "work_issue": 3191,
   "outcome": "ready-for-merge",
-  "pr": 3268,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3264/7",
-  "contract_sha256": "783e824590d7e6e1a4bc347ed105f73bb3a2890f3f3ada905d313f7d0c94acc9",
-  "head_sha": "7cc559b2355ca87ed354807a0300b9b86b2623f1",
+  "pr": 3277,
+  "migration_versions": [
+    "20260918180012"
+  ],
+  "contract_ref": "refs/db-contracts/3191/1",
+  "contract_sha256": "ff0ce773c22b934ca885795131c6caf3449c3c5667f1c53d4194efb6ad802dcd",
+  "head_sha": "379e7913c79c22df1d6f153a5dcfde51c2ff659b",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
+      "command": "supabase/tests against an ephemeral database",
       "exit_code": 0,
-      "evidence": "tests 6, pass 6, fail 0"
+      "evidence": "PR #3277 check passed at 379e7913"
     },
     {
-      "command": "node --test scripts/check-lane-route-sync.test.mjs",
+      "command": "SQL migration guards",
       "exit_code": 0,
-      "evidence": "tests 4, pass 4, fail 0"
-    },
-    {
-      "command": "node --test scripts/lib/documents-only-change.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 22, pass 22, fail 0"
-    },
-    {
-      "command": "node scripts/check-github-transport-conformance.mjs",
-      "exit_code": 0,
-      "evidence": "GitHub transport conformance: 295 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
+      "evidence": "PR #3277 check passed at 379e7913"
     }
   ],
   "assumptions_resolved": [
-    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push."
+    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role."
   ],
   "stop_conditions_hit": []
 }

@@ -1,49 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 7,
-  "work_issue": 3264,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Fix #3264: guarded-lane merges push as github-actions, and GitHub starts no push workflow for that token, so sync.yml never fired after a guarded merge. Add workflow_dispatch to sync.yml and have the guarded merge workflow dispatch it on main right after a proven merge.",
-  "base_sha": "2863805e10737d9aabd6ea7d3a6469ec16f5826f",
-  "dispatcher": "Albert's own chat instruction: \"spin up a sub-agent to do #3264\"",
-  "worker": "Claude sub-agent, dispatched from chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
-  "branch": "claude/3264-sync-dispatch",
-  "worktree": "C:/repos/fix-3264-38439936",
+  "generation": 1,
+  "work_issue": 3191,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Fix #3191: grant EXECUTE on plm.prepack_role(text,text,text) to supabase_read_only_user so the #2611 live proof can count plm.item_missing_attribution on production. No role membership.",
+  "base_sha": "5b9b301f3e6376b37689ed5ff08e3e50100c7dbb",
+  "dispatcher": "shared-db orchestrator (marker #3275), relaying Albert chat instruction: \"clear #3218, #3104, #3091, #3023, #3036, #3174, #3264, #3191, #3091, #2870\"",
+  "worker": "Claude sub-agent, chat e81e0ac2-472a-4227-92b3-16fce6a866ee on edge-dev",
+  "branch": "claude/3191-prepack-proof-grant",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-3191-prepack-grant",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role"
+  ],
   "prohibited_actions": [
-    "Never touch a database, preview or production target.",
-    "Never widen guarded-merge permissions beyond actions: write, scoped to this job, for the dispatch.",
-    "Never make the sync dispatch fire before the merge step is proven successful.",
-    "Never route this to the structure/schema orchestrator; it changes no database shape."
+    "Never grant role membership (e.g. authenticated) to supabase_read_only_user.",
+    "Never run a manual production command; production only through the automatic promotion lane.",
+    "Never grant anything beyond EXECUTE on this one function."
   ],
   "required_checks": [
-    "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
-    "node --test scripts/check-lane-route-sync.test.mjs",
-    "node --test scripts/lib/documents-only-change.test.mjs",
-    "node scripts/check-github-transport-conformance.mjs"
+    "supabase/tests against an ephemeral database",
+    "SQL migration guards"
   ],
   "assumptions": [
-    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push; no concurrency change is needed.",
-    "origin/main moved during exact-head review with unrelated, non-documentation changes; a merge-from-main (7cc559b2355ca87ed354807a0300b9b86b2623f1) was required. The reviewed non-.agent diff stayed byte-identical across the merge, so the durable APPROVE verdict recorded at ea4d3ae15b7d8bdd596a1df28baeadb7e6c4fc28 carries forward."
+    "Author lane claim #3276 reserved version 20260918180012. This contract was published after the implementation commit 379e7913 (author missed the publish-first step); scope is unchanged from the #3191 db-work-scope and the claim."
   ],
   "stop_conditions": [
-    "Stop and report if the consumer sync still does not start after a guarded merge lands through this fix.",
-    "Stop and report on any gate refusal; never weaken a guard to proceed."
+    "Stop on any gate refusal; never weaken a guard.",
+    "Stop if the production proof still reports a permission error."
   ]
 }

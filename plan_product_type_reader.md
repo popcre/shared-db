@@ -14,7 +14,7 @@ Handoff for this plan: [`HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type
 | 4 | Fix rules until the gold set is 100% | ⬜ open | — |
 | 5 | Owner acceptance of the gold set results | ⬜ open | — |
 | 6 | Discover the `plm.item` writer | ⬜ open | — |
-| 7 | Columns land via #3036 (orchestrator) | ⬜ open, runs in parallel with Phase A | — |
+| 7 | Columns land via #3036 (orchestrator) | ✅ done 2026-09-17 | #3036 closed COMPLETED; PR #3108 merged 2026-09-16 (migration `20260916231639`); run the live column-count gate below when step 8 starts |
 | 8 | Populate + keep populated | ⬜ open (depends on #3036 merged + applied on production, and step 5 acceptance) | — |
 | 9 | Live acceptance and doc updates | ⬜ open | — |
 
@@ -207,8 +207,10 @@ Open (implementer decides, with criteria):
    of 2026-09-16; `plm.import_item_master_data` is the only SQL function inserting into `plm.item` — check
    it and the ColdLion sync repo/job). Gate: named file/function + evidence line in #3024.
 
-7. **Columns land via #3036 (orchestrator; runs in parallel with Phase A).** The implementer does NOT
-   author the migration. Check #3036's status (`gh issue view 3036`). If reader work shows a column is
+7. **Columns landed via #3036 (orchestrator) — DONE 2026-09-17.** #3036 closed COMPLETED; PR #3108
+   merged 2026-09-16 (migration `20260916231639`). Re-run the live column-count gate below when
+   step 8 starts. The implementer does NOT
+   author the migration. If reader work shows a column is
    wrong or missing, comment on #3036 immediately (or open a follow-up structural issue) — do not wait
    for Phase A to finish. Gate: #3036 merged and applied on production with drift check clean;
    `select count(*) from information_schema.columns where table_schema='plm' and table_name='item' and column_name in ('product_type','product_construction','product_material','product_treatment','product_type_status','product_type_rules_version','product_type_read_at')`

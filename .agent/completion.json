@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2406/1",
   "contract_sha256": "630caa177596e8cd3697e590fcc5dc5120fec625b97b49fa00a41039ac624fad",
-  "head_sha": "d113238a472076d90667c3c4a2b727415bd0b7b0",
+  "head_sha": "7a49587675d4cc4d7038b2eb6d835a1bbe55ea57",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -17,12 +17,13 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "605 passed, 0 failed, 0 skipped; includes the #2406 negative regression and exact-version positive control."
+      "evidence": "605 passed, 0 failed, 0 skipped at 7a495876 (review round 2): the #2406 regression now opens with the distinguishing lock (reserved version on main via a later re-issue, claim pull merged but not adding it, expect false), mutation-checked by reverting the classifier to the pre-#2406 body, which fails exactly that test; restoring the clause returns 605/605."
     }
   ],
   "assumptions_resolved": [
     "Issue #2406 was open, unassigned, labelled non-orchestrator, and had no linked implementation pull request at dispatch.",
-    "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence."
+    "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence.",
+    "Review round 2 (governed Grok REVISE at e448635, replacement 3179) was answered in-repo: the High finding's missing lock case and the Low finding's skip-detail wording are fixed at 7a495876."
   ],
   "stop_conditions_hit": []
 }

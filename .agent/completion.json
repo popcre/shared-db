@@ -18,14 +18,14 @@
   ],
   "checks": [
     {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "command": "supabase/tests against an ephemeral database",
       "exit_code": 0,
-      "evidence": "local run at e0819067: status OK, 20260918180012 has no dynamic-execution markers"
+      "evidence": "PR #3277 check passed at 239335c8 (contains implementation e0819067)"
     },
     {
-      "command": "PR #3277 required checks (ephemeral supabase/tests, SQL migration guards)",
+      "command": "SQL migration guards",
       "exit_code": 0,
-      "evidence": "re-verified green on the PR head before guarded merge dispatch"
+      "evidence": "PR #3277 check passed at 239335c8 (contains implementation e0819067)"
     }
   ],
   "assumptions_resolved": [

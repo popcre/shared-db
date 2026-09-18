@@ -6,8 +6,10 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3262/1",
   "contract_sha256": "183047121f8042a00b604055eec00a945779d746979d1ee0313929ec8653df36",
-  "head_sha": "370981a7ff2dd29fb49e1cd4142cf1e15fe47395",
+  "head_sha": "1abb3ee052b4e3e0de30244c1e65e2c5bf4d58be",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "AGENTS.md",
     "docs/business-rules/application-map.md",
     "docs/business-rules/erp-orders-and-source-meaning.md",

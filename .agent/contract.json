@@ -1,65 +1,38 @@
 {
   "schema_version": 1,
-  "generation": 5,
-  "work_issue": 3253,
+  "generation": 1,
+  "work_issue": 3266,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Plan Step 6 of #2530: after the 2026-09-18 transfer, make popcre/shared-db the canonical name in active instructions and workflow comments, drop the now-empty conformance allowlist entries, and commit the Phase B transfer evidence and plan STATUS.",
-  "base_sha": "de17b011f5eeacc441892365bccc7b78a009f157",
-  "dispatcher": "Albert's own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
+  "goal": "Mark #2530 plan Step 6 done in the STATUS table, citing the proven consumer sync.",
+  "base_sha": "2863805e10737d9aabd6ea7d3a6469ec16f5826f",
+  "dispatcher": "Albert own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
   "worker": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
-  "branch": "claude/2530-popcre-canonical-identity",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/shared-db-orchestrator-handoff-8e0984",
+  "branch": "claude/3266-plan-step6-done",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/plan6-3266-31009",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/pii-forward-guard.yml",
-    ".github/workflows/shared-db-live-proof.yml",
-    ".github/workflows/sync.yml",
-    "AGENTS.md",
-    "COORDINATOR_INTAKE.md",
-    "HANDOFF.md",
-    "README.md",
-    "docs/ai-session-instructions/shared-supabase-branch-workflow.md",
-    "docs/verification/shared-db-popcre-transfer-postcheck-20260918T090657Z.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260917T194909Z.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260918T090454Z.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md",
-    "scripts/check-repository-identity-conformance.mjs"
+    "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/pii-forward-guard.yml",
-    ".github/workflows/shared-db-live-proof.yml",
-    ".github/workflows/sync.yml",
-    "AGENTS.md",
-    "COORDINATOR_INTAKE.md",
-    "HANDOFF.md",
-    "README.md",
-    "docs/ai-session-instructions/shared-supabase-branch-workflow.md",
-    "docs/verification/shared-db-popcre-transfer-postcheck-20260918T090657Z.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260917T194909Z.json",
-    "docs/verification/shared-db-popcre-transfer-preflight-20260918T090454Z.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md",
-    "scripts/check-repository-identity-conformance.mjs"
+    "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "Never touch a database, preview or production target.",
-    "Never change workflow logic, triggers, secrets or sync targets; comment and identity text only.",
-    "Never rewrite historical evidence links; GitHub redirects the old name."
+    "Change only the Step 6 STATUS row."
   ],
   "required_checks": [
-    "node scripts/check-repository-identity-conformance.mjs",
-    "node --test scripts/check-repository-identity-conformance.test.mjs"
+    "node scripts/check-repository-identity-conformance.mjs"
   ],
   "assumptions": [
-    "popcre/shared-db has the same repository ID 1275568548 and main 1886fb38 as before the transfer (post-check evidence in docs/verification)."
+    "Sync run 35351543065 on f9809546 finished success for all nine consumers."
   ],
   "stop_conditions": [
-    "Stop and report if the consumer sync fails for any of the nine targets after merge.",
     "Stop and report on any gate refusal; never weaken a guard to proceed."
   ]
 }

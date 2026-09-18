@@ -917,7 +917,7 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
     // reserved version is on main, the issue may remain open for promotion, but
     // it must never be offered as fresh authoring again.
     if (authoredOnMain.has(issue.number)) {
-      skipped.push({ issue:issue.number, reason:'authored-on-main', detail:'a closed claim has a merged migration version on current main' })
+      skipped.push({ issue:issue.number, reason:'authored-on-main', detail:"the closed claim's own reserved migration version was added by its merged pull request and remains on current main" })
       continue
     }
     // DEPENDENCY PROOF (Step 3, issue #1366). `dependencyStates` is gathered by the
@@ -7080,6 +7080,22 @@ function migrationVersions(files) {
   if(namedFiles.some(({file,name})=>file.status==='removed'&&name.startsWith('supabase/migrations/')))throw new LaneError('pull request removes a migration file; split recovery refuses it')
   return namedFiles.map(({name})=>/^supabase\/migrations\/(\d{14})_[^/]+\.sql$/.exec(name)?.[1]).filter(Boolean)
 }
+
+// A closed claim is authored only when its own reserved version was added by a
+// merged pull request from that claim's branch and the resulting merge remains
+// in current main. Object overlap is deliberately irrelevant: another lane may
+// later touch the same object without spending this claim's reserved version.
+export function closedClaimAuthoredOnMain(claim, now, mainVersions, io) {
+  let lease
+  try { lease = parseAuthorLease(claim.body, now) } catch { return false }
+  if (!mainVersions.has(lease.version)) return false
+  return (io.branchPulls(lease.branch) ?? []).some((pull) =>
+    pull.merged_at &&
+    pull.merge_commit_sha &&
+    io.mergeCommitInMain(pull.merge_commit_sha) &&
+    addedMigrationVersions(io.getPrFiles(pull.number)).includes(lease.version)
+  )
+}
 function replaceLeaseLocation(body, branch, worktree) {
   const fence=/```db-author-lease\s*\n([\s\S]*?)```/.exec(body)
   if(!fence)throw new LaneError('active claim has no manager-owned author lease block')
@@ -8548,7 +8564,7 @@ export function main(argv, now = new Date(), io = githubIo) {
       // claim refs or spending an unbounded GitHub API budget.
       let result = buildDynamicQueues(issues, claims, now, io.openIssueNumbers(), dependencyStates, claimPullStates,new Set(),outcomeStates)
       const authoredOnMain = new Set()
-      if (result.dispatchable.length && io.closedClaimsForWork && io.branchPulls && io.treeFiles && io.mainSha && io.mergeCommitInMain) {
+      if (result.dispatchable.length && io.closedClaimsForWork && io.branchPulls && io.getPrFiles && io.treeFiles && io.mainSha && io.mergeCommitInMain) {
         const main = io.mainSha()
         const mainVersions = new Set(io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)))
         const checked = new Set()
@@ -8560,12 +8576,7 @@ export function main(argv, now = new Date(), io = githubIo) {
           if (!fresh.length) break
           for (const issue of fresh) {
             checked.add(issue)
-            const completed = io.closedClaimsForWork(issue).some((claim)=>{
-              let lease
-              try { lease = parseAuthorLease(claim.body, now) } catch { return false }
-              if (!mainVersions.has(lease.version)) return false
-              return (io.branchPulls(lease.branch)??[]).some((pull)=>pull.merged_at&&pull.merge_commit_sha&&io.mergeCommitInMain(pull.merge_commit_sha))
-            })
+            const completed = io.closedClaimsForWork(issue).some((claim)=>closedClaimAuthoredOnMain(claim,now,mainVersions,io))
             if (completed) authoredOnMain.add(issue)
           }
           if (!fresh.some((issue)=>authoredOnMain.has(issue))) break

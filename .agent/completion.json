@@ -1,27 +1,32 @@
 {
   "schema_version": 1,
-  "work_issue": 3245,
+  "work_issue": 2406,
   "outcome": "ready-for-merge",
-  "pr": 3246,
+  "pr": 3215,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3245/1",
-  "contract_sha256": "747bc72308abaf54de742e6df4abdf397996dcb66a44c436635fcea2d475daa1",
-  "head_sha": "5d6d088af3a966fc01228b67e664416030d5b2a1",
+  "contract_ref": "refs/db-contracts/2406/2",
+  "contract_sha256": "1d89c9297705ccd0f2d57aee057aba02843fdfeebd7520ba8afa939870091f0e",
+  "head_sha": "29491d729a223cc20fb3377196ce8d4772493999",
   "files_changed": [
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "37/37 pass, with three new pins: both harvest spellings asked and both answering the row spelling collect to one row with coverage holding; a sibling-answered zero-row spelling is accounted; differing bytes for one grain across two spellings refuse loudly."
+      "evidence": "605 passed, 0 failed, 0 skipped at 7a495876 (review round 2): the #2406 regression now opens with the distinguishing lock (reserved version on main via a later re-issue, claim pull merged but not adding it, expect false), mutation-checked by reverting the classifier to the pre-#2406 body, which fails exactly that test; restoring the clause returns 605/605."
     }
   ],
   "assumptions_resolved": [
-    "The two-spelling harvest shape was proved live: run 35288752430 refused naming asked PPk133 vs row answers PPK133; run 35294603177 passed the case-folded guard and refused on the cross-key count, which only happens when both spellings are distinct harvest keys answering one spelling."
+    "Issue #2406 was open, unassigned, labelled non-orchestrator, and had no linked implementation pull request at dispatch.",
+    "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence.",
+    "Review round 2 (governed Grok REVISE at e448635, replacement 3179) was answered in-repo: the High finding's missing lock case and the Low finding's skip-detail wording are fixed at 7a495876.",
+    "Generation 2 follows the main advance through #3246; the branch was refreshed by merge (29491d72) and the implementation diff is unchanged, so the durable Muse APPROVE at c5151c5e covers the refreshed head by content equivalence (#2758)."
   ],
   "stop_conditions_hit": []
 }

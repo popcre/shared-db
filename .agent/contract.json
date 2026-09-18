@@ -1,44 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3245,
+  "generation": 2,
+  "work_issue": 2406,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Fold case in the /prepackDetail loader key-coverage accounting and collect each vendor row once when two harvest spellings of one drifted key are both asked, so the #3179 backfill can complete.",
-  "base_sha": "f048cca84c40edaae7814545e205e07bd76ebb51",
-  "dispatcher": "delegated source-data session continuing issue #3179 production phase",
-  "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-coverage-case",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-cover-3245",
+  "goal": "Make the lane queue audit classify a closed claim as authored on main only when that claim's own reserved migration version was added by its merged pull request, with regression coverage for an unspent reservation and a later migration touching the same object.",
+  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
+  "dispatcher": "Codex coordinating session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
+  "worker": "Codex issue #2406 subagent",
+  "branch": "codex/issue-2406-reserved-version",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2406-reserved-version/shared-db",
   "allowed_paths": [
-    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never collapse rows that differ for one grain: identical bytes across two spellings are one row, differing bytes refuse loudly.",
-    "Never let rowsFetched under-report: it keeps the raw fetch count so nothing landed is hidden.",
-    "Never author a migration or change any database shape.",
-    "Never close issue #3179; the originating session owns closure."
+    "No database read, write, migration, preview action, or production action",
+    "No weakening of existing queue-audit refusals, claim collision locks, or migration version reservations",
+    "No issue closure or pull-request merge by this worker"
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-prepack.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "The harvest holds both spellings of the drifted key as distinct codes, both answering the row spelling (runs 35288752430 and 35294603177 together prove the shape).",
-    "rowsFetched reports raw fetched rows while the returned sourceRows are deduplicated; the run notes and the landed counts stay honest about both."
+    "Issue #2406 remains open, unassigned, non-orchestrator, and has no linked open pull request",
+    "A migration version is authored by a claim only when that exact version was added by a merged pull request from the claim branch and remains on current main"
   ],
   "stop_conditions": [
-    "Stop and report a blocker if the deduplicated load ever disagrees with the API totals by more than the counted zero-row keys.",
-    "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
+    "Stop if issue #2406 gains another live owner or linked implementation pull request",
+    "Stop if the repair would require a database change or weakening any existing refusal"
   ]
 }

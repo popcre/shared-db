@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3191/1",
   "contract_sha256": "ff0ce773c22b934ca885795131c6caf3449c3c5667f1c53d4194efb6ad802dcd",
-  "head_sha": "379e7913c79c22df1d6f153a5dcfde51c2ff659b",
+  "head_sha": "e0819067a53df6a5ccf1909d6d362321caeb99b1",
   "files_changed": [
     "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
@@ -18,18 +18,19 @@
   ],
   "checks": [
     {
-      "command": "supabase/tests against an ephemeral database",
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
       "exit_code": 0,
-      "evidence": "PR #3277 check passed at 379e7913"
+      "evidence": "local run at e0819067: status OK, 20260918180012 has no dynamic-execution markers"
     },
     {
-      "command": "SQL migration guards",
+      "command": "PR #3277 required checks (ephemeral supabase/tests, SQL migration guards)",
       "exit_code": 0,
-      "evidence": "PR #3277 check passed at 379e7913"
+      "evidence": "re-verified green on the PR head before guarded merge dispatch"
     }
   ],
   "assumptions_resolved": [
-    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role."
+    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
+    "Review (qwen slot 1, REVISE at 209ebc35) addressed: grant guarded on pg_roles existence as a static GRANT; comment states the SECURITY DEFINER RLS-bypass it confers."
   ],
   "stop_conditions_hit": []
 }

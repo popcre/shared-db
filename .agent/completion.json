@@ -1,36 +1,27 @@
 {
   "schema_version": 1,
-  "work_issue": 2828,
+  "work_issue": 3249,
   "outcome": "ready-for-merge",
-  "pr": 3217,
+  "pr": 3250,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2828/3",
-  "contract_sha256": "3b6e1ef679ff4834654cd0c450d5cc6f02559b00bcb4f7326333f9cf523b8e63",
-  "head_sha": "7a059b1a9b138d06b7a14f62836f72cbecbeed17",
+  "contract_ref": "refs/db-contracts/3249/1",
+  "contract_sha256": "f50a2b4565ad03fe6ec40239e7b37c0ec48c1b6e488e8afd52d8fc9490f27f11",
+  "head_sha": "0b37ae08ebed93c7829de0b227ff6b08860502d8",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".github/workflows/coldlion-landing-sync.yml"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs tools/coldlion-landing-prepack.test.mjs",
       "exit_code": 0,
-      "evidence": "605 passed, 0 failed at the merged head 8cba101b (includes the doctor-timeout repair-hint tests)."
-    },
-    {
-      "command": "node --test scripts/run-governed-review.test.mjs",
-      "exit_code": 0,
-      "evidence": "78 passed, 0 failed at the merged head 8cba101b (the DOCTOR_TIMEOUT contract test passes against the appended hint)."
+      "evidence": "75 tests, 75 pass, 0 fail on head 0b37ae08: both feed suites whose workflow assertions cover the edited file still hold, including the timeout-presence guard."
     }
   ],
   "assumptions_resolved": [
-    "PROVENANCE, STATED PLAINLY: the implementation (59e7467d) was written by a ZCode session BEFORE any contract was published; generation 1 was published by that same session mid-packaging with a base_sha that names no real commit, and generation 2 corrects the base to the true fork point 4b115d33. No pre-work ordering is claimed for this contract.",
-    "The evidence pair was finished and the branch refreshed onto current main twice (8cba101b, then 7a059b1a after #3215 merged; the test import line was resolved to carry both closedClaimAuthoredOnMain from main and doctorTimeoutFailingChecks from this branch) by a successor ZCode repo-maintenance session clearing the protected-source serialization chain so issue #3232 can merge; the implementation diff is unchanged by the refreshes.",
-    "The primary #2828 defect (the ai-glm doctor spawn-shape timeout) is repaired in popcre/ai-devops by a separately reviewed change, not here."
+    "The cancelled dispatch run (35303647480) proved the phases live: prod-detail had completed 1,263 keys in ~39 min (~1.9s/key) when the 90-minute job ceiling hit; history+masters+prepack consumed ~49 min before it.",
+    "150 minutes covers the ~116-minute worst case with margin; the concurrency group (cancel-in-progress false) still serializes the lane."
   ],
   "stop_conditions_hit": []
 }

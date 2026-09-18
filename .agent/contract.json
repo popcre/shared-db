@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3253,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Plan Step 6 of #2530: after the 2026-09-18 transfer, make popcre/shared-db the canonical name in active instructions and workflow comments, drop the now-empty conformance allowlist entries, and commit the Phase B transfer evidence and plan STATUS.",
-  "base_sha": "8d107ee8826d45b53c958ad54e0aa2b554191d79",
+  "base_sha": "3671a1db23bbdbfa56f27f9e86be446c18131611",
   "dispatcher": "Albert's own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
   "worker": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
   "branch": "claude/2530-popcre-canonical-identity",

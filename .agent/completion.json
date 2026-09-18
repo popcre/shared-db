@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3254,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3253/2",
-  "contract_sha256": "f2537fcfcadaec81b3e033255884529926acc40da139c004e3419797380ad737",
-  "head_sha": "4c11455f54436f5f536330b37d722d343d5947a1",
+  "contract_ref": "refs/db-contracts/3253/3",
+  "contract_sha256": "f9fe3cf80081635b3b31fa12b3cf3a7c9c16bad4d67288ddb1e717c71d0abe2e",
+  "head_sha": "51d77f3cc61edfe4c4eab000d581fc3fba2f4706",
   "files_changed": [
     ".github/workflows/pii-forward-guard.yml",
     ".github/workflows/shared-db-live-proof.yml",

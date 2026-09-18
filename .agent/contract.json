@@ -1,48 +1,38 @@
 {
   "schema_version": 1,
-  "generation": 6,
-  "work_issue": 3232,
+  "generation": 2,
+  "work_issue": 3266,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Enforce the owner's 2026-09-17 ruling (\"I never want GLM reviewing GLM code\") in the reviewer draw: the glm rows declare orchestratorEngine:'glm', a zcode engine entry lets a ZCode orchestrator declare itself honestly in the routing contract, and reviewersForOrchestrator maps the declared engine through ENGINE_REVIEWER_EXCLUSION so a zcode orchestrator never draws glm while codex and claude orchestrations behave exactly as before.",
-  "base_sha": "579f8fe0c88fdd288cfa9c0eb9453318ae1cf7ec",
-  "dispatcher": "ZCode (GLM 5.3) repo-maintenance session completing issue #3232 (self-published per docs/agents/agent-work-contract-repo-maintenance-evidence.md: the implementation predated publication, and the completion report states that provenance plainly)",
-  "worker": "ZCode (GLM 5.3) session, issue #3232",
-  "branch": "zcode/issue-3232-glm-reviewer-independence",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/zcode-3232-glm-independence",
+  "goal": "Mark #2530 plan Step 6 done in the STATUS table, citing the proven consumer sync.",
+  "base_sha": "ce92a63cb2dcd5391b7025717ef5551c82f18ec4",
+  "dispatcher": "Albert own chat instruction to execute #2530 plan Steps 3-6 (authorization comment 5720258785 on #2530)",
+  "worker": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
+  "branch": "claude/3266-plan-step6-done",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/plan6-3266-31009",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/lib/orchestrator-routing.mjs",
+    ".agent/completion.json",
     ".agent/contract.json",
-    ".agent/completion.json"
+    "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/lib/orchestrator-routing.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "do not add ZCode as a reviewer: the same owner ruling permanently rejected that",
-    "do not change any reviewer's registration, retirement, quarantine, or rotation membership",
-    "do not weaken the fail-closed unreadable-engine refusal in reviewersForOrchestrator",
-    "do not import lib/orchestrator-routing.mjs into the lane manager: that would make every routing edit a global evidence invalidator",
-    "do not author a migration or touch any database object"
+    "Never touch a database, preview or production target.",
+    "Change only the Step 6 STATUS row."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "node --test scripts/check-orchestrator-marker.test.mjs"
+    "node scripts/check-repository-identity-conformance.mjs"
   ],
   "assumptions": [
-    "ZCode session ids are shaped sess_<uuid> (ZCODE_SESSION_ID), matching the id pattern ai-blocker-watch already resumes",
-    "the marker resolver keeps rejecting engines outside the ENGINES vocabulary, so the raw-string fallback in reviewersForOrchestrator is unreachable from a declared marker",
-    "no reviewer registration or rotation membership changes: ACTIVE/RETIRED/QUARANTINED are name-for-name identical to main"
+    "Sync run 35351543065 on f9809546 finished success for all nine consumers."
   ],
   "stop_conditions": [
-    "stop and re-declare if the change must touch any file outside allowed_paths",
-    "stop if the routing engine vocabulary and ENGINE_REVIEWER_EXCLUSION drift apart (the lane test suite asserts key-for-key agreement)",
-    "stop if a marker declaring no engine stops refusing reviewer assignment"
+    "Stop and report on any gate refusal; never weaken a guard to proceed."
   ]
 }

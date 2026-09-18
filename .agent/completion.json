@@ -1,37 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3232,
+  "work_issue": 3266,
   "outcome": "ready-for-merge",
-  "pr": 3247,
+  "pr": 3267,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3232/6",
-  "contract_sha256": "1b07304b9759f72eaca25102438665162464dcd8330a302a09242c6f6733479a",
-  "head_sha": "f387969b69a65a705025be1f31a3a61b913523e0",
+  "contract_ref": "refs/db-contracts/3266/2",
+  "contract_sha256": "be0b8462f8ad8c90a6e75e03545f1487da8810cd841d0500b9cfcbe8fa37614f",
+  "head_sha": "b90b2e9b00d36bb3fd9a892cb325e2a55c2da7bc",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "scripts/lib/orchestrator-routing.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "plan_shared_db_popcre_transfer_merge_queue.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "652 passed, 0 failed at the merged head 06013732 (lane suite now also carries the merged #2406 lock test and #2828 doctor-hint tests alongside the three new #3232 tests)."
-    },
-    {
-      "command": "node --test scripts/check-orchestrator-marker.test.mjs",
-      "exit_code": 0,
-      "evidence": "43 passed, 0 failed at the merged head 06013732; the zcode entry validates through the real parseRoutingBlock/validateRouting path."
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (45 entries), on head 2ffb377b."
     }
   ],
   "assumptions_resolved": [
-    "PROVENANCE, STATED PLAINLY: the implementation was written by this ZCode (GLM 5.3) session BEFORE any contract was published; generation 1 was published mid-packaging with a base_sha padded from a short SHA that names no real commit, and generation 2 corrects the base to the true fork point 579f8fe0. No pre-work ordering is claimed.",
-    "The branch was refreshed onto main three times (after #3246, after #3215/#3217, and after #3243/#3228/coldlion merges, merge commit c6c63c61); the three implementation files diff is unchanged by every refresh. 652 lane+marker tests pass at the final merged head.",
-    "ACTIVE_REVIEWERS, RETIRED_REVIEWERS and QUARANTINED_REVIEWERS are name-for-name identical to main, verified by importing both versions side by side."
+    "Sync run 35351543065 on f9809546: all nine consumer jobs success (#2530 comment 5730865894)."
   ],
   "stop_conditions_hit": []
 }

@@ -8,6 +8,8 @@
   "contract_sha256": "1d89c9297705ccd0f2d57aee057aba02843fdfeebd7520ba8afa939870091f0e",
   "head_sha": "29491d729a223cc20fb3377196ce8d4772493999",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],

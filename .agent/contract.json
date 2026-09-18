@@ -1,33 +1,32 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3235,
+  "generation": 1,
+  "work_issue": 3245,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Fold case on the prepack code in the ColdLion /prepackDetail request-identity guard, so vendor cross-feed case drift (PPk133 vs PPK133) no longer aborts the backfill while genuinely different codes still refuse.",
-  "base_sha": "079fed75949a9785cc2b61923cf672cec9751031",
+  "goal": "Fold case in the /prepackDetail loader key-coverage accounting and collect each vendor row once when two harvest spellings of one drifted key are both asked, so the #3179 backfill can complete.",
+  "base_sha": "f048cca84c40edaae7814545e205e07bd76ebb51",
   "dispatcher": "delegated source-data session continuing issue #3179 production phase",
   "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-case-drift",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-case-3235",
+  "branch": "claude/issue-3179-prepack-coverage-case",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-cover-3245",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
     "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
     "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/lib/prepack-detail.mjs"
+    "tools/coldlion-landing/sync-prepack-detail.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never fold case on the company comparison: no company drift has been observed and one must abort loudly with both spellings named.",
-    "Never match a blank requested key to any row: the guard must not invent a match.",
-    "Never change the landed prepack_code away from the row's own spelling: identities must not split into two rows.",
+    "Never collapse rows that differ for one grain: identical bytes across two spellings are one row, differing bytes refuse loudly.",
+    "Never let rowsFetched under-report: it keeps the raw fetch count so nothing landed is hidden.",
     "Never author a migration or change any database shape.",
     "Never close issue #3179; the originating session owns closure."
   ],
@@ -35,12 +34,11 @@
     "node --test tools/coldlion-landing-prepack.test.mjs"
   ],
   "assumptions": [
-    "The drift is vendor-side cross-feed inconsistency: the harvest spelling came from a ColdLion feed this repository landed verbatim (exact-trim, no case change), and /prepackDetail echoed the same real key with different casing (run 35288752430: asked PPk133, row answers PPK133).",
-    "Landing the row's spelling keeps one identity: the on-conflict grain keys on the staged row, so a replay through either harvest spelling upserts onto the same row.",
-    "Generation 2 exists because main advanced to 079fed75 (two documentation-only pull requests, #3237 and #3238); the branch was refreshed by merge and the implementation diff is unchanged."
+    "The harvest holds both spellings of the drifted key as distinct codes, both answering the row spelling (runs 35288752430 and 35294603177 together prove the shape).",
+    "rowsFetched reports raw fetched rows while the returned sourceRows are deduplicated; the run notes and the landed counts stay honest about both."
   ],
   "stop_conditions": [
-    "Stop and report a blocker if folding case ever lets two DIFFERENT real codes match (a collision other than case drift still aborts, so this would indicate a guard defect).",
+    "Stop and report a blocker if the deduplicated load ever disagrees with the API totals by more than the counted zero-row keys.",
     "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
   ]
 }

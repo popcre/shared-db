@@ -38,7 +38,7 @@ import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { isDocumentPath } from './lib/documents-only-change.mjs'
-import { REPO, parseQueueScope, resolveAdmittedIssueForPr } from './manage-migration-author-lanes.mjs'
+import { REPO, parseQueueScope, derivePrOperationRoute } from './manage-migration-author-lanes.mjs'
 
 export const SELF_SERVICE_ROUTE = 'self-service-additive'
 export const BOUNDARY_SCHEMAS = Object.freeze(['crm', 'pim', 'dam'])
@@ -74,6 +74,12 @@ const BOUNDARY = (pattern) => new RegExp(`^(?:${pattern})$`, 'i')
 // Production applies ALLOWLIST with re.fullmatch; these anchors reproduce that
 // exact semantics — a trailing `not null default 0` after a nullable ADD COLUMN
 // type must NOT pass by prefix.
+// ROLE LIST GRAMMAR: comma-separated identifiers ONLY, terminated before any
+// trailing clause. `to authenticated with grant option` must NOT match — a
+// loose `[a-z0-9_, ]+` tail swallows `with grant option` into the role list,
+// hides the browser role from the RLS-before-grant rule, and lets a
+// grant-option escalation pass the whitelist (round-1 review, High).
+const ROLE_LIST = '[a-z_][a-z0-9_]*(?: ?, ?[a-z_][a-z0-9_]*)*'
 const SHAPES = {
   // No REFERENCES/LIKE/OF/INHERITS/PARTITION/WITH/TABLESPACE/USING/SELECT/
   // EXECUTE/VALUES: a foreign key locks the referenced table (#2758 rule).
@@ -93,8 +99,8 @@ const SHAPES = {
   // job is the object boundary, not a re-derivation of the policy grammar. The
   // target must be a table this same pull request creates.
   create_policy: BOUNDARY(`create policy (?:if not exists )?${IDENT} on (${BOUNDARY_QUALIFIED})(?: .*)?`),
-  grant_on_table: BOUNDARY(`grant (?:[a-z_, ]+|all(?: privileges)?) on (${BOUNDARY_QUALIFIED}) to [a-z_][a-z0-9_, ]+`),
-  grant_execute_on_function: BOUNDARY(`grant execute on function (${BOUNDARY_QUALIFIED}) ?${ARGS} to [a-z_][a-z0-9_, ]+`),
+  grant_on_table: BOUNDARY(`grant (?:[a-z_, ]+|all(?: privileges)?) on (${BOUNDARY_QUALIFIED}) to ${ROLE_LIST}`),
+  grant_execute_on_function: BOUNDARY(`grant execute on function (${BOUNDARY_QUALIFIED}) ?${ARGS} to ${ROLE_LIST}`),
 }
 const BOUNDARY_SCHEMA_OF = (qualified) => String(qualified).replace(/^"([^"]+)".*$/, '$1').split('.')[0].replace(/"/g, '').toLowerCase()
 const OBJECT_OF = (qualified) => String(qualified).replace(/"/g, '').toLowerCase()
@@ -136,7 +142,12 @@ const LEXER_PROGRAM = [
 
 export function lexMigrationFiles(files, { python = 'python3' } = {}) {
   const payload = JSON.stringify(files.map((file) => String(file.content ?? '')))
-  const result = spawnSync(python, ['-c', LEXER_PROGRAM], { input: payload, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const run = (interpreter) => spawnSync(interpreter, ['-c', LEXER_PROGRAM], { input: payload, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  let result = run(python)
+  // `python3` is the CI name; a Windows agent without the alias would otherwise
+  // fail closed on a naming difference alone (round-1 review, Low), so one
+  // bounded retry through plain `python` — only when the spawn itself failed.
+  if (result.error?.code === 'ENOENT' && python !== 'python') result = run('python')
   if (result.error || result.status !== 0) {
     return { error: `the production tokenizer could not run (python ${python}: ${result.stderr || result.error?.message || `exit ${result.status}`}) — the boundary classifier refuses to guess` }
   }
@@ -182,6 +193,19 @@ export function classifySelfServiceLane({ changedFiles = [], migrations = [], ma
     const { statements, references } = lexed.rows[fileIndex]
     if (statements === null || references === null) return refuse(`${filename} could not be tokenised; parse doubt always refuses`)
     if (statements.length !== references.length) return refuse(`${filename} tokenizer views disagree (${statements.length} folded vs ${references.length} reference statements)`)
+    // An unreadable or empty migration file lexes to zero statements; the lane
+    // refuses rather than pass vacuously (round-1 review, Medium). This is also
+    // what turns an absent blob (`readFileAtRef(...) ?? ''`) into a refusal.
+    if (!statements.length) return refuse(`${filename} contains no statements; the lane refuses empty or unreadable migration bytes`)
+    // SINGLE-QUOTED ROUTINE BODIES ARE OUTSIDE THE LANE (round-1 review, High).
+    // The production tokenizer's reference view preserves dollar-quoted bodies
+    // but empties '...' literals, so an `as 'select ... from core.customer'`
+    // body is invisible to the boundary reference scan while still matching
+    // the create_function shape's emptied `as ''` form. Rather than grow a
+    // second parser, the lane requires dollar-quoted bodies, whose contents
+    // the scan sees. The raw-text probe is deliberately over-broad: a refusal
+    // here costs a reformat, a miss would cost the boundary.
+    if (/\bcreate\s+function\b[\s\S]*?\bas\s*'/i.test(String(migrations[fileIndex].content ?? ''))) return refuse(`${filename}: a routine body uses a single-quoted AS literal the reference scan cannot see — dollar-quote the body ($$ ... $$) so every reference is scannable`)
     for (let index = 0; index < statements.length; index += 1) {
       const statement = statements[index]
       const excerpt = statement.length > 80 ? `${statement.slice(0, 80)}…` : statement
@@ -192,6 +216,10 @@ export function classifySelfServiceLane({ changedFiles = [], migrations = [], ma
       if (/^create or replace\b/i.test(statement)) return refuse(`${where}: CREATE OR REPLACE is outside the lane — the lane never rewrites an object that may exist on main (${excerpt})`)
       if (/^(insert into|update |delete from|delete |merge into|drop |truncate )/i.test(statement)) return refuse(`${where}: data and destructive statements are outside the lane (${excerpt})`)
       if (/^grant on all tables in schema\b/i.test(statement) || /^revoke\b/i.test(statement) || /^set search_path\b/i.test(statement) || /^do \$/i.test(statement) || /^with /i.test(statement)) return refuse(`${where}: statement shape is not in the lane whitelist (${excerpt})`)
+      // WITH GRANT OPTION delegates the lane's own grant authority onward; the
+      // grant shapes' role-list grammar already cannot match it, and this named
+      // refusal says why instead of a generic shape miss (round-1 review, High).
+      if (/^grant\b/i.test(statement) && /\bwith grant option\b/i.test(statement)) return refuse(`${where}: GRANT ... WITH GRANT OPTION is outside the lane — the lane never delegates its grants onward (${excerpt})`)
 
       // Reference scan FIRST on the keep-dollar view: catches bodies and policy
       // expressions no matter which shape matches below.
@@ -247,16 +275,23 @@ const ghJson = (args) => {
 }
 const treeReader = createTreeReader({ wrapError: (detail) => new LaneBoundaryError(`GitHub read failed: ${detail}`) })
 
-export function workIssueRouteOf(pr, { resolve = resolveAdmittedIssueForPr, getIssue, parseScope }) {
-  // The ONE sanctioned PR->work-issue resolver (also used by the automatic
-  // production promotion): it follows the PR's closing-issue linkage and runs
-  // the real admission, so this gate never grows a parallel claim-matching
-  // rule the lease check does not know about.
-  const resolved = resolve(Number(pr))
-  if (resolved.admission !== 'admitted') throw new LaneBoundaryError(`pull request #${pr} does not resolve to an admitted work issue (${resolved.admission})`)
-  const issue = getIssue(resolved.issue)
+export function workIssueRouteOf(pr, { derive = derivePrOperationRoute, getIssue, parseScope } = {}) {
+  // THE ROUTING FORK IS `derivePrOperationRoute`, NEVER STRUCTURAL ADMISSION.
+  // This gate runs inside the guarded merge for EVERY pull request, and the
+  // merge also serves ordinary repository maintenance. The structural
+  // admission resolver (`resolveAdmittedIssueForPr`) refuses every
+  // non-structural change_type by design, so routing through it made this step
+  // fail closed on exactly the repo-maintenance merges that share the workflow
+  // — the defect the round-1 review marked Critical. `derivePrOperationRoute`
+  // is the fork the rest of the merge machinery already uses: it answers
+  // structural-vs-repo-maintenance from the live pull request (any migration
+  // path is structural), and the caller then reads the linked issue's scope
+  // only to decide self-service applicability. Unreadable input still throws,
+  // and main() still maps a throw to a refusal.
+  const operation = derive(Number(pr))
+  const issue = getIssue(operation.issue)
   const scope = parseScope(issue.body)
-  return { number: resolved.issue, scope }
+  return { number: operation.issue, scope, operationRoute: operation.route }
 }
 
 export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
@@ -274,10 +309,16 @@ export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
       if (rows.length < 100) break
     }
     if (Number(pr.changed_files) !== files.length) throw new LaneBoundaryError(`incomplete PR pagination: expected ${pr.changed_files}, received ${files.length}`)
-    const { number: workNumber, scope } = workIssueRouteOf(number, {
+    const { number: workNumber, scope, operationRoute } = workIssueRouteOf(number, {
       getIssue: (issueNumber) => ghJson(['api', `repos/${REPO}/issues/${issueNumber}`]),
       parseScope: parseQueueScope,
     })
+    if (operationRoute === 'repo-maintenance') {
+      // The guarded merge serves repository maintenance too; the boundary
+      // classifier judges structural self-service work only.
+      console.log(`Pull request #${number} is repository maintenance (issue #${workNumber}); the self-service boundary does not apply.`)
+      return 0
+    }
     if (!scope || scope.route !== SELF_SERVICE_ROUTE) {
       console.log(`Work issue #${workNumber} route is ${scope?.route ?? 'unclassified'}; the self-service boundary does not apply.`)
       return 0

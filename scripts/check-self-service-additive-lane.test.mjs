@@ -9,7 +9,8 @@
 // both sides of the ADD COLUMN boundary.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { classifySelfServiceLane, boundaryReferenceViolations, BOUNDARY_SCHEMAS } from './check-self-service-additive-lane.mjs'
+import { classifySelfServiceLane, boundaryReferenceViolations, BOUNDARY_SCHEMAS, workIssueRouteOf, LaneBoundaryError } from './check-self-service-additive-lane.mjs'
+import { readFileSync } from 'node:fs'
 
 const MIGRATION = 'supabase/migrations/20260918000000_lane_fixture.sql'
 const files = (names, status = 'added') => names.map((filename) => ({ filename, status }))
@@ -200,4 +201,67 @@ test('reference scanning distinguishes table aliases from schema names', () => {
 
 test('the boundary stays exactly {crm, pim, dam}', () => {
   assert.deepEqual([...BOUNDARY_SCHEMAS], ['crm', 'pim', 'dam'])
+})
+
+// ---------------------------------------------------------------------------
+// Round-2 review fixes (governed Grok REVISE at 5acb1b4e): each fixture pins a
+// hole that review found, dirty-first.
+
+test('a single-quoted routine body REFUSES instead of hiding from the reference scan (review High)', () => {
+  const result = classify("create function crm.f() returns void language sql security invoker as 'select 1 from core.customer'")
+  assert.equal(result.verdict, 'refuse')
+  assert.match(result.reasons.join('; '), /single-quoted AS literal/)
+  // An in-boundary single-quoted body refuses for the same reason: the scan
+  // cannot prove what it cannot see.
+  const benign = classify("create function crm.g() returns void language sql security invoker as 'select 1'")
+  assert.equal(benign.verdict, 'refuse')
+  assert.match(benign.reasons.join('; '), /single-quoted AS literal/)
+})
+
+test('GRANT ... WITH GRANT OPTION REFUSES by name, not by generic shape miss (review High)', () => {
+  const result = classify([
+    'create table crm.escalating (id uuid)',
+    'alter table crm.escalating enable row level security',
+    'grant select on crm.escalating to authenticated with grant option',
+  ].join(';\n'))
+  assert.equal(result.verdict, 'refuse')
+  assert.match(result.reasons.join('; '), /WITH GRANT OPTION/)
+})
+
+test('an empty or unreadable migration file REFUSES instead of passing vacuously (review Medium)', () => {
+  const empty = classify('', { content: '' })
+  assert.equal(empty.verdict, 'refuse')
+  assert.match(empty.reasons.join('; '), /contains no statements/)
+  const whitespace = classify('-- only a comment\n', { content: '-- only a comment\n' })
+  assert.equal(whitespace.verdict, 'refuse')
+  assert.match(whitespace.reasons.join('; '), /contains no statements/)
+})
+
+test('workIssueRouteOf routes through the operation fork, never structural admission (review Critical)', () => {
+  // A repository-maintenance pull request must resolve WITHOUT structural
+  // admission: the structural resolver refuses every non-structural
+  // change_type, and the guarded merge serves repo-maintenance pull requests
+  // too. This is the exact defect the review marked Critical.
+  const route = (operationRoute, scope) => workIssueRouteOf(42, {
+    derive: () => ({ route: operationRoute, issue: 7 }),
+    getIssue: () => ({ body: 'scope fence' }),
+    parseScope: () => scope,
+  })
+  assert.equal(route('repo-maintenance', { route: 'repo-maintenance', workType: 'repo-maintenance', changeType: 'ci' }).operationRoute, 'repo-maintenance')
+  assert.equal(route('structural', { route: 'self-service-additive' }).scope.route, 'self-service-additive')
+  assert.equal(route('structural', { route: 'shared-db-orchestrator' }).scope.route, 'shared-db-orchestrator')
+  // An unreadable derivation still throws, and the CLI maps a throw to exit 2.
+  assert.throws(() => workIssueRouteOf(42, {
+    derive: () => { throw new LaneBoundaryError('pull request could not be derived') },
+    getIssue: () => ({ body: '' }),
+    parseScope: () => null,
+  }), /could not be derived/)
+  // The routing fork is pinned in source: derivePrOperationRoute, the same
+  // fork the merge machinery uses — never the structural admission resolver,
+  // whose refusal of non-structural change_types is the defect fixed here.
+  // (The import line is pinned, not the whole file: workIssueRouteOf's comment
+  // names the rejected resolver to explain the fork.)
+  const source = readFileSync(new URL('./check-self-service-additive-lane.mjs', import.meta.url), 'utf8')
+  assert.match(source, /derive = derivePrOperationRoute/)
+  assert.doesNotMatch(source.split('\n').find((line) => line.includes('from \'./manage-migration-author-lanes.mjs\'')), /resolveAdmittedIssueForPr/)
 })

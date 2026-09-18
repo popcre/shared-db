@@ -295,11 +295,11 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
-      "site": ".github/workflows/tools-offline-tests.yml:119",
+      "site": ".github/workflows/tools-offline-tests.yml:134",
       "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:1",
       "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
       "disposition": "excluded",
-      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
+      "reason": "CI presence check for the self-service lane boundary and route-sync tests (#3199 Phase B). The word \"Missing\" reports an absent TEST FILE in the workflow checkout, not an absent database object; excluded exactly like its freshness-gate and hygiene-report twins."
     },
     {
       "site": "scripts/agent-work-contract.mjs:83",
@@ -2175,7 +2175,7 @@
       "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:2",
       "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
       "disposition": "excluded",
-      "reason": "CI presence check for the self-service lane boundary and route-sync tests (#3199 Phase B). The word \"Missing\" reports an absent TEST FILE in the workflow checkout, not an absent database object; excluded exactly like its freshness-gate and hygiene-report twins."
+      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
     }
   ],
   "call_site_count": 309,

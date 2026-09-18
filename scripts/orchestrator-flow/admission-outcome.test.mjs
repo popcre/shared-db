@@ -880,3 +880,13 @@ test('outcome comments trust only the operator login with the owner-implied asso
   assert.equal(outcomeHistory([forged], 41).events.length, 0)
   assert.equal(outcomeHistory([{ ...forged, author: 'u2giants' }], 41).events.length, 1)
 })
+
+test('self-service-additive admission confines writes to the {crm,pim,dam} app-owned schemas (#3199 round-2 review)', () => {
+  const laneBody = (object) => scopeBody({ object }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  const shared = issue(laneBody('table core.customer_ext'))
+  assert.throws(() => evaluateAdmission(shared, parseQueueScope(shared.body), null), /writes outside the \{crm,pim,dam\} app-owned schemas: table core\.customer_ext/)
+  const schemaless = issue(laneBody('schema crm'))
+  assert.throws(() => evaluateAdmission(schemaless, parseQueueScope(schemaless.body), null), /writes outside the \{crm,pim,dam\}/)
+  const inBoundary = issue(laneBody('table crm.note'))
+  assert.equal(evaluateAdmission(inBoundary, parseQueueScope(inBoundary.body), null).admitted, true)
+})

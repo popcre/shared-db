@@ -1,43 +1,21 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3251,
+  "work_issue": 3255,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the /proddetails reconciliation count keys, not sync_run rows: the refresh regime re-reads answered orders, and the first live refresh (2026-09-18, run 35312282365) failed its own agreement check on 7,016 runs over 3,753 keys while the landed table was perfect.",
-  "base_sha": "1886fb38ac01fdaf3c1d8515b50afd6440726df1",
-  "dispatcher": "owner task instruction continuation for shared-db #3180 (source-data session; #3251 is the repo-maintenance lane for this diff)",
-  "worker": "ZCode GLM 5.3 session executing shared-db issue #3180",
-  "branch": "claude/issue-3180-reconcile-per-key",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prod-detail-3180",
-  "allowed_paths": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/lib/prod-details.mjs"
-  ],
-  "file_writes": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/lib/prod-details.mjs"
-  ],
+  "goal": "Repair the four required PR checks broken by the 2026-09-18 transfer to popcre/shared-db: test fixtures pinned the old repository name and OWNER association; make them follow the resolved identity without changing production code or loosening any guard.",
+  "base_sha": "4601711f15c67f3a15f3b9a3840eb1c846c1e74b",
+  "dispatcher": "Claude chat 3886eb83-7824-4477-a257-dd3adfd80d03 executing #2530 under Albert's own instruction; regression reported by chat e55a0f04",
+  "worker": "Claude sub-agent of chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
+  "branch": "claude/3255-post-transfer-fixtures",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/fix-3255-14505",
+  "allowed_paths": [".agent/completion.json",".agent/contract.json","scripts/check-repository-identity-conformance.mjs","scripts/coordination-scenarios.test.mjs","scripts/dispatch-production-apply.test.mjs","scripts/lib/work-dependencies.test.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/admission-outcome.test.mjs","scripts/orchestrator-flow/preview-route-canary.test.mjs","scripts/repository-maintenance-authorization.test.mjs","scripts/run-governed-review.test.mjs","scripts/test_production_business_risk_gate.py","scripts/test_production_business_risk_gate_activation_mutations.py"],
+  "file_writes": [".agent/completion.json",".agent/contract.json","scripts/check-repository-identity-conformance.mjs","scripts/coordination-scenarios.test.mjs","scripts/dispatch-production-apply.test.mjs","scripts/lib/work-dependencies.test.mjs","scripts/manage-migration-author-lanes.test.mjs","scripts/orchestrator-flow/admission-outcome.test.mjs","scripts/orchestrator-flow/preview-route-canary.test.mjs","scripts/repository-maintenance-authorization.test.mjs","scripts/run-governed-review.test.mjs","scripts/test_production_business_risk_gate.py","scripts/test_production_business_risk_gate_activation_mutations.py"],
   "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "Never weaken the agreement predicate: it must still detect a missing table row, a pkey collapse, and a zero-row key counted as landed.",
-    "Never touch the landed table, the workflow triggers, or any guard."
-  ],
-  "required_checks": [
-    "node --test tools/coldlion-landing-prod-details.test.mjs",
-    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
-  ],
-  "assumptions": [
-    "Live evidence 2026-09-18 run 35312282365: keysDone=7016, rowsFetchedTotal=28765, keysLanded=3753, rowsLandedTotal=17303, tableRows=17303, distinctPkey=17303, refusedKeys=8 - the table was consistent; only the run-counting read was wrong.",
-    "distinct-on(prod_order_no) ordered by finished_at desc makes each key counted once at its latest succeeded run, whose fetched rows equal the rows that run's upsert landed."
-  ],
-  "stop_conditions": [
-    "Stop and report if the per-key reconciliation still disagrees on a real run.",
-    "Stop and report on any gate refusal; never weaken a guard to proceed."
-  ]
+  "prohibited_actions": ["Never change production code or loosen a guard to make a test pass.", "Never remove a test that exercises the historical repository alias."],
+  "required_checks": ["GITHUB_REPOSITORY=popcre/shared-db node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/orchestrator-flow/*.test.mjs", "node scripts/check-repository-identity-conformance.mjs"],
+  "assumptions": ["Failures reproduce on untouched main and come only from fixtures pinning u2giants/shared-db or the OWNER association."],
+  "stop_conditions": ["Stop and report if a failure reveals a real production-code defect."]
 }

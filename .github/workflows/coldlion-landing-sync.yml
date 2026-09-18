@@ -60,7 +60,13 @@ jobs:
   sync:
     name: Sync masters and recent history windows
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
+    # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
+    # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
+    # (2,577 codes at 1s), prod-detail refresh ~1.9s/key over up to 2,000 recent
+    # orders ~63 min — ~116 min worst case. 150 keeps a real stall-killing ceiling
+    # (#1266) with margin; the job stays serialized by the concurrency group.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 

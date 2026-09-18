@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3247,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3232/2",
-  "contract_sha256": "22a6d53b9bf3730908f150c576117b51d3423339339fb1b567b3e7a1d4675a51",
-  "head_sha": "1e4209abafcc4c65ba88d3b7cb3269bd6e5dafa4",
+  "contract_ref": "refs/db-contracts/3232/3",
+  "contract_sha256": "a46863f5b67813eb5342c0878f2d77960f8019ba0a0ab779e3ff6cf6bf84e906",
+  "head_sha": "060137323696ab9b85dac36c503eefcc3bde8527",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/lib/orchestrator-routing.mjs",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -18,17 +20,17 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "607 passed, 0 failed at 1e4209ab (merged head): the three new #3232 tests exclude both glm rows for zcode/glm orchestrators, walk a full draw cycle without glm, and pin codex/claude behavior plus the ENGINES/ENGINE_REVIEWER_EXCLUSION key-for-key coupling; a marker declaring no engine still refuses."
+      "evidence": "652 passed, 0 failed at the merged head 06013732 (lane suite now also carries the merged #2406 lock test and #2828 doctor-hint tests alongside the three new #3232 tests)."
     },
     {
       "command": "node --test scripts/check-orchestrator-marker.test.mjs",
       "exit_code": 0,
-      "evidence": "43 passed, 0 failed at 1e4209ab: marker validation is unchanged for codex/claude and the zcode entry validates through the real parseRoutingBlock/validateRouting path (read-only acceptance re-check chained resolution to a glm-free drawable set)."
+      "evidence": "43 passed, 0 failed at the merged head 06013732; the zcode entry validates through the real parseRoutingBlock/validateRouting path."
     }
   ],
   "assumptions_resolved": [
     "PROVENANCE, STATED PLAINLY: the implementation was written by this ZCode (GLM 5.3) session BEFORE any contract was published; generation 1 was published mid-packaging with a base_sha padded from a short SHA that names no real commit, and generation 2 corrects the base to the true fork point 579f8fe0. No pre-work ordering is claimed.",
-    "The full CI coordination list (lease + collision suites, 1450 tests incl. all orchestrator-flow suites) passed at the pre-refresh implementation head fc1aa58b; the refresh onto main (1e4209ab) changed no byte of the three implementation files' diff.",
+    "The branch was refreshed onto main twice (1e4209ab after #3246, 06013732 after #3215 and #3217 merged); the three implementation files diff is unchanged by the refreshes. Full CI coordination list (1450 tests) passed at fc1aa58b pre-refresh.",
     "ACTIVE_REVIEWERS, RETIRED_REVIEWERS and QUARANTINED_REVIEWERS are name-for-name identical to main, verified by importing both versions side by side."
   ],
   "stop_conditions_hit": []

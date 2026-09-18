@@ -1,27 +1,34 @@
 {
   "schema_version": 1,
-  "work_issue": 3245,
+  "work_issue": 2828,
   "outcome": "ready-for-merge",
-  "pr": 3246,
+  "pr": 3217,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3245/1",
-  "contract_sha256": "747bc72308abaf54de742e6df4abdf397996dcb66a44c436635fcea2d475daa1",
-  "head_sha": "5d6d088af3a966fc01228b67e664416030d5b2a1",
+  "contract_ref": "refs/db-contracts/2828/2",
+  "contract_sha256": "71ed251df0d89611fbc1e34bc4b77c997e0b0e74d4d6f006ad4192420c20e9ae",
+  "head_sha": "8cba101bdf74cb7267f081d14c76cc44d5a3cb92",
   "files_changed": [
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "37/37 pass, with three new pins: both harvest spellings asked and both answering the row spelling collect to one row with coverage holding; a sibling-answered zero-row spelling is accounted; differing bytes for one grain across two spellings refuse loudly."
+      "evidence": "605 passed, 0 failed at the merged head 8cba101b (includes the doctor-timeout repair-hint tests)."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "78 passed, 0 failed at the merged head 8cba101b (the DOCTOR_TIMEOUT contract test passes against the appended hint)."
     }
   ],
   "assumptions_resolved": [
-    "The two-spelling harvest shape was proved live: run 35288752430 refused naming asked PPk133 vs row answers PPK133; run 35294603177 passed the case-folded guard and refused on the cross-key count, which only happens when both spellings are distinct harvest keys answering one spelling."
+    "PROVENANCE, STATED PLAINLY: the implementation (59e7467d) was written by a ZCode session BEFORE any contract was published; generation 1 was published by that same session mid-packaging with a base_sha that names no real commit, and generation 2 corrects the base to the true fork point 4b115d33. No pre-work ordering is claimed for this contract.",
+    "The evidence pair was finished and the branch refreshed onto current main by a successor ZCode repo-maintenance session clearing the protected-source serialization chain (#3215 -> #3217) so issue #3232 can merge; the implementation diff is unchanged by the refresh.",
+    "The primary #2828 defect (the ai-glm doctor spawn-shape timeout) is repaired in popcre/ai-devops by a separately reviewed change, not here."
   ],
   "stop_conditions_hit": []
 }

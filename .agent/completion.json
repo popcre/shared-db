@@ -1,28 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3266,
+  "work_issue": 3262,
   "outcome": "ready-for-merge",
-  "pr": 3267,
+  "pr": 3248,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3266/2",
-  "contract_sha256": "be0b8462f8ad8c90a6e75e03545f1487da8810cd841d0500b9cfcbe8fa37614f",
-  "head_sha": "b90b2e9b00d36bb3fd9a892cb325e2a55c2da7bc",
+  "contract_ref": "refs/db-contracts/3262/1",
+  "contract_sha256": "183047121f8042a00b604055eec00a945779d746979d1ee0313929ec8653df36",
+  "head_sha": "370981a7ff2dd29fb49e1cd4142cf1e15fe47395",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "plan_shared_db_popcre_transfer_merge_queue.md"
+    "AGENTS.md",
+    "docs/business-rules/application-map.md",
+    "docs/business-rules/erp-orders-and-source-meaning.md",
+    "docs/business-rules/master-data-access.md",
+    "plan_coldlion_order_intake.md",
+    "HANDOFF.d/2026-09-17T1440Z-edge-dev-zcode-order-intake-plan.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/contract.json",
       "exit_code": 0,
-      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (45 entries), on head 2ffb377b."
+      "evidence": "prints 'Contract is valid.' for issue #3262 generation 1, base de17b011f5eeacc441892365bccc7b78a009f157; ref published as refs/db-contracts/3262/1 (ls-remote confirms object 4d54855638861f6bd002ddf49d24d0d1bc88e321)."
+    },
+    {
+      "command": "node scripts/check-handoff-contract.mjs",
+      "exit_code": 0,
+      "evidence": "'Handoff contract satisfied for 1 changed file(s).' — the HANDOFF.d entry carries the required issue/status/owner frontmatter after the 2026-09-18 fix commit (issue 3262, status OPEN, owner zcode/claude-order-intake-plan-docs)."
+    },
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-completion --report-file .agent/completion.json --contract-file .agent/contract.json",
+      "exit_code": 0,
+      "evidence": "prints 'Completion report is valid.' against the published contract hash 183047121f8042a00b604055eec00a945779d746979d1ee0313929ec8653df36; run locally before the evidence commit, without the PR-identity arguments CI adds."
     }
   ],
   "assumptions_resolved": [
-    "Sync run 35351543065 on f9809546: all nine consumer jobs success (#2530 comment 5730865894)."
+    "Confirmed live on PR #3248's checks (2026-09-18): AGENTS.md and plan_coldlion_order_intake.md are classified as rulebook files, so the enforced agent work contract applies and this pair rides with the pull request.",
+    "The inherited main pair (issue #3199, generation 20) is replaced here by design — enforced mode ignores inherited evidence and requires this pull request to change both files."
   ],
   "stop_conditions_hit": []
 }

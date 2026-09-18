@@ -1,3 +1,9 @@
+---
+issue: 3262
+status: OPEN
+owner: zcode/claude-order-intake-plan-docs
+---
+
 # Handoff — ColdLion automatic order intake plan
 
 - **Date:** 2026-09-17T14:40Z · **Agent:** ZCode (GLM) · **Session:** live ColdLion

@@ -1,49 +1,87 @@
 {
   "schema_version": 1,
-  "generation": 7,
-  "work_issue": 3264,
+  "generation": 1,
+  "work_issue": 3280,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Fix #3264: guarded-lane merges push as github-actions, and GitHub starts no push workflow for that token, so sync.yml never fired after a guarded merge. Add workflow_dispatch to sync.yml and have the guarded merge workflow dispatch it on main right after a proven merge.",
-  "base_sha": "2863805e10737d9aabd6ea7d3a6469ec16f5826f",
-  "dispatcher": "Albert's own chat instruction: \"spin up a sub-agent to do #3264\"",
-  "worker": "Claude sub-agent, dispatched from chat 3886eb83-7824-4477-a257-dd3adfd80d03 on edge-dev",
-  "branch": "claude/3264-sync-dispatch",
-  "worktree": "C:/repos/fix-3264-38439936",
+  "goal": "Execute #2530 plan Step 7: rebuild the merge queue implementation on current main — queue contract script, merge-queue-gate workflow, merge_group coverage for every required context, exact-SHA preview rehearsal status publishing, dual-mode guarded merge lane, fail-closed activation script with queue-only rollback, and the operations document. Do not activate the ruleset from this branch.",
+  "base_sha": "7220a7e57a2eebb676d7d07a3dd2011f6beeb095",
+  "dispatcher": "Albert own-words authorization recorded as #2530 comment 5732749753: \"I approve turning on the GitHub merge queue for popcre/shared-db as the plan describes.\"",
+  "worker": "Kimi Work session conv-888fb90a07f61924a4c3c682 on edge-dev",
+  "branch": "claude/2530-merge-queue-phase-c",
+  "worktree": "C:/repos/shared-db-worktrees/2530-merge-queue-phase-c",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/cancelled-work-guard.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/domain-ownership.yml",
     ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    ".github/workflows/handoff-contract-guard.yml",
+    ".github/workflows/intake-pointer-guard.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-marker-guard.yml",
+    ".github/workflows/pr-object-collision.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/cancelled-work-guard.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/domain-ownership.yml",
     ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    ".github/workflows/handoff-contract-guard.yml",
+    ".github/workflows/intake-pointer-guard.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-marker-guard.yml",
+    ".github/workflows/pr-object-collision.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "Never touch a database, preview or production target.",
-    "Never widen guarded-merge permissions beyond actions: write, scoped to this job, for the dispatch.",
-    "Never make the sync dispatch fire before the merge step is proven successful.",
-    "Never route this to the structure/schema orchestrator; it changes no database shape."
+    "Never create, modify or delete a ruleset from this branch; activation is Step 8 in a fresh session.",
+    "Never use an admin bypass in the guarded merge lane; direct merge pre-activation, queue admission post-activation."
   ],
   "required_checks": [
-    "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
-    "node --test scripts/check-lane-route-sync.test.mjs",
-    "node --test scripts/lib/documents-only-change.test.mjs",
-    "node scripts/check-github-transport-conformance.mjs"
+    "node --test scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-repository-identity-conformance.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs scripts/check-exact-head-approval.test.mjs scripts/check-lane-route-sync.test.mjs"
   ],
   "assumptions": [
-    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push; no concurrency change is needed.",
-    "origin/main moved during exact-head review with unrelated, non-documentation changes; a merge-from-main (7cc559b2355ca87ed354807a0300b9b86b2623f1) was required. The reviewed non-.agent diff stayed byte-identical across the merge, so the durable APPROVE verdict recorded at ea4d3ae15b7d8bdd596a1df28baeadb7e6c4fc28 carries forward."
+    "Live branch protection carries 13 required contexts and is the authoritative list; the docs mirror is refreshed in Step 8, not here.",
+    "The repository transfer completed in earlier steps: remote is popcre/shared-db with immutable repository ID 1275568548."
   ],
   "stop_conditions": [
-    "Stop and report if the consumer sync still does not start after a guarded merge lands through this fix.",
-    "Stop and report on any gate refusal; never weaken a guard to proceed."
+    "Stop and report on any gate refusal; never weaken a guard to proceed.",
+    "Any queue-state read that is unreadable or drifted refuses rather than guesses."
   ]
 }

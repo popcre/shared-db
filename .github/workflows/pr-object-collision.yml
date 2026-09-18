@@ -58,6 +58,8 @@ name: Cross-PR Object Collision
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -66,7 +68,9 @@ permissions:
 
 concurrency:
   group: pr-object-collision-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: GitHub re-requests checks for the same
+  # group, and cancelling the older run could starve it (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
@@ -125,6 +129,10 @@ jobs:
         run: node scripts/check-pr-source-collisions.mjs
 
       - name: No other open PR replaces the same database object
+        # On merge_group the pull_request payload does not exist; the Merge
+        # queue gate re-runs this same script against the resolved queued PR,
+        # so the proof still happens exactly once per merge (#2530).
+        if: github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
           OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}

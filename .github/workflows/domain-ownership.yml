@@ -11,6 +11,8 @@ name: Domain Ownership
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
 
@@ -19,7 +21,8 @@ permissions:
 
 concurrency:
   group: domain-ownership-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   domain-ownership:

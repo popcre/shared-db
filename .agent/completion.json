@@ -1,45 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 3264,
+  "work_issue": 3280,
   "outcome": "ready-for-merge",
-  "pr": 3268,
+  "pr": 3279,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3264/7",
-  "contract_sha256": "783e824590d7e6e1a4bc347ed105f73bb3a2890f3f3ada905d313f7d0c94acc9",
-  "head_sha": "7cc559b2355ca87ed354807a0300b9b86b2623f1",
+  "contract_ref": "refs/db-contracts/3280/1",
+  "contract_sha256": "62b349f1e90baf6f61fbcaadda4e06cd4b4f4c457038c097ddf8679030de4aa7",
+  "head_sha": "04237a967ab398dedb70ca05d0f2bca1e98ff08f",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/cancelled-work-guard.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/domain-ownership.yml",
     ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/sync.yml",
-    "scripts/check-guarded-merge-sync-dispatch.test.mjs"
+    ".github/workflows/handoff-contract-guard.yml",
+    ".github/workflows/intake-pointer-guard.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-marker-guard.yml",
+    ".github/workflows/pr-object-collision.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
+      "command": "node --test scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 6, pass 6, fail 0"
-    },
-    {
-      "command": "node --test scripts/check-lane-route-sync.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 4, pass 4, fail 0"
-    },
-    {
-      "command": "node --test scripts/lib/documents-only-change.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 22, pass 22, fail 0"
+      "evidence": "36/36 pass on head 04237a96 (15 contract, 13 configure, 8 workflow coverage)."
     },
     {
       "command": "node scripts/check-github-transport-conformance.mjs",
       "exit_code": 0,
-      "evidence": "GitHub transport conformance: 295 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
+      "evidence": "301 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs; the workflow listing uses one recursive tree read via createTreeReader."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Every remaining literal slug is allowlisted with an exact count (45 entries)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=310 after recording the new test-file presence guard at tools-offline-tests.yml:171 as excluded."
+    },
+    {
+      "command": "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs scripts/check-exact-head-approval.test.mjs scripts/check-lane-route-sync.test.mjs",
+      "exit_code": 0,
+      "evidence": "42/42 pass post-merge with origin/main 7220a7e5 (sync-dispatch step preserved; dual-mode lane intact)."
+    },
+    {
+      "command": "full scripts/*.test.mjs sweep + all 37 scripts/test_*.py suites",
+      "exit_code": 0,
+      "evidence": "Python 1,186 tests OK. Node sweep clean except failures that reproduce identically on pristine origin/main (orchestrator-snapshot 5, issue-505 1, check-sql wrapper timeout) — pre-existing environment artifacts, not this change."
     }
   ],
   "assumptions_resolved": [
-    "sync.yml's existing concurrency group (sync-shared-db, cancel-in-progress: false) safely serializes a manual dispatch against an overlapping ordinary push."
+    "Live branch protection read at PR time carries 13 required contexts including Queue-sensitive checks (aggregate); all 13 plus the additive Merge queue gate are mapped in scripts/check-merge-queue-workflows.test.mjs.",
+    "Remote is https://github.com/popcre/shared-db.git, repository ID 1275568548, matching the Step 3 transfer baseline artifact."
   ],
   "stop_conditions_hit": []
 }

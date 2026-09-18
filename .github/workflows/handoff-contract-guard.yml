@@ -27,15 +27,22 @@ name: Handoff Contract Guard
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
   contents: read
   issues: read
+  # Read-only: on a merge_group run the one queued pull request's title and
+  # body are read from the API, because the merge_group payload carries no
+  # pull_request object (#2530).
+  pull-requests: read
 
 concurrency:
   group: handoff-contract-guard-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
@@ -55,10 +62,34 @@ jobs:
       - name: Prove the guard refuses each failure it is meant to catch
         run: node --test scripts/check-handoff-contract.test.mjs scripts/report-stale-handoffs.test.mjs
 
+      - name: Resolve the queued pull request (merge group only)
+        # The merge_group payload carries no pull_request object. The one
+        # queued PR is resolved from the queue ref and re-verified live by the
+        # merge queue contract (#2530); its title and body come from the API.
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          echo "pr_number=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
+
       - name: Check the handoff files this pull request touches
         env:
           GH_TOKEN: ${{ github.token }}
-          HANDOFF_BASE: origin/${{ github.base_ref }}
+          HANDOFF_BASE: origin/${{ github.base_ref || 'main' }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: node scripts/check-handoff-contract.mjs
+          MERGE_GROUP_PR: ${{ steps.queue.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MERGE_GROUP_PR:-}" ]; then
+            git fetch --no-tags origin main
+            PR_TITLE="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)"
+            PR_BODY="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+            export PR_TITLE PR_BODY
+          fi
+          node scripts/check-handoff-contract.mjs

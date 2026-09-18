@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3215,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2406/1",
-  "contract_sha256": "630caa177596e8cd3697e590fcc5dc5120fec625b97b49fa00a41039ac624fad",
-  "head_sha": "7a49587675d4cc4d7038b2eb6d835a1bbe55ea57",
+  "contract_ref": "refs/db-contracts/2406/2",
+  "contract_sha256": "1d89c9297705ccd0f2d57aee057aba02843fdfeebd7520ba8afa939870091f0e",
+  "head_sha": "29491d729a223cc20fb3377196ce8d4772493999",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -23,7 +23,8 @@
   "assumptions_resolved": [
     "Issue #2406 was open, unassigned, labelled non-orchestrator, and had no linked implementation pull request at dispatch.",
     "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence.",
-    "Review round 2 (governed Grok REVISE at e448635, replacement 3179) was answered in-repo: the High finding's missing lock case and the Low finding's skip-detail wording are fixed at 7a495876."
+    "Review round 2 (governed Grok REVISE at e448635, replacement 3179) was answered in-repo: the High finding's missing lock case and the Low finding's skip-detail wording are fixed at 7a495876.",
+    "Generation 2 follows the main advance through #3246; the branch was refreshed by merge (29491d72) and the implementation diff is unchanged, so the durable Muse APPROVE at c5151c5e covers the refreshed head by content equivalence (#2758)."
   ],
   "stop_conditions_hit": []
 }

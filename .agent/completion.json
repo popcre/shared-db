@@ -1,37 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 3199,
+  "work_issue": 3253,
   "outcome": "ready-for-merge",
-  "pr": 3259,
+  "pr": 3254,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/20",
-  "contract_sha256": "c9353194e618b95f94ebb9693e8ecd27205899cd32e43475db4e5de9434bc7d3",
-  "head_sha": "e16bbbe82962d4a881e34f0df38f3ee37f389093",
+  "contract_ref": "refs/db-contracts/3253/5",
+  "contract_sha256": "9b69414dcecff8dea0f5a1ca716448b616e3ea0cb3dd56295363d0186473781f",
+  "head_sha": "c27fd1de9fb96b7839e7ebd82a2416b34747476f",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    "HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduction.md",
-    "plan_orchestrator_required_load_reduction.md"
+    ".github/workflows/pii-forward-guard.yml",
+    ".github/workflows/shared-db-live-proof.yml",
+    ".github/workflows/sync.yml",
+    "AGENTS.md",
+    "COORDINATOR_INTAKE.md",
+    "HANDOFF.md",
+    "README.md",
+    "docs/ai-session-instructions/shared-supabase-branch-workflow.md",
+    "docs/verification/shared-db-popcre-transfer-postcheck-20260918T090657Z.json",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260917T194909Z.json",
+    "docs/verification/shared-db-popcre-transfer-preflight-20260918T090454Z.json",
+    "plan_shared_db_popcre_transfer_merge_queue.md",
+    "scripts/check-repository-identity-conformance.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-lane-route-sync.test.mjs",
+      "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "4/4 green on the merged main this branch was cut from (c8dd3baa): the landed lane and its documentation agree."
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (45 entries), on head 4c11455f."
     },
     {
-      "command": "ai-task-gates check --before pr-wait",
+      "command": "node --test scripts/check-repository-identity-conformance.test.mjs",
       "exit_code": 0,
-      "evidence": "pr-wait may start for the declared class; the exact-head independent review proceeds through this pull request."
+      "evidence": "tests 5, pass 5, fail 0 on head 4c11455f."
     }
   ],
   "assumptions_resolved": [
-    "The popcre transfer completed overnight; u2giants URLs redirect and all numbering holds.",
-    "PR #3228 landed via the full governed path (three refreshes, contract generations 16-18, durable verdicts at each successive head, merged at c8dd3baa as the new main tip); its content was re-verified on main before this closing change was authored.",
-    "Phase A1/A2 gates were verified by queue-audit reruns on 2026-09-17; A3 workflow_dispatch gate run 35268440957 green; B4 machine-local documentation (both skill copies, codex memory) written 2026-09-17.",
-    "Main moved once between the first merge dispatch and the merge (PR #3260, an unrelated HANDOFF.d addition); the refresh does not change this pull request own diff, so the Muse Spark 1.3 APPROVE at ead28ccd carries by content equivalence (#2758 rule)."
+    "Post-transfer check (docs/verification/shared-db-popcre-transfer-postcheck-20260918T090657Z.json): popcre/shared-db keeps repository ID 1275568548, public, main 1886fb38, every ref identical to the pre-transfer mirror."
   ],
   "stop_conditions_hit": []
 }

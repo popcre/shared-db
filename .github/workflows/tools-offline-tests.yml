@@ -32,6 +32,8 @@ name: Tools Offline Tests
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -56,7 +58,8 @@ permissions:
 
 concurrency:
   group: tools-offline-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
@@ -156,6 +159,18 @@ jobs:
           done
           node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs
           node scripts/check-repository-identity-conformance.mjs
+
+      - name: Run the merge queue contract, configurator, and workflow coverage tests (#2530)
+        # Named explicitly, like the freshness gate above: the workflow coverage
+        # test is the machine proof that every required context reports on
+        # merge_group. A suite that silently stops running would let a required
+        # context lose its queue coverage unnoticed.
+        run: |
+          set -euo pipefail
+          for f in scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs; do
+            test -f "$f" || { echo "::error::Missing $f"; exit 1; }
+          done
+          node --test scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs
 
       - name: Refuse to run with any production authorization present
         run: |

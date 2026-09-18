@@ -6,7 +6,11 @@ on:
   # forever and the guard can never block a merge (see HANDOFF.md B2, PR #328/#307).
   # Only the cheap `validate` job runs on a PR; `preview` and `production-dry-run`
   # are gated on `github.event_name == 'workflow_dispatch'`.
+  # merge_group: the `SQL migration guards` context is required, so it must also
+  # report on a merge group's synthetic commit (#2530).
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       target:
@@ -120,10 +124,12 @@ permissions:
 
 concurrency:
   # Pull requests get a PER-REF group so PR validations run in parallel and can never
-  # queue behind (or ahead of) a production `workflow_dispatch`. Every non-PR event —
-  # i.e. every `workflow_dispatch` against preview or production — keeps the SINGLE
-  # global group it has always had, so dispatch serialisation is unchanged.
-  group: ${{ github.event_name == 'pull_request' && format('shared-supabase-migrations-{0}', github.ref) || 'shared-supabase-migrations' }}
+  # queue behind (or ahead of) a production `workflow_dispatch`. A merge_group run
+  # gets the same per-ref treatment (#2530): its ref is the unique queue ref, and it
+  # must never wait behind (or cancel) a preview or production lane. Every
+  # `workflow_dispatch` against preview or production keeps the SINGLE global group
+  # it has always had, so dispatch serialisation is unchanged.
+  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && format('shared-supabase-migrations-{0}', github.ref) || 'shared-supabase-migrations' }}
   cancel-in-progress: false
 
 jobs:
@@ -327,6 +333,10 @@ jobs:
       contents: write
       issues: write # admission may reopen the validated merge-closed source issue
       pull-requests: read
+      # The successful post-merge rehearsal publishes its exact-SHA status so the
+      # merge queue's next group can be released (#2530). Statuses are written to
+      # commits, not to the database; this grants no database capability.
+      statuses: write
     env:
       # CONFIGURED, not hard-coded. The preview branch is rebuilt from time to time and its
       # project ref CHANGES when it is: on 2026-08-18 rjyboqwcdzcocqgmsyel was deleted and
@@ -967,6 +977,27 @@ jobs:
               --merge-commit-sha "$PAIR_SHA" \
               --output "$RUNNER_TEMP/preview-instance-${PAIR_PR}.json"
           done
+      # THE MERGE QUEUE'S RELEASE SIGNAL (#2530 Phase C Step 7). A successful
+      # post-merge rehearsal proves this EXACT main commit on preview; the merge
+      # queue gate holds the next group until this status reads success on that
+      # same commit. Posted only here: `if: success()` means a failed or
+      # cancelled apply never publishes it, the SHA is the proven checkout
+      # commit (inputs.commit_sha == HEAD, freshness-checked above), and the
+      # project was asserted to be preview in this job's first step.
+      - name: Publish the exact-SHA preview rehearsal status for the merge queue
+        if: success() && inputs.mode == 'apply' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REHEARSED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          case "$REHEARSED_SHA" in *[!0-9a-f]* | "") echo "REFUSED: rehearsed SHA is not a 40-hex commit: ${REHEARSED_SHA:-empty}" >&2; exit 1 ;; esac
+          test "${#REHEARSED_SHA}" -eq 40
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$REHEARSED_SHA" \
+            -f state=success \
+            -f context='Post-merge preview rehearsal' \
+            -f description="Exact main commit rehearsed on preview by run $GITHUB_RUN_ID" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - name: Save preview evidence
         if: always()
         uses: actions/upload-artifact@v4

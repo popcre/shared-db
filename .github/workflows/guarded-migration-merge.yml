@@ -164,6 +164,26 @@ jobs:
             sleep 6
           done
           test "$observed" = 'success'
+          # QUEUE-AWARE ADMISSION (#2530 Phase C Step 7). This lane stays the sole
+          # admission path in both modes; only the final merge verb changes. The
+          # live ruleset read decides:
+          #   active   — the exact approved one-PR queue ruleset is live. GitHub
+          #              becomes the sole merger: with checks green, `gh pr merge`
+          #              adds the PR to the queue (or arms auto-merge, as the CLI
+          #              documents). The administrator bypass flag is never used.
+          #   inactive — the pre-queue direct merge, unchanged.
+          #   unknown  — the read failed (this token has no administration scope,
+          #              so rulesets may be unreadable). Attempt the direct merge;
+          #              only a refusal that NAMES the merge queue switches the
+          #              attempt to queue admission, once. Any other refusal
+          #              behaves exactly as before.
+          queue_mode="$(node scripts/merge-queue-contract.mjs --queue-mode)" || queue_mode="unknown"
+          echo "merge queue mode: $queue_mode"
+          if [ "$queue_mode" = 'active' ]; then
+            gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+            echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+            exit 0
+          fi
           # Retry ONLY the eventual-consistency refusal this loop exists for. Any other
           # refusal is a policy or state fact no retry can change, and retrying it holds
           # the repository-wide merge lock for two more minutes before failing (#1201).
@@ -173,6 +193,17 @@ jobs:
               merged=1; break
             fi
             cat "$RUNNER_TEMP/merge-error.txt"
+            if grep -qi 'merge queue' "$RUNNER_TEMP/merge-error.txt"; then
+              # The queue ruleset went active while this run held the lock (or the
+              # ruleset read was impossible for this token). Direct merging is now
+              # refused by GitHub itself, so the same admission becomes queue
+              # admission — still exact-head pinned, still without the
+              # administrator bypass.
+              echo "GitHub requires the merge queue; switching this admission to queue mode"
+              gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+              echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+              exit 0
+            fi
             if ! grep -qi 'base branch policy prohibits the merge' "$RUNNER_TEMP/merge-error.txt"; then
               echo "guarded merge was refused for a reason no retry can resolve; releasing the merge lane now"
               break

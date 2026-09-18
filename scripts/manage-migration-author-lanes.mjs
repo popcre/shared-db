@@ -917,7 +917,7 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
     // reserved version is on main, the issue may remain open for promotion, but
     // it must never be offered as fresh authoring again.
     if (authoredOnMain.has(issue.number)) {
-      skipped.push({ issue:issue.number, reason:'authored-on-main', detail:'a closed claim has a merged migration version on current main' })
+      skipped.push({ issue:issue.number, reason:'authored-on-main', detail:"the closed claim's own reserved migration version was added by its merged pull request and remains on current main" })
       continue
     }
     // DEPENDENCY PROOF (Step 3, issue #1366). `dependencyStates` is gathered by the

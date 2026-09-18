@@ -331,6 +331,15 @@ test('authored-on-main requires the closed claim own reserved version, not a lat
     mergeCommitInMain:()=>true,
     getPrFiles:()=>[{filename:`supabase/migrations/${other}_popdam_effective_filter_identity_append.sql`,status:'added'}],
   }
+  // THE LOCK (#2406 review, High): the reserved version IS on main (landed via a
+  // later re-issue) and the claim's own pull merged, but that pull did not ADD
+  // the reserved version. The pre-#2406 classifier -- "version on main plus any
+  // merged pull from the branch" -- answered true here, which is the exact
+  // misclassification this change exists to end. This assertion must fail if
+  // addedMigrationVersions(io.getPrFiles(...)).includes(lease.version) is
+  // removed; the case below it does not distinguish and is kept as extra cover.
+  assert.equal(closedClaimAuthoredOnMain(claim,NOW,new Set([reserved]),io),false,
+    'a reservation spent by a later re-issue is not authored by this claim, even though the version is on main and the claim pull merged')
   assert.equal(closedClaimAuthoredOnMain(claim,NOW,new Set([other]),io),false,
     'an unspent reservation stays unauthored even when the same object was changed elsewhere')
   io.getPrFiles=()=>[{filename:`supabase/migrations/${reserved}_filter_effective_assets.sql`,status:'added'}]

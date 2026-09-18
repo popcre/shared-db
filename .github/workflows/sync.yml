@@ -1,4 +1,4 @@
-# Syncs the shareable root of this repo (u2giants/shared-db) into the
+# Syncs the shareable root of this repo (popcre/shared-db) into the
 # `shared-db/` subfolder of each consumer repo, on every push to main.
 #
 # - Mirror semantics: the destination subfolder becomes an exact copy of this

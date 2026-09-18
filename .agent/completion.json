@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3024/2",
   "contract_sha256": "d0eaac4a5b61f463dced02e88ef5d1dd5f42afde254172372ad4ad562e7dfe8a",
-  "head_sha": "bbf9e9c1a097cd21f844c7c892edca744e08025a",
+  "head_sha": "4a19e36cffa7ae168500d79bfef4d880ec30a547",
   "files_changed": [
     "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
     "plan_product_type_reader.md"

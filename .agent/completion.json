@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3228,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/12",
-  "contract_sha256": "bcb5989d0e475b88e12eee998b419a00d1b9734618efecb270efe3074c6e9534",
-  "head_sha": "3ef56c4dae9de3bcce5b2b6f5b0a466aa1227c65",
+  "contract_ref": "refs/db-contracts/3199/13",
+  "contract_sha256": "1d3f07c7feba68fa485880442dfda537ff5f2f7dfc874af6707fe47836d35af2",
+  "head_sha": "946894e9f3a1aea0db2e7ef38faafeba4dc0dc9b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,6 +20,7 @@
     "scripts/check-self-service-additive-lane.mjs",
     "scripts/check-self-service-additive-lane.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/orchestrator-flow/admission.mjs",
     "scripts/production_business_risk_gate.py",
     "scripts/test_self_service_boundary_lexing.py"
@@ -72,7 +73,8 @@
     "Phase B edits the protected coordination source; PR #3228 queues behind #3215 and #3217 on that file by the collision guard design, and merges only after they clear.",
     "The tokenizer gained output-only parameters; the default view is pinned byte-identical so every existing ALLOWLIST consumer is unaffected.",
     "Phase A merged first as PR #3216 (13efcd77); this branch is cut from that merged main, not stacked on the A3 branch.",
-    "Generation 12 follows the main advance through #3246, #3215 and #3217; the branch was refreshed by merge (3ef56c4d) — the lanes manager and test file auto-merged with those changes — and the completion was re-verified at the merged head by a successor ZCode session clearing the protected-source chain for #3232."
+    "Generation 12 follows the main advance through #3246, #3215 and #3217; the branch was refreshed by merge (3ef56c4d) — the lanes manager and test file auto-merged with those changes — and the completion was re-verified at the merged head by a successor ZCode session clearing the protected-source chain for #3232.",
+    "Review round 2 (governed Grok REVISE at 5acb1b4e) was answered in-repo at 946894e9: the Critical routing fork (derivePrOperationRoute, pinned by test), both High boundary bypasses (single-quoted bodies refuse by name; the grant role-list grammar terminates before WITH GRANT OPTION), the empty-file refusal, the {crm,pim,dam} admission confinement, the swapped truth-audit dispositions, and the python alias fallback. One recorded residual: the merge-time route is read from the live issue body rather than a pinned claim field (defense in depth; exact-head review still required)."
   ],
   "stop_conditions_hit": []
 }

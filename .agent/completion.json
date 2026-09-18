@@ -1,32 +1,46 @@
 {
   "schema_version": 1,
-  "work_issue": 3251,
+  "work_issue": 3255,
   "outcome": "ready-for-merge",
-  "pr": 3252,
+  "pr": 3256,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3251/1",
-  "contract_sha256": "12f928998cc06a80f08c9a1a847825e6f242aebdb9f6992fdc64b7d18e2043de",
-  "head_sha": "07217fbc74505995492b61bb5788f15c78a78fbc",
+  "contract_ref": "refs/db-contracts/3255/2",
+  "contract_sha256": "05341045155a5672e4ccd4a798d0010e887927cb6cd1fe81e5ee03291830d2cf",
+  "head_sha": "5a9cc8a30066c85f72e78086a52e9934a12b8a19",
   "files_changed": [
-    "tools/coldlion-landing-prod-details.test.mjs",
-    "tools/coldlion-landing/lib/prod-details.mjs"
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/coordination-scenarios.test.mjs",
+    "scripts/dispatch-production-apply.test.mjs",
+    "scripts/lib/work-dependencies.test.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/preview-route-canary.test.mjs",
+    "scripts/repository-maintenance-authorization.test.mjs",
+    "scripts/run-governed-review.test.mjs",
+    "scripts/test_production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate_activation_mutations.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
+      "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "39 tests, 39 pass, 0 fail on head 07217fb, including the new regression pinning distinct-on(prod_order_no) at the latest succeeded run."
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (48 entries)."
     },
     {
-      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "command": "GITHUB_REPOSITORY=popcre/shared-db node --test scripts/coordination-scenarios.test.mjs scripts/dispatch-production-apply.test.mjs scripts/lib/work-dependencies.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/orchestrator-flow/preview-route-canary.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/run-governed-review.test.mjs",
       "exit_code": 0,
-      "evidence": "176 tests, 176 pass, 0 fail on the same head - the four-suite offline gate command."
+      "evidence": "tests 836, pass 836, fail 0 on head 5a9cc8a3."
+    },
+    {
+      "command": "python -m unittest scripts/test_production_business_risk_gate.py scripts/test_production_business_risk_gate_activation_mutations.py",
+      "exit_code": 0,
+      "evidence": "OK on head 5a9cc8a3."
     }
   ],
   "assumptions_resolved": [
-    "Live evidence from run 35312282365 (2026-09-18): the landed table stayed consistent (tableRows=17303=distinctPkey; 3,263 recent keys re-read idempotently; refusedKeys=8) while the run-counting read double-counted; the guard refused rather than reporting a false agreement, which is the safe direction."
+    "Every failure reproduced on untouched main and came only from fixtures pinning u2giants/shared-db or the OWNER association; no production code changed."
   ],
   "stop_conditions_hit": []
 }

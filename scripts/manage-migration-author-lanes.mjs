@@ -920,6 +920,35 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
       // because its authors claim, review and merge through the same guarded
       // machinery WITHOUT an orchestrator turn — refilling from here would
       // re-create exactly the traffic this route exists to remove.
+      //
+      // Round-2 review (Medium): the early `continue` used to skip dependency
+      // registration and admission, so the audit went BLIND to exactly this
+      // route's blockers -- an invalid depends_on never surfaced, a cycle
+      // through a self-service issue was invisible, and an admission failure
+      // (including the {crm,pim,dam} confinement) never reported as malformed.
+      // The checks below are the same ones the orchestrator-routed path runs;
+      // the only thing withheld is the refill itself (no candidates.push).
+      dependencyEdges[issue.number] = scope.dependencies
+      try {
+        validateDependencyDeclaration(issue.number, scope.dependencies)
+      } catch (error) {
+        malformed.push({ issue: issue.number, reason: error.message })
+        continue
+      }
+      if (dependencyStates) {
+        const verdict = classifyDependencies(issue.number, scope.dependencies, dependencyStates)
+        if (!verdict.satisfied) {
+          for (const blocked of verdict.blocked) {
+            skipped.push({ issue: issue.number, reason: `${blocked.status}:${blocked.number}`, detail: blocked.reason })
+          }
+          continue
+        }
+      } else {
+        const waiting = scope.dependencies.filter((number)=>openNumbers.has(number))
+        if (waiting.length) { skipped.push({ issue:issue.number, reason:`depends-on-open:${waiting.join(',')}` }); continue }
+      }
+      try { evaluateAdmission(issue, scope, parseImpactBlock(issue.body)) }
+      catch (error) { malformed.push({ issue: issue.number, reason: error.message }); continue }
       selfServiceLane.push({ issue:issue.number, title:issue.title, workType:scope.workType, route:scope.route })
       continue
     }
@@ -7633,7 +7662,7 @@ export function expandActiveClaimFromPr(options, now = new Date(), io = githubIo
     if(before?.state!=='open')throw new LaneError('target claim is not open')
     if(workstreamKey(before.title)!==`#${Number(options.issue)}`)throw new LaneError('target claim does not belong to the exact issue')
     const workIssue=io.getIssue(options.issue),scope=parseQueueScope(workIssue?.body??'')
-    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural orchestrator work')
+    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural work on an admitted structural route')
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy||!lease.active)throw new LaneError('target claim lease is legacy or expired')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
@@ -7690,7 +7719,7 @@ export function expandActiveClaimFromIssue(options,now=new Date(),io=githubIo){
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
     assertClaimNotRetired(lease.version,'expanded',io)
     const workIssue=io.getIssue(options.issue),scope=parseQueueScope(workIssue?.body??'')
-    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural orchestrator work')
+    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural work on an admitted structural route')
     const claimed=new Set(lease.objects.map(normalizeObject)),uncovered=scope.objects.filter((object)=>!claimed.has(object))
     if(!uncovered.length)throw new LaneError('exact work issue has no uncovered objects to add')
     const claims=io.openClaims()

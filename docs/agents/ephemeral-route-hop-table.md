@@ -32,7 +32,7 @@ no-preview-at-all ephemeral route.
 | 4 | Assemble the production dispatch inputs (versions, review evidence run ID, ephemeral check-run job ID, source PR, work issue) | A session, through `node scripts/dispatch-production-apply.mjs` (no `--dispatch` prints the plan) | **Yes — but the transcription is already automated** | Run listings via `scripts/gh-read.mjs`; the script refuses any non-success evidence run and checks every input name against the workflow | Pure mechanics were ALREADY removed: the script gathers digests, normalizes them and refuses mismatches (popcre/ai-devops#507). What remains manual is naming the run IDs — which is the same deliberate act as hop 3. |
 | 5 | Dispatch the production apply | A session: `dispatch-production-apply.mjs … --ephemeral-check-run-id <job> --mode apply --dispatch` | **Yes — deliberately** | Everything hop 4 assembled; the production lane's exclusive lock | The single highest-consequence act in the chain. AGENTS.md §5 pins that this narrow path "authorizes no manual production command … or bypass" *outside* the governed script — the script's dispatch is the sanctioned form, and automating it away (e.g. a push-triggered production dispatch) would remove the last human-visible go/no-go before production changes. The workflow itself re-proves target identity, dry-run, risk conclusions, locks and post-apply state. |
 | 6 | Production apply workflow re-proofs (target proof, allowlist derivation pin, fresh dry-run, business-risk gate, exclusive lock, post-apply ledger/catalog verification) | CI (`production` job of `shared-supabase-migrations.yml`) | No | The dispatch inputs + live GitHub/database state | Already automatic and fail-closed; the risk gate refuses the ephemeral route for anything its classifier does not positively recognize as low-risk. |
-| 7 | Record the outcome and release the claim (`--complete-work --issue <n> --report-file …`, then close the issue; `--release-claim` if the claim's objects are done) | A session | **Yes — judgment, deliberately** | The post-apply verification artifact | "Outcome" is a claim about the world (applied AND verified AND behaving), not a transcription; §4's full text requires the doing session to own it. Automating closure on a green run is exactly the "closure alone is not success" trap the dependency rules exist to prevent. |
+| 7 | Record the outcome and release the claim (the issue carries an outcome stage, so complete it with `--complete-outcome` — the outcome lifecycle accepts BOTH structural routes — or `--complete-work` where no outcome stage applies, then close the issue; `--release-claim` if the claim's objects are done) | A session | **Yes — judgment, deliberately** | The post-apply verification artifact | "Outcome" is a claim about the world (applied AND verified AND behaving), not a transcription; §4's full text requires the doing session to own it. Automating closure on a green run is exactly the "closure alone is not success" trap the dependency rules exist to prevent. |
 
 ## C2 conclusion — no code change
 
@@ -46,3 +46,14 @@ Recorded on the plan STATUS row for C2 with this table as the artifact.
 
 *Counts and states above name the commands and files that produce them (owner ruling §4.3);
 re-derive rather than trusting any number in this document.*
+
+## The ADD COLUMN lock, stated plainly (round-2 review, Medium)
+
+`ALTER TABLE … ADD COLUMN` is the only object-mutating lane shape with no
+created-here precondition, and it takes an ACCESS EXCLUSIVE lock on the target —
+heavier than the non-concurrent `CREATE INDEX` the lane refuses. That is
+deliberate: `{crm,pim,dam}` are app-owned schemas (the §4.1 per-app extension
+table pattern), so the lock's blast radius is the app that authored the change,
+never a shared-schema consumer. A nullable additive column on an existing
+app-owned table is the lane's core use case. A shared-schema `ADD COLUMN` never
+matches the boundary-qualified shape and refuses.

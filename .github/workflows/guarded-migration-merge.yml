@@ -82,8 +82,9 @@ jobs:
           # is not an approval of these bytes (#1816).
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node scripts/check-exact-head-approval.mjs
           # SELF-SERVICE ADDITIVE LANE BOUNDARY (#3199 Phase B3). Applies only
-          # when the pull request's claim names a work issue whose route is
-          # self-service-additive; every other route exits 0 "not applicable"
+          # when the pull request's linked work issue (resolved through the closing-
+          # issue linkage, never a claim) declares route self-service-additive; every
+          # other route — including repository maintenance — exits 0 "not applicable"
           # and this step never judges it. Placed BEFORE the quota check and
           # the merge lane so an out-of-boundary pull request is refused having
           # taken no lock at all — the classifier is fail-closed: any parse

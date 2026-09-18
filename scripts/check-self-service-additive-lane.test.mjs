@@ -265,3 +265,25 @@ test('workIssueRouteOf routes through the operation fork, never structural admis
   assert.match(source, /derive = derivePrOperationRoute/)
   assert.doesNotMatch(source.split('\n').find((line) => line.includes('from \'./manage-migration-author-lanes.mjs\'')), /resolveAdmittedIssueForPr/)
 })
+
+test('COMMENT ON a shared or unqualified target REFUSES (round-2 review Medium)', () => {
+  for (const sql of [
+    'comment on schema core is null',
+    'comment on publication supabase_realtime is null',
+    'comment on extension pg_net is null',
+  ]) {
+    const result = classify(sql)
+    assert.equal(result.verdict, 'refuse', sql)
+    assert.match(result.reasons.join('; '), /not a whitelisted lane shape/, sql)
+  }
+  // A dotted shared-schema target is caught by the reference scan instead.
+  const dotted = classify('comment on column core.customer.note is null')
+  assert.equal(dotted.verdict, 'refuse')
+  assert.match(dotted.reasons.join('; '), /core\.customer/)
+  // A boundary-qualified comment still passes.
+  const own = classify([
+    'create table crm.noted (id uuid)',
+    'comment on table crm.noted is \'\'',
+  ].join(';\n'))
+  assert.equal(own.verdict, 'pass')
+})

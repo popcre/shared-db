@@ -88,10 +88,26 @@ const SHAPES = {
   // the lane) and NO `or replace` (the lane never rewrites a live object). The
   // routine-option grammar keeps the production space discipline: options
   // before the invoker are space-terminated, options after it space-prefixed.
-  create_function: BOUNDARY(`create function (${BOUNDARY_QUALIFIED}) ?${ARGS} returns (?:setof )?(?:trigger|${BUILTIN_COLUMN_TYPE}|void) (?:${ROUTINE_OPTION} )*security invoker(?: ${ROUTINE_OPTION})* ?as (?:\\$\\$ \\$\\$|'')(?: ${ROUTINE_OPTION})*`),
+  // Round-2 review (Low): the emptied `''` body alternative is deliberately
+  // GONE — the file-level single-quoted-body refusal fires first, so the shape
+  // itself now only accepts the dollar-quoted empty body and fails closed
+  // twice if that refusal is ever removed.
+  create_function: BOUNDARY(`create function (${BOUNDARY_QUALIFIED}) ?${ARGS} returns (?:setof )?(?:trigger|${BUILTIN_COLUMN_TYPE}|void) (?:${ROUTINE_OPTION} )*security invoker(?: ${ROUTINE_OPTION})* ?as \\$\\$ \\$\\$(?: ${ROUTINE_OPTION})*`),
+  // Round-2 review (Medium), DOCUMENTED DELIBERATELY: this is the only
+  // object-mutating shape with no created-here precondition, and it takes an
+  // ACCESS EXCLUSIVE lock on the target -- heavier than the CREATE INDEX the
+  // lane refuses. That is correct for THIS lane: {crm,pim,dam} are app-owned
+  // schemas (AGENTS.md 4.1 per-app extension tables), so the lock's blast
+  // radius is the app that authored the change, not a shared-schema consumer.
+  // A nullable ADD COLUMN is the lane's core use case; a shared-schema ADD
+  // COLUMN never matches the boundary-qualified shape and refuses.
   add_nullable_column: BOUNDARY(`alter table (?:only )?(${BOUNDARY_QUALIFIED}) add column (?:if not exists )?${IDENT} ${BUILTIN_COLUMN_TYPE}(?: null)?`),
   create_index_on_new_table: BOUNDARY(`create (?:unique )?index (?:(?!concurrently )(?!if )(?!on )${IDENT} )?on (${BOUNDARY_QUALIFIED}) ?(?:using [a-z]+ ?)?\\([^;]*\\)`),
-  comment_on: BOUNDARY('comment on [a-z ]+ [^;]+ is (?:\'\'|null)'),
+  // Round-2 review (Medium): the target must be boundary-qualified and is
+  // captured, so `comment on schema core is null` (an undotted target) fails
+  // the shape, and a dotted shared-schema target is caught by the reference
+  // scan before the shape is even consulted.
+  comment_on: BOUNDARY(`comment on [a-z ]+ (${BOUNDARY_QUALIFIED})[^;]* is (?:''|null)`),
   create_sequence: BOUNDARY(`create sequence (${BOUNDARY_QUALIFIED})`),
   create_view: BOUNDARY(`create view (${BOUNDARY_QUALIFIED}) as .+`),
   enable_row_level_security: BOUNDARY(`alter table (?:only )?(${BOUNDARY_QUALIFIED}) enable row level security`),
@@ -102,7 +118,6 @@ const SHAPES = {
   grant_on_table: BOUNDARY(`grant (?:[a-z_, ]+|all(?: privileges)?) on (${BOUNDARY_QUALIFIED}) to ${ROLE_LIST}`),
   grant_execute_on_function: BOUNDARY(`grant execute on function (${BOUNDARY_QUALIFIED}) ?${ARGS} to ${ROLE_LIST}`),
 }
-const BOUNDARY_SCHEMA_OF = (qualified) => String(qualified).replace(/^"([^"]+)".*$/, '$1').split('.')[0].replace(/"/g, '').toLowerCase()
 const OBJECT_OF = (qualified) => String(qualified).replace(/"/g, '').toLowerCase()
 
 // --- named early refusals (before shape matching) ---------------------------
@@ -133,10 +148,9 @@ const LEXER_PROGRAM = [
   'import production_business_risk_gate as gate',
   'out = []',
   'for text in json.load(sys.stdin):',
-  '    spans = []',
-  '    statements = gate.sql_top_level_statements(text, spans=spans)',
+  '    statements = gate.sql_top_level_statements(text)',
   '    references = None if statements is None else gate.sql_top_level_statements(text, keep_dollar_quoted=True)',
-  '    out.append({"statements": statements, "spans": spans, "references": references})',
+  '    out.append({"statements": statements, "references": references})',
   'print(json.dumps(out))',
 ].join('\n')
 

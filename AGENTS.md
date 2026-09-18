@@ -1330,6 +1330,7 @@ in place, the way §6.13-A supersedes §6.13. CI workflow comments and
 | [`docs/agents/runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md) | §9, §10.1–§10.3, §11 in full — credentials, CLI, hosted-Supabase traps |
 | [`docs/owner-rulings.md`](docs/owner-rulings.md) | §6.1–§6.17, §0.1-A, §4.2, §4.3 in full — every owner ruling with its reasoning, incident and measured numbers |
 | [`docs/production-promotion-procedure.md`](docs/production-promotion-procedure.md) | §5.1 in full — the bounded-checkout recipe and the production apply lane |
+| [`docs/agents/ephemeral-route-hop-table.md`](docs/agents/ephemeral-route-hop-table.md) | The self-service additive lane's end-to-end merge route — who may dispatch, the boundary classifier, and the completion hops |
 
 **Where `AGENTS.md` and a long-form file differ in wording, `AGENTS.md` wins** — it is the
 authoritative statement of policy.

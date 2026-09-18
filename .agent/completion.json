@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "work_issue": 2406,
+  "work_issue": 2828,
   "outcome": "ready-for-merge",
-  "pr": 3215,
+  "pr": 3217,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2406/2",
-  "contract_sha256": "1d89c9297705ccd0f2d57aee057aba02843fdfeebd7520ba8afa939870091f0e",
-  "head_sha": "29491d729a223cc20fb3377196ce8d4772493999",
+  "contract_ref": "refs/db-contracts/2828/3",
+  "contract_sha256": "3b6e1ef679ff4834654cd0c450d5cc6f02559b00bcb4f7326333f9cf523b8e63",
+  "head_sha": "7a059b1a9b138d06b7a14f62836f72cbecbeed17",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -19,14 +19,18 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "605 passed, 0 failed, 0 skipped at 7a495876 (review round 2): the #2406 regression now opens with the distinguishing lock (reserved version on main via a later re-issue, claim pull merged but not adding it, expect false), mutation-checked by reverting the classifier to the pre-#2406 body, which fails exactly that test; restoring the clause returns 605/605."
+      "evidence": "605 passed, 0 failed at the merged head 8cba101b (includes the doctor-timeout repair-hint tests)."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "78 passed, 0 failed at the merged head 8cba101b (the DOCTOR_TIMEOUT contract test passes against the appended hint)."
     }
   ],
   "assumptions_resolved": [
-    "Issue #2406 was open, unassigned, labelled non-orchestrator, and had no linked implementation pull request at dispatch.",
-    "The live queue audit no longer listed issue #2138 as authored-on-main before this change; the repair locks the exact-version invariant against recurrence.",
-    "Review round 2 (governed Grok REVISE at e448635, replacement 3179) was answered in-repo: the High finding's missing lock case and the Low finding's skip-detail wording are fixed at 7a495876.",
-    "Generation 2 follows the main advance through #3246; the branch was refreshed by merge (29491d72) and the implementation diff is unchanged, so the durable Muse APPROVE at c5151c5e covers the refreshed head by content equivalence (#2758)."
+    "PROVENANCE, STATED PLAINLY: the implementation (59e7467d) was written by a ZCode session BEFORE any contract was published; generation 1 was published by that same session mid-packaging with a base_sha that names no real commit, and generation 2 corrects the base to the true fork point 4b115d33. No pre-work ordering is claimed for this contract.",
+    "The evidence pair was finished and the branch refreshed onto current main twice (8cba101b, then 7a059b1a after #3215 merged; the test import line was resolved to carry both closedClaimAuthoredOnMain from main and doctorTimeoutFailingChecks from this branch) by a successor ZCode repo-maintenance session clearing the protected-source serialization chain so issue #3232 can merge; the implementation diff is unchanged by the refreshes.",
+    "The primary #2828 defect (the ai-glm doctor spawn-shape timeout) is repaired in popcre/ai-devops by a separately reviewed change, not here."
   ],
   "stop_conditions_hit": []
 }

@@ -1,15 +1,14 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 2406,
+  "work_issue": 2828,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make the lane queue audit classify a closed claim as authored on main only when that claim's own reserved migration version was added by its merged pull request, with regression coverage for an unspent reservation and a later migration touching the same object.",
-  "base_sha": "ccfe137199fc1882528dee074f1925ca24be9ea3",
-  "dispatcher": "Codex coordinating session relaying Albert's instruction to resolve six unblocked non-orchestrator issues",
-  "worker": "Codex issue #2406 subagent",
-  "branch": "codex/issue-2406-reserved-version",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/issue-2406-reserved-version/shared-db",
+  "goal": "Issue #2828 secondary ask: the governed reviewer-preflight refusal for a doctor timeout names the repair instead of a bare 'doctor did not answer within 60s' — the load-bearing prefix is preserved and a wrapper-specific repair hint is appended, with ai-glm naming 'ai-glm server start'.",
+  "base_sha": "4b115d3331eb11d46bf965527f5bd79cb17303a1",
+  "dispatcher": "ZCode (GLM 5.3) repo-maintenance session fixing shared-db #2828 (self-published per docs/agents/agent-work-contract-repo-maintenance-evidence.md: the implementation predated publication, and the completion report states that provenance plainly)",
+  "worker": "ZCode session fixing shared-db #2828",
+  "branch": "claude/issue-2828-glm-preflight-repair-hint",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/glm-preflight-msg-2828",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
@@ -18,26 +17,29 @@
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database read, write, migration, preview action, or production action",
-    "No weakening of existing queue-audit refusals, claim collision locks, or migration version reservations",
-    "No issue closure or pull-request merge by this worker"
+    "do not change the reviewer rotation, quarantines, or any reviewer registry entry",
+    "do not weaken reviewerExecutionPreflight or its doctor probe in any way",
+    "do not reword or remove the 'doctor did not answer within' prefix that run-governed-review's DOCTOR_TIMEOUT regex matches",
+    "do not touch migrations, database objects, or the PR #3201 glm exclusion record",
+    "do not edit another session's handoff, worktree, branch, or claim"
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/run-governed-review.test.mjs"
   ],
   "assumptions": [
-    "Issue #2406 remains open, unassigned, non-orchestrator, and has no linked open pull request",
-    "A migration version is authored by a claim only when that exact version was added by a merged pull request from the claim branch and remains on current main"
+    "the primary #2828 defect (the ai-glm doctor spawn-shape timeout) is repaired in popcre/ai-devops by a separately reviewed change, not here",
+    "REVIEWER_DOCTOR_TIMEOUT_MS keeps its 60000 default so the refusal text still reads 'within 60s'"
   ],
   "stop_conditions": [
-    "Stop if issue #2406 gains another live owner or linked implementation pull request",
-    "Stop if the repair would require a database change or weakening any existing refusal"
-  ]
+    "stop and re-declare if the change needs to touch any file outside allowed_paths",
+    "stop if the DOCTOR_TIMEOUT contract test in run-governed-review.test.mjs fails against the appended hint",
+    "stop if the doctorTimeoutFailingChecks unit test cannot express the wrapper-specific hint without matching real doctor output"
+  ],
+  "generation": 3
 }

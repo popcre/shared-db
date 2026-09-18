@@ -2602,7 +2602,7 @@ export const githubIo = {
     let output=''
     try{output=execFileSync(file,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_DOCTOR_TIMEOUT_MS})}
     catch(error){
-      if(error?.code==='ETIMEDOUT')return {ok:false,failingChecks:[`doctor did not answer within ${REVIEWER_DOCTOR_TIMEOUT_MS/1000}s`]}
+      if(error?.code==='ETIMEDOUT')return {ok:false,failingChecks:doctorTimeoutFailingChecks(wrapper)}
       output=`${error?.stdout??''}${error?.stderr??''}`
       const failed=parseDoctorFailures(output)
       if(failed.length)return {ok:false,failingChecks:failed}
@@ -2985,6 +2985,18 @@ export function summarizeDoctorOutput(output=''){
 export function doctorSpawnPlan(resolved,platform=process.platform){
   if(platform==='win32'&&/\.(cmd|bat)$/i.test(resolved))return {file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,'doctor']}
   return {file:resolved,args:['doctor']}
+}
+
+// ISSUE #2828: a doctor timeout names the wrapper and, where that provider runs a
+// local server, the exact repair -- a bare "did not answer" left the operator
+// guessing while a healthy server sat undrawable. The leading text is load-bearing:
+// run-governed-review's DOCTOR_TIMEOUT regex matches `doctor did not answer within`
+// to decide the retry-then-reroute path, so only append after it, never reword it.
+export function doctorTimeoutFailingChecks(wrapper,timeoutMs=REVIEWER_DOCTOR_TIMEOUT_MS){
+  const repair=wrapper==='ai-glm'
+    ?' — the repair for a down or wedged GLM server is `ai-glm server start` (then `ai-glm doctor` locally if it still stalls)'
+    :` — run \`${wrapper} doctor\` locally to see which check stalls`
+  return [`doctor did not answer within ${timeoutMs/1000}s${repair}`]
 }
 
 // The single place a wrapper name becomes a real path.

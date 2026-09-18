@@ -118,6 +118,23 @@ jobs:
             echo "::error::Missing scripts/queue-hygiene-report.test.mjs"; exit 1; }
           node --test scripts/queue-hygiene-report.test.mjs
 
+      - name: Run the self-service lane boundary and route-sync tests (#3199 Phase B)
+        # The boundary classifier is MERGE-TIME enforcement: no pull-request
+        # check can prove it refuses, because the refusal happens inside the
+        # guarded merge. These tests are that proof — dirty-first fixtures for
+        # every out-of-boundary shape (FK targets, SECURITY DEFINER,
+        # RLS-before-grant, CREATE OR REPLACE, riding-along workflows), plus the
+        # sync test that keeps admission and enforcement from drifting apart
+        # (PR #3204 finding 3 made permanent). The lexing contract the
+        # classifier's two tokenizer views rely on is proven by
+        # scripts/test_self_service_boundary_lexing.py under the Python glob.
+        run: |
+          set -euo pipefail
+          for f in scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs; do
+            test -f "$f" || { echo "::error::Missing $f"; exit 1; }
+          done
+          node --test scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs
+
       - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
         # Named explicitly, like the freshness gate above: these decide how every
         # governed gate reaches GitHub. The conformance check is the half that

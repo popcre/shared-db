@@ -1,45 +1,77 @@
 {
   "schema_version": 1,
-  "work_issue": 3242,
+  "generation": 18,
+  "work_issue": 3199,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Keep the reviewer start watcher running unattended despite GitHub's sparse schedule: each applying run passes every minute for 330 minutes and then dispatches its own next leg, with the cron only as the restart net, so a non-start is rerouted at the first pass after its 10-minute SLO",
-  "base_sha": "8d107ee8826d45b53c958ad54e0aa2b554191d79",
-  "dispatcher": "repo-maintenance session for issue #3242 (popcre/ai-devops#401 Step 7 chain)",
-  "worker": "claude",
-  "branch": "claude/issue-3242-watch-relay",
-  "worktree": ".claude/worktrees/issue-3242-step-7-production-9edc75",
+  "goal": "Implement issue #3199 Phases B and C: the self-service additive lane (fail-closed boundary classifier over the production tokenizer, route admission across the lane machinery and admission, merge-time enforcement inside the guarded merge, route-sync guard, AGENTS.md documentation) and the #2758 ephemeral-route hop table with C2 no-code-change outcome.",
+  "base_sha": "13efcd77aec38257d4efe073ee0f729ebb647e33",
+  "dispatcher": "ZCode session executing Albert's implement instruction for #3199",
+  "worker": "ZCode (GLM 5.3) repository-maintenance session",
+  "branch": "zcode/3199-self-service-lane-v2",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/orchestrator-load-impl",
   "allowed_paths": [
-    ".github/workflows/reviewer-start-watch.yml",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "AGENTS.md",
+    "docs/agents/ephemeral-route-hop-table.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "plan_orchestrator_required_load_reduction.md",
+    "scripts/check-lane-route-sync.test.mjs",
+    "scripts/check-self-service-additive-lane.mjs",
+    "scripts/check-self-service-additive-lane.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_self_service_boundary_lexing.py",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
   "file_writes": [
-    ".github/workflows/reviewer-start-watch.yml"
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "AGENTS.md",
+    "docs/agents/ephemeral-route-hop-table.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "plan_orchestrator_required_load_reduction.md",
+    "scripts/check-lane-route-sync.test.mjs",
+    "scripts/check-self-service-additive-lane.mjs",
+    "scripts/check-self-service-additive-lane.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_self_service_boundary_lexing.py",
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "do not touch any migration or database object",
-    "do not change the lane manager's probe, reclaim or replacement behaviour",
-    "do not reroute any lease drawn before the workflow's DRAWN_SINCE instant",
-    "do not edit another session's handoff, worktree, branch, or claim"
+    "No database write or structure change of any kind",
+    "No production workflow dispatch",
+    "No weakening of any safety gate, required check, or caller check",
+    "NON_STRUCTURAL_EXITS stays untouched",
+    "The lane boundary never grows beyond {crm,pim,dam}"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
-    "python -m pytest -q scripts/test_production_migration_guard.py",
-    "node scripts/check-github-transport-conformance.mjs",
-    "node scripts/check-repository-identity-conformance.mjs"
+    "node --test scripts/check-self-service-additive-lane.test.mjs",
+    "node --test scripts/check-lane-route-sync.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "python -m unittest scripts.test_self_service_boundary_lexing",
+    "python -m unittest scripts.test_production_preview_skip",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "bash scripts/check-sql.sh",
+    "ai-task-gates check --before pr-wait"
   ],
   "assumptions": [
-    "GitHub creates a run for a workflow_dispatch sent with the workflow's own GITHUB_TOKEN (the documented exception to the no-recursion rule)",
-    "this repository is public, so a relay occupying one hosted runner continuously costs no Actions minutes",
-    "one watcher pass costs a few API calls, so a pass every 60 seconds stays inside the GITHUB_TOKEN hourly budget"
+    "Phase B edits the protected coordination source scripts/manage-migration-author-lanes.mjs; PR #3228 queues behind #3215 and #3217 on that file by design.",
+    "The classifier consumes the production tokenizer through new output views only; the default folded view is byte-identical for every existing consumer (pinned by tests)."
   ],
   "stop_conditions": [
-    "stop if the relay dispatch is refused for lack of permission and would need a broader credential",
-    "stop if a live pass reroutes a started review or a lease drawn before DRAWN_SINCE",
-    "stop if the change would need to touch a file outside allowed_paths"
-  ],
-  "generation": 3
+    "Stop if any change would weaken a safety gate or touch the database",
+    "Stop if the boundary classifier cannot be made fail-closed"
+  ]
 }

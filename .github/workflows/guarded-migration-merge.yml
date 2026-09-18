@@ -1,5 +1,15 @@
 name: Guarded Merge
 
+# WHO MAY DISPATCH THIS WORKFLOW (issue #3199 §8, locked 2026-09-17): ANY
+# write-authenticated session — orchestrator, repo-maintenance, or an
+# application session that has taken the self-service additive lane — for a
+# pull request that already carries its exact-head approval and green required
+# checks. The workflow, not the caller's identity, is the gate: it re-proves
+# required checks, exact-head approval, lease and admission itself, under its
+# own lock. This comment grants nobody anything new; it writes down a capability
+# the plain workflow_dispatch trigger already had, so approved pull requests
+# stop aging while the orchestrator is busy.
+
 on:
   workflow_dispatch:
     inputs:
@@ -71,6 +81,16 @@ jobs:
           # An assignment is not an approval, and an approval of an earlier head
           # is not an approval of these bytes (#1816).
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node scripts/check-exact-head-approval.mjs
+          # SELF-SERVICE ADDITIVE LANE BOUNDARY (#3199 Phase B3). Applies only
+          # when the pull request's linked work issue (resolved through the closing-
+          # issue linkage, never a claim) declares route self-service-additive; every
+          # other route — including repository maintenance — exits 0 "not applicable"
+          # and this step never judges it. Placed BEFORE the quota check and
+          # the merge lane so an out-of-boundary pull request is refused having
+          # taken no lock at all — the classifier is fail-closed: any parse
+          # doubt, any unrecognized statement, any object outside {crm,pim,dam}
+          # refuses.
+          node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
       # `github.token` cannot read branch protection (there is no `administration`
       # permission scope), so this falls back to the committed mirror. It reads that
       # mirror only from trusted `origin/main`; the checked-out pull request cannot

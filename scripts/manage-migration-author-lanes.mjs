@@ -45,7 +45,7 @@ import { PROJECT_REFS } from './orchestrator-flow/read-preview-ledger.mjs'; impo
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIEW_VERDICTS, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
-import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange } from './orchestrator-flow/admission.mjs'
+import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
@@ -682,9 +682,13 @@ function reviewTargetSuperseded(prRow,headSha){return Boolean(prRow?.state)&&(St
 
 export const QUEUE_STATUSES = new Set(['ready','blocked','owner-decision'])
 export const QUEUE_WORK_TYPES = new Set(['structural','curated-master-data','application-data','source-data','repo-maintenance','documentation','security-settings'])
-export const QUEUE_ROUTES = new Set(['shared-db-orchestrator','curated-master-data-governance','application-session','source-data-session','owner-only','repo-maintenance'])
-const ROUTES_BY_WORK_TYPE = Object.freeze({
-  structural: new Set(['shared-db-orchestrator']),
+export const QUEUE_ROUTES = new Set(['shared-db-orchestrator','self-service-additive','curated-master-data-governance','application-session','source-data-session','owner-only','repo-maintenance'])
+export const ROUTES_BY_WORK_TYPE = Object.freeze({
+  // self-service-additive (#3199 Phase B2): structural work confined by the
+  // merge-time boundary classifier to additive changes in {crm,pim,dam}. It is
+  // a ROUTE, never a work type: NON_STRUCTURAL_EXITS is untouched and shape
+  // work stays structural.
+  structural: new Set(['shared-db-orchestrator','self-service-additive']),
   'curated-master-data': new Set(['curated-master-data-governance']),
   'application-data': new Set(['application-session']),
   'source-data': new Set(['source-data-session']),
@@ -882,7 +886,7 @@ function queueOrder(a,b) {
 
 export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssueNumbers = issues.map((issue)=>issue.number), dependencyStates = null, claimPullStates = new Map(), authoredOnMain = new Set(), outcomeStates = new Map()) {
   const openNumbers = new Set(allOpenIssueNumbers.map(Number))
-  const skipped = [], unclassified = [], malformed = [], unlabelled = [], candidates = [], notOrchestratorWork = []
+  const skipped = [], unclassified = [], malformed = [], unlabelled = [], candidates = [], notOrchestratorWork = [], selfServiceLane = []
   const dependencyEdges = {}
   const grandfatheredDependencies = []
   for (const issue of issues) {
@@ -910,6 +914,44 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
       })
     }
     if (scope.status !== 'ready') { skipped.push({ issue:issue.number, reason:`status:${scope.status}`, workType:scope.workType, route:scope.route }); continue }
+    if (scope.workType === 'structural' && scope.route === 'self-service-additive') {
+      // #3199 Phase B2: self-service lane work NEVER refills the orchestrator.
+      // It is collected in its own bucket (printed as its own audit section)
+      // because its authors claim, review and merge through the same guarded
+      // machinery WITHOUT an orchestrator turn — refilling from here would
+      // re-create exactly the traffic this route exists to remove.
+      //
+      // Round-2 review (Medium): the early `continue` used to skip dependency
+      // registration and admission, so the audit went BLIND to exactly this
+      // route's blockers -- an invalid depends_on never surfaced, a cycle
+      // through a self-service issue was invisible, and an admission failure
+      // (including the {crm,pim,dam} confinement) never reported as malformed.
+      // The checks below are the same ones the orchestrator-routed path runs;
+      // the only thing withheld is the refill itself (no candidates.push).
+      dependencyEdges[issue.number] = scope.dependencies
+      try {
+        validateDependencyDeclaration(issue.number, scope.dependencies)
+      } catch (error) {
+        malformed.push({ issue: issue.number, reason: error.message })
+        continue
+      }
+      if (dependencyStates) {
+        const verdict = classifyDependencies(issue.number, scope.dependencies, dependencyStates)
+        if (!verdict.satisfied) {
+          for (const blocked of verdict.blocked) {
+            skipped.push({ issue: issue.number, reason: `${blocked.status}:${blocked.number}`, detail: blocked.reason })
+          }
+          continue
+        }
+      } else {
+        const waiting = scope.dependencies.filter((number)=>openNumbers.has(number))
+        if (waiting.length) { skipped.push({ issue:issue.number, reason:`depends-on-open:${waiting.join(',')}` }); continue }
+      }
+      try { evaluateAdmission(issue, scope, parseImpactBlock(issue.body)) }
+      catch (error) { malformed.push({ issue: issue.number, reason: error.message }); continue }
+      selfServiceLane.push({ issue:issue.number, title:issue.title, workType:scope.workType, route:scope.route })
+      continue
+    }
     if (scope.workType !== 'structural' || scope.route !== 'shared-db-orchestrator') {
       skipped.push({ issue:issue.number, reason:'not-migration-author-work', workType:scope.workType, route:scope.route }); continue
     }
@@ -993,7 +1035,7 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
   // A CYCLE IS NEVER STARTABLE and is invisible to an open/closed test, so it is
   // reported as its own finding rather than as N tasks that merely look blocked.
   const dependencyCycles = findDependencyCycles(dependencyEdges)
-  return { queues, expiredClaims, skipped, unclassified, malformed, unlabelled, notOrchestratorWork, dependencyCycles, grandfatheredDependencies, blockerCounts:Object.fromEntries(blockerCounts), dispatchable, urgentWaitingCapacity, emptyLanes, fullyAudited:!unclassified.length&&!malformed.length&&!unlabelled.length&&!dependencyCycles.length }
+  return { queues, expiredClaims, skipped, unclassified, malformed, unlabelled, notOrchestratorWork, selfServiceLane, dependencyCycles, grandfatheredDependencies, blockerCounts:Object.fromEntries(blockerCounts), dispatchable, urgentWaitingCapacity, emptyLanes, fullyAudited:!unclassified.length&&!malformed.length&&!unlabelled.length&&!dependencyCycles.length }
 }
 
 // RETURN PATH (AGENTS.md 0.0-C). A rejected task is forwarded to the repository
@@ -6747,7 +6789,7 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
     if(allowLegacy&&scope?.changeType===null){
       const created=Date.parse(String(issue?.created_at??issue?.createdAt??''))
       if(!Number.isFinite(created)||created>=Date.parse(ADMISSION_LEGACY_CUTOVER))throw new AdmissionError(`legacy admission without change_type is limited to issues created before ${ADMISSION_LEGACY_CUTOVER}; issue #${number} must declare the admission fields`)
-      if(issue?.state!=='open'||scope.workType!=='structural'||scope.route!=='shared-db-orchestrator'||scope.status!=='ready'||!scope.writes.length)throw new AdmissionError('legacy in-flight work is not an open ready structural issue with exact writes')
+      if(issue?.state!=='open'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route)||scope.status!=='ready'||!scope.writes.length)throw new AdmissionError('legacy in-flight work is not an open ready structural issue with exact writes')
       admitted={admitted:true,issue:Number(number),legacy:true,service_class:'standard-application'}
     }else admitted = evaluateAdmission(issue, scope, parseImpactBlock(issue?.body ?? ''))
     if (pr !== null) {
@@ -7445,7 +7487,7 @@ export function repairResumedClaim(options, now = new Date(), io = githubIo) {
 
 export function renewalIssueScope(issue, lease, claimIssues=[],{ allowClaimSuperset=false, allowIssueExpansion=false }={}) {
   const scope=issue?.state==='open'?parseQueueScope(issue.body):null
-  const structural=scope?.status==='ready'&&scope.workType==='structural'&&scope.route==='shared-db-orchestrator'
+  const structural=scope?.status==='ready'&&scope.workType==='structural'&&STRUCTURAL_ROUTES.includes(scope.route)
   const curated=scope?.status==='ready'&&scope.workType==='curated-master-data'&&scope.route==='curated-master-data-governance'
   if(!structural&&!curated)throw new LaneError('renewal issue must be one open ready structural or curated Master Data work item')
   const issueObjects=scope.objects.map(normalizeObject),claimObjects=lease.objects.map(normalizeObject)
@@ -7620,7 +7662,7 @@ export function expandActiveClaimFromPr(options, now = new Date(), io = githubIo
     if(before?.state!=='open')throw new LaneError('target claim is not open')
     if(workstreamKey(before.title)!==`#${Number(options.issue)}`)throw new LaneError('target claim does not belong to the exact issue')
     const workIssue=io.getIssue(options.issue),scope=parseQueueScope(workIssue?.body??'')
-    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||scope.route!=='shared-db-orchestrator')throw new LaneError('exact work issue is not open ready structural orchestrator work')
+    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural work on an admitted structural route')
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy||!lease.active)throw new LaneError('target claim lease is legacy or expired')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
@@ -7677,7 +7719,7 @@ export function expandActiveClaimFromIssue(options,now=new Date(),io=githubIo){
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
     assertClaimNotRetired(lease.version,'expanded',io)
     const workIssue=io.getIssue(options.issue),scope=parseQueueScope(workIssue?.body??'')
-    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||scope.route!=='shared-db-orchestrator')throw new LaneError('exact work issue is not open ready structural orchestrator work')
+    if(workIssue?.state!=='open'||scope?.status!=='ready'||scope.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))throw new LaneError('exact work issue is not open ready structural work on an admitted structural route')
     const claimed=new Set(lease.objects.map(normalizeObject)),uncovered=scope.objects.filter((object)=>!claimed.has(object))
     if(!uncovered.length)throw new LaneError('exact work issue has no uncovered objects to add')
     const claims=io.openClaims()
@@ -8539,7 +8581,7 @@ export function main(argv, now = new Date(), io = githubIo) {
       for(const issue of issues){
         let scope=null
         try{scope=parseQueueScope(issue.body)}catch{continue}
-        if(scope?.workType!=='structural'||scope.route!=='shared-db-orchestrator')continue
+        if(scope?.workType!=='structural'||!STRUCTURAL_ROUTES.includes(scope.route))continue
         const history=outcomeHistory(io.issueComments(issue.number),Number(issue.number))
         if(!history.valid)throw new LaneError(`issue #${issue.number} has invalid authoritative outcome history: ${history.problems.join('; ')}`)
         outcomeStates.set(Number(issue.number),history.state??'entered')
@@ -8633,6 +8675,14 @@ export function main(argv, now = new Date(), io = githubIo) {
         }
         const unaddressed = result.notOrchestratorWork.filter((item)=>item.needsReturnAddress)
         if (unaddressed.length) console.error(`NO RETURN ADDRESS on ${unaddressed.map((item)=>`#${item.issue}`).join(', ')} — a reject with no forwarding address closes into silence. Return each with --return-issue <n> once addressed.`)
+      }
+      // #3199 Phase B2: the self-service lane is admitted structural work that
+      // deliberately never refills the orchestrator. Printed so the audit can
+      // SEE it and so nobody re-adds these issues to the refill list, the same
+      // visibility discipline as the OUTSIDE ORCHESTRATOR block above.
+      if (result.selfServiceLane?.length) {
+        console.error('SELF-SERVICE ADDITIVE LANE: structural work admitted without orchestrator triage (issue #3199). The orchestrator never dispatches, refills or reviews these rows; each author claims the lane, draws reviewers and dispatches the guarded merge through the same guarded machinery.')
+        for (const item of result.selfServiceLane) console.error(`  #${item.issue} ${item.route} — ${item.title}`)
       }
       // A CYCLE CAN NEVER START. Reported separately from "blocked", because a
       // blocked task is waiting for something and a cycle is waiting for itself.

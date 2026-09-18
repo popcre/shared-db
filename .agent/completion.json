@@ -2,15 +2,13 @@
   "schema_version": 1,
   "work_issue": 3242,
   "outcome": "ready-for-merge",
-  "pr": 3243,
+  "pr": 3257,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3242/2",
-  "contract_sha256": "18ab6395f3f543a9c11db8e747f2ccc5ae7cdda5a4bfabcf934d27abc33349c9",
-  "head_sha": "ecb17dc86f571fc01e34d3c3afb89c742949de8a",
+  "contract_ref": "refs/db-contracts/3242/3",
+  "contract_sha256": "81ca1147923388c62cab20c5f6b2d36b02b9dcf083a0bb69ee0f1a2c57c0f7b6",
+  "head_sha": "5dd6293594fccd446085974603c9e1380c615226",
   "files_changed": [
-    ".github/workflows/reviewer-start-watch.yml",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    ".github/workflows/reviewer-start-watch.yml"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -18,27 +16,29 @@
     {
       "command": "node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs",
       "exit_code": 0,
-      "evidence": "reviewer-start-watch 21/21 (5 new: per-slot reroute count, budget-exhausted skip with no manager call, unreadable history refuses, under-budget slot still rerouted, failing pass exits 1); start-reroute 23/23."
+      "evidence": "44 pass, 0 fail (reviewer-start-watch plus start-reroute); the watcher script is unchanged."
     },
     {
       "command": "python -m pytest -q scripts/test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "275 passed, 356 subtests passed; includes the rule that no scheduled workflow calls a mutating lane flag such as --reconcile-flow."
+      "evidence": "275 passed, 356 subtests passed; the relay step calls no mutating lane flag."
     },
     {
       "command": "node scripts/check-github-transport-conformance.mjs",
       "exit_code": 0,
-      "evidence": "clean with the new workflow present (no gh api, no literal repository slug)."
+      "evidence": "291 files scanned, clean with the relay dispatch step present."
     },
     {
       "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "clean with the new workflow present."
+      "evidence": "clean; the dispatch uses $GITHUB_REPOSITORY, no literal slug."
     }
   ],
   "assumptions_resolved": [
-    "A live dry run of the watcher costs one GitHub GraphQL call for the lease read plus one ref listing, so a 5-minute schedule is well inside the GITHUB_TOKEN budget.",
-    "Contract generation 1 was published before the implementation commit; the earlier unpublished draft commit b94fccba was discarded and the implementation re-committed on current main 579f8fe0 after publication."
+    "The loop step was run locally in report-only mode with LEG_MINUTES=0: one pass, exit 0, one summary line.",
+    "The relay-check filter was run against the live repository: 0 other live runs.",
+    "Review seq 3249 (REVISE) findings fixed as a class: a scheduled run starts a leg only when no other run is live, the quiet-pass filter includes keep-active, and only a leg on main relays.",
+    "Contract generation 3 was published before the implementation commit on main 8d107ee8."
   ],
   "stop_conditions_hit": []
 }

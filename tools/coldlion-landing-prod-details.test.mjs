@@ -18,6 +18,7 @@ import {
   parseDoneKeys,
   parseHarvest,
   parseReconciliation,
+  prodDetailRefusalSql,
   reconcileSql,
   selectKeys,
   projectProdDetailRows,
@@ -92,11 +93,41 @@ test("projection normalises sentinels, stamps the company, and hashes the comple
 test("unknown and omitted fields fail loudly and fatally", () => {
   assert.throws(() => projected([sourceRow({ newPrivateField: "x" })]), /unreviewed field/);
   const missing = sourceRow(); delete missing.wipQty;
-  assert.throws(() => projected([missing]), /omitted approved field/);
-  for (const bad of [sourceRow({ newPrivateField: "x" })]) {
+  for (const bad of [sourceRow({ newPrivateField: "x" }), missing]) {
     try { projected([bad]); assert.fail("must throw"); }
-    catch (error) { assert.equal(error.fatal, true, "a shape failure is fatal for the whole run"); }
+    catch (error) { assert.equal(error.fatal, true, "a feed-shape failure is fatal for the whole run"); }
   }
+  assert.throws(() => projected([missing]), /omitted approved field/);
+});
+
+test("a malformed value is a per-key refusal, not retried-forever transport", () => {
+  try { projected([sourceRow({ createdTime: "not-a-timestamp" })]); assert.fail("must throw"); }
+  catch (error) {
+    assert.equal(error.refused, "identity-collision");
+    assert.equal(error.fatal, undefined);
+    assert.match(error.message, /malformed value/);
+  }
+});
+
+test("identity collisions are per-key refusals, not run-fatal", () => {
+  // Regression semantics bought live on 2026-09-17: order 20344 returned two rows
+  // with distinct pkeys sharing one prodLineSeq, falsifying the #2863 unique
+  // constraint. One key's data must not abort a run with thousands of healthy keys.
+  const cases = [
+    [sourceRow(), sourceRow({ itemNo: "SYN-OTHER" })],
+    [sourceRow(), sourceRow({ pkey: 900002, itemNo: "SYN-OTHER" })],
+    [sourceRow({ pkey: "" })],
+    [sourceRow({ prodOrderNo: 20001 })],
+  ];
+  for (const rows of cases) {
+    try { projected(rows); assert.fail("must throw"); }
+    catch (error) {
+      assert.equal(error.refused, "identity-collision", "the key is refused with a durable reason");
+      assert.equal(error.fatal, undefined, "a refused key does not abort the run");
+    }
+  }
+  assert.throws(() => projected(cases[0]), /duplicate rows for one pkey/);
+  assert.throws(() => projected(cases[1]), /duplicate rows for one prodOrderNo \+ prodLineSeq/);
 });
 
 test("a row for another production order is refused", () => {
@@ -194,28 +225,42 @@ const HARVEST = [
 test("harvest and resume parsing tolerate Windows psql line endings", () => {
   const harvested = parseHarvest([["30001\r", "2026-01-01T00:00:00\r", "2026-09-17T06:00:00\r"], [" 30002 ", "2026-06-01T00:00:00", "2026-06-01T00:00:00"]]);
   assert.deepEqual(harvested.map((entry) => entry.prodOrderNo), [30001, 30002]);
-  const done = parseDoneKeys([["30001\r"]]);
-  assert.deepEqual([...done], [30001]);
+  const { done, refused } = parseDoneKeys([["30001\r", "succeeded"], ["30002\r", "refused"], ["30003", "succeeded"]]);
+  assert.deepEqual([...done].sort(), [30001, 30002, 30003], "succeeded and refused are both answered");
+  assert.deepEqual([...refused], [30002], "the refused state survives separately for refresh selection");
   assert.throws(() => parseHarvest([["\r", "x", "y"]]), /blank key/);
 });
 
 test("backfill selects never-fetched keys oldest first and honours the bounds", () => {
   const done = new Set([30001]);
-  const selection = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: null, recentDays: 21, limit: null });
+  const selection = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: null, recentDays: 21, limit: null });
   assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30004, 30003], "oldest observation first, done keys skipped");
-  const bounded = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: null, recentDays: 21, limit: 2 });
+  const bounded = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: null, recentDays: 21, limit: 2 });
   assert.deepEqual(bounded.map((entry) => entry.prodOrderNo), [30002, 30004]);
-  const scoped = selectKeys({ harvested: HARVEST, done, mode: "backfill", from: "2026-08-31", recentDays: 21, limit: null });
+  const scoped = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "backfill", from: "2026-08-31", recentDays: 21, limit: null });
   assert.deepEqual(scoped.map((entry) => entry.prodOrderNo), [30004, 30003], "only orders first observed on/after --from");
 });
 
 test("refresh catches never-fetched keys first, then recently-observed ones newest first", () => {
   const done = new Set([30001, 30004]);
-  const selection = selectKeys({ harvested: HARVEST, done, mode: "refresh", from: null, recentDays: 21, limit: null });
+  const selection = selectKeys({ harvested: HARVEST, done, refused: new Set(), mode: "refresh", from: null, recentDays: 21, limit: null });
   assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30003, 30001, 30004],
     "30002/30003 never fetched (oldest first); 30001/30004 re-read newest-observed first");
-  const staleOnly = selectKeys({ harvested: HARVEST, done: new Set([30002]), mode: "refresh", from: null, recentDays: 1, limit: null });
+  const staleOnly = selectKeys({ harvested: HARVEST, done: new Set([30002]), refused: new Set(), mode: "refresh", from: null, recentDays: 1, limit: null });
   assert.deepEqual(staleOnly.map((entry) => entry.prodOrderNo).includes(30002), false, "a fetched key observed long ago is not re-read");
+});
+
+test("refresh never re-reads a refused key, however recent it is", () => {
+  // PR #3233 review H1: the colliding order is always inside the recent window, and a
+  // flat done-set let it re-enter every nightly refresh — duplicate refusals, alerts
+  // and inflating counts forever. The refused state must exclude it from re-read.
+  const done = new Set([30001, 30004]);
+  const refused = new Set([30004]);
+  const selection = selectKeys({ harvested: HARVEST, done, refused, mode: "refresh", from: null, recentDays: 21, limit: null });
+  assert.deepEqual(selection.map((entry) => entry.prodOrderNo), [30002, 30003, 30001],
+    "30004 is answered-but-refused and never re-selected");
+  const backfill = selectKeys({ harvested: HARVEST, done, refused, mode: "backfill", from: null, recentDays: 21, limit: null });
+  assert.deepEqual(backfill.map((entry) => entry.prodOrderNo), [30002, 30003], "backfill never re-fetches it either");
 });
 
 test("the harvest reads the landed history and the resume set reads the run evidence", () => {
@@ -226,21 +271,37 @@ test("the harvest reads the landed history and the resume set reads the run evid
   assert.match(doneKeysSql("SYNCO"), /endpoint = '\/proddetails'/);
   assert.match(doneKeysSql("SYNCO"), /status = 'succeeded'/);
   assert.match(doneKeysSql("SYNCO"), /request_params \? 'prodOrderNo'/);
+  assert.match(doneKeysSql("SYNCO"), /status = 'failed' and request_params->>'refused' = 'identity-collision'/,
+    "a refused key counts as answered: re-fetching it cannot change the answer until the constraint ruling lands");
+});
+
+test("the refusal record is a durable failed sync_run the selection and reconciliation can find", () => {
+  const sql = prodDetailRefusalSql({ companyCode: "SYNCO", prodOrderNo: 20344, requestedBy: "test", error: new Error("duplicate rows for one prodOrderNo + prodLineSeq (prodLineSeq 10)") });
+  assert.match(sql, /begin;/);
+  assert.match(sql, /'failed'/);
+  assert.match(sql, /"refused":"identity-collision"/);
+  assert.match(sql, /"prodOrderNo":20344/);
+  assert.match(sql, /pg_notify\('coldlion_sync_alert'/, "a refusal alerts, never whispers");
+  assert.match(sql, /commit;/);
 });
 
 test("reconciliation agrees only when the API side and the table tell one story", () => {
-  const agrees = parseReconciliation(["3", "1", "10", "2", "10", "10", "10"]);
+  const agrees = parseReconciliation(["3", "1", "10", "2", "10", "10", "10", "1"]);
   assert.equal(agrees.agrees, true);
   assert.equal(agrees.zeroRowKeys, 1);
-  assert.equal(agrees.exclusions, 0);
-  const collapsed = parseReconciliation(["3", "1", "10", "2", "10", "9", "9"]);
+  assert.equal(agrees.refusedKeys, 1);
+  assert.equal(agrees.exclusions, 1, "a refused key is the one named, counted exclusion");
+  const collapsed = parseReconciliation(["3", "1", "10", "2", "10", "9", "9", "1"]);
   assert.equal(collapsed.agrees, false, "a missing table row disagrees");
-  const duplicateCollapse = parseReconciliation(["3", "1", "10", "2", "10", "10", "9"]);
+  const duplicateCollapse = parseReconciliation(["3", "1", "10", "2", "10", "10", "9", "1"]);
   assert.equal(duplicateCollapse.agrees, false, "distinct pkey below table rows is a collapse");
-  const droppedZeroRow = parseReconciliation(["3", "1", "10", "3", "10", "10", "10"]);
+  const droppedZeroRow = parseReconciliation(["3", "1", "10", "3", "10", "10", "10", "1"]);
   assert.equal(droppedZeroRow.agrees, false, "a zero-row key must never be counted as landed");
   assert.match(reconcileSql("SYNCO"), /count\(distinct pkey\)/);
   assert.match(reconcileSql("SYNCO"), /rows_fetched = 0/);
+  assert.match(reconcileSql("SYNCO"), /count\(distinct \(request_params->>'prodOrderNo'\)::bigint\)/,
+    "refusedKeys counts DISTINCT orders, not refusal rows, so repeats can never inflate it");
+  assert.match(reconcileSql("SYNCO"), /request_params->>'refused' = 'identity-collision'/);
 });
 
 // -------------------------------------------------------------------------------------
@@ -307,13 +368,13 @@ test("parseArgs validates its own inputs", () => {
   assert.deepEqual(parseArgs(["--mode", "keys", "--keys", "20000, 24332"]), { mode: "keys", keys: [20000, 24332], limit: null, from: null, recentDays: 21, company: "EDGEHOME", pauseMs: 3000, dryRun: false });
 });
 
-function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["0", "0", "0", "0", "0", "0", "0"] } = {}) {
+function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["0", "0", "0", "0", "0", "0", "0", "0"] } = {}) {
   return {
     proveTarget: () => ({ database: "postgres", host: "syn-host", coldlionTables: 25 }),
     queryRows: (sql) => {
       if (sql.includes("count(distinct pkey)")) return [reconcile];
       if (sql.includes("prod_history_line")) return harvest.map((entry) => [String(entry.prodOrderNo), entry.firstObserved, entry.lastObserved]);
-      if (sql.includes("sync_run")) return done.map((key) => [String(key)]);
+      if (sql.includes("sync_run")) return done.map((key) => [String(key), "succeeded"]);
       throw new Error(`unexpected read: ${sql.slice(0, 60)}`);
     },
     runSql: () => {},
@@ -326,7 +387,7 @@ function cliDependencies({ harvest = HARVEST, done = [], loadKey, reconcile = ["
 test("a dry run reads evidence, fetches nothing and writes nothing", async () => {
   const deps = cliDependencies({ done: [30001] });
   const io = capture(() => main(["--mode", "backfill", "--dry-run"], deps));
-  assert.match(io.output, /population 4, already succeeded 1, outstanding 3, selected 3/);
+  assert.match(io.output, /population 4, answered 1 \(refused 0\), outstanding 3, selected 3/);
   assert.equal(deps.readApiKeyCalled, undefined);
 });
 
@@ -356,16 +417,46 @@ test("a per-key transport failure is recorded, skipped and fails the run loudly"
   assert.match(io.output, /prodOrderNo 30002 failed/);
 });
 
+test("an identity-collision refusal is recorded durably, the run continues, and exits non-zero", async () => {
+  const loaded = [];
+  const recorded = [];
+  const deps = cliDependencies({
+    loadKey: async ({ prodOrderNo }) => {
+      if (prodOrderNo === 30002) {
+        const error = new Error("/proddetails returned duplicate rows for one prodOrderNo + prodLineSeq (prodLineSeq 10)");
+        error.refused = "identity-collision";
+        throw error;
+      }
+      loaded.push(prodOrderNo);
+      return { prodOrderNo, rowsFetched: 1, zeroRow: false };
+    },
+  });
+  deps.runSql = (sql) => { if (sql.includes("identity-collision")) recorded.push(sql); };
+  deps.queryRows = (sql) => {
+    if (sql.includes("count(distinct pkey)")) return [["3", "0", "3", "3", "3", "3", "3", "1"]];
+    if (sql.includes("prod_history_line")) return HARVEST.map((entry) => [String(entry.prodOrderNo), entry.firstObserved, entry.lastObserved]);
+    return [];
+  };
+  const io = capture(() => assert.rejects(main(["--mode", "backfill"], deps), /refused: identity collisions recorded/));
+  await io.promise;
+  assert.deepEqual(loaded.sort(), [30001, 30003, 30004], "one colliding order does not stop the population");
+  assert.equal(recorded.length, 1, "the refusal is recorded once, durably");
+  assert.match(recorded[0], /"refused":"identity-collision"/);
+  assert.match(io.output, /prodOrderNo 30002 REFUSED \(identity-collision\)/);
+  assert.match(io.output, /refusedKeys=1/);
+});
+
 test("a successful run ends with a reconciling report", async () => {
-  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "2", "2"] });
+  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "2", "2", "0"] });
   const io = capture(() => main(["--mode", "backfill"], deps));
   const result = await io.promise;
   assert.equal(result.reconciliation.agrees, true);
   assert.match(io.output, /reconcile: keysDone=2 zeroRowKeys=0 rowsFetchedTotal=2/);
+  assert.match(io.output, /refusedKeys=0 exclusions=0 agrees=true/);
 });
 
 test("a disagreement fails the run even though every key loaded", async () => {
-  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "1", "1"] });
+  const deps = cliDependencies({ reconcile: ["2", "0", "2", "2", "2", "1", "1", "0"] });
   const io = capture(() => assert.rejects(main(["--mode", "backfill"], deps), /reconciliation disagrees/));
   await io.promise;
 });

@@ -29,6 +29,7 @@ import {
   parseDoneKeys,
   parseHarvest,
   parseReconciliation,
+  prodDetailRefusalSql,
   reconcileSql,
   selectKeys,
   projectProdDetailRows,
@@ -122,18 +123,19 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
 
   let harvested = [];
   let done = new Set();
+  let refusedKeys = new Set();
   if (args.mode === "keys") {
     harvested = args.keys.map((prodOrderNo) => ({ prodOrderNo, firstObserved: "", lastObserved: "" }));
   } else {
     harvested = parseHarvest(read(harvestSql(args.company)));
-    done = parseDoneKeys(read(doneKeysSql(args.company)));
+    ({ done, refused: refusedKeys } = parseDoneKeys(read(doneKeysSql(args.company))));
   }
   const selection = args.mode === "keys"
     ? harvested
-    : selectKeys({ harvested, done, mode: args.mode, from: args.from, recentDays: args.recentDays, limit: args.limit });
+    : selectKeys({ harvested, done, refused: refusedKeys, mode: args.mode, from: args.from, recentDays: args.recentDays, limit: args.limit });
 
   const outstanding = harvested.filter((entry) => !done.has(entry.prodOrderNo)).length;
-  console.log(`${args.mode}: population ${harvested.length}, already succeeded ${done.size}, outstanding ${outstanding}, selected ${selection.length}${args.from ? ` (first observed on/after ${args.from})` : ""}`);
+  console.log(`${args.mode}: population ${harvested.length}, answered ${done.size} (refused ${refusedKeys.size}), outstanding ${outstanding}, selected ${selection.length}${args.from ? ` (first observed on/after ${args.from})` : ""}`);
   if (args.dryRun) {
     for (const entry of selection.slice(0, 10)) console.log(`  would fetch prodOrderNo ${entry.prodOrderNo}`);
     if (selection.length > 10) console.log(`  … and ${selection.length - 10} more`);
@@ -143,6 +145,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const apiKey = readKey();
   const requestedBy = `coldlion-landing sync-prod-details ${args.mode}`;
   const failed = [];
+  const refused = [];
   for (const entry of selection) {
     try {
       const summary = await loadKey({
@@ -150,6 +153,16 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
       });
       console.log(`prodOrderNo ${summary.prodOrderNo}: fetched ${summary.rowsFetched}${summary.zeroRow ? " (zero rows)" : ""}`);
     } catch (error) {
+      if (error.refused) {
+        // One order's data cannot land (an identity collision the #2863 constraint
+        // refuses to collapse). Record it durably, count it, and let the population
+        // proceed — the run still exits non-zero below so the refusal stays loud.
+        try { execute(prodDetailRefusalSql({ companyCode: args.company, prodOrderNo: entry.prodOrderNo, requestedBy, error })); }
+        catch (recordError) { error.message = `${error.message} (and the refusal could not be recorded: ${recordError.message})`; throw error; }
+        console.error(`prodOrderNo ${entry.prodOrderNo} REFUSED (${error.refused}): ${error.message}`);
+        refused.push({ prodOrderNo: entry.prodOrderNo, reason: error.refused });
+        continue;
+      }
       try { recordFailure({ endpoint: error.endpoint ?? PROD_DETAIL_SPEC.endpoint, companyCode: args.company, requestedBy, error }); }
       catch (recordError) { error.message = `${error.message} (and the failure could not be recorded: ${recordError.message})`; }
       if (error.fatal) {
@@ -166,11 +179,18 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const reconcileRow = read(reconcileSql(args.company))[0];
   if (!reconcileRow) throw new Error("the reconciliation read returned nothing");
   const reconcile = parseReconciliation(reconcileRow);
-  console.log(`reconcile: keysDone=${reconcile.keysDone} zeroRowKeys=${reconcile.zeroRowKeys} rowsFetchedTotal=${reconcile.rowsFetchedTotal} keysLanded=${reconcile.keysLanded} rowsLandedTotal=${reconcile.rowsLandedTotal} tableRows=${reconcile.tableRows} distinctPkey=${reconcile.distinctPkey} exclusions=${reconcile.exclusions} agrees=${reconcile.agrees}`);
+  console.log(`reconcile: keysDone=${reconcile.keysDone} zeroRowKeys=${reconcile.zeroRowKeys} rowsFetchedTotal=${reconcile.rowsFetchedTotal} keysLanded=${reconcile.keysLanded} rowsLandedTotal=${reconcile.rowsLandedTotal} tableRows=${reconcile.tableRows} distinctPkey=${reconcile.distinctPkey} refusedKeys=${reconcile.refusedKeys} exclusions=${reconcile.exclusions} agrees=${reconcile.agrees}`);
   if (failed.length) {
     console.error(`${failed.length} key(s) failed; the run exits non-zero so the failure stays visible`);
     const error = new Error(`${failed.length} production order(s) failed to load`);
     error.failedKeys = failed;
+    error.reconciliation = reconcile;
+    throw error;
+  }
+  if (refused.length) {
+    console.error(`${refused.length} key(s) REFUSED an identity collision and were recorded, not landed; the run exits non-zero so the refusal stays visible`);
+    const error = new Error(`${refused.length} production order(s) refused: identity collisions recorded for a structural ruling`);
+    error.refusedKeys = refused;
     error.reconciliation = reconcile;
     throw error;
   }

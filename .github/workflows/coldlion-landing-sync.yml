@@ -111,4 +111,9 @@ jobs:
           # whole refresh in ~45 minutes beside history+masters' ~8.
           PREPACK_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"
+          # Same budget arithmetic for the production-detail refresh (#3180): the
+          # limit is 2000 orders, and at the loader's 3s default that alone is
+          # ~100 minutes inside a 90-minute job. 1s keeps the requests serialized
+          # (the vendor agreement) and bounds this step at ~33 minutes.
+          PROD_DETAIL_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"

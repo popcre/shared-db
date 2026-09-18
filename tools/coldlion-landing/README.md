@@ -18,10 +18,18 @@ both proven identities asserted (`pkey` as the upsert key,
 re-keyed vendor row fails visibly instead of merging). Backfill walks
 oldest-first (`--mode backfill`); the scheduled refresh catches new orders and
 re-reads recently-observed ones (`--mode refresh`). The response is a bare
-array; there is no page envelope, and a response containing a row for another
-order is refused. Unknown fields, omitted approved fields, blank identity
-fields and either identity appearing twice in one response all fail the run
-before anything is written.
+array; there is no page envelope. Unknown or omitted FIELDS abort the whole
+run — a changed feed shape would fail every key the same way. Per-key data
+failures (a row for another order, a blank identity field, either identity
+twice in one response) are REFUSED for that key only: recorded as a FAILED
+`sync_run` carrying `refused: identity-collision`, counted in every run's
+reconciliation, never re-selected while the structural question is open, and
+still failing the run non-zero so the refusal stays loud. Live on 2026-09-17
+the feed falsified the `(prod_order_no, prod_line_seq)` uniqueness that #2863
+asserted — one order returned two rows with distinct `pkey`s sharing a
+`prodLineSeq` — which is exactly the visible collision that constraint exists
+to catch, and the reason refusals exist instead of either collapsing the rows
+or blocking the whole population.
 
 ## What it does
 

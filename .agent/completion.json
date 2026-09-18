@@ -1,30 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3224,
+  "work_issue": 3180,
   "outcome": "ready-for-merge",
-  "pr": 3225,
+  "pr": 3233,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3224/4",
-  "contract_sha256": "1ee1221744dbaebd62f21f75f4984d9e4eb201c81208760a8ec381c808328af1",
-  "head_sha": "e29695015ee7d674f1dd6d6731b7db2dfc44e5ad",
+  "contract_ref": "refs/db-contracts/3180/11",
+  "contract_sha256": "0053c06f2e0d023af61c446a3c6feec051e2f89fd4ce49d7f6002198d6522afd",
+  "head_sha": "6db765ce3bb5414ebcbbaa455db485a940d29346",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/workflows/coldlion-landing-sync.yml"
+    ".github/workflows/coldlion-landing-sync.yml",
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/prod-details.mjs",
+    "tools/coldlion-landing/sync-prod-details.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "33/33 pass including the workflow guard tests; re-verified on the twice-refreshed branch whose workflow also carries the #3221 prod-detail step and whose loader now carries the #3229 enriched identity messages from main."
+      "evidence": "38 tests, 38 pass, 0 fail on head cac60a02: the H1 regression test proves a refused key is never re-selected by refresh however recent; the omitted-field fatality is pinned (L2); malformed values refuse the key (L4)."
+    },
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "exit_code": 0,
+      "evidence": "The four-suite offline gate command passes on the same head; the full 48-file tools suite passed (941 tests)."
     }
   ],
   "assumptions_resolved": [
-    "The 2,577-key population and the ~1.05s-per-key pace come from the live dry-run (35264164570) and two successful bounded backfills (35264306654, 35266106746).",
-    "Generation 4 follows two further main advances (ec96eb74, 959100b6); each refresh conflicted only on the shared .agent pair, which this generation regenerates. The pacing change and its coexisting steps are unchanged.",
-    "An exact-head APPROVE with full coverage exists at ancestor bb70de74 (durable verdict refs/db-review-verdicts/3224-3225-bb70de74e93d7b81d716e3ead82fda757e1e571e); this head changes only the .agent evidence and the merge from main."
+    "Live order 20344 returns 10 rows including two with distinct pkeys sharing prodLineSeq 10 (differing itemPkey, prodQty, prodCost, labelCode and timestamps) - the second proven identity is falsified by the source while pkey remains unique; diagnosed read-only on 2026-09-17 with field names only, no row values.",
+    "Backfill run 35275308013 landed 269 keys (plus 3 probe keys) before the first collision aborted it; nothing was written for the colliding order, and its sync_run carries the failure.",
+    "The unique constraint on (company_code, prod_order_no, prod_line_seq) is database STRUCTURE from #2863; changing it is filed as a separate db-work issue for the orchestrator, not smuggled into this source-data change.",
+    "Governed review round 1 (retained, non-authorizing after a wrapper evidence-publication fault; reconciled) returned REVISE with one High: the flat done-set let refused keys re-enter the refresh recent window nightly and refusedKeys counted rows not distinct orders. Both fixed, with regression tests; the contract stop_conditions no longer contradict the refusal semantics (L1); omitted-field fatality pinned (L2); malformed values reclassified from retried-forever transport to per-key refusal (L4).",
+    "Main advanced to 959100b6 (sibling prepack fix, disjoint files) before the guarded merge re-dispatch; refreshed by merge at cfdd810e touching only the .agent evidence files, so the durable APPROVE at 093af65d carries (content-preserving refresh).",
+    "Main advanced to 644fe066 and edited the shared scheduled-sync workflow (prepack pacing); this branch merged it and added the analogous production-detail pacing (1s, serialized), so a fresh exact-head review is required and follows at the pushed head."
   ],
   "stop_conditions_hit": []
 }

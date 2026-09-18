@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3247,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3232/3",
-  "contract_sha256": "a46863f5b67813eb5342c0878f2d77960f8019ba0a0ab779e3ff6cf6bf84e906",
-  "head_sha": "060137323696ab9b85dac36c503eefcc3bde8527",
+  "contract_ref": "refs/db-contracts/3232/4",
+  "contract_sha256": "59c3a18f1585e9fbf32e739936276439c560e40e885ad312c2ec02d5bba4c8a9",
+  "head_sha": "c6c63c6146b1be6b5b262908000d0d88487553af",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -30,7 +30,7 @@
   ],
   "assumptions_resolved": [
     "PROVENANCE, STATED PLAINLY: the implementation was written by this ZCode (GLM 5.3) session BEFORE any contract was published; generation 1 was published mid-packaging with a base_sha padded from a short SHA that names no real commit, and generation 2 corrects the base to the true fork point 579f8fe0. No pre-work ordering is claimed.",
-    "The branch was refreshed onto main twice (1e4209ab after #3246, 06013732 after #3215 and #3217 merged); the three implementation files diff is unchanged by the refreshes. Full CI coordination list (1450 tests) passed at fc1aa58b pre-refresh.",
+    "The branch was refreshed onto main three times (after #3246, after #3215/#3217, and after #3243/#3228/coldlion merges, merge commit c6c63c61); the three implementation files diff is unchanged by every refresh. 652 lane+marker tests pass at the final merged head.",
     "ACTIVE_REVIEWERS, RETIRED_REVIEWERS and QUARANTINED_REVIEWERS are name-for-name identical to main, verified by importing both versions side by side."
   ],
   "stop_conditions_hit": []

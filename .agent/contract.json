@@ -3,23 +3,19 @@
   "work_issue": 3242,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Run the reviewer start watcher unattended on a 5-minute schedule so a reviewer non-start is rerouted automatically at the first pass after its 10-minute SLO, with a per-slot automatic reroute cap and a failing exit when a reroute fails",
-  "base_sha": "1886fb38ac01fdaf3c1d8515b50afd6440726df1",
+  "goal": "Keep the reviewer start watcher running unattended despite GitHub's sparse schedule: each applying run passes every minute for 330 minutes and then dispatches its own next leg, with the cron only as the restart net, so a non-start is rerouted at the first pass after its 10-minute SLO",
+  "base_sha": "8d107ee8826d45b53c958ad54e0aa2b554191d79",
   "dispatcher": "repo-maintenance session for issue #3242 (popcre/ai-devops#401 Step 7 chain)",
   "worker": "claude",
-  "branch": "claude/issue-3242-step-7-production-9edc75",
+  "branch": "claude/issue-3242-watch-relay",
   "worktree": ".claude/worktrees/issue-3242-step-7-production-9edc75",
   "allowed_paths": [
     ".github/workflows/reviewer-start-watch.yml",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    ".github/workflows/reviewer-start-watch.yml",
-    "scripts/orchestrator-flow/reviewer-start-watch.mjs",
-    "scripts/orchestrator-flow/reviewer-start-watch.test.mjs"
+    ".github/workflows/reviewer-start-watch.yml"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -36,13 +32,14 @@
     "node scripts/check-repository-identity-conformance.mjs"
   ],
   "assumptions": [
-    "every governed runner has written refs/db-review-started markers since 2026-09-16T19:35:13Z (#3082)",
-    "the workflow GITHUB_TOKEN with contents and issues write can perform the lane manager's probe, reclaim and replacement writes"
+    "GitHub creates a run for a workflow_dispatch sent with the workflow's own GITHUB_TOKEN (the documented exception to the no-recursion rule)",
+    "this repository is public, so a relay occupying one hosted runner continuously costs no Actions minutes",
+    "one watcher pass costs a few API calls, so a pass every 60 seconds stays inside the GITHUB_TOKEN hourly budget"
   ],
   "stop_conditions": [
-    "stop if the first live pass refuses a write for lack of token permission and would need a broader credential",
+    "stop if the relay dispatch is refused for lack of permission and would need a broader credential",
     "stop if a live pass reroutes a started review or a lease drawn before DRAWN_SINCE",
     "stop if the change would need to touch a file outside allowed_paths"
   ],
-  "generation": 2
+  "generation": 3
 }

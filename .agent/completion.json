@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3264/6",
   "contract_sha256": "65f46febf610dea59e37e539fb944c5a3553f56cc02397bbf41cdc4250239feb",
-  "head_sha": "0e27b6c2fdf27f30d0726f66491d1c5634505b6c",
+  "head_sha": "14567165ee0febb5952717cf22adc511b10d57ee",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -20,7 +20,7 @@
     {
       "command": "node --test scripts/check-guarded-merge-sync-dispatch.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 4, pass 4, fail 0"
+      "evidence": "tests 6, pass 6, fail 0"
     },
     {
       "command": "node --test scripts/check-lane-route-sync.test.mjs",

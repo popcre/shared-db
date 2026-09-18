@@ -1,27 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3245,
+  "work_issue": 3232,
   "outcome": "ready-for-merge",
-  "pr": 3246,
+  "pr": 3247,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3245/1",
-  "contract_sha256": "747bc72308abaf54de742e6df4abdf397996dcb66a44c436635fcea2d475daa1",
-  "head_sha": "5d6d088af3a966fc01228b67e664416030d5b2a1",
+  "contract_ref": "refs/db-contracts/3232/2",
+  "contract_sha256": "22a6d53b9bf3730908f150c576117b51d3423339339fb1b567b3e7a1d4675a51",
+  "head_sha": "1e4209abafcc4c65ba88d3b7cb3269bd6e5dafa4",
   "files_changed": [
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    "scripts/lib/orchestrator-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test tools/coldlion-landing-prepack.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "37/37 pass, with three new pins: both harvest spellings asked and both answering the row spelling collect to one row with coverage holding; a sibling-answered zero-row spelling is accounted; differing bytes for one grain across two spellings refuse loudly."
+      "evidence": "607 passed, 0 failed at 1e4209ab (merged head): the three new #3232 tests exclude both glm rows for zcode/glm orchestrators, walk a full draw cycle without glm, and pin codex/claude behavior plus the ENGINES/ENGINE_REVIEWER_EXCLUSION key-for-key coupling; a marker declaring no engine still refuses."
+    },
+    {
+      "command": "node --test scripts/check-orchestrator-marker.test.mjs",
+      "exit_code": 0,
+      "evidence": "43 passed, 0 failed at 1e4209ab: marker validation is unchanged for codex/claude and the zcode entry validates through the real parseRoutingBlock/validateRouting path (read-only acceptance re-check chained resolution to a glm-free drawable set)."
     }
   ],
   "assumptions_resolved": [
-    "The two-spelling harvest shape was proved live: run 35288752430 refused naming asked PPk133 vs row answers PPK133; run 35294603177 passed the case-folded guard and refused on the cross-key count, which only happens when both spellings are distinct harvest keys answering one spelling."
+    "PROVENANCE, STATED PLAINLY: the implementation was written by this ZCode (GLM 5.3) session BEFORE any contract was published; generation 1 was published mid-packaging with a base_sha padded from a short SHA that names no real commit, and generation 2 corrects the base to the true fork point 579f8fe0. No pre-work ordering is claimed.",
+    "The full CI coordination list (lease + collision suites, 1450 tests incl. all orchestrator-flow suites) passed at the pre-refresh implementation head fc1aa58b; the refresh onto main (1e4209ab) changed no byte of the three implementation files' diff.",
+    "ACTIVE_REVIEWERS, RETIRED_REVIEWERS and QUARANTINED_REVIEWERS are name-for-name identical to main, verified by importing both versions side by side."
   ],
   "stop_conditions_hit": []
 }

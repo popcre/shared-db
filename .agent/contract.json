@@ -1,44 +1,48 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3245,
+  "generation": 2,
+  "work_issue": 3232,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Fold case in the /prepackDetail loader key-coverage accounting and collect each vendor row once when two harvest spellings of one drifted key are both asked, so the #3179 backfill can complete.",
-  "base_sha": "f048cca84c40edaae7814545e205e07bd76ebb51",
-  "dispatcher": "delegated source-data session continuing issue #3179 production phase",
-  "worker": "Claude GLM 5.3 source-data session, issue #3179",
-  "branch": "claude/issue-3179-prepack-coverage-case",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/prepack-cover-3245",
+  "goal": "Enforce the owner's 2026-09-17 ruling (\"I never want GLM reviewing GLM code\") in the reviewer draw: the glm rows declare orchestratorEngine:'glm', a zcode engine entry lets a ZCode orchestrator declare itself honestly in the routing contract, and reviewersForOrchestrator maps the declared engine through ENGINE_REVIEWER_EXCLUSION so a zcode orchestrator never draws glm while codex and claude orchestrations behave exactly as before.",
+  "base_sha": "579f8fe0c88fdd288cfa9c0eb9453318ae1cf7ec",
+  "dispatcher": "ZCode (GLM 5.3) repo-maintenance session completing issue #3232 (self-published per docs/agents/agent-work-contract-repo-maintenance-evidence.md: the implementation predated publication, and the completion report states that provenance plainly)",
+  "worker": "ZCode (GLM 5.3) session, issue #3232",
+  "branch": "zcode/issue-3232-glm-reviewer-independence",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/zcode-3232-glm-independence",
   "allowed_paths": [
-    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/lib/orchestrator-routing.mjs",
     ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    "tools/coldlion-landing-prepack.test.mjs",
-    "tools/coldlion-landing/sync-prepack-detail.mjs"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/lib/orchestrator-routing.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "Never collapse rows that differ for one grain: identical bytes across two spellings are one row, differing bytes refuse loudly.",
-    "Never let rowsFetched under-report: it keeps the raw fetch count so nothing landed is hidden.",
-    "Never author a migration or change any database shape.",
-    "Never close issue #3179; the originating session owns closure."
+    "do not add ZCode as a reviewer: the same owner ruling permanently rejected that",
+    "do not change any reviewer's registration, retirement, quarantine, or rotation membership",
+    "do not weaken the fail-closed unreadable-engine refusal in reviewersForOrchestrator",
+    "do not import lib/orchestrator-routing.mjs into the lane manager: that would make every routing edit a global evidence invalidator",
+    "do not author a migration or touch any database object"
   ],
   "required_checks": [
-    "node --test tools/coldlion-landing-prepack.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/check-orchestrator-marker.test.mjs"
   ],
   "assumptions": [
-    "The harvest holds both spellings of the drifted key as distinct codes, both answering the row spelling (runs 35288752430 and 35294603177 together prove the shape).",
-    "rowsFetched reports raw fetched rows while the returned sourceRows are deduplicated; the run notes and the landed counts stay honest about both."
+    "ZCode session ids are shaped sess_<uuid> (ZCODE_SESSION_ID), matching the id pattern ai-blocker-watch already resumes",
+    "the marker resolver keeps rejecting engines outside the ENGINES vocabulary, so the raw-string fallback in reviewersForOrchestrator is unreachable from a declared marker",
+    "no reviewer registration or rotation membership changes: ACTIVE/RETIRED/QUARANTINED are name-for-name identical to main"
   ],
   "stop_conditions": [
-    "Stop and report a blocker if the deduplicated load ever disagrees with the API totals by more than the counted zero-row keys.",
-    "Stop on any unresolved guard or reviewer refusal; a new head answering it requires a fresh exact-head review."
+    "stop and re-declare if the change must touch any file outside allowed_paths",
+    "stop if the routing engine vocabulary and ENGINE_REVIEWER_EXCLUSION drift apart (the lane test suite asserts key-for-key agreement)",
+    "stop if a marker declaring no engine stops refusing reviewer assignment"
   ]
 }

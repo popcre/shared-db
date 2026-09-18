@@ -24,7 +24,7 @@
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'supabase_read_only_user') then
-    execute 'grant execute on function plm.prepack_role(text, text, text) to supabase_read_only_user';
+    grant execute on function plm.prepack_role(text, text, text) to supabase_read_only_user;
   else
     raise notice 'supabase_read_only_user does not exist on this target; prepack_role grant skipped';
   end if;

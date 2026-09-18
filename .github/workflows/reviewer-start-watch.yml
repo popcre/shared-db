@@ -30,8 +30,10 @@
 # overdue because time passes, not because a file changed.
 #
 # EXIT CODE. Non-zero when any reroute or resumed dispatch in a pass failed, and when the
-# next leg could not be dispatched. A failed leg dispatches no successor, so a failing
-# watcher is a red run that waits for the cron rather than a stream of red runs.
+# next leg could not be dispatched. A failed pass does not end the leg: the leg keeps
+# watching at the pass interval (later passes resume the failed dispatch, bounded by the
+# watcher's own attempt limit), ends red at its deadline, and still hands on to the next
+# leg, so one failure never leaves the start SLO unwatched until the cron restart net.
 #
 # Owner: the popcre/ai-devops#401 session chain. Retire when a reviewer runner service
 # enforces the start SLO itself.
@@ -115,6 +117,7 @@ jobs:
         run: node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs
 
       - name: Reroute reviewers that never started
+        id: watch
         env:
           GH_TOKEN: ${{ github.token }}
           APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
@@ -129,25 +132,35 @@ jobs:
           args=(--drawn-since "$DRAWN_SINCE")
           if [ "$APPLY" = "true" ]; then args+=(--apply); fi
           deadline=$(( $(date +%s) + LEG_MINUTES * 60 ))
+          # The step shell runs with -e, so the exit code is captured with || instead of $?: a bare
+          # failing command would end the step before its error JSON is printed. A failed pass is
+          # recorded and the leg keeps watching (a failed dispatch is resumed by later passes); the
+          # leg still ends non-zero, and the relay step below still hands on to the next leg.
+          failed=0
           while :; do
-            node scripts/orchestrator-flow/reviewer-start-watch.mjs "${args[@]}" > /tmp/pass.json
-            CODE=$?
+            CODE=0
+            node scripts/orchestrator-flow/reviewer-start-watch.mjs "${args[@]}" > /tmp/pass.json || CODE=$?
             acted=$(node -e 'const j=require("/tmp/pass.json");console.log(j.leases.filter((l)=>!/^(wait|skip|keep-active)/.test(String(l.action))).length)' 2>/dev/null || echo unreadable)
             echo "pass $(date -u +%FT%TZ) exit=${CODE} acted=${acted}"
             if [ "$CODE" -ne 0 ] || [ "$acted" != "0" ]; then
+              # A pass that died before writing its JSON must still reach the error and exit below.
+              [ -s /tmp/pass.json ] || echo '{"error":"pass.json missing or empty"}' > /tmp/pass.json
               cat /tmp/pass.json
               { echo '```json'; cat /tmp/pass.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             else
               echo "- $(date -u +%FT%TZ) no action" >> "$GITHUB_STEP_SUMMARY"
             fi
-            if [ "$CODE" -ne 0 ]; then echo "::error::A reroute or resumed dispatch failed (exit ${CODE}); its error is in the JSON above."; exit "$CODE"; fi
+            if [ "$CODE" -ne 0 ]; then echo "::error::A reroute or resumed dispatch failed (exit ${CODE}); its error is in the JSON above."; failed=1; fi
             if [ "$APPLY" != "true" ] || [ "$(date +%s)" -ge "$deadline" ]; then break; fi
             sleep "$PASS_INTERVAL_SECONDS"
           done
+          exit "$failed"
 
       - name: Dispatch the next relay leg
         # A schedule payload carries no repository object, so the default branch is named here.
-        if: ${{ (github.event_name == 'schedule' || inputs.apply) && github.ref == 'refs/heads/main' }}
+        # Relay only when the watch step itself ran (passed or ended red after its passes): a
+        # checkout, setup or test failure skips the watch, and relaying then would chain fast red runs.
+        if: ${{ !cancelled() && (steps.watch.conclusion == 'success' || steps.watch.conclusion == 'failure') && (github.event_name == 'schedule' || inputs.apply) && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

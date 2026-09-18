@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3228,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3199/11",
-  "contract_sha256": "1f7cd42b163234efcf456463889969220aef13ef4605f9a55b4ba23893958db2",
-  "head_sha": "81fd7e569861d3f9d4bd6bb693d104ca90a6ce3c",
+  "contract_ref": "refs/db-contracts/3199/12",
+  "contract_sha256": "bcb5989d0e475b88e12eee998b419a00d1b9734618efecb270efe3074c6e9534",
+  "head_sha": "3ef56c4dae9de3bcce5b2b6f5b0a466aa1227c65",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/tools-offline-tests.yml",
     "AGENTS.md",
@@ -69,7 +71,8 @@
   "assumptions_resolved": [
     "Phase B edits the protected coordination source; PR #3228 queues behind #3215 and #3217 on that file by the collision guard design, and merges only after they clear.",
     "The tokenizer gained output-only parameters; the default view is pinned byte-identical so every existing ALLOWLIST consumer is unaffected.",
-    "Phase A merged first as PR #3216 (13efcd77); this branch is cut from that merged main, not stacked on the A3 branch."
+    "Phase A merged first as PR #3216 (13efcd77); this branch is cut from that merged main, not stacked on the A3 branch.",
+    "Generation 12 follows the main advance through #3246, #3215 and #3217; the branch was refreshed by merge (3ef56c4d) — the lanes manager and test file auto-merged with those changes — and the completion was re-verified at the merged head by a successor ZCode session clearing the protected-source chain for #3232."
   ],
   "stop_conditions_hit": []
 }

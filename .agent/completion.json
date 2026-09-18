@@ -10,6 +10,8 @@
   "contract_sha256": "ff0ce773c22b934ca885795131c6caf3449c3c5667f1c53d4194efb6ad802dcd",
   "head_sha": "e0819067a53df6a5ccf1909d6d362321caeb99b1",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "db_reads": [],

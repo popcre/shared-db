@@ -1,27 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3024,
+  "work_issue": 3191,
   "outcome": "ready-for-merge",
-  "pr": 3281,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3024/2",
-  "contract_sha256": "d0eaac4a5b61f463dced02e88ef5d1dd5f42afde254172372ad4ad562e7dfe8a",
-  "head_sha": "8e4269e533a730e667703c4aaa7261e69e71857d",
+  "pr": 3277,
+  "migration_versions": [
+    "20260918180012"
+  ],
+  "contract_ref": "refs/db-contracts/3191/1",
+  "contract_sha256": "ff0ce773c22b934ca885795131c6caf3449c3c5667f1c53d4194efb6ad802dcd",
+  "head_sha": "130ea78957944ecb28eaa76c3188544fdd7ef786",
   "files_changed": [
-    "HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md",
-    "plan_product_type_reader.md"
+    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role"
+  ],
   "checks": [
     {
-      "command": "git diff --check origin/main...HEAD",
+      "command": "supabase/tests against an ephemeral database",
       "exit_code": 0,
-      "evidence": "no whitespace errors on the branch diff"
+      "evidence": "PR #3277 required check on the final PR head containing 62ebaab8; confirmed green before guarded merge dispatch"
+    },
+    {
+      "command": "SQL migration guards",
+      "exit_code": 0,
+      "evidence": "PR #3277 required check on the final PR head containing 62ebaab8; confirmed green before guarded merge dispatch"
     }
   ],
   "assumptions_resolved": [
-    "GitHub evidence gathered 2026-09-18 in the audit session: issue #3036 state CLOSED with stateReason COMPLETED; PR #3108 merged 2026-09-16T23:34:50Z; migration 20260916231639 present on origin/main and absent from the 2026-09-18 ledger-drift listing"
+    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
+    "Reviews: qwen REVISE at 209ebc35 (role dependency, RLS disclosure, evidence binding) and muse REVISE at 799cd15 (do-block grant invisible to catalog verification). Resolved with a plain top-level grant, a header documenting the role dependency and the SECURITY DEFINER disclosure, and this evidence pair. The search_path=pg_catalog,public low finding on the existing function is out of scope."
   ],
   "stop_conditions_hit": []
 }

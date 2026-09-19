@@ -17,15 +17,13 @@
 -- prepack head, a prepack member, or neither. No component row is returned.
 --
 -- supabase_read_only_user is provisioned by the Supabase platform, not by any
--- migration in this repository, so the grant is guarded: a target without the
--- role (a local or CI stack) skips it with a notice instead of aborting.
--- Production has the role; the #2611 live proof there is the evidence it landed.
+-- migration in this repository. It exists on production, on the preview
+-- branch, and on the local CLI stack the ephemeral contract tests use (the
+-- run at 7cd94d8 applied this same statement with no "role does not exist"
+-- error). The grant is deliberately a plain top-level statement, not wrapped
+-- in a role-existence guard: a guarded grant inside a do-block is invisible to
+-- production catalog verification (which must see the grant to prove it
+-- landed), and a guard would let a target without the role skip silently.
+-- If the role is ever missing, this migration fails loudly, which is correct.
 
-do $$
-begin
-  if exists (select 1 from pg_roles where rolname = 'supabase_read_only_user') then
-    grant execute on function plm.prepack_role(text, text, text) to supabase_read_only_user;
-  else
-    raise notice 'supabase_read_only_user does not exist on this target; prepack_role grant skipped';
-  end if;
-end $$;
+grant execute on function plm.prepack_role(text, text, text) to supabase_read_only_user;

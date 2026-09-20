@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
+import { reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -2724,14 +2725,21 @@ export const githubIo = {
     const resolved=resolveCommandPath(wrapper)
     if(!resolved)return {ok:false,failingChecks:[`${wrapper} is not on PATH`]}
     const {file,args}=doctorSpawnPlan(resolved)
+    // ISSUE #2678. A credentialed wrapper refuses to run at all unless its own
+    // `AI_<PROVIDER>_CALLER` names the assistant calling it, and it refuses
+    // BEFORE printing any check line. Probing it without that variable made two
+    // completely healthy reviewers read as a local dependency fault. Tell the
+    // wrapper who is calling; never invent a caller the environment does not
+    // support (`required:false` leaves it unset rather than guessing).
+    const callerEnv=reviewCallerEnvironment(wrapper,process.env,{required:false})
     let output=''
-    try{output=execFileSync(file,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_DOCTOR_TIMEOUT_MS})}
+    try{output=execFileSync(file,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_DOCTOR_TIMEOUT_MS,env:{...process.env,...callerEnv}})}
     catch(error){
       if(error?.code==='ETIMEDOUT')return {ok:false,failingChecks:doctorTimeoutFailingChecks(wrapper)}
       output=`${error?.stdout??''}${error?.stderr??''}`
       const failed=parseDoctorFailures(output)
       if(failed.length)return {ok:false,failingChecks:failed}
-      return {ok:false,failingChecks:[`doctor could not be run (${error?.code??`exit ${error?.status}`}) and named no check`],output}
+      return {ok:false,failingChecks:[unnamedDoctorFailure(wrapper,error,error?.stderr??output)],output}
     }
     // The raw output rides alongside the summary so the one caller that must
     // RECORD the proof (reinstateReviewerExclusion) quotes the wrapper verbatim
@@ -3107,6 +3115,18 @@ export function summarizeDoctorOutput(output=''){
 // must go through the command interpreter; everything else is executed directly.
 // Kept separate from the spawn so the rule can be tested for both platforms on
 // either platform.
+// ISSUE #2678. A doctor that exits without naming a check used to be reported as
+// `doctor could not be run (exit 1) and named no check`, which reads as a broken
+// install and sends the operator hunting a machine fault that does not exist. The
+// wrapper usually SAID what was wrong on stderr -- here, that its caller variable
+// was unset. Quote the wrapper's own first diagnostic line instead. One line,
+// trimmed and length-capped: this text travels into refusals.
+export function unnamedDoctorFailure(wrapper,error,stderr){
+  const said=String(stderr??'').split(/\r?\n/).map((line)=>line.trim()).find(Boolean)
+  const quoted=said?`: ${said.length>300?`${said.slice(0,300)}...`:said}`:' and named no check'
+  return `doctor could not be run (${error?.code??`exit ${error?.status}`})${quoted}`
+}
+
 export function doctorSpawnPlan(resolved,platform=process.platform){
   if(platform==='win32'&&/\.(cmd|bat)$/i.test(resolved))return {file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,'doctor']}
   return {file:resolved,args:['doctor']}

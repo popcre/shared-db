@@ -8724,7 +8724,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     // same readiness pre-conditions apply to it (governed review of PR #3338). Wiring
     // the guard to only one of the two draw paths left the waste class #2998 was filed
     // to stop wide open on the other.
-    if(o.replaceFailedReviewer){assertReviewerDrawReadiness(o.pr,io);const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}
+    if(o.replaceFailedReviewer){assertReviewerDrawIsWarranted(o.pr,io);assertReviewerDrawReadiness(o.pr,io);const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}
     if(o.releaseFailedReviewer){console.log(JSON.stringify(releaseFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},io),null,2));return 0}
     if(o.probeSilentReviewer){console.log(JSON.stringify(probeSilentReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},now,io),null,2));return 0}
     if(o.reclaimSilentReviewer){console.log(JSON.stringify(reclaimSilentReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},now,io),null,2));return 0}

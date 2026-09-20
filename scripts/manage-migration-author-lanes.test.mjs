@@ -8939,3 +8939,24 @@ test('#3338 review: readiness does not refuse a merged pull request (#2915 stays
   assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:true,state:'closed',merged_at:'2026-09-14T00:00:00Z'})}),{draft:false,mergeable:true})
   assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:null,state:'closed'})}),{draft:false,mergeable:null})
 })
+
+// GOVERNED REVIEW ROUND 3 OF PR #3338 — the replacement draw also honours the
+// documents-only pool guard (#2102). A replacement draw spends reviewer-pool capacity
+// exactly like a first draw, so BOTH pre-draw guards belong on both paths.
+test('#3338 review: a replacement draw refuses a documents-only pull request (#2102)',()=>{
+  let drew=false
+  const io={
+    pullRequestFiles(){return [{filename:'docs/notes.md'},{filename:'HANDOFF.d/2026-09-02T0000Z-note.md'}]},
+    getPr(){return {draft:false,mergeable:true,state:'open'}},
+    listIssues(){drew=true;throw new Error('the replacement draw must not be reached')}
+  }
+  const errors=[],original=console.error
+  console.error=(message)=>errors.push(String(message))
+  let code
+  try{code=main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--review-slot','1','--failed-sequence','1','--failure-code','turn_limit_cancelled','--confirm-no-verdict','--confirm-no-artifact'],NOW,io)}
+  finally{console.error=original}
+  assert.equal(code,2)
+  assert.match(errors.join('\n'),/documents-only change/)
+  assert.equal(drew,false)
+})
+

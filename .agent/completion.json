@@ -1,43 +1,54 @@
 {
   "schema_version": 1,
-  "work_issue": 3291,
+  "work_issue": 3282,
   "outcome": "ready-for-merge",
-  "pr": 3292,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3291/1",
-  "contract_sha256": "e01d79cc41093604e893c4c0c5bc1305477bfa6939ffea794370b9b0794b6788",
-  "head_sha": "6dc429a07fda21219c6d9592c00ac759a287e0f2",
-  "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+  "pr": 3301,
+  "migration_versions": [
+    "20260920144819"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3282/3",
+  "contract_sha256": "0aa9e7bd3c81d81120292cbfa719fe835a67fc4041d7984528fd4545e06aac46",
+  "head_sha": "e588bd8f576a0f18bb2a138b7c2a80f739878eda",
+  "files_changed": [
+    "docs/verification/3282-pdf-backfill/README.md",
+    "docs/verification/3282-pdf-backfill/catalog-before.json",
+    "docs/verification/3282-pdf-backfill/local-proof.txt",
+    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
+    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.assets",
+    "table public.pdf_text_samples",
+    "function public.is_style_guide_source_pdf"
+  ],
+  "db_writes": [
+    "function public.claim_pdf_backfill_batch",
+    "function public.count_pdf_backfill_remaining",
+    "index public.idx_assets_licensing_pdf_backfill_candidates",
+    "table public.assets"
+  ],
   "checks": [
     {
-      "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --check scripts/manage-migration-author-lanes.mjs"
+      "evidence": "git diff --check origin/main...HEAD exit0 after merging currentmainc477c8e8 and trimming display-only whitespace in local-proof.txt.",
+      "command": "git diff --check",
+      "exit_code": 0
     },
     {
-      "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
+      "evidence": "See docs/verification/3282-pdf-backfill/local-proof.txt: actual PostgreSQL18 behavioral PASS after null/type/filename truth-table extension; local synthetic plan only.",
+      "command": "PDF backfill SQL behavioral contracts",
+      "exit_code": 0
     },
     {
-      "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test --test-reporter=spec scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
+      "evidence": "bash scripts/check-sql.sh exit0 after declared derivation; python -m pytest scripts/test_migration_derivation.py -q:44passed,6subtests passed.",
+      "command": "SQL migration guards",
+      "exit_code": 0
     }
   ],
   "assumptions_resolved": [
-    "Recovered source retained by ancestry from c63fe706d7b447e75208658de7c3729afcf08496. Backup branch codex/recover-edge-3292 preserves original recovery copy.",
-    "Contract refs/db-contracts/3291/1 was published before this prospective reconstruction merge and repairs. It does not claim to predate the original EDGE-DEV source.",
-    "Fresh slot2 and same-head redraw after exclusion were reproduced selecting glm outside the grok,muse permission set before repair. Both now inherit the stored set.",
-    "Returned policy lookup runs only when immutable exclusion history exists, including lifted exclusions. Normal19-request path and hard25-request ceiling unchanged; exclusion-bearing fixture adds one justified history read,23 total.",
-    "No database reads or writes. Independent exact-head review and guarded merge remain required; this report is local completion evidence, not merge authorization.",
-    "Audit now verifies slot-one record identity on batched and fallback paths; original and all surviving replacement policies must agree; returned legacy slotless replacements use checked return provenance.27 regressions added,26 failed the pre-fix source as expected. The legacy positive compatibility fixture proves both old and explicit slot formats reach the same downstream release-evidence guard, not that an otherwise incomplete fixture can finish a redraw."
+    "Production catalog read as supabase_read_only_user on qsllyeztdwjgirsysgai confirms immutable helper, enum type and unique pdf_text_samples.asset_id index.",
+    "u2giants/popdam3 is the verified application repository.",
+    "ready-for-merge is author handoff vocabulary; independent reviews, preview rehearsal and production proof are still mandatory and owned by orchestrator.",
+    "Independent Muse findings resolved with catalog-only production definitions, nullability, ACLs and helper truth table; derivation bases declared. Separate implementation/evidence head remains required by repo validator."
   ],
   "stop_conditions_hit": []
 }

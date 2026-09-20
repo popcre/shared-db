@@ -1,51 +1,48 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "generation": 2,
+  "work_issue": 2457,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Stop a lagging post-deletion readback of the reviewer mutex reporting a SUCCESSFUL reviewer draw as RECOVERY REQUIRED and discarding its result (issues 2457 and 2844, one root cause).",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository to production",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/reviewer-release-readback-2457-2844",
+  "worktree": "D:/repos/shared-db-worktrees/claude-reviewer-release-readback-2457-2844",
   "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/queue-hygiene-report.test.mjs"
   ],
   "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/queue-hygiene-report.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database write, migration, function, view, role, grant, index, or timeout change.",
+    "Do not widen REVIEW_OPERATION_REQUEST_LIMIT or any derived request ceiling.",
+    "Do not remove the RECOVERY REQUIRED refusal; an orphaned mutex is never assumed released.",
+    "Do not hand-delete any refs/db-review-active or refs/db-coordination ref."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/queue-hygiene-report.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "The accepted atomic compare-and-swap deletion is authoritative; the git replica read that follows it can lag and is corroboration only.",
+    "Issues 2457 and 2844 are one defect and are resolved by one change."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if the fix would require widening a derived request ceiling.",
+    "Stop if the fix would require removing or weakening the mutex-release refusal."
   ]
 }

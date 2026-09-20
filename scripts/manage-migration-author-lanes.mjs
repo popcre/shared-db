@@ -1754,6 +1754,43 @@ export function assertReviewerDrawIsWarranted(pr,io=githubIo){
   throw new LaneError(`PR #${pr} is a documents-only change (${verdict.reason}), so it does not draw from the database reviewer pool (#2102). Every automated check still runs and it still merges through the guarded merge lane; the merge gate does not require a reviewer verdict for it. Rulebook files -- AGENTS.md, skills, plan_*.md -- are never documents for this purpose and would have been drawn for.`)
 }
 
+// ISSUE #2998 item 3 -- readiness pre-conditions, asserted BEFORE the reviewer draw.
+//
+// Observed: a merge was declined twice with no reason given. The actual cause was that
+// the pull request was still a DRAFT, and nothing anywhere in the path said so. Two
+// reviewer draws were spent discovering a fact that is one field of a read we already
+// make. The defect class this issue records is exactly that -- a pre-condition checked
+// after the irreversible step instead of before it.
+//
+// This REDUCES NOTHING AND APPROVES NOTHING. It only adds refusals in FRONT of the
+// draw. Every gate that ran after the draw still runs unchanged, no verdict becomes
+// optional, and a refusal here is a refusal -- it never stands in for an approval.
+//
+// Fail-closed direction matters per check:
+//  - `draft` is a definite fact on the live PR, so a draft refuses outright.
+//  - `mergeable` is computed ASYNCHRONOUSLY by GitHub and is null until it settles.
+//    Only a definite `false` refuses. A null proceeds exactly as before, because
+//    making absence-of-answer refuse would turn a timing race into a false refusal --
+//    and the guarded merge lane still refuses a real conflict later regardless.
+//  - An unreadable PR proceeds exactly as before, matching the classifier above, so a
+//    transport fault never silently converts into a reviewer refusal.
+export function assertReviewerDrawReadiness(pr,io=githubIo){
+  if(typeof io?.getPr!=='function')return null
+  let live
+  try{live=io.getPr(Number(pr))}catch{return null}
+  if(!live||typeof live!=='object')return null
+  if(live.draft===true)throw new LaneError(`PR #${pr} is still a DRAFT, so no reviewer was drawn and no reviewer capacity was spent. A draft pull request cannot be merged, so a verdict on it could not be acted on. Mark the pull request ready for review, then assign a reviewer.`)
+  // DELIBERATELY NOT CHECKED: closed/merged state. The governed review of PR #3338
+  // suggested refusing a non-open pull request as the same waste class. It is not
+  // added, because issue #2915 -- delivered by cdc74cb5 and 3cef6b68 -- exists
+  // precisely so that a MERGED pull request bound by the verified merged-PR issue
+  // binding CAN be assigned a reviewer and receive an exact-head verdict. Refusing a
+  // non-open PR here would silently undo that capability, which is a worse defect than
+  // the capacity it would save. The binding's own refusals already bound that path.
+  if(live.mergeable===false)throw new LaneError(`PR #${pr} conflicts with its base branch (GitHub reports mergeable=false), so no reviewer was drawn and no reviewer capacity was spent. Bring the branch up to date with main, resolve the conflict, push, then assign a reviewer.`)
+  return {draft:false,mergeable:live.mergeable===undefined?null:live.mergeable}
+}
+
 // ISSUE #2448 — a close comment must state the cause that actually ran.
 // Every path that closes a claim names its own mechanism; nothing claims an
 // expiry sweep, because no expiry sweep exists (`--cleanup-stale` closes
@@ -8775,7 +8812,11 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.reissueMergedClaim){console.log(JSON.stringify(reissueMergedStrandedClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.rebindClaimWorktree){console.log(JSON.stringify(rebindClaimWorktree({...o,claim:o.claimNumber},now,io),null,2));return 0}
     if(o.reversionClaim){console.log(JSON.stringify(reversionActiveClaim({...o,claim:o.claimNumber},now,io),null,2));return 0}
-    if(o.replaceFailedReviewer){const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}
+    // A REPLACEMENT draw spends reviewer capacity exactly like a first draw, so the
+    // same readiness pre-conditions apply to it (governed review of PR #3338). Wiring
+    // the guard to only one of the two draw paths left the waste class #2998 was filed
+    // to stop wide open on the other.
+    if(o.replaceFailedReviewer){assertReviewerDrawIsWarranted(o.pr,io);assertReviewerDrawReadiness(o.pr,io);const result=replaceFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,admissionOptions:io.enforceAdmission===true?o:null},io);console.log(JSON.stringify(result,null,2));return 0}
     if(o.releaseFailedReviewer){console.log(JSON.stringify(releaseFailedReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},io),null,2));return 0}
     if(o.probeSilentReviewer){console.log(JSON.stringify(probeSilentReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},now,io),null,2));return 0}
     if(o.reclaimSilentReviewer){console.log(JSON.stringify(reclaimSilentReviewer({...o,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1},now,io),null,2));return 0}
@@ -8786,7 +8827,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.excludeReviewer){console.log(JSON.stringify(excludeReviewerForPr(o,io),null,2));return 0}
     if(o.reinstateReviewerExclusion){console.log(JSON.stringify(reinstateReviewerExclusion(o,io),null,2));return 0}
     if(o.reviewerPreflight){console.log(JSON.stringify(reviewerExecutionPreflight(o,io),null,2));return 0}
-    if(o.assignReviewer){assertReviewerDrawIsWarranted(o.pr,io);console.log(JSON.stringify(assignWithMutexRetry({issue:o.issue,pr:o.pr,headSha:o.headSha,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,reviewerAllowlist:o.reviewerAllowlist,admissionOptions:io.enforceAdmission===true?o:null},io),null,2));return 0}
+    if(o.assignReviewer){assertReviewerDrawIsWarranted(o.pr,io);assertReviewerDrawReadiness(o.pr,io);console.log(JSON.stringify(assignWithMutexRetry({issue:o.issue,pr:o.pr,headSha:o.headSha,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,reviewerAllowlist:o.reviewerAllowlist,admissionOptions:io.enforceAdmission===true?o:null},io),null,2));return 0}
     if(o.activateReviewCutover){console.log(JSON.stringify(activateReviewCutover(io),null,2));return 0}
     if (o.acquireExclusive) { if(o.acquireExclusive!=='merge')requireAdmissionArguments(o,io,{pr:o.pr??null});console.log(JSON.stringify(acquireExclusive(o.acquireExclusive, { owner:o.owner, pr:o.pr, headSha:o.headSha, versions:o.versions, versionPrMap:o.versionPrMap, admissionOptions:o }, io), null, 2)); return 0 }
     if (o.releaseExclusive) { if (!o.ownerSha) throw new LaneError('--owner-sha is required for safe release'); releaseOwnedRef(EXCLUSIVE_REFS[o.releaseExclusive], o.ownerSha, io); return 0 }

@@ -1,38 +1,50 @@
 {
   "schema_version": 1,
-  "work_issue": 3191,
+  "work_issue": 3282,
   "outcome": "ready-for-merge",
-  "pr": 3277,
+  "pr": 3301,
   "migration_versions": [
-    "20260918180012"
+    "20260920144819"
   ],
-  "contract_ref": "refs/db-contracts/3191/2",
-  "contract_sha256": "4356cf72dafdf5f84c5be07437c445d6b3bf5a5f7ef1ed0f60a357d9b23ef384",
-  "head_sha": "9ed79890f214c265dd5b57b997ad85cfad29a7fb",
+  "contract_ref": "refs/db-contracts/3282/1",
+  "contract_sha256": "c25e11e555fe76332221922b7e359ccd6cc25eaa3efaff364a15b5a8c79f9ecd",
+  "head_sha": "6349c7a4398abd75c1a129d5248fa3c26dc8d333",
   "files_changed": [
-    ".github/live-proofs/3191.sql",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    ".agent/contract.json",
+    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
+    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
   ],
-  "db_reads": [],
+  "db_reads": [
+    "table public.assets",
+    "table public.pdf_text_samples",
+    "function public.is_style_guide_source_pdf"
+  ],
   "db_writes": [
-    "function plm.prepack_role"
+    "function public.claim_pdf_backfill_batch",
+    "function public.count_pdf_backfill_remaining",
+    "index public.idx_assets_licensing_pdf_backfill_candidates"
   ],
   "checks": [
     {
-      "command": "supabase/tests against an ephemeral database",
-      "exit_code": 0,
-      "evidence": "ephemeral_check_run_id 35415550424 (PR #3277 head 160bc1e4, byte-identical migration): artifact supabase-contract-test-logs/applied-migrations.txt positively lists 20260918180012_prepack_role_read_only_proof_grant.sql; re-verified green on the final head before guarded merge dispatch"
+      "evidence": "Clean diff before implementation commit 6349c7a4.",
+      "command": "git diff --check",
+      "exit_code": 0
     },
     {
+      "evidence": "psql ON_ERROR_STOP=1, isolated local PostgreSQL18 port55482: BEGIN / DO / ROLLBACK pass. Covers eligible/deleted/completed/non-PDF rows, thumbnail flags, 0/1/negative/null limits, original query order and claim/count equivalence. Synthetic100000 rows with98 of100 candidates completed: index-only candidate scan; claim/count0.203-0.604ms. Not production timing proof.",
+      "command": "PDF backfill SQL behavioral contracts",
+      "exit_code": 0
+    },
+    {
+      "evidence": "bash scripts/check-sql.sh exited0: Static checks passed. Live ledger and full ephemeral CI checks remain orchestrator release gates.",
       "command": "SQL migration guards",
-      "exit_code": 0,
-      "evidence": "run 35415550535 green at 160bc1e4; re-verified green on the final head before guarded merge dispatch"
+      "exit_code": 0
     }
   ],
   "assumptions_resolved": [
-    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
-    "Reviews: qwen REVISE at 209ebc35 (role dependency, RLS disclosure, evidence binding) and muse REVISE at 799cd15 (do-block grant invisible to catalog verification). Resolved with a plain top-level grant, a header documenting the role dependency and the SECURITY DEFINER disclosure, and this evidence pair. The search_path=pg_catalog,public low finding on the existing function is out of scope.",
-    "Qwen REVISE at 53e93ca9: contract generation 2 now authorizes the live-proof path; check evidence cites the positive applied record; the probe also counts plm.item_missing_attribution. Its finding that files_changed must list four paths is not reproduced: git diff --name-only b32c435a..head_sha lists exactly the two paths because the .agent files were reset to base content in the implementation commit."
+    "Production catalog read as supabase_read_only_user on qsllyeztdwjgirsysgai confirms immutable helper, enum type and unique pdf_text_samples.asset_id index.",
+    "u2giants/popdam3 is the verified application repository.",
+    "ready-for-merge is author handoff vocabulary; independent reviews, preview rehearsal and production proof are still mandatory and owned by orchestrator."
   ],
   "stop_conditions_hit": []
 }

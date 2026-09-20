@@ -10,8 +10,6 @@
   "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
   "head_sha": "54dfddf7bb21e6df0e036a6eb711fda426c9cf0b",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     ".github/live-proofs/2662.sql",
     "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
     "supabase/tests/app_serving_status_contracts.sql",

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "generation": 3,
+  "work_issue": 3205,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add the fourth flavour of a check that never ran (a conflict-dirty PR starts no pull_request workflows) to AGENTS.md 5.2-A for issue 3205, and publish the shared-db workflow refactor plan document requested by issue 3306. Prose only: no rule is relaxed and no safeguard is removed.",
+  "base_sha": "51b0591c7fe862158d3fde0d5d7933b43f6aac12",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/3205-3306-checks-flavour-and-refactor-plan",
+  "worktree": "D:/repos/shared-db-worktrees/issues-3205-3306-a41f7c",
+  "allowed_paths": [
+    ".agent/work/3205/3/contract.json",
+    ".agent/work/3205/3/completion.json",
+    "AGENTS.md",
+    "plan_shared_db_workflow_refactor.md"
+  ],
+  "file_writes": [
+    ".agent/work/3205/3/contract.json",
+    ".agent/work/3205/3/completion.json",
+    "AGENTS.md",
+    "plan_shared_db_workflow_refactor.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database read, write, migration, or production command.",
+    "Do not relax, weaken, or remove any existing AGENTS.md rule; issue 3205 adds a missing case only.",
+    "Do not actually remove any administrative blocker or safeguard while publishing the issue 3306 plan; the plan proposes, it does not act."
+  ],
+  "required_checks": [
+    "node --test scripts/lib/documents-only-change.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "AGENTS.md and plan_*.md are rulebook files under scripts/lib/documents-only-change.mjs, so this pull request is not documents-only and takes the full reviewer draw and guarded merge.",
+    "Issue 3306 asks for a plan document to be published; it does not ask for any workflow or code change in this pull request.",
+    "Refreshed by MERGING current main on 2026-09-20 (never rebased, so ancestry is preserved); evidence moved to the keyed path added by issue #2708 and reissued as generation 3."
+  ],
+  "stop_conditions": [
+    "Stop if resolving either issue would require a code, workflow, or configuration change.",
+    "Stop if another open pull request is concurrently editing the same AGENTS.md section."
+  ]
+}

@@ -910,21 +910,33 @@ class GuardTests(unittest.TestCase):
     def test_prepare_refuses_a_pruned_checkout_with_the_wrong_file_set(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            repo = root / "repo"
             output = root / "bounded"
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            for name in (
+                "20260727010000_applied.sql",
+                "20260727020000_approved.sql",
+                "20260727030000_unapproved.sql",
+            ):
+                (migrations / name).write_text("select 1;\n", encoding="utf-8")
             ledger = root / "ledger.txt"
-            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
-            source = {"20260727020000": root / "migration.sql"}
-            bounded = {"20260727020000": output / "migration.sql"}
+            ledger.write_text(
+                "Local | Remote | Time\n"
+                "20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+
+            def fake_worktree(*_args, **_kwargs):
+                import shutil
+                shutil.copytree(repo, output)
+
             with (
-                patch("production_migration_guard.parse_remote_versions", return_value=set()),
-                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
-                patch("production_migration_guard.local_migrations", side_effect=[source, bounded, {}]),
-                patch("production_migration_guard.validate_candidates"),
-                patch("production_migration_guard.preflight_batch"),
-                patch("production_migration_guard.subprocess.run"),
+                patch("production_migration_guard.subprocess.run", side_effect=fake_worktree),
+                patch.object(Path, "unlink", autospec=True),
                 self.assertRaisesRegex(GuardError, "does not match the approved file set"),
             ):
-                prepare(root, output, "a" * 40, "20260727020000", ledger)
+                prepare(repo, output, "a" * 40, "20260727020000", ledger)
 
 
 class AssertBoundedTests(unittest.TestCase):

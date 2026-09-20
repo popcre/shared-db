@@ -177,6 +177,8 @@ class EvidenceTests(unittest.TestCase):
             [],
             {**valid, "repository": []},
             {**valid, "repository": {"full_name": "other/repository"}},
+            {**valid, "actor": []},
+            {**valid, "actor": {}},
             {**valid, "actor": {"login": "   "}},
             {**valid, "run_attempt": True},
             {**valid, "run_attempt": 0},
@@ -206,7 +208,7 @@ class EvidenceTests(unittest.TestCase):
             duplicate = Path(temp, "duplicate.zip")
             with zipfile.ZipFile(duplicate, "w") as archive:
                 archive.writestr(gate.EVIDENCE_FILE, '{"verdict":"APPROVE","verdict":"DENY"}')
-            with self.assertRaises(gate.EvidenceError):
+            with self.assertRaisesRegex(gate.EvidenceError, "duplicate JSON key 'verdict'"):
                 gate.read_evidence(duplicate)
 
             non_object = Path(temp, "list.zip")

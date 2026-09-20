@@ -375,7 +375,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(report + "\n", encoding="utf-8")
+        # Exactly one trailing newline: a blank line at end of file fails the
+        # repository's `git diff --check`.
+        args.report.write_text(report.rstrip("\n") + "\n", encoding="utf-8")
         print(f"report written: {args.report}")
 
     print(

@@ -1,0 +1,49 @@
+description,expected_product_type,expected_product_construction,expected_product_material,expected_status,source
+"Marvel Acrylic Pencil Case Spiderman 8x4""",Pencil Case,Zippered,Acrylic,accepted,#3024 2026-09-16 spot check (no answer)
+"Disney MDF die-cut block Mickey 6x6""",Tabletop Block,MDF,MDF,accepted,#3024 2026-09-16 spot check (no answer)
+"DC Comics MDF floating character box Batman swinging through Gotham 11x17""",Wall Plaque,MDF Floating Box,MDF,accepted,#3024 2026-09-16 spot check (no answer)
+"BLACK PANTHER MDF PRINT FRAMED",Framed Print,MDF,MDF,accepted,#3024 2026-09-16 spot check (word order)
+"Disney dome block tabletop decor Aristocats Marie I woke up like this 3x3""",Tabletop Block,Domed,,accepted,#3024 2026-09-16 spot check (no answer)
+"Disney Classics Lrg Box Lift-Off Greyboard Storage w/ Foil Aristocats Marie 13x11""",Hard Storage Box,Greyboard,Greyboard,accepted,#3024 2026-09-16 spot check (no answer)
+"Double Layer Diecut Star Wars Art 10.5x 24""",Wall Plaque,Layered Die-Cut,,accepted,#3024 2026-09-16 spot check (no answer)
+"Disney Winnie the Pooh Memory Foam Floor Mat Harvest Blessings 34x21""",Floor Mat,Memory Foam,Memory Foam,accepted,#3024 2026-09-16 spot check (wrong: read as Door Mat)
+"Printed Canvas Growth Chart_Level Up_10x48""x1.5""",Growth Chart,Hanging,Canvas,accepted,#3024 2026-09-16 spot check (wrong: read as Canvas)
+"DC Comics 3pcs folding canvas-texture frame set with 3 markers Batman Young DC vector art",Frame Set,Folding,Canvas,accepted,#3024 2026-09-16 spot check (wrong: read as Canvas)
+"Coca-Cola Desk Mat 'Catch the wave!' 16x32""",Desk Mat,Desk Mat,,accepted,#3024 2026-09-16 spot check (wrong: invented Rubber material)
+"LBRN NEW GAME, JRDN PLY TO WIN, CURRY THE ASSN CMIC BOOK, MAMBA CMIC ART, PRNTD CNVS, 24X3",Canvas,Stretched,Canvas,accepted,gold review: comic book is artwork not a book
+"Printed Canvas w Gold Foil_Dog on Books w Blush Roses_16x20""",Canvas,Stretched,Canvas,accepted,gold review: books in the artwork are not the product
+"Marvel Spidey & Amazing Friends Canvas w gel coat Spidey 'Web-Spinner' McFarlane cover 13x19""",Canvas,Stretched,Canvas,accepted,gold review: Web-Spinner is artwork not a spinner rack
+"Printed Canvas w High Gloss_Virgin Mary Blue Stained Glass 20x30"" x1.25""",Canvas,Stretched,Canvas,accepted,gold review: stained glass is an art style here
+"Framed Art Under Glass_Blue Chef Jersey_16x20""",Framed Print,Paper,Glass,accepted,gold review: a chef jersey is artwork not fabric
+"Disney Winnie the Pooh MDF Framed Dry Erase and Fabric Pin Board Cute 19x15.75"" x1""",Functional Board,Dry-Erase and Pin,MDF,accepted,gold review: a combined board is not framed fabric art
+"Printed Canvas_Bathroom Gnomes I-Brush Girl_12x12"" x1.25""",Canvas,Stretched,Canvas,accepted,gold review: I-Brush is artwork not a paint brush
+"Floater Frame Canvas w Allover Gel_Bright Brush stroke abstract art 16x24"" x1.5""",Framed Canvas,Floater Frame,Canvas,accepted,gold review: brush stroke is artwork not a paint brush
+"Marvel color-your-own canvas kit w 12 paint pots and brush Avengers evergreen art 11x14""",Paint-Your-Own Canvas Set,Canvas Set,Canvas,accepted,gold review: paint wording is stated
+"Peanuts Photo Frame Fall Snoopy wearing a puffer jacket amidst the leaves 7x5.7""",Photo Frame,Frame,,accepted,gold review: a plain photo frame is not a collage frame
+"Peanuts Snoopy & Woodstock PVC collage picture frame with Snoopy and Friends 22x18""",Photo Frame,Collage,Plastic,accepted,gold review: collage frame keeps its construction
+"Button Art: Pink Butterfly",Hanging Wall Art,Button,,accepted,gold review: button art is not yarn
+"Yarn Art: Pink on Grey Heart",Hanging Wall Art,Yarn,,accepted,gold review
+"Wood Rounded Block_I love You more than my Plants_4""x6""x1""",Tabletop Block,Wood,Wood,accepted,gold review: a wood block is not MDF
+"Disney Mickey Mouse jute rope storage tray Mickey head 10.2"" X9.4""",Tray or Dish,Tray,Natural Fiber,accepted,gold review: a jute tray is not ceramic
+"Disney silicone wall hook Frozen group on light blue 4x2.4""",Wall Hook,Hook,,accepted,gold review: a silicone hook is not MDF
+"MDF Wall Hook_Tiger Skateboard_24x6"" x2""",Wall Hook,MDF,MDF,accepted,gold review
+"Hanging MDF Sign w Attachment_Hello Love Hearts 13.8x13.8 x0.47""",Wall Sign,MDF,MDF,accepted,gold review: an MDF sign is a sign not a plaque
+"Peanuts Snoopy MDF Box w Diecut 3D Raised Icon Snoopy Flying Ace on Doghouse 18x18""",Wall Plaque,MDF,MDF,accepted,gold review: MDF box is boxed MDF wall art
+"Marvel framed 3D lentclr 3-way Gamerverse Spider-man 13x19"" 308x458mm .59"" frame width .5""",Framed Lenticular Art,3D Lenticular,Lenticular,accepted,gold review: lentclr abbreviation
+"SPIDER MAN FRAMED 3-D WALL ART",Framed Relief Art,3D,,accepted,gold review: 3-D must read as 3d
+"Care Bears ""Care Your Heart Out"" 8mm printed PVC foam mat 46*76cm",Floor Mat,PVC Foam,Plastic,accepted,full-catalog cluster
+"Printed Galvanized Steel 12"" x 18"" x 1.5"" Groot Paint Splatter",Wall Sign,Metal,Metal,accepted,full-catalog cluster
+"Care Bears Outdoor Mat Bears with badge 'Good VIbes Only' and stars 18x30""",Door Mat,Outdoor,,accepted,full-catalog cluster
+"Marvel molded foam Spider-man evergreen face 11x14""",Foam Wall Decor,Molded Foam,Foam,accepted,full-catalog cluster
+"Disney Mickey 4 compartment desktop org Chicago Born Original 5x11 x4.5",Stationery Organizer,Multi-Section,,accepted,full-catalog cluster
+"Framed MDF Print Under Glass_Black & White Woman Magnolia Flower_30x20"" x1.2""",Framed Print,Under Glass,MDF,accepted,full-catalog cluster
+"Marvel Corner Printed MDF in Deep Frame Black Panther Comic 8x27""",Framed Print,Deep Frame,MDF,accepted,full-catalog cluster
+"Marvel Color Your Hero Foam Wall Decor Captain America",Foam Wall Decor,Foam,Foam,accepted,full-catalog cluster
+"Canvas Hamper",Storage Hamper,Fabric,Canvas,accepted,regression: a material word must not swallow the product
+"Canvas Toy Chest",Storage Toy Chest,Fabric,Canvas,accepted,regression: a material word must not swallow the product
+"Created for Testing",,,,placeholder,non-product wording
+"PENDING",,,,placeholder,non-product wording
+"12345678",,,,placeholder,identifier only
+"",,,,placeholder,blank description
+"Marvel Thor Blue",,,,unreadable,no product wording at all
+"Leonardo",,,,unreadable,property name only

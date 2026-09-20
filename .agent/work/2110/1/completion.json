@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "work_issue": 2110,
+  "outcome": "ready-for-merge",
+  "pr": 3391,
+  "migration_versions": [
+    "20260920203316"
+  ],
+  "contract_ref": "refs/db-contracts/2110/1",
+  "contract_sha256": "1dc6fbc5762e9c87e2722f93e2452b0deac549c85467612c91af6b285408b216",
+  "head_sha": "358446b9d104a96a76df7f7e2e9bac5b22f6f77a",
+  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
+  "files_changed": [
+    ".github/live-proofs/2110.sql",
+    "docs/verification/2110-frozen-designflow-retirement.md",
+    "scripts/test_frozen_designflow_retirement.py",
+    "supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql"
+  ],
+  "db_reads": [
+    "table dflow.Roles",
+    "table dflow.art_piece",
+    "schema designflow_frozen_20260710",
+    "table app.RolePermissions",
+    "table plm.art_piece_attachment"
+  ],
+  "db_writes": [
+    "schema designflow_frozen_20260710",
+    "table app.RolePermissions",
+    "table plm.art_piece_attachment"
+  ],
+  "checks": [
+    {
+      "command": "python scripts/test_frozen_designflow_retirement.py",
+      "exit_code": 0,
+      "evidence": "10 synthetic PostgreSQL tests passed; 0 failures, 0 skips. Local cluster stopped."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed. Live-ledger guard B2 unconfigured locally and must run in governed lane."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "Owner retirement authority, backup SHA and read-only production/preview counts reverified. No preview/production writes performed.",
+    "Draft ready for governed review and lane checks; generated types and live production proof not yet performed. Outcome value is the required open-PR implementation-report state, not a merge authorization."
+  ],
+  "stop_conditions_hit": []
+}

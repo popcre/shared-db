@@ -229,12 +229,10 @@ export function authorizedTimestampRecovery(comments, issue, evidenceUrls) {
   const record = TIMESTAMP_RECOVERY
   if (record.schema_version !== 1 || Number(issue) !== record.work_issue) return null
   const refuse = () => { throw new OutcomeError('configured timestamp incident does not match immutable publication evidence; no recovery authorized') }
-  if (!evidenceUrls.includes(record.evidence_url)) refuse()
+  if (!evidenceUrls.includes(record.evidence_url)) return null
   const trusted = trustedOutcomeComments(comments)
   const parsed = trusted.flatMap(c => parseEventComment(c.body ?? ''))
-  if (parsed.some(e => e.event_type === OUTCOME_REPAIR_EVENT_TYPE)) refuse()
   const events = parsed.filter(e => OUTCOME_STATES.includes(e.event_type))
-  if (events.length !== 3 || events.some(e => e.work_issue !== Number(issue))) refuse()
   const matched = record.comments.map(expected => {
     const found = trusted.filter(c => c.id === expected.id)
     if (found.length !== 1) refuse()
@@ -245,6 +243,10 @@ export function authorizedTimestampRecovery(comments, issue, evidenceUrls) {
     if (one.length !== 1) refuse()
     return { comment: actual, event: one[0] }
   })
+  // Explicit incident evidence must retain its publication integrity even after
+  // recovery. Later race repairs use the ordinary path, never another special drop.
+  if (parsed.some(e => e.event_type === OUTCOME_REPAIR_EVENT_TYPE) || events.length !== 3) return null
+  if (events.some(e => e.work_issue !== Number(issue))) refuse()
   const [entered, classified, dispatched] = matched
   if (matched.map(x => x.event.event_type).join(',') !== 'entered,classified,dispatched') refuse()
   if (!(Date.parse(entered.comment.created_at) < Date.parse(classified.comment.created_at) && Date.parse(classified.comment.created_at) < Date.parse(dispatched.comment.created_at))) refuse()

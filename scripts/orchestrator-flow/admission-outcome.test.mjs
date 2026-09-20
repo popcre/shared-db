@@ -960,10 +960,37 @@ test('timestamp recovery refuses forged, missing, reordered, edited, foreign and
     c=>{c[0].body=c[0].body.replace('2611','2612')}]
   for(const mutate of mutations){
     const comments=structuredClone(record.comments);mutate(comments);let writes=0
-    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'forged',evidenceUrls:[record.evidence_url]},{issueComments:()=>comments,commentIssue:()=>writes++,wait:()=>{}}),/configured timestamp incident|already valid/)
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'forged',evidenceUrls:[record.evidence_url]},{issueComments:()=>comments,commentIssue:()=>writes++,wait:()=>{}}),/configured timestamp incident|already valid|lifecycle violation/)
     assert.equal(writes,0)
   }
   let writes=0
-  assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'missing authority',evidenceUrls:[]},{issueComments:()=>record.comments,commentIssue:()=>writes++}),/configured timestamp incident/)
+  assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'missing authority',evidenceUrls:[]},{issueComments:()=>record.comments,commentIssue:()=>writes++}),/lifecycle violation/)
   assert.equal(writes,0)
+})
+
+test('a repaired timestamp incident does not block later ordinary race repair (#3354)',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const record=JSON.parse(readFileSync(new URL('../../config/outcome-timestamp-recovery.json',import.meta.url),'utf8'))
+  for(const evidenceUrls of [[],[record.evidence_url]]){
+    const comments=structuredClone(record.comments)
+    const io={issueComments:()=>comments,commentIssue:(_n,body)=>comments.push(ownerComment(body)),wait:()=>{}}
+    repairOutcomeHistory({issue:2611,actor:'recovery',reason:'approved incident3313',evidenceUrls:[record.evidence_url]},io)
+    advanceOutcome({issue:2611,state:'dispatched',actor:'recovery',evidenceUrls:[record.evidence_url]},io)
+    const repost=outcomeEvent({issue:2611,state:'dispatched',actor:'raced-writer',timestamp:new Date(Date.now()+1000).toISOString()})
+    comments.push(ownerComment(formatEventComment(repost)))
+    assert.equal(outcomeHistory(comments,2611).valid,false)
+    const result=repairOutcomeHistory({issue:2611,actor:'recovery',reason:'ordinary dispatch repost',evidenceUrls},io)
+    assert.deepEqual(result.supersedes,[repost.event_id])
+    assert.equal(outcomeHistory(comments,2611).valid,true)
+    assert.equal(outcomeHistory(comments,2611).state,'dispatched')
+    assert.deepEqual(comments.slice(0,3),record.comments)
+    const backward=outcomeEvent({issue:2611,state:'entered',actor:'bad-writer',timestamp:new Date(Date.now()+2000).toISOString()})
+    comments.push(ownerComment(formatEventComment(backward)))
+    const before=comments.length
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'must not hide backward move',evidenceUrls},io),/lifecycle violation/)
+    assert.equal(comments.length,before)
+    comments[0].updated_at='2026-09-20T15:17:00Z'
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'explicit tampered publication',evidenceUrls:[record.evidence_url]},io),/configured timestamp incident/)
+    assert.equal(comments.length,before)
+  }
 })

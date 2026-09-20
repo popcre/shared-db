@@ -8,13 +8,13 @@
   ],
   "contract_ref": "refs/db-contracts/3175/4",
   "contract_sha256": "01191c639a11b5967e4edc1dc0e1274ec5cd6904853beaf320c0f8939e1344c6",
-  "head_sha": "dcac0d06d17af87df642a71ac96eea6488aef2e8",
+  "head_sha": "132784a73fd7799b81cc8f77f4ba77da753abda1",
   "files_changed": [
-    ".agent/contract.json",
     ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/3175.sql",
     "supabase/migrations/20260920151128_retire_designflow_taxonomy_health_lane.sql",
-    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
-    ".github/live-proofs/3175.sql"
+    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql"
   ],
   "db_reads": [
     "table ingest.sync_run"

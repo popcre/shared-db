@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "work_issue": 3175,
-  "generation": 4,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Retire only the DesignFlow runtime freshness/status leg in both taxonomy detectors while preserving ColdLion checks, historical source-reference invariants, live-hash refusal, append-only evidence and ACLs.",
@@ -47,5 +46,6 @@
   "stop_conditions": [
     "Unexpected live definition divergence or claim collision.",
     "Any required change outside admitted function objects or allowed paths."
-  ]
+  ],
+  "generation": 4
 }

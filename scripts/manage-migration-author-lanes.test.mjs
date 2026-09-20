@@ -838,7 +838,7 @@ test('#3291 one allowlisted reviewer still holds more than eight concurrent exac
 })
 
 test('#3291 replacement inherits the durable allowlist and cannot widen it',()=>{
-  const io=reviewIo(),head='3'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
+  const io=withAtomicRefs(reviewIo()),head='3'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
   const first=assignNextReviewer({issue:3291,pr:3294,headSha:head,reviewerAllowlist:allowed},io)
   const request={issue:3291,pr:3294,headSha:head,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
@@ -3266,7 +3266,7 @@ test('manager assignment and replacement preserve repository-maintenance review 
   try{
     const reviewerAllowlist='grok-4.6,muse-spark-1.3-contributor'
     assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
-    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact'],NOW,io),0)
+    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact','--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
   }finally{console.log=oldLog;console.error=oldError}
   const assignmentSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX))?.[1]
   const replacementSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX))?.[1]

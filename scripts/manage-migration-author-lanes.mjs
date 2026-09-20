@@ -2505,7 +2505,7 @@ export const githubIo = {
   createClaim(title, body) { return gh(['issue', 'create', '--repo', REPO, '--label', 'db-claim', '--title', `CLAIM: ${title}`, '--body', body]).trim() },
   createIssueIn(repo, title, body) { return gh(['issue','create','--repo',repo,'--title',title,'--body',body]).trim() },
   commentIssue(number, body) { gh(['issue','comment',String(number),'--repo',REPO,'--body',body]) },
-  issueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`).map((c)=>({ body:c.body, author_association:c.author_association, author:c.user?.login })) },
+  issueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`).map((c)=>({ body:c.body, author_association:c.author_association, author:c.user?.login, id:c.id, created_at:c.created_at, updated_at:c.updated_at })) },
   readOutcomeEvidence(ref) {
     let path
     try{path=repositoryCommentApiPath(ref,REPO)}catch(error){throw new LaneError(`outcome evidence refused: ${error.message}`)}
@@ -7114,7 +7114,7 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const body = claimBody({ ...options, version: reservation.version, expiresAt })
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     const url = io.createClaim(options.task, body)
-    const dispatchArgs={issue:Number(options.admitIssue),state:'dispatched',actor:options.owner,timestamp:now.toISOString(),evidenceUrls:[url]}
+    const dispatchArgs={issue:Number(options.admitIssue),state:'dispatched',actor:options.owner,timestamp:new Date().toISOString(),evidenceUrls:[url]}
     const expectedDispatch=io.enforceAdmission===true?outcomeEvent(dispatchArgs):null
     try {
       requireOwnedRef(MUTEX_REF,ownerSha,io)
@@ -8480,7 +8480,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         requireAdmission(o,io,{pr:o.pr??null,mutexOwner:ownerSha})
         requireOwnedRef(MUTEX_REF,ownerSha,io)
         const holdReason=o.holdReason===undefined?undefined:namedHold(o.issue,o.holdReason,io)
-        return advanceOutcome({issue:Number(o.issue),state:o.advanceOutcome,actor:o.owner??'manage-migration-author-lanes',timestamp:now.toISOString(),evidenceUrls:[o.evidence],holdReason},io)
+        return advanceOutcome({issue:Number(o.issue),state:o.advanceOutcome,actor:o.owner??'manage-migration-author-lanes',timestamp:new Date().toISOString(),evidenceUrls:[o.evidence],holdReason},io)
       })
       console.log(JSON.stringify(result,null,2));return 0
     }

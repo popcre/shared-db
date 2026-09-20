@@ -438,7 +438,12 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   // Issue #2678: the wrapper is told WHO is calling it in the environment this
   // runner spawns, not left to whatever an operator happened to export first. A
   // programmatic caller of this function now gets the same environment the CLI does.
-  const callerEnv=reviewCallerEnvironment(options.wrapper,process.env)
+  // `required:false`: the CLI path already refused up front, in
+  // `prepareGovernedReview`, when the caller could not be determined. Refusing a
+  // SECOND time here -- after the start marker is written and the reviewer is
+  // committed -- would turn an environment question into a started-but-failed
+  // review, so this only carries the caller through when there is one to carry.
+  const callerEnv=reviewCallerEnvironment(options.wrapper,process.env,{required:false})
   const run=deps.spawn(plan.file,plan.args,{cwd:options.worktree,env:{...process.env,...callerEnv,AI_REVIEW_SOURCE_RECEIPT_FILE:receipt.path},encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','pipe']})
   let rawBody=String(run.stdout??'').trim()
   // Issue #2244: the codex wrapper's verdict lives in its published report, not on

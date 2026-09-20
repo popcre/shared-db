@@ -1,49 +1,51 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3313,
+  "work_issue": 3291,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prevent admission transition timestamp inversion and enable explicitly authorized append-only recovery of exact incident2611",
-  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
-  "dispatcher": "Parent authorized timestamp repair and exact configured incident2611 recovery with preserved history",
-  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
-  "branch": "codex/outcome-timestamp-recovery-20260920",
-  "worktree": "D:\\repos\\worktrees\\shared-db-outcome-timestamp-20260920",
+  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
+  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
+  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
+  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
+  "branch": "codex/reconstruct-reviewer-allowlist-3291",
+  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
   "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "config/outcome-timestamp-recovery.json"
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "config/outcome-timestamp-recovery.json"
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or edits/deletion/backdating of historical comments",
-    "No generic lifecycle violation suppression",
-    "Parent owns merge; incident recovery only after independent review and shipment"
+    "No database writes or migrations",
+    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
+    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
+    "No provider disablement or invented provider failures"
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "git diff --check"
+    "node --check scripts/manage-migration-author-lanes.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "Parent explicitly approved exact incident configured recovery; all other issues and event tuples must refuse"
+    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
+    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
+    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
+    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
+    "Conflicting PR3258 must finish independently before this PR may merge."
   ],
   "stop_conditions": [
-    "Any proposed recovery suppresses true missing/backward lifecycle steps"
+    "Stop on unverifiable durable policy or conflicting permission sets",
+    "Stop before merge unless independent exact-head review and all required guards pass",
+    "Stop if scope requires files outside the published allowed paths"
   ]
 }

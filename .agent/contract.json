@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 2836,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -35,7 +35,8 @@
   ],
   "assumptions": [
     "A same-repo return_to is legitimate: source-data-session names a session inside this repository, so the fix marks the copy rather than rejecting the address (shape 1 of the two the issue offered).",
-    "The three copies already open carry the legacy 'Returned from <owner/repo>#<n> by the shared-db orchestrator.' provenance line, so recognising that line covers them without editing them."
+    "The three copies already open carry the legacy 'Returned from <owner/repo>#<n> by the shared-db orchestrator.' provenance line, so recognising that line covers them without editing them.",
+    "Generation 2 rebinds the contract after merging current main into the branch; the implementation is unchanged from generation 1 apart from the two low findings grok-4.6 raised at 9197dafb."
   ],
   "stop_conditions": [
     "Stop if the fix would require a database or schema change.",

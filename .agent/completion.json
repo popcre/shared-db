@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3315,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2836/1",
-  "contract_sha256": "12791f42c1c122d8eebcf87a022a66358411b7ceeebff5667e0e131923afcd50",
-  "head_sha": "40abe55b661624a3b50f6b36220bc87b08aff146",
+  "contract_ref": "refs/db-contracts/2836/2",
+  "contract_sha256": "359c17d087b17d4cccb482a4e483b69b172e0fedbd00a81e56af51c0d3578341",
+  "head_sha": "06d6a37e977d11fe953f38e23d203d729808bee0",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
   ],
@@ -17,12 +19,13 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "pass 612 fail 0 at 40abe55b; the same suite fails 3 against the unfixed returnIssueToOwner, including 'returning kept minting copies for 8 generations; the return loop is unbounded'"
+      "evidence": "pass 647 fail 0 after merging current main at 06d6a37e; the same suite fails 3 against the unfixed returnIssueToOwner, including \"returning kept minting copies for 8 generations; the return loop is unbounded\""
     }
   ],
   "assumptions_resolved": [
     "Sibling paths audited: orchestrator-flow/admission.mjs, orchestrator-flow/outcome-lifecycle.mjs, db-coordination-events.mjs, check-live-proof-probe.mjs and queue-hygiene-report.mjs all carry or read a return address but none mints an issue, so manage-migration-author-lanes.mjs is the only copy-minting path and one guard covers the class.",
-    "The reject classification and the already-returned guard are unchanged in strength; only the audit's suggested action changes for an already-returned copy."
+    "The reject classification and the already-returned guard are unchanged in strength; only the audit's suggested action changes for an already-returned copy.",
+    "grok-4.6 governed review at 9197dafb returned APPROVE with two low findings; both were fixed (head-anchored provenance reading, production-shaped audit test) and a fresh exact-head review is required for the merged head."
   ],
   "stop_conditions_hit": []
 }

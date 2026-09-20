@@ -31,13 +31,17 @@ function io(sequence) {
     calls,
     written,
     root: '/nowhere',
+    readEffective() {
+      const last = sequence.at(-1)
+      return { mode: 'live-effective-settings', revision: 'a'.repeat(64), checks: last.contexts.map((context) => ({ context, app_id: null })), sources: { classic: { requiredStatusCheckContexts: last.contexts } } }
+    },
     write: (path, body) => written.push([String(path), body]),
     run(args, options) {
       calls.push({ args, input: options?.input })
       const next = sequence[Math.min(index, sequence.length - 1)]
       index++
       if (next instanceof Error) throw next
-      return typeof next === 'string' ? next : JSON.stringify(next)
+      return typeof next === 'string' ? next : JSON.stringify(Array.isArray(next?.contexts) ? { ...next, checks: next.checks ?? next.contexts.map((context) => ({ context, app_id: -1 })) } : next)
     },
     log() {}, error() {},
   }
@@ -263,11 +267,30 @@ test('the mirror is written from the readback and is sorted, stable and complete
   assert.equal(doc.strict, false)
   assert.equal(doc.branch, 'main')
   assert.equal(doc.capturedIso, '2026-09-04T00:00:00.000Z')
-  assert.ok(doc._why.includes('MIRROR'))
+  assert.ok(doc._why.includes('never merge authority'))
 })
 
 test('the mirror records strict exactly as read back, not as requested', () => {
   const doc = JSON.parse(mirrorDocument({ contexts: ['A'], strict: true }, 'u2giants/shared-db', 'main', new Date(0)))
   assert.equal(doc.strict, true)
   assert.equal(MIRROR_PATH, 'docs/verification/main-required-status-checks.json')
+})
+
+
+test('app-bound settings updates preserve every existing producer and readback rejects weakened binding', () => {
+  const live = { strict: false, contexts: ['required'], checks: [{ context: 'required', app_id: 15368 }] }
+  const plan = planUnion(live, ['new'])
+  const transport = io(['{}'])
+  applyUnion({ repo: DEFAULT_REPO, branch: 'main' }, plan, transport)
+  assert.deepEqual(JSON.parse(transport.calls[0].input).checks, [{ context: 'required', app_id: 15368 }, { context: 'new', app_id: -1 }])
+  assert.throws(() => verifyReadback({ strict: false, contexts: plan.next, checks: plan.next.map((context) => ({ context, app_id: -1 })) }, plan), /producer binding changed/)
+  assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, { run: () => JSON.stringify({ strict: false, contexts: ['required'] }) }), /producer bindings are missing/)
+})
+test('refresh reads effective settings into informational evidence with no settings write', async () => {
+  const transport = io([LIVE])
+  assert.equal(await main(['--refresh-mirror'], transport), 0)
+  assert.equal(transport.calls.length, 0)
+  assert.equal(transport.written.length, 1)
+  assert.equal(JSON.parse(transport.written[0][1]).authority.mode, 'live-effective-settings')
+  assert.equal(await main(['--refresh-mirror', '--apply'], transport), 2)
 })

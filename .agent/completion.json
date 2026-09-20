@@ -4,12 +4,13 @@
   "outcome": "ready-for-merge",
   "pr": 3274,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3273/5",
-  "contract_sha256": "65ec48585ca5d479bcf71d089811336054c4f2418c9d83436d611ff8954bfd59",
-  "head_sha": "0ea55793fa9395a5ac3d6bd13543c217d4095b76",
+  "contract_ref": "refs/db-contracts/3273/6",
+  "contract_sha256": "de967b4ef3b421eff59c3df04c8bdcb821c533d0f5cb603867e7c345d240a6b0",
+  "head_sha": "4c6d17d7ae685de666297c000f76a1240a80551b",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
+    "HANDOFF.d/2026-09-18T1806Z-edge-dev-kimi-3273-stale-place-mid-cycle.md",
     "scripts/check-pr-source-collisions.mjs",
     "scripts/check-pr-source-collisions.test.mjs",
     "scripts/lib/open-pr-files.test.mjs"
@@ -36,6 +37,11 @@
       "command": "node --test scripts/lib/open-pr-files.test.mjs",
       "exit_code": 0,
       "evidence": "6 pass, 0 fail after teaching both gather tests the four stale-place deps; this file is what the Cross-PR object collision check runs and it was the CI failure on 2026-09-20."
+    },
+    {
+      "command": "node scripts/check-handoff-contract.mjs",
+      "exit_code": 0,
+      "evidence": "passes after retiring HANDOFF.d/2026-09-18T1806Z-edge-dev-kimi-3273-stale-place-mid-cycle.md, which the CI handoff contract refused while this pull request closes #3273."
     }
   ],
   "assumptions_resolved": [

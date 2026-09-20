@@ -1,47 +1,44 @@
 {
+  "work_issue": 3302,
+  "assumptions": [
+    "Existing loader records may preserve authentic replay evidence"
+  ],
+  "stop_conditions": [
+    "Request parent exact extra paths if evidence producer needed",
+    "Stop if retained replay evidence cannot prove the original assertion"
+  ],
   "schema_version": 1,
-  "work_issue": 3261,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Pause glm-5.3 in the shared-db reviewer rotation for the owner's weekly account-usage rotation (chat directive 2026-09-18), with kimi-k3 confirmed drawable and doctor-verified the same day, updating the roster, its pinned tests and the AGENTS.md rotation sentence",
-  "base_sha": "8d107ee8826d45b53c958ad54e0aa2b554191d79",
-  "dispatcher": "ZCode repo-maintenance session on owner chat instruction 2026-09-18 (issue #3261)",
-  "worker": "zcode",
-  "branch": "chore/pause-glm-5.3-reviewer-rotation",
-  "worktree": ".claude/worktrees/pause-glm-5.3",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "AGENTS.md",
+    ".github/live-proofs/2863.sql",
+    "scripts/issue-2863-live-proof.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
+  "worktree": "D:/repos/worktrees/proof-2863-20260920",
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "AGENTS.md"
+    ".github/live-proofs/2863.sql",
+    "scripts/issue-2863-live-proof.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
+  "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
+  "work_type": "repo-maintenance",
   "db_reads": [],
+  "dispatcher": "Codex root orchestrator marker3297",
   "db_writes": [],
+  "worker": "Codex coldlion_dependency_proof",
+  "route": "repo-maintenance",
+  "branch": "codex/proof-2863-20260920",
   "prohibited_actions": [
-    "do not touch any migration or database object",
-    "do not change draw, replacement, capacity or preflight behaviour beyond roster membership",
-    "do not delete or rename glm-5.3 from REVIEWERS; durable verdict evidence must keep resolving",
-    "do not unpause glm-5.3 without a new owner instruction",
-    "do not edit another session's handoff, worktree, branch, claim or pull request"
+    "No database mutation or production write dispatch",
+    "No migration or edits outside allowed paths",
+    "No manufactured replay evidence, fixed-count proof or scope weakening",
+    "No merge or close issue2863"
   ],
+  "goal": "Create authentic retained-evidence live replay proof for issue2863 without database mutation or weakening its assertion",
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs",
-    "node --test scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
-  ],
-  "assumptions": [
-    "kimi-k3 is drawable (unpaused 2026-09-07, PR #2483) and its wrapper doctor passed read-only, preflight and auth when re-verified on 2026-09-18",
-    "pausing via RETIRED_REVIEWERS membership with a dated comment is the established mechanism, matching the 2026-09-03 kimi-k3 usage pause and the 2026-09-06 codex-gpt-5.6-sol usage retirement"
-  ],
-  "stop_conditions": [
-    "stop if removing glm-5.3 from the active rotation breaks any durable reviewer-name lookup",
-    "stop if open pull requests #3228 or #3247 editing the same script cannot be merged or closed, leaving this branch unable to rebase cleanly",
-    "stop if making the suite green would require changing reviewer draw or replacement behaviour rather than test expectations"
+    "node --test scripts/issue-2863-live-proof.test.mjs",
+    "Read-only live probe with false controls"
   ],
   "generation": 1
 }

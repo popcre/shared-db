@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "work_issue": 3342,
-  "outcome": "ready-for-merge",
+  "outcome": "ready-for-review",
   "pr": 3345,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3342/2",
   "contract_sha256": "51fc2a580e37e2f23f7b3b0c58ce5507f99848dcbb5815cb34362549768373cc",
-  "head_sha": "c76b13c2106a38ed93bf3c7925dcdf74d042a0c7",
+  "head_sha": "7f9c0abe5ab7b87566ff3656452e61f9f0d664f5",
   "files_changed": [
     ".agent/work/3342/2/completion.json",
     ".agent/work/3342/2/contract.json",
@@ -15,14 +15,13 @@
     "scripts/proofs/2870-catalog.sql",
     "scripts/proofs/2870-contract.json",
     "scripts/proofs/shared-db-2870-observation.mjs",
-    "scripts/proofs/shared-db-2870-observation.test.mjs",
-    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+    "scripts/proofs/shared-db-2870-observation.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "evidence": "Current integrated audit passed:311 call sites,70 sources, derived digest c2c6af243778.",
+      "evidence": "Current integrated audit passed:312 call sites,70 sources, derived digest5adcf9278b54.",
       "exit_code": 0,
       "command": "node scripts/check-throughput-truth-audit.mjs"
     },
@@ -35,16 +34,6 @@
       "evidence": "Combined audit and producer test execution passed28 tests,0 failures,0 skipped;12 producer tests included.",
       "exit_code": 0,
       "command": "node --test scripts/proofs/shared-db-2870-observation.test.mjs"
-    },
-    {
-      "evidence": "Actual governed Muse follow-up APPROVE32d0fc3906139605d6d117328edba92429439f1a, sequence3433, durable refs/db-review-verdicts/3342-3345-32d0fc3906139605d6d117328edba92429439f1a commit8c7f3d83d81ee99fba2d94d4dc2f0c68eef318ae. No findings. Source-only review; no live queries.",
-      "exit_code": 0,
-      "command": "Independent exact-head review"
-    },
-    {
-      "command": "isContentPreservingRefresh",
-      "exit_code": 0,
-      "evidence": "After clean integration of current main faed5557, governed equivalence to approved32d0fc3906139605d6d117328edba92429439f1a passed; implementation_digest f7d7afbebb202ad5962353a865ea07caef404d161b2b5b3cf0b4390f47ab9458. Audit311/70 and28 tests reverified, zero failures/skips."
     }
   ],
   "assumptions_resolved": [
@@ -55,5 +44,5 @@
     "No live database queries/writes, secret provisioning, dispatch or lifecycle acceptance. Root owns central merge/live acceptance; Uma owns backend merge."
   ],
   "stop_conditions_hit": [],
-  "base_sha": "faed5557befa7d0ae3318e7406ad3774fce56aa2"
+  "base_sha": "18c2610526e9b34a9d5af3818853cf1fb63e8979"
 }

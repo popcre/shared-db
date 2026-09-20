@@ -58,11 +58,12 @@
     "Parent renewed and rebound protected claim2834 before authoring",
     "Parent guarded supersession reserved20260920151046; old version permanently retained and unapplied; immutable supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0.",
     "Parent dispatch authorizes both governed review slots; generated types follow genuine merged-main preview evidence and are required for final completion.",
-    "Independent review refinements preserve object scope: signed IDs, behavioral evidence gating and queue/RLS controls, exact helper shape/grants and forbidden columns."
+    "Independent review refinements preserve object scope: signed IDs, behavioral evidence gating and queue/RLS controls, exact helper shape/grants and forbidden columns.",
+    "Entity queue fixtures use permitted warner: namespace and passed with canonical source vocabulary CHECK installed locally."
   ],
   "stop_conditions": [
     "Any additional claimed object needed requires parent scope expansion",
     "If invoker helper cannot preserve caller permissions and RLS redesign before release"
   ],
-  "generation": 8
+  "generation": 9
 }

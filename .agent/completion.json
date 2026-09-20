@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260920151046"
   ],
-  "contract_ref": "refs/db-contracts/2357/8",
-  "contract_sha256": "294af882baad927b255f97f7ece02e1535fca90f4b85e5e7e29953c209f1bc96",
-  "head_sha": "eb49903f0afc1661d88df49d118e2d41835b116c",
+  "contract_ref": "refs/db-contracts/2357/9",
+  "contract_sha256": "3f31d02336e43bf0d5f52d82785eff45afc5639bd3ba9851548f4394664935a9",
+  "head_sha": "3fac42ae954f0289d9ddc14d6547bffee158f361",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -33,7 +33,7 @@
   ],
   "checks": [
     {
-      "evidence": "PostgreSQL18 localhost55457 passed: real browser/anon/service reads; latest-complete; all three views behavioral RLS; direct vs inferred/co-occurrence eligibility; open/closed entity queue statuses and licensor grain; signed numeric IDs, positive/negative overflow, zero; exact helper shape/grants and full forbidden-column catalog proof. Current source constraints copied from canonical migration into local scaffold. Previous head full-history CI passed; revised head requires CI replay.",
+      "evidence": "PostgreSQL18 localhost55457 passed: real browser/anon/service reads; latest-complete; all three views behavioral RLS; direct vs inferred/co-occurrence eligibility; open/closed entity queue statuses and licensor grain; signed numeric IDs, positive/negative overflow, zero; exact helper shape/grants and full forbidden-column catalog proof. Current source constraints copied from canonical migration into local scaffold. Previous head full-history CI passed; revised head requires CI replay. Canonical source vocabulary CHECK from 20260905104420 installed in local baseline; corrected warner: fixture passes.",
       "command": "Focused SQL contracts in isolated local PostgreSQL",
       "exit_code": 0
     },

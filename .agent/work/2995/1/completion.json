@@ -8,8 +8,8 @@
   ],
   "contract_ref": "refs/db-contracts/2995/1",
   "contract_sha256": "1677ea762614aeadcff9e4294ca3f95827226a2a9559e6fed58bddd5fd7f7b74",
-  "head_sha": "1c3501e9798fd51d3d9878288a9f96b7a68c3d91",
-  "base_sha": "51b0591c7fe862158d3fde0d5d7933b43f6aac12",
+  "head_sha": "9250e24ee50415711d4d02ca4566b137d878ea3b",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
   "files_changed": [
     ".agent/work/2995/1/completion.json",
     ".agent/work/2995/1/contract.json",
@@ -36,12 +36,12 @@
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "Static SQL guards passed; live-ledger check explicitly not run without live credentials",
+      "evidence": "Re-run after refresh onto 8cf89c5e: static SQL guards passed; live ledger not read locally",
       "command": "bash scripts/check-sql.sh"
     },
     {
       "exit_code": 0,
-      "evidence": "Actual HTS foundation/provenance/new migration applied; environment-isolated classification jobs and existing shared-schema contracts passed; broad cross-environment SELECT and immutable-input grant negative controls failed as expected then rolled back; exact catalog assertions and active lease/expired reclaim/stale claimant tests passed",
+      "evidence": "Fresh disposable PostgreSQL18 loopback55996: actual foundation/provenance/jobs migrations applied; both jobs and shared-schema contracts re-ran inside BEGIN/ROLLBACK with exit0. Reviewed SQL/test bytes unchanged.",
       "command": "PostgreSQL rollback contract tests"
     },
     {

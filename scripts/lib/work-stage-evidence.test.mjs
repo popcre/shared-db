@@ -90,3 +90,118 @@ test('stage envelope rejects coercible fields and unknown assertions; verifier c
   assert.equal(classifyDependency(declaration, state({ verifyStageEvidence: () => Object.create(verified()) })).satisfied, false)
   assert.equal(findStageEvents([comment(event()), comment(Object.fromEntries(Object.entries(event()).reverse()))]).length, 1)
 })
+
+import { createStageEvidenceVerifier, publishStageEvent, stageEventRef, stageRevocationRef } from './work-stage-evidence.mjs'
+import { parseOutcomeEvidence } from '../orchestrator-flow/outcome-lifecycle.mjs'
+
+function runtimeIo() {
+  const refs = new Map(), commits = new Map(), comments = [], calls = []
+  const evidence = { schema_version: 1, work_issue: 10, merge_pr: 99, merge_sha: 'b'.repeat(40), application_repository: 'popcre/shared-db', production_evidence: 'https://github.com/popcre/shared-db/actions/runs/1', production_commit_sha: 'b'.repeat(40), production_artifact_id: 1, production_artifact_digest: 'sha256:' + 'd'.repeat(64), application_commit_sha: 'b'.repeat(40), live_assertion: 'business behavior works', live_evidence: 'https://github.com/popcre/shared-db/actions/runs/2', live_artifact_id: 2, live_artifact_digest: 'sha256:' + 'e'.repeat(64), environment: 'production', verified_at: '2026-09-20T19:00:00Z' }
+  const evidenceComment = { id: 123, user: { login: 'u2giants' }, author_association: expectedOperatorAssociation(), body: '```db-outcome-evidence\n' + JSON.stringify(evidence) + '\n```' }
+  return {
+    refs, commits, comments, calls, evidenceComment,
+    getPr: () => ({ base: { repo: { full_name: 'popcre/shared-db' }, ref: 'main' }, merged_at: '2026-09-20T19:00:00Z', head: { sha: 'a'.repeat(40) }, merge_commit_sha: 'b'.repeat(40) }),
+    closingIssuesForPr: () => [{ number: 10 }], mergeCommitInMain: () => true,
+    readRef: ref => refs.get(ref) ?? null, getCommit: sha => ({ message: commits.get(sha) }),
+    makeOwnerCommit: message => { const sha = String(commits.size + 1).padStart(40, '0'); commits.set(sha, message); return sha },
+    createRef: (ref, sha) => { if (refs.has(ref)) return false; refs.set(ref, sha); return true },
+    issueComments: () => comments,
+    commentIssue: (issue, body) => { calls.push('commentIssue'); comments.push({ author: 'u2giants', author_association: expectedOperatorAssociation(), body }) },
+    getIssueComments: () => [evidenceComment], getIssue: () => ({ body: 'scope' }),
+    parseScope: () => ({ workType: 'structural', route: 'shared-db-orchestrator', applicationReturnTo: 'popcre/shared-db', liveAssertion: 'business behavior works', generatedTypes: 'required' }),
+    parseOutcomeEvidence: body => { calls.push('parseOutcomeEvidence'); return parseOutcomeEvidence(body) },
+    verifyProductionApply: () => { calls.push('verifyProductionApply'); return true },
+    applicationCommitInDefaultBranch: () => { calls.push('applicationCommitInDefaultBranch'); return true },
+    verifyLiveAssertion: () => { calls.push('verifyLiveAssertion'); return true },
+    verifyGeneratedTypes: () => { calls.push('verifyGeneratedTypes'); return true },
+  }
+}
+const publishInput = (over = {}) => ({ issue: 10, stage: 'implementation-merged', repository: 'popcre/shared-db', pr: 99, evidenceRef: 'https://github.com/popcre/shared-db/pull/99', signature: 'Posted by Codex chat test on machine', ...over })
+
+test('concrete publisher and verifier reread immutable refs and actual PR facts; replay writes once', () => {
+  const io = runtimeIo()
+  const published = publishStageEvent(publishInput(), io)
+  assert.equal(published.resumed, false)
+  assert.equal(publishStageEvent(publishInput(), io).resumed, true)
+  assert.equal(io.calls.filter(v => v === 'commentIssue').length, 1)
+  assert.equal(classifyDependency(declaration, state({ comments: io.comments, verifyStageEvidence: createStageEvidenceVerifier(io, 'popcre/shared-db') })).satisfied, true)
+  io.refs.set(stageRevocationRef(published.event), 'f'.repeat(40))
+  assert.throws(() => createStageEvidenceVerifier(io, 'popcre/shared-db')(published.event), /revoked/)
+  assert.throws(() => publishStageEvent(publishInput(), io), /revoked/)
+})
+
+test('publication recovers response loss after successful ref or comment writes', () => {
+  for (const method of ['createRef', 'commentIssue']) {
+    const io = runtimeIo(), original = io[method]
+    io[method] = (...args) => { original(...args); throw new Error('response lost') }
+    const result = publishStageEvent(publishInput(), io)
+    assert.equal(result.event.work_issue, 10)
+    assert.equal(io.comments.length, 1)
+    assert.equal(publishStageEvent(publishInput(), io).resumed, true)
+  }
+})
+
+test('unconfirmed comment delivery preserves checkpoint and refuses false success', () => {
+  const io = runtimeIo()
+  io.commentIssue = () => { throw new Error('network unavailable') }
+  assert.throws(() => publishStageEvent(publishInput(), io), /network unavailable/)
+  assert.equal(io.refs.size, 1)
+  assert.equal(io.comments.length, 0)
+})
+
+test('concrete current-world verifier rejects changed PR, missing membership and forged immutable payload', () => {
+  for (const change of [
+    io => { io.getPr = () => ({}) },
+    io => { io.closingIssuesForPr = () => [{ number: 11 }] },
+    io => { io.mergeCommitInMain = () => undefined },
+    io => { io.refs.clear() },
+    io => { for (const sha of io.commits.keys()) io.commits.set(sha, 'forged') },
+  ]) {
+    const io = runtimeIo(), result = publishStageEvent(publishInput(), io)
+    change(io)
+    assert.throws(() => createStageEvidenceVerifier(io, 'popcre/shared-db')(result.event))
+  }
+})
+
+test('runtime stages invoke the existing outcome parser and artifact verifiers; failures remain failures', () => {
+  for (const stage of ['database-applied', 'live-verified', 'application-accepted']) {
+    const io = runtimeIo()
+    publishStageEvent(publishInput({ stage, evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' }), io)
+    assert.ok(io.calls.includes('parseOutcomeEvidence'))
+    assert.ok(io.calls.includes('verifyProductionApply'))
+    assert.equal(io.calls.includes('verifyLiveAssertion'), stage !== 'database-applied')
+    assert.equal(io.calls.includes('verifyGeneratedTypes'), stage !== 'database-applied')
+  }
+  for (const method of ['verifyProductionApply', 'applicationCommitInDefaultBranch', 'verifyLiveAssertion', 'verifyGeneratedTypes']) {
+    const io = runtimeIo(); io[method] = () => false
+    assert.throws(() => publishStageEvent(publishInput({ stage: 'live-verified', evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' }), io))
+    assert.equal(io.refs.size, 0)
+  }
+})
+
+test('runtime stage proof is bound to authorized exact acceptance and cannot be edited after publication', () => {
+  for (const mutate of [
+    io => { io.evidenceComment.user.login = 'attacker' },
+    io => { io.evidenceComment.body = 'malformed' },
+    io => { io.parseScope = () => ({ workType: 'repo-maintenance' }) },
+    io => { io.evidenceComment.body = io.evidenceComment.body.replace('business behavior works', 'different acceptance') },
+  ]) {
+    const io = runtimeIo(); mutate(io)
+    assert.throws(() => publishStageEvent(publishInput({ stage: 'live-verified', evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' }), io))
+  }
+  const io = runtimeIo(), result = publishStageEvent(publishInput({ stage: 'live-verified', evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' }), io)
+  io.evidenceComment.body += '\nchanged'
+  assert.throws(() => createStageEvidenceVerifier(io, 'popcre/shared-db')(result.event), /digest changed/)
+})
+
+
+test('publisher rejects bad identities before IO and final cancellation before checkpoint writes', () => {
+  for (const over of [{ issue: -1 }, { pr: '99' }, { repository: ['popcre/shared-db'] }, { stage: 'complete' }]) {
+    const io = runtimeIo(); io.getPr = () => { throw new Error('IO should not run') }
+    assert.throws(() => publishStageEvent(publishInput(over), io), /identity is invalid/)
+  }
+  const io = runtimeIo()
+  io.comments.push({ author: 'u2giants', author_association: expectedOperatorAssociation(), body: '```db-work-completion\n' + JSON.stringify({ schema_version: 1, work_issue: 10, outcome: 'cancelled', reason: 'cancelled' }) + '\n```' })
+  assert.throws(() => publishStageEvent(publishInput(), io), /immutable final completion/)
+  assert.equal(io.refs.size, 0)
+})

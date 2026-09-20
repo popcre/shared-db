@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3282,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -30,11 +30,13 @@
   "db_writes": [
     "function public.claim_pdf_backfill_batch",
     "function public.count_pdf_backfill_remaining",
-    "index public.idx_assets_licensing_pdf_backfill_candidates"
+    "index public.idx_assets_licensing_pdf_backfill_candidates",
+    "table public.assets"
   ],
   "prohibited_actions": [
     "No production writes, preview applies, or merges by author.",
-    "No timeout increase, data deletion, signature change, grant change, or eligibility change."
+    "No timeout increase, data deletion, signature change, grant change, or eligibility change.",
+    "public.assets write lock authorizes only named index creation; no column or row changes."
   ],
   "required_checks": [
     "git diff --check",
@@ -44,7 +46,8 @@
   "assumptions": [
     "Claim 3300 reserves version 20260920144819.",
     "Production catalog confirms helper is immutable and file_type is public.file_type enum.",
-    "Application return repository is u2giants/popdam3, verified through GitHub."
+    "Application return repository is u2giants/popdam3, verified through GitHub.",
+    "Generation2 adds parser-required parent-table index lock after guarded claim3300 expansion; SQL bytes unchanged."
   ],
   "stop_conditions": [
     "Stop on scope or claim collision.",

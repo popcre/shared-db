@@ -6,8 +6,8 @@
   "migration_versions": [
     "20260920144819"
   ],
-  "contract_ref": "refs/db-contracts/3282/1",
-  "contract_sha256": "c25e11e555fe76332221922b7e359ccd6cc25eaa3efaff364a15b5a8c79f9ecd",
+  "contract_ref": "refs/db-contracts/3282/2",
+  "contract_sha256": "6ddcb60f8981b86f4625d16d9e4652ba13949a177cff59a68f6f7139d59dc214",
   "head_sha": "fe2575d0fc3ff840d8e0b9b2d2aab01b9bc6aaec",
   "files_changed": [
     "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
@@ -21,7 +21,8 @@
   "db_writes": [
     "function public.claim_pdf_backfill_batch",
     "function public.count_pdf_backfill_remaining",
-    "index public.idx_assets_licensing_pdf_backfill_candidates"
+    "index public.idx_assets_licensing_pdf_backfill_candidates",
+    "table public.assets"
   ],
   "checks": [
     {

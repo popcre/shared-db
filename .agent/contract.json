@@ -1,50 +1,44 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 2832,
+  "work_issue": 3299,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Remove the global call_site_count and call_site_sha256 from the throughput truth audit by partitioning reviewed dispositions into one catalogue per source file, so two unrelated pull requests no longer serialise on a single artifact, while preserving every hand-written disposition and every refusal the guard makes today.",
-  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
-  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues through to production",
-  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
-  "branch": "claude/throughput-2832-3002-a7f1",
-  "worktree": "D:/repos/shared-db-worktrees/throughput-2832-3002-a7f1",
+  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
+  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
+  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
+  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
+  "branch": "codex/recover-prepack-proof-20260920",
+  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check-throughput-truth-audit.mjs",
-    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
-    "docs/verification/throughput-dispositions/",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
+    ".github/live-proofs/2611.sql"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check-throughput-truth-audit.mjs",
-    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
-    "docs/verification/throughput-dispositions/",
-    "docs/verification/throughput-guard-truth-audit-20260828.json"
+    ".github/live-proofs/2611.sql"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not add a bulk regenerate or --update flag; every call site keeps its hand-written disposition and substantive reason.",
-    "Do not weaken, skip or make optional any existing refusal: unknown, stale, retired, duplicate, short-reason and uncatalogued sites must all still fail.",
-    "Do not edit another session's worktree or force any other lane to recompute."
+    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
+    "Do not merge PR #3293; the parent owns merge and outcome closure."
   ],
   "required_checks": [
-    "node scripts/check-throughput-truth-audit.mjs",
-    "node --test scripts/throughput-guard/*.test.mjs",
+    "python -m unittest scripts.test_shared_db_live_proof",
+    "node --test scripts/check-live-proof-probe.test.mjs",
     "git diff --check"
   ],
   "assumptions": [
-    "Issue 2832 is also Step 2 of the concurrently open planning PR 3318 under tracker 3306; this implementation follows that published design rather than a competing shape, and no implementation work had started there.",
-    "The pre-partition aggregate is retained as historical evidence only and is never read by the checker."
+    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
+    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
+    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
   ],
   "stop_conditions": [
-    "Stop if the partition cannot preserve every existing disposition byte for byte.",
-    "Stop if hitting the throughput goal would require dropping any safeguard."
+    "Stop if the repair requires any database object or timeout change.",
+    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
   ]
 }

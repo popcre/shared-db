@@ -82,3 +82,25 @@ test('strict excluded observations do not hide known safety regressions', async 
   assert.equal(report.status, 'REGRESSION')
   assert.equal(report.known_safety_regressions, 1)
 })
+
+test('strict optional stages obey transitive ordering across missing intermediates', async () => {
+  for (const key of ['created_at','review_started_at','review_completed_at','rehearsal_at','merged_at','applied_at']) {
+    const rows = strictRows()
+    rows[0].stages[key] = '2026-09-01T00:00:00Z'
+    rows[0].stage_evidence[key] = 'stage-source'
+    const report = await strict(rows)
+    assert.equal(report.status, 'INSUFFICIENT_SAMPLE', key)
+    assert.equal(report.aggregates[0].measured_latency_improvement, null, key)
+    assert.ok(report.excluded[0].reasons.some(reason => reason.startsWith('reversed_')), key)
+  }
+})
+
+test('strict rehearsal may precede or follow merge while remaining before live verification', async () => {
+  for (const rehearsal of ['2026-08-02T00:30:00Z','2026-08-02T01:30:00Z']) {
+    const rows = strictRows()
+    rows[0].stages.merged_at = '2026-08-02T01:00:00Z'
+    rows[0].stages.rehearsal_at = rehearsal
+    rows[0].stage_evidence.merged_at = rows[0].stage_evidence.rehearsal_at = 'stage-source'
+    assert.equal((await strict(rows)).status, 'MEASURED')
+  }
+})

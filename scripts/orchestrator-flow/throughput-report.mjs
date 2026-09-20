@@ -17,7 +17,14 @@ export function buildThroughputReport(records,{minimumSample=20}={}){
 // SUCCESS as acceptance of the workflow-refactor programme or as proof of causality.
 const DAY = 86_400_000
 const STAGES = ['created_at', 'ready_at', 'review_started_at', 'review_completed_at', 'rehearsal_at', 'merged_at', 'applied_at', 'live_verified_at', 'completed_at', 'closed_at']
-const ORDER = [['created_at','ready_at'], ['ready_at','live_verified_at'], ['review_started_at','review_completed_at'], ['merged_at','applied_at'], ['applied_at','live_verified_at'], ['live_verified_at','completed_at'], ['completed_at','closed_at']]
+// Compare every available pair along each causal chain, even if an intermediate
+// stage is absent. Rehearsal can precede or follow merge (the supported routes
+// differ), but cannot occur after the live result it qualifies.
+const CHAINS = [
+  ['created_at','ready_at','review_started_at','review_completed_at','merged_at','applied_at','live_verified_at','completed_at','closed_at'],
+  ['created_at','ready_at','rehearsal_at','live_verified_at','completed_at','closed_at'],
+]
+const ORDER = CHAINS.flatMap(chain => chain.flatMap((a,i) => chain.slice(i+1).map(b => [a,b])))
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().replace('.000Z', 'Z') === value.replace('.000Z', 'Z') ? Date.parse(value) : null
 const reference = value => typeof value === 'string' && value.trim().length > 0
 const quantile = (values, percentile) => {

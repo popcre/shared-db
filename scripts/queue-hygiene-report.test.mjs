@@ -55,7 +55,7 @@ const KNOWN_READ_HOOKS = new Set([
   'branchPulls', 'getPr', 'getPrFiles', 'databasePreviewFileSnapshot', 'comparePullRequestFiles', 'getCommitStatus',
   'closingIssuesForPr', 'prStructuralObjects', 'getFileAt', 'treeFiles', 'previewGateProof', 'getIssue',
   'getIssueComments', 'getPrReviews', 'readLeaseActivity', 'readReviewerQueue', 'mainSha', 'getCommit',
-  'compareCommits', 'readFindings', 'readRef', 'listRefs', 'listReviewRefsPaged', 'readCommitMessage', 'runState',
+  'compareCommits', 'readFindings', 'readRef', 'readRefOverApi', 'listRefs', 'listReviewRefsPaged', 'readCommitMessage', 'runState',
   'issueComments', 'readOutcomeEvidence', 'applicationCommitInDefaultBranch', 'verifyProductionApply',
   'verifyLiveAssertion', 'verifyGeneratedTypes', 'readArtifactJson', 'readArtifactFiles', 'reversionFiles',
   'localHead', 'localClean', 'localBranch', 'localWorktreeState', 'verifyArtifact',

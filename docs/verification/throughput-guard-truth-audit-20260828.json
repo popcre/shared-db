@@ -1,5 +1,8 @@
 {
   "schema_version": 3,
+  "status": "historical",
+  "superseded_by": "docs/verification/throughput-dispositions/",
+  "superseded_note": "Retained as historical evidence of the reviewed dispositions as of the partition cutover (issue #2832). It is no longer read by scripts/check-throughput-truth-audit.mjs and is not a second source of truth; the active reviewed catalogues are one JSON file per source file. call_site_count and call_site_sha256 were removed because a repo-wide count and digest forced every unrelated pull request to edit one file.",
   "discovery_roots": [
     "scripts",
     ".github/workflows"
@@ -190,13 +193,6 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
-      "site": ".github/workflows/reviewer-start-watch.yml:147",
-      "semantic_key": ".github/workflows/reviewer-start-watch.yml:5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d:1",
-      "line_sha256": "5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d",
-      "disposition": "excluded",
-      "reason": "Workflow-local guard (#3271): when the watcher pass wrote no pass.json, the step writes an error object so the summary and relay still report a failed pass. It is a statement about a CI scratch file, not about any database object, so no truth enrichment applies."
-    },
-    {
       "site": ".github/workflows/shared-supabase-migrations.yml:272",
       "semantic_key": ".github/workflows/shared-supabase-migrations.yml:12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca:1",
       "line_sha256": "12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca",
@@ -302,25 +298,11 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
-      "site": ".github/workflows/tools-offline-tests.yml:118",
-      "semantic_key": ".github/workflows/tools-offline-tests.yml:c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56:1",
-      "line_sha256": "c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56",
-      "disposition": "excluded",
-      "reason": "CI presence check for the queue hygiene report test file (#3199 Phase A3). The word \"Missing\" here reports an absent TEST FILE in the workflow checkout, not an absent database object, so it carries no truth claim about catalog state and must never be enriched."
-    },
-    {
       "site": ".github/workflows/tools-offline-tests.yml:134",
       "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:1",
       "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
       "disposition": "excluded",
       "reason": "CI presence check for the self-service lane boundary and route-sync tests (#3199 Phase B). The word \"Missing\" reports an absent TEST FILE in the workflow checkout, not an absent database object; excluded exactly like its freshness-gate and hygiene-report twins."
-    },
-    {
-      "site": ".github/workflows/tools-offline-tests.yml:148",
-      "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:2",
-      "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
-      "disposition": "excluded",
-      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
     },
     {
       "site": "scripts/agent-work-contract.mjs:83",
@@ -1063,13 +1045,6 @@
       "line_sha256": "a3035e88f0dd1717b214c9b0742c1efb752dda15ff0a8d6aed632ed9c44eb66b",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/manage-migration-author-lanes.mjs:1381",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c:1",
-      "line_sha256": "a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c",
-      "disposition": "excluded",
-      "reason": "Parses the literal \"<sha> missing\" line that git cat-file --batch prints for an absent object; the SHA is hydrated by fetch or the read throws. It says nothing about migration or database-object state."
     },
     {
       "site": "scripts/manage-migration-author-lanes.mjs:2302",
@@ -2087,13 +2062,6 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
-      "site": "scripts/run-governed-review.mjs:690",
-      "semantic_key": "scripts/run-governed-review.mjs:a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428:1",
-      "line_sha256": "a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428",
-      "disposition": "excluded",
-      "reason": "Prose in an explanatory comment in scripts/run-governed-review.mjs. The word 'missing' appears in the phrase 'the missing-prompt case', describing why equals-form prompt arguments are handled in the injection loop (governed review of PR #3338). It asserts nothing about a migration being missing, never created, or not applied, and changes no behavior."
-    },
-    {
       "site": "scripts/run-governed-review.mjs:151",
       "semantic_key": "scripts/run-governed-review.mjs:adc27317ab55f760c19af233e4abe0dcc73f007cc7e3057b83464ff32c845932:1",
       "line_sha256": "adc27317ab55f760c19af233e4abe0dcc73f007cc7e3057b83464ff32c845932",
@@ -2134,13 +2102,6 @@
       "line_sha256": "e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/test-fixtures/github-wire-fake.mjs:80",
-      "semantic_key": "scripts/test-fixtures/github-wire-fake.mjs:ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4:1",
-      "line_sha256": "ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4",
-      "disposition": "excluded",
-      "reason": "Test fixture that emits the literal \"<sha> missing\" line of the git cat-file --batch protocol for unknown commits; no migration or database-object state is described."
     },
     {
       "site": "scripts/throughput-guard/ledger-lib.mjs:13",
@@ -2190,9 +2151,49 @@
       "line_sha256": "c306e35745386b717b583be41a182e378d17ce899e352842a4d0cfbae51ccc3c",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+    },
+    {
+      "site": "scripts/manage-migration-author-lanes.mjs:1381",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c:1",
+      "line_sha256": "a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c",
+      "disposition": "excluded",
+      "reason": "Parses the literal \"<sha> missing\" line that git cat-file --batch prints for an absent object; the SHA is hydrated by fetch or the read throws. It says nothing about migration or database-object state."
+    },
+    {
+      "site": "scripts/test-fixtures/github-wire-fake.mjs:80",
+      "semantic_key": "scripts/test-fixtures/github-wire-fake.mjs:ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4:1",
+      "line_sha256": "ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4",
+      "disposition": "excluded",
+      "reason": "Test fixture that emits the literal \"<sha> missing\" line of the git cat-file --batch protocol for unknown commits; no migration or database-object state is described."
+    },
+    {
+      "site": ".github/workflows/tools-offline-tests.yml:118",
+      "semantic_key": ".github/workflows/tools-offline-tests.yml:c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56:1",
+      "line_sha256": "c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56",
+      "disposition": "excluded",
+      "reason": "CI presence check for the queue hygiene report test file (#3199 Phase A3). The word \"Missing\" here reports an absent TEST FILE in the workflow checkout, not an absent database object, so it carries no truth claim about catalog state and must never be enriched."
+    },
+    {
+      "site": ".github/workflows/tools-offline-tests.yml:148",
+      "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:2",
+      "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
+      "disposition": "excluded",
+      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
+    },
+    {
+      "site": ".github/workflows/reviewer-start-watch.yml:147",
+      "semantic_key": ".github/workflows/reviewer-start-watch.yml:5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d:1",
+      "line_sha256": "5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d",
+      "disposition": "excluded",
+      "reason": "Workflow-local guard (#3271): when the watcher pass wrote no pass.json, the step writes an error object so the summary and relay still report a failed pass. It is a statement about a CI scratch file, not about any database object, so no truth enrichment applies."
+    },
+    {
+      "site": "scripts/run-governed-review.mjs:690",
+      "semantic_key": "scripts/run-governed-review.mjs:a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428:1",
+      "line_sha256": "a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428",
+      "disposition": "excluded",
+      "reason": "Prose in an explanatory comment in scripts/run-governed-review.mjs. The word 'missing' appears in the phrase 'the missing-prompt case', describing why equals-form prompt arguments are handled in the injection loop (governed review of PR #3338). It asserts nothing about a migration being missing, never created, or not applied, and changes no behavior."
     }
   ],
-  "call_site_count": 311,
-  "call_site_sha256": "871e1ed9039729e54956fdc714b0c094ddec38754eb910a6e7d162467449b4c0",
   "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."
 }

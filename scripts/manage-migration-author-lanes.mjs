@@ -574,6 +574,19 @@ function inheritReviewerAllowlist(requested,recorded){
 }
 function reviewerAllowed(name,allowlist){return allowlist===null||allowlist.includes(name)}
 
+function inheritReturnedReviewerAllowlist(requested,request,io){
+  let inherited=requested,recorded=null,seen=false
+  for(const returned of readReviewReturns(request.issue,request.pr,request.headSha,io).filter((row)=>row.slot===request.slot)){
+    const assignment=parseReviewCursor(io.getCommit(returned.assignmentSha))
+    if(assignment.issue!==request.issue||assignment.pr!==request.pr||assignment.headSha!==request.headSha||(assignment.slot??1)!==request.slot||assignment.reviewer!==returned.reviewer||(returned.sequence!==null&&assignment.sequence!==returned.sequence))throw new LaneError('returned reviewer allowlist evidence does not match its assignment')
+    const policy=assignment.reviewerAllowlist??null
+    if(seen&&!sameReviewerAllowlist(recorded,policy))throw new LaneError('returned assignments have conflicting durable reviewer allowlists')
+    inherited=inheritReviewerAllowlist(inherited,policy)
+    recorded=policy;seen=true
+  }
+  return inherited
+}
+
 // `engine === null` is a POSITIVE answer, not an absent one: the marker resolver
 // said `state: none`, so no orchestrator is running and there is no same-engine
 // conflict to guard against. The exclusion list is empty and the whole rotation
@@ -3782,6 +3795,10 @@ function reviewerExclusions(issue,pr,io,{fresh=false}={}){
   const rows=exact
     ? refs.map((ref)=>{const row=exact.get(ref);return row?{ref,...row}:null}).filter(Boolean)
     : (fresh?io.__freshListRefs(prefix):io.listRefs(prefix))??[]
+  // Returns are written only by exclusion. Keep historical presence even after
+  // reinstatement so a redraw cannot forget its policy; ordinary draws pay no
+  // extra return-history lookup. The exclusion records themselves are immutable.
+  Object.defineProperty(result,'hasRecordedExclusions',{value:rows.length>0})
   // On the fallback path the second listing is only paid when there is an
   // exclusion that could be lifted. No exclusions, no reinstatement read, and
   // the measured request budget of the ordinary assignment path is unchanged
@@ -5311,7 +5328,7 @@ export function inReviewReplacementNamespace(ref,base){
 // assignment record -- same precedence assignNextReviewerOperation itself gives
 // replacements over a plain assignment. Throws if slot 1 was never assigned:
 // slot 2 must never silently invent a first reviewer.
-function resolveSlotOneReviewer(issue,pr,headSha,io){
+function resolveSlotOneAssignment(issue,pr,headSha,io){
   const slotOneBase=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-${headSha}`
   const slotOneReplacementBase=`${REVIEW_REPLACEMENT_REF_PREFIX}/${issue}-${pr}-${headSha}`
   const missing=()=>new LaneError(`slot 2 requires slot 1 to already be assigned for issue #${issue} PR #${pr} head ${headSha}. Run --assign-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} (default --review-slot 1) first, then request --review-slot 2.`)
@@ -5337,20 +5354,20 @@ function resolveSlotOneReviewer(issue,pr,headSha,io){
     const replacementRows=(records.matching??[]).filter((row)=>inReviewReplacementNamespace(row.ref,slotOneReplacementBase))
     if(replacementRows.length){
       const replacements=replacementRows.map((row)=>parseReviewReplacement(row.commit??io.getCommit(row.sha)))
-      return replacements.sort((a,b)=>b.sequence-a.sequence)[0].reviewer
+      return replacements.sort((a,b)=>b.sequence-a.sequence)[0]
     }
     const record=records.get(slotOneBase)
     if(!record)throw missing()
-    return parseReviewCursor(record.commit??io.getCommit(record.sha)).reviewer
+    return parseReviewCursor(record.commit??io.getCommit(record.sha))
   }
   const replacementRows=(io.listRefs?.(slotOneReplacementBase)??[]).filter((row)=>inReviewReplacementNamespace(row.ref,slotOneReplacementBase))
   if(replacementRows.length){
     const replacements=replacementRows.map((row)=>parseReviewReplacement(row.commit??io.getCommit(row.sha)))
-    return replacements.sort((a,b)=>b.sequence-a.sequence)[0].reviewer
+    return replacements.sort((a,b)=>b.sequence-a.sequence)[0]
   }
   const sha=io.readRef(slotOneBase)
   if(!sha)throw missing()
-  return parseReviewCursor(io.getCommit(sha)).reviewer
+  return parseReviewCursor(io.getCommit(sha))
 }
 
 // AGENTS.md section 4 rule 2 is merge-first, so a migration reaching main and only
@@ -5521,7 +5538,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   if(!Number.isInteger(Number(issue))||!Number.isInteger(Number(pr))||!headPattern.test(String(headSha??'')))throw new LaneError('review assignment requires issue, PR, and exact 40-character head SHA')
   if(!Number.isInteger(Number(slot))||Number(slot)<1)throw new LaneError('review assignment slot must be a positive integer (1 = first reviewer, 2 = second independent reviewer)')
   io=reviewOperationIo(io)
-  const requestedAllowlist=canonicalReviewerAllowlist(reviewerAllowlist)
+  let requestedAllowlist=canonicalReviewerAllowlist(reviewerAllowlist)
   const request={issue:Number(issue),pr:Number(pr),headSha:String(headSha),slot:Number(slot),...(requestedAllowlist?{reviewerAllowlist:requestedAllowlist}:{})}
   const concurrentLeases=Boolean(io.requiresExactReviewHeadSha)
   const {eligible,unusable}=allocatableReviewers(io)
@@ -5535,7 +5552,9 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   // here, pre-mutex. Two fixes for one defect is worse than either, so this
   // branch defers to the merged one: the resolve stays here, and the reserve is
   // #1813's (issue #1798 round 3 / issue #1812).
-  const excludedProvider=request.slot===1?null:resolveSlotOneReviewer(request.issue,request.pr,request.headSha,io)
+  const slotOne=request.slot===1?null:resolveSlotOneAssignment(request.issue,request.pr,request.headSha,io)
+  const excludedProvider=slotOne?.reviewer??null
+  if(slotOne)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist)
   const preflightBusy=findBusyReviewers(io)
   if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer assignment refused before mutex acquisition')
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
@@ -5544,6 +5563,10 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   try{
     if(admissionOptions)requirePrOperationRoute(admissionOptions,io,{pr,headSha,issue,mutexOwner:ownerSha,allowMerged:true,reviewSnapshot:true})
     const exclusions=reviewerExclusions(request.issue,request.pr,io,{fresh:true})
+    if(exclusions.hasRecordedExclusions)requestedAllowlist=inheritReturnedReviewerAllowlist(requestedAllowlist,request,io)
+    effectiveAllowlist=requestedAllowlist
+    if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
+    eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
     // Slot 1 keeps the original, unsuffixed ref namespace so every existing
     // caller and every already-recorded assignment/replacement is untouched.
     // Slot 2+ gets its own parallel namespace under the same tuple so it can
@@ -6177,7 +6200,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     ?{issue:Number(issue),pr:Number(pr),headSha:String(headSha??''),failedSequence:Number(failedSequence),slot:Number(slot??1)}
     :validateTerminalReviewerFailure({issue,pr,headSha,failedSequence,failureCode,failingCheck,confirmLocalDependencyUnfixable,confirmNoVerdict,confirmNoArtifact,slot},'reviewer replacement')
   if(silenceReplacement&&(!Number.isInteger(request.issue)||!Number.isInteger(request.pr)||!/^[0-9a-f]{40}$/i.test(request.headSha)||!Number.isInteger(request.failedSequence)||!Number.isInteger(request.slot)||request.slot<1||!confirmNoVerdict||!confirmNoArtifact||String(failingCheck??'').trim()))throw new LaneError('silent reviewer replacement requires exact issue, PR, 40-character head SHA, failed sequence, review slot, no failing check, and explicit confirmation of no verdict and no artifact')
-  const requestedAllowlist=canonicalReviewerAllowlist(reviewerAllowlist)
+  let requestedAllowlist=canonicalReviewerAllowlist(reviewerAllowlist)
   let effectiveAllowlist=requestedAllowlist
   const concurrentLeases=Boolean(io.requiresExactReviewHeadSha)
   const {eligible}=allocatableReviewers(io)
@@ -6206,7 +6229,9 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   const assignmentVerdictRef=assignmentRef.replace(REVIEW_ASSIGNMENT_REF_PREFIX,REVIEW_VERDICT_REF_PREFIX)
   // Slot >=2 must stay independent of slot 1 after a replacement, not only at
   // first assignment. Resolved read-only, pre-mutex, exactly as assignment does.
-  const excludedProvider=request.slot===1?null:resolveSlotOneReviewer(request.issue,request.pr,request.headSha,io)
+  const slotOne=request.slot===1?null:resolveSlotOneAssignment(request.issue,request.pr,request.headSha,io)
+  const excludedProvider=slotOne?.reviewer??null
+  if(slotOne)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist)
   const failureBase=`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`
   const fixedRecords=io.readReviewRecords?.([replacementRef,assignmentRef,REVIEW_CURSOR_REF,assignmentVerdictRef,failureRef],replacementBase,failureBase)??null
   let ownerSha=null,mutexAcquired=false
@@ -6681,7 +6706,7 @@ function activateReviewCutoverOperation(io) {
         if (lease.pr !== number || lease.headSha !== headSha) throw new LaneError(`assignment ref ${row.ref} disagrees with its commit record (PR #${lease.pr}, head ${lease.headSha}); cutover activation refused`)
         // A replacement supersedes the assignment's reviewer for this exact
         // tuple, highest failure sequence winning -- the same precedence
-        // resolveSlotOneReviewer and assignNextReviewerOperation already use.
+        // resolveSlotOneAssignment and assignNextReviewerOperation already use.
         let reviewer = lease.reviewer
         let leaseSha = row.sha
         // REFUSE, never discard (issue #1798 round 3, glm-5.3 High 1). This half

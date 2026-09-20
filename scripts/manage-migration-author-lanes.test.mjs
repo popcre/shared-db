@@ -850,6 +850,38 @@ test('#3291 replacement inherits the durable allowlist and cannot widen it',()=>
   assert.throws(()=>replaceFailedReviewer({...request,reviewerAllowlist:['qwen-3.8-max']},io),/does not match the durable assignment/)
 })
 
+test('#3291 later slots inherit slot one permissions and replacements cannot widen them',()=>{
+  const io=withAtomicRefs(reviewIo()),head='7'.repeat(40),allowed=['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
+  const first=assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:allowed},io)
+  const request={issue:3291,pr:3292,headSha:head,slot:2}
+  assert.throws(()=>assignNextReviewer({...request,reviewerAllowlist:['glm-5.3']},io),/does not match/)
+  const second=assignNextReviewer(request,io)
+  assert.ok(allowed.includes(second.reviewer));assert.notEqual(second.reviewer,first.reviewer)
+  assert.deepEqual(second.reviewerAllowlist,allowed)
+  assert.deepEqual(assignNextReviewer(request,io),second)
+  const replacementRequest={...request,failedSequence:second.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+  assert.throws(()=>replaceFailedReviewer({...replacementRequest,reviewerAllowlist:['glm-5.3']},io),/does not match/)
+  const replacement=replaceFailedReviewer(replacementRequest,io)
+  assert.deepEqual(replacement.reviewerAllowlist,allowed)
+  assert.ok(allowed.includes(replacement.reviewer))
+  assert.notEqual(replacement.reviewer,first.reviewer);assert.notEqual(replacement.reviewer,second.reviewer)
+})
+
+test('#3291 returned permissions survive unrelated cursor movement and an omitted redraw input',()=>{
+  const io=withAtomicRefs(reviewIo()),head='8'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
+  const request={issue:3291,pr:3292,headSha:head}
+  const first=assignNextReviewer({...request,reviewerAllowlist:allowed},io)
+  const evidenceSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/3291-3292-${head}`)
+  excludeReviewerForPr({issue:3291,pr:3292,reviewer:first.reviewer,reason:'independence-conflict',evidenceSha},io)
+  assignNextReviewer({issue:9991,pr:9992,headSha:head},io)
+  assert.throws(()=>assignNextReviewer({...request,reviewerAllowlist:['qwen-3.8-max']},io),/does not match/)
+  const next=assignNextReviewer(request,io)
+  assert.equal(next.reviewer,'muse-spark-1.3-contributor')
+  assert.deepEqual(next.reviewerAllowlist,allowed)
+})
+
 // Production `githubIo` always defines the atomic compare-and-swap ref writer,
 // and the exclusion RETURN path now refuses to run without it: retiring a
 // durable assignment ref through a compare-then-delete fallback is not a
@@ -1065,7 +1097,9 @@ test('complete assignment stays inside the real wire-attempt budget',()=>{
   io.makeOwnerCommit=(message)=>{wire(1);baseLoaded=true;return make(message)}
   const result=assignNextReviewer({issue:1767,pr:1800,headSha:'a'.repeat(40),admissionOptions:{pr:1800}},io)
   assert.ok(result.reviewer);assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`used ${attempts} wire attempts`)
-  assert.equal(attempts,22,`repository-maintenance assignment used ${attempts} requests; the single routing projection must keep the existing 25-request ceiling`)
+  // An exclusion-bearing draw now reads returned policy once, even when every
+  // returned slot is absent. Normal draws still cost 19 and the hard cap stays 25.
+  assert.equal(attempts,23,`repository-maintenance assignment used ${attempts} requests including returned-policy lookup; keep the existing 25-request ceiling`)
   attempts=0
   assert.deepEqual(assignNextReviewer({issue:1767,pr:1800,headSha:'a'.repeat(40),admissionOptions:{pr:1800}},io),result)
   assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`retry used ${attempts} wire attempts`)

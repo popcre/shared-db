@@ -373,8 +373,10 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    When the owner restricts one workstream to named reviewers, add
    `--reviewer-allowlist <canonical-name,...>` to assignment and replacement.
    The canonical set is stored with the durable assignment: an omitted retry
-   inherits it and an explicit mismatch refuses. The set grants permission only;
-   live preflight, quarantine, orchestrator independence, per-PR exclusions and
+   inherits it and an explicit mismatch refuses. Later slots inherit slot one's
+   set, and returning an assignment never erases
+   its permission restriction when that slot is redrawn.
+   The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
    slot independence still decide who is usable. It creates no concurrency cap.
 
    For new assignments, the machine-independent cursor rotates Grok 4.6 → GLM

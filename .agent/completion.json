@@ -1,43 +1,106 @@
 {
   "schema_version": 1,
-  "work_issue": 3291,
+  "work_issue": 3280,
   "outcome": "ready-for-merge",
-  "pr": 3292,
+  "pr": 3279,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3291/1",
-  "contract_sha256": "e01d79cc41093604e893c4c0c5bc1305477bfa6939ffea794370b9b0794b6788",
-  "head_sha": "6dc429a07fda21219c6d9592c00ac759a287e0f2",
+  "contract_ref": "refs/db-contracts/3280/5",
+  "contract_sha256": "428a938b7e7fd859bdf9ebb1161fb76111f2eadf800dea258d5b6abfce04a024",
+  "head_sha": "9fecf97c69b015f6aa0f0c51ba79d2f5aee861c8",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/cancelled-work-guard.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/domain-ownership.yml",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/handoff-contract-guard.yml",
+    ".github/workflows/intake-pointer-guard.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-marker-guard.yml",
+    ".github/workflows/pr-object-collision.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-applied-migration-edit.mjs",
+    "scripts/check-cancelled-work.mjs",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/check-handoff-contract.mjs",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-production-verification-sidecars.mjs",
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/resolve-base-ref.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "scripts/throughput-guard/check-production-verification-sidecars.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs",
       "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --check scripts/manage-migration-author-lanes.mjs"
+      "evidence": "tests 13 pass 13 fail 0 skipped 0 at 9fecf97c"
     },
     {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
       "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
+      "evidence": "tests 15 pass 15 fail 0 skipped 0 at 9fecf97c"
     },
     {
+      "command": "node --test scripts/configure-merge-queue.test.mjs",
       "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test --test-reporter=spec scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
+      "evidence": "tests 13 pass 13 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 58 pass 58 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6 pass 6 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 11 pass 11 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-applied-migration-edit.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 35 pass 35 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-cancelled-work.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 22 pass 22 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-handoff-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 16 pass 16 fail 0 skipped 0 at 9fecf97c"
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 60 pass 60 fail 0 skipped 0 at 9fecf97c"
     }
   ],
   "assumptions_resolved": [
-    "Recovered source retained by ancestry from c63fe706d7b447e75208658de7c3729afcf08496. Backup branch codex/recover-edge-3292 preserves original recovery copy.",
-    "Contract refs/db-contracts/3291/1 was published before this prospective reconstruction merge and repairs. It does not claim to predate the original EDGE-DEV source.",
-    "Fresh slot2 and same-head redraw after exclusion were reproduced selecting glm outside the grok,muse permission set before repair. Both now inherit the stored set.",
-    "Returned policy lookup runs only when immutable exclusion history exists, including lifted exclusions. Normal19-request path and hard25-request ceiling unchanged; exclusion-bearing fixture adds one justified history read,23 total.",
-    "No database reads or writes. Independent exact-head review and guarded merge remain required; this report is local completion evidence, not merge authorization.",
-    "Audit now verifies slot-one record identity on batched and fallback paths; original and all surviving replacement policies must agree; returned legacy slotless replacements use checked return provenance.27 regressions added,26 failed the pre-fix source as expected. The legacy positive compatibility fixture proves both old and explicit slot formats reach the same downstream release-evidence guard, not that an otherwise incomplete fixture can finish a redraw."
+    "Generations 1-4 remain immutable; this is generation 5 after rebasing onto current main and squashing to one implementation commit.",
+    "Six base-ref-by-name consumers resolve through one shared resolver; the sweep test derives its list from that import rather than hand-listing it.",
+    "The throughput truth audit was rebound for the one new call site the shared resolver introduces (312 sites)."
   ],
   "stop_conditions_hit": []
 }

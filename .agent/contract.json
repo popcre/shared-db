@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Accept only provenance-verified automatic-review companion artifacts without weakening preview evidence checks",
-  "base_sha": "c477c8e8cc1cf75cfe1ed573f97a366bd38d74cb",
+  "base_sha": "473ba697d5d449721de113fc0cd82acc6a052eb2",
   "dispatcher": "Codex orchestrator parent 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
   "worker": "01a0bf43-3c49-7812-b4d9-b3cb6e89e1c1",
   "branch": "codex/sku2478-recovery-audit-0920",
@@ -40,10 +40,11 @@
     "Existing successful preview with automatic companion is reproducibly rejected",
     "Current-main refresh d5285ef3 preserves implementation; 639 tests re-run successfully before final evidence binding",
     "Refreshed onto70b0cad2 reviewer allowlist changes without overlapping selector code;673 tests passed",
-    "Refreshed onto current main c477c8e8 (docs-only movement, no overlap with this diff); selector tests re-run green before evidence binding"
+    "Refreshed onto current main c477c8e8 (docs-only movement, no overlap with this diff); selector tests re-run green before evidence binding",
+    "Refreshed onto current main 473ba697 (no overlap with this diff outside .agent evidence); selector tests re-run green before evidence binding"
   ],
   "stop_conditions": [
     "Stop before overlapping another agent files"
   ],
-  "generation": 6
+  "generation": 7
 }

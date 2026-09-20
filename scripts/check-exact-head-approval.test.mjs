@@ -421,6 +421,76 @@ test('#2758: a merge-only refresh keeps the APPROVE recorded at the prior head',
   assert.deepEqual(calls, [[RETURN_HEAD, REFRESHED_HEAD]])
 })
 
+// MERGED-PULL-REQUEST AUDIT (#2839). The live gate judges today's rules and
+// reviewer records. That is correct while a pull request is open, but it cannot
+// answer what authorized a historical merge: both records and gate rules can
+// change later. The guarded merge's server-timestamped success status is the
+// decision actually used under the exclusive lock. A merged PR audits that
+// status at or before `merged_at`; closed-unmerged work has no event to audit.
+const MERGED_AT = '2026-09-20T22:32:17Z'
+const BEFORE_MERGE = '2026-09-20T22:31:35Z'
+const AFTER_MERGE = '2026-09-20T22:48:40Z'
+function mergedRefreshGithub({ authorizationAt = BEFORE_MERGE, creator = 'github-actions[bot]' } = {}) {
+  const base = refreshedGithub()
+  return {
+    ...base,
+    json: (args) => {
+      const endpoint = args[args.length - 1]
+      if (/\/pulls\/\d+$/.test(endpoint)) return { state: 'closed', merged: true, merged_at: MERGED_AT, merge_commit_sha: '9'.repeat(40), head: { sha: REFRESHED_HEAD } }
+      return base.json(args)
+    },
+    pages: (endpoint) => endpoint.includes(`/commits/${REFRESHED_HEAD}/statuses`)
+      ? [
+          { id: 41, context: 'Migration guarded merge authorization', state: 'failure', description: 'Exclusive merge lock held and exact head revalidated', creator: { login: 'github-actions[bot]' }, created_at: AFTER_MERGE },
+          { id: 40, context: 'Migration guarded merge authorization', state: 'success', description: 'Exclusive merge lock held and exact head revalidated', creator: { login: creator }, created_at: authorizationAt },
+        ]
+      : base.pages(endpoint),
+  }
+}
+
+test('#2839: a merged PR audit uses the successful guarded-merge status that existed at merge time', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub())
+  assert.deepEqual(input.mergeAudit, { mergedAt: MERGED_AT, mergeCommitSha: '9'.repeat(40), authorizedAt: BEFORE_MERGE, statusId: 40 })
+})
+
+test('#2839: authorization recorded at the merge boundary is part of the audit', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ authorizationAt: MERGED_AT }))
+  assert.equal(input.mergeAudit.authorizedAt, MERGED_AT)
+})
+
+test('#2839: a merged PR audit refuses a guarded status with no trustworthy timestamp', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ authorizationAt: null })), /has no readable server timestamp/)
+})
+
+test('#2839: a successful authorization written only after merge cannot authorize the audit', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ authorizationAt: AFTER_MERGE })), /no successful guarded-merge authorization status at or before its merge time/)
+})
+
+test('#2839: a lookalike success from anyone except GitHub Actions cannot authorize the audit', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ creator: 'u2giants' })), /no successful guarded-merge authorization status at or before its merge time/)
+})
+
+test('#2839: a merged audit refuses a requested SHA other than the actual merged PR head', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931', REQUESTED_SHA: RETURN_HEAD }, mergedRefreshGithub()), /requires its exact merged head SHA/)
+})
+
+test('#2839: a closed-unmerged PR refuses because there is no merge event to audit', () => {
+  const base = githubLike({ refs: [] })
+  const io = { ...base, json: (args) => /\/pulls\/\d+$/.test(args[args.length - 1])
+    ? { state: 'closed', merged: false, merged_at: null, head: { sha: NEW } }
+    : base.json(args) }
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1809' }, io), /closed without merge; there is no merge authorization event to audit/)
+})
+
+test('#2839: an open PR stays on the live gate with no historical cutoff', () => {
+  const base = githubLike({ refs: [] })
+  const io = { ...base, json: (args) => /\/pulls\/\d+$/.test(args[args.length - 1])
+    ? { state: 'open', merged: false, merged_at: null, head: { sha: NEW } }
+    : base.json(args) }
+  const input = gatherApprovalInput({ PR_NUMBER: '1809' }, io)
+  assert.equal(input.mergeAudit, null)
+})
+
 test('POSITIVE CONTROL #2758: a refresh that changed the PR diff (e.g. a migration edit) needs a new review', () => {
   assert.throws(() => evaluateApprovalWithRefresh(refreshedInput(), { contentPreservingRefresh: () => ({ ok: false, reason: 'diff changed' }) }), ApprovalCheckError)
 })

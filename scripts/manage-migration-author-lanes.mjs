@@ -8141,7 +8141,7 @@ export function completeWork({ issue, report }, io = githubIo) {
   }
   const workIssue=io.getIssue?.(Number(issue))
   const scope=workIssue?parseQueueScope(workIssue.body??''):null
-  if(record.outcome==='merged'&&scope&&scope.changeType!==null){
+  if(record.outcome==='merged'&&scope?.workType==='structural'&&scope.changeType!==null){
     throw new DependencyError(`issue #${issue} uses the authoritative outcome lifecycle; merge is a stage, not completion. Keep it open through --complete-outcome and live application proof.`)
   }
 

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
+  "db_writes": [],
+  "stop_conditions_hit": [],
+  "assumptions_resolved": [
+    "Prerequisite PR3357 merged; current main incorporated"
+  ],
+  "head_sha": "5d56dd0c5cd9e186d8187bead1e94bed324be77c",
+  "checks": [
+    {
+      "command": "node --test scripts/lib/agent-evidence-paths.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/check-main-tip-freshness.test.mjs",
+      "evidence": "✔ POSITIVE CONTROL: after the merge, a superseded head is not identical against current main (11593.3487ms); ℹ tests 54; ℹ suites 0; ℹ pass 54; ℹ fail 0; ℹ cancelled 0; ℹ skipped 0; ℹ todo 0; ℹ duration_ms 173308.4807",
+      "exit_code": 0
+    },
+    {
+      "exit_code": 0,
+      "evidence": "6 passed;0 failed;0 skipped",
+      "command": "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs"
+    }
+  ],
+  "outcome": "ready-for-merge",
+  "contract_sha256": "e46859a23891ccff0843b4d66965db3768c2fabf8a08233ff31e7963bd01827d",
+  "contract_ref": "refs/db-contracts/3360/2",
+  "pr": 3363,
+  "files_changed": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/lib/agent-evidence-paths.mjs",
+    "scripts/lib/agent-evidence-paths.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs"
+  ],
+  "work_issue": 3360,
+  "migration_versions": [],
+  "db_reads": []
+}

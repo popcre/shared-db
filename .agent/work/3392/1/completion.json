@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3392,
+  "outcome": "ready-for-merge",
+  "pr": 3394,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3392/1",
+  "contract_sha256": "c3c1ca57997e79064f93c955cc5a8982b497662af4580f94acc9d316a412c946",
+  "head_sha": "9e55b868e4e6893a5f6b8bc33a6b131164f89e9e",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
+  "files_changed": [
+    "scripts/orchestrator-flow/preview-graph.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs",
+    "scripts/orchestrator-flow/isolated-rehearsal-evidence.mjs",
+    "scripts/orchestrator-flow/isolated-rehearsal-evidence.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "20 tests passed; zero failed, skipped, cancelled or todo",
+      "command": "node --test scripts/orchestrator-flow/preview-graph.test.mjs scripts/orchestrator-flow/select-preview-route.test.mjs scripts/orchestrator-flow/isolated-rehearsal-evidence.test.mjs",
+      "exit_code": 0
+    }
+  ],
+  "assumptions_resolved": [
+    "Default shared route remains unchanged; only in-process authenticated capability enables isolated decision",
+    "Preparation only: runtime producer integration, independent review and actual live delivery remain pending"
+  ],
+  "stop_conditions_hit": []
+}

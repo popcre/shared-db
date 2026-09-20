@@ -1,51 +1,45 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "generation": 2,
+  "work_issue": 3205,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Add the fourth flavour of a check that never ran (a conflict-dirty PR starts no pull_request workflows) to AGENTS.md 5.2-A for issue 3205, and publish the shared-db workflow refactor plan document requested by issue 3306. Prose only: no rule is relaxed and no safeguard is removed.",
+  "base_sha": "c477c8e8cc1cf75cfe1ed573f97a366bd38d74cb",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/3205-3306-checks-flavour-and-refactor-plan",
+  "worktree": "D:/repos/shared-db-worktrees/issues-3205-3306-a41f7c",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "AGENTS.md",
+    "plan_shared_db_workflow_refactor.md"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "AGENTS.md",
+    "plan_shared_db_workflow_refactor.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database read, write, migration, or production command.",
+    "Do not relax, weaken, or remove any existing AGENTS.md rule; issue 3205 adds a missing case only.",
+    "Do not actually remove any administrative blocker or safeguard while publishing the issue 3306 plan; the plan proposes, it does not act."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/lib/documents-only-change.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "AGENTS.md and plan_*.md are rulebook files under scripts/lib/documents-only-change.mjs, so this pull request is not documents-only and takes the full reviewer draw and guarded merge.",
+    "Issue 3306 asks for a plan document to be published; it does not ask for any workflow or code change in this pull request.",
+    "Rebased onto current main after PR #3292 repaired the reviewer-cursor parser that was refusing every governed reviewer draw repository-wide; generation 2 rebinds this evidence to the refreshed base."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if resolving either issue would require a code, workflow, or configuration change.",
+    "Stop if another open pull request is concurrently editing the same AGENTS.md section."
   ]
 }

@@ -1,43 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3291,
+  "work_issue": 3205,
   "outcome": "ready-for-merge",
-  "pr": 3292,
+  "pr": 3320,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3291/1",
-  "contract_sha256": "e01d79cc41093604e893c4c0c5bc1305477bfa6939ffea794370b9b0794b6788",
-  "head_sha": "6dc429a07fda21219c6d9592c00ac759a287e0f2",
+  "contract_ref": "refs/db-contracts/3205/2",
+  "contract_sha256": "8b146559948572de88eb9df4942658642acbe1cc5671a28ac296e147b3fd97dd",
+  "head_sha": "cf5351fd5007f7676b259d99b694a9f4ec989bd9",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "AGENTS.md",
+    "plan_shared_db_workflow_refactor.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
+      "command": "node --test scripts/lib/documents-only-change.test.mjs",
       "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --check scripts/manage-migration-author-lanes.mjs"
+      "evidence": "all tests pass, fail 0 cancelled 0, at base 7d98876e"
     },
     {
+      "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
-    },
-    {
-      "exit_code": 0,
-      "evidence": "Verified on 916-ALIEN 2026-09-20 after merging main b1d4be2ef30862db0f5df4fddd83479815adfa99: syntax and 756 manager/governed-review/verdict/refresh tests passed; zero failures, cancelled, skipped or todo.",
-      "command": "node --test --test-reporter=spec scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
+      "evidence": "clean; no whitespace errors in either prose file"
     }
   ],
   "assumptions_resolved": [
-    "Recovered source retained by ancestry from c63fe706d7b447e75208658de7c3729afcf08496. Backup branch codex/recover-edge-3292 preserves original recovery copy.",
-    "Contract refs/db-contracts/3291/1 was published before this prospective reconstruction merge and repairs. It does not claim to predate the original EDGE-DEV source.",
-    "Fresh slot2 and same-head redraw after exclusion were reproduced selecting glm outside the grok,muse permission set before repair. Both now inherit the stored set.",
-    "Returned policy lookup runs only when immutable exclusion history exists, including lifted exclusions. Normal19-request path and hard25-request ceiling unchanged; exclusion-bearing fixture adds one justified history read,23 total.",
-    "No database reads or writes. Independent exact-head review and guarded merge remain required; this report is local completion evidence, not merge authorization.",
-    "Audit now verifies slot-one record identity on batched and fallback paths; original and all surviving replacement policies must agree; returned legacy slotless replacements use checked return provenance.27 regressions added,26 failed the pre-fix source as expected. The legacy positive compatibility fixture proves both old and explicit slot formats reach the same downstream release-evidence guard, not that an otherwise incomplete fixture can finish a redraw."
+    "Confirmed against scripts/lib/documents-only-change.mjs that AGENTS.md and plan_*.md are rulebook paths, so this pull request is not documents-only and carries the full evidence pair and reviewer draw.",
+    "Issue 3306 asks for a plan document to be published and explicitly states that publishing it does not close the tracker; no workflow or code change was made, and no safeguard was removed.",
+    "Ownership check: the only other open pull requests touching AGENTS.md are #3248 (2026-09-18) and #2607 (2026-09-08), neither updated within six hours and neither touching section 5.2-A.",
+    "Branch refreshed against current main on 2026-09-20; the conflict was the .agent evidence pair itself, exactly the treadmill this pull request documents in AGENTS.md 5.2-A."
   ],
   "stop_conditions_hit": []
 }

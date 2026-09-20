@@ -1,61 +1,52 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 2998,
+  "generation": 3,
+  "work_issue": 2832,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make agent-to-reviewer handoffs fail fast before a reviewer draw is consumed (#2998), and front-load the probe checklist and terminal verdict line into the reviewer brief (#2923), without reducing any review requirement.",
+  "goal": "Remove the global call_site_count and call_site_sha256 from the throughput truth audit by partitioning reviewed dispositions into one catalogue per source file, so two unrelated pull requests no longer serialise on a single artifact, while preserving every hand-written disposition and every refusal the guard makes today.",
   "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
-  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues through to production",
   "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
-  "branch": "claude/reviewer-trio-2915-2998-2923-2e3c24d5",
-  "worktree": "D:/repos/shared-db-worktrees/reviewer-trio-2e3c24d5",
+  "branch": "claude/throughput-2832-3002-a7f1",
+  "worktree": "D:/repos/shared-db-worktrees/throughput-2832-3002-a7f1",
   "allowed_paths": [
-    ".agent/completion.json",
     ".agent/contract.json",
-    "AGENTS.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/agent-work-contract-git-evidence.mjs",
-    "scripts/agent-work-contract-git-evidence.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    ".agent/completion.json",
+    "scripts/check-throughput-truth-audit.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "docs/verification/throughput-dispositions/**",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
-    ".agent/completion.json",
     ".agent/contract.json",
-    "AGENTS.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/agent-work-contract-git-evidence.mjs",
-    "scripts/agent-work-contract-git-evidence.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    ".agent/completion.json",
+    "scripts/check-throughput-truth-audit.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "docs/verification/throughput-dispositions/**",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not reduce what a reviewer must check, make any verdict optional, or let a failed handoff read as an approval.",
-    "No --admin override on this code change."
+    "Do not add a bulk regenerate or --update flag; every call site keeps its hand-written disposition and substantive reason.",
+    "Do not weaken, skip or make optional any existing refusal: unknown, stale, retired, duplicate, short-reason and uncatalogued sites must all still fail.",
+    "Do not edit another session's worktree or force any other lane to recompute."
   ],
   "required_checks": [
-    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/reviewer-wire-budget.test.mjs",
-    "node scripts/check-github-transport-conformance.mjs",
-    "node scripts/check-repository-identity-conformance.mjs",
-    "node scripts/check-skill-drift.mjs --require-skills"
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node --test scripts/throughput-guard/*.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Issue #2915 was verified already delivered on main by commits cdc74cb5 and 3cef6b68 and was closed with revert evidence rather than reimplemented.",
-    "GitHub computes pull request mergeable asynchronously, so a null value must proceed rather than refuse; the guarded merge lane still refuses a real conflict.",
-    "PR #3316 also edits manage-migration-author-lanes.mjs for #2457/#2844; its hunks are at lines 1272, 2395, 4258-4366 and 5518-5776 and do not overlap the sites changed here.",
-    "Generation 2 adds docs/verification/throughput-guard-truth-audit-20260828.json. The governed review of PR #3338 found generation 1 authorized no docs/verification path while the completion report listed one, which reconcileReportWithContract refuses. The repository's truth audit requires a reviewed disposition for every discovered call site, so a prose comment added by this PR obliged an update to that recorded inventory."
+    "Issue 2832 is also Step 2 of the concurrently open planning PR 3318 under tracker 3306; this implementation follows that published design rather than a competing shape, and no implementation work had started there.",
+    "The pre-partition aggregate is retained as historical evidence only and is never read by the checker.",
+    "Generation 2 supersedes generation 1 only to express the disposition directory as a scoped glob; the goal, prohibitions and required checks are unchanged.",
+    "The evidence pair is rebound in a single commit on top of implementation head 9ce37888, which already carries the merge of main c477c8e8."
   ],
   "stop_conditions": [
-    "Stop if any change would reduce what a reviewer must check or make a verdict optional.",
-    "Stop if a fail-fast refusal could be mistaken for an approval.",
-    "Stop if reviewer allocation is refused repo-wide by the known cursor-parser blocker rather than by this change."
+    "Stop if the partition cannot preserve every existing disposition byte for byte.",
+    "Stop if hitting the throughput goal would require dropping any safeguard."
   ]
 }

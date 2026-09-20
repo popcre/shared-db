@@ -1,1 +1,66 @@
-{"schema_version":1,"work_issue":2357,"work_type":"structural","route":"shared-db-orchestrator","goal":"Recover candidate APIs: real caller reads, latest-complete OPA evidence, licensor-qualified scope metadata, private-text exclusion, and role-based regression proof","base_sha":"57269b19416ccca6c20a0053ed05e397b1bd0e19","dispatcher":"Codex orchestrator chat 01a0bf00-fa7b-73d1-b447-fc4c89c50b96 on 916-alien","worker":"Codex licensing_recovery; legacy Claude claim owner retained only for guarded recovery","branch":"claude/issue-2357-licensing-candidate-apis","worktree":"D:/repos/shared-db-licensing-read-01a0bf00","allowed_paths":["supabase/migrations/20260917090439_licensing_candidate_and_review_apis.sql","supabase/tests/licensing_candidate_and_review_apis.sql","supabase/tests/opa_property_character_landing_contracts.sql",".github/live-proofs/2357.sql",".agent/contract.json",".agent/completion.json","types/database.types.ts"],"file_writes":["supabase/migrations/20260917090439_licensing_candidate_and_review_apis.sql","supabase/tests/licensing_candidate_and_review_apis.sql","supabase/tests/opa_property_character_landing_contracts.sql",".github/live-proofs/2357.sql",".agent/contract.json",".agent/completion.json","types/database.types.ts"],"db_reads":["table plm.source_resolution","table plm.licensing_relationship_resolution","table plm.licensing_source_scope","table plm.opa_capture","table plm.opa_property_character_capture"],"db_writes":["view api.licensing_entity_candidates","view api.licensing_relationship_candidates","view api.licensing_resolution_queue","table api.licensing_entity_candidates","table api.licensing_relationship_candidates","function plm.licensing_opa_observation_count"],"prohibited_actions":["No shared database writes without parent stage authorization","No paid review, preview, merge or production action","No curated data or real licensed content in fixtures"],"required_checks":["Focused SQL contracts in isolated local PostgreSQL","bash scripts/check-sql.sh","node scripts/check-live-proof-probe.mjs","node scripts/agent-work-contract-git-evidence.mjs"],"assumptions":["Both reserved and predecessor versions absent from target-verified preview and production ledgers on 2026-09-20","Parent renewed and rebound protected claim2834 before authoring"],"stop_conditions":["Any additional claimed object needed requires parent scope expansion","If invoker helper cannot preserve caller permissions and RLS redesign before release"],"generation":4}
+{
+  "schema_version": 1,
+  "work_issue": 2357,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Recover candidate APIs: real caller reads, latest-complete OPA evidence, licensor-qualified scope metadata, private-text exclusion, and role-based regression proof",
+  "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
+  "dispatcher": "Codex orchestrator chat 01a0bf00-fa7b-73d1-b447-fc4c89c50b96 on 916-alien",
+  "worker": "Codex licensing_recovery; legacy Claude claim owner retained only for guarded recovery",
+  "branch": "claude/issue-2357-licensing-candidate-apis",
+  "worktree": "D:/repos/shared-db-licensing-read-01a0bf00",
+  "allowed_paths": [
+    "supabase/migrations/20260920151046_licensing_candidate_and_review_apis.sql",
+    "supabase/tests/licensing_candidate_and_review_apis.sql",
+    "supabase/tests/opa_property_character_landing_contracts.sql",
+    ".github/live-proofs/2357.sql",
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "types/database.types.ts"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260920151046_licensing_candidate_and_review_apis.sql",
+    "supabase/tests/licensing_candidate_and_review_apis.sql",
+    "supabase/tests/opa_property_character_landing_contracts.sql",
+    ".github/live-proofs/2357.sql",
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table plm.source_resolution",
+    "table plm.licensing_relationship_resolution",
+    "table plm.licensing_source_scope",
+    "table plm.opa_capture",
+    "table plm.opa_property_character_capture"
+  ],
+  "db_writes": [
+    "view api.licensing_entity_candidates",
+    "view api.licensing_relationship_candidates",
+    "view api.licensing_resolution_queue",
+    "table api.licensing_entity_candidates",
+    "table api.licensing_relationship_candidates",
+    "function plm.licensing_opa_observation_count"
+  ],
+  "prohibited_actions": [
+    "No shared database writes without parent stage authorization",
+    "No paid review, preview, merge or production action",
+    "No curated data or real licensed content in fixtures"
+  ],
+  "required_checks": [
+    "Focused SQL contracts in isolated local PostgreSQL",
+    "bash scripts/check-sql.sh",
+    "node scripts/check-live-proof-probe.mjs",
+    "node scripts/agent-work-contract-git-evidence.mjs"
+  ],
+  "assumptions": [
+    "Both reserved and predecessor versions absent from target-verified preview and production ledgers on 2026-09-20",
+    "Parent renewed and rebound protected claim2834 before authoring",
+    "Parent guarded supersession reserved20260920151046; old version permanently retained and unapplied; immutable supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0."
+  ],
+  "stop_conditions": [
+    "Any additional claimed object needed requires parent scope expansion",
+    "If invoker helper cannot preserve caller permissions and RLS redesign before release"
+  ],
+  "generation": 5
+}

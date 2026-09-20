@@ -4,16 +4,16 @@
   "outcome": "failed",
   "pr": 2835,
   "migration_versions": [
-    "20260917090439"
+    "20260920151046"
   ],
-  "contract_ref": "refs/db-contracts/2357/4",
-  "contract_sha256": "72e32c8a8725dffc3e3ea193fce6ba5e4c8ddc2bb2160da0ee5cc70e157d9fc6",
-  "head_sha": "bb4b78acdd0677ceabb97ddf70d6772dd8d9e356",
+  "contract_ref": "refs/db-contracts/2357/5",
+  "contract_sha256": "be37d98b15fec219bf548c37974a3654d10ec70768421db886a4056fa944d5de",
+  "head_sha": "e82fa508b372ad5487d90f3f043050a7df78666c",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/2357.sql",
-    "supabase/migrations/20260917090439_licensing_candidate_and_review_apis.sql",
+    "supabase/migrations/20260920151046_licensing_candidate_and_review_apis.sql",
     "supabase/tests/licensing_candidate_and_review_apis.sql"
   ],
   "db_reads": [
@@ -38,9 +38,9 @@
       "exit_code": 0
     },
     {
-      "evidence": "Backdated migration20260917090439 precedes main maximum20260918180012. Awaiting parent guarded version supersession; no bypass.",
+      "evidence": "Full static SQL guard passed after guarded supersession to20260920151046; expected-count, verify-cost, EOL guards passed. Live-ledgerB2 expressly not run without credentials.",
       "command": "bash scripts/check-sql.sh",
-      "exit_code": 1
+      "exit_code": 0
     },
     {
       "evidence": "Live-proof probe present .github/live-proofs/2357.sql; SQL returns passed=true on local throwaway database.",
@@ -56,16 +56,20 @@
       "evidence": "Verify-cost guard passed.",
       "command": "node scripts/check-migration-verify-cost.mjs",
       "exit_code": 0
+    },
+    {
+      "exit_code": 0,
+      "command": "node scripts/agent-work-contract-git-evidence.mjs",
+      "evidence": "Prior evidence seal passed with explicit contract/report/base/head arguments; this gen5 seal is reverified immediately after commit."
     }
   ],
   "assumptions_resolved": [
     "Preview and production target-verified ledgers lack both old versions; production lacks all3 views/helper.",
     "No old scalar Style Guide inference assertion remains in current OPA test; existing file untouched.",
-    "No shared database write or credential disclosure occurred."
+    "No shared database write or credential disclosure occurred.",
+    "Parent guarded supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0 resolved timestamp blocker; old reservation retained."
   ],
   "stop_conditions_hit": [
-    "Parent controls sanctioned supersession of backdated reserved version before full SQL gate can pass.",
-    "Generated api/plm types require parent-authorized preview stage and existing Generate database types workflow; not yet generated.",
-    "No external exact-head review or live browser acceptance claimed."
+    "Generated api/plm types require parent-authorized preview stage; no generated artifact exists yet. No ready-for-merge or production-complete outcome asserted."
   ]
 }

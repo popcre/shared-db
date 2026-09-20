@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260920151046"
   ],
-  "contract_ref": "refs/db-contracts/2357/7",
-  "contract_sha256": "4362bde0dc2b8789547ef59d4534cb1b72e098af961428551b107c0a91d7fccc",
-  "head_sha": "dd098651855e20bfb4a76d7495b726af31d66798",
+  "contract_ref": "refs/db-contracts/2357/8",
+  "contract_sha256": "294af882baad927b255f97f7ece02e1535fca90f4b85e5e7e29953c209f1bc96",
+  "head_sha": "eb49903f0afc1661d88df49d118e2d41835b116c",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -33,7 +33,7 @@
   ],
   "checks": [
     {
-      "evidence": "PostgreSQL18 localhost55457: real browser, anon, service reads; latest-complete selection; licensor-grain and scope isolation; private text; root and observation RLS; overflow and genuine-zero controls passed. Local baseline uses actual source table definitions with minimal canonical reference scaffolding; full-history replay remains CI.",
+      "evidence": "PostgreSQL18 localhost55457 passed: real browser/anon/service reads; latest-complete; all three views behavioral RLS; direct vs inferred/co-occurrence eligibility; open/closed entity queue statuses and licensor grain; signed numeric IDs, positive/negative overflow, zero; exact helper shape/grants and full forbidden-column catalog proof. Current source constraints copied from canonical migration into local scaffold. Previous head full-history CI passed; revised head requires CI replay.",
       "command": "Focused SQL contracts in isolated local PostgreSQL",
       "exit_code": 0
     },

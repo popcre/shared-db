@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 10,
+  "generation": 11,
   "work_issue": 3290,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -53,7 +53,8 @@
     "Generation 6 re-publishes the same scope so the contract and completion evidence land in one commit, as the git-evidence check requires.",
     "Second governed review returned REVISE; every finding answered as a class, including an allowlist-shaped public-venue backstop and a strict gate that refuses unreviewed wording ambiguity.",
     "Generation 8 re-publishes the same scope so contract and completion land in one commit after the main merge, as the git-evidence check requires.",
-    "Generation 10 re-anchors the evidence to the current merge base and lives at the generation-keyed path introduced by PR #3323; the legacy fixed pair is left exactly as main has it."
+    "Generation 10 re-anchors the evidence to the current merge base and lives at the generation-keyed path introduced by PR #3323; the legacy fixed pair is left exactly as main has it.",
+    "Generation 11 re-publishes after the report-writer newline fix; the report writer now emits exactly one trailing newline so git diff --check stays clean."
   ],
   "stop_conditions": [
     "Any unreviewed gold label prevents accuracy acceptance",

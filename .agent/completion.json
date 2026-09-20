@@ -1,38 +1,28 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 2836,
   "outcome": "ready-for-merge",
-  "pr": 3293,
+  "pr": 3315,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
+  "contract_ref": "refs/db-contracts/2836/1",
+  "contract_sha256": "12791f42c1c122d8eebcf87a022a66358411b7ceeebff5667e0e131923afcd50",
+  "head_sha": "40abe55b661624a3b50f6b36220bc87b08aff146",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
-    },
-    {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
-      "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "pass 612 fail 0 at 40abe55b; the same suite fails 3 against the unfixed returnIssueToOwner, including 'returning kept minting copies for 8 generations; the return loop is unbounded'"
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "Sibling paths audited: orchestrator-flow/admission.mjs, orchestrator-flow/outcome-lifecycle.mjs, db-coordination-events.mjs, check-live-proof-probe.mjs and queue-hygiene-report.mjs all carry or read a return address but none mints an issue, so manage-migration-author-lanes.mjs is the only copy-minting path and one guard covers the class.",
+    "The reject classification and the already-returned guard are unchanged in strength; only the audit's suggested action changes for an already-returned copy."
   ],
   "stop_conditions_hit": []
 }

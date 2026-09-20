@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 6,
+  "generation": 7,
   "work_issue": 3290,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -52,7 +52,8 @@
     "The full-catalog evaluation read production coldlion.item_header with a read-only session under AGENTS.md 0.0-A (inspection, no issue or dispatch required); the export stayed in the session scratchpad and no catalog row is committed",
     "The public data venue guard allows the two reader CSVs by name; a new test in tools/product_type_reader/tests/test_reader.py fails if a licensor or property name ever appears in them, so the allowance cannot silently widen",
     "The governed review required exhausting the material-named-construction class; that renamed one legacy construction label (Anti-Fatigue PVC to Anti-Fatigue), so the pre-existing consolidation test asserts the corrected label while still asserting consolidation",
-    "Generation 6 re-publishes the same scope so the contract and completion evidence land in one commit, as the git-evidence check requires."
+    "Generation 6 re-publishes the same scope so the contract and completion evidence land in one commit, as the git-evidence check requires.",
+    "Second governed review returned REVISE; every finding answered as a class, including an allowlist-shaped public-venue backstop and a strict gate that refuses unreviewed wording ambiguity."
   ],
   "stop_conditions": [
     "Any unreviewed gold label prevents accuracy acceptance",

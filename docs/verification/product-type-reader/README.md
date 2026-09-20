@@ -17,10 +17,10 @@ to this public repository.
 | Measure | Baseline (rules as ported, before Phase A fixes) | Final |
 |---|---:|---:|
 | Descriptions evaluated | 18,731 | 18,731 |
-| Accepted (a product was read) | 15,879 (84.8%) | 16,457 (87.9%) |
-| Unreadable (explicit no answer) | 2,190 (11.7%) | 1,612 (8.6%) |
+| Accepted (a product was read) | 15,879 (84.8%) | 16,468 (87.9%) |
+| Unreadable (explicit no answer) | 2,190 (11.7%) | 1,601 (8.5%) |
 | Placeholder (fee, test, assortment, blank) | 662 (3.5%) | 662 (3.5%) |
-| Distinct matched wordings | 381 | 385 |
+| Distinct matched wordings | 381 | 388 |
 | Wrong against gold labels | not yet labelled | **0** |
 | Accepted wording with no gold label | — | **0** |
 | Accepted rows read from wording with more than one reviewed meaning | — | 6,003 (36.5%) |
@@ -31,7 +31,7 @@ The full final report is [`evaluation-2026-09-20.md`](evaluation-2026-09-20.md).
 
 Two halves, on purpose:
 
-1. **`gold/labels.csv` — 386 rows, one per distinct (wording, product, construction) triple.**
+1. **`gold/labels.csv` — 389 rows, one per distinct (wording, product, construction) triple.**
    Every wording the reader accepts anywhere in the live catalog has a reviewed label. These labels were proposed from
    the reader's own output and then **reviewed one by one against a real example description**;
    that review produced 13 rule corrections, each of which is now a test fixture. Because the key
@@ -39,7 +39,8 @@ Two halves, on purpose:
    catalog* — it does not by itself prove independence. One wording, `canvas`, legitimately
    carries two reviewed meanings (a stretched canvas and a paint-your-own set); the rules pick
    between them by tier, and the report counts and names every such row rather than letting
-   `wrong = 0` absorb it.
+   `wrong = 0` absorb it. `evaluate.py --strict` now REFUSES any shared wording whose gold rows
+   do not carry an `ambiguous-by-design` note, so ambiguity nobody reviewed fails the gate.
 2. **`tests/fixtures/descriptions.csv` — 48 real descriptions with expected values written out
    by hand.** This is the independent half. It carries every miss recorded on #3024 on
    2026-09-16 (7 no-answer, 4 wrong), every correction found during gold review, the
@@ -57,7 +58,7 @@ Fixed so the reader stops inventing an answer:
 - a bare `canvas` no longer swallows canvas hampers, growth charts or folding frame sets: the
   bare-material rule is now an explicit fallback tier instead of a hidden tiebreak.
 - `memory foam floor mat` is a floor mat, not a door mat.
-- `Coca-Cola Desk Mat` no longer invents a rubber material.
+- a bare `desk mat` no longer invents a rubber material.
 - construction corrected wherever it smuggled in an unstated material. The first pass fixed
   instances (wood block, jute tray, silicone hook, button and sequin art, plain photo frame);
   the independent review found the class was not exhausted, so every rule was split into a
@@ -75,7 +76,7 @@ abbreviations, `3-D` spacing, `molded foam`, `die cut mdf`, `greyboard storage`,
 
 ## What is still open
 
-- The 1,612 unreadable descriptions are listed by frequency in the report. Most are
+- The 1,601 unreadable descriptions are listed by frequency in the report. Most are
   property or artwork wording with no product noun at all (a bare property name, an artwork phrase). They are deliberately left unreadable rather than guessed.
 - A handful of labels are genuinely ambiguous and are named for owner review, notably
   `Framed Print / Under Glass` versus `Framed Print / MDF` where a description states both, and

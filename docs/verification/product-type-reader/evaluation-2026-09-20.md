@@ -8,10 +8,10 @@
 
 | Outcome | Rows | Share |
 |---|---:|---:|
-| Accepted (a product was read) | 16457 | 87.9% |
-| Unreadable (explicitly no answer) | 1612 | 8.6% |
+| Accepted (a product was read) | 16468 | 87.9% |
+| Unreadable (explicitly no answer) | 1601 | 8.5% |
 | Placeholder (fee, test, assortment, blank) | 662 | 3.5% |
-| Correct against gold labels | 16457 | 100.0% of accepted |
+| Correct against gold labels | 16468 | 100.0% of accepted |
 | **Wrong against gold labels** | **0** | 0.0% of accepted |
 | Accepted wording with no gold label | 0 | 0.0% of accepted |
 | Read from wording that carries more than one reviewed meaning | 6003 | 36.5% of accepted |
@@ -39,10 +39,10 @@ Distinct product types read: 73.
 | Wall Clock | 235 |
 | Hard Storage Box | 231 |
 | Storage Hamper | 203 |
-| Storage Toy Chest | 174 |
-| Storage Chest | 172 |
+| Storage Chest | 202 |
 | Foam Wall Decor | 167 |
 | Photo Frame | 155 |
+| Storage Toy Chest | 155 |
 | Lap Desk | 126 |
 | Pencil Cup | 120 |
 | Wall Hook | 111 |
@@ -72,15 +72,18 @@ None. Every accepted wording carries a reviewed gold label.
 
 ## Unreadable descriptions (for owner review)
 
-1612 descriptions carry no reviewed product wording and are marked `unreadable` rather than guessed. No catalog row is reproduced here: the table counts the two-word phrases that appear in those descriptions, which is what a reviewer needs in order to judge whether a rule is missing. Phrases are kept only when every word is in the rules' own product vocabulary, so licensor, property and artwork names cannot appear.
+1601 descriptions carry no reviewed product wording and are marked `unreadable` rather than guessed. No catalog row is reproduced here: the table counts the two-word phrases that appear in those descriptions, which is what a reviewer needs in order to judge whether a rule is missing. Phrases are kept only when every word is in the rules' own product vocabulary, so licensor, property and artwork names cannot appear.
 
 | Two-word phrase in an unreadable description | Descriptions |
 |---|---:|
 | high gloss | 54 |
 | wall art | 53 |
+| die cut | 37 |
 | stained glass | 32 |
 | gloss art | 30 |
+| color your | 24 |
 | mini stained | 17 |
+| 1 25 | 16 |
 | domed storage | 16 |
 | mdf writing | 16 |
 | tabletop decor | 16 |
@@ -98,7 +101,7 @@ None. Every accepted wording carries a reviewed gold label.
 | nonwoven fabric | 11 |
 | book cover | 10 |
 | custom shaped | 10 |
-| flat domed | 10 |
+| framed 3d | 10 |
 | leather art | 10 |
 | shaped mat | 10 |
 | box art | 9 |
@@ -106,24 +109,21 @@ None. Every accepted wording carries a reviewed gold label.
 | mdf wood | 9 |
 | mirror wall | 9 |
 | painted mdf | 9 |
-| storage chest | 9 |
 | art print | 8 |
 | block tabletop | 8 |
 | faux books | 8 |
+| flat domed | 8 |
 | foam art | 8 |
 | mdf print | 8 |
 | collage glass | 7 |
 | glass plaque | 7 |
 | led mirror | 7 |
+| letter a | 7 |
 | linen framed | 7 |
 | mdf wall | 7 |
 | metal art | 7 |
+| mini markers | 7 |
+| print in | 7 |
 | under glass | 7 |
 | wall decor | 7 |
-| desktop storage | 6 |
-| fabric desktop | 6 |
-| fabric tabletop | 6 |
-| gold foil | 6 |
-| large domed | 6 |
-| large flat | 6 |
 

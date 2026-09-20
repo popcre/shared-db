@@ -18,8 +18,8 @@ boxed mdf,Wall Plaque,MDF,accepted,28 live rows
 bunting,Hanging Wall Art,Banner,accepted,1 live rows
 button art,Hanging Wall Art,Button,accepted,12 live rows
 candle holder,Candle Holder,Object,accepted,3 live rows
-canvas,Canvas,Stretched,accepted,5890 live rows
-canvas,Paint-Your-Own Canvas Set,Canvas Set,accepted,113 live rows
+canvas,Canvas,Stretched,accepted,5890 live rows; ambiguous-by-design: bare canvas wording is a paint-your-own set only when paint wording follows it
+canvas,Paint-Your-Own Canvas Set,Canvas Set,accepted,113 live rows; ambiguous-by-design: reviewed 2026-09-20, the rules separate these by paint wording
 canvas floating frame,Framed Canvas,Floater Frame,accepted,3 live rows
 canvas framed,Framed Canvas,Frame,accepted,2 live rows
 canvas in floating frame,Framed Canvas,Floater Frame,accepted,8 live rows
@@ -71,7 +71,9 @@ diy embroidery kit,Embroidery Kit,DIY,accepted,3 live rows
 diy mini planter,Tabletop Planter,Planter,accepted,5 live rows
 dome block,Tabletop Block,Domed,accepted,4 live rows
 domed block,Tabletop Block,Domed,accepted,2 live rows
+domed chest,Storage Chest,Chest,accepted,2 live rows
 domed greyboard storage chest,Storage Chest,Greyboard,accepted,98 live rows
+domed greyboard storage toy chest,Storage Chest,Greyboard,accepted,4 live rows
 door hanger,Door Hanger,Hanger,accepted,8 live rows
 door mat,Door Mat,Door,accepted,2 live rows
 door sign,Wall Sign,Sign,accepted,8 live rows
@@ -100,7 +102,8 @@ faux leather hamper,Storage Hamper,Fabric,accepted,9 live rows
 felt hamper,Storage Hamper,Felt,accepted,22 live rows
 felt oval hamper,Storage Hamper,Felt,accepted,31 live rows
 file organizer,Storage Organizer,Hanging,accepted,6 live rows
-flat top greyboard storage chest,Storage Chest,Greyboard,accepted,27 live rows
+flat top greyboard chest,Storage Chest,Greyboard,accepted,2 live rows
+flat top greyboard storage chest,Storage Chest,Greyboard,accepted,48 live rows
 float frame,Framed Print,Floater Frame,accepted,8 live rows
 floater frame,Framed Print,Floater Frame,accepted,16 live rows
 floater frame canvas,Framed Canvas,Floater Frame,accepted,255 live rows
@@ -181,14 +184,13 @@ glass storage box,Tabletop Box,Glass,accepted,7 live rows
 glitter lid box,Hard Storage Box,Lift-Off,accepted,23 live rows
 greyboard bin,Storage Bin,Soft,accepted,2 live rows
 greyboard book storage,Hard Storage Box,Faux Book,accepted,8 live rows
-greyboard chest,Storage Chest,Greyboard,accepted,2 live rows
-greyboard flat top greyboard storage chest,Storage Chest,Greyboard,accepted,21 live rows
 greyboard flat top storage chest,Storage Chest,Greyboard,accepted,5 live rows
 greyboard flip top box,Hard Storage Box,Flip-Top,accepted,7 live rows
 greyboard letter,Tabletop Monogram,Letter,accepted,59 live rows
 greyboard rectangular hamper,Storage Hamper,Soft,accepted,3 live rows
 greyboard storage,Hard Storage Box,Greyboard,accepted,15 live rows
 greyboard storage chest,Storage Chest,Greyboard,accepted,5 live rows
+greyboard storage toy chest,Storage Chest,Greyboard,accepted,15 live rows
 greyboard toy chest,Storage Chest,Greyboard,accepted,14 live rows
 growth chart,Growth Chart,Hanging,accepted,50 live rows
 guitar hook,Wall Hook,Hook,accepted,4 live rows
@@ -209,7 +211,7 @@ infinity led art,Wall Light,LED,accepted,1 live rows
 iron thermometer,Garden Thermometer,Metal,accepted,1 live rows
 jewelry box,Tabletop Box,Jewelry,accepted,4 live rows
 kitchen mat,Kitchen Mat,Kitchen,accepted,10 live rows
-kitchen pvc mat,Kitchen Mat,Anti-Fatigue,accepted,26 live rows
+kitchen pvc mat,Kitchen Mat,PVC,accepted,26 live rows
 kneeler,Garden Kneeler,Kneeler,accepted,2 live rows
 lap desk,Lap Desk,Lapdesk,accepted,94 live rows
 lap writing desk,Lap Desk,Lapdesk,accepted,4 live rows
@@ -315,7 +317,7 @@ plush wall art,Hanging Wall Art,Fabric,accepted,4 live rows
 plywood bird feeder,Birdhouse or Feeder,Wood,accepted,6 live rows
 plywood bird house,Birdhouse or Feeder,Wood,accepted,1 live rows
 pocket hanging shoe organizer,Storage Organizer,Hanging,accepted,13 live rows
-poly doormat,Door Mat,Poly,accepted,11 live rows
+poly doormat,Door Mat,Doormat,accepted,11 live rows
 pp molded wall clock,Wall Clock,Molded Plastic,accepted,181 live rows
 pp wall clock,Wall Clock,Molded Plastic,accepted,14 live rows
 print glass,Framed Glass Art,Printed Glass,accepted,2 live rows
@@ -353,11 +355,12 @@ stained glass art,Framed Glass Art,Stained Glass,accepted,3 live rows
 storage basket,Storage Basket,Soft,accepted,8 live rows
 storage bin,Storage Bin,Soft,accepted,32 live rows
 storage box,Hard Storage Box,Function Box,accepted,1 live rows
+storage chest,Storage Chest,Chest,accepted,9 live rows
 storage cube,Storage Cube,Collapsible,accepted,36 live rows
 storage hamper,Storage Hamper,Soft,accepted,42 live rows
 storage tower,Storage Tower,Tower,accepted,2 live rows
 storage towers,Storage Tower,Tower,accepted,5 live rows
-storage toy chest,Storage Toy Chest,Soft,accepted,23 live rows
+storage toy chest,Storage Toy Chest,Soft,accepted,4 live rows
 suitcase greyboard storage,Hard Storage Box,Suitcase,accepted,7 live rows
 tabletop led acrylic art,Tabletop LED Art,Acrylic,accepted,11 live rows
 tall mdf sign,Tall Wall Sign,Leaner,accepted,78 live rows

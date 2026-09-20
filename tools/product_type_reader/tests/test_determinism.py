@@ -92,6 +92,13 @@ class DeterminismTests(unittest.TestCase):
             env={**_clean_env(), "PYTHONHASHSEED": "7919"},
         )
         self.assertEqual(result.stdout.strip(), digest(shuffled))
+        # And the forward order in THIS process must agree per description with the
+        # reversed order in that one, so order independence is asserted across the
+        # boundary rather than inferred from two reversed runs.
+        self.assertEqual(
+            {description: digest([description]) for description in descriptions},
+            {description: digest([description]) for description in shuffled},
+        )
 
     def test_hash_seed_does_not_change_the_result(self):
         script = (

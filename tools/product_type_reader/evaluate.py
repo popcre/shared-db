@@ -176,8 +176,13 @@ def _vocabulary() -> frozenset[str]:
     patterns += [pattern.pattern for _name, pattern in MATERIAL_RULES]
     patterns += [pattern.pattern for _name, pattern in TREATMENT_RULES]
     for pattern in patterns:
-        words.update(_re.findall(r"[a-z]{3,}", pattern))
-    words.difference_update({"cut"})
+        # Drop every escape (, \d, ...) first so regex syntax letters never
+        # become vocabulary, then take the literal words that remain.
+        literal = _re.sub(r"\\.", " ", pattern)
+        # An optional character means BOTH spellings are literal wording
+        # ("colou?r" is both "colour" and "color"), so record each of them.
+        words.update(_re.findall(r"[a-z0-9]+", literal.replace("?", "")))
+        words.update(_re.findall(r"[a-z0-9]+", _re.sub(r"[a-z0-9]\?", "", literal)))
     return frozenset(words)
 
 
@@ -198,8 +203,9 @@ def _wording_pairs(description: str) -> set[str]:
 
 FIXTURES = Path(__file__).with_name("tests") / "fixtures" / "descriptions.csv"
 
-# Set by main() so the report can name each ambiguous wording's reviewed meanings.
-_AMBIGUOUS_LABELS: dict[str, list[dict[str, str]]] = {}
+# A wording that two rules legitimately share must say so in its gold note, or
+# --strict refuses: ambiguity a human has not reviewed is not an acceptable result.
+AMBIGUITY_ACCEPTED = "ambiguous-by-design"
 
 
 def _check_fixtures() -> tuple[int, int]:
@@ -232,6 +238,7 @@ def render_report(
     unreadable_wording: Counter,
     product_counts: Counter,
     ambiguous_wording: Counter,
+    labels: dict[str, list[dict[str, str]]],
     source: str,
     unreadable_sample: int,
 ) -> str:
@@ -282,7 +289,7 @@ def render_report(
         for wording, count in sorted(ambiguous_wording.items(), key=lambda pair: (-pair[1], pair[0]))[:25]:
             meanings = "; ".join(
                 f"{entry['expected_product_type']} / {entry['expected_product_construction']}"
-                for entry in _AMBIGUOUS_LABELS.get(wording, [])
+                for entry in labels.get(wording, [])
             )
             lines.append(f"| {wording} | {count} | {meanings} |")
 
@@ -361,12 +368,10 @@ def main(argv: list[str] | None = None) -> int:
     catalog = load_catalog(args.catalog)
     labels = load_gold(args.labels)
     outcome, wrong, uncovered, unreadable, products, ambiguous = evaluate(catalog, labels)
-    _AMBIGUOUS_LABELS.clear()
-    _AMBIGUOUS_LABELS.update({wording: labels[wording] for wording in ambiguous})
 
     source = args.source or f"{args.catalog.name} ({len(catalog)} rows)"
     report = render_report(
-        outcome, wrong, uncovered, unreadable, products, ambiguous, source, args.unreadable_sample
+        outcome, wrong, uncovered, unreadable, products, ambiguous, labels, source, args.unreadable_sample
     )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -378,8 +383,20 @@ def main(argv: list[str] | None = None) -> int:
         f"placeholder={outcome.placeholder} correct={outcome.correct} wrong={outcome.wrong} "
         f"uncovered={outcome.uncovered} ambiguous={outcome.ambiguous}"
     )
+    unreviewed = sorted(
+        wording
+        for wording in ambiguous
+        if not all(AMBIGUITY_ACCEPTED in entry["note"] for entry in labels.get(wording, []))
+    )
     if args.strict and (outcome.wrong or outcome.uncovered):
         print("strict gate failed: wrong or unlabelled answers remain", file=sys.stderr)
+        return 1
+    if args.strict and unreviewed:
+        print(
+            "strict gate failed: wording carries more than one reviewed meaning and no gold row "
+            f"marks it {AMBIGUITY_ACCEPTED}: {', '.join(unreviewed[:10])}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

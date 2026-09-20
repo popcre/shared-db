@@ -88,7 +88,7 @@ class ConstructionNeverStatesAnUnstatedMaterialTests(unittest.TestCase):
         "mdf": ("mdf",),
         "greyboard": ("greyboard",),
         "canvas": ("canvas",),
-        "fabric": ("fabric", "linen", "burlap", "embroidered", "oxford", "nonwoven", "felt", "plush", "woven", "jersey", "velvet", "poly", "suede"),
+        "fabric": ("fabric", "linen", "burlap", "embroidered", "oxford", "nonwoven", "felt", "plush", "woven", "jersey", "velvet", "poly", "suede", "wool", "yarn", "canvas", "leather", "cotton"),
         "plastic": ("plastic", "pvc", "acrylic", "polypropylene", "pp ", "tpe"),
         "pvc": ("pvc",),
         "metal": ("metal", "tin", "aluminum", "aluminium", "iron", "steel", "galvanized"),
@@ -108,6 +108,13 @@ class ConstructionNeverStatesAnUnstatedMaterialTests(unittest.TestCase):
         "mirror": ("mirror",),
         "yarn": ("yarn",),
         "plush": ("plush",),
+        "poly": ("poly",),
+        "stone": ("stone",),
+        "resin": ("resin",),
+        "suede": ("suede",),
+        "linen": ("linen",),
+        "burlap": ("burlap",),
+        "greyboard": ("greyboard",),
     }
 
     @staticmethod
@@ -134,12 +141,35 @@ class ConstructionNeverStatesAnUnstatedMaterialTests(unittest.TestCase):
         parts.append("".join(current))
         return parts
 
-    @staticmethod
-    def _states(alternative: str, words: tuple[str, ...]) -> bool:
-        """True when the alternative REQUIRES one of `words` (not optionally)."""
-        # Optional groups do not require anything; a positive lookahead does.
-        stripped = re.sub(r"\(\?:[^()]*\)\?", " ", alternative)
-        return any(word.strip() in stripped for word in words)
+    @classmethod
+    def _expansions(cls, alternative: str) -> list[str]:
+        """Every concrete wording this alternative can match, bounded.
+
+        A substring check over the raw pattern is not enough: a group such as
+        `(?:fabric |canvas |oxford )+` passes a naive check on `fabric` even for
+        the `oxford` branch. Expanding the alternation means EVERY branch has to
+        carry the construction's material, which is what the invariant says.
+        """
+        # Optional groups require nothing at all: expand them to empty.
+        text = re.sub(r"\(\?:[^()]*\)[?*]", " ", alternative)
+        group = re.search(r"\(\?[:=][^()]*\)", text)
+        if group is None:
+            return [text]
+        body = group.group(0)
+        inner = body[body.index(":") + 1 if body.startswith("(?:") else body.index("=") + 1 : -1]
+        branches = inner.split("|") or [""]
+        out = []
+        for branch in branches:
+            out.extend(cls._expansions(text[: group.start()] + branch + text[group.end() :]))
+        return out
+
+    @classmethod
+    def _states(cls, alternative: str, words: tuple[str, ...]) -> bool:
+        """True when EVERY wording this alternative can match states one of `words`."""
+        return all(
+            any(word.strip() in expansion for word in words)
+            for expansion in cls._expansions(alternative)
+        )
 
     def test_every_material_named_construction_is_required_by_its_rule(self):
         from tools.product_type_reader.rules import PRODUCT_RULES
@@ -191,17 +221,52 @@ class PublicVenueTests(unittest.TestCase):
                 with self.subTest(path=path.name, token=token):
                     self.assertNotIn(token, text)
 
+    def test_every_gold_wording_is_itself_readable_product_wording(self):
+        """The strongest backstop: an allowlist, not a list of names to avoid.
+
+        Every gold wording, read on its own, must come back as an accepted product
+        whose meaning the gold set already reviewed. A licensor, property or
+        artwork phrase cannot do that — it reads `unreadable` — so a licensed name
+        cannot reach this file without failing here, whether or not anyone
+        remembered to add it to a blocklist.
+        """
+        with Path(self.PATHS[0]).open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        reviewed: dict[str, set[tuple[str, str]]] = {}
+        for row in rows:
+            reviewed.setdefault(row["matched_wording"], set()).add(
+                (row["expected_product_type"], row["expected_product_construction"])
+            )
+        from tools.product_type_reader.evaluate import VOCABULARY
+
+        for wording, pairs in sorted(reviewed.items()):
+            with self.subTest(wording=wording):
+                reading = read_product_type(wording)
+                if (
+                    reading.product_type_status == "accepted"
+                    and (reading.product_type, reading.product_construction) in pairs
+                ):
+                    continue
+                # A few wordings only carry their catalog meaning in context: "diy"
+                # names a paint-your-own set when "canvas" follows it, and reads as a
+                # colour-your-own kit on its own. Those must still be built only from
+                # words the rules themselves contain, which no licensor name is.
+                outside = [
+                    token
+                    for token in wording.split()
+                    if not token.isdigit() and token not in VOCABULARY
+                ]
+                self.assertEqual(outside, [], "gold wording contains words no rule can match")
+
     def test_gold_labels_carry_no_item_number(self):
         """An item number is a catalog identifier, in any case or shape."""
-        wordings = [
-            row.split(",", 1)[0]
-            for row in Path(self.PATHS[0]).read_text(encoding="utf-8").splitlines()[1:]
-        ]
+        with Path(self.PATHS[0]).open(newline="", encoding="utf-8") as handle:
+            wordings = [row["matched_wording"] for row in csv.DictReader(handle)]
         for wording in wordings:
             with self.subTest(wording=wording):
                 # Product wording is words; a bare code or a long digit run is not.
-                self.assertNotRegex(wording, r"(?i)\b[a-z]{1,4}[-_]?\d{4,}\b")
-                self.assertNotRegex(wording, r"\b\d{5,}\b")
+                self.assertNotRegex(wording, r"(?i)\b[a-z]{1,4}[-_]?\d{3,}\b")
+                self.assertNotRegex(wording, r"\b\d{4,}\b")
 
 
 class NoiseIsIgnoredTests(unittest.TestCase):

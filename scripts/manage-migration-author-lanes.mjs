@@ -2990,7 +2990,7 @@ export function deriveLivePreviewCandidate(issue,io,{claimNumber=null}={}){
   const work=io.getIssue(issue),scope=parseQueueScope(work?.body??'')
   if(!scope)throw new LaneError(`issue #${issue} has no db-work-scope block; add exactly one before preparing preview dispatch`)
   const gate=io.previewGateProof(issue,pr.number,head,bundle.bundle_id,scope.dependencies)
-  const main=io.mainSha(),mainVersions=io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)),preview=io.previewLedger?.()??livePreviewLedger(),originalApplyEvidence=versions.every((version)=>preview.versions.includes(version))?validateOriginalPreviewApplyEvidence({issue,pr:pr.number,versions,mergeCommitSha:merged?pr.merge_commit_sha:null},io):null
+  const main=io.mainSha(),mainVersions=io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)),preview=io.previewLedger?.()??livePreviewLedger(),originalApplyEvidence=versions.every((version)=>preview.versions.includes(version))?validateOriginalPreviewApplyEvidence({issue,pr:pr.number,versions,mergeCommitSha:merged?pr.merge_commit_sha:null,claimHeadSha:head},io):null
   const claimRows=claims.map((row)=>{const linked=io.openPulls().find((p)=>p.head?.ref===row.lease.branch);return{issue:claimTitleWorkIssue(row.claim),pr:linked?.number??0,versions:[row.lease.version],merged:false}}).filter((row)=>row.pr&&row.issue!==null)
   const databasePreview=databasePreviewRequiredFromEvidenceBundle(bundle)
   const route=selectPreviewRoute({repository:REPO,issue,pr:pr.number,base_sha:pr.base.sha,head_sha:head,bundle_id:bundle.bundle_id,database_preview:databasePreview,inspected_files:databasePreview.files.map(({path,sha256})=>({path,sha256})),versions,dependency_closure_complete:gate.dependency_closure_complete,claims:claimRows,main_versions:mainVersions,preview_versions:preview.versions,original_apply_evidence:originalApplyEvidence,merged})
@@ -7260,8 +7260,27 @@ function requireAdmissionGate(options, io, { pr = null, timestamp, mutexOwner = 
   return admitted
 }
 
+
+// ISSUE #2448 (2) -- a second `#NNNN` anywhere in a claim title kills the claim.
+// `claimTitleIssues` reads EVERY `#NNNN` in the title and `claimTitleWorkIssue`
+// returns null unless there is exactly one, so a title that borrowed a work
+// issue's own text -- `CLAIM: #2433 HANDOVER: preview rehearsal owed for merged
+// PR #2423` -- was refused later, by a different command, against a claim that
+// had already spent a permanent migration version. The refusal now arrives at
+// claim time, before the mutex and before `reserveVersion`, and it NAMES the
+// offending extra references so the operator can retitle instead of guess.
+export function assertUnambiguousClaimTitle(task) {
+  const title=`CLAIM: ${String(task??'')}`
+  const refs=[...title.matchAll(/#(\d+)\b/g)].map((match)=>`#${match[1]}`)
+  // A title with NO reference is left exactly as it was: such claims already
+  // exist, `claimTitleWorkIssue` returns null for them and the surrounding code
+  // handles that. #2448 is about the SECOND reference, and only that is refused.
+  if(refs.length<=1)return refs[0]??null
+  throw new LaneError(`--task must name exactly one work issue as #<number>; "${title}" also names ${refs.slice(1).join(', ')}. Retitle the claim so only the work issue remains -- a second reference makes the claim permanently unusable and spends its migration version for nothing`)
+}
 export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
   options = { ...options, objects: validateClaimObjects(options.objects) }
+  assertUnambiguousClaimTitle(options.task)
   if(io.enforceAdmission===true&&(!Number.isInteger(Number(options.admitIssue))||Number(options.admitIssue)<=0))throw new LaneError('--admit-issue <work issue> is required before claim, reviewer assignment, or shared-stage acquisition')
   const requestId = options.requestId ?? randomUUID()
   const ownerSha = io.makeOwnerCommit(`db-coordination author-acquisition ${requestId}`)
@@ -7270,7 +7289,14 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
     const admitted=requireAdmission(options,io,{timestamp:now,mutexOwner:ownerSha})
     if(io.enforceAdmission===true){
       const authorized=[...(admitted?.writes??[])].sort()
-      if(options.objects.length!==authorized.length||options.objects.some((value,index)=>value!==authorized[index]))throw new LaneError(`--claim objects must exactly match admitted issue #${options.admitIssue} writes`)
+      // ISSUE #3125 -- compare SORTED against SORTED. `authorized` is already
+      // sorted, so comparing caller order against it refused a valid claim whose
+      // --objects simply listed the same admitted writes in another order.
+      // requireAdmissionGate already sorts both sides; this second, post-mutex
+      // re-proof did not, so the refusal landed here instead. Set semantics only:
+      // an absent, extra or different object still refuses exactly as before.
+      const requested=[...options.objects].sort()
+      if(requested.length!==authorized.length||requested.some((value,index)=>value!==authorized[index]))throw new LaneError(`--claim objects must exactly match admitted issue #${options.admitIssue} writes`)
     }
     const claims = io.openClaims()
     const prSources = io.prSources()
@@ -9069,7 +9095,25 @@ export function main(argv, now = new Date(), io = githubIo) {
   } catch (error) { console.error(`REFUSED: ${error.message}`); return 2 }
 }
 
-export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCommitSha=null},io){
+// ISSUE #2491 -- preview apply evidence never matched an already-applied version.
+// The preview-apply workflow names BOTH its instance binding's `appliedCommit`
+// and its `preview-migration-apply-<sha>` artifact after the commit it actually
+// checked out and applied (`steps.commit.outputs.sha`, and
+// `name: preview-migration-apply-${{ inputs.commit_sha }}`) -- which for an
+// ordinary claim apply is the CLAIM head, not `run.head_sha` (the ref the
+// workflow_dispatch ran from). This function compared both against
+// `run.head_sha`, so for any version already applied under its claim head the
+// two could never agree and `--prepare-preview-dispatch` always refused.
+// Fixed on the READER side: when the caller proves the claim head it is
+// preparing, that exact head is accepted as the applied commit for a
+// `rehearsalMode: 'claim'` binding, and the artifact name is derived from the
+// applied commit the binding actually records. Nothing is relaxed -- the
+// applied commit must still equal a 40-hex head the caller proved, the artifact
+// must still belong to this run at this run head, and every other identity,
+// digest, expiry and ledger-delta check is untouched. With no claimHeadSha the
+// behaviour is byte-for-byte what it was.
+export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCommitSha=null,claimHeadSha=null},io){
+  const provenClaimHead=/^[0-9a-f]{40}$/i.test(String(claimHeadSha??''))?String(claimHeadSha).toLowerCase():null
   const runIds=[...new Set((io.issueComments(issue)??[]).flatMap((comment)=>{
     const body=String(comment.body??comment)
     const linked=[...body.matchAll(/actions\/runs\/(\d+)/g)].map((match)=>match[1])
@@ -9151,10 +9195,16 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // registered bundle keeps the old refusal.
     const hashBoundClaimApply=Boolean(mergeCommitSha&&binding.rehearsalMode==='claim'&&!pinnedClaimApply&&expected.every((version)=>!HISTORICAL_RESTORATIONS[version]))
     if(hashBoundClaimApply&&typeof io.verifyPreviewApplyArtifact!=='function'){reject(runId,lane,'claim-mode apply outside the restoration registry needs the archived artifact verifier to prove its migration hashes, and no verifier is available');continue}
+
     if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply&&!hashBoundClaimApply){reject(runId,lane,claimRejection??`binding is neither a merged-main rehearsal of pull request #${pr} at merge commit ${mergeCommitSha} with an applied checkout proven to sit between that merge commit and the run head, nor a registered claim-mode apply (rehearsal mode ${binding.rehearsalMode}, applied checkout ${binding.appliedCommit}, dispatch head ${run.head_sha})`);continue}
-    if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha){reject(runId,lane,`binding applied commit ${binding.appliedCommit} is not the run head ${run.head_sha}`);continue}
+    // #2491: an ordinary claim apply binds the CLAIM head it checked out, which is
+    // not the dispatch run head. Accept it only against the exact claim head the
+    // caller proved, and only for a claim-mode binding.
+    const provenClaimApply=Boolean(!mergeCommitSha&&provenClaimHead&&binding.rehearsalMode==='claim'&&String(binding.appliedCommit).toLowerCase()===provenClaimHead)
+    if(!mergeCommitSha&&!provenClaimApply&&binding.appliedCommit!==run.head_sha){reject(runId,lane,`binding applied commit ${binding.appliedCommit} is neither the run head ${run.head_sha} nor the proven claim head ${provenClaimHead??'(none supplied)'}`);continue}
     // The ARTIFACT is named for the applied checkout, never for the dispatch head.
-    const appliedCommit=(pinnedClaimApply||hashBoundClaimApply||mergedMainRehearsal)?binding.appliedCommit:run.head_sha
+    const appliedCommit=(pinnedClaimApply||hashBoundClaimApply||mergedMainRehearsal||provenClaimApply)?binding.appliedCommit:run.head_sha
+
     const allRows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
     // The failed downstream dispatcher may upload exactly one extra artifact,
     // its own review-evidence file, from the same run. Admit that single known

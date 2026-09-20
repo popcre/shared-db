@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/2110/1",
   "contract_sha256": "1dc6fbc5762e9c87e2722f93e2452b0deac549c85467612c91af6b285408b216",
   "head_sha": "db2557343edf52bdbaca4bf69bb5ae05fbb11ec0",
-  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
   "files_changed": [
     ".agent/work/2110/1/completion.json",
     ".agent/work/2110/1/contract.json",

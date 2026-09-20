@@ -28,7 +28,10 @@
 //      an instrument that could not read must never be mistaken for a clean
 //      queue. Exit-non-zero-on-dirty-queue is deliberately NOT implemented
 //      (plan §8 open question — decide after a week of daily runs).
-import { githubIo, buildDynamicQueues, parseAuthorLease, WORK_LABEL, OUTSIDE_ORCHESTRATOR_EXITS, LaneError } from './manage-migration-author-lanes.mjs'
+import { githubIo, buildDynamicQueues, parseAuthorLease, parseQueueScope, WORK_LABEL, OUTSIDE_ORCHESTRATOR_EXITS, LaneError } from './manage-migration-author-lanes.mjs'
+import { classifyDependency, dependencyIssue, findDependencyCycles, findCompletionRecord } from './lib/work-dependencies.mjs'
+import { createStageEvidenceVerifier } from './lib/work-stage-evidence.mjs'
+import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
 import { pathToFileURL } from 'node:url'
 
 // The refuse list names every hook on githubIo that creates, updates, deletes
@@ -62,6 +65,63 @@ export function hygieneReportIo(io) {
   }
 }
 
+// Read the same current-world evidence as admission. This report never publishes
+// events, closes issues, registers waits, or treats a missing proof as delivery.
+export function dependencyHygiene(issues, io, repository) {
+  const states = new Map(), scopes = new Map(), rows = [], edges = new Map()
+  const owner = issue => {
+    const assigned = (issue?.assignees ?? []).map(x => x.login ?? x).filter(x => typeof x === 'string' && x.trim())
+    return assigned.length ? assigned.join(', ') : /^owner:\s*(\S[^\r\n]*)/mi.exec(issue?.body ?? '')?.[1]?.trim() ?? null
+  }
+  const read = number => {
+    if (states.has(number)) return states.get(number)
+    let state
+    try {
+      const listed = issues.find(x => Number(x.number) === number)
+      // The queue listing historically omits assignees; absence in that projection
+      // must not be reported as absence of an owner on GitHub.
+      const issue = listed && Array.isArray(listed.assignees) ? listed : io.getIssue(number)
+      if (!issue || issue.pull_request) throw new Error('work issue is absent or is a pull request')
+      const comments = io.getIssueComments(number).map(c => ({ ...c, author: c.user?.login ?? c.author }))
+      state = { exists: true, open: issue.state !== 'closed', closedAt: issue.closed_at ?? issue.closedAt,
+        comments, repository, owner: owner(issue), verifyStageEvidence: createStageEvidenceVerifier({ ...io, parseScope: parseQueueScope }, repository) }
+      const completion = findCompletionRecord(comments, { requireTrustedAuthor: true })
+      if (completion && ['merged', 'live_verified'].includes(completion.outcome)) {
+        // Unknown history is a failed verification, never the legacy optional flag.
+        state.mergeInMain = io.mergeCommitInMain(completion.merge_sha) === true
+      }
+    } catch (error) { state = { exists: true, unreadable: error.message, owner: null } }
+    states.set(number, state)
+    return state
+  }
+  for (const issue of issues) {
+    const number = Number(issue.number)
+    if (scopes.has(number)) continue // report unique work issues, not duplicate API rows
+    let scope, scopeError
+    try { scope = parseQueueScope(issue.body) } catch (error) { scopeError = error.message }
+    scopes.set(number, scope)
+    const state = read(number)
+    const dependencies = (scope?.dependencies ?? []).map(declaration => {
+      const prerequisite = dependencyIssue(declaration), facts = read(prerequisite)
+      const result = classifyDependency(declaration, facts)
+      return { issue: prerequisite, required_stage: typeof declaration === 'object' ? declaration.required_stage : 'complete',
+        owner: facts.owner, ...result, next_step: result.satisfied ? 'Prerequisite accepted; reconcile the dependent work.' :
+          facts.owner ? `Owner must resolve: ${result.reason}` : 'Assign an owner and repair or complete the prerequisite.' }
+    })
+    edges.set(number, dependencies.filter(x => !x.satisfied).map(x => x.issue))
+    const acceptance = classifyDependency({ issue: number, required_stage: 'application-accepted' }, state)
+    rows.push({ issue: number, work_type: scope?.workType ?? 'unclassified', route: scope?.route ?? null,
+      owner: state.owner, delivery: scopeError ? 'unverifiable' : acceptance.satisfied ? 'verified-awaiting-closure' : acceptance.status === 'unknown' ? 'unverifiable' : 'not-verified',
+      evidence_reason: scopeError ?? acceptance.reason, oldest_meaningful_event: null,
+      current_failing_gate: scopeError ?? dependencies.find(x => !x.satisfied)?.reason ?? (acceptance.status === 'unknown' ? acceptance.reason : null),
+      dependencies, next_step: state.unreadable ? 'Restore readable ownership and completion evidence.' : !state.owner ? 'Assign an owner.' : acceptance.satisfied ? 'Owner must reconcile accepted completion and administrative closure.' :
+        dependencies.some(x => !x.satisfied) ? 'Resolve the named prerequisite stage; closure alone is not proof.' : 'Owner must deliver and verify the declared outcome.' })
+  }
+  return { outcomes: rows, verified_but_open: rows.filter(x => x.delivery === 'verified-awaiting-closure').map(x => x.issue),
+    missing_owners: rows.filter(x => !x.owner && !states.get(x.issue)?.unreadable).map(x => x.issue), dependency_cycles: findDependencyCycles(Object.fromEntries(edges)),
+    unverifiable: [...states].filter(([, value]) => value.unreadable).map(([issue, value]) => ({ issue, reason: value.unreadable })) }
+}
+
 export function main(argv = [], now = new Date(), io = githubIo) {
   try {
     const reportIo = hygieneReportIo(io)
@@ -91,6 +151,7 @@ export function main(argv = [], now = new Date(), io = githubIo) {
       unlabelled_issues: result.unlabelled,
       expired_author_leases: result.expiredClaims,
       not_orchestrator_work: result.notOrchestratorWork.map((item) => ({ ...item, age_days: ageDays(item.issue) })),
+      dependency_hygiene: dependencyHygiene(issues, reportIo, resolveRepositoryIdentity()),
     }
     console.log(JSON.stringify(report, null, 2))
     if (result.unlabelled.length) console.error(`UNLABELLED ISSUES: add the \`${WORK_LABEL}\` label to ${result.unlabelled.map((n)=>`#${n}`).join(', ')} — an unlabelled issue is invisible to every label-filtered query`)
@@ -118,7 +179,7 @@ export function main(argv = [], now = new Date(), io = githubIo) {
       if (unaddressed.length) console.error(`NO RETURN ADDRESS on ${unaddressed.map((item)=>`#${item.issue}`).join(', ')} — a reject with no forwarding address closes into silence.`)
     }
     if (!result.unlabelled.length && !result.expiredClaims.length) console.error('Queue hygiene clean: no unlabelled issues, no expired author leases.')
-    return 0
+    return report.dependency_hygiene.unverifiable.length || report.dependency_hygiene.outcomes.some(row => row.delivery === 'unverifiable' || row.dependencies.some(dependency => dependency.status === 'unknown')) ? 2 : 0
   } catch (error) {
     console.error(`REFUSED: ${error.message}`)
     return 2

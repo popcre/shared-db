@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3359/1",
   "contract_sha256": "4b9fe587147f4bbb58b4f668a356cd080ba72d52605d4c005f10e9688b824310",
-  "head_sha": "b0085d056fc5c99d8207ff74d109dcc96224c3fd",
+  "head_sha": "2d5ed9e0c0e5e3e2954cf9c085e229e3cdb0bf82",
   "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
   "files_changed": [
     "scripts/check-documents-only-pull-request.test.mjs",

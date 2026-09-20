@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3372,
+  "outcome": "ready-for-merge",
+  "pr": 3373,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3372/2",
+  "contract_sha256": "a6597f45bd53310d3ce04b5eca7e73a4a646be212f302c95c2ecb79842f2cd60",
+  "head_sha": "e1a07f42f444b0bc49e7abe1aeaa58afa01933a0",
+  "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
+  "files_changed": [
+    "AGENTS.md",
+    "docs/disney-dcp-withdrawal-answer-routing.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "No whitespace errors",
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Business-rule library check passed.",
+      "command": "node scripts/check-business-rule-library.mjs",
+      "exit_code": 0
+    }
+  ],
+  "assumptions_resolved": [
+    "AGENTS directly routes Laura/Ilona/Disney/DCP withdrawal answers to existing local note",
+    "Note explicitly handles relayed provenance, privacy, ambiguous authority, closed anchor and fresh actual-scope routing",
+    "Structural issue3347 is the durable anchor; technical work does not depend on the human answer"
+  ],
+  "stop_conditions_hit": []
+}

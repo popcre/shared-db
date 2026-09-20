@@ -1,51 +1,49 @@
 {
-  "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
-  "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
-  ],
-  "db_reads": [],
-  "db_writes": [],
-  "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
-  ],
-  "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
-  ],
+  "branch": "codex/claim-alias-01a0bf00",
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "Legacy claims contain duplicate table and view keys for the same relation."
+  ],
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
+  "schema_version": 1,
+  "goal": "Compare proven legacy table aliases of created views without weakening exact object equality or releasing protected claims.",
+  "route": "repo-maintenance",
+  "worktree": "D:/repos/worktrees/shared-db-claim-alias-01a0bf00",
+  "work_type": "repo-maintenance",
+  "generation": 3,
+  "prohibited_actions": [
+    "No database writes or claim mutation.",
+    "No generic subset claim acceptance or reverse view-to-table normalization."
+  ],
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
-  ]
+    "Stop if additional comparison policy changes or lock mutation are necessary."
+  ],
+  "dispatcher": "Codex root marker3297 approved exact alias design and file ownership",
+  "required_checks": [
+    "node --test scripts/orchestrator-flow/legacy-relation-alias.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check",
+    "node --test scripts/queue-hygiene-report.test.mjs"
+  ],
+  "db_reads": [],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
+  ],
+  "db_writes": [],
+  "work_issue": 3319,
+  "worker": "Codex chat 01a0bf6a-8419-7f10-ad44-6d27738757e6 on 916-ALIEN"
 }

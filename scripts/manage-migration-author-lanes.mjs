@@ -9045,7 +9045,21 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     if(binding.previewProjectRef!==PROJECT_REFS.preview){reject(runId,lane,`binding preview project is ${binding.previewProjectRef}, not ${PROJECT_REFS.preview}`);continue}
     if(!/^[0-9a-f]{40}$/i.test(String(binding.appliedCommit??''))){reject(runId,lane,'binding applied commit is not a 40-hex commit');continue}
     if(JSON.stringify(allowlist)!==JSON.stringify(expected)){reject(runId,lane,`binding allowlist ${JSON.stringify(allowlist)} is not the expected versions ${JSON.stringify(expected)}`);continue}
-    const mergedMainRehearsal=Boolean(mergeCommitSha&&binding.rehearsalMode==='merged-main-rehearsal'&&Number(binding.sourcePr)===Number(pr)&&String(binding.mergeCommitSha).toLowerCase()===String(mergeCommitSha).toLowerCase()&&binding.appliedCommit===run.head_sha)
+    // TWO IDENTITIES, NOT ONE (#2549). `run.head_sha` is the commit the WORKFLOW
+    // was dispatched from; `binding.appliedCommit` is the commit the workflow
+    // actually CHECKED OUT and rehearsed, and the artifact is named for that
+    // checkout. A supported merged-main rehearsal may dispatch from current main
+    // while checking out the earlier merged commit, so requiring the two to be
+    // equal rejected valid evidence. They may differ only along one lineage:
+    // merge commit <= applied checkout <= dispatch head. Every other check --
+    // trusted workflow path/event/attempt, the artifact's own dispatch producer
+    // (`artifact.workflow_run.head_sha === run.head_sha`, below), source PR and
+    // merge-commit binding, digest, content manifest and exact ledger delta --
+    // is unchanged. An unavailable comparison answers "not proven", never "ok".
+    const dispatchHead=String(run.head_sha).toLowerCase(),appliedCheckout=String(binding.appliedCommit).toLowerCase()
+    const atOrAfter=(base,head)=>base===head||['ahead','identical'].includes(io.compareCommits?.(base,head)?.status)
+    const checkoutLineageProven=appliedCheckout===dispatchHead||Boolean(mergeCommitSha&&atOrAfter(String(mergeCommitSha).toLowerCase(),appliedCheckout)&&atOrAfter(appliedCheckout,dispatchHead))
+    const mergedMainRehearsal=Boolean(mergeCommitSha&&binding.rehearsalMode==='merged-main-rehearsal'&&Number(binding.sourcePr)===Number(pr)&&String(binding.mergeCommitSha).toLowerCase()===String(mergeCommitSha).toLowerCase()&&checkoutLineageProven)
     // A byte-pinned restoration may have one genuine ordinary claim apply that
     // predates its merge.  That immutable apply is the reason the restoration
     // exists: replaying it would be unsafe.  Admit the distinct dispatch/applied
@@ -9074,9 +9088,10 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // registered bundle keeps the old refusal.
     const hashBoundClaimApply=Boolean(mergeCommitSha&&binding.rehearsalMode==='claim'&&!pinnedClaimApply&&expected.every((version)=>!HISTORICAL_RESTORATIONS[version]))
     if(hashBoundClaimApply&&typeof io.verifyPreviewApplyArtifact!=='function'){reject(runId,lane,'claim-mode apply outside the restoration registry needs the archived artifact verifier to prove its migration hashes, and no verifier is available');continue}
-    if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply&&!hashBoundClaimApply){reject(runId,lane,claimRejection??`binding is neither a merged-main rehearsal of pull request #${pr} at merge commit ${mergeCommitSha} with applied commit equal to the run head, nor a registered claim-mode apply (rehearsal mode ${binding.rehearsalMode})`);continue}
+    if(mergeCommitSha&&!mergedMainRehearsal&&!pinnedClaimApply&&!hashBoundClaimApply){reject(runId,lane,claimRejection??`binding is neither a merged-main rehearsal of pull request #${pr} at merge commit ${mergeCommitSha} with an applied checkout proven to sit between that merge commit and the run head, nor a registered claim-mode apply (rehearsal mode ${binding.rehearsalMode}, applied checkout ${binding.appliedCommit}, dispatch head ${run.head_sha})`);continue}
     if(!mergeCommitSha&&binding.appliedCommit!==run.head_sha){reject(runId,lane,`binding applied commit ${binding.appliedCommit} is not the run head ${run.head_sha}`);continue}
-    const appliedCommit=(pinnedClaimApply||hashBoundClaimApply)?binding.appliedCommit:run.head_sha
+    // The ARTIFACT is named for the applied checkout, never for the dispatch head.
+    const appliedCommit=(pinnedClaimApply||hashBoundClaimApply||mergedMainRehearsal)?binding.appliedCommit:run.head_sha
     const allRows=Array.isArray(artifacts?.artifacts)?artifacts.artifacts:[]
     // The failed downstream dispatcher may upload exactly one extra artifact,
     // its own review-evidence file, from the same run. Admit that single known

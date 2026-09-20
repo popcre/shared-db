@@ -5994,6 +5994,41 @@ test('archived unnamed steps require an exact artifact receipt and never overrid
   assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0/)
 })
 
+// #2549. The workflow DISPATCH identity and the APPLIED CHECKOUT identity are
+// different commits. A supported merged-main rehearsal dispatches from current
+// main B while checking out the merged commit A, and names its artifact for A.
+test('a merged-main rehearsal may be dispatched from a later main than the checkout it applied',()=>{
+  const merge='b'.repeat(40),applied='a1'.repeat(20),dispatch='d2'.repeat(20)
+  const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:merge}
+  const separated=({compareCommits,appliedCommit=applied,artifactName=`preview-migration-apply-${applied}`,artifactHead=dispatch}={})=>{
+    const fixture=immutablePreviewApplyIo(),evidence=fixture.previewApplyRun()
+    evidence.run.head_sha=dispatch
+    evidence.artifacts.artifacts[0].name=artifactName
+    evidence.artifacts.artifacts[0].workflow_run.head_sha=artifactHead
+    evidence.logs=evidence.logs.replace(/"appliedCommit":"[0-9a-f]+"/,`"appliedCommit":"${appliedCommit}"`)
+    return {...fixture,previewApplyRun:()=>evidence,compareCommits}
+  }
+  // Merge commit <= applied checkout <= dispatch head, and the artifact is named
+  // for the checkout while its producer is still the dispatch head.
+  const lineage=(base,head)=>{
+    if(base===merge&&head===applied)return {status:'ahead'}
+    if(base===applied&&head===dispatch)return {status:'ahead'}
+    return {status:'diverged'}
+  }
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,separated({compareCommits:lineage})),{type:'preview-apply',run_id:'33308168016'})
+  // NEGATIVES. Without a comparison nothing is proven; a checkout off the
+  // lineage, an artifact named for the dispatch head, and a forged artifact
+  // producer all still refuse.
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated()),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated({compareCommits:()=>({status:'diverged'})})),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated({compareCommits:(base,head)=>base===merge&&head===applied?{status:'ahead'}:{status:'behind'}})),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated({compareCommits:(base,head)=>base===applied&&head===dispatch?{status:'ahead'}:{status:'behind'}})),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated({compareCommits:lineage,artifactName:`preview-migration-apply-${dispatch}`})),/found 0/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,separated({compareCommits:lineage,artifactHead:applied})),/found 0/)
+  // A same-commit merged-main rehearsal still validates with no comparison at all.
+  assert.deepEqual(validateOriginalPreviewApplyEvidence(input,immutablePreviewApplyIo()),{type:'preview-apply',run_id:'33308168016'})
+})
+
 test('immutable original preview-apply evidence validates only the exact run',()=>{
   const input={issue:1769,pr:1809,versions:['20260828232207'],mergeCommitSha:'b'.repeat(40)}
   assert.deepEqual(validateOriginalPreviewApplyEvidence(input,immutablePreviewApplyIo()),{type:'preview-apply',run_id:'33308168016'})

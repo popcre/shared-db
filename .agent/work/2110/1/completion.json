@@ -8,9 +8,11 @@
   ],
   "contract_ref": "refs/db-contracts/2110/1",
   "contract_sha256": "1dc6fbc5762e9c87e2722f93e2452b0deac549c85467612c91af6b285408b216",
-  "head_sha": "358446b9d104a96a76df7f7e2e9bac5b22f6f77a",
+  "head_sha": "db2557343edf52bdbaca4bf69bb5ae05fbb11ec0",
   "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
   "files_changed": [
+    ".agent/work/2110/1/completion.json",
+    ".agent/work/2110/1/contract.json",
     ".github/live-proofs/2110.sql",
     "docs/verification/2110-frozen-designflow-retirement.md",
     "scripts/test_frozen_designflow_retirement.py",

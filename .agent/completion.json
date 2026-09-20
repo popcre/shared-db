@@ -1,33 +1,35 @@
 {
   "schema_version": 1,
-  "work_issue": 3261,
+  "work_issue": 3305,
   "outcome": "ready-for-merge",
-  "pr": 3258,
+  "pr": 3308,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3261/1",
-  "contract_sha256": "e25d24d9b6b87b38332beab0dca9a467e68f121263fd669772eb9c75a2b238f9",
-  "head_sha": "ae53f8eca1d385fa02e048514c001343c7831404",
+  "contract_ref": "refs/db-contracts/3305/2",
+  "contract_sha256": "29c1626b5732a12f5495da22e7a3da79dda8b0060e05d3389c5fe3fd3013d817",
+  "head_sha": "9f0109eb660feef32b762f07b441404a5fa99027",
   "files_changed": [
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "AGENTS.md"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
       "exit_code": 0,
-      "evidence": "Recovered current-main implementation ae53f8eca1d385fa02e048514c001343c7831404: 609 tests passed, 0 failed, 0 cancelled, 0 skipped, 0 todo."
+      "evidence": "30 tests passed; zero failures, skips or cancellations"
     },
     {
-      "command": "node --test scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "Recovered current-main implementation ae53f8eca1d385fa02e048514c001343c7831404: 113 tests passed, 0 failed, 0 cancelled, 0 skipped, 0 todo."
+      "evidence": "609 tests passed; zero failures, skips or cancellations"
     }
   ],
   "assumptions_resolved": [
-    "PR #3247 merged (2026-09-18T14:51:07Z) and this branch rebased cleanly onto merged main; no stop condition fired — the same-file collision was resolved by that merge, not by weakening anything here. Later main movement (reviewer-start-watch and reroute-budget work) touched none of this branch's three files."
+    "Authentic run35228140178 reproduced artifact-count refusal; selector now selects correct artifact10499394912",
+    "Parent explicitly authorized isolated integration hunk; reviewer code unchanged"
   ],
   "stop_conditions_hit": []
 }

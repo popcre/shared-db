@@ -6,7 +6,7 @@
   "assumptions_resolved": [
     "Prerequisite PR3357 merged; current main incorporated"
   ],
-  "head_sha": "e28c8cbceb99b7208566b4e30629bbdfa8894f4f",
+  "head_sha": "206229ebe50ca322b7940d5d57e83e3c2711c560",
   "checks": [
     {
       "command": "node --test scripts/lib/agent-evidence-paths.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/check-main-tip-freshness.test.mjs",

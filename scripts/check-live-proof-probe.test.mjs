@@ -103,3 +103,37 @@ test('main() I/O: probe in tree or on main passes; deleted, absent or no contrac
   t = io({ files: { '.agent/contract.json': C }, diff: 'M\tdocs/a.md\n' })
   assert.equal(main(t.deps), 0); assert.match(t.out[0], /not applicable/)
 })
+
+test('lexical boundaries never let quoted comment markers hide extra statements', () => {
+  for (const literal of ["'as passed --'", "'/* as passed */'", "E'as passed --'", '$$as passed --$$', '$tag$/*as passed*/$tag$', '"as passed --"']) {
+    assert.match(probeShapeProblem(`SELECT ${literal}; COMMIT; SELECT true AS passed;`), /more than one statement/)
+    assert.match(probeShapeProblem(`SELECT ${literal}`), /no column/)
+  }
+})
+
+test('single-pass scanner accepts inert literal contents and nested comments', () => {
+  for (const literal of ["'-- ; /* delete */'", "'it''s ; --'", String.raw`E'it\'s ; --'`, '$$; COMMIT; --$$', '$tag$; /* DROP */$tag$']) {
+    assert.equal(probeShapeProblem(`SELECT (${literal} IS NOT NULL) AS passed; -- ending`), null, literal)
+  }
+  assert.equal(probeShapeProblem('/* outer /* nested */ outer */ SELECT true AS passed;'), null)
+  assert.equal(probeShapeProblem('-- comment\rSELECT true AS passed'), null)
+  assert.match(probeShapeProblem('SELECT true AS passed /* outer /* nested */'), /unterminated/)
+  assert.match(probeShapeProblem('SELECT true AS passed; /* nested /* */ */ COMMIT'), /more than one statement/)
+})
+
+test('malformed or setting-dependent literals fail closed', () => {
+  for (const sql of ["SELECT 'unterminated AS passed", 'SELECT "unterminated AS passed', 'SELECT $$unterminated AS passed', 'SELECT $a$wrong$b$ AS passed', String.raw`SELECT E'escaped\' AS passed`, "SELECT true AS passed /*", 'SELECT true AS passed\0']) {
+    assert.notEqual(probeShapeProblem(sql), null, sql)
+  }
+  assert.match(probeShapeProblem(String.raw`SELECT '\' AS passed; COMMIT; --'`), /ambiguous backslash/)
+  assert.match(probeShapeProblem(String.raw`SELECT true AS U&"passed"`), /unsupported/)
+  assert.match(probeShapeProblem('SELECT true AS "PASSED"'), /no column/)
+})
+
+test('identifier and token boundaries cannot manufacture a keyword or dollar quote', () => {
+  assert.match(probeShapeProblem('SEL/* comment */ECT true AS passed'), /SELECT or WITH/)
+  assert.match(probeShapeProblem('SELECT true A/**/S passed'), /no column/)
+  assert.match(probeShapeProblem('SELECT value$tag$; COMMIT; SELECT true AS passed'), /more than one statement/)
+  assert.match(probeShapeProblem('SELECT true AS passed;;'), /more than one statement/)
+  assert.equal(probeShapeProblem('SELECT "delete" IS NULL AS passed'), null)
+})

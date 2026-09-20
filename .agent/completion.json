@@ -27,8 +27,6 @@
   "db_writes": [],
   "contract_sha256": "1994731accc3a210ac378e67cdfbe134854054fdecd00b31f14ded99bcf148b7",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     ".github/live-proofs/2863.sql",
     "scripts/issue-2863-live-proof.test.mjs"
   ],

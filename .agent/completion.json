@@ -1,38 +1,40 @@
 {
-  "schema_version": 1,
-  "work_issue": 3299,
-  "outcome": "ready-for-merge",
-  "pr": 3293,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
-  "db_reads": [],
+  "migration_versions": [],
   "db_writes": [],
+  "schema_version": 1,
+  "contract_ref": "refs/db-contracts/3319/2",
+  "assumptions_resolved": [
+    "Same proposed migration CREATE VIEW and GRANT evidence remains private to inspector output.",
+    "Issue, claim and bundle object arrays remain unchanged; tests reject opaque proof and real extra writes."
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "command": "node --test scripts/orchestrator-flow/legacy-relation-alias.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "evidence": "84 passed, 0 failed, 0 skipped"
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "evidence": "609 passed, 0 failed, 0 skipped"
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "No whitespace errors"
     }
   ],
-  "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
-  ],
-  "stop_conditions_hit": []
+  "head_sha": "6d0ac1ac7e0478e147ce48ea7e72ace91b680de3",
+  "work_issue": 3319,
+  "contract_sha256": "c37b8af542e1d441c37e7fff855ab505115e9fb1432f8f8d28b50c14cf69e785",
+  "pr": 3325,
+  "outcome": "ready-for-merge",
+  "stop_conditions_hit": [],
+  "db_reads": []
 }

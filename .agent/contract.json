@@ -1,44 +1,46 @@
 {
+  "branch": "codex/claim-alias-01a0bf00",
+  "assumptions": [
+    "Legacy claims contain duplicate table and view keys for the same relation."
+  ],
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3299,
-  "work_type": "repo-maintenance",
+  "goal": "Compare proven legacy table aliases of created views without weakening exact object equality or releasing protected claims.",
   "route": "repo-maintenance",
-  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
-  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
-  "branch": "codex/recover-prepack-proof-20260920",
-  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
+  "worktree": "D:/repos/worktrees/shared-db-claim-alias-01a0bf00",
+  "work_type": "repo-maintenance",
+  "generation": 2,
+  "prohibited_actions": [
+    "No database writes or claim mutation.",
+    "No generic subset claim acceptance or reverse view-to-table normalization."
+  ],
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
+  "stop_conditions": [
+    "Stop if additional comparison policy changes or lock mutation are necessary."
+  ],
+  "dispatcher": "Codex root marker3297 approved exact alias design and file ownership",
+  "required_checks": [
+    "node --test scripts/orchestrator-flow/legacy-relation-alias.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
+  ],
+  "db_reads": [],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
-  "db_reads": [],
   "db_writes": [],
-  "prohibited_actions": [
-    "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
-    "Do not merge PR #3293; the parent owns merge and outcome closure."
-  ],
-  "required_checks": [
-    "python -m unittest scripts.test_shared_db_live_proof",
-    "node --test scripts/check-live-proof-probe.test.mjs",
-    "git diff --check"
-  ],
-  "assumptions": [
-    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
-    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
-    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
-  ],
-  "stop_conditions": [
-    "Stop if the repair requires any database object or timeout change.",
-    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
-  ]
+  "work_issue": 3319,
+  "worker": "Codex chat 01a0bf6a-8419-7f10-ad44-6d27738757e6 on 916-ALIEN"
 }

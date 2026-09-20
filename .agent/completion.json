@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3332,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3290/6",
-  "contract_sha256": "e13b2401f5a64d21976f52f35cfad1395e2c857b828eb40790a5cb6bd6d6707f",
-  "head_sha": "15e3bd9944102359ab2319b295fff279f8617936",
+  "contract_ref": "refs/db-contracts/3290/8",
+  "contract_sha256": "3f00945bed421c20ddf4b09cd5f2689307830938f0f278d90a76dc0b6e02622d",
+  "head_sha": "7da3a82d66300b9b156e20881e7bb0078159d5c2",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -40,12 +40,12 @@
     {
       "command": "python -m pytest -q tools/product_type_reader/tests",
       "exit_code": 0,
-      "evidence": "21 passed, 606 subtests passed: fixtures, never-guess, construction-material class invariant, determinism across processes, and public-venue tests"
+      "evidence": "61 passed, 1000 subtests passed across the reader tests and the 39 pre-existing taxonomy tests"
     },
     {
       "command": "python tools/product_type_reader/evaluate.py --catalog <export> --strict",
       "exit_code": 0,
-      "evidence": "total=18731 accepted=16457 unreadable=1612 placeholder=662 correct=16457 wrong=0 uncovered=0 ambiguous=6003"
+      "evidence": "total=18731 accepted=16468 unreadable=1601 placeholder=662 correct=16468 wrong=0 uncovered=0 ambiguous=6003 (one reviewed ambiguous-by-design wording)"
     },
     {
       "command": "node --test scripts/public-data-venue.test.mjs",
@@ -64,7 +64,8 @@
     "Generation 1 named a Codex worker and branch codex/product-reader-01a0bc30: that branch was never pushed and none of its allowed paths existed on main, so nothing was overwritten.",
     "The live catalog read was read-only inspection under AGENTS.md 0.0-A; the export stayed in the session scratchpad.",
     "No database schema change was required: the seven plm.item columns already exist from orchestrator issue #3036.",
-    "The first governed review (Muse Spark 1.3 Contributor) returned REVISE; every finding was fixed as a class, with a test that fails if the material-named-construction class regrows."
+    "The first governed review (Muse Spark 1.3 Contributor) returned REVISE; every finding was fixed as a class, with a test that fails if the material-named-construction class regrows.",
+    "The second governed review returned REVISE; every finding was answered as a class, and the strict gate now refuses unreviewed wording ambiguity."
   ],
   "stop_conditions_hit": []
 }

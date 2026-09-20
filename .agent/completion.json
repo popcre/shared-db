@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3333,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3331/1",
-  "contract_sha256": "d259d57f2c8eaaffd01e4a0fffab94f9d0259a1d3e54cf3f8d0258e3652f4b76",
+  "contract_ref": "refs/db-contracts/3331/2",
+  "contract_sha256": "c97427f38c7d9e576e0cb162010282f085dcf4d13dab8b06d10bc7819113af5d",
   "head_sha": "09f83fc52b9db4c303edf5059158f0a18c20e3f4",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],

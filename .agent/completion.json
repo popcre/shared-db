@@ -4,10 +4,11 @@
   "outcome": "ready-for-merge",
   "pr": 3296,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3295/1",
-  "contract_sha256": "84e7d694846b906cebd8b261fac840491f31909163f0bab4ac89f3a0dd918482",
-  "head_sha": "4551855bd6cddb0132efaf7faea8dd81322f5078",
+  "contract_ref": "refs/db-contracts/3295/2",
+  "contract_sha256": "f9d027ba1ea67e6e45018a7e5ee1c2ed53a807cd6ade02fba2afc6208fb03d08",
+  "head_sha": "e86a91d2ca3a8737e72960e1202ec721040f84e6",
   "files_changed": [
+    ".agent/completion.json",
     ".agent/contract.json",
     "tools/coldlion-landing-masters.test.mjs",
     "tools/coldlion-landing/lib/load-masters.mjs"
@@ -27,11 +28,10 @@
     }
   ],
   "assumptions_resolved": [
-    "Production PostgreSQL logs name the timed-out command as the item_header insert into coldlion.change_log, running as postgres through Supavisor.",
-    "The effective statement_timeout is 120000 ms from /etc/postgresql-custom/platform-defaults.conf; postgres has no role override.",
-    "log_lock_waits is enabled and the incident window contains no lock-wait message, so the observed 120 seconds were query execution rather than a recorded lock wait.",
-    "The live read-only plan for a fully changed item snapshot falls from estimated cost 177283848 with the correlated lookup to 17413 with the set-based lookup while preserving the same prior-row fallback.",
-    "No scheduled run exists after 2026-09-19T09:30:50Z yet, so recurrence has not had another scheduled opportunity."
+    "Recovery re-ran both required suites after publication of generation 2: focused 42 passed and full 176 passed, 0 failed/skipped/cancelled.",
+    "Implementation SQL still preserves atomic transaction, target checks, timeout and prior-raw fallback; no implementation changes during recovery.",
+    "Original production investigation and cost comparison are historical evidence recorded by prior worker, not a new live measurement by this recovery.",
+    "This completion reports offline repair validation only. A future scheduled-run result remains separate live proof."
   ],
   "stop_conditions_hit": []
 }

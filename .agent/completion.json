@@ -8,8 +8,9 @@
   ],
   "contract_ref": "refs/db-contracts/2662/17",
   "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
-  "head_sha": "6910a070bfd4f994c380e8de576a1edc10c908f7",
+  "head_sha": "3dbb764ba32e1dfddd46189e2d1ee402dea5d543",
   "files_changed": [
+    ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/2662.sql",
     "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
@@ -59,6 +60,11 @@
       "command": "psql local isolated PostgreSQL18 six-view fixture",
       "exit_code": 0,
       "evidence": "42 authenticated denials,6 service reads,4 unchanged browser controls pass. Snapshot exact delta is6 removed authenticated SELECT grants; no added grants, view definition/owner/options changes. Live probe returns true."
+    },
+    {
+      "command": "python -m unittest scripts.test_shared_db_live_proof -q",
+      "exit_code": 0,
+      "evidence": "6 tests passed,0 failures; probe alias normalized to lowercase as required by committed probe contract. SQL semantics unchanged."
     }
   ],
   "assumptions_resolved": [

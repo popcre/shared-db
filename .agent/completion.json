@@ -1,38 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3191,
+  "work_issue": 3295,
   "outcome": "ready-for-merge",
-  "pr": 3277,
-  "migration_versions": [
-    "20260918180012"
-  ],
-  "contract_ref": "refs/db-contracts/3191/2",
-  "contract_sha256": "4356cf72dafdf5f84c5be07437c445d6b3bf5a5f7ef1ed0f60a357d9b23ef384",
-  "head_sha": "9ed79890f214c265dd5b57b997ad85cfad29a7fb",
+  "pr": 3296,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3295/1",
+  "contract_sha256": "84e7d694846b906cebd8b261fac840491f31909163f0bab4ac89f3a0dd918482",
+  "head_sha": "4551855bd6cddb0132efaf7faea8dd81322f5078",
   "files_changed": [
-    ".github/live-proofs/3191.sql",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    ".agent/contract.json",
+    "tools/coldlion-landing-masters.test.mjs",
+    "tools/coldlion-landing/lib/load-masters.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "supabase/tests against an ephemeral database",
+      "command": "node --test tools/coldlion-landing-masters.test.mjs",
       "exit_code": 0,
-      "evidence": "ephemeral_check_run_id 35415550424 (PR #3277 head 160bc1e4, byte-identical migration): artifact supabase-contract-test-logs/applied-migrations.txt positively lists 20260918180012_prepack_role_read_only_proof_grant.sql; re-verified green on the final head before guarded merge dispatch"
+      "evidence": "42 passed, 0 failed"
     },
     {
-      "command": "SQL migration guards",
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "run 35415550535 green at 160bc1e4; re-verified green on the final head before guarded merge dispatch"
+      "evidence": "176 passed, 0 failed"
     }
   ],
   "assumptions_resolved": [
-    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
-    "Reviews: qwen REVISE at 209ebc35 (role dependency, RLS disclosure, evidence binding) and muse REVISE at 799cd15 (do-block grant invisible to catalog verification). Resolved with a plain top-level grant, a header documenting the role dependency and the SECURITY DEFINER disclosure, and this evidence pair. The search_path=pg_catalog,public low finding on the existing function is out of scope.",
-    "Qwen REVISE at 53e93ca9: contract generation 2 now authorizes the live-proof path; check evidence cites the positive applied record; the probe also counts plm.item_missing_attribution. Its finding that files_changed must list four paths is not reproduced: git diff --name-only b32c435a..head_sha lists exactly the two paths because the .agent files were reset to base content in the implementation commit."
+    "Production PostgreSQL logs name the timed-out command as the item_header insert into coldlion.change_log, running as postgres through Supavisor.",
+    "The effective statement_timeout is 120000 ms from /etc/postgresql-custom/platform-defaults.conf; postgres has no role override.",
+    "log_lock_waits is enabled and the incident window contains no lock-wait message, so the observed 120 seconds were query execution rather than a recorded lock wait.",
+    "The live read-only plan for a fully changed item snapshot falls from estimated cost 177283848 with the correlated lookup to 17413 with the set-based lookup while preserving the same prior-row fallback.",
+    "No scheduled run exists after 2026-09-19T09:30:50Z yet, so recurrence has not had another scheduled opportunity."
   ],
   "stop_conditions_hit": []
 }

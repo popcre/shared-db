@@ -6,9 +6,9 @@ Planning date: **2026-09-20**. Tracker: [#3306 — non-orchestrator repository-m
 
 | Step | Independently verifiable outcome | Status | Updated | Acceptance artifact |
 |---|---|---|---|---|
-| 0 | Fresh baseline, overlapping-work ownership and explicit acceptance contracts | ⬜ open | 2026-09-20 | Required: dated baseline report and owner/issue map |
-| 1 | Task evidence no longer conflicts between unrelated pull requests | ⬜ open | 2026-09-20 | Required: compatibility tests and two independent PR delivery traces |
-| 2 | Per-source audit dispositions replace the shared global digest bottleneck | ⬜ open | 2026-09-20 | Required: complete disposition equivalence and concurrent-change proof |
+| 0 | Fresh baseline, overlapping-work ownership and explicit acceptance contracts | Complete | 2026-09-20 | [Dated baseline and ownership map](docs/verification/workflow-refactor-baseline-20260920T1932Z.md) |
+| 1 | Task evidence no longer conflicts between unrelated pull requests | Partial | 2026-09-20 | PR 3323 merged; canonical identity, metadata exclusions, immutable-generation and full delivery acceptance remain |
+| 2 | Per-source audit dispositions replace the shared global digest bottleneck | Partial | 2026-09-20 | PR 3330 merged; enclosing-symbol identity and whitespace-only reason regressions remain |
 | 3 | Maintenance and structural completion use truthful, compatible evidence | ⬜ open | 2026-09-20 | Required: lifecycle regressions and accepted maintenance closeout trace |
 | 4 | Dependencies resume from proven stages; reports separate delivery from paperwork | ⬜ open | 2026-09-20 | Required: event replay tests and recovered dependency trace |
 | 5 | One current procedure replaces contradictory operational instructions | ⬜ open | 2026-09-20 | Required: policy matrix checks, canonical skill links and route walkthrough |
@@ -22,7 +22,7 @@ Planning date: **2026-09-20**. Tracker: [#3306 — non-orchestrator repository-m
 | 13 | Second-review policy is decided from measured defect yield and risk | ⬜ open | 2026-09-20 | Required: decision artifact; if adopted, classifier and activation proof |
 | 14 | End-to-end delivery and sustained safety are measured and accepted | ⬜ open | 2026-09-20 | Required: comparable before/after report, live traces and residual register |
 
-**Fresh implementation starts at Step 0.** This planning change implements none of these fixes. After Step 0, choose a ready step from the dependency map in §9; this is not a mandatory fifteen-step serial train. Re-read this table and all downstream phases before starting each phase. A done row must link an actual commit, test artifact and live result where required, not merely an issue number or a claimed count. A landed-but-unproven step must name exactly one owned live-proof issue opened at landing, and remains partial.
+**Implementation baseline refreshed 2026-09-20 19:32 UTC. Start at the remaining Step 1 requirements.** The original planning publication implemented none of these fixes. The [fresh baseline](docs/verification/workflow-refactor-baseline-20260920T1932Z.md) identifies intervening merged work and active owners; do not rebuild those changes. After Step 0, choose a ready step from the dependency map in §9; this is not a mandatory fifteen-step serial train. Re-read this table and all downstream phases before starting each phase. A done row must link an actual commit, test artifact and live result where required, not merely an issue number or a claimed count. A landed-but-unproven step must name exactly one owned live-proof issue opened at landing, and remains partial.
 
 Companion handoff: [2026-09-20T1507Z-916-codex-workflow-refactor.md](HANDOFF.d/2026-09-20T1507Z-916-codex-workflow-refactor.md). Investigation: [workflow bottleneck audit](docs/verification/shared-db-workflow-bottleneck-audit-20260920.md). The handoff carries execution context; this plan is the implementation specification. Update their current-state claims as execution progresses; do not restart completed work from historical text.
 

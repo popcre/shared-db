@@ -1,44 +1,58 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3299,
+  "work_issue": 2998,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
-  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
-  "branch": "codex/recover-prepack-proof-20260920",
-  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
+  "goal": "Make agent-to-reviewer handoffs fail fast before a reviewer draw is consumed (#2998), and front-load the probe checklist and terminal verdict line into the reviewer brief (#2923), without reducing any review requirement.",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/reviewer-trio-2915-2998-2923-2e3c24d5",
+  "worktree": "D:/repos/shared-db-worktrees/reviewer-trio-2e3c24d5",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    "AGENTS.md",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    "AGENTS.md",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
     "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
-    "Do not merge PR #3293; the parent owns merge and outcome closure."
+    "Do not reduce what a reviewer must check, make any verdict optional, or let a failed handoff read as an approval.",
+    "No --admin override on this code change."
   ],
   "required_checks": [
-    "python -m unittest scripts.test_shared_db_live_proof",
-    "node --test scripts/check-live-proof-probe.test.mjs",
-    "git diff --check"
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/reviewer-wire-budget.test.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-repository-identity-conformance.mjs",
+    "node scripts/check-skill-drift.mjs --require-skills"
   ],
   "assumptions": [
-    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
-    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
-    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
+    "Issue #2915 was verified already delivered on main by commits cdc74cb5 and 3cef6b68 and was closed with revert evidence rather than reimplemented.",
+    "GitHub computes pull request mergeable asynchronously, so a null value must proceed rather than refuse; the guarded merge lane still refuses a real conflict.",
+    "PR #3316 also edits manage-migration-author-lanes.mjs for #2457/#2844; its hunks are at lines 1272, 2395, 4258-4366 and 5518-5776 and do not overlap the sites changed here."
   ],
   "stop_conditions": [
-    "Stop if the repair requires any database object or timeout change.",
-    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
+    "Stop if any change would reduce what a reviewer must check or make a verdict optional.",
+    "Stop if a fail-fast refusal could be mistaken for an approval.",
+    "Stop if reviewer allocation is refused repo-wide by the known cursor-parser blocker rather than by this change."
   ]
 }

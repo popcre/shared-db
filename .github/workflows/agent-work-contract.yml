@@ -16,6 +16,8 @@ name: Agent work contract
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -27,7 +29,9 @@ permissions:
 
 concurrency:
   group: agent-work-contract-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: GitHub re-requests checks for the same
+  # group, and cancelling the older run could starve it (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
@@ -70,12 +74,31 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve the queued pull request (merge group only)
+        # The merge_group payload carries no pull_request object. The one queued
+        # PR is resolved from the queue ref and re-verified live (open, base
+        # main, readable head) by the merge queue contract (#2530).
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          {
+            echo "pr_number=$(echo "$facts" | jq -r .number)"
+            echo "pr_head_sha=$(echo "$facts" | jq -r .headRefOid)"
+          } >> "$GITHUB_OUTPUT"
+          echo "pr_base_sha=$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/$(echo "$facts" | jq -r .number)" --jq .base.sha)" >> "$GITHUB_OUTPUT"
+
       - name: Validate any contract and report carried by this pull request
         env:
           MODE: ${{ env.mode }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || steps.queue.outputs.pr_head_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

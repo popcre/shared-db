@@ -35,6 +35,8 @@ name: Intake Pointer Guard
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -44,7 +46,8 @@ permissions:
 
 concurrency:
   group: intake-pointer-guard-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:

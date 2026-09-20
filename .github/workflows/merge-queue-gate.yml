@@ -1,0 +1,165 @@
+name: Merge Queue Gate
+
+# The cross-event gate for the native merge queue (issue #2530 Phase C Step 7;
+# plan_shared_db_popcre_transfer_merge_queue.md).
+#
+# WHY THIS WORKFLOW EXISTS. A merge group runs on a SYNTHETIC commit — the one
+# queued pull request's head merged onto current main. That commit is not the
+# reviewed head, and the pull_request payload does not exist here, so the
+# PR-shaped gates cannot re-bind themselves. This workflow:
+#
+#   1. resolves the ONE pull request the merge_group ref names and re-verifies
+#      it against the live API (open, base main, readable head) — zero,
+#      multiple, malformed, closed or wrong-base identities are refused;
+#   2. proves the exact reviewed PR head is an ANCESTOR of the synthetic group
+#      commit — the queue can never merge bytes that contain less than the
+#      reviewed head;
+#   3. requires the guarded merge lane's exact-head authorization status to be
+#      green on that PR head, then re-runs the SQL guards, production sidecars,
+#      live-proof probe, cross-PR object collision, migration lease, exact-head
+#      approval and ascending-version ordering against the correct identities;
+#   4. holds the group when the PRECEDING main commit added migrations until
+#      that exact commit carries `Post-merge preview rehearsal: success` —
+#      GitHub serializes merges, but only this gate knows a migration merge must
+#      rehearse on shared preview before the next migration merges;
+#   5. publishes the required `Migration guarded merge authorization` commit
+#      status on the group SHA — success only after every proof above, failure
+#      (fail-closed) whenever any of them refuses.
+#
+# On pull_request and workflow_dispatch it proves its own contract tests and
+# nothing else, so the context can become required BEFORE the ruleset is
+# active and ordinary guarded merges stay viable the whole time.
+#
+# Concurrency: never cancel an in-progress merge-group run — GitHub re-requests
+# checks for the same group, and cancelling the older run could starve it.
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: shared-db-merge-queue-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Merge queue gate
+    runs-on: ubuntu-latest
+    # Must exceed the preview hold's own bounded wait (25 minutes by default)
+    # so the hold's refusal is reported by the contract, not by a timeout.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prove the queue contract, its configurator, and the workflow coverage map
+        run: >-
+          node --test
+          scripts/merge-queue-contract.test.mjs
+          scripts/configure-merge-queue.test.mjs
+          scripts/check-merge-queue-workflows.test.mjs
+
+      - name: Resolve the single queued pull request
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
+          echo "head=$(echo "$facts" | jq -r .headRefOid)" >> "$GITHUB_OUTPUT"
+
+      - name: Prove the exact reviewed head is contained in the synthetic group commit
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+          PR_HEAD: ${{ steps.queue.outputs.head }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "${MERGE_GROUP_SHA}^{commit}"
+          git cat-file -e "${PR_HEAD}^{commit}"
+          git merge-base --is-ancestor "$PR_HEAD" "$MERGE_GROUP_SHA" || {
+            echo "REFUSED: merge group $MERGE_GROUP_SHA does not contain the exact authorized PR head $PR_HEAD." >&2
+            exit 1
+          }
+          echo "Group $MERGE_GROUP_SHA contains the exact reviewed head $PR_HEAD."
+
+      - name: Revalidate exact reviewed PR head, claims, collisions, and migration order
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.queue.outputs.pr }}
+          REQUESTED_SHA: ${{ steps.queue.outputs.head }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          authorization="$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/commits/$REQUESTED_SHA/status" --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+          test "$authorization" = 'success' || {
+            echo "REFUSED: exact PR head $REQUESTED_SHA carries no successful guarded merge authorization." >&2
+            exit 1
+          }
+          bash scripts/check-sql.sh
+          node scripts/check-production-verification-sidecars.mjs --base origin/main
+          node scripts/check-live-proof-probe.mjs
+          node scripts/check-pr-object-collisions.mjs
+          node scripts/check-migration-pr-lease.mjs
+          node scripts/check-exact-head-approval.mjs
+          node scripts/merge-queue-contract.mjs
+
+      - name: Require the previous main migration merge to have completed preview rehearsal
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git cat-file -e "${BASE_SHA}^{commit}"
+          parent="$(git rev-parse "${BASE_SHA}^1")"
+          mapfile -t paths < <(git diff-tree --no-commit-id --name-only -r "$parent" "$BASE_SHA")
+          needs_preview="$(printf '%s\n' "${paths[@]}" | node --input-type=module -e "import { baseNeedsPreview } from './scripts/merge-queue-contract.mjs'; let s = ''; for await (const c of process.stdin) s += c; console.log(baseNeedsPreview(s.split(/\r?\n/).filter(Boolean)) ? 'yes' : 'no')")"
+          if [ "$needs_preview" = no ]; then
+            echo 'The preceding main commit added no migration; no preview hold is needed.'
+            exit 0
+          fi
+          node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$BASE_SHA"
+
+      - name: Publish guarded authorization on the merge-group commit
+        if: github.event_name == 'merge_group' && success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
+            -f state=success \
+            -f context='Migration guarded merge authorization' \
+            -f description='Exact reviewed head revalidated on the serialized merge group'
+
+      - name: Publish fail-closed authorization when queue validation fails
+        if: github.event_name == 'merge_group' && failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
+            -f state=failure \
+            -f context='Migration guarded merge authorization' \
+            -f description='Merge queue validation failed; authorization refused'

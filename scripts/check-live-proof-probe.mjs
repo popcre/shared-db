@@ -18,6 +18,7 @@
 // is not judged here.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { resolveBaseRef, gitProbe } from './lib/resolve-base-ref.mjs'
 import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
@@ -123,7 +124,13 @@ export function main({
 } = {}) {
   try {
     const contract = fileExists('.agent/contract.json') ? JSON.parse(readFile('.agent/contract.json')) : null
-    const { changed, removed } = parseNameStatus(git(['diff', '--name-status', '-M', 'origin/main...HEAD']))
+    // Issue #3280 governed review round 2 (muse-spark-1.3-contributor): this was
+    // the most dangerous base-ref consumer on the merge queue path -- origin/main
+    // hardcoded, with no --base flag to override it. On a merge_group run that ref
+    // does not exist. Resolve it through the shared resolver, which fetches the
+    // branch when the ref is absent and throws (never skips) when it cannot.
+    const base = resolveBaseRef('origin/main', { git: gitProbe(git) })
+    const { changed, removed } = parseNameStatus(git(['diff', '--name-status', '-M', `${base}...HEAD`]))
     const result = evaluateProbe({
       contract,
       changedFiles: changed,
@@ -133,7 +140,7 @@ export function main({
       // main may have moved past this branch under the --contains freshness rule.
       readProbe: (p) => {
         if (fileExists(p)) return readFile(p)
-        try { return git(['show', `origin/main:${p}`]) } catch { return null }
+        try { return git(['show', `${base}:${p}`]) } catch { return null }
       },
       isCodeTruthRestoration: (f) => {
         try { return validateHistoricalRestorationFile(f, readFile(f)).codeTruthOnly === true } catch { return false }

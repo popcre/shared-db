@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { isTrustedOperatorComment } from './repository-identity.mjs'
 import { findCompletionRecord, isSuccessful } from './work-dependencies.mjs'
+import { parseOutcomeEvidence } from '../orchestrator-flow/outcome-lifecycle.mjs'
+import { STRUCTURAL_ROUTES, structuralWritesMatch } from '../orchestrator-flow/admission.mjs'
 
 export const REQUIRED_STAGES = Object.freeze(['implementation-merged', 'database-applied', 'live-verified', 'application-accepted', 'complete'])
 export const STAGE_FENCE = 'db-work-stage'
@@ -104,10 +106,12 @@ function currentEvidence(event, io) {
   if (!comment || !isTrustedOperatorComment({ ...comment, author: comment.user?.login ?? comment.author }, event.repository)) throw new Error('stage evidence is not authored by the trusted operator')
   // Use the existing outcome parser and exact artifact verifiers. They are
   // required IO capabilities, never boolean assertions supplied by a caller.
-  const evidence = io.parseOutcomeEvidence(comment.body)
+  const evidence = parseOutcomeEvidence(comment.body, { requiredStage: event.stage })
   if (evidence.work_issue !== event.work_issue || evidence.merge_pr !== event.pr || evidence.merge_sha !== event.merge_sha) throw new Error('outcome evidence belongs to another issue or merge')
   const scope = io.parseScope(io.getIssue(event.work_issue)?.body ?? '')
-  if (!scope || scope.workType !== 'structural' || !['shared-db-orchestrator', 'self-service-additive'].includes(scope.route)) throw new Error('runtime stage requires admitted structural outcome evidence')
+  if (!scope || scope.workType !== 'structural' || !STRUCTURAL_ROUTES.includes(scope.route)) throw new Error('runtime stage requires admitted structural outcome evidence')
+  const inspection = io.prStructuralInspection(event.pr, event.merge_sha)
+  if (!Array.isArray(scope.writes) || !structuralWritesMatch(inspection, [...scope.writes].sort())) throw new Error('stage PR objects do not match the admitted writes')
   if (evidence.application_repository !== scope.applicationReturnTo || evidence.live_assertion !== scope.liveAssertion) throw new Error('outcome evidence does not match the declared acceptance contract')
   if (io.verifyProductionApply(evidence) !== true) throw new Error('production application evidence did not verify')
   if (event.stage !== 'database-applied') {

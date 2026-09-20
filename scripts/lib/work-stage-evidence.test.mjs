@@ -108,7 +108,8 @@ function runtimeIo() {
     issueComments: () => comments,
     commentIssue: (issue, body) => { calls.push('commentIssue'); comments.push({ author: 'u2giants', author_association: expectedOperatorAssociation(), body }) },
     getIssueComments: () => [evidenceComment], getIssue: () => ({ body: 'scope' }),
-    parseScope: () => ({ workType: 'structural', route: 'shared-db-orchestrator', applicationReturnTo: 'popcre/shared-db', liveAssertion: 'business behavior works', generatedTypes: 'required' }),
+    parseScope: () => ({ workType: 'structural', route: 'shared-db-orchestrator', applicationReturnTo: 'popcre/shared-db', liveAssertion: 'business behavior works', generatedTypes: 'required', writes: ['public.example'] }),
+    prStructuralInspection: () => ({ objects: ['public.example'] }),
     parseOutcomeEvidence: body => { calls.push('parseOutcomeEvidence'); return parseOutcomeEvidence(body) },
     verifyProductionApply: () => { calls.push('verifyProductionApply'); return true },
     applicationCommitInDefaultBranch: () => { calls.push('applicationCommitInDefaultBranch'); return true },
@@ -167,7 +168,6 @@ test('runtime stages invoke the existing outcome parser and artifact verifiers; 
   for (const stage of ['database-applied', 'live-verified', 'application-accepted']) {
     const io = runtimeIo()
     publishStageEvent(publishInput({ stage, evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' }), io)
-    assert.ok(io.calls.includes('parseOutcomeEvidence'))
     assert.ok(io.calls.includes('verifyProductionApply'))
     assert.equal(io.calls.includes('verifyLiveAssertion'), stage !== 'database-applied')
     assert.equal(io.calls.includes('verifyGeneratedTypes'), stage !== 'database-applied')
@@ -184,6 +184,7 @@ test('runtime stage proof is bound to authorized exact acceptance and cannot be 
     io => { io.evidenceComment.user.login = 'attacker' },
     io => { io.evidenceComment.body = 'malformed' },
     io => { io.parseScope = () => ({ workType: 'repo-maintenance' }) },
+    io => { io.prStructuralInspection = () => ({ objects: ['public.wrong'] }) },
     io => { io.evidenceComment.body = io.evidenceComment.body.replace('business behavior works', 'different acceptance') },
   ]) {
     const io = runtimeIo(); mutate(io)
@@ -204,4 +205,22 @@ test('publisher rejects bad identities before IO and final cancellation before c
   io.comments.push({ author: 'u2giants', author_association: expectedOperatorAssociation(), body: '```db-work-completion\n' + JSON.stringify({ schema_version: 1, work_issue: 10, outcome: 'cancelled', reason: 'cancelled' }) + '\n```' })
   assert.throws(() => publishStageEvent(publishInput(), io), /immutable final completion/)
   assert.equal(io.refs.size, 0)
+})
+
+
+test('database-applied accepts its own complete proof without any future live proof', () => {
+  const io = runtimeIo()
+  const record = parseOutcomeEvidence(io.evidenceComment.body)
+  for (const key of ['application_commit_sha', 'live_evidence', 'live_artifact_id', 'live_artifact_digest']) delete record[key]
+  io.evidenceComment.body = '```db-outcome-evidence\n' + JSON.stringify(record) + '\n```'
+  const input = publishInput({ stage: 'database-applied', evidenceRef: 'https://github.com/popcre/shared-db/issues/10#issuecomment-123' })
+  assert.equal(publishStageEvent(input, io).event.stage, 'database-applied')
+  assert.ok(!io.calls.includes('verifyLiveAssertion'))
+  assert.throws(() => parseOutcomeEvidence(io.evidenceComment.body), /application_commit_sha/)
+  assert.throws(() => parseOutcomeEvidence(io.evidenceComment.body, { requiredStage: 'imaginary' }), /unknown required/)
+  for (const key of ['production_evidence', 'production_commit_sha', 'production_artifact_id', 'production_artifact_digest']) {
+    const bad = { ...record }; delete bad[key]
+    assert.throws(() => parseOutcomeEvidence('```db-outcome-evidence\n' + JSON.stringify(bad) + '\n```', { requiredStage: 'database-applied' }))
+  }
+  assert.throws(() => publishStageEvent({ ...input, stage: 'live-verified' }, io), /application_commit_sha/)
 })

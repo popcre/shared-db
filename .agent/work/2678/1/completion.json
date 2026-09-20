@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 2678,
+  "outcome": "ready-for-merge",
+  "pr": 3314,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2678/1",
+  "contract_sha256": "e9c3e7991e662c417d47816a6a255f20336c19949309946648e2dd7db9074d09",
+  "head_sha": "0f5d93e8cc4519a2e2678da32ae3965e0a3a8089",
+  "files_changed": [
+    "scripts/lib/reviewer-caller-env.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "690 pass 0 fail 0 skipped; the three new issue-2678 regression tests included"
+    },
+    {
+      "command": "node --test scripts/check-migration-pr-lease.test.mjs scripts/check-exact-head-approval.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/agent-work-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "152 pass 0 fail 0 skipped"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors against origin/main"
+    }
+  ],
+  "assumptions_resolved": [
+    "The first regression test was proved to FAIL against the unfixed probe by reverting the spawn environment, and to pass with it.",
+    "The doctor probe leaves an undetectable caller unset; only the governed review path refuses, naming the exact repair."
+  ],
+  "stop_conditions_hit": []
+}

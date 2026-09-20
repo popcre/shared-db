@@ -23,12 +23,10 @@ DECLARE
   attachment_count bigint;
   permission_count bigint;
   child_oid oid;
-  parent_oid oid;
   old_parent_oid oid;
   child_column text;
   parent_column text;
   constraint_name text;
-  replacement_name text;
   spec record;
 BEGIN
   SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO actual
@@ -104,12 +102,10 @@ BEGIN
   ) AS s(child_table,parent_table,old_parent,child_key,parent_key,old_name,new_name)
   LOOP
     child_oid := spec.child_table::regclass;
-    parent_oid := spec.parent_table::regclass;
     old_parent_oid := spec.old_parent::regclass;
     child_column := spec.child_key;
     parent_column := spec.parent_key;
     constraint_name := spec.old_name;
-    replacement_name := spec.new_name;
     IF NOT EXISTS (
       SELECT FROM pg_constraint c
       WHERE c.conrelid=child_oid AND c.conname=constraint_name AND c.contype='f'
@@ -118,11 +114,20 @@ BEGIN
         AND c.conkey=ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid=child_oid AND attname=child_column)]::smallint[]
         AND c.confkey=ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid=old_parent_oid AND attname=parent_column)]::smallint[]
     ) THEN RAISE EXCEPTION '2110: original foreign key contract changed for %', constraint_name; END IF;
-    EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s (%I) ON UPDATE NO ACTION ON DELETE NO ACTION NOT DEFERRABLE NOT VALID', child_oid::regclass,replacement_name,child_column,parent_oid::regclass,parent_column);
-    EXECUTE format('ALTER TABLE %s VALIDATE CONSTRAINT %I',child_oid::regclass,replacement_name);
-    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I RESTRICT',child_oid::regclass,constraint_name);
-    EXECUTE format('ALTER TABLE %s RENAME CONSTRAINT %I TO %I',child_oid::regclass,replacement_name,constraint_name);
   END LOOP;
+
+  ALTER TABLE app."RolePermissions" ADD CONSTRAINT retirement_2110_role_fkey
+    FOREIGN KEY ("RoleId") REFERENCES dflow."Roles"("Id")
+    ON UPDATE NO ACTION ON DELETE NO ACTION NOT DEFERRABLE NOT VALID;
+  ALTER TABLE app."RolePermissions" VALIDATE CONSTRAINT retirement_2110_role_fkey;
+  ALTER TABLE app."RolePermissions" DROP CONSTRAINT "RolePermissions_RoleId_fkey" RESTRICT;
+  ALTER TABLE app."RolePermissions" RENAME CONSTRAINT retirement_2110_role_fkey TO "RolePermissions_RoleId_fkey";
+  ALTER TABLE plm.art_piece_attachment ADD CONSTRAINT retirement_2110_art_fkey
+    FOREIGN KEY (art_piece_id) REFERENCES dflow.art_piece(id)
+    ON UPDATE NO ACTION ON DELETE NO ACTION NOT DEFERRABLE NOT VALID;
+  ALTER TABLE plm.art_piece_attachment VALIDATE CONSTRAINT retirement_2110_art_fkey;
+  ALTER TABLE plm.art_piece_attachment DROP CONSTRAINT art_piece_attachment_art_piece_id_fkey RESTRICT;
+  ALTER TABLE plm.art_piece_attachment RENAME CONSTRAINT retirement_2110_art_fkey TO art_piece_attachment_art_piece_id_fkey;
 
   -- One statement allows internal references among the explicitly named set.
   DROP TABLE designflow_frozen_20260710."Factory",

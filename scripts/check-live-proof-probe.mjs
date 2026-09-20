@@ -48,9 +48,10 @@ export const PROBE_SQL_LEXER_VERSION = 2
 // Scan once: comment markers inside literals are data, never SQL comments.
 // This is a conservative lexical shape check, not a substitute for the runtime
 // read-only transaction, role and result checks.
-export function stripSqlNoise(sql) {
+function scanProbeSql(sql) {
   const source = String(sql ?? '')
   const tokens = []
+  const semicolons = []
   let i = 0
   const fail = (kind) => { throw new ProbeCheckError(`has ${kind}`) }
   if (source.includes('\0')) fail('a NUL byte')
@@ -115,21 +116,38 @@ export function stripSqlNoise(sql) {
       tokens.push(word)
       continue
     }
+    if (c === ';') semicolons.push(i)
     tokens.push(c)
     i++
   }
-  return tokens.join(' ')
+  return { text: tokens.join(' '), semicolons }
 }
-export function probeShapeProblem(sql) {
-  let text
-  try { text = stripSqlNoise(sql).trim().replace(/;\s*$/, '').trim() }
-  catch (error) { if (error instanceof ProbeCheckError) return error.message; throw error }
+export function stripSqlNoise(sql) { return scanProbeSql(sql).text }
+function scannedShapeProblem(scan) {
+  const text = scan.text.trim().replace(/;\s*$/, '').trim()
   if (!text) return 'is empty'
   if (text.includes(';')) return 'holds more than one statement'
   if (!/^(select|with)\b/i.test(text)) return 'does not start with SELECT or WITH'
   if (WRITE_WORD.test(text)) return 'contains a write keyword'
   if (!/\bas\s+passed\b/i.test(text) && !/^select\s+passed\s+from\b/i.test(text)) return 'returns no column named "passed"'
   return null
+}
+export function probeShapeProblem(sql) {
+  try { return scannedShapeProblem(scanProbeSql(sql)) }
+  catch (error) { if (error instanceof ProbeCheckError) return error.message; throw error }
+}
+
+// Preserve original bytes for embedding in a runtime result-shape wrapper.
+// The scanner, not string trimming, identifies the optional statement delimiter;
+// semicolons in literals/comments and every other original character survive.
+export function probeStatementText(sql) {
+  const source = String(sql ?? '')
+  const scan = scanProbeSql(source)
+  const problem = scannedShapeProblem(scan)
+  if (problem) throw new ProbeCheckError(problem)
+  if (!scan.semicolons.length) return source
+  const offset = scan.semicolons[0]
+  return source.slice(0, offset) + source.slice(offset + 1)
 }
 export function probeLooksUsable(sql) { return probeShapeProblem(sql) === null }
 

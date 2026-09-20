@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateProbe, main, parseNameStatus, ProbeCheckError, probeShapeProblem, scopeField } from './check-live-proof-probe.mjs'
+import { evaluateProbe, main, parseNameStatus, ProbeCheckError, probeShapeProblem, probeStatementText, scopeField } from './check-live-proof-probe.mjs'
 
 const scope = (returnTo) => `x\n\`\`\`db-work-scope\nwork_type: structural\napplication_return_to: ${returnTo}\nlive_assertion: a\n\`\`\`\n`
 const contract = { work_type: 'structural', work_issue: 3043 }
@@ -136,4 +136,17 @@ test('identifier and token boundaries cannot manufacture a keyword or dollar quo
   assert.match(probeShapeProblem('SELECT value$tag$; COMMIT; SELECT true AS passed'), /more than one statement/)
   assert.match(probeShapeProblem('SELECT true AS passed;;'), /more than one statement/)
   assert.equal(probeShapeProblem('SELECT "delete" IS NULL AS passed'), null)
+})
+
+
+test('statement extraction removes only the lexical terminal delimiter', () => {
+  const prefix = " \r\n/* ; lead */ SELECT ('x;--' IS NOT NULL) AS \"passed\""
+  const suffix = ' \r\n-- trailing ; comment\r\n/* nested /* ; */ end */  '
+  assert.equal(probeStatementText(prefix + ';' + suffix), prefix + suffix)
+  assert.equal(probeStatementText(prefix + suffix), prefix + suffix)
+  assert.equal(probeStatementText('SELECT true AS passed;-- EOF comment'), 'SELECT true AS passed-- EOF comment')
+  assert.equal(probeStatementText('SELECT $$;$$ IS NOT NULL AS passed;'), 'SELECT $$;$$ IS NOT NULL AS passed')
+  for (const sql of ["SELECT 'as passed --'; COMMIT; SELECT true AS passed;", 'SELECT true AS passed;;', "SELECT 'unterminated AS passed", 'SELECT true AS wrong']) {
+    assert.throws(() => probeStatementText(sql), ProbeCheckError)
+  }
 })

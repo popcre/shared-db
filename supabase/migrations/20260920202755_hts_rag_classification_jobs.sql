@@ -88,3 +88,84 @@ create policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_classification_job
 create policy hts_rag_alsand_worker_update on hts_rag.hts_rag_classification_jobs
   for update to designflow_hts_alsand_worker
   using (source_environment = 'alsand') with check (source_environment = 'alsand');
+
+-- Fail the apply on a wrong catalog contract, in addition to behavioral CI.
+-- LOGIN is provisioned separately for the actual backend connections; this
+-- migration neither grants LOGIN nor forbids an already provisioned login.
+do $verify$
+declare
+  v_environment text;
+  v_role text;
+  v_prefix text;
+  v_expression text;
+  v_columns text;
+begin
+  if not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'hts_rag' and c.relname = 'hts_rag_classification_jobs'
+        and c.relkind = 'r' and c.relrowsecurity)
+     or not exists (select 1 from pg_class where oid = 'hts_rag.hts_rag_determinations'::regclass
+        and relkind = 'r') then
+    raise exception 'VERIFY FAILED: exact jobs/determination relation contract';
+  end if;
+  if not exists (select 1 from pg_constraint
+      where conrelid = 'hts_rag.hts_rag_classification_jobs'::regclass and contype = 'f'
+        and confrelid = 'hts_rag.hts_rag_determinations'::regclass and confdeltype = 'r'
+        and pg_get_constraintdef(oid) = 'FOREIGN KEY (determination_id) REFERENCES hts_rag.hts_rag_determinations(id) ON DELETE RESTRICT')
+     or not exists (select 1 from pg_constraint
+      where conrelid = 'hts_rag.hts_rag_classification_jobs'::regclass and contype = 'u'
+        and pg_get_constraintdef(oid) = 'UNIQUE (determination_id, turn_index)')
+     or not exists (select 1 from pg_constraint
+      where conrelid = 'hts_rag.hts_rag_provider_responses'::regclass and contype = 'u'
+        and pg_get_constraintdef(oid) = 'UNIQUE (session_id, turn_role, turn_index)') then
+    raise exception 'VERIFY FAILED: exact FK or job/provider idempotency contract';
+  end if;
+  if (select count(*) from pg_policies where schemaname = 'hts_rag'
+      and tablename = 'hts_rag_classification_jobs') <> 6 then
+    raise exception 'VERIFY FAILED: jobs must have exactly six policies';
+  end if;
+  if not exists (select 1 from pg_attribute a
+      where a.attrelid = 'hts_rag.hts_rag_classification_jobs'::regclass
+        and a.attname = 'source_environment' and a.atttypid = 'text'::regtype and a.attnotnull
+        and not exists (select 1 from pg_attrdef d where d.adrelid = a.attrelid and d.adnum = a.attnum))
+     or not exists (select 1 from pg_constraint
+      where conrelid = 'hts_rag.hts_rag_classification_jobs'::regclass and contype = 'c'
+        and pg_get_constraintdef(oid) = 'CHECK ((source_environment = ANY (ARRAY[''production''::text, ''alsand''::text])))') then
+    raise exception 'VERIFY FAILED: exact explicit-provenance column/domain contract';
+  end if;
+  foreach v_environment in array array['production', 'alsand'] loop
+    v_role := case v_environment when 'production' then 'designflow_hts_prod_worker'
+      else 'designflow_hts_alsand_worker' end;
+    v_prefix := case v_environment when 'production' then 'hts_rag_prod_worker'
+      else 'hts_rag_alsand_worker' end;
+    v_expression := format('(source_environment = %L::text)', v_environment);
+    if not exists (select 1 from pg_roles where rolname = v_role
+        and not rolsuper and not rolbypassrls and not rolinherit
+        and not rolcreaterole and not rolcreatedb and not rolreplication) then
+      raise exception 'VERIFY FAILED: worker privilege attributes for %', v_role;
+    end if;
+    if not exists (select 1 from pg_policies where schemaname = 'hts_rag'
+        and tablename = 'hts_rag_classification_jobs' and policyname = v_prefix || '_access'
+        and cmd = 'SELECT' and roles = array[v_role]::name[]
+        and qual = v_expression and with_check is null)
+       or not exists (select 1 from pg_policies where schemaname = 'hts_rag'
+        and tablename = 'hts_rag_classification_jobs' and policyname = v_prefix || '_insert'
+        and cmd = 'INSERT' and roles = array[v_role]::name[]
+        and qual is null and with_check = v_expression)
+       or not exists (select 1 from pg_policies where schemaname = 'hts_rag'
+        and tablename = 'hts_rag_classification_jobs' and policyname = v_prefix || '_update'
+        and cmd = 'UPDATE' and roles = array[v_role]::name[]
+        and qual = v_expression and with_check = v_expression) then
+      raise exception 'VERIFY FAILED: exact environment policies for %', v_role;
+    end if;
+    select string_agg(attname, ',' order by attname) into v_columns from pg_attribute
+      where attrelid = 'hts_rag.hts_rag_classification_jobs'::regclass and attnum > 0 and not attisdropped
+        and has_column_privilege(v_role, attrelid, attnum, 'UPDATE');
+    if v_columns is distinct from 'actual_cost_usd,applied_at,applied_by,attempt_count,claimed_at,claimed_by,error_code,error_message,estimated_cost_usd,lease_expires_at,notified_at,result,status,updated_at'
+       or has_table_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       or not has_table_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'SELECT')
+       or not has_table_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'INSERT') then
+      raise exception 'VERIFY FAILED: exact worker grants for %', v_role;
+    end if;
+  end loop;
+end
+$verify$;

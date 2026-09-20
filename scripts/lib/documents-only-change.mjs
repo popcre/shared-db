@@ -15,9 +15,10 @@
 //
 // RULEBOOK FILES ARE NOT DOCUMENTS HERE, and that is the whole safety of this
 // module. `AGENTS.md`, anything under `.claude/skills/` or `skills/`, and
-// `plan_*.md` files are prose by extension but they are INSTRUCTIONS TO AGENTS:
+// agent command files are prose by extension but they are INSTRUCTIONS TO AGENTS:
 // a bad edit to one of them is as dangerous as a bad migration, because every
-// later session obeys it. They keep the full treatment.
+// later session obeys it. They keep the full treatment. Standalone plan_*.md
+// proposals are documents; plans inside protected instruction directories are not.
 //
 // Everything here is deterministic and path-based. It never reads file content,
 // never calls GitHub, and never guesses: anything it does not positively

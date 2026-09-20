@@ -1,3 +1,4 @@
+-- derived-from: 20260610070731, 20260813020000
 -- #3282: retain the licensing-PDF contract while exposing the enum equality
 -- and indexing only eligible candidates. No queue rows or privileges change.
 -- Constant text avoids an enum-to-text cast in the immutable index predicate.

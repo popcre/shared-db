@@ -7,6 +7,14 @@ DECLARE
   actual uuid[];
   expected uuid[];
 BEGIN
+  -- Compare truth values, including NULLs and uppercase filename extensions,
+  -- independently of the production columns' NOT NULL constraints.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES (NULL::public.file_type), ('pdf'::public.file_type), ('ai'::public.file_type)) t(ft)
+    CROSS JOIN (VALUES (NULL::text), (''), ('LICENSING SHEET.PDF'), ('ordinary.pdf'), ('tech_pack.pdf')) n(fn)
+    WHERE public.is_style_guide_source_pdf(t.ft::text,n.fn)
+      IS DISTINCT FROM (t.ft='pdf'::public.file_type AND public.is_style_guide_source_pdf('pdf',n.fn))
+  ) THEN RAISE EXCEPTION 'typed predicate changes NULL or filename semantics'; END IF;
   INSERT INTO public.assets(id,filename,relative_path,file_type,quick_hash,modified_at,is_deleted,thumbnail_url)
   SELECT ids[n], names[n], 'ZZ3282/' || ids[n], types[n]::public.file_type,
          ids[n]::text, now(), n=5, CASE WHEN n=2 THEN 'fixture-thumbnail' END

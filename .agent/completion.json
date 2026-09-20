@@ -8,6 +8,8 @@
   "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
   "head_sha": "592c26b04b150d4f899bd4ed1fd0a7c2f5d89b8a",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/2611.sql"
   ],
   "db_reads": [],

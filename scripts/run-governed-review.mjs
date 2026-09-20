@@ -670,7 +670,7 @@ Do not stop at the first problem -- a partial list costs another full review rou
 These three are mandatory and additional to your normal review. Report everything else
 you would normally raise as well; this list is a floor, never a ceiling.
 `
-export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={}){
+export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={},wrapper=null){
   const list=[...wrapperArgs]
   let carried=false
   const instruction=`
@@ -684,11 +684,23 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
       if(!head.startsWith(named))throw new Error(`the review prompt names head ${named} in a VERDICT line, but the live pull request head is ${head}. No reviewer was started. Remove the head from the prompt (the runner injects the live head) or update it.`)
     }
   }
+  // Both spellings of each flag are handled. The governed review of PR #3338 found the
+  // equals form unrecognised: `--prompt=x` fell through the exact-token match, so the
+  // brief silently carried no checklist and no verdict contract. That is the same
+  // defect as the missing-prompt case, so it is closed the same way rather than left
+  // to the refusal below.
   for(let i=0;i<list.length;i++){
-    if(list[i]==='--prompt-file'&&i+1<list.length){
+    const arg=list[i]
+    const inlineFile=/^--prompt-file=/.test(arg),inlinePrompt=/^--prompt=/.test(arg)
+    if(inlineFile){
+      const text=readFile(arg.slice('--prompt-file='.length));stale(text)
+      const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i]=`--prompt-file=${copy}`;carried=true
+    }else if(inlinePrompt){
+      const text=arg.slice('--prompt='.length);stale(text);list[i]=`--prompt=${text}${instruction}`;carried=true
+    }else if(arg==='--prompt-file'&&i+1<list.length){
       const text=readFile(list[i+1]);stale(text)
       const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i+1]=copy;i++;carried=true
-    }else if(list[i]==='--prompt'&&i+1<list.length){stale(list[i+1]);list[i+1]=`${list[i+1]}${instruction}`;i++;carried=true}
+    }else if(arg==='--prompt'&&i+1<list.length){stale(list[i+1]);list[i+1]=`${list[i+1]}${instruction}`;i++;carried=true}
   }
   // ISSUE #2998 item 1 -- validate the terminal VERDICT instruction BEFORE a reviewer
   // draw is consumed.
@@ -705,7 +717,15 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
   //
   // This makes no verdict optional and weakens no gate: it turns a silent, unrecordable
   // review into a named refusal with no reviewer started and no capacity spent.
-  if(!carried)throw new Error('the outbound reviewer prompt carries no terminal VERDICT instruction, because the wrapper arguments contain neither --prompt nor --prompt-file. No reviewer was started and no reviewer capacity was spent. A reviewer sent a prompt without the terminal "VERDICT: <DECISION> <head>" line can approve the work and still leave nothing recordable. Pass the brief with --prompt or --prompt-file so the runner can bind it to the live head.')
+  // `ai-codex-review` TAKES NO PROMPT ARGUMENT BY DESIGN (issue #2244, see CODEX_WRAPPER
+  // above): its recordable decision is transcribed from the report it publishes, not
+  // injected into a prompt. Requiring an injected contract from it would refuse a
+  // supported wrapper for failing to accept an argument it never accepted -- a
+  // regression the governed review of PR #3338 caught. Exempting it relaxes NOTHING:
+  // the transcription bridge still restates the decision as this runner's own terminal
+  // verdict line bound to the head the runner pinned, and every other wrapper must
+  // still carry the contract.
+  if(!carried&&wrapperBaseName(wrapper)!==CODEX_WRAPPER)throw new Error('the outbound reviewer prompt carries no terminal VERDICT instruction, because the wrapper arguments contain neither --prompt nor --prompt-file. No reviewer was started and no reviewer capacity was spent. A reviewer sent a prompt without the terminal "VERDICT: <DECISION> <head>" line can approve the work and still leave nothing recordable. Pass the brief with --prompt or --prompt-file so the runner can bind it to the live head.')
   return list
 }
 export function prepareGovernedReview(options,{env=process.env,github=readGitHub,files}={}){
@@ -713,7 +733,7 @@ export function prepareGovernedReview(options,{env=process.env,github=readGitHub
   const named=String(options.headSha??'').trim().toLowerCase()
   if(named&&named!==live)throw new Error(`--head-sha ${named} is stale: pull request #${Number(options.pr)} is now at ${live}. No reviewer was started. Omit --head-sha to use the live head, after the reviewer assignment is moved to it.`)
   const callerEnv=reviewCallerEnvironment(options.wrapper,env)
-  return {options:{...options,headSha:live,wrapperArgs:promptHeadContract(options.wrapperArgs??[],live,files)},callerEnv}
+  return {options:{...options,headSha:live,wrapperArgs:promptHeadContract(options.wrapperArgs??[],live,files,options.wrapper)},callerEnv}
 }
 export function main(argv=process.argv.slice(2)){
   try{const prepared=prepareGovernedReview(parseArgs(argv));Object.assign(process.env,prepared.callerEnv);const result=runGovernedReview(prepared.options,governedReviewDeps());process.stdout.write(`${result.body}\n\nDURABLE VERDICT: ${result.artifact.ref} ${result.artifact.sha}\nSOURCE EVIDENCE: ${JSON.stringify(result.sourceEvidence)}\n`);return 0}catch(error){if(error?.startDecision)process.stderr.write(`REROUTE: ${JSON.stringify(error.startDecision)}\n`);process.stderr.write(`REFUSED: ${error.message}\n`);return 2}

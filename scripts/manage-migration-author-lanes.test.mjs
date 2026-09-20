@@ -8749,3 +8749,32 @@ test('#2998-3 a conflicted pull request refuses, and unknown mergeability still 
   assert.equal(assertReviewerDrawReadiness(1,{getPr:()=>{throw new Error('boom')}}),null)
   assert.equal(assertReviewerDrawReadiness(1,{}),null)
 })
+
+// GOVERNED REVIEW OF PR #3338 — the readiness guard covers BOTH draw paths.
+// A replacement draw spends reviewer capacity exactly like a first draw. Wiring the
+// guard to only --assign-reviewer left the waste class #2998 was filed to stop wide
+// open on --replace-failed-reviewer.
+test('#3338 review: a replacement draw asserts the same readiness as a first draw',()=>{
+  let drew=false
+  const io={
+    pullRequestFiles(){return [{filename:'supabase/migrations/20260920000000_x.sql'}]},
+    getPr(){return {draft:true,mergeable:true,state:'open'}},
+    listIssues(){drew=true;throw new Error('the replacement draw must not be reached')}
+  }
+  const errors=[],original=console.error
+  console.error=(message)=>errors.push(String(message))
+  let code
+  try{code=main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--reviewer','muse-spark-1.3-contributor','--reason','x'],NOW,io)}
+  finally{console.error=original}
+  assert.equal(code,2)
+  assert.match(errors.join('\n'),/still a DRAFT/)
+  assert.equal(drew,false)
+})
+
+// A MERGED pull request must still be drawable. Issue #2915 (cdc74cb5, 3cef6b68) exists
+// so a merged PR bound by the verified merged-PR issue binding can be assigned a
+// reviewer and receive an exact-head verdict. The readiness guard must not undo that.
+test('#3338 review: readiness does not refuse a merged pull request (#2915 stays delivered)',()=>{
+  assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:true,state:'closed',merged_at:'2026-09-14T00:00:00Z'})}),{draft:false,mergeable:true})
+  assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:null,state:'closed'})}),{draft:false,mergeable:null})
+})

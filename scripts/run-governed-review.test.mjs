@@ -882,3 +882,36 @@ test('#2998-1 a promptless handoff refuses before a draw; #2923 the probe checkl
   // An inline --prompt carries the same checklist.
   assert.match(promptHeadContract(['send','--prompt','go'],live)[2],/volatilit/i)
 })
+
+// GOVERNED REVIEW OF PR #3338 — the two prompt-shape findings, fixed as a class.
+import { CODEX_WRAPPER } from './run-governed-review.mjs'
+test('#3338 review: the codex wrapper is exempt from the prompt contract, and equals-form prompts carry it',()=>{
+  const live='a'.repeat(40)
+  const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
+  const written={}
+  const files=(text)=>({readFile:()=>text,writeFile:(p,t)=>{written[p]=t},tempDir:()=>'T'})
+
+  // ai-codex-review takes NO prompt argument by design; its verdict is transcribed from
+  // its published report. Requiring an injected contract from it refused a supported
+  // wrapper. It must pass through untouched rather than throw.
+  const codex=prepareGovernedReview({pr:3338,wrapper:CODEX_WRAPPER,wrapperArgs:['diff-review']},{env:{AI_CODEX_REVIEW_CALLER:'claude'},github,files:files('x')})
+  assert.deepEqual(codex.options.wrapperArgs,['diff-review'])
+  assert.deepEqual(promptHeadContract(['diff-review'],live,undefined,'C:/bin/ai-codex-review.cmd'),['diff-review'])
+  // The exemption is ONLY for that wrapper. Every other wrapper still refuses.
+  assert.throws(()=>promptHeadContract(['go'],live,undefined,'ai-muse'),/carries no terminal VERDICT instruction/)
+  assert.throws(()=>promptHeadContract(['go'],live),/carries no terminal VERDICT instruction/)
+
+  // Equals-form arguments previously fell through the exact-token match, so the brief
+  // silently carried neither the checklist nor the verdict contract.
+  const inline=promptHeadContract(['send',`--prompt=go`],live,undefined,'ai-muse')
+  assert.match(inline[1],/^--prompt=go/)
+  assert.match(inline[1],/volatilit/i)
+  assert.ok(inline[1].trimEnd().endsWith(`VERDICT: REJECT ${live}`))
+  const inlineFile=promptHeadContract(['send','--prompt-file=brief.md'],live,files('Review it.'),'ai-muse')
+  assert.match(inlineFile[1],/^--prompt-file=/)
+  const copy=inlineFile[1].slice('--prompt-file='.length)
+  assert.match(written[copy],/volatilit/i)
+  assert.ok(written[copy].startsWith('Review it.'))
+  // The stale-head guard still applies to both equals forms.
+  assert.throws(()=>promptHeadContract(['--prompt=End with VERDICT: APPROVE bbbbbbbb'],live,undefined,'ai-muse'),/names head bbbbbbbb/)
+})

@@ -17,6 +17,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": ".github/workflows/tools-offline-tests.yml:104",
+      "semantic_key": ".github/workflows/tools-offline-tests.yml:af07f1d5e85333d14c0df932ef14ce40d1e9700778235b5f14d3cde1f976bc5b:1",
+      "line_sha256": "af07f1d5e85333d14c0df932ef14ce40d1e9700778235b5f14d3cde1f976bc5b",
+      "disposition": "excluded",
+      "reason": "This fails the job closed when a review-parallelism guard file is absent from the checkout, naming the exact missing path. A deleted guard must stop the check rather than be enriched with a substitute value, so there is nothing truthful to derive here."
+    },
+    {
       "site": ".github/workflows/tools-offline-tests.yml:106",
       "semantic_key": ".github/workflows/tools-offline-tests.yml:b03949444e5c9aaa3ab0ea139d05bbd3e2fc6791bfaccc98ad19478c1412e0a8:1",
       "line_sha256": "b03949444e5c9aaa3ab0ea139d05bbd3e2fc6791bfaccc98ad19478c1412e0a8",

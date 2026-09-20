@@ -960,6 +960,48 @@ production command, manual workflow dispatch, other repository, or bypass.
 Docs-only PRs (no schema change) need just items 1 and "it reads correctly" —
 merge them promptly.
 
+### 5.0-C Run CI and the governed review in PARALLEL, and batch fixes into ONE head (issue #3002, added 2026-09-20)
+
+Observed 2026-09-15 on PRs #2980 and #2981: sessions waited for a full green CI
+run before requesting the governed review that must approve the merge, then
+pushed once per review finding, rerunning the whole matrix each time (the Windows
+jobs alone are ~30 minutes). That roughly doubles wall-clock per pull request.
+The cause is structural, not carelessness: review evidence binds to the exact
+head SHA, so any fix pushed after a review voids that review, and sessions learn
+to "spend" only one review.
+
+**The rule, from now on:**
+
+1. **Start the governed review as soon as a head is pushed, in parallel with
+   CI.** Do not wait for a green matrix first. Accept that a required fix costs
+   one re-review — that is cheaper than serialising two long waits, and a
+   re-review is exactly what the exact-head rule is for.
+2. **Batch fixes into a single new head.** Collect every finding from the review
+   round *and* every CI failure, fix them together, and push once. One push per
+   finding is forbidden: each one reruns the full matrix and voids the review
+   again.
+3. **Hold the wait inside the turn.** Watch both with the repository's bounded,
+   event-aware waiter, concurrently. Never end a turn to report that something
+   is still running.
+
+**What this does NOT change — and must never be traded for speed:**
+
+- The exact-head APPROVE requirement stands exactly as written above. A review
+  bound to an earlier head does not authorize a later head, and the only
+  equivalence permitted is the narrow, already-enforced #2758 rule
+  (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request
+  diff is byte-identical, ignoring only `.agent/` evidence files.
+- **The proposal in #3002 to accept a review bound to a head whose only later
+  change is test or evidence files is REFUSED.** Tests are code: a changed test
+  changes what the change proves, and a reviewer who never saw it never reviewed
+  it. Widening equivalence beyond `.agent/` would be reviewing less, not
+  reviewing faster.
+- No required check becomes optional, no gate is skipped, and no reviewer
+  requirement is dropped. Parallelise; do not delete.
+
+`scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
+place, and fails the tools-offline check if either is removed or contradicted.
+
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 
 Loader-style migrations here are authored as a **full re-derivation of the

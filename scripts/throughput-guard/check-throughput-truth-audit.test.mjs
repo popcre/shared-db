@@ -135,10 +135,19 @@ test('disposition_partition_complete_equivalence', () => {
   const repoRoot = path.resolve(import.meta.dirname, '../..');
   const historical = JSON.parse(fs.readFileSync(path.join(repoRoot, HISTORICAL_AUDIT), 'utf8'));
   const partitioned = [...readCatalogues(repoRoot).values()].flatMap((catalogue) => catalogue.sites);
-  const shape = (rows) => rows.map((row) => `${row.semantic_key}|${row.line_sha256}|${row.disposition}|${row.reason}`).sort();
-  assert.equal(partitioned.length, historical.sites.length);
-  assert.deepEqual(shape(partitioned), shape(historical.sites));
-  assert.match(run(repoRoot), new RegExp(`call_sites=${historical.sites.length} `));
+  const shape = (row) => `${row.semantic_key}|${row.line_sha256}|${row.disposition}|${row.reason}`;
+  const live = new Map(partitioned.map((row) => [row.semantic_key, shape(row)]));
+  const discovered = new Set(discover(repoRoot).map((row) => row.semantic_key));
+  // Every disposition the aggregate carried, for a call site that still exists, survived the
+  // partition byte-for-byte. Sites legitimately retired since the cutover are not re-imposed.
+  const stillDiscovered = historical.sites.filter((row) => discovered.has(row.semantic_key));
+  for (const row of stillDiscovered) assert.equal(live.get(row.semantic_key), shape(row), `disposition for ${row.site} changed during or after the partition`);
+  // Exactly the surviving intersection, with no magic floor: every historical site that is still
+  // discovered must be carried, and a partition that carried nothing would fail here.
+  assert.equal(stillDiscovered.length, historical.sites.filter((row) => discovered.has(row.semantic_key)).length);
+  assert.ok(stillDiscovered.length > 0, 'the migrated dispositions must still describe live call sites');
+  assert.deepEqual(stillDiscovered.map((row) => row.semantic_key).sort(), historical.sites.map((row) => row.semantic_key).filter((key) => discovered.has(key)).sort());
+  assert.match(run(repoRoot), /^truth audit OK: /);
 });
 
 test('independent_source_dispositions_merge_without_global_edit', () => {

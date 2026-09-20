@@ -2,7 +2,7 @@
 begin;
 do $test$
 declare
-  a uuid; b uuid; root uuid; i integer; n bigint; r record; v text;
+  a uuid; b uuid; root uuid; i integer; n bigint; entity_queue_before bigint; r record; v text;
 begin
   insert into plm.licensing_write_authorization
     (backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)
@@ -14,6 +14,9 @@ begin
   insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_reason)
     values ('disney_opa','property','923570001','ZZ PRIVATE TEXT 2357'),
            ('paramount','property','923570001','ZZ PRIVATE TEXT 2357');
+  insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_status,core_licensor_id)
+    select 'zz_fixture2357_queue','licensor',s,s,case when s='matched' then a end
+    from unnest(array['unresolved','ambiguous','deferred','matched','no_match','rejected']) s;
   insert into plm.licensing_source_scope
     (licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by)
     values (a,'disney_opa','canonical_identity','entity','property',now(),'ZZ Fixture'),
@@ -35,13 +38,25 @@ begin
   if exists(select 1 from api.licensing_relationship_candidates c where to_jsonb(c)::text like '%ZZ PRIVATE TEXT%') then raise exception '2357 relationship free text leaked'; end if;
   select count(*) into n from api.licensing_resolution_queue where scope_axis='relationship' and licensor_id in (a,b);
   if n<>2 then raise exception '2357 queue lost licensor grain'; end if;
+  select count(*) into n from api.licensing_resolution_queue where scope_axis='entity'
+    and source_system='zz_fixture2357_queue' and licensor_id is null and item_kind='licensor'
+    and resolution_status in ('unresolved','ambiguous','deferred') and item_count=1;
+  if n<>3 then raise exception '2357 entity queue lost open statuses or NULL licensor grain'; end if;
+  if exists(select 1 from api.licensing_resolution_queue where source_system='zz_fixture2357_queue'
+    and resolution_status in ('matched','no_match','rejected')) then raise exception '2357 entity queue includes closed decisions'; end if;
   reset role;
   insert into plm.licensing_source_scope
     (licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by)
     values (a,'disney_opa','relationship_evidence','relationship','property_character',now(),'ZZ Fixture');
+  insert into plm.licensing_relationship_resolution
+    (licensor_id,source_system,relationship_kind,source_left_id,source_right_id,evidence_kind)
+    values (a,'disney_opa','property_character','ZZ2357-nondirect','ZZ2357-inferred','inferred'),
+           (a,'disney_opa','property_character','ZZ2357-nondirect','ZZ2357-co-occurrence','co_occurrence');
   set local role authenticated;
   select count(*) into n from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and eligible_for_match;
   if n<>1 then raise exception '2357 one licensors permission leaked to the other'; end if;
+  if exists(select 1 from api.licensing_relationship_candidates where source_left_id='ZZ2357-nondirect'
+    and eligible_for_match) then raise exception '2357 indirect evidence is eligible despite the direct-evidence rule'; end if;
   reset role;
   set local role anon;
   foreach v in array array['api.licensing_entity_candidates','api.licensing_relationship_candidates','api.licensing_resolution_queue'] loop
@@ -83,17 +98,36 @@ begin
   if r.evidence_readable or r.observation_count is not null then raise exception '2357 overflowing source ID must abstain'; end if;
   select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','923579999');
   if not r.evidence_readable or r.observation_count<>0 then raise exception '2357 valid readable absence must be zero'; end if;
+  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','-923579999');
+  if not r.evidence_readable or r.observation_count<>0 then raise exception '2357 valid negative source ID must be readable'; end if;
+  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','-'||repeat('9',100));
+  if r.evidence_readable or r.observation_count is not null then raise exception '2357 negative overflow must abstain'; end if;
   perform count(*) from api.licensing_relationship_candidates;
   perform count(*) from api.licensing_resolution_queue;
   reset role;
 
+  set local role authenticated;
+  select coalesce(sum(item_count),0) into entity_queue_before from api.licensing_resolution_queue
+    where scope_axis='entity' and source_system in ('disney_opa','paramount');
+  reset role;
   create policy issue2357_fixture_restrict on plm.source_resolution
     as restrictive for select to authenticated using(source_id<>'923570001');
   set local role authenticated;
   select count(*) into n from api.licensing_entity_candidates where source_id='923570001';
   if n<>0 then raise exception '2357 entity view bypassed caller RLS'; end if;
+  select coalesce(sum(item_count),0) into n from api.licensing_resolution_queue
+    where scope_axis='entity' and source_system in ('disney_opa','paramount');
+  if n<>entity_queue_before-2 then raise exception '2357 entity queue bypassed caller RLS'; end if;
   reset role;
   drop policy issue2357_fixture_restrict on plm.source_resolution;
+
+  create policy issue2357_fixture_relationship_restrict on plm.licensing_relationship_resolution
+    as restrictive for select to authenticated using(source_left_id not in ('ZZ2357-left','ZZ2357-nondirect'));
+  set local role authenticated;
+  if exists(select 1 from api.licensing_relationship_candidates where source_left_id='ZZ2357-left') then raise exception '2357 relationship view bypassed caller RLS'; end if;
+  if exists(select 1 from api.licensing_resolution_queue where scope_axis='relationship' and licensor_id in (a,b)) then raise exception '2357 relationship queue bypassed caller RLS'; end if;
+  reset role;
+  drop policy issue2357_fixture_relationship_restrict on plm.licensing_relationship_resolution;
 
   -- Grant alone is not data visibility: actual underlying RLS still governs helper.
   grant select on plm.opa_capture,plm.opa_property_character_capture to authenticated;

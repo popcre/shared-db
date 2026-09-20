@@ -24,7 +24,7 @@ begin
      -- invisibility into a false zero, even if a future grant permits SELECT.
      or row_security_active('plm.opa_capture'::regclass)
      or row_security_active('plm.opa_property_character_capture'::regclass)
-     or p_source_id is null or p_source_id !~ '^[0-9]+$' then
+     or p_source_id is null or p_source_id !~ '^-?[0-9]+$' then
     return query select false, null::bigint;
     return;
   end if;
@@ -249,6 +249,11 @@ begin
     select 1 from pg_proc p join pg_language l on l.oid=p.prolang
     where p.oid=to_regprocedure('plm.licensing_opa_observation_count(text,text,text)')
       and not p.prosecdef and p.provolatile='s' and l.lanname='plpgsql'
+      and 'search_path=""'=any(p.proconfig)
+      and pg_get_function_result(p.oid)='TABLE(evidence_readable boolean, observation_count bigint)'
+      and has_function_privilege('authenticated',p.oid,'EXECUTE')
+      and has_function_privilege('service_role',p.oid,'EXECUTE')
+      and not has_function_privilege('anon',p.oid,'EXECUTE')
   ) then
     raise exception '#2357 VERIFY FAILED: helper must be non-inlined stable SECURITY INVOKER';
   end if;

@@ -1,31 +1,25 @@
 {
   "schema_version": 1,
-  "work_issue": 2678,
+  "work_issue": 3353,
   "outcome": "ready-for-merge",
-  "pr": 3314,
+  "pr": 0,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2678/3",
-  "contract_sha256": "c49d61acc0d798719b794eba42aa44e98a6e4d176563499933ef0c2dc62c9c33",
-  "head_sha": "e955f07e4446e782049bb8c52d4175749d8bbe89",
-  "files_changed": [
-    "config/orchestrator-global-invalidators-v1.json",
-    "scripts/lib/reviewer-caller-env.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/run-governed-review.mjs"
-  ],
+  "contract_ref": "refs/db-contracts/3353/1",
+  "contract_sha256": "3ca8a505f04733b25b1db4c3016267d90d22df7874c6b718aa273999958823de",
+  "head_sha": "0000000000000000000000000000000000000000",
+  "files_changed": [],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+      "command": "node --test scripts/**/*.test.mjs scripts/*.test.mjs tools/*.test.mjs",
       "exit_code": 0,
-      "evidence": "730 pass 0 fail 0 skipped after rebase onto main 70b0cad2, run with the caller variables unset as CI runs them"
+      "evidence": "3560 tests, 3512 pass, 48 fail. The identical 48 failures occur on unmodified origin/main 473ba697 in a clean worktree (3507 tests, 3459 pass, 48 fail); the failing-test-name sets are identical, so this branch introduces zero regressions. Those 48 are local-environment failures whose CI counterparts are green."
     },
     {
-      "command": "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "invalidator inventory covers the manager import closure including the new shared module"
+      "evidence": "truth audit OK: call_sites=311 sources=69 derived_digest=871e1ed90397, after PR #3338's one new disposition was registered in both the partitioned catalogue and the frozen aggregate"
     },
     {
       "command": "git diff --check",
@@ -34,8 +28,10 @@
     }
   ],
   "assumptions_resolved": [
-    "The first regression test was proved to FAIL against the unfixed probe by reverting the spawn environment, and to pass with it.",
-    "The doctor probe and the review spawn leave an undetectable caller unset; only the governed review CLI refuses, naming the exact repair."
+    "All 48 regression tests contributed by the ten absorbed pull requests are present and passing here.",
+    "Each absorbed pull request's own tests were re-run against its own reverted fix: #3316 3/3, #3317 3/3, #3334 1/1 and #3344 2/3 fail at test level, and #3314, #3315, #3322, #3325, #3326 and #3338 fail at file level because the reverted fix removes symbols their tests import. #3344's third test asserts that an existing refusal still refuses, so passing both with and without the fix is its intended behaviour.",
+    "PR #3330 merged to main independently at 17:10:58Z; its content arrives through the base and issue #2832 is not closed by this pull request.",
+    "PR #3308 is actively worked by another session and was deliberately not absorbed."
   ],
   "stop_conditions_hit": []
 }

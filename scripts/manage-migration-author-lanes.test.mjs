@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-migration-author-lanes.mjs'
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
+import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -8696,4 +8697,155 @@ test('issue 3182: REAL main command wires --rebind-claim-worktree with every ide
   const io=rebindIo(),args=['--rebind-claim-worktree','--issue','764','--claim-number','1056','--owner',rebindArgs.owner,'--branch',rebindArgs.branch,'--worktree',rebindArgs.worktree,'--target-worktree',rebindArgs.targetWorktree,'--pr','1047','--head-sha',rebindArgs.headSha]
   assert.equal(main(args,NOW,io),0)
   assert.equal(parseAuthorLease(io.issue.body,NOW).worktree,rebindArgs.targetWorktree)
+})
+
+// --- popcre/ai-devops#498 item 12 (issue #3050) -----------------------------
+//
+// A wrong-owner refusal must still REFUSE. These tests assert the exit code is
+// still 2 and that nothing closed, AND assert the MESSAGE TEXT, so the wording
+// cannot silently regress back to the bare "belongs to a different owner".
+function refusalText(argv, io, now = NOW) {
+  const messages = [], oldError = console.error, oldLog = console.log
+  console.error = (value) => messages.push(String(value))
+  console.log = () => {}
+  let code
+  try { code = main(argv, now, io) } finally { console.error = oldError; console.log = oldLog }
+  return { code, text: messages.join('\n') }
+}
+
+test('#498-12 a wrong-owner claim release names the owner on record and the corrected command', () => {
+  const io = memoryIo(); let closed = null
+  io.openClaims = () => [{ number: 7, body: body(['table core.x'], '7') }]
+  io.closeClaim = (n) => { closed = n }
+  const { code, text } = refusalText(['--release-claim', '7', '--owner', 'agent-9', '--confirm-finished'], io)
+  assert.equal(code, 2, 'the refusal must still refuse')
+  assert.equal(closed, null, 'nothing may close on a wrong-owner release')
+  assert.match(text, /the owner on record is "agent-7"/)
+  assert.match(text, /--owner supplied "agent-9"/)
+  assert.match(text, /This claim is not yours to change\./)
+  assert.match(text, /--release-claim 7 --owner "agent-7" --confirm-finished/)
+})
+
+test('#498-12 a wrong-owner duplicate release names the owner on record and the corrected command', () => {
+  const io = duplicateIo(); let closed = null
+  io.closeClaim = (n) => { closed = n }
+  const { code, text } = refusalText(['--release-duplicate-claim', '8', '--owner', 'agent-9', '--confirm-finished'], io)
+  assert.equal(code, 2)
+  assert.equal(closed, null)
+  assert.match(text, /the owner on record is "agent-7"/)
+  assert.match(text, /--release-duplicate-claim 8 --owner "agent-7" --confirm-finished/)
+})
+
+test('#498-12 wrongOwnerMessage never turns a refusal into advice, and names both owners', () => {
+  const message = wrongOwnerMessage({ claim: 12, onRecord: 'agent-a', supplied: 'agent-b', command: 'node scripts/manage-migration-author-lanes.mjs --release-claim 12 --owner "agent-a" --confirm-finished' })
+  assert.match(message, /belongs to a different owner/)
+  assert.match(message, /the owner on record is "agent-a"/)
+  assert.match(message, /--owner supplied "agent-b"/)
+  assert.match(message, /This claim is not yours to change\./)
+  assert.match(message, /re-run with the owner on record/)
+  // A blank owner on either side must still read as a refusal, not as an empty
+  // command the caller can paste.
+  assert.match(wrongOwnerMessage({ claim: 1, onRecord: null, supplied: 'x', command: 'cmd' }), /the owner on record is \(none recorded\)/)
+  assert.match(wrongOwnerMessage({ claim: 1, onRecord: 'x', supplied: '', command: 'cmd' }), /--owner supplied \(none supplied\)/)
+})
+
+test('#498-12 a legacy lease and a wrong owner are two different refusals on resume', () => {
+  const claimBodyText = body(['table core.x'], '7')
+  const io = memoryIo()
+  io.openClaims = () => [{ number: 7, body: claimBodyText }]
+  io.getIssue = () => ({ state: 'open', body: claimBodyText })
+  const { code, text } = refusalText(['--resume-author-lease', '--claim-number', '7', '--owner', 'agent-9', '--lease-hours', '4'], io)
+  assert.equal(code, 2)
+  // It must not be the old combined "is legacy or belongs to a different owner".
+  assert.doesNotMatch(text, /is legacy or belongs to a different owner/)
+  assert.match(text, /the owner on record is "agent-7"/)
+  assert.match(text, /--resume-author-lease --claim-number 7 --owner "agent-7" --lease-hours <1-24>/)
+})
+
+// --- issue #2824 hole 1: the sanctioned scope-status writer -----------------
+function scopeBody(status, dependsOn = '') {
+  return ['Some prose.', '', '```db-work-scope', `status: ${status}`, 'work_type: repo-maintenance', 'route: repo-maintenance', 'priority: 80', `depends_on:${dependsOn ? ` ${dependsOn}` : ''}`, '```', ''].join('\n')
+}
+
+function scopeIo(status = 'blocked', { dependsOn = '', states = {} } = {}) {
+  const io = memoryIo()
+  let current = scopeBody(status, dependsOn)
+  io.comments = []
+  io.getIssue = () => ({ number: 4242, state: 'open', body: current })
+  io.updateIssue = (_n, patch) => { current = patch.body }
+  io.commentIssue = (_n, text) => { io.comments.push(text) }
+  io.dependencyStates = () => states
+  io.currentBody = () => current
+  return io
+}
+
+test('#2824 --set-scope-status writes exactly the status field, reads it back, and leaves an audit comment', () => {
+  const io = scopeIo('blocked')
+  const result = setScopeStatus({ issue: 4242, status: 'ready', reason: 'the blocking dependency merged' }, NOW, io)
+  assert.equal(result.previousStatus, 'blocked')
+  assert.equal(result.status, 'ready')
+  assert.equal(parseQueueScope(io.currentBody()).status, 'ready')
+  // EXACTLY ONE FIELD moved.
+  const before = scopeBody('blocked').split('\n'), after = io.currentBody().split('\n')
+  assert.equal(before.length, after.length)
+  assert.deepEqual(before.map((line, i) => i).filter((i) => before[i] !== after[i]), [3])
+  assert.equal(io.comments.length, 1)
+  assert.match(io.comments[0], /status` changed from `blocked` to `ready`/)
+  assert.match(io.comments[0], /reason: the blocking dependency merged/)
+  assert.match(io.comments[0], /It is not a completion record and it releases no dependent task\./)
+  assert.equal(io.refs.has(MUTEX_REF), false, 'the mutex must be released')
+})
+
+test('#2824 --set-scope-status refuses ready while a dependency is unsatisfied, and writes nothing', () => {
+  // #99 is CLOSED but carries no db-work-completion record: closure alone is not
+  // success, and this is the exact case the queue gate already refuses.
+  const io = scopeIo('blocked', { dependsOn: '99', states: { 99: { exists: true, open: false, closedAt: '2026-09-01T00:00:00Z', comments: [] } } })
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'ready', reason: 'I believe it is done' }, NOW, io), (error) => {
+    assert.match(error.message, /refusing to set issue #4242 to ready/)
+    assert.match(error.message, /#99 \(waiting\): dependency #99 is closed but has no db-work-completion record; closure alone is not success/)
+    assert.match(error.message, /released only by a merged or owner-ruling-recorded db-work-completion record/)
+    return true
+  })
+  assert.equal(parseQueueScope(io.currentBody()).status, 'blocked', 'the body must be untouched')
+  assert.equal(io.comments.length, 0)
+  assert.equal(io.refs.has(MUTEX_REF), false)
+})
+
+test('#2824 --set-scope-status cannot mark work complete: it fails closed on unreadable evidence', () => {
+  const io = scopeIo('blocked', { dependsOn: '99', states: { 99: { exists: true, unreadable: 'API down' } } })
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'ready', reason: 'trying anyway for now' }, NOW, io), /NOT "no dependency"/)
+  assert.equal(parseQueueScope(io.currentBody()).status, 'blocked')
+  // No dependency reader at all is also a refusal, never a pass.
+  const blind = scopeIo('blocked', { dependsOn: '99' })
+  delete blind.dependencyStates
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'ready', reason: 'trying anyway for now' }, NOW, blind), /cannot prove the dependency closure without a dependency reader/)
+  assert.equal(parseQueueScope(blind.currentBody()).status, 'blocked')
+})
+
+test('#2824 --set-scope-status refuses a bad status, a thin reason, a closed issue, and a failed readback', () => {
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'done', reason: 'a good long reason' }, NOW, scopeIo()), /--status must be one of ready, blocked, owner-decision/)
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'blocked', reason: 'short' }, NOW, scopeIo('ready')), /--reason must be at least 12 characters/)
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'blocked', reason: 'line one\nline two here' }, NOW, scopeIo('ready')), /--reason must be a single line/)
+  const closedIssue = scopeIo('ready'); closedIssue.getIssue = () => ({ number: 4242, state: 'closed', body: scopeBody('ready') })
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'blocked', reason: 'reopening this work' }, NOW, closedIssue), /is not open/)
+  // A write that silently did not land -- the #2212 failure mode -- must refuse.
+  const lying = scopeIo('ready'); lying.updateIssue = () => {}
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'blocked', reason: 'a genuinely blocked thing' }, NOW, lying), /readback failed/)
+  assert.equal(lying.refs.has(MUTEX_REF), false)
+})
+
+test('#2824 --set-scope-status is idempotent and refuses an absent scope block', () => {
+  const io = scopeIo('ready')
+  assert.deepEqual(setScopeStatus({ issue: 4242, status: 'ready', reason: 'already dispatchable' }, NOW, io), { issue: 4242, status: 'ready', previousStatus: 'ready', idempotent: true })
+  assert.equal(io.comments.length, 0, 'an idempotent no-op must not spam an audit comment')
+  const none = scopeIo('ready'); none.getIssue = () => ({ number: 4242, state: 'open', body: 'no scope block here' })
+  assert.throws(() => setScopeStatus({ issue: 4242, status: 'blocked', reason: 'a genuinely blocked thing' }, NOW, none), /carries no db-work-scope block; add exactly one before setting its status/)
+})
+
+test('#2824 --set-scope-status is reachable from the CLI and reports the transition', () => {
+  const io = scopeIo('blocked')
+  const { code, text } = refusalText(['--set-scope-status', '--issue', '4242', '--status', 'ready', '--reason', 'the blocking dependency merged'], io)
+  assert.equal(code, 0)
+  assert.match(text, /status: blocked -> ready/)
+  assert.equal(parseQueueScope(io.currentBody()).status, 'ready')
 })

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "base_sha": "18c2610526e9b34a9d5af3818853cf1fb63e8979",
+  "db_writes": [],
+  "stop_conditions_hit": [],
+  "assumptions_resolved": [
+    "Prerequisite PR3357 merged; current main incorporated"
+  ],
+  "head_sha": "e35e5cbdf9e87aad277a1b6fa7f9d51547658faa",
+  "checks": [
+    {
+      "command": "node --test scripts/lib/agent-evidence-paths.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/check-main-tip-freshness.test.mjs",
+      "evidence": "✔ POSITIVE CONTROL: after the merge, a superseded head is not identical against current main (11593.3487ms); ℹ tests 54; ℹ suites 0; ℹ pass 54; ℹ fail 0; ℹ cancelled 0; ℹ skipped 0; ℹ todo 0; ℹ duration_ms 173308.4807",
+      "exit_code": 0
+    }
+  ],
+  "outcome": "ready-for-merge",
+  "contract_sha256": "aa1333755bc86e2d10d8dd4d622c6d1af902584754c3656f0ce5a16b35b716a8",
+  "contract_ref": "refs/db-contracts/3360/1",
+  "pr": 3363,
+  "files_changed": [
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/lib/agent-evidence-paths.mjs",
+    "scripts/lib/agent-evidence-paths.test.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/pr-content-equivalence.test.mjs"
+  ],
+  "work_issue": 3360,
+  "migration_versions": [],
+  "db_reads": []
+}

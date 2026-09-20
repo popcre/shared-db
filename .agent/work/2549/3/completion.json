@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 2549,
+  "outcome": "ready-for-merge",
+  "pr": 3334,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2549/3",
+  "contract_sha256": "d0427cf5d12f455cae1c8a25cac32987916fb31318018f78516ba72e34076a78",
+  "head_sha": "4e46ce7f8d5937b6dd9a90f2f9f3ea4bb3d01ccb",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "644 tests, 644 pass, 0 fail on the merged-main head; the new regression failed first against unfixed code with 'binding is neither a merged-main rehearsal ... with applied commit equal to the run head'"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors against origin/main"
+    }
+  ],
+  "assumptions_resolved": [
+    "The dispatch head and the applied checkout are now verified separately; they may differ only along merge commit <= applied checkout <= dispatch head.",
+    "A caller without io.compareCommits keeps exactly the previous same-commit behaviour, because an unavailable comparison answers 'not proven'.",
+    "Issue #2781 confirmed already delivered on main by merged PR #2780; reverting only its source files turned 103 passing carry-forward tests into 3 failing suites.",
+    "Merged current main rather than rebasing, so the exact-head APPROVE carries forward: the pull request's own diff outside .agent/ is byte-identical and main touched neither changed file."
+  ],
+  "stop_conditions_hit": []
+}

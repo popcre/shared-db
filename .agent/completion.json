@@ -8,10 +8,12 @@
   "contract_sha256": "8cb4848574dd311563f7118ba88900a0a208ef7c5fb13a5c6db3d91c727903c5",
   "head_sha": "027b75ec656f2a46fe8c6f39818058e38481ca25",
   "files_changed": [
-    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
-    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],

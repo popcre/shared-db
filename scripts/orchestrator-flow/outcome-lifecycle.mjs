@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { currentRepository, isTrustedOperatorComment } from '../lib/repository-identity.mjs'
 import { COMPLETION_FENCE, findCompletionRecord, validateCompletionRecord } from '../lib/work-dependencies.mjs'
-import { STRUCTURAL_ROUTES } from './admission.mjs'
+import { STRUCTURAL_ROUTES, structuralWritesMatch } from './admission.mjs'
 
 export class OutcomeError extends Error {}
 
@@ -340,9 +340,11 @@ export function completeOutcome({ issue, evidenceRef, actor, timestamp = new Dat
   }
   const linked=io.closingIssuesForPr(evidence.merge_pr)
   if(!Array.isArray(linked)||linked.length!==1||Number(linked[0]?.number)!==Number(issue))throw new OutcomeError(`merge PR #${evidence.merge_pr} is not linked exclusively to outcome issue #${issue}`)
-  const actualObjects=io.prStructuralObjects(evidence.merge_pr,evidence.merge_sha)
+  const inspection=typeof io.prStructuralInspection==='function'
+    ?io.prStructuralInspection(evidence.merge_pr,evidence.merge_sha)
+    :{objects:io.prStructuralObjects(evidence.merge_pr,evidence.merge_sha)}
   const declared=[...scope.writes].sort()
-  if(!Array.isArray(actualObjects)||actualObjects.length!==declared.length||actualObjects.some((value,index)=>value!==declared[index]))throw new OutcomeError('merge PR structural objects do not match the admitted issue writes')
+  if(!structuralWritesMatch(inspection,declared))throw new OutcomeError('merge PR structural objects do not match the admitted issue writes')
   const pr = io.getPr(evidence.merge_pr)
   if (!pr?.merged_at || !sameSha(evidence.merge_sha, pr.merge_commit_sha ?? '')) throw new OutcomeError('merge evidence does not match GitHub')
   if (!io.mergeCommitInMain(evidence.merge_sha)) throw new OutcomeError('merge commit is not in current shared-db main history')

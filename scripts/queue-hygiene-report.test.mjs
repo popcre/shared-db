@@ -18,6 +18,7 @@ import { main, hygieneReportIo, dependencyHygiene } from './queue-hygiene-report
 import { githubIo } from './manage-migration-author-lanes.mjs'
 import { stageEventKey } from './lib/work-stage-evidence.mjs'
 import { expectedOperatorAssociation } from './lib/repository-identity.mjs'
+import { createHash } from 'node:crypto'
 
 const NOW = new Date('2026-09-17T12:00:00Z')
 
@@ -281,4 +282,49 @@ test('malformed scope remains a visible unknown alongside other outcomes', () =>
   assert.equal(report.outcomes.length, 2)
   assert.equal(report.outcomes[0].delivery, 'unverifiable')
   assert.match(report.outcomes[0].current_failing_gate, /status/)
+})
+
+test('CLI accepts a proven explicit stage while legacy dependencies still await closure', () => {
+  const issues = [work(1, '2@implementation-merged'), work(2), work(3, '2')]
+  const fixture = fixtureIo({ issues }), repository = 'popcre/shared-db'
+  const facts = { repository, work_issue: 2, pr: 99, head_sha: 'a'.repeat(40), merge_sha: 'b'.repeat(40) }
+  const event = { schema_version: 1, ...facts, stage: 'implementation-merged', evidence_ref: `https://github.com/${repository}/pull/99`,
+    evidence_digest: createHash('sha256').update(JSON.stringify(facts)).digest('hex') }
+  event.event_id = stageEventKey(event)
+  const comments = [{ author: 'u2giants', author_association: expectedOperatorAssociation(), body: '```db-work-stage\n' + JSON.stringify(event) + '\n```' }]
+  Object.assign(fixture.io, {
+    getIssueComments: n => n === 2 ? comments : [], issueComments: n => n === 2 ? comments : [],
+    readRef: ref => ref.startsWith('refs/db-work-stage-revocations/') ? null : 'c'.repeat(40),
+    getCommit: () => ({ message: 'db-work-stage ' + JSON.stringify(event) }),
+    getPr: () => ({ merged_at: NOW.toISOString(), head: { sha: facts.head_sha }, merge_commit_sha: facts.merge_sha, base: { repo: { full_name: repository }, ref: 'main' } }),
+    closingIssuesForPr: () => [{ number: 2 }], mergeCommitInMain: () => true,
+  })
+  const result = runReport(fixture)
+  assert.equal(result.code, 0, result.err)
+  const report = JSON.parse(result.out).dependency_hygiene
+  assert.equal(report.outcomes[0].dependencies[0].satisfied, true)
+  assert.equal(report.outcomes[2].dependencies[0].satisfied, false)
+  assert.deepEqual(fixture.reached, [])
+  fixture.io.readRef = () => 'c'.repeat(40) // revocation became visible
+  const revoked = runReport(fixture)
+  assert.equal(revoked.code, 2)
+  assert.equal(JSON.parse(revoked.out).dependency_hygiene.outcomes[0].dependencies[0].satisfied, false)
+})
+
+test('accepted maintenance is reported awaiting closure only after actual PR linkage verification', () => {
+  const issues = [work(1)], fixture = fixtureIo({ issues })
+  const record = { schema_version: 1, work_issue: 1, outcome: 'merged', pr: 99, merge_sha: 'a'.repeat(40), migration_versions: [] }
+  const comments = [{ author: 'u2giants', author_association: expectedOperatorAssociation(), body: '```db-work-completion\n' + JSON.stringify(record) + '\n```' }]
+  Object.assign(fixture.io, { getIssueComments: () => comments, issueComments: () => comments,
+    getPr: () => ({ merged_at: NOW.toISOString(), merge_commit_sha: record.merge_sha, base: { repo: { full_name: 'popcre/shared-db' }, ref: 'main' } }),
+    getPrFiles: () => [{ filename: 'scripts/example.mjs' }], readRef: () => 'b'.repeat(40),
+    compareCommits: () => ({ status: 'ahead', behind_by: 0 }), closingIssuesForPr: () => [{ number: 1 }], mergeCommitInMain: () => true,
+  })
+  let report = dependencyHygiene(issues, hygieneReportIo(fixture.io), 'popcre/shared-db')
+  assert.deepEqual(report.verified_but_open, [1])
+  assert.deepEqual(fixture.reached, [])
+  fixture.io.closingIssuesForPr = () => [{ number: 2 }]
+  report = dependencyHygiene(issues, hygieneReportIo(fixture.io), 'popcre/shared-db')
+  assert.deepEqual(report.verified_but_open, [])
+  assert.equal(report.outcomes[0].delivery, 'unverifiable')
 })

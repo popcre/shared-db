@@ -28,7 +28,7 @@
 //      an instrument that could not read must never be mistaken for a clean
 //      queue. Exit-non-zero-on-dirty-queue is deliberately NOT implemented
 //      (plan §8 open question — decide after a week of daily runs).
-import { githubIo, buildDynamicQueues, parseAuthorLease, parseQueueScope, WORK_LABEL, OUTSIDE_ORCHESTRATOR_EXITS, LaneError } from './manage-migration-author-lanes.mjs'
+import { githubIo, buildDynamicQueues, parseAuthorLease, parseQueueScope, verifyCompletionAcceptance, WORK_LABEL, OUTSIDE_ORCHESTRATOR_EXITS, LaneError } from './manage-migration-author-lanes.mjs'
 import { classifyDependency, dependencyIssue, findDependencyCycles, findCompletionRecord } from './lib/work-dependencies.mjs'
 import { createStageEvidenceVerifier } from './lib/work-stage-evidence.mjs'
 import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
@@ -86,6 +86,10 @@ export function dependencyHygiene(issues, io, repository) {
       state = { exists: true, open: issue.state !== 'closed', closedAt: issue.closed_at ?? issue.closedAt,
         comments, repository, owner: owner(issue), verifyStageEvidence: createStageEvidenceVerifier({ ...io, parseScope: parseQueueScope }, repository) }
       const completion = findCompletionRecord(comments, { requireTrustedAuthor: true })
+      if (completion) state.completionAcceptance = verifyCompletionAcceptance({ issue: number, record: completion }, {
+        ...io, getIssue: n => Number(n) === number ? issue : io.getIssue(n),
+        issueComments: n => Number(n) === number ? comments : io.issueComments(n),
+      })
       if (completion && ['merged', 'live_verified'].includes(completion.outcome)) {
         // Unknown history is a failed verification, never the legacy optional flag.
         state.mergeInMain = io.mergeCommitInMain(completion.merge_sha) === true
@@ -103,15 +107,25 @@ export function dependencyHygiene(issues, io, repository) {
     const state = read(number)
     const dependencies = (scope?.dependencies ?? []).map(declaration => {
       const prerequisite = dependencyIssue(declaration), facts = read(prerequisite)
-      const result = classifyDependency(declaration, facts)
-      return { issue: prerequisite, required_stage: typeof declaration === 'object' ? declaration.required_stage : 'complete',
+      const requiredStage = typeof declaration === 'object' ? declaration.required_stage : 'complete'
+      const terminal = facts.completionAcceptance
+      const result = requiredStage === 'complete' && terminal && !['complete', 'delivered-closeout-pending', 'cancelled-or-superseded'].includes(terminal.status)
+        ? { satisfied: false, status: terminal.status === 'unverifiable' ? 'unknown' : 'waiting', reason: `dependency #${prerequisite} completion is ${terminal.status}` }
+        : classifyDependency(declaration, facts)
+      return { issue: prerequisite, required_stage: requiredStage,
         owner: facts.owner, ...result, next_step: result.satisfied ? 'Prerequisite accepted; reconcile the dependent work.' :
           facts.owner ? `Owner must resolve: ${result.reason}` : 'Assign an owner and repair or complete the prerequisite.' }
     })
     edges.set(number, dependencies.filter(x => !x.satisfied).map(x => x.issue))
-    const acceptance = classifyDependency({ issue: number, required_stage: 'application-accepted' }, state)
+    const stageAcceptance = classifyDependency({ issue: number, required_stage: 'application-accepted' }, state)
+    const terminal = state.completionAcceptance
+    const acceptance = terminal ? {
+      satisfied: ['delivered-closeout-pending', 'complete'].includes(terminal.status),
+      status: terminal.status === 'unverifiable' ? 'unknown' : terminal.status,
+      reason: `Current completion verification: ${terminal.status}`,
+    } : stageAcceptance
     rows.push({ issue: number, work_type: scope?.workType ?? 'unclassified', route: scope?.route ?? null,
-      owner: state.owner, delivery: scopeError ? 'unverifiable' : acceptance.satisfied ? 'verified-awaiting-closure' : acceptance.status === 'unknown' ? 'unverifiable' : 'not-verified',
+      owner: state.owner, delivery: scopeError ? 'unverifiable' : acceptance.satisfied ? (state.open ? 'verified-awaiting-closure' : 'verified-closed') : acceptance.status === 'unknown' ? 'unverifiable' : 'not-verified',
       evidence_reason: scopeError ?? acceptance.reason, oldest_meaningful_event: null,
       current_failing_gate: scopeError ?? dependencies.find(x => !x.satisfied)?.reason ?? (acceptance.status === 'unknown' ? acceptance.reason : null),
       dependencies, next_step: state.unreadable ? 'Restore readable ownership and completion evidence.' : !state.owner ? 'Assign an owner.' : acceptance.satisfied ? 'Owner must reconcile accepted completion and administrative closure.' :

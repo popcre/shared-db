@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3305/3",
   "contract_sha256": "e9eb325a501dd9b1cba4a01554116c66006d75e01cc66f13cc533ce68e920a56",
-  "head_sha": "9f0109eb660feef32b762f07b441404a5fa99027",
+  "head_sha": "d5285ef35193599ab63c7ff13cec235774605819",
   "files_changed": [
     "scripts/orchestrator-flow/preview-artifact-selection.mjs",
     "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
@@ -19,12 +19,12 @@
     {
       "command": "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
       "exit_code": 0,
-      "evidence": "30 tests passed; zero failures, skips or cancellations"
+      "evidence": "30 tests passed; zero failures, skips or cancellations Re-run passed at d5285ef3 after main refresh."
     },
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "609 tests passed; zero failures, skips or cancellations"
+      "evidence": "609 tests passed; zero failures, skips or cancellations Re-run passed at d5285ef3 after main refresh."
     }
   ],
   "assumptions_resolved": [

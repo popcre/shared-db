@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 10,
+  "generation": 11,
   "work_issue": 2478,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -15,16 +15,18 @@
     ".github/live-proofs/2478.sql",
     "scripts/production_migration_guard.py",
     "scripts/test_production_migration_guard.py",
-    ".agent/work/2478/10/contract.json",
-    ".agent/work/2478/10/completion.json"
+    ".agent/work/2478/11/contract.json",
+    ".agent/work/2478/11/completion.json",
+    "scripts/test_post_batch_app_verification.py"
   ],
   "file_writes": [
     "supabase/migrations/20260920203337_shared_style_group_sku_key.sql",
     ".github/live-proofs/2478.sql",
     "scripts/production_migration_guard.py",
     "scripts/test_production_migration_guard.py",
-    ".agent/work/2478/10/contract.json",
-    ".agent/work/2478/10/completion.json"
+    ".agent/work/2478/11/contract.json",
+    ".agent/work/2478/11/completion.json",
+    "scripts/test_post_batch_app_verification.py"
   ],
   "db_reads": [
     "supabase_migrations.schema_migrations"
@@ -43,7 +45,8 @@
     "git diff --check",
     "python -m unittest scripts.test_production_migration_guard",
     "bash scripts/check-sql.sh",
-    "node scripts/check-live-proof-probe.mjs"
+    "node scripts/check-live-proof-probe.mjs",
+    "python -m unittest scripts.test_post_batch_app_verification"
   ],
   "assumptions": [
     "Root explicitly approved exact claim 2745 protected reissue after fresh production-absent and preview-present ledger proof",

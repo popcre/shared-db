@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "work_issue": 2611,
+  "work_issue": 3299,
   "outcome": "ready-for-merge",
   "pr": 3293,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2611/11",
-  "contract_sha256": "4ee5fd053f32aba1bbeca91454216230486b2206261049ac5c0b9d11a969bb1a",
-  "head_sha": "b0a9bffa405b548b424053131ef42752290b1843",
+  "contract_ref": "refs/db-contracts/3299/1",
+  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
+  "head_sha": "592c26b04b150d4f899bd4ed1fd0a7c2f5d89b8a",
   "files_changed": [
     ".github/live-proofs/2611.sql"
   ],
@@ -30,8 +30,9 @@
     }
   ],
   "assumptions_resolved": [
-    "The bounded production query returned passed=true as supabase_read_only_user in 0.5 seconds while retaining all original assertions.",
-    "The isolated unchanged #3191 proof completed successfully in workflow run 35479619996, so its full-view count remains unchanged."
+    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
+    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
+    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
   ],
   "stop_conditions_hit": []
 }

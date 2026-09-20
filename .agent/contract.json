@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generation": 11,
-  "work_issue": 2611,
+  "generation": 1,
+  "work_issue": 3299,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
   "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Codex parent orchestrator chat /root, relaying Albert's instruction to re-run the #2611 prepack-exclusion proof and his latest instruction: 'i need things moving way quicker than you're currently moving'",
-  "worker": "Codex sub-agent chat 01a0bc14-7baf-7280-a891-8f012da7de4d on EDGE-DEV",
-  "branch": "codex/proof-2611-repair-01a0bc14",
-  "worktree": "C:/Users/ahazan/.codex/worktrees/proof-2611-repair-01a0bc14/shared-db",
+  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
+  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
+  "branch": "codex/recover-prepack-proof-20260920",
+  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
@@ -33,8 +33,9 @@
     "git diff --check"
   ],
   "assumptions": [
-    "The changed bounded query returned passed=true on production as supabase_read_only_user in 0.5 seconds before implementation.",
-    "The isolated unchanged #3191 proof subsequently completed successfully, confirming that its single full-view count does not need weakening."
+    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
+    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
+    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
   ],
   "stop_conditions": [
     "Stop if the repair requires any database object or timeout change.",

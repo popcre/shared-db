@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-migration-author-lanes.mjs'
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
+import { canonicalReviewerAllowlist } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -796,6 +797,57 @@ test('#2705 reviewer assignment refuses malformed reconciled state before durabl
   io.reviewerUsability=()=>({usable:true})
   assert.throws(()=>assignNextReviewer({issue:2705,pr:2706,headSha:'c'.repeat(40)},io),/malformed reconciled/)
   assert.deepEqual([...io.refs],before)
+})
+
+test('#3291 reviewer allowlist accepts canonical active names and rejects ambiguous or unavailable policy names',()=>{
+  const allowed=['grok-4.6','muse-spark-1.3-contributor','qwen-3.8-max']
+  assert.deepEqual(new Set(canonicalReviewerAllowlist(allowed.join(','))),new Set(allowed))
+  for(const value of ['', 'grok-4.6,grok-4.6', 'grok', 'Grok-4.6', 'codex-gpt-5.6-sol', 'grok-4.6, muse-spark-1.3-contributor']){
+    assert.throws(()=>canonicalReviewerAllowlist(value),/allowlist/)
+  }
+})
+
+test('#3291 assignment persists the canonical allowlist, inherits it on retry, and refuses widening',()=>{
+  const io=reviewIo(),head='1'.repeat(40),allowed=['muse-spark-1.3-contributor']
+  const first=assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:allowed},io)
+  assert.equal(first.reviewer,allowed[0])
+  assert.deepEqual(first.reviewerAllowlist,allowed)
+  assert.deepEqual(assignNextReviewer({issue:3291,pr:3292,headSha:head},io),first,'omitted retry input inherits the durable restriction')
+  assert.throws(()=>assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:['grok-4.6']},io),/does not match the durable assignment/)
+})
+
+test('#3291 an allowed but unusable reviewer remains unusable and consumes no sequence',()=>{
+  const io=reviewIo(),before=[...io.refs],name='qwen-3.8-max'
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),status:row.name===name?'quarantined':'ready',failure_class:row.name===name?'live-qualification-required':null,usable:row.name!==name}]))
+  assert.throws(()=>assignNextReviewer({issue:3291,pr:3293,headSha:'2'.repeat(40),reviewerAllowlist:[name]},io),/unusable by ai-review-preflight/)
+  assert.deepEqual([...io.refs],before)
+})
+
+test('#3291 one allowlisted reviewer still holds more than eight concurrent exact-head reviews',()=>{
+  const io=withAtomicRefs(reviewIo()),heads=new Map(),name='grok-4.6',assigned=[]
+  io.requiresExactReviewHeadSha=true
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:heads.get(Number(pr)),ref:'codex/x'}})
+  const rawGetCommit=io.getCommit
+  io.readActiveReviewLeases=()=>new Map([...io.refs.entries()].filter(([ref])=>ref.startsWith(REVIEW_ACTIVE_REF_PREFIX)).map(([ref,sha])=>[ref,{sha,commit:rawGetCommit(sha)}]))
+  for(let n=0;n<12;n++){
+    const request={issue:5000+n,pr:6000+n,headSha:(0xd00+n).toString(16).padStart(40,'d'),reviewerAllowlist:[name]}
+    heads.set(request.pr,request.headSha);assigned.push(assignNextReviewer(request,io))
+  }
+  assert.ok(assigned.every((row)=>row.reviewer===name))
+  assert.equal(new Set(assigned.map((row)=>reviewActiveRef(row.reviewer,row))).size,12)
+})
+
+test('#3291 replacement inherits the durable allowlist and cannot widen it',()=>{
+  const io=withAtomicRefs(reviewIo()),head='3'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
+  const first=assignNextReviewer({issue:3291,pr:3294,headSha:head,reviewerAllowlist:allowed},io)
+  const request={issue:3291,pr:3294,headSha:head,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+  const replacement=replaceFailedReviewer(request,io)
+  assert.ok(allowed.includes(replacement.reviewer))
+  assert.notEqual(replacement.reviewer,first.reviewer)
+  assert.deepEqual(replacement.reviewerAllowlist,allowed)
+  assert.deepEqual(replaceFailedReviewer(request,io),replacement)
+  assert.throws(()=>replaceFailedReviewer({...request,reviewerAllowlist:['qwen-3.8-max']},io),/does not match the durable assignment/)
 })
 
 // Production `githubIo` always defines the atomic compare-and-swap ref writer,
@@ -3212,11 +3264,14 @@ test('manager assignment and replacement preserve repository-maintenance review 
   io.commentIssue=(_number,body)=>comments.push(body)
   const oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
   try{
-    assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha],NOW,io),0)
-    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact'],NOW,io),0)
+    const reviewerAllowlist='grok-4.6,muse-spark-1.3-contributor'
+    assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
+    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact','--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
   }finally{console.log=oldLog;console.error=oldError}
-  assert.ok([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX)))
-  assert.ok([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX)))
+  const assignmentSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX))?.[1]
+  const replacementSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX))?.[1]
+  assert.match(io.getCommit(assignmentSha).message,/allowlist=grok-4\.6,muse-spark-1\.3-contributor/)
+  assert.match(io.getCommit(replacementSha).message,/allowlist=grok-4\.6,muse-spark-1\.3-contributor/)
   assert.equal(comments.length,0);assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith('refs/db-claims/')),false)
   assert.equal(io.refs.has(EXCLUSIVE_REFS.preview),false)
 })

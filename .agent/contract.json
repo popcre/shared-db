@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 2832,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -15,7 +15,7 @@
     ".agent/completion.json",
     "scripts/check-throughput-truth-audit.mjs",
     "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
-    "docs/verification/throughput-dispositions/",
+    "docs/verification/throughput-dispositions/**",
     "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "file_writes": [
@@ -23,7 +23,7 @@
     ".agent/completion.json",
     "scripts/check-throughput-truth-audit.mjs",
     "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
-    "docs/verification/throughput-dispositions/",
+    "docs/verification/throughput-dispositions/**",
     "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
@@ -41,7 +41,8 @@
   ],
   "assumptions": [
     "Issue 2832 is also Step 2 of the concurrently open planning PR 3318 under tracker 3306; this implementation follows that published design rather than a competing shape, and no implementation work had started there.",
-    "The pre-partition aggregate is retained as historical evidence only and is never read by the checker."
+    "The pre-partition aggregate is retained as historical evidence only and is never read by the checker.",
+    "Generation 2 supersedes generation 1 only to express the disposition directory as a scoped glob; the goal, prohibitions and required checks are unchanged."
   ],
   "stop_conditions": [
     "Stop if the partition cannot preserve every existing disposition byte for byte.",

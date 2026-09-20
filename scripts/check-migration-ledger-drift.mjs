@@ -99,21 +99,25 @@ export const MIGRATIONS_DIR = 'supabase/migrations'
  * away inside a week (AGENTS.md, migration-ledger-drift.yml, "would be trained away").
  *
  * THE RULE, IN ONE LINE. A merged version is in scope for the sandbox when it is ALREADY IN
- * ITS LEDGER, or when it touches the `dflow` schema and is not older than the ledger's
- * earliest row.
+ * ITS LEDGER, or when the target REGISTRY records it for this database, or when it names the
+ * DesignFlow surface and is not older than the ledger's earliest row.
  *
  *   * "already in its ledger" is what keeps a legitimately applied version from being
  *     misreported as an orphan just because this scope rule did not predict it. Orphan
  *     detection therefore still means what it means everywhere else: a ledger row with NO
  *     FILE ON MAIN — DDL that reached this database from outside merged history.
+ *   * the REGISTRY is authoritative and is consulted regardless of the baseline. A recorded
+ *     target is a direct statement that this database owes the migration, and it outranks
+ *     any inference drawn from the file's text or its age.
  *   * the BASELINE is DERIVED, not configured: it is the earliest version the sandbox
  *     ledger itself carries. Everything before it is inside the seed dump and has no ledger
  *     row by construction. A derived baseline cannot go stale the way a checked-in one
  *     would, and an empty ledger is already `Unknown` rather than a baseline of nothing.
- *   * `dflow` is matched in the migration TEXT, which OVER-reports rather than under-
- *     reports: a migration that merely mentions the schema is listed and can be dismissed
- *     by a reader, whereas a missed one is the exact invisible-loss failure this file
- *     exists to prevent.
+ *   * the SURFACE is matched in the migration TEXT, which OVER-reports rather than under-
+ *     reports: a migration that merely mentions it is listed and can be dismissed by a
+ *     reader, whereas a missed one is the exact invisible-loss failure this file exists to
+ *     prevent. Matching `dflow` alone was not enough and did miss real work; see
+ *     SANDBOX_SURFACE_PATTERN.
  *
  * THE EXCLUSION IS COUNTED AND EXPLAINED IN THE REPORT, never silently applied.
  */
@@ -128,14 +132,39 @@ export const SANDBOX_TARGET = 'sandbox'
  */
 export const CLASSIFIER_TARGETS = Object.freeze({ production: 'production', preview: 'preview', sandbox: 'designflow-nonprod' })
 
-export const DFLOW_SCHEMA_PATTERN = String.raw`\bdflow\b`
+/**
+ * The DesignFlow non-production SURFACE, matched in migration text.
+ *
+ * `dflow` ALONE WAS NOT ENOUGH, and the miss was the fail-open direction (governed
+ * review of PR #3341, issue 1). `20260909121403_hts_rag_split_isolated_schema.sql` is
+ * recorded in the target registry as belonging to this very database and contains zero
+ * `dflow` tokens; `20260904172420` and `20260916232818` work on the same `hts_rag`
+ * surface and mention it just as little. Under the old single word they were dropped
+ * from the comparison silently: not classified, not listed, and unable to fail the
+ * check. Over-reporting here is cheap — an entry a reader can dismiss — while a miss is
+ * exactly the invisible-loss failure this file exists to prevent.
+ */
+// NOTE the deliberate absence of a trailing \b: `_` is a word character, so `hts_rag\b`
+// does NOT match `hts_rag_split`, which is the exact file this pattern was widened for.
+export const SANDBOX_SURFACE_PATTERN = String.raw`\b(dflow|designflow|hts_rag)`
+/** @deprecated kept as the old name so nothing that imported it breaks. */
+export const DFLOW_SCHEMA_PATTERN = SANDBOX_SURFACE_PATTERN
 
 /**
+ * Which merged versions this database is owed.
+ *
+ * THE REGISTRY IS AUTHORITATIVE AND THE TEXT MATCH IS ONLY AN ADDITION. A version whose
+ * RECORDED target is this database is in scope no matter what its text says, because the
+ * repository already states the answer in `FOREIGN_TARGET_MIGRATIONS` and re-approximating
+ * it with a word search can only get it wrong. The surface match then catches everything
+ * the registry has not been told about yet, which is the over-reporting direction.
+ *
  * @param {string[]} mainVersions      every version merged to the base branch
- * @param {string[]} dflowVersions     versions whose migration text mentions the dflow schema
+ * @param {string[]} surfaceVersions   versions whose migration text names the DesignFlow surface
  * @param {string[]} appliedVersions   versions with a row in the sandbox ledger
+ * @param {string[]} registryVersions  versions the target registry records for this database
  */
-export function sandboxInScopeVersions(mainVersions, dflowVersions, appliedVersions) {
+export function sandboxInScopeVersions(mainVersions, surfaceVersions, appliedVersions, registryVersions = []) {
   const applied = [...new Set((appliedVersions ?? []).map(String))].sort()
   if (applied.length === 0) {
     throw new Unknown(
@@ -143,23 +172,30 @@ export function sandboxInScopeVersions(mainVersions, dflowVersions, appliedVersi
         'Refusing to guess which merged migrations this database is owed.',
     )
   }
-  if (!Array.isArray(dflowVersions) || dflowVersions.length === 0) {
+  if (!Array.isArray(surfaceVersions) || surfaceVersions.length === 0) {
     throw new Unknown(
-      'no merged migration mentions the `dflow` schema, which cannot be true of a repository ' +
-        'that owns the DesignFlow contract. The scope read failed; nothing was compared.',
+      'no merged migration names the DesignFlow surface (`dflow`, `designflow` or `hts_rag`), which ' +
+        'cannot be true of a repository that owns the DesignFlow contract. The scope read failed; ' +
+        'nothing was compared.',
     )
   }
   const baseline = applied[0]
   const appliedSet = new Set(applied)
-  const dflow = new Set(dflowVersions.map(String))
-  const inScope = mainVersions.filter((version) => appliedSet.has(version) || (version >= baseline && dflow.has(version)))
+  const surface = new Set(surfaceVersions.map(String))
+  // A REGISTERED version is in scope regardless of the baseline. The baseline exists to
+  // exclude work already inside the seed dump, and a recorded target is a direct statement
+  // that this database owes the migration — which outranks an inference about the dump.
+  const registered = new Set((registryVersions ?? []).map(String))
+  const inScope = mainVersions.filter(
+    (version) => appliedSet.has(version) || registered.has(version) || (version >= baseline && surface.has(version)),
+  )
   if (inScope.length === 0) {
     throw new Unknown(
       `no merged migration is in scope for the sandbox at baseline ${baseline}. Refusing to ` +
         'report on an empty comparison: that would clear this database without comparing anything.',
     )
   }
-  return { baseline, inScope, excludedCount: mainVersions.length - inScope.length }
+  return { baseline, inScope, registeredCount: registered.size, excludedCount: mainVersions.length - inScope.length }
 }
 
 export const PENDING_KINDS = new Set(['genuinely-pending', 'guarded-batch', 'deliberately-held', 'retired', 'base-absent', 'foreign-target'])
@@ -336,6 +372,16 @@ export function formatReport({ target, projectRef, baseRef, drift, fileByVersion
   lines.push('')
 
   if (!drift.driftFound && drift.mergedNotApplied.length === 0) {
+    // THE CLEARANCE MUST NOT OVERSTATE ITSELF. On a scoped target this sentence is the
+    // line that gets quoted, and "every version merged to the base branch" would be false
+    // once hundreds of merged versions were excluded above (governed review of PR #3341,
+    // issue 2). Say exactly what was compared.
+    if (sandboxScope) {
+      lines.push('NO DRIFT IN SCOPE. Every IN-SCOPE merged version has a ledger row, and every ledger')
+      lines.push('row has a file on the base branch. This is NOT a clearance of the whole merged tree:')
+      lines.push(`${sandboxScope.excludedCount} merged version(s) were excluded by the scope rule stated above.`)
+      return lines.join('\n')
+    }
     lines.push('NO DRIFT. Every version merged to the base branch has a ledger row, and every')
     lines.push('ledger row has a file on the base branch.')
     return lines.join('\n')
@@ -471,7 +517,40 @@ export function mainMigrationFiles(baseRef = 'origin/main') {
 // ---------------------------------------------------------------------------
 
 /**
- * The migration files on the base branch whose TEXT mentions the `dflow` schema.
+ * Every merged version the repository's own target registry records for `target`.
+ *
+ * READ, NEVER RE-APPROXIMATED. `FOREIGN_TARGET_MIGRATIONS` in
+ * `scripts/production_migration_guard.py` already states which database a migration
+ * belongs to, and it is the same registry `classify_pending_version` consults. Any import
+ * or parse failure is `Unknown`, because a registry that could not be read would silently
+ * shrink the owed set — the fail-open direction this scope rule was rejected for once.
+ */
+export function registryTargetVersions(target) {
+  const program = String.raw`
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / 'scripts'))
+from production_migration_guard import FOREIGN_TARGET_MIGRATIONS
+target = sys.argv[2]
+print(json.dumps(sorted(v for v, entry in FOREIGN_TARGET_MIGRATIONS.items() if entry['target'] == target)))
+`
+  let raw
+  try {
+    raw = execFileSync('python', ['-c', program, repoRoot, String(target)], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    throw new Unknown(`could not read the migration target registry for ${target}: ${error.message}`)
+  }
+  let versions
+  try { versions = JSON.parse(raw) } catch { throw new Unknown(`the migration target registry for ${target} returned invalid JSON`) }
+  if (!Array.isArray(versions) || versions.some((version) => !/^\d{14}$/.test(String(version)))) {
+    throw new Unknown(`the migration target registry for ${target} returned a malformed version`)
+  }
+  return versions.map(String)
+}
+
+/**
+ * The migration files on the base branch whose TEXT names the DesignFlow surface.
  *
  * One `git grep` against the ref, never a per-file read. Exit status 1 from git means "no
  * match", which for this repository is impossible and is therefore `Unknown` rather than an
@@ -481,7 +560,7 @@ export function dflowMigrationFiles(baseRef = 'origin/main') {
   const resolved = resolveFreshBaseRef(baseRef)
   let out
   try {
-    out = execFileSync('git', ['-C', repoRoot, 'grep', '-lI', '--extended-regexp', '-e', DFLOW_SCHEMA_PATTERN, resolved, '--', MIGRATIONS_DIR], {
+    out = execFileSync('git', ['-C', repoRoot, 'grep', '-lI', '--extended-regexp', '-e', SANDBOX_SURFACE_PATTERN, resolved, '--', MIGRATIONS_DIR], {
       encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
     })
@@ -498,6 +577,7 @@ export function dflowMigrationFiles(baseRef = 'origin/main') {
 export const defaultIo = {
   mainMigrationFiles,
   dflowMigrationFiles,
+  registryTargetVersions,
   fetchAppliedVersions,
   guardClassifications,
 }
@@ -521,13 +601,17 @@ export async function runDriftCheck({ target, baseRef = 'origin/main', io = defa
 
   const appliedVersions = await io.fetchAppliedVersions(projectRef)
 
+  // The classifier knows the sandbox by its registry name, not by the operator word.
+  const classifierTarget = CLASSIFIER_TARGETS[target] ?? target
+
   // The sandbox is a different database and is owed a different subset. Everything
   // else about the comparison, including both drift directions, is unchanged.
   let sandboxScope = null
   let mainVersions = allMainVersions
   if (target === SANDBOX_TARGET) {
     const scopeFiles = await (io.dflowMigrationFiles ?? dflowMigrationFiles)(baseRef)
-    sandboxScope = sandboxInScopeVersions(allMainVersions, versionsFromFilenames(scopeFiles), appliedVersions)
+    const registered = await (io.registryTargetVersions ?? registryTargetVersions)(classifierTarget)
+    sandboxScope = sandboxInScopeVersions(allMainVersions, versionsFromFilenames(scopeFiles), appliedVersions, registered)
     mainVersions = sandboxScope.inScope
   }
 
@@ -536,7 +620,6 @@ export async function runDriftCheck({ target, baseRef = 'origin/main', io = defa
   // Pass the target being checked: scope is DERIVED per target (issue #2820), so
   // classifying a preview run as though it were production would be wrong. The
   // classifier knows the sandbox by its registry name, not by the operator word.
-  const classifierTarget = CLASSIFIER_TARGETS[target] ?? target
   const pendingClassifications = await classify(rawDrift.mergedNotApplied, appliedVersions, classifierTarget)
   validatePendingClassifications(rawDrift.mergedNotApplied, pendingClassifications)
   const drift = assessDrift(rawDrift, pendingClassifications)

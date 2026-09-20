@@ -24,6 +24,7 @@ import {
   guardClassifications,
   validatePendingClassifications,
   LEDGER_PROJECT_REFS,
+  SANDBOX_SURFACE_PATTERN,
   PROJECT_REFS,
   sandboxInScopeVersions,
 } from './check-migration-ledger-drift.mjs'
@@ -444,10 +445,10 @@ test('sandbox scope REFUSES an empty ledger instead of inventing a baseline', ()
   )
 })
 
-test('sandbox scope REFUSES a dflow read that came back empty', () => {
+test('sandbox scope REFUSES a surface read that came back empty', () => {
   assert.throws(
     () => sandboxInScopeVersions([DFLOW_BASE], [], [DFLOW_BASE]),
-    /no merged migration mentions the `dflow` schema/,
+    /no merged migration names the DesignFlow surface/,
   )
 })
 
@@ -520,4 +521,79 @@ test('a production report says nothing about sandbox scope', () => {
   const drift = assessDrift(computeDrift(MERGED, MERGED), {})
   const report = formatReport({ target: 'production', projectRef: 'x', baseRef: 'origin/main', drift })
   assert.doesNotMatch(report, /NON-PRODUCTION database/)
+})
+
+// ---------------------------------------------------------------------------
+// GOVERNED REVIEW OF PR #3341 (grok-4.6, REVISE) — both findings, fixed.
+//
+// Issue 1 was the fail-open direction: a version this database is RECORDED as
+// owing was dropped from the comparison because its text happens not to say
+// `dflow`. Dropped means never classified, never listed, and unable to fail the
+// check. Issue 2 was a clearance sentence that claimed more than was compared.
+// ---------------------------------------------------------------------------
+
+const REGISTERED = '20260909121403'   // hts_rag_split_isolated_schema: zero `dflow` tokens
+
+test('a REGISTERED version stays in scope even with no surface match and no ledger row', () => {
+  const scope = sandboxInScopeVersions(
+    [DFLOW_BASE, REGISTERED],
+    [DFLOW_BASE],            // the surface match does NOT see the registered version
+    [DFLOW_BASE],            // and it is ABSENT from the ledger, which is the dangerous case
+    [REGISTERED],
+  )
+  assert.ok(scope.inScope.includes(REGISTERED), 'a migration the registry records for this database must never be dropped silently')
+  assert.equal(scope.registeredCount, 1)
+})
+
+test('a REGISTERED version older than the derived baseline is STILL in scope', () => {
+  // The baseline excludes work inside the seed dump. A recorded target is a direct
+  // statement that outranks that inference, so it must not be filtered by age.
+  const scope = sandboxInScopeVersions(['20260101000000', DFLOW_BASE], [DFLOW_BASE], [DFLOW_BASE], ['20260101000000'])
+  assert.deepEqual(scope.inScope, ['20260101000000', DFLOW_BASE])
+})
+
+test('a registered version absent from the ledger reaches the drift report', async () => {
+  const result = await runDriftCheck({
+    target: 'sandbox',
+    baseRef: 'abc123',
+    io: {
+      mainMigrationFiles: async () => files([DFLOW_BASE, REGISTERED]),
+      dflowMigrationFiles: async () => files([DFLOW_BASE]),
+      registryTargetVersions: async (target) => {
+        assert.equal(target, 'designflow-nonprod', 'the registry is asked by the database it records, not by the operator word')
+        return [REGISTERED]
+      },
+      fetchAppliedVersions: async () => [DFLOW_BASE],
+      guardClassifications: async (versions) => classifications(versions),
+    },
+  })
+  assert.deepEqual(result.drift.actionableMergedNotApplied, [REGISTERED], 'the registered version must FAIL the check, not vanish from it')
+})
+
+test('the surface pattern covers the DesignFlow work that `dflow` alone missed', () => {
+  const surface = new RegExp(SANDBOX_SURFACE_PATTERN)
+  for (const text of ['create schema hts_rag_split', 'grant usage on schema hts_rag to designflow_hts_prod_worker', 'alter table dflow.item_workflow_action']) {
+    assert.ok(surface.test(text), `the surface match must see: ${text}`)
+  }
+  assert.ok(!surface.test('create table core.style_guide (id uuid)'), 'and must not drag in unrelated shared-database work')
+})
+
+test('a clean SANDBOX run never claims the whole merged tree is clear', () => {
+  const drift = assessDrift(computeDrift([DFLOW_BASE], [DFLOW_BASE]), {})
+  const report = formatReport({
+    target: 'sandbox',
+    projectRef: 'x',
+    baseRef: 'origin/main',
+    drift,
+    sandboxScope: { baseline: DFLOW_BASE, inScope: [DFLOW_BASE], registeredCount: 1, excludedCount: 694 },
+  })
+  assert.match(report, /NO DRIFT IN SCOPE/)
+  assert.match(report, /NOT a clearance of the whole merged tree/)
+  assert.doesNotMatch(report, /NO DRIFT\. Every version merged to the base branch/, 'the unqualified clearance is what gets quoted; it must not appear on a scoped target')
+})
+
+test('a clean PRODUCTION run keeps its unqualified clearance', () => {
+  const drift = assessDrift(computeDrift(MERGED, MERGED), {})
+  const report = formatReport({ target: 'production', projectRef: 'x', baseRef: 'origin/main', drift })
+  assert.match(report, /NO DRIFT\. Every version merged to the base branch/)
 })

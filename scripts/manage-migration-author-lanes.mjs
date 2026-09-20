@@ -782,12 +782,20 @@ export const RETURNED_MARKER = 'RETURNED TO'
 export const RETURNED_COPY_MARKER = 'RETURNED COPY OF'
 export const LEGACY_RETURNED_COPY_PATTERN = /^Returned from [A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+ by the shared-db orchestrator\./m
 
+// Provenance is written at the HEAD of the copy and is only read there. A
+// body-wide search would refuse a genuine first return whose own description
+// quotes the sentence — inside a fenced example, say — and that error falls on
+// the wrong side: it strands work nobody can forward (grok-4.6, low finding 1).
+// The marker is line 1 (legacy) or line 2 (current) of every copy this function
+// mints, so the window is deliberately tight.
+export const RETURNED_COPY_HEADER_LINES = 3
+
 // Returns the provenance line when `body` is a returned copy, else null.
 export function returnedCopyProvenance(body = '') {
-  const text = String(body ?? '')
-  const marked = text.split(/\r?\n/).map((line)=>line.trim()).find((line)=>line.startsWith(RETURNED_COPY_MARKER))
+  const header = String(body ?? '').split(/\r?\n/).slice(0, RETURNED_COPY_HEADER_LINES)
+  const marked = header.map((line)=>line.trim()).find((line)=>line.startsWith(RETURNED_COPY_MARKER))
   if (marked) return marked
-  const legacy = LEGACY_RETURNED_COPY_PATTERN.exec(text)
+  const legacy = LEGACY_RETURNED_COPY_PATTERN.exec(header.join('\n'))
   return legacy ? legacy[0] : null
 }
 

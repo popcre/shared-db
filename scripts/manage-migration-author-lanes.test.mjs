@@ -8745,10 +8745,41 @@ test('an already-filed returned copy is recognised by its legacy provenance line
 })
 
 test('the queue audit stops asking for a return address on an already-returned copy (#2836)',()=>{
-  const copyBody=[`${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/2619`,'',scope('ready','source-data','source-data-session',100)].join('\n')
-  const result=buildDynamicQueues([{number:2692,title:'copy',body:copyBody}],[],NOW,[2692])
-  const row=result.notOrchestratorWork.find((item)=>item.issue===2692)
-  assert.equal(row.exit,'reject')
-  assert.equal(row.needsReturnAddress,false)
-  assert.match(row.returnedCopyOf,/RETURNED COPY OF/)
+  // The PRODUCTION copy shape: #2690/#2691/#2692 open with the legacy provenance
+  // sentence and carry a return_to of their own inside the embedded original.
+  const legacyCopy=[
+    `Returned from ${REPO}#2619 by the shared-db orchestrator.`,
+    '',
+    `Original issue: https://github.com/${REPO}/issues/2619`,
+    '',
+    '---',
+    '',
+    scope('ready','source-data','source-data-session',100).replace('route: source-data-session',`route: source-data-session\nreturn_to: ${REPO}`),
+  ].join('\n')
+  const newCopy=[
+    `Returned from ${REPO}#2619 by the shared-db orchestrator.`,
+    `${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/2619`,
+    '',
+    scope('ready','source-data','source-data-session',100),
+  ].join('\n')
+  for(const [number,body,pattern] of [[2692,legacyCopy,/^Returned from/],[2693,newCopy,/RETURNED COPY OF/]]){
+    const result=buildDynamicQueues([{number,title:'copy',body}],[],NOW,[number])
+    const row=result.notOrchestratorWork.find((item)=>item.issue===number)
+    assert.equal(row.exit,'reject')
+    assert.equal(row.needsReturnAddress,false)
+    assert.match(row.returnedCopyOf,pattern)
+  }
+})
+
+test('provenance is read at the head of the body, never from a quoted example (#2836)',()=>{
+  const quoting=['A fresh reject that QUOTES the sentence in its description:','','```',`Returned from ${REPO}#2619 by the shared-db orchestrator.`,'```','',scope('ready','application-data','application-session',6)].join('\n')
+  assert.equal(returnedCopyProvenance(quoting),null)
+  const io={
+    getIssue:()=>({number:80,title:'t',body:quoting.replace('route: application-session','route: application-session\nreturn_to: u2giants/popdam3'),state:'open'}),
+    getIssueComments:()=>[],
+    createIssueIn:()=>'https://github.com/u2giants/popdam3/issues/12',
+    commentIssue:()=>{},
+    closeIssue:()=>{},
+  }
+  assert.equal(returnIssueToOwner(80,io).url,'https://github.com/u2giants/popdam3/issues/12')
 })

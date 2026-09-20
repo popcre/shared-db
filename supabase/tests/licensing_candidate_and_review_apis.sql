@@ -15,7 +15,7 @@ begin
     values ('disney_opa','property','923570001','ZZ PRIVATE TEXT 2357'),
            ('paramount','property','923570001','ZZ PRIVATE TEXT 2357');
   insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_status,core_licensor_id)
-    select 'zz_fixture2357_queue','licensor',s,s,case when s='matched' then a end
+    select 'warner:zz_fixture2357_queue','licensor',s,s,case when s='matched' then a end
     from unnest(array['unresolved','ambiguous','deferred','matched','no_match','rejected']) s;
   insert into plm.licensing_source_scope
     (licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by)
@@ -39,10 +39,10 @@ begin
   select count(*) into n from api.licensing_resolution_queue where scope_axis='relationship' and licensor_id in (a,b);
   if n<>2 then raise exception '2357 queue lost licensor grain'; end if;
   select count(*) into n from api.licensing_resolution_queue where scope_axis='entity'
-    and source_system='zz_fixture2357_queue' and licensor_id is null and item_kind='licensor'
+    and source_system='warner:zz_fixture2357_queue' and licensor_id is null and item_kind='licensor'
     and resolution_status in ('unresolved','ambiguous','deferred') and item_count=1;
   if n<>3 then raise exception '2357 entity queue lost open statuses or NULL licensor grain'; end if;
-  if exists(select 1 from api.licensing_resolution_queue where source_system='zz_fixture2357_queue'
+  if exists(select 1 from api.licensing_resolution_queue where source_system='warner:zz_fixture2357_queue'
     and resolution_status in ('matched','no_match','rejected')) then raise exception '2357 entity queue includes closed decisions'; end if;
   reset role;
   insert into plm.licensing_source_scope

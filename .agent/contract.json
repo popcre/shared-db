@@ -1,51 +1,45 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3291,
+  "work_issue": 3001,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Close #3001: confirm the single sidecar declaration registry is on main, add direct tests for the two edge cases left untested by PR #2980 (multiword argument types, procedure OUT arguments), and repair the ambiguous DROP ROUTINE form so a procedure re-created after the drop is no longer wrongly dropped on replay.",
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
+  "dispatcher": "Owner Albert Hazan chat authorization to resolve open non-orchestrator issues",
+  "worker": "Claude Opus 5 subagent on 916-alien",
+  "branch": "claude/3001-sidecar-registry",
+  "worktree": "D:/repos/shared-db-worktrees/claude-3001-sidecar-registry",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/check_pass2_routine_supersession.py",
+    "scripts/test_check_pass2_routine_supersession.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database, migration, preview, production, claim or marker mutation.",
+    "No weakening of any delivery-preflight or risk-gate refusal; the drop-replay guard may only become more conservative.",
+    "No workflow, repository setting or branch protection change."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "git diff --check",
+    "python -m unittest scripts.test_check_pass2_routine_supersession",
+    "node --test scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "The single sidecar declaration registry asked for by #3001 was already delivered to main under #3028 (config/production-verification-sidecar-registry.json plus load_sidecar_registry in scripts/production_business_risk_gate.py); it is verified and reported, not reimplemented.",
+    "PR #2970, which owned scripts/production_business_risk_gate.py when #3001 was filed, is merged, and no open pull request touches the risk-gate or preflight files."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if consolidating or changing the guard would drop any existing preflight refusal.",
+    "Stop if the drop-guard change blocks existing main migrations without a real rebuild defect."
   ]
 }

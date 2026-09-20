@@ -1,51 +1,46 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "generation": 2,
+  "work_issue": 2448,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Repair three migration-author-lane tooling defects in one coherent change: refuse a second issue reference in a claim title at --claim time (#2448 part 2), compare sorted --objects against sorted admitted writes in the post-mutex re-proof (#3125), and accept an already-applied version's original claim-head preview apply when the caller proves that head (#2491). No safety gate is weakened, disabled or bypassed.",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Owner Albert Hazan authorized resolving all open non-orchestrator issues in this repository to production",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/lane-quad-2448-3125-2491-3117-2e3c24d5",
+  "worktree": "D:/repos/shared-db-worktrees/lane-quad-2e3c24d5",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database write, migration, schema, function, view, role, grant or index change.",
+    "No production database command, no terraform or terragrunt apply, no mutating production gcloud.",
+    "Do not release, expire, reassign or otherwise mutate any live author claim, including claim #2745.",
+    "Do not disable, bypass or weaken any safety gate to make this change pass."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --check scripts/manage-migration-author-lanes.mjs"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "Issue #2448 part 1 (the hard-coded expiry-sweep close comment) is already repaired on main by CLAIM_CLOSE_REASONS; only part 2 remains and only part 2 is changed here.",
+    "Issue #3117's remaining ask, a guarded worktree-rebind path in the lane tool, already exists on main as --rebind-claim-worktree (issue #3182) with nine passing guard tests; it is verified here, not reimplemented.",
+    "The preview-apply workflow names its instance binding's appliedCommit and its preview-migration-apply-<sha> artifact after the commit it checked out, so #2491 is repaired on the reader side only."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if any repair would require a database schema change; route it to the shared-db orchestrator instead.",
+    "Stop if a regression test cannot be shown to fail against the unfixed script."
   ]
 }

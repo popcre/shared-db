@@ -1,38 +1,65 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 3290,
   "outcome": "ready-for-merge",
-  "pr": 3293,
+  "pr": 3332,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
+  "contract_ref": "refs/db-contracts/3290/3",
+  "contract_sha256": "513133ebb7a24b46e19b4d9ccd2a09bdfc44cf621271b9a52df3b07aa05c607e",
+  "head_sha": "PLACEHOLDER",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "docs/verification/product-type-reader/README.md",
+    "docs/verification/product-type-reader/evaluation-2026-09-20.md",
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs",
+    "tools/product_type_reader/README.md",
+    "tools/product_type_reader/__init__.py",
+    "tools/product_type_reader/evaluate.py",
+    "tools/product_type_reader/gold/coverage.py",
+    "tools/product_type_reader/gold/labels.csv",
+    "tools/product_type_reader/normalization.py",
+    "tools/product_type_reader/reader.py",
+    "tools/product_type_reader/rules.py",
+    "tools/product_type_reader/tests/__init__.py",
+    "tools/product_type_reader/tests/fixtures/descriptions.csv",
+    "tools/product_type_reader/tests/test_determinism.py",
+    "tools/product_type_reader/tests/test_reader.py"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "command": "python -m pytest -q tools/product_type_reader/tests docs/verification/item-mg-reclassification-20260814",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "evidence": "58 passed, 181 subtests passed; the 39 pre-existing taxonomy tests are included and green"
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "python tools/product_type_reader/gold/coverage.py --catalog <scratchpad export>",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "evidence": "labels 383, distinct accepted wordings 383, uncovered 0"
     },
     {
-      "command": "git diff --check",
+      "command": "python tools/product_type_reader/evaluate.py --catalog <scratchpad export> --strict",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "total=18731 accepted=16457 unreadable=1612 placeholder=662 correct=16457 wrong=0 uncovered=0"
+    },
+    {
+      "command": "node --test scripts/public-data-venue.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 passed, 0 failed"
+    },
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/contract.json",
+      "exit_code": 0,
+      "evidence": "Contract is valid; published at refs/db-contracts/3290/3"
     }
   ],
-  "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
-  ],
-  "stop_conditions_hit": []
+  "notes": [
+    "Phase A only. No database write, no schema change, no migration: the seven plm.item columns this reader fills already landed through orchestrator issue #3036 (PR #3108, migration 20260916231639), so no structural work was required or authored here.",
+    "The full-catalog evaluation read production coldlion.item_header through a session forced read only, under AGENTS.md 0.0-A. The export stayed in the session scratchpad and no catalog row is committed.",
+    "Owner acceptance (plan step 5) remains open on #3024; Phase B must not start before it."
+  ]
 }

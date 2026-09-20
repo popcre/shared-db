@@ -72,6 +72,38 @@ class NeverGuessTests(unittest.TestCase):
         self.assertEqual(read_product_type("Canvas 16x20").product_type_rules_version, RULES_VERSION)
 
 
+class PublicVenueTests(unittest.TestCase):
+    """This is a public repository: no licensed catalog wording may land in it.
+
+    `scripts/public-data-venue.test.mjs` allows these two CSVs by name on the
+    strength of this test. If it is removed or weakened, that allowance is void.
+    """
+
+    LICENSED_TOKENS = (
+        "disney", "marvel", "batman", "superman", "spider", "stitch", "peanuts", "snoopy",
+        "pooh", "sonic", "coca", "cola", "nbc", "nbcu", "warner", "star wars", "care bears",
+        "hulk", "thor", "joker", "shrek", "dora", "elmo", "wicked", "gotham", "avengers",
+        "princess", "mickey", "minnie", "aristocats", "paw patrol", "sega", "viacom",
+        "harry potter", "nickelodeon", "spongebob", "strawberry shortcake", "kobe", "jordan",
+    )
+
+    PATHS = (
+        Path(__file__).resolve().parents[1] / "gold" / "labels.csv",
+        FIXTURES,
+    )
+
+    def test_no_licensor_or_property_name_is_published(self):
+        for path in self.PATHS:
+            text = path.read_text(encoding="utf-8").lower()
+            for token in self.LICENSED_TOKENS:
+                with self.subTest(path=path.name, token=token):
+                    self.assertNotIn(token, text)
+
+    def test_gold_labels_carry_no_item_number(self):
+        text = Path(self.PATHS[0]).read_text(encoding="utf-8")
+        self.assertNotRegex(text, r"\b[A-Z]{2,}\d{4,}\b")
+
+
 class NoiseIsIgnoredTests(unittest.TestCase):
     """Licensor, property, artwork, colour and size never change the product."""
 

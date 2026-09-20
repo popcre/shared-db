@@ -24,7 +24,9 @@ FALLBACK_TIER = 1
 
 # Ordered most-specific-first. Entries are (product, construction, pattern[, tier]).
 _PRODUCT_PATTERNS: tuple[tuple, ...] = (
-    ("Paint-Your-Own Canvas Set", "Canvas Set", r"\b(?:diy|pbn|paint by numbers?|paint your own|colou?r your own)\b.{0,55}\bcanvas\b|\bcanvas\b.{0,55}\bpaint\b"),
+    # Lookaheads on purpose: the matched wording must stay product wording, never
+    # the artwork text that sits between "canvas" and "paint".
+    ("Paint-Your-Own Canvas Set", "Canvas Set", r"\b(?:diy|pbn|paint by numbers?|paint your own|colou?r your own)\b(?=.{0,55}\bcanvas\b)|\bcanvas\b(?=.{0,55}\bpaint\b)"),
     ("Growth Chart", "Hanging", r"\bgrowth chart\b"),
     ("Frame Set", "Folding", r"\bfolding\b.{0,30}\bframe set\b|\bframe set\b.{0,30}\bmarkers?\b|\bfolding canvas texture frame\b"),
     ("Framed Canvas", "Floater Frame", r"\b(?:floater|floating|float) frame(?:d)?\b.{0,35}\bcanvas\b|\bcanvas\b.{0,35}\b(?:floater|floating) frame\b"),

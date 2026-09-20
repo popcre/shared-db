@@ -26,13 +26,13 @@ Distinct product types read: 73.
 | Framed Print | 1224 |
 | Framed Lenticular Art | 815 |
 | Framed Glass Art | 547 |
+| Framed Canvas | 427 |
 | Door Mat | 425 |
-| Framed Canvas | 416 |
 | Framed Glass Shadowbox | 415 |
 | Framed Shadowbox | 406 |
 | Tabletop Monogram | 329 |
 | Tabletop Block | 296 |
-| Paint-Your-Own Canvas Set | 288 |
+| Paint-Your-Own Canvas Set | 277 |
 | Hanging Wall Art | 254 |
 | Wall Sign | 251 |
 | Wall Clock | 235 |
@@ -63,58 +63,58 @@ None. Every accepted wording carries a reviewed gold label.
 
 ## Unreadable descriptions (for owner review)
 
-1612 descriptions carry no reviewed product wording and are marked `unreadable` rather than guessed. The most frequent wordings follow; each is licensed source wording quoted only as far as its product-bearing head.
+1612 descriptions carry no reviewed product wording and are marked `unreadable` rather than guessed. No catalog row is reproduced here: the table counts the two-word phrases that appear in those descriptions, which is what a reviewer needs in order to judge whether a rule is missing. Phrases are kept only when every word is in the rules' own product vocabulary, so licensor, property and artwork names cannot appear.
 
-| Description head | Rows |
+| Two-word phrase in an unreadable description | Descriptions |
 |---|---:|
-| MARVEL WALL ART | 7 |
-| Ceramic | 6 |
-| 11X14" MIXED LICENSE ASSORTMENT | 4 |
-| AVENGERS PORTRAIT | 4 |
-| HIGH GLOSS THOR | 4 |
-| LEONARDO | 4 |
-| MARVEL STICKERS | 4 |
-| SW MOVIE POSTER | 4 |
-| DOG COLLAGE | 3 |
-| MARVEL | 3 |
-| MDF w LED Rope | 3 |
-| MICHELANGELO | 3 |
-| PAW PATROL DREAM | 3 |
-| Textured PU with Screenprint | 3 |
-| AIRPLANE COLLAGE | 2 |
-| AVENGERS 12X24X1.5 INSPIRATIONAL MDF | 2 |
-| AVENGERS GALLERY PORTRAIT | 2 |
-| Batman Logo Painted MDF Wood 18x16 x 1.5 | 2 |
-| Captain America Retro 24" x 24" framed comic collage | 2 |
-| Care Bears Coir Mart Fall Holiday Bear 'I love fall' 5 color 18x28" x.59" | 2 |
-| Ceramic Cube with Decal | 2 |
-| Ceramic Tabletop | 2 |
-| DC- Disney Greyboard Letters | 2 |
-| DONATELLO | 2 |
-| DONATELLO PORTRAIT | 2 |
-| DSNY, XL, L, M, S, LFTOFF GRYBRD STRG W FOIL, 15X14" X7.5," 13X11" X7," 11X9" X6," 9.5X7.5" X5.5" | 2 |
-| Disney MDF DIY pcture frm die-cut attachment, 12 paint pots and brush Pooh and Piglet scene 8.6 | 2 |
-| Disney The Aristocats Medium Domed Storage w/ Foil Mary with bows on pink 12.28x8.03" x8.03" | 2 |
-| Disney color-your-hero white MDF with 3 mini markers Mickey 4.7x7.5" | 2 |
-| Disney color-your-hero white MDF with rope Minnie 4.4x7.4" | 2 |
-| Framed Holographic Printed Faux Leather | 2 |
-| GOLD FOIL FLAMINGO | 2 |
-| GOLD FOIL MOOSE | 2 |
-| HIGH GLOSS CAPTAIN AMERICA | 2 |
-| High Gloss Art 14x20.5 x 1.5" Marvel Assorted | 2 |
-| IRONMAN COLLAGE GLASS | 2 |
-| LEONARDO PORTRAIT | 2 |
-| MARVEL 11X17 3D | 2 |
-| MARVEL LETTER K | 2 |
-| MARVEL RETRO COMICS LETTER S | 2 |
-| MARVEL RETRO TILES | 2 |
-| MDF Rounded Plaque | 2 |
-| MOOSE COLLAGE | 2 |
-| MOTORCYCLE COLLAGE | 2 |
-| MRVL, DSNY, 3 DRWR TIER STRGE, 11.5X34" X11.5" | 2 |
-| MV ASSORTED PORTRAITS | 2 |
-| MV BLACK PANTHER SAMPLES | 2 |
-| MV MARVEL RETRO SAMPLES | 2 |
-| MV SPIDERMAN SAMPLES | 2 |
-| Marvel 'Stronger' Inspirational MDF Avengers 12x24" x 1.5" | 2 |
+| high gloss | 54 |
+| wall art | 53 |
+| stained glass | 32 |
+| gloss art | 30 |
+| mini stained | 17 |
+| domed storage | 16 |
+| mdf writing | 16 |
+| tabletop decor | 16 |
+| writing desk | 16 |
+| natural wood | 15 |
+| printed natural | 15 |
+| ceramic cube | 13 |
+| collage framed | 13 |
+| dry erase | 13 |
+| fabric storage | 13 |
+| bow frame | 12 |
+| mdf art | 11 |
+| mdf frame | 11 |
+| mdf word | 11 |
+| nonwoven fabric | 11 |
+| book cover | 10 |
+| custom shaped | 10 |
+| flat domed | 10 |
+| leather art | 10 |
+| shaped mat | 10 |
+| box art | 9 |
+| erase calendar | 9 |
+| mdf wood | 9 |
+| mirror wall | 9 |
+| painted mdf | 9 |
+| storage chest | 9 |
+| art print | 8 |
+| block tabletop | 8 |
+| faux books | 8 |
+| foam art | 8 |
+| mdf print | 8 |
+| collage glass | 7 |
+| glass plaque | 7 |
+| led mirror | 7 |
+| linen framed | 7 |
+| mdf wall | 7 |
+| metal art | 7 |
+| under glass | 7 |
+| wall decor | 7 |
+| desktop storage | 6 |
+| fabric desktop | 6 |
+| fabric tabletop | 6 |
+| gold foil | 6 |
+| large domed | 6 |
+| large flat | 6 |
 

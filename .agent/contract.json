@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 3290,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -16,7 +16,8 @@
     "tools/product_type_reader/**",
     "docs/verification/product-type-reader/**",
     "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
-    "plan_product_type_reader.md"
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs"
   ],
   "file_writes": [
     ".agent/contract.json",
@@ -24,7 +25,8 @@
     "tools/product_type_reader/**",
     "docs/verification/product-type-reader/**",
     "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
-    "plan_product_type_reader.md"
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -44,7 +46,8 @@
     "Owner-authorized small fixtures only may be public",
     "Generation 1 of this contract was published by a Codex worker whose branch codex/product-reader-01a0bc30 was never pushed and whose allowed paths are untouched on main; this generation rebinds the same scope to the session that did the work",
     "Read-only live catalog acquisition is separate private-evidence work in u2giants/licensor-source-data; this contract covers public code and aggregate reports only",
-    "The full-catalog evaluation read production coldlion.item_header with a read-only session under AGENTS.md 0.0-A (inspection, no issue or dispatch required); the export stayed in the session scratchpad and no catalog row is committed"
+    "The full-catalog evaluation read production coldlion.item_header with a read-only session under AGENTS.md 0.0-A (inspection, no issue or dispatch required); the export stayed in the session scratchpad and no catalog row is committed",
+    "The public data venue guard allows the two reader CSVs by name; a new test in tools/product_type_reader/tests/test_reader.py fails if a licensor or property name ever appears in them, so the allowance cannot silently widen"
   ],
   "stop_conditions": [
     "Any unreviewed gold label prevents accuracy acceptance",

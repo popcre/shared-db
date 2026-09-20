@@ -5,9 +5,19 @@ import test from 'node:test'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
+// Issue #3290: the product-type reader's two CSVs carry no catalog row.
+// `gold/labels.csv` is reader-matched product wording (`mdf box`, `printed glass
+// shadowbox`) with its reviewed product label and a row count.
+// `tools/product_type_reader/tests/test_reader.py::PublicVenueTests` keeps both
+// files clean: it fails if a licensor or property name appears in either one.
+// `tests/fixtures/descriptions.csv` is regression fixtures whose licensor and
+// property names are neutral placeholders; the reader ignores those fields, which
+// is itself what the fixtures prove. The live catalog stays out of this repository.
 const SAFE_TABULAR = new Set([
   'docs/coldlion-field-decisions-20260819.csv',
   'docs/verification/popsg-property-reconciliation-20260726/normalization-fixtures-v1.csv',
+  'tools/product_type_reader/gold/labels.csv',
+  'tools/product_type_reader/tests/fixtures/descriptions.csv',
 ])
 
 const SAFE_SENSITIVE_PATH_DATA = new Set([

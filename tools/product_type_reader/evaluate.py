@@ -29,6 +29,7 @@ from pathlib import Path
 if __package__ in (None, ""):  # direct execution
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from tools.product_type_reader.normalization import normalize  # noqa: E402
 from tools.product_type_reader.reader import read_product_type  # noqa: E402
 from tools.product_type_reader.rules import (  # noqa: E402
     RULES_VERSION,
@@ -58,15 +59,24 @@ class Outcome:
     uncovered: int = 0
 
 
-def load_gold(path: Path = GOLD_LABELS) -> dict[str, dict[str, str]]:
+def load_gold(path: Path = GOLD_LABELS) -> dict[str, list[dict[str, str]]]:
+    """Reviewed labels, keyed on matched wording.
+
+    One wording may legitimately be produced by more than one rule (a paint-your-own
+    set and a bare canvas both match the wording "canvas"), so each wording carries a
+    LIST of reviewed product/construction pairs. A reading whose wording is known but
+    whose pair is not reviewed counts as wrong, never as silently correct.
+    """
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    labels: dict[str, dict[str, str]] = {}
+    labels: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         wording = (row.get("matched_wording") or "").strip()
         if not wording:
             continue
-        labels[wording] = {field: (row.get(field) or "").strip() for field in LABEL_FIELDS}
+        labels.setdefault(wording, []).append(
+            {field: (row.get(field) or "").strip() for field in LABEL_FIELDS}
+        )
     return labels
 
 
@@ -96,7 +106,7 @@ def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
         counts[status] += 1
 
         if status == STATUS_UNREADABLE:
-            unreadable_wording[_head(row["description"])] += 1
+            unreadable_wording.update(_wording_pairs(row["description"]))
             continue
         if status == STATUS_PLACEHOLDER:
             continue
@@ -107,21 +117,26 @@ def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
             counts["uncovered"] += 1
             uncovered_wording[reading.matched_wording] += 1
             continue
-        if (
-            gold["expected_status"] == STATUS_ACCEPTED
-            and gold["expected_product_type"] == reading.product_type
-            and gold["expected_product_construction"] == reading.product_construction
+        if any(
+            entry["expected_status"] == STATUS_ACCEPTED
+            and entry["expected_product_type"] == reading.product_type
+            and entry["expected_product_construction"] == reading.product_construction
+            for entry in gold
         ):
             counts["correct"] += 1
         else:
             counts["wrong"] += 1
             if len(wrong_examples) < 50:
+                reviewed = "; ".join(
+                    f"{entry['expected_product_type']} / {entry['expected_product_construction']}"
+                    f" ({entry['expected_status']})"
+                    for entry in gold
+                )
                 wrong_examples.append(
                     (
                         reading.matched_wording,
                         f"{reading.product_type} / {reading.product_construction}",
-                        f"{gold['expected_product_type']} / {gold['expected_product_construction']}"
-                        f" ({gold['expected_status']})",
+                        reviewed,
                     )
                 )
 
@@ -137,8 +152,39 @@ def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
     return outcome, wrong_examples, uncovered_wording, unreadable_wording, product_counts
 
 
-def _head(description: str) -> str:
-    return str(description).split("_", 1)[0].strip()[:120]
+def _vocabulary() -> frozenset[str]:
+    """Every literal word the rule tables can match.
+
+    The unreadable table is filtered to phrases that touch this vocabulary, so it
+    reports missing product wording rather than licensor, property or artwork names.
+    """
+    import re as _re
+
+    from tools.product_type_reader.rules import MATERIAL_RULES, PRODUCT_RULES, TREATMENT_RULES
+
+    words: set[str] = set()
+    patterns = [pattern.pattern for _t, _i, _p, _c, pattern in PRODUCT_RULES]
+    patterns += [pattern.pattern for _name, pattern in MATERIAL_RULES]
+    patterns += [pattern.pattern for _name, pattern in TREATMENT_RULES]
+    for pattern in patterns:
+        words.update(_re.findall(r"[a-z]{3,}", pattern))
+    words.difference_update({"cut"})
+    return frozenset(words)
+
+
+VOCABULARY = _vocabulary()
+
+
+def _wording_pairs(description: str) -> set[str]:
+    """Two-word phrases from one unreadable description.
+
+    The report must never carry a catalog row. Counting word pairs says what
+    wording the reader cannot read — which is the actionable part — without
+    copying any licensed description into this public repository.
+    """
+    tokens = normalize(description).split()
+    pairs = {" ".join(tokens[index : index + 2]) for index in range(len(tokens) - 1)}
+    return {pair for pair in pairs if all(word in VOCABULARY for word in pair.split())}
 
 
 FIXTURES = Path(__file__).with_name("tests") / "fixtures" / "descriptions.csv"
@@ -244,10 +290,13 @@ def render_report(
         "## Unreadable descriptions (for owner review)",
         "",
         f"{outcome.unreadable} descriptions carry no reviewed product wording and are marked "
-        "`unreadable` rather than guessed. The most frequent wordings follow; each is licensed "
-        "source wording quoted only as far as its product-bearing head.",
+        "`unreadable` rather than guessed. No catalog row is reproduced here: the table counts the "
+        "two-word phrases that appear in those descriptions, which is what a reviewer needs in "
+        "order to judge whether a rule is missing. Phrases are kept only when every word is in the "
+        "rules' own product vocabulary, so licensor, property and artwork names cannot "
+        "appear.",
         "",
-        "| Description head | Rows |",
+        "| Two-word phrase in an unreadable description | Descriptions |",
         "|---|---:|",
     ]
     for wording, count in sorted(unreadable_wording.items(), key=lambda pair: (-pair[1], pair[0]))[:unreadable_sample]:

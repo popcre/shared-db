@@ -1,5 +1,7 @@
 # AGENTS.md §4 — the five anti-collision rules, full text
 
+- [current-workflow.md](current-workflow.md)
+
 > **Active hardening plan:** [`../../plan_multi_agent_database_coordination_hardening.md`](../../plan_multi_agent_database_coordination_hardening.md), issue #1366. Read its STATUS table first. It preserves the rules below while adding read/write dependencies, proven prerequisites, provider-neutral work contracts, lifecycle traces, recoverable fenced stage leases, and an opt-in Supabase branch pilot. Its implementation is repository maintenance outside the structure/schema orchestrator.
 >
 > **Completed reviewer API-budget plan:** [`../../plan_reviewer_assignment_api_budget.md`](../../plan_reviewer_assignment_api_budget.md), issue #1767. Read its STATUS table and verification link before changing reviewer assignment. It replaced historical availability scans with a bounded active-reviewer index, strict pre-lock quota/request checks, cached PR/verdict reads, and exhaustive mutex-cleanup tests. The current fixed per-operation ceiling is 25 requests; see the dated re-derivations and #2550 repair in the verification record.
@@ -834,11 +836,12 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    material objection. Ambiguous SQL stops for Albert. Ask him one plain
    business-risk question. Never ask him to approve migration numbers, project
    identifiers, SQL, or other technical details. This policy cannot authorize
-   its own rollout. `config/production-risk-policy-activation.json` remains
-   inactive, and the older exact-approval rule remains binding, until #1015 is
-   independently reviewed, both PRs are merged, the installed skill hash matches
-   canonical ai-devops, and the forward-test proof hash is recorded. The gate
-   verifies those facts again before it can permit automatic promotion.
+   its own rollout. The current activation record is active; the completed
+   rollout evidence is recorded in `config/production-risk-policy-activation.json`.
+   The gate still verifies that record, its immutable forward-test proof,
+   canonical skill hashes and the qualified delivery evidence before allowing
+   automatic promotion. Historical pre-activation requirements are evidence of
+   that rollout, not an instruction to repeat it or disable the active route.
    Record Qwen High as requested, but never override the wrapper's qualified
    fixed configuration.
 

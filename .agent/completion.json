@@ -1,38 +1,42 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 2832,
   "outcome": "ready-for-merge",
-  "pr": 3293,
+  "pr": 3330,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
+  "contract_ref": "refs/db-contracts/2832/1",
+  "contract_sha256": "0b5a700eac09b061ba0cd7d025891dbaf5d32b8fad0d73f7ef0b04ecba1d842d",
+  "head_sha": "7811314f6745d96c8adb5c8ff661eb4e7ce07a4a",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    "scripts/check-throughput-truth-audit.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "docs/verification/throughput-dispositions/",
+    "docs/verification/throughput-guard-truth-audit-20260828.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "evidence": "truth audit OK: call_sites=310 sources=69 derived_digest=df45b8e61f6a"
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "evidence": "tests 59 pass 59 fail 0"
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "no whitespace or conflict-marker errors against origin/main b1d4be2e"
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "The regression test was verified to FAIL first: run against the unfixed origin/main checker and its global aggregate, two unrelated lanes produced 'CONFLICT (content): Merge conflict in docs/verification/throughput-guard-truth-audit-20260828.json'. With the partition the same two lanes merge cleanly.",
+    "All 310 existing dispositions migrated byte-identically, proved by disposition_partition_complete_equivalence.",
+    "Six failures in the full scripts/*.test.mjs sweep are pre-existing on origin/main and unrelated; independently re-run at b1d4be2e with the same six names.",
+    "Implementation follows Step 2 of the concurrently open planning PR 3318 (tracker 3306) rather than a competing design; no implementation had started there."
   ],
   "stop_conditions_hit": []
 }

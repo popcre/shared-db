@@ -1,6 +1,6 @@
 -- Issue #2995: synthetic classification-job contracts.
 -- Database Contract Tests wraps this file in BEGIN/ROLLBACK. No live data is used.
--- Workers intentionally share SELECT/UPDATE visibility; INSERT authenticates provenance.
+-- Operational jobs are environment-isolated; reusable HTS evidence remains shared.
 grant designflow_hts_prod_worker, designflow_hts_alsand_worker,
       designflow_hts_prod_runtime, designflow_hts_alsand_runtime to postgres;
 
@@ -52,7 +52,7 @@ begin
     raise exception 'RFQ pointers must be nullable integers';
   end if;
 
-  -- Seed both environments before testing shared visibility, using real worker rights.
+  -- Seed both environments before testing isolation, using real worker rights.
   foreach v_environment in array array['production', 'alsand'] loop
     v_role := case v_environment when 'production' then 'designflow_hts_prod_worker'
                  else 'designflow_hts_alsand_worker' end;
@@ -101,13 +101,25 @@ begin
     v_session := v_job.session_id;
     v_fixture := to_jsonb(v_job);
     if (select count(*) from hts_rag.hts_rag_classification_jobs
-         where owner_key = 'ZZ contract-2995 ' || v_other_environment) <> 2 then
-      raise exception '% cannot SELECT cross-environment jobs', v_role;
+         where owner_key = 'ZZ contract-2995 ' || v_other_environment) <> 0 then
+      raise exception '% can SELECT cross-environment operational jobs', v_role;
     end if;
     update hts_rag.hts_rag_classification_jobs set updated_at = clock_timestamp()
      where owner_key = 'ZZ contract-2995 ' || v_other_environment and turn_index = 1;
     get diagnostics v_count = row_count;
-    if v_count <> 1 then raise exception '% cannot make bounded cross-environment update', v_role; end if;
+    if v_count <> 0 then raise exception '% changed another environment job', v_role; end if;
+    update hts_rag.hts_rag_classification_jobs
+       set status = 'running', claimed_at = clock_timestamp(), claimed_by = v_role,
+           lease_expires_at = clock_timestamp() + interval '5 minutes',
+           attempt_count = attempt_count + 1
+     where owner_key = 'ZZ contract-2995 ' || v_other_environment and status = 'queued';
+    get diagnostics v_count = row_count;
+    if v_count <> 0 then raise exception '% claimed another environment job', v_role; end if;
+    update hts_rag.hts_rag_classification_jobs
+       set status = 'cancelled', result = '{"cross_environment_attempt":true}'
+     where owner_key = 'ZZ contract-2995 ' || v_other_environment;
+    get diagnostics v_count = row_count;
+    if v_count <> 0 then raise exception '% finalized another environment job', v_role; end if;
 
     -- Compare-and-set claim: one row returned, then zero for the same queued predicate.
     with claimed as (

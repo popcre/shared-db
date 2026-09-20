@@ -39,8 +39,8 @@
     },
     {
       "exit_code": 0,
-      "evidence": "Actual HTS foundation/provenance/new migration applied; classification jobs and shared-schema contracts passed; deliberate immutable-input grant was detected then rolled back",
-      "command": "psql rollback tests on disposable PostgreSQL 18 port55995"
+      "evidence": "Actual HTS foundation/provenance/new migration applied; environment-isolated classification jobs and existing shared-schema contracts passed; broad cross-environment SELECT and immutable-input grant negative controls failed as expected then rolled back",
+      "command": "PostgreSQL rollback contract tests"
     },
     {
       "exit_code": 0,
@@ -50,7 +50,8 @@
   ],
   "assumptions_resolved": [
     "Estimated cost is mutable as root approved; maximum attempts is immutable",
-    "Actual preview-generated types and sandbox connection proof follow governed deployment"
+    "Actual preview-generated types and sandbox connection proof follow governed deployment",
+    "Root corrigendum isolates operational jobs by environment; shared learning tables remain untouched"
   ],
   "stop_conditions_hit": []
 }

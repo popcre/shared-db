@@ -1,7 +1,8 @@
 -- Issue #2995, atomic author claim #3377.
 -- Background classification turns are idempotent per determination and turn.
--- Workers share the HTS evidence store; provenance is authenticated on INSERT
--- and cannot be rewritten. Creator visibility is enforced by the backend.
+-- Operational jobs are environment-isolated even though HTS learning is shared.
+-- Provenance is authenticated on INSERT and cannot be rewritten. Within each
+-- environment, creator/admin visibility remains enforced by the backend.
 -- RFQ identifiers refer to application databases, so no cross-database FK exists.
 create table hts_rag.hts_rag_classification_jobs (
   id uuid not null default gen_random_uuid(),
@@ -48,6 +49,9 @@ create table hts_rag.hts_rag_classification_jobs (
   constraint hts_rag_classification_jobs_max_attempts_check check (max_attempts >= 1)
 );
 
+comment on table hts_rag.hts_rag_classification_jobs is
+  'Operational classification control data, not reusable HTS learning evidence. Owner/creator identity, input/result payloads and RFQ pointers are permitted only in this environment-isolated job table; never copy its raw operational payloads into shared HTS learning tables. Backend creator/admin authorization is required within each environment.';
+
 create index hts_rag_classification_jobs_status_idx
   on hts_rag.hts_rag_classification_jobs (status, created_at);
 create index hts_rag_classification_jobs_owner_idx
@@ -71,14 +75,16 @@ grant update (status, result, error_code, error_message,
   to designflow_hts_prod_worker, designflow_hts_alsand_worker;
 
 create policy hts_rag_prod_worker_access on hts_rag.hts_rag_classification_jobs
-  for select to designflow_hts_prod_worker using (true);
+  for select to designflow_hts_prod_worker using (source_environment = 'production');
 create policy hts_rag_prod_worker_insert on hts_rag.hts_rag_classification_jobs
   for insert to designflow_hts_prod_worker with check (source_environment = 'production');
 create policy hts_rag_prod_worker_update on hts_rag.hts_rag_classification_jobs
-  for update to designflow_hts_prod_worker using (true) with check (true);
+  for update to designflow_hts_prod_worker
+  using (source_environment = 'production') with check (source_environment = 'production');
 create policy hts_rag_alsand_worker_access on hts_rag.hts_rag_classification_jobs
-  for select to designflow_hts_alsand_worker using (true);
+  for select to designflow_hts_alsand_worker using (source_environment = 'alsand');
 create policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_classification_jobs
   for insert to designflow_hts_alsand_worker with check (source_environment = 'alsand');
 create policy hts_rag_alsand_worker_update on hts_rag.hts_rag_classification_jobs
-  for update to designflow_hts_alsand_worker using (true) with check (true);
+  for update to designflow_hts_alsand_worker
+  using (source_environment = 'alsand') with check (source_environment = 'alsand');

@@ -4,23 +4,24 @@
   "outcome": "ready-for-merge",
   "pr": 3366,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3364/1",
-  "contract_sha256": "ab808602f2fa5a456b09124fdf67912f6df9f1705891cc5aacc71ca15fb4f0e7",
-  "head_sha": "86143ae01eb0b891f62a074641442cff0bd4bbeb",
-  "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
+  "contract_ref": "refs/db-contracts/3364/2",
+  "contract_sha256": "b15752533067577d874f2d6b4c5f4a750c37b2a8f42576aaf631dbec33e39038",
+  "head_sha": "14f64d068105710ef74c66c9b9f5248285d10cb7",
+  "base_sha": "905ec8e29d1175ce8e312d9fb1c90dbff02e17ca",
   "files_changed": [
-    ".agent/work/3364/1/completion.json",
-    ".agent/work/3364/1/contract.json",
     "scripts/lib/work-dependencies.mjs",
     "scripts/lib/work-stage-evidence.mjs",
-    "scripts/lib/work-stage-evidence.test.mjs"
+    "scripts/lib/work-stage-evidence.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    ".agent/work/3364/2/contract.json",
+    ".agent/work/3364/2/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "38 tests pass, 0 fail, 0 skipped",
+      "evidence": "46 tests pass, 0 fail, 0 skipped",
       "command": "node --test scripts/lib/work-dependencies.test.mjs scripts/lib/work-stage-evidence.test.mjs"
     },
     {

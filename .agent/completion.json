@@ -1,38 +1,54 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 3175,
   "outcome": "ready-for-merge",
-  "pr": 3293,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
-  "files_changed": [
-    ".github/live-proofs/2611.sql"
+  "pr": 3309,
+  "migration_versions": [
+    "20260920151128"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/3175/2",
+  "contract_sha256": "b6fe0e778f71093ba4761769c6c395273fe2bcfa847d47e1aeb95756d687faea",
+  "head_sha": "9d815cfcca2e9b65905656f33087e2f6d5e257c8",
+  "files_changed": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "supabase/migrations/20260920151128_retire_designflow_taxonomy_health_lane.sql",
+    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
+    ".github/live-proofs/3175.sql"
+  ],
+  "db_reads": [
+    "table ingest.sync_run"
+  ],
+  "db_writes": [
+    "function plm.check_taxonomy_sync_health",
+    "function plm.record_taxonomy_parallel_observation"
+  ],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static SQL guards passed for the new migration; no prohibited verification read or unrelated DDL."
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "evidence": "PR_NUMBER=3309: Migration claim verified: #3307, version 20260920151128."
     },
     {
-      "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "command": "focused rollback SQL regression contracts",
+      "evidence": "https://github.com/popcre/shared-db/actions/runs/35519211279 succeeded on 9d815cfcca2e9b65905656f33087e2f6d5e257c8; taxonomy_retired_designflow_lane_contracts.sql passed. Full suite: 190 passed, 0 unquarantined failures, 13 pre-existing quarantines (1 passing,12 failing)."
+    },
+    {
+      "exit_code": 0,
+      "command": "node --test tools/check-coldlion-designflow-sync-health.test.mjs tools/compare-coldlion-designflow-daily.test.mjs tools/evaluate-coldlion-licensor-property-cutover-readiness.test.mjs",
+      "evidence": "19 passed, 0 failed, 0 skipped."
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "Production read-only target qsllyeztdwjgirsysgai: both current function bodies exactly matched repository source20260905043023 before authoring.",
+    "Claim3307 protects exactly the two changed functions; no columns/public wrapper signatures/ACLs changed.",
+    "Historical failed observations remain untouched and can still block overall readiness until legitimate successful comparison evidence exists."
   ],
   "stop_conditions_hit": []
 }

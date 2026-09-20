@@ -5,13 +5,14 @@
     "scripts/lib/pr-content-equivalence.mjs",
     "scripts/lib/pr-content-equivalence.test.mjs",
     "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs"
+    "scripts/check-main-tip-freshness.test.mjs",
+    "config/orchestrator-global-invalidators-v1.json"
   ],
   "assumptions": [
     "Legacy and keyed evidence remain supported",
     "PR3357 prerequisite is incorporated"
   ],
-  "base_sha": "fc94dc683532dba942b33b302720401843a60b60",
+  "base_sha": "edb475a48003773de694a056ea4726da11857c22",
   "branch": "codex/step1-acceptance-audit-20260920",
   "db_reads": [],
   "db_writes": [],
@@ -22,9 +23,10 @@
     "scripts/lib/pr-content-equivalence.mjs",
     "scripts/lib/pr-content-equivalence.test.mjs",
     "scripts/check-main-tip-freshness.mjs",
-    "scripts/check-main-tip-freshness.test.mjs"
+    "scripts/check-main-tip-freshness.test.mjs",
+    "config/orchestrator-global-invalidators-v1.json"
   ],
-  "generation": 1,
+  "generation": 2,
   "goal": "Narrow evidence exclusions and reject identifier aliasing while preserving legitimate metadata refresh",
   "prohibited_actions": [
     "No database changes",
@@ -33,7 +35,8 @@
     "No append-only policy change to active generations"
   ],
   "required_checks": [
-    "node --test scripts/lib/agent-evidence-paths.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/check-main-tip-freshness.test.mjs"
+    "node --test scripts/lib/agent-evidence-paths.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/check-main-tip-freshness.test.mjs",
+    "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs"
   ],
   "route": "repo-maintenance",
   "schema_version": 1,

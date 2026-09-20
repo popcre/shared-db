@@ -10,7 +10,6 @@
   "contract_sha256": "72e32c8a8725dffc3e3ea193fce6ba5e4c8ddc2bb2160da0ee5cc70e157d9fc6",
   "head_sha": "6c53b51ba0a4385de19cde2f119d83a2fce52401",
   "files_changed": [
-    ".agent/completion.json",
     ".agent/contract.json",
     ".github/live-proofs/2357.sql",
     "supabase/migrations/20260917090439_licensing_candidate_and_review_apis.sql",

@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Implement the stale-place rule in scripts/check-pr-source-collisions.mjs: a non-draft open PR editing scripts/manage-migration-author-lanes.mjs no longer precedes a newer PR when it has had no activity for 24+ hours, its latest checks are failing or it conflicts with main, and the newer PR's session has posted a dated nudge comment on it naming the stale state; it reclaims its place once refreshed and green.",
-  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
   "dispatcher": "repo-maintenance session for issue #3273",
   "worker": "kimi",
   "branch": "kimi/issue-3273-stale-place-rule",
@@ -13,13 +13,15 @@
     "scripts/check-pr-source-collisions.mjs",
     "scripts/check-pr-source-collisions.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/lib/open-pr-files.test.mjs"
   ],
   "file_writes": [
     "scripts/check-pr-source-collisions.mjs",
     "scripts/check-pr-source-collisions.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/lib/open-pr-files.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -45,5 +47,5 @@
     "stop if a test fails for a reason unrelated to these two files",
     "stop if implementing the rule would require weakening fail-closed behaviour on unreadable signals"
   ],
-  "generation": 4
+  "generation": 5
 }

@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases } from './manage-migration-author-lanes.mjs'
+import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
@@ -9318,3 +9318,89 @@ test('#3338 review: a replacement draw refuses a documents-only pull request (#2
   assert.equal(drew,false)
 })
 
+
+// Issue #2836. A same-repo `return_to` filed the reject back into this queue and
+// the already-returned guard (comments only) never saw the copy, so every
+// generation minted the next one. The loop is bounded here: without the guard
+// this test runs to the bound and fails instead of hanging the suite.
+test('a same-repo return_to cannot mint an endless chain of returned copies (#2836)',()=>{
+  const RETURN_LOOP_BOUND=8
+  const issues=new Map()
+  const body=scope('ready','application-data','application-session',6)
+    .replace('route: application-session',`route: application-session\nreturn_to: ${REPO}`)
+  issues.set(700,{number:700,title:'source rows are wrong',body,state:'open'})
+  const comments=new Map([[700,[]]])
+  let next=701
+  const io={
+    getIssue:(n)=>issues.get(n),
+    getIssueComments:(n)=>comments.get(n)??[],
+    createIssueIn:(repo,title,newBody)=>{
+      assert.equal(repo,REPO)
+      const number=next++
+      issues.set(number,{number,title,body:newBody,state:'open'})
+      comments.set(number,[])
+      return `https://github.com/${repo}/issues/${number}`
+    },
+    commentIssue:(n,b)=>comments.get(n).push({body:b}),
+    closeIssue:(n)=>{issues.get(n).state='closed'},
+  }
+  let current=700, generations=0, stopped=null
+  while(generations<RETURN_LOOP_BOUND){
+    let result
+    try { result=returnIssueToOwner(current,io) }
+    catch(error){ stopped=error; break }
+    generations++
+    current=Number(result.url.split('/').pop())
+  }
+  assert.ok(stopped,`returning kept minting copies for ${RETURN_LOOP_BOUND} generations; the return loop is unbounded`)
+  assert.match(stopped.message,/returned copy/)
+  assert.equal(generations,1)
+  assert.equal(issues.size,2)
+})
+
+test('an already-filed returned copy is recognised by its legacy provenance line (#2836)',()=>{
+  const legacy=`Returned from ${REPO}#2619 by the shared-db orchestrator.\n\nOriginal issue: https://github.com/${REPO}/issues/2619`
+  assert.match(returnedCopyProvenance(legacy),/^Returned from/)
+  assert.equal(returnedCopyProvenance(`${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/1`),`${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/1`)
+  assert.equal(returnedCopyProvenance(scope('ready','application-data','application-session',6)),null)
+})
+
+test('the queue audit stops asking for a return address on an already-returned copy (#2836)',()=>{
+  // The PRODUCTION copy shape: #2690/#2691/#2692 open with the legacy provenance
+  // sentence and carry a return_to of their own inside the embedded original.
+  const legacyCopy=[
+    `Returned from ${REPO}#2619 by the shared-db orchestrator.`,
+    '',
+    `Original issue: https://github.com/${REPO}/issues/2619`,
+    '',
+    '---',
+    '',
+    scope('ready','source-data','source-data-session',100).replace('route: source-data-session',`route: source-data-session\nreturn_to: ${REPO}`),
+  ].join('\n')
+  const newCopy=[
+    `Returned from ${REPO}#2619 by the shared-db orchestrator.`,
+    `${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/2619`,
+    '',
+    scope('ready','source-data','source-data-session',100),
+  ].join('\n')
+  for(const [number,body,pattern] of [[2692,legacyCopy,/^Returned from/],[2693,newCopy,/RETURNED COPY OF/]]){
+    const result=buildDynamicQueues([{number,title:'copy',body}],[],NOW,[number])
+    const row=result.notOrchestratorWork.find((item)=>item.issue===number)
+    assert.equal(row.exit,'reject')
+    assert.equal(row.needsReturnAddress,false)
+    assert.match(row.returnedCopyOf,pattern)
+  }
+})
+
+test('provenance is read at the head of the body, never from a quoted example (#2836)',()=>{
+  const quoting=['A fresh reject that QUOTES the sentence in its description:','','```',`Returned from ${REPO}#2619 by the shared-db orchestrator.`,'```','',scope('ready','application-data','application-session',6)].join('\n')
+  assert.equal(returnedCopyProvenance(quoting),null)
+  const io={
+    getIssue:()=>({number:80,title:'t',body:quoting.replace('route: application-session','route: application-session\nreturn_to: u2giants/popdam3'),state:'open'}),
+    getIssueComments:()=>[],
+    createIssueIn:()=>'https://github.com/u2giants/popdam3/issues/12',
+    commentIssue:()=>{},
+    closeIssue:()=>{},
+  }
+  assert.equal(returnIssueToOwner(80,io).url,'https://github.com/u2giants/popdam3/issues/12')
+})

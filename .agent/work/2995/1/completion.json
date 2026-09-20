@@ -8,9 +8,11 @@
   ],
   "contract_ref": "refs/db-contracts/2995/1",
   "contract_sha256": "1677ea762614aeadcff9e4294ca3f95827226a2a9559e6fed58bddd5fd7f7b74",
-  "head_sha": "b4f554c329d7956cd35b41fcbc2d9693a126e896",
+  "head_sha": "1c3501e9798fd51d3d9878288a9f96b7a68c3d91",
   "base_sha": "51b0591c7fe862158d3fde0d5d7933b43f6aac12",
   "files_changed": [
+    ".agent/work/2995/1/completion.json",
+    ".agent/work/2995/1/contract.json",
     "supabase/migrations/20260920202755_hts_rag_classification_jobs.sql",
     "supabase/tests/hts_rag_classification_jobs_contract.sql"
   ],
@@ -39,19 +41,25 @@
     },
     {
       "exit_code": 0,
-      "evidence": "Actual HTS foundation/provenance/new migration applied; environment-isolated classification jobs and existing shared-schema contracts passed; broad cross-environment SELECT and immutable-input grant negative controls failed as expected then rolled back",
+      "evidence": "Actual HTS foundation/provenance/new migration applied; environment-isolated classification jobs and existing shared-schema contracts passed; broad cross-environment SELECT and immutable-input grant negative controls failed as expected then rolled back; exact catalog assertions and active lease/expired reclaim/stale claimant tests passed",
       "command": "PostgreSQL rollback contract tests"
     },
     {
       "exit_code": 0,
       "evidence": "No dynamic markers; static migration needs no verification sidecar",
       "command": "python scripts/check_production_verification_sidecars.py --scan-version 20260920202755"
+    },
+    {
+      "exit_code": 0,
+      "evidence": "Grok slot1 APPROVE ref refs/db-review-verdicts/2995-3382-1c3501e9798fd51d3d9878288a9f96b7a68c3d91 commit 85fa05dbc5d96782b30455fc94169ddbc64de314; Muse slot2 APPROVE same ref suffix -slot2 commit 359c367aca363538b1e1ad3309f2cddddfbc38d2. Both independently re-reviewed actual changed SQL.",
+      "command": "Two governed independent reviews"
     }
   ],
   "assumptions_resolved": [
     "Estimated cost is mutable as root approved; maximum attempts is immutable",
     "Actual preview-generated types and sandbox connection proof follow governed deployment",
-    "Root corrigendum isolates operational jobs by environment; shared learning tables remain untouched"
+    "Root corrigendum isolates operational jobs by environment; shared learning tables remain untouched",
+    "Global determination/turn uniqueness can disclose duplicate-job existence across environments, but no job payload; approved global grain is retained"
   ],
   "stop_conditions_hit": []
 }

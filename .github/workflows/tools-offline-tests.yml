@@ -212,17 +212,19 @@ jobs:
       # #654 — the skills-versus-rulebook drift check must actually RUN, not skip.
       #
       # scripts/check-skill-drift.mjs landed in #575 but SKIPPED in CI, because the skills
-      # live in u2giants/ai-devops and this job only ever checked out shared-db. A check
+      # live in popcre/ai-devops and this job only ever checked out shared-db. A check
       # that skips is not a mechanical check; it is a check that runs when someone
       # remembers, which is the same state #654 was filed about.
       #
-      # u2giants/ai-devops is a PUBLIC repository, so the default GITHUB_TOKEN can read it
+      # popcre/ai-devops is a PUBLIC repository, so the default GITHUB_TOKEN can read it
       # and no secret is needed. Checking it out into a sibling path makes the check real.
       # ---------------------------------------------------------------------------------
       - name: Check out the ai-devops skills so the drift check has something to compare
         uses: actions/checkout@v4
         with:
-          repository: u2giants/ai-devops
+          repository: popcre/ai-devops
+          # Avoid checkout's default-branch API lookup; main is the skills source.
+          ref: main
           path: .ai-devops-checkout
           persist-credentials: false
 

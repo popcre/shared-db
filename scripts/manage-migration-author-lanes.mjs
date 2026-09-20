@@ -573,18 +573,30 @@ function inheritReviewerAllowlist(requested,recorded){
   return recorded
 }
 function reviewerAllowed(name,allowlist){return allowlist===null||allowlist.includes(name)}
+function assertReviewerAllowlistConsistency(records){
+  const present=records.filter(Boolean)
+  if(present.some((record)=>!sameReviewerAllowlist(present[0].reviewerAllowlist??null,record.reviewerAllowlist??null)))throw new LaneError('durable reviewer assignment history has conflicting allowlists')
+}
 
 function inheritReturnedReviewerAllowlist(requested,request,io){
   let inherited=requested,recorded=null,seen=false
   for(const returned of readReviewReturns(request.issue,request.pr,request.headSha,io).filter((row)=>row.slot===request.slot)){
-    const assignment=parseReviewCursor(io.getCommit(returned.assignmentSha))
-    if(assignment.issue!==request.issue||assignment.pr!==request.pr||assignment.headSha!==request.headSha||(assignment.slot??1)!==request.slot||assignment.reviewer!==returned.reviewer||(returned.sequence!==null&&assignment.sequence!==returned.sequence))throw new LaneError('returned reviewer allowlist evidence does not match its assignment')
+    const commit=io.getCommit(returned.assignmentSha),assignment=parseReviewCursor(commit)
+    let slot=assignment.slot??1
+    if(returned.replacementSequence!==null){
+      const replacement=parseReviewReplacement(commit)
+      if(replacement.failedSequence!==returned.replacementSequence)throw new LaneError('returned reviewer allowlist evidence does not match its replacement')
+      // Pre-#2077 replacement messages omitted slot; the checked return ref is
+      // then authoritative. A slotless original cursor still means slot one.
+      slot=assignment.slot??returned.slot
+    }
+    if(assignment.issue!==request.issue||assignment.pr!==request.pr||assignment.headSha!==request.headSha||slot!==request.slot||assignment.reviewer!==returned.reviewer||(returned.sequence!==null&&assignment.sequence!==returned.sequence))throw new LaneError('returned reviewer allowlist evidence does not match its assignment')
     const policy=assignment.reviewerAllowlist??null
     if(seen&&!sameReviewerAllowlist(recorded,policy))throw new LaneError('returned assignments have conflicting durable reviewer allowlists')
     inherited=inheritReviewerAllowlist(inherited,policy)
     recorded=policy;seen=true
   }
-  return inherited
+  return {allowlist:inherited,found:seen}
 }
 
 // `engine === null` is a POSITIVE answer, not an absent one: the marker resolver
@@ -5332,6 +5344,11 @@ function resolveSlotOneAssignment(issue,pr,headSha,io){
   const slotOneBase=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-${headSha}`
   const slotOneReplacementBase=`${REVIEW_REPLACEMENT_REF_PREFIX}/${issue}-${pr}-${headSha}`
   const missing=()=>new LaneError(`slot 2 requires slot 1 to already be assigned for issue #${issue} PR #${pr} head ${headSha}. Run --assign-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} (default --review-slot 1) first, then request --review-slot 2.`)
+  const checked=(commit,replacement=false)=>{
+    const cursor=parseReviewCursor(commit),record=replacement?parseReviewReplacement(commit):cursor
+    if(record.issue!==Number(issue)||record.pr!==Number(pr)||record.headSha!==headSha||(cursor.slot??1)!==1)throw new LaneError('slot one reviewer assignment does not match its durable ref identity')
+    return record
+  }
   // BATCHED (issue #1798 fix). This used to be up to three separate wire
   // requests (listRefs, readRef, getCommit) run BEFORE the mutex is even
   // acquired, on every slot-2 assignment -- which is exactly the preflight
@@ -5353,21 +5370,25 @@ function resolveSlotOneAssignment(issue,pr,headSha,io){
     // exact namespace, the same way the listRefs fallback below does.
     const replacementRows=(records.matching??[]).filter((row)=>inReviewReplacementNamespace(row.ref,slotOneReplacementBase))
     if(replacementRows.length){
-      const replacements=replacementRows.map((row)=>parseReviewReplacement(row.commit??io.getCommit(row.sha)))
+      const replacements=replacementRows.map((row)=>checked(row.commit??io.getCommit(row.sha),true))
+      const original=records.get(slotOneBase)
+      assertReviewerAllowlistConsistency([original?checked(original.commit??io.getCommit(original.sha)):null,...replacements])
       return replacements.sort((a,b)=>b.sequence-a.sequence)[0]
     }
     const record=records.get(slotOneBase)
     if(!record)throw missing()
-    return parseReviewCursor(record.commit??io.getCommit(record.sha))
+    return checked(record.commit??io.getCommit(record.sha))
   }
   const replacementRows=(io.listRefs?.(slotOneReplacementBase)??[]).filter((row)=>inReviewReplacementNamespace(row.ref,slotOneReplacementBase))
   if(replacementRows.length){
-    const replacements=replacementRows.map((row)=>parseReviewReplacement(row.commit??io.getCommit(row.sha)))
+    const replacements=replacementRows.map((row)=>checked(row.commit??io.getCommit(row.sha),true))
+    const originalSha=io.readRef(slotOneBase)
+    assertReviewerAllowlistConsistency([originalSha?checked(io.getCommit(originalSha)):null,...replacements])
     return replacements.sort((a,b)=>b.sequence-a.sequence)[0]
   }
   const sha=io.readRef(slotOneBase)
   if(!sha)throw missing()
-  return parseReviewCursor(io.getCommit(sha))
+  return checked(io.getCommit(sha))
 }
 
 // AGENTS.md section 4 rule 2 is merge-first, so a migration reaching main and only
@@ -5563,7 +5584,8 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   try{
     if(admissionOptions)requirePrOperationRoute(admissionOptions,io,{pr,headSha,issue,mutexOwner:ownerSha,allowMerged:true,reviewSnapshot:true})
     const exclusions=reviewerExclusions(request.issue,request.pr,io,{fresh:true})
-    if(exclusions.hasRecordedExclusions)requestedAllowlist=inheritReturnedReviewerAllowlist(requestedAllowlist,request,io)
+    const returnedPolicy=exclusions.hasRecordedExclusions?inheritReturnedReviewerAllowlist(requestedAllowlist,request,io):null
+    if(returnedPolicy)requestedAllowlist=returnedPolicy.allowlist
     effectiveAllowlist=requestedAllowlist
     if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
     eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
@@ -5581,6 +5603,9 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
         if(replacement.issue!==request.issue||replacement.pr!==request.pr||replacement.headSha!==request.headSha||!REVIEWERS.some((r)=>r.name===replacement.reviewer))throw new LaneError('durable reviewer replacement does not match the assignment request')
         requireReplacementEvidence(replacement,io)
       }
+      const originalSha=io.readRef(assignmentRef),initial=originalSha?parseReviewCursor(io.getCommit(originalSha)):null
+      if(initial&&(initial.issue!==request.issue||initial.pr!==request.pr||initial.headSha!==request.headSha||(initial.slot??1)!==request.slot))throw new LaneError('durable reviewer assignment does not match the assignment request')
+      assertReviewerAllowlistConsistency([initial,...replacements,returnedPolicy?.found?{reviewerAllowlist:returnedPolicy.allowlist}:null])
       const replacement=replacements.sort((a,b)=>b.sequence-a.sequence)[0], reviewer=REVIEWERS.find((r)=>r.name===replacement.reviewer)
       effectiveAllowlist=inheritReviewerAllowlist(requestedAllowlist,replacement.reviewerAllowlist)
       eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
@@ -6246,6 +6271,12 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     if(priorReplacement){
       const rawParsed=parseReviewReplacement(fixedRecords?.get(replacementRef)?.sha===priorReplacement?fixedRecords.get(replacementRef).commit:io.getCommit(priorReplacement)),parsed={...rawParsed,failureSha:rawParsed.failureSha==='self'?priorReplacement:rawParsed.failureSha}, reviewer=REVIEWERS.find((r)=>r.name===parsed.reviewer)
       if(parsed.issue!==request.issue||parsed.pr!==request.pr||parsed.headSha!==request.headSha||parsed.failedSequence!==request.failedSequence||!reviewer)throw new LaneError('durable reviewer replacement does not match this retry')
+      const originalSha=fixedRecords?.get(assignmentRef)?.sha??io.readRef(assignmentRef)
+      const initial=originalSha?parseReviewCursor(fixedRecords?.get(assignmentRef)?.commit??io.getCommit(originalSha)):null
+      if(initial&&(initial.issue!==request.issue||initial.pr!==request.pr||initial.headSha!==request.headSha||(initial.slot??1)!==request.slot))throw new LaneError('durable reviewer assignment does not match the replacement request')
+      const history=(fixedRecords?.matching??io.listRefs?.(replacementBase)??[]).filter((row)=>inReviewReplacementNamespace(row.ref,replacementBase)).map((row)=>parseReviewReplacement(row.commit??fixedRecords?.get(row.ref)?.commit??io.getCommit(row.sha)))
+      if(history.some((row)=>row.issue!==request.issue||row.pr!==request.pr||row.headSha!==request.headSha))throw new LaneError('durable reviewer replacement does not match the replacement request')
+      assertReviewerAllowlistConsistency([initial,...history,parsed])
       effectiveAllowlist=inheritReviewerAllowlist(requestedAllowlist,parsed.reviewerAllowlist)
       eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
       requireReplacementEvidence(parsed,io,fixedRecords)
@@ -6307,9 +6338,14 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       throw new LaneError(`no durable reviewer assignment exists for issue #${request.issue} PR #${request.pr} under ANY head; --assign-reviewer was never run for this pull request, so there is nothing to replace`)
     }
     const initial=parseReviewCursor(fixedRecords?.get(assignmentRef)?.sha===assignmentSha?fixedRecords.get(assignmentRef).commit:io.getCommit(assignmentSha))
+    if(initial.issue!==request.issue||initial.pr!==request.pr||initial.headSha!==request.headSha||(initial.slot??1)!==request.slot)throw new LaneError('durable reviewer assignment does not match the replacement request')
     const replacementRows=(fixedRecords?.matching??io.listRefs?.(replacementBase)??[]).filter((row)=>inReviewReplacementNamespace(row.ref,replacementBase))
     const parsedReplacements=replacementRows.map((row)=>{const parsed=parseReviewReplacement(row.commit??io.getCommit(row.sha));return {...parsed,ref:row.ref,assignmentSha:row.sha,failureSha:parsed.failureSha==='self'?row.sha:parsed.failureSha}})
-    for(const replacement of parsedReplacements)requireReplacementEvidence(replacement,io,fixedRecords)
+    for(const replacement of parsedReplacements){
+      if(replacement.issue!==request.issue||replacement.pr!==request.pr||replacement.headSha!==request.headSha)throw new LaneError('durable reviewer replacement does not match the replacement request')
+      requireReplacementEvidence(replacement,io,fixedRecords)
+    }
+    assertReviewerAllowlistConsistency([initial,...parsedReplacements])
     const predecessors=parsedReplacements.filter((row)=>row.sequence===request.failedSequence)
     const original=request.failedSequence===initial.sequence?initial:predecessors.length===1?predecessors[0]:null
     if(!original||original.issue!==request.issue||original.pr!==request.pr||original.headSha!==request.headSha)throw new LaneError('durable reviewer assignment or replacement does not match the replacement request')

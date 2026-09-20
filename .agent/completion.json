@@ -1,42 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 3291,
+  "work_issue": 3191,
   "outcome": "ready-for-merge",
-  "pr": 3292,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3291/1",
-  "contract_sha256": "e01d79cc41093604e893c4c0c5bc1305477bfa6939ffea794370b9b0794b6788",
-  "head_sha": "ffd673bcff188a258637ac131c1d48b09a6dbbd0",
+  "pr": 3277,
+  "migration_versions": [
+    "20260918180012"
+  ],
+  "contract_ref": "refs/db-contracts/3191/2",
+  "contract_sha256": "4356cf72dafdf5f84c5be07437c445d6b3bf5a5f7ef1ed0f60a357d9b23ef384",
+  "head_sha": "9ed79890f214c265dd5b57b997ad85cfad29a7fb",
   "files_changed": [
-    "docs/agents/section-4-anti-collision-rules.md",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".github/live-proofs/3191.sql",
+    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function plm.prepack_role"
+  ],
   "checks": [
     {
+      "command": "supabase/tests against an ephemeral database",
       "exit_code": 0,
-      "evidence": "Local syntax check passed after recovery repairs on 916-ALIEN, 2026-09-20.",
-      "command": "node --check scripts/manage-migration-author-lanes.mjs"
+      "evidence": "ephemeral_check_run_id 35415550424 (PR #3277 head 160bc1e4, byte-identical migration): artifact supabase-contract-test-logs/applied-migrations.txt positively lists 20260918180012_prepack_role_read_only_proof_grant.sql; re-verified green on the final head before guarded merge dispatch"
     },
     {
+      "command": "SQL migration guards",
       "exit_code": 0,
-      "evidence": "Executed with --test-reporter=spec: 616 tests passed, 0 failed, 0 cancelled, 0 skipped, 0 todo. Includes two formerly failing permission-widening regressions and unchanged hard wire budgets.",
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
-    },
-    {
-      "exit_code": 0,
-      "evidence": "113 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo on 2026-09-20.",
-      "command": "node --test --test-reporter=spec scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
+      "evidence": "run 35415550535 green at 160bc1e4; re-verified green on the final head before guarded merge dispatch"
     }
   ],
   "assumptions_resolved": [
-    "Recovered source retained by ancestry from c63fe706d7b447e75208658de7c3729afcf08496. Backup branch codex/recover-edge-3292 preserves original recovery copy.",
-    "Contract refs/db-contracts/3291/1 was published before this prospective reconstruction merge and repairs. It does not claim to predate the original EDGE-DEV source.",
-    "Fresh slot2 and same-head redraw after exclusion were reproduced selecting glm outside the grok,muse permission set before repair. Both now inherit the stored set.",
-    "Returned policy lookup runs only when immutable exclusion history exists, including lifted exclusions. Normal19-request path and hard25-request ceiling unchanged; exclusion-bearing fixture adds one justified history read,23 total.",
-    "No database reads or writes. Independent exact-head review and guarded merge remain required; this report is local completion evidence, not merge authorization."
+    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
+    "Reviews: qwen REVISE at 209ebc35 (role dependency, RLS disclosure, evidence binding) and muse REVISE at 799cd15 (do-block grant invisible to catalog verification). Resolved with a plain top-level grant, a header documenting the role dependency and the SECURITY DEFINER disclosure, and this evidence pair. The search_path=pg_catalog,public low finding on the existing function is out of scope.",
+    "Qwen REVISE at 53e93ca9: contract generation 2 now authorizes the live-proof path; check evidence cites the positive applied record; the probe also counts plm.item_missing_attribution. Its finding that files_changed must list four paths is not reproduced: git diff --name-only b32c435a..head_sha lists exactly the two paths because the .agent files were reset to base content in the implementation commit."
   ],
   "stop_conditions_hit": []
 }

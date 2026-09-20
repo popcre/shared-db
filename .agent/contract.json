@@ -1,51 +1,43 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "work_issue": 3339,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Repair the governed reviewer assignment parser so its current durable allowlist cursor can be read and independent review can resume, without accepting arbitrary cursor text or changing reviewer selection policy.",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "dispatcher": "Codex session repairing the reviewer assignment blocker discovered while publishing Albert's shared-db workflow refactor plan (issue #3339)",
+  "worker": "codex",
+  "branch": "codex/repair-reviewer-cursor-parser",
+  "worktree": "C:/Users/ahazan2/.codex/worktrees/reviewer-cursor-parser/shared-db",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "do not change reviewer roster, rotation order, independence, lease or verdict policy",
+    "do not mutate database objects, migrations, repository settings or production",
+    "do not use an unvalidated cursor suffix or bypass governed review"
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "independent exact-head review"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "the live cursor suffix allowlist uses only reviewer identifiers separated by commas",
+    "the suffix is metadata for a cursor record and is not reviewer selection authority"
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
-  ]
+    "stop if accepting the suffix would permit arbitrary trailing cursor data",
+    "stop if current assignment needs a roster or policy change rather than parser compatibility",
+    "stop if tests show the active record cannot be represented by the bounded grammar"
+  ],
+  "generation": 1
 }

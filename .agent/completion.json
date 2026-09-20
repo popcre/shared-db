@@ -1,35 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3205,
+  "work_issue": 3305,
   "outcome": "ready-for-merge",
-  "pr": 3320,
+  "pr": 3308,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3205/2",
-  "contract_sha256": "8b146559948572de88eb9df4942658642acbe1cc5671a28ac296e147b3fd97dd",
-  "head_sha": "cf5351fd5007f7676b259d99b694a9f4ec989bd9",
+  "contract_ref": "refs/db-contracts/3305/8",
+  "contract_sha256": "ce60ceaf53e6c6df21a375a1a86d8c6585bd1dc0c92d45888d28d9ee95346702",
+  "head_sha": "4534892bac8f71153f8757259b870146f9641565",
   "files_changed": [
-    "AGENTS.md",
-    "plan_shared_db_workflow_refactor.md"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/documents-only-change.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
       "exit_code": 0,
-      "evidence": "all tests pass, fail 0 cancelled 0, at base 7d98876e"
+      "evidence": "tests 30 pass 30 fail 0 cancelled 0 skipped 0 todo 0 on 916-alien at implementation head 4534892bac8f71153f8757259b870146f9641565"
     },
     {
-      "command": "git diff --check",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "clean; no whitespace errors in either prose file"
+      "evidence": "tests 643 pass 643 fail 0 cancelled 0 skipped 0 todo 0 on 916-alien at implementation head 4534892bac8f71153f8757259b870146f9641565"
     }
   ],
   "assumptions_resolved": [
-    "Confirmed against scripts/lib/documents-only-change.mjs that AGENTS.md and plan_*.md are rulebook paths, so this pull request is not documents-only and carries the full evidence pair and reviewer draw.",
-    "Issue 3306 asks for a plan document to be published and explicitly states that publishing it does not close the tracker; no workflow or code change was made, and no safeguard was removed.",
-    "Ownership check: the only other open pull requests touching AGENTS.md are #3248 (2026-09-18) and #2607 (2026-09-08), neither updated within six hours and neither touching section 5.2-A.",
-    "Branch refreshed against current main on 2026-09-20; the conflict was the .agent evidence pair itself, exactly the treadmill this pull request documents in AGENTS.md 5.2-A."
+    "Authentic run35228140178 reproduced artifact-count refusal; selector now selects correct artifact10499394912",
+    "Parent explicitly authorized isolated integration hunk; reviewer code unchanged"
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [],
+  "base_sha": "f1fef4575edb0b27575dd0a20838384e1cf66db0"
 }

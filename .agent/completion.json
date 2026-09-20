@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3331/1",
   "contract_sha256": "d259d57f2c8eaaffd01e4a0fffab94f9d0259a1d3e54cf3f8d0258e3652f4b76",
-  "head_sha": "55e1b440baa59e4ab5d6c19abde4998e87e59db2",
+  "head_sha": "09f83fc52b9db4c303edf5059158f0a18c20e3f4",
   "files_changed": [
     "scripts/orchestrator-snapshot.test.mjs"
   ],
@@ -16,7 +16,7 @@
     {
       "command": "node --test scripts/orchestrator-snapshot.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 18 pass 18 fail 0; the same file is red with 5 failures on unmodified origin/main b1d4be2e"
+      "evidence": "tests 18 pass 18 fail 0 after current main integration; the same file is red with 5 failures on unmodified origin/main b1d4be2e"
     },
     {
       "command": "node --test scripts/lib/repository-identity.test.mjs",

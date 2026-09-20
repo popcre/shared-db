@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 16,
+  "generation": 17,
   "work_issue": 2662,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
@@ -45,7 +45,13 @@
     "view api.opa_lucasfilm_property",
     "view api.opa_marvel_property",
     "view api.pm_factory_list",
-    "view api.source_capture_inventory"
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
   ],
   "prohibited_actions": [
     "Do not alter any view definition, columns, comments, ownership, or underlying row-security policy.",
@@ -63,7 +69,8 @@
     "Service-role access remains the supported server-side access path for these six views.",
     "Claim #3294 reserved migration version 20260920005114 and protects the six exact views.",
     "Prospective recovery: publish contract and open contract-only draft PR before parent rebinds claim 3294; no SQL authoring until rebind succeeds. Original remote machine work remains unseen and preserved; no retirement or deletion authorized.",
-    "Six-view subset only: production proof does not close broader issue 2662 findings."
+    "Six-view subset only: production proof does not close broader issue 2662 findings.",
+    "The six table entries are conservative parser aliases of the same six catalog-proven views for relation REVOKE syntax, not additional database objects. Generation 17 records the supported claim expansion; generation 16 prospectively authorized the unchanged implementation."
   ],
   "stop_conditions": [
     "Stop if any claimed view no longer grants SELECT to authenticated before the migration, because the live premise has changed.",

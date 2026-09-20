@@ -1,38 +1,73 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 2662,
   "outcome": "ready-for-merge",
-  "pr": 3293,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
-  "files_changed": [
-    ".github/live-proofs/2611.sql"
+  "pr": 3304,
+  "migration_versions": [
+    "20260920005114"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2662/17",
+  "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
+  "head_sha": "6910a070bfd4f994c380e8de576a1edc10c908f7",
+  "files_changed": [
+    ".agent/contract.json",
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog information_schema.role_table_grants"
+  ],
+  "db_writes": [
+    "view api.crm_factory_picker_list",
+    "view api.opa_disney_property",
+    "view api.opa_lucasfilm_property",
+    "view api.opa_marvel_property",
+    "view api.pm_factory_list",
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
+  ],
   "checks": [
-    {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
-      "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
-    },
-    {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
-      "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
-    },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "No whitespace errors on bounded implementation and main integration."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed including version and verify-cost checks."
+    },
+    {
+      "command": "supabase/tests against an ephemeral database",
+      "exit_code": 0,
+      "evidence": "GitHub run35518490787 at849d1e0b018e075a38e46bce3d8137a3a77f3c71 succeeded:190 passed,0 unquarantined failed,1 quarantine passed,12 existing quarantine failures. All6 changed/added test files explicitly PASS. Main integration6910a070 changed none of these tested migration/test files; incoming proof2611 change is separate."
+    },
+    {
+      "command": "psql local isolated PostgreSQL18 six-view fixture",
+      "exit_code": 0,
+      "evidence": "42 authenticated denials,6 service reads,4 unchanged browser controls pass. Snapshot exact delta is6 removed authenticated SELECT grants; no added grants, view definition/owner/options changes. Live probe returns true."
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "Parent rebind preserved old owner/version/locks and unseen remote work; supported expansion added only parser aliases for six catalog views.",
+    "Current production24h logs zero6-name hits in845279 entries; positive controls23582 plm_item_list/845153 REST requests.",
+    "Local CRM/DAM/PIM/DesignFlow source searches found no six-view consumers; Data Admin has moved into DAM.",
+    "Preview and production reserved migration version absent before authorship.",
+    "Source inventory exact function remains SECURITY DEFINER; existing authenticated RPC behavior test passes unchanged.",
+    "Scope is bounded six-view subset only. Broader issue2662 findings remain open; parent owns review,preview,merge,production."
   ],
   "stop_conditions_hit": []
 }

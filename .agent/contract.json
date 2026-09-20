@@ -1,44 +1,57 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3299,
+  "generation": 2,
+  "work_issue": 2824,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
-  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
-  "branch": "codex/recover-prepack-proof-20260920",
-  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
+  "goal": "Close issue #2824 and the remaining item of issue #3050. #2824 hole 1: add --set-scope-status, a mutex-protected, dependency-gated, read-back, audit-commented writer for a db-work-scope status field, so the blocked->ready transition stops being an unaudited hand edit. #2824 hole 2: document the --complete-work report schema, its per-outcome required fields, which outcomes release a dependent, the ready-for-merge and merge_sha rules, immutability, and a worked example. #3050: popcre/ai-devops#498 item 12 -- a wrong-owner claim release, capacity relinquish, resume, repair and duplicate-release refusal names the owner on record, the owner supplied, and the corrected command. Items 11 and 13 of ai-devops#498 were already delivered on main by commits 2d56aa29 and cb61d4f6 and are not reimplemented. Every refusal still refuses and no gate is weakened. Generation 2 rebinds the same scope after the Handoff contract check required retiring the handoff that tracked the deferred item 12, and after restructuring the branch so the .agent evidence pair lands in a commit after the implementation head.",
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
+  "dispatcher": "Albert Hazan, chat instruction 2026-09-20: resolve through to production all open non-orchestrator GitHub issues in popcre/shared-db",
+  "worker": "Claude Opus 5 non-orchestrator repo-maintenance session on 916-alien",
+  "branch": "claude/2824-3050-queue-governance-refusals",
+  "worktree": "D:/repos/shared-db-worktrees/queue-gov-2824-3050-a7f1",
   "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
-    "Do not merge PR #3293; the parent owns merge and outcome closure."
+    "No database read or write of any kind, and no Supabase MCP call",
+    "No migration file, schema, view, function, trigger, RLS or index change",
+    "No production command, no terraform or terragrunt apply, no mutating gcloud",
+    "No workflow file change and no change to any required status check",
+    "No weakening of any refusal: --set-scope-status must never become a way to mark work complete that is not complete, and a clearer refusal message must still refuse",
+    "No gh pr merge --admin on this pull request; it changes scripts, so the documents-only exemption does not apply",
+    "No edit to the shared checkout D:/repos/shared-db"
   ],
   "required_checks": [
-    "python -m unittest scripts.test_shared_db_live_proof",
-    "node --test scripts/check-live-proof-probe.test.mjs",
-    "git diff --check"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --check scripts/manage-migration-author-lanes.mjs",
+    "git diff --check origin/main...HEAD",
+    "Each new regression test proved failing against the unfixed code before the fix"
   ],
   "assumptions": [
-    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
-    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
-    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
+    "ai-devops#498 items 11 and 13 are already on main; only item 12 of #3050 remains, so #3050 closes as partly already delivered and partly delivered here",
+    "No schema, structure or database change is needed for a queue status field or for refusal message text",
+    "scripts/manage-migration-author-lanes.mjs is concurrently edited by other open pull requests, so this branch may need a rebase before the guarded merge",
+    "The Handoff contract check requires the finishing session to retire HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md, which tracked the deferred ai-devops#498 item 12 completed here."
   ],
   "stop_conditions": [
-    "Stop if the repair requires any database object or timeout change.",
-    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
+    "Stop and report if any change would need a schema or structure change, a database write, or a new migration",
+    "Stop and report if any refusal would become a warning or a pass",
+    "Stop and report if a rebase onto another session's work cannot be resolved without discarding their change"
   ]
 }

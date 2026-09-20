@@ -1,38 +1,57 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 2824,
   "outcome": "ready-for-merge",
-  "pr": 3293,
+  "pr": 3326,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
+  "contract_ref": "refs/db-contracts/2824/2",
+  "contract_sha256": "76b3ef055bf40eeb84e31bf5cdd2728646d823afe31868967a6fe5a48d86139c",
+  "head_sha": "50b6285be6c042f83be45230d1beb77f6bb2b225",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    "HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "evidence": "pass 619, fail 0, skipped 0, todo 0, run at head 50b6285be6c042f83be45230d1beb77f6bb2b225 after rebase onto current origin/main"
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "command": "node --check scripts/manage-migration-author-lanes.mjs",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "evidence": "SYNTAX_OK"
     },
     {
-      "command": "git diff --check",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "evidence": "no whitespace errors"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs with the four item-12 refusal sites reverted to their original bare strings",
+      "exit_code": 1,
+      "evidence": "failing-first proof: '* #498-12 a wrong-owner claim release names the owner on record and the corrected command', '* #498-12 a wrong-owner duplicate release names the owner on record and the corrected command', '* #498-12 a legacy lease and a wrong owner are two different refusals on resume'; no other test failed"
+    },
+    {
+      "command": "node --test --test-name-pattern \"#2824\" scripts/manage-migration-author-lanes.test.mjs against origin/main scripts/manage-migration-author-lanes.mjs",
+      "exit_code": 1,
+      "evidence": "failing-first proof: SyntaxError: The requested module './manage-migration-author-lanes.mjs' does not provide an export named 'setScopeStatus'"
+    },
+    {
+      "command": "Each new regression test proved failing against the unfixed code before the fix",
+      "exit_code": 0,
+      "evidence": "Both failing-first runs above are the proof: the three #498-12 tests failed against the reverted bare refusal strings, and the six #2824 tests failed against origin/main with \"does not provide an export named setScopeStatus\". All then pass at head 50b6285be6c042f83be45230d1beb77f6bb2b225."
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "Confirmed ai-devops#498 items 11 and 13 are already on main: commit 2d56aa29 added the files_changed add/remove wording with its test at scripts/agent-work-contract-git-evidence.test.mjs:82, and commit cb61d4f6 added the governed-review usage-line refusal with its test at scripts/run-governed-review.test.mjs:784; cb61d4f6's own message defers item 12 to a follow-up. Only item 12 was implemented.",
+    "Confirmed no schema, structure or database change is needed: the change set is two script files and one Markdown file.",
+    "Rebased cleanly onto current origin/main after PR #3310 landed; no other session's change to scripts/manage-migration-author-lanes.mjs was overwritten.",
+    "Retired HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md as the Handoff contract check required, because this session finished the item 12 work it tracked."
   ],
   "stop_conditions_hit": []
 }

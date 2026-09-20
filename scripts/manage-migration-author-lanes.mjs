@@ -3408,7 +3408,7 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
     const message=commit?.message ?? commit?.commit?.message ?? ''
     const dateText=commit?.committer?.date ?? commit?.commit?.committer?.date
     const acquiredAt=new Date(dateText)
-    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-worktree-rebind|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
+    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|queue-scope-status|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-worktree-rebind|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
     if(Number.isNaN(acquiredAt.valueOf()))throw new LaneError('refusing recovery: mutex owner time is unreadable')
     const age=now-acquiredAt
     if(age<minAgeMs)throw new LaneError(`refusing recovery: mutex is only ${Math.max(0,Math.floor(age/1000))} seconds old`)
@@ -7638,6 +7638,27 @@ export function assertAbandonmentEvidence(options, lease, blocker, io) {
   return audit
 }
 
+// popcre/ai-devops#498 item 12 (issue #3050). A wrong-owner refusal used to say
+// only "claim belongs to a different owner", which tells the caller nothing they
+// did not already know and leaves them guessing the spelling on record. The
+// refusal is UNCHANGED in force -- it still throws, and it still refuses -- but it
+// now names the owner GitHub actually holds, the owner that was supplied, and the
+// exact command to re-run. Never echo the recorded owner into a command the caller
+// can run to act AS that owner without knowing it: that is fine here because the
+// claim's owner string is already public in the issue body this command just read.
+export function wrongOwnerMessage({ claim, onRecord, supplied, command }) {
+  const recorded = onRecord === undefined || onRecord === null || onRecord === '' ? '(none recorded)' : `"${onRecord}"`
+  const given = supplied === undefined || supplied === null || supplied === '' ? '(none supplied)' : `"${supplied}"`
+  return `claim #${claim} belongs to a different owner: the owner on record is ${recorded}, and --owner supplied ${given}. This claim is not yours to change. If ${recorded} is you, re-run with the owner on record: ${command}`
+}
+
+// Builds the corrected command line for a wrong-owner refusal. Quoting the owner
+// keeps a name containing spaces from being split into separate argv entries --
+// the exact failure that wasted a session on #2212's hand edit.
+function laneCommand(flags) {
+  return `node scripts/manage-migration-author-lanes.mjs ${flags.join(' ')}`
+}
+
 export function relinquishAuthorLease(options, now = new Date(), io = githubIo) {
   for(const key of ['claim','owner','blockedOn'])if(!options[key])throw new LaneError(`author-capacity relinquishment requires ${key}`)
   const ownerSha=io.makeOwnerCommit(`db-coordination author-capacity-relinquish claim=${options.claim}`)
@@ -7650,7 +7671,7 @@ export function relinquishAuthorLease(options, now = new Date(), io = githubIo) 
     if(before?.state!=='open'||before.body!==matches[0].body)throw new LaneError('claim changed concurrently before capacity relinquishment')
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy)throw new LaneError('legacy claim capacity cannot be relinquished')
-    if(lease.owner!==options.owner)throw new LaneError('claim belongs to a different owner')
+    if(lease.owner!==options.owner)throw new LaneError(wrongOwnerMessage({claim:options.claim,onRecord:lease.owner,supplied:options.owner,command:laneCommand(['--relinquish-author-lease','--claim-number',String(options.claim),'--owner',JSON.stringify(String(lease.owner??'')),'--blocked-on','<blocker>','--worktree-state','<clean|dirty|remote|absent>'])}))
     const blocker=validateCapacityBlocker(options.blockedOn,io)
     const evidence=assertAbandonmentEvidence(options,lease,blocker,io)
     const recoveryArtifact=options.recoveryArtifact?requireDereferenceableRecoveryArtifact(options.recoveryArtifact,io):null
@@ -7701,7 +7722,10 @@ export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
     if(matches.length!==1)throw new LaneError(`claim #${options.claim} must be uniquely open`)
     before=io.getIssue(options.claim);if(before?.state!=='open'||before.body!==matches[0].body)throw new LaneError('claim changed concurrently before capacity resume')
     const lease=parseAuthorLease(before.body,now)
-    if(lease.legacy||lease.owner!==options.owner)throw new LaneError('claim lease is legacy or belongs to a different owner')
+    // #3050 / ai-devops#498 item 12: these were one combined refusal, so a caller
+    // could never tell which of the two facts stopped them. Split, both still refuse.
+    if(lease.legacy)throw new LaneError(`claim #${options.claim} carries a legacy lease with no owner field, so capacity cannot be resumed`)
+    if(lease.owner!==options.owner)throw new LaneError(wrongOwnerMessage({claim:options.claim,onRecord:lease.owner,supplied:options.owner,command:laneCommand(['--resume-author-lease','--claim-number',String(options.claim),'--owner',JSON.stringify(String(lease.owner??'')),'--lease-hours','<1-24>'])}))
     if(lease.capacityState!=='relinquished')throw new LaneError('claim capacity is not relinquished')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before resume')
     assertClaimNotRetired(lease.version,'resumed',io)
@@ -7761,7 +7785,8 @@ export function repairResumedClaim(options, now = new Date(), io = githubIo) {
     const capacity=lines.map((line)=>/^\s*capacity_state\s*:\s*(\S+)\s*$/.exec(line)?.[1]).filter(Boolean)
     if(capacity.length!==1||capacity[0]!=='active')throw new LaneError('resumed-claim repair applies only to a lease declaring capacity_state: active')
     const owner=lines.map((line)=>/^\s*owner\s*:\s*(.+?)\s*$/.exec(line)?.[1]).filter(Boolean)
-    if(owner.length!==1||owner[0]!==options.owner)throw new LaneError('claim lease belongs to a different owner')
+    if(owner.length!==1)throw new LaneError(`claim #${options.claim} lease declares ${owner.length} owner fields; exactly one is required`)
+    if(owner[0]!==options.owner)throw new LaneError(wrongOwnerMessage({claim:options.claim,onRecord:owner[0],supplied:options.owner,command:laneCommand(['--repair-resumed-claim','--claim-number',String(options.claim),'--owner',JSON.stringify(String(owner[0]??''))])}))
     if(!relinquishOnlyFieldsIn(block).length)throw new LaneError('claim carries no relinquish-only residue; nothing to repair')
     const workIssue=claimWorkIssue(before)
     const events=(io.getIssueComments?.(workIssue)??[]).flatMap((comment)=>{try{return parseEventComment(comment.body)}catch{return []}})
@@ -8171,6 +8196,102 @@ export function assertMergeCommitInMainHistory(mergeSha, mainSha, io = githubIo)
 // The record is re-derived, not trusted. A caller can write anything into the
 // report file; this command proves the claims against GitHub before publishing,
 // and reads the comment back before letting anyone close the issue.
+// --- SANCTIONED SCOPE-STATUS WRITER (issue #2824, hole 1) ------------------
+//
+// Until this existed, the single most consequential edit in the queue -- moving a
+// db-work issue from `blocked` to `ready`, which is what makes it dispatchable --
+// was an unaudited hand edit via `gh issue edit --body-file`. It took no mutex,
+// got no read-back, and left no machine-readable trail. It was also demonstrably
+// error-prone: the recorded #2212 attempt lost its multiline body to PowerShell
+// argument splitting and a follow-up `gh api` attempt sent an array instead of a
+// string, so the remote never changed and nothing said so.
+//
+// WHAT THIS IS NOT. It is NOT a way to declare work finished. It writes exactly
+// one field -- `status:` -- on the scope block, and nothing else. It cannot
+// publish a db-work-completion record, cannot close an issue, cannot touch a
+// lease, and cannot release a dependent. Only `--complete-work` does that, and
+// only a `merged` or `owner-ruling-recorded` outcome there releases anything.
+//
+// THE READY GATE USES THE SAME EVIDENCE THE QUEUE GATE USES. `ready` is refused
+// unless every `depends_on` entry satisfies `classifyDependencies` -- the exact
+// function `buildDynamicQueues` uses to decide dispatchability. A closed issue
+// with no typed completion record does NOT satisfy it; closure alone is not
+// success. An unreadable dependency does not satisfy it either: "I could not
+// check" is never "nothing to check", so the write fails closed.
+function replaceScopeStatus(body, status) {
+  if (!QUEUE_STATUSES.has(status)) throw new LaneError(`db-work-scope status must be one of ${[...QUEUE_STATUSES].join(', ')}`)
+  const fences = [...String(body ?? '').matchAll(/```db-work-scope\s*\n([\s\S]*?)```/g)]
+  if (fences.length !== 1) throw new LaneError('exactly one db-work-scope block is required')
+  const block = fences[0][1]
+  const matches = block.match(/^\s*status\s*:\s*.+$/gm) ?? []
+  if (matches.length !== 1) throw new LaneError(`db-work-scope declares ${matches.length} status fields; exactly one is required`)
+  const rewritten = block.replace(/^(\s*)status\s*:\s*.+$/m, (_, indent) => `${indent}status: ${status}`)
+  // EXACTLY ONE FIELD. Anything else that moved means the rewrite was not a
+  // single-field edit, and a body write that changes more than it says it does is
+  // precisely the unaudited hand edit this command exists to replace.
+  const before = block.split('\n'), after = rewritten.split('\n')
+  if (before.length !== after.length) throw new LaneError('scope status rewrite changed the block line count; refusing to write')
+  const moved = before.map((line, index) => index).filter((index) => before[index] !== after[index])
+  if (moved.length !== 1) throw new LaneError(`scope status rewrite changed ${moved.length} lines; exactly one status line may change`)
+  return String(body).slice(0, fences[0].index) + fences[0][0].replace(block, () => rewritten) + String(body).slice(fences[0].index + fences[0][0].length)
+}
+
+export function setScopeStatus(options, now = new Date(), io = githubIo) {
+  for (const key of ['issue', 'status', 'reason']) {
+    if (options[key] === undefined || options[key] === null || options[key] === '') throw new LaneError(`--set-scope-status requires --${key === 'issue' ? 'issue' : key}`)
+  }
+  const status = String(options.status)
+  if (!QUEUE_STATUSES.has(status)) throw new LaneError(`--status must be one of ${[...QUEUE_STATUSES].join(', ')}`)
+  const reason = String(options.reason).trim()
+  if (/[\r\n]/.test(reason)) throw new LaneError('--reason must be a single line; the audit comment is the only record of why the status moved')
+  if (reason.length < 12) throw new LaneError('--reason must be at least 12 characters; "done" is not an audit trail')
+  const ownerSha = io.makeOwnerCommit(`db-coordination queue-scope-status issue=${options.issue}`)
+  acquireMutex(ownerSha, io, options.mutexAttempts ?? 100)
+  let before, changed = false
+  try {
+    before = io.getIssue(options.issue)
+    if (before?.state !== 'open') throw new LaneError(`issue #${options.issue} is not open; a closed issue's scope status is history and is never rewritten`)
+    const scope = parseQueueScope(before.body ?? '')
+    if (!scope) throw new LaneError(`issue #${options.issue} carries no db-work-scope block; add exactly one before setting its status`)
+    if (scope.status === status) return { issue: Number(options.issue), status, previousStatus: status, idempotent: true }
+    if (status === 'ready') {
+      // FAIL CLOSED. Without a dependency reader we have checked nothing, and an
+      // unchecked `ready` is exactly the unaudited hand edit this replaces.
+      if (typeof io.dependencyStates !== 'function') throw new LaneError('cannot prove the dependency closure without a dependency reader; refusing to set ready')
+      const states = scope.dependencies.length ? io.dependencyStates(scope.dependencies) : {}
+      const closure = classifyDependencies(Number(options.issue), scope.dependencies, states)
+      if (!closure.satisfied) {
+        throw new LaneError(`refusing to set issue #${options.issue} to ready: ${closure.blocked.length} of ${scope.dependencies.length} depends_on entries are not satisfied. ${closure.blocked.map((row) => `#${row.number} (${row.status}): ${row.reason}`).join(' ')} A dependent is released only by a merged or owner-ruling-recorded db-work-completion record published with --complete-work.`)
+      }
+    }
+    const expected = replaceScopeStatus(before.body, status)
+    requireOwnedRef(MUTEX_REF, ownerSha, io)
+    changed = true
+    io.updateIssue(options.issue, { body: expected })
+    requireOwnedRef(MUTEX_REF, ownerSha, io)
+    // READ BACK. The #2212 precedent is a write that silently did not happen.
+    const after = io.getIssue(options.issue)
+    if (after?.body !== expected) throw new LaneError(`scope status readback failed on #${options.issue}; the body on GitHub is not what was written. Do NOT assume the status changed.`)
+    const afterScope = parseQueueScope(after.body ?? '')
+    if (afterScope?.status !== status) throw new LaneError(`scope status read back as ${afterScope?.status ?? 'unreadable'}, expected ${status}`)
+    io.commentIssue(Number(options.issue), [
+      `db-work-scope \`status\` changed from \`${scope.status}\` to \`${status}\` by \`--set-scope-status\`.`,
+      '',
+      `- reason: ${reason}`,
+      `- at: ${now.toISOString()}`,
+      `- mutex owner commit: \`${ownerSha}\``,
+      '',
+      'This changed the queue status field only. It is not a completion record and it releases no dependent task.',
+    ].join('\n'))
+    return { issue: Number(options.issue), status, previousStatus: scope.status, reason, idempotent: false }
+  } catch (error) {
+    if (changed && io.readRef(MUTEX_REF) === ownerSha) {
+      try { io.updateIssue(options.issue, { body: before.body }) } catch (rollback) { throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`) }
+    }
+    throw error
+  } finally { if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io) }
+}
+
 export function completeWork({ issue, report }, io = githubIo) {
   const record = validateCompletionRecord(report)
   if (record.work_issue !== Number(issue)) {
@@ -8551,6 +8672,7 @@ function parseArgs(argv) {
     else if (a === '--audit') out.audit = true
     else if (a === '--queue-audit') out.queueAudit = true
     else if (a === '--complete-work') out.completeWork = true
+    else if (a === '--set-scope-status') out.setScopeStatus = true
     else if (a === '--assert-exclusive') out.assertExclusive = next(i++)
     else if (a === '--recover-exclusive') out.recoverExclusive = next(i++)
     else if (a === '--release-exclusive') out.releaseExclusive = next(i++)
@@ -8614,7 +8736,7 @@ function parseArgs(argv) {
     else if (a === '--confirm-stale') out.confirmStale = true
     else if (/^--acquire-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.acquireExclusive = a.slice(10)
     else if (/^--release-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.releaseExclusive = a.slice(10)
-    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--reviewer-allowlist','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact','--hold-reason'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--reviewer-allowlist','--status','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact','--hold-reason'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if(a==='--confirm-local-dependency-unfixable')out.confirmLocalDependencyUnfixable=true
     else if(a==='--skip-doctor')out.skipDoctor=true
     else if(a==='--confirm-no-verdict')out.confirmNoVerdict=true
@@ -8712,7 +8834,7 @@ export function main(argv, now = new Date(), io = githubIo) {
   try {
     const o = parseArgs(argv)
     if(String(process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim())io=withMergedPrIssueBinding(io,process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING)
-    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','rebindClaimWorktree','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','releaseClaim','releaseDuplicateClaim','cleanup','audit']
+    const primaryKeys=['proposeTrain','validateTrain','authorizeTrain','dispatchTrain','closeTrain','verifyTrainDispatch','authorizeRepositoryMaintenanceStatus','resolveAdmittedIssueForPr','outcomeStatus','advanceOutcome','repairOutcomeHistory','completeOutcome','recoverMutex','reconcileFlow','abandonmentAudit','preparePreviewDispatch','repairPreviewReady','terminalizeHistoricalPreviewReady','flowAudit','recoverSplit','expandClaim','expandClaimFromIssue','renewClaim','recoverExpiredClaim','relinquishAuthorLease','resumeAuthorLease','repairResumedClaim','reissueMergedClaim','reversionClaim','rebindClaimWorktree','replaceFailedReviewer','releaseFailedReviewer','probeSilentReviewer','reclaimSilentReviewer','reapAbandonedReviewLeases','archiveOldReviewVerdicts','reviewerCapacity','reviewerStartWatchLeases','excludeReviewer','reinstateReviewerExclusion','reviewerPreflight','deliveryPreflight','assignReviewer','activateReviewCutover','acquireExclusive','releaseExclusive','claim','returnIssue','queueAudit','assertExclusive','recoverExclusive','completeWork','setScopeStatus','releaseClaim','releaseDuplicateClaim','cleanup','audit']
     const selectedPrimary=primaryKeys.filter((key)=>Object.prototype.hasOwnProperty.call(o,key))
     const hasAdmission=Object.prototype.hasOwnProperty.call(o,'admitIssue')
     if(selectedPrimary.length>1)throw new LaneError(`choose exactly one primary operation; received ${selectedPrimary.join(', ')}`)
@@ -9041,6 +9163,12 @@ export function main(argv, now = new Date(), io = githubIo) {
       if (result.dryRun) console.error(`DRY RUN — would recover: ${result.reason}. Re-run with --apply-recovery to take the lane.`)
       return 0
     }
+    if (o.setScopeStatus) {
+      const result = setScopeStatus({ issue: Number(o.issue), status: o.status, reason: o.reason, mutexAttempts: o.mutexAttempts }, now, io)
+      console.log(JSON.stringify(result, null, 2))
+      console.error(result.idempotent ? `Issue #${result.issue} was already ${result.status}; nothing was written.` : `Issue #${result.issue} db-work-scope status: ${result.previousStatus} -> ${result.status}. The audit comment is on the issue.`)
+      return 0
+    }
     if (o.completeWork) {
       if (!o.issue) throw new LaneError('--complete-work requires --issue <n>')
       if (!o.reportFile) throw new LaneError('--complete-work requires --report-file <path>')
@@ -9060,7 +9188,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         const fresh=io.openClaims(), claim=fresh.find((x)=>String(x.number)===String(o.releaseClaim))
         if(!claim)throw new LaneError(`claim #${o.releaseClaim} is not open`)
         const lease=parseAuthorLease(claim.body,now)
-        if(lease.owner!==o.owner)throw new LaneError(`claim #${o.releaseClaim} belongs to a different owner`)
+        if(lease.owner!==o.owner)throw new LaneError(wrongOwnerMessage({claim:o.releaseClaim,onRecord:lease.owner,supplied:o.owner,command:laneCommand(['--release-claim',String(o.releaseClaim),'--owner',JSON.stringify(String(lease.owner??'')),'--confirm-finished'])}))
         if((io.openPulls?.() ?? io.prSources()).some((pr)=>(pr.head?.ref ?? pr.branch)===lease.branch))throw new LaneError(`claim branch ${lease.branch} still has an open pull request`)
         // #2301 Step 3 -- TERMINAL RETIREMENT.
         //
@@ -9123,7 +9251,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         if(!claim)throw new LaneError(`claim #${o.releaseDuplicateClaim} is not open`)
         const lease=parseAuthorLease(claim.body,now)
         if(lease.legacy)throw new LaneError(`claim #${claim.number} is a legacy claim and cannot be proved to be a duplicate`)
-        if(lease.owner!==o.owner)throw new LaneError(`claim #${claim.number} belongs to a different owner`)
+        if(lease.owner!==o.owner)throw new LaneError(wrongOwnerMessage({claim:claim.number,onRecord:lease.owner,supplied:o.owner,command:laneCommand(['--release-duplicate-claim',String(claim.number),'--owner',JSON.stringify(String(lease.owner??'')),'--confirm-finished'])}))
         // (1) at least one OTHER open non-legacy claim declares the same branch
         const siblings=fresh.filter((x)=>String(x.number)!==String(claim.number))
           .map((x)=>({claim:x,lease:parseAuthorLease(x.body,now)}))

@@ -373,3 +373,64 @@ test('merge collisions use broad claim identities for create/alter table', () =>
   ])
   assert.deepEqual(result.collisions.map((x) => x.object), ['table core.thing'])
 })
+
+// --- issue #3183: real PR #2835 statement shapes ---------------------------
+test('#3183: "--" inside a comment literal does not hide the grants after it', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_resolution_queue with (security_invoker = true) as select 1 as n;
+
+comment on view api.licensing_resolution_queue is
+  'Audited licensing resolution backlog. '
+  'Aggregate only -- it exposes no source identifier and no row content, so it stays readable '
+  'policies, so the counts a caller sees are the counts that caller is entitled to see.';
+
+revoke all on api.licensing_resolution_queue from public, anon;
+grant select on api.licensing_resolution_queue to authenticated, service_role;
+`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_resolution_queue'), ops.join('\n'))
+  // The migration creates the name as a view, so the table half is dropped.
+  assert.ok(!ops.includes('grant table api.licensing_resolution_queue'), ops.join('\n'))
+})
+
+test('#3183: a keyword-less grant on a view collides with the view key', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_entity_candidates with (security_invoker = true) as select 1 as n;
+grant select on api.licensing_entity_candidates to authenticated, service_role;`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_entity_candidates'), ops.join('\n'))
+  // explicit non-table keywords keep their own kind only
+  const schemaOps = extractOperations('grant usage on schema api to anon;').map((o) => o.kind)
+  assert.deepEqual(schemaOps, ['schema'])
+})
+
+test('grant on a table created in the same migration is keyed as table only (PR #3190)', async () => {
+  const { extractOperations, dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create table if not exists plm.sesame_submission_property_option (id bigint primary key);
+grant select on plm.sesame_submission_property_option to authenticated;
+grant insert on table plm.sesame_submission_property_option to service_role;`
+  const keys = dispatchObjectKeys(sql)
+  assert.ok(keys.includes('table plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(!keys.includes('view plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(extractOperations(sql).every((o) => !('relationGuess' in o)))
+})
+
+test('grant on a view created in the same migration stays a view write, not a table', async () => {
+  const { dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  for (const create of ['create or replace view', 'create materialized view']) {
+    const keys = dispatchObjectKeys(`${create} api.v1 as select 1;
+grant select on api.v1 to anon;
+grant select on table api.v1 to authenticated;`)
+    assert.ok(keys.includes('view api.v1'), keys.join('\n'))
+    assert.ok(!keys.includes('table api.v1'), keys.join('\n'))
+  }
+  // with no CREATE in the migration the kind stays unknown: both keys remain
+  const bare = dispatchObjectKeys('grant select on api.unknown_rel to anon;')
+  assert.ok(bare.includes('view api.unknown_rel') && bare.includes('table api.unknown_rel'), bare.join('\n'))
+})
+
+test('#3183: comment stripping still removes real comments and keeps literals', async () => {
+  const { normalizeSql } = await import('./check-pr-object-collisions.mjs')
+  assert.equal(normalizeSql("select 'a -- b' -- gone\n/* x */ , 'it''s';").trim(), "select 'a -- b' , 'it''s';")
+  assert.equal(normalizeSql("do $$ begin -- don't\n perform 1; end $$;").includes("don't"), false)
+})

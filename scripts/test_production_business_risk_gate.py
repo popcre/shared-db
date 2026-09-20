@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from production_business_risk_gate import preview_instance_text, preview_run_has_immutable_apply, api_field, api_list, api_object, api_sublist, authored_merge, exact_main, ProvedTarget, tracked_paths_at, PREVIEW_PRODUCER_PATHS, PREVIEW_RUNTIME_DATA_DIRS, PREVIEW_RUNTIME_DATA_EXEMPTIONS, PRODUCTION_PROJECT_REF, RISK_TEXT, PREVIEW_WORKFLOW, RiskGateError, canonical_sha256, classify_sql, decide_business_risk, enforce_automatic_risk_decision, gh_json, is_pinned_historical_disney_source, load_activation, prove_activation, prove_applied_commit_is_main_line, preview_applied_commit, prove_governed_historical_supersession, prove_governed_original_reconciliation, prove_bound_mainline_post_merge_original, prove_historical_original_apply_runs, prove_registered_historical_restoration_provenance, prove_preview, prove_preview_migration_contents, prove_preview_producer_matches_main, prove_pr_and_checks, REQUIRED_CHECKS, GOVERNED_HISTORICAL_SUPERSESSION, GOVERNED_ORIGINAL_RECONCILIATION
+from production_business_risk_gate import REPOSITORY, preview_instance_text, preview_run_has_immutable_apply, api_field, api_list, api_object, api_sublist, authored_merge, exact_main, ProvedTarget, tracked_paths_at, PREVIEW_PRODUCER_PATHS, PREVIEW_RUNTIME_DATA_DIRS, PREVIEW_RUNTIME_DATA_EXEMPTIONS, PRODUCTION_PROJECT_REF, RISK_TEXT, PREVIEW_WORKFLOW, RiskGateError, canonical_sha256, classify_sql, decide_business_risk, enforce_automatic_risk_decision, gh_json, is_pinned_historical_disney_source, load_activation, prove_activation, prove_applied_commit_is_main_line, preview_applied_commit, prove_governed_historical_supersession, prove_governed_original_reconciliation, prove_bound_mainline_post_merge_original, prove_historical_original_apply_runs, prove_registered_historical_restoration_provenance, prove_preview, prove_preview_migration_contents, prove_preview_producer_matches_main, prove_pr_and_checks, REQUIRED_CHECKS, GOVERNED_HISTORICAL_SUPERSESSION, GOVERNED_ORIGINAL_RECONCILIATION
 
 
 def disable_background_git_maintenance(root):
@@ -179,7 +179,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             subprocess.CompletedProcess([],0,'{"author_association":"OWNER"}',""),
         ])
         sleeps=[]
-        result=gh_json("repos/u2giants/shared-db/issues/comments/7",
+        result=gh_json(f"repos/{REPOSITORY}/issues/comments/7",
             runner=lambda *a,**k: next(responses),sleep=sleeps.append)
         self.assertEqual(result,{"author_association":"OWNER"})
         self.assertEqual(sleeps,[1])
@@ -205,15 +205,15 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             # A live owner decision, and the recursive tree read that carries the
             # producer pin for a whole promotion (#2191). Both are irreducible
             # single calls with no batched alternative.
-            "repos/u2giants/shared-db/issues/comments/7",
-            "repos/u2giants/shared-db/git/trees/abc123?recursive=1",
+            f"repos/{REPOSITORY}/issues/comments/7",
+            f"repos/{REPOSITORY}/git/trees/abc123?recursive=1",
         ]
         single_attempt = [
-            "repos/u2giants/shared-db/pulls/1108",
-            "repos/u2giants/shared-db/pulls/1108/files?per_page=100",
-            "repos/u2giants/shared-db/commits/abc123/status",
-            "repos/u2giants/shared-db/actions/runs/33920952504",
-            "repos/u2giants/shared-db/git/ref/db-claims/20260816110750",
+            f"repos/{REPOSITORY}/pulls/1108",
+            f"repos/{REPOSITORY}/pulls/1108/files?per_page=100",
+            f"repos/{REPOSITORY}/commits/abc123/status",
+            f"repos/{REPOSITORY}/actions/runs/33920952504",
+            f"repos/{REPOSITORY}/git/ref/db-claims/20260816110750",
         ]
 
         def counting_runner(calls, stderr):
@@ -264,7 +264,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         def runner(*args,**kwargs):
             calls.append(1); return subprocess.CompletedProcess([],1,"","HTTP 404: Not Found")
         with self.assertRaisesRegex(RiskGateError,"HTTP 404"):
-            gh_json("repos/u2giants/shared-db/issues/comments/7",runner=runner,
+            gh_json(f"repos/{REPOSITORY}/issues/comments/7",runner=runner,
                 sleep=lambda _: self.fail("permanent absence slept"))
         self.assertEqual(len(calls),1)
 
@@ -289,26 +289,26 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     def test_pre_lane_rate_limit_403_waits_for_the_reset_then_succeeds(self):
         calls, sleeps = [], []
         runner, clock = self.rate_limit_runner(calls, reset_in=300)
-        result = gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner, sleep=sleeps.append,
+        result = gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner, sleep=sleeps.append,
                          rate_limit_wait_seconds=900, clock=clock)
         self.assertEqual(result, {"ok": True})
-        self.assertEqual(calls, ["repos/u2giants/shared-db/pulls/1108", "rate_limit", "repos/u2giants/shared-db/pulls/1108"])
+        self.assertEqual(calls, [f"repos/{REPOSITORY}/pulls/1108", "rate_limit", f"repos/{REPOSITORY}/pulls/1108"])
         self.assertEqual(sleeps, [301])
 
     def test_lane_held_default_fails_fast_on_a_rate_limit(self):
         calls = []
         runner, clock = self.rate_limit_runner(calls, reset_in=60)
         with self.assertRaisesRegex(RiskGateError, "rate limit exceeded"):
-            gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner,
+            gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner,
                     sleep=lambda _: self.fail("the lane-held invocation waited"), clock=clock)
-        self.assertEqual(calls, ["repos/u2giants/shared-db/pulls/1108"])
+        self.assertEqual(calls, [f"repos/{REPOSITORY}/pulls/1108"])
 
     def test_rate_limit_wait_is_bounded_and_never_applies_to_other_403s(self):
         # A reset past 15 minutes fails closed even with a larger budget.
         calls = []
         runner, clock = self.rate_limit_runner(calls, reset_in=16 * 60)
         with self.assertRaisesRegex(RiskGateError, "rate limit exceeded"):
-            gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner,
+            gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner,
                     sleep=lambda _: self.fail("waited past the cap"), rate_limit_wait_seconds=3600, clock=clock)
         # Any other 403, including a SECONDARY limit, costs one call and no probe.
         for stderr in ("HTTP 403: Forbidden", "HTTP 403: Resource not accessible by integration",
@@ -317,19 +317,19 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                 calls = []
                 runner, clock = self.rate_limit_runner(calls, reset_in=60, failures=5, stderr=stderr)
                 with self.assertRaises(RiskGateError):
-                    gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner,
+                    gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner,
                             sleep=lambda _: self.fail(f"{stderr} slept"), rate_limit_wait_seconds=900, clock=clock)
-                self.assertEqual(calls, ["repos/u2giants/shared-db/pulls/1108"])
+                self.assertEqual(calls, [f"repos/{REPOSITORY}/pulls/1108"])
         # An unreadable reset is never guessed; a second exhaustion is not waited on again.
         calls = []
         runner, clock = self.rate_limit_runner(calls, reset_in=60, probe_ok=False)
         with self.assertRaises(RiskGateError):
-            gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner,
+            gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner,
                     sleep=lambda _: self.fail("guessed a reset"), rate_limit_wait_seconds=900, clock=clock)
         calls, sleeps = [], []
         runner, clock = self.rate_limit_runner(calls, reset_in=60, failures=2)
         with self.assertRaises(RiskGateError):
-            gh_json("repos/u2giants/shared-db/pulls/1108", runner=runner, sleep=sleeps.append,
+            gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner, sleep=sleeps.append,
                     rate_limit_wait_seconds=900, clock=clock)
         self.assertEqual(sleeps, [61])
 
@@ -815,6 +815,95 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                     )
 
     # ------------------------------------------------------------------
+    # Issue #2730: one head can carry several same-name check runs -- a
+    # cancelled run beside its re-run. The conclusions dictionary used to keep
+    # whichever row the API listed last, so an older cancelled run listed after
+    # a newer successful one silently refused a healthy promotion (PR #2527:
+    # run 34563999011/check 103152259453 succeeded, older 34563998795/check
+    # 103152255159 was cancelled, production run 34564942032 took the
+    # cancellation). The newest row must be selected by check-run id, never by
+    # API row order.
+    # ------------------------------------------------------------------
+
+    def prove_with_check_rows(self, root, main, merge_sha, rows):
+        head = "1" * 40
+        pr = {"merged": True, "merge_commit_sha": merge_sha, "head": {"sha": head}}
+
+        def api(endpoint):
+            if "check-runs" in endpoint:
+                return {"check_runs": rows}
+            if endpoint.endswith("/status"):
+                return {"statuses": [{
+                    "context": "Migration guarded merge authorization", "state": "success",
+                }]}
+            return pr
+
+        return prove_pr_and_checks(1, main, ["20260814000000"], api, root)
+
+    def issue_2730_rows(self, duplicated):
+        others = [
+            {"name": name, "conclusion": "success"}
+            for name in REQUIRED_CHECKS if name != "Cross-PR object collision"
+        ]
+        return others + duplicated
+
+    def test_the_newest_same_name_check_is_selected_in_either_api_order(self):
+        temp, root, main, merge_sha = self.historical_repo()
+        older = {"name": "Cross-PR object collision", "id": 103152255159, "conclusion": "cancelled"}
+        newer = {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "success"}
+        with temp:
+            for rows in ([older, newer], [newer, older]):
+                with self.subTest(order=[row["id"] for row in rows]):
+                    self.assertEqual(
+                        self.prove_with_check_rows(root, main, merge_sha, self.issue_2730_rows(rows)),
+                        ("1" * 40, merge_sha),
+                    )
+
+    def test_a_newer_unsuccessful_check_refuses_over_an_older_success(self):
+        temp, root, main, merge_sha = self.historical_repo()
+        older = {"name": "Cross-PR object collision", "id": 103152255159, "conclusion": "success"}
+        with temp:
+            for newer_conclusion in ("failure", "cancelled", "timed_out", None):
+                newer = {"name": "Cross-PR object collision", "id": 103152259453}
+                if newer_conclusion is not None:
+                    newer["conclusion"] = newer_conclusion
+                with self.subTest(newer_conclusion=newer_conclusion), self.assertRaisesRegex(
+                    RiskGateError, "required exact-head checks are not successful"
+                ):
+                    self.prove_with_check_rows(
+                        root, main, merge_sha, self.issue_2730_rows([older, newer])
+                    )
+
+    def test_same_name_rows_without_usable_ids_refuse_rather_than_guess(self):
+        temp, root, main, merge_sha = self.historical_repo()
+        with temp:
+            for bad in ({"name": "Cross-PR object collision", "conclusion": "success"},
+                        {"name": "Cross-PR object collision", "id": "103152259453", "conclusion": "success"},
+                        {"name": "Cross-PR object collision", "id": 0, "conclusion": "success"}):
+                duplicate = dict(bad, conclusion="cancelled")
+                with self.subTest(bad=bad), self.assertRaisesRegex(
+                    RiskGateError, "newest cannot be selected"
+                ):
+                    self.prove_with_check_rows(
+                        root, main, merge_sha, self.issue_2730_rows([bad, duplicate])
+                    )
+
+    def test_one_check_run_id_with_two_conclusions_refuses_as_ambiguous(self):
+        temp, root, main, merge_sha = self.historical_repo()
+        rows = self.issue_2730_rows([
+            {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "success"},
+            {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "failure"},
+        ])
+        with temp, self.assertRaisesRegex(RiskGateError, "different conclusions"):
+            self.prove_with_check_rows(root, main, merge_sha, rows)
+
+    def test_a_check_run_row_without_a_name_refuses_as_malformed(self):
+        temp, root, main, merge_sha = self.historical_repo()
+        rows = self.issue_2730_rows([]) + [{"conclusion": "success"}]
+        with temp, self.assertRaisesRegex(RiskGateError, "no check name"):
+            self.prove_with_check_rows(root, main, merge_sha, rows)
+
+    # ------------------------------------------------------------------
     # Issue #1218: a well-formed GitHub response of an unexpected SHAPE must
     # produce a NAMED ::error:: refusal, not a raw traceback.
     #
@@ -926,7 +1015,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             lambda endpoint: (seen.append(endpoint) or {"truncated": False, "tree": []}),
         )
         self.assertEqual(
-            seen, [f"repos/u2giants/shared-db/git/trees/{'1' * 40}?recursive=1"]
+            seen, [f"repos/{REPOSITORY}/git/trees/{'1' * 40}?recursive=1"]
         )
 
     def test_a_producer_pin_that_compared_nothing_is_refused(self):
@@ -1166,14 +1255,14 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             return subprocess.CompletedProcess([], 0, '{"truncated": false, "tree": []}', "")
 
         self.assertEqual(
-            gh_json(f"repos/u2giants/shared-db/git/trees/{'1' * 40}?recursive=1",
+            gh_json(f"repos/{REPOSITORY}/git/trees/{'1' * 40}?recursive=1",
                     runner=runner, sleep=lambda _s: None),
             {"truncated": False, "tree": []},
         )
         self.assertEqual(len(calls), 3)
         # Spent attempts still refuse; the gate does not fail open.
         with self.assertRaisesRegex(RiskGateError, "GitHub API request failed"):
-            gh_json(f"repos/u2giants/shared-db/git/trees/{'1' * 40}?recursive=1",
+            gh_json(f"repos/{REPOSITORY}/git/trees/{'1' * 40}?recursive=1",
                     runner=lambda cmd, **k: subprocess.CompletedProcess(
                         [], 1, "", "gh: HTTP 502"),
                     sleep=lambda _s: None)
@@ -1194,7 +1283,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             applied, main,
             self.preview_api({}, [], {}, [], compare={"status": "ahead", "behind_by": 0}, seen=seen),
         )
-        self.assertEqual(seen, [f"repos/u2giants/shared-db/compare/{applied}...{main}"])
+        self.assertEqual(seen, [f"repos/{REPOSITORY}/compare/{applied}...{main}"])
 
     def test_descendant_of_main_is_refused(self):
         """Inverting the compare arguments would make this pass. It must not.
@@ -2717,7 +2806,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                     return "identical-producer-blob"
 
                 def api(endpoint):
-                    if endpoint == f"repos/u2giants/shared-db/actions/runs/{original_run}":
+                    if endpoint == f"repos/{REPOSITORY}/actions/runs/{original_run}":
                         # `__replace__` returns a NON-DICT payload, which no
                         # amount of key overriding can express.
                         if original_run_shape and "__replace__" in original_run_shape:
@@ -2731,7 +2820,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                     if endpoint.endswith(f"runs/{original_run}/artifacts?per_page=100"):
                         return {"artifacts": [self.apply_artifact(
                             original_commit, artifact_id=99, run_id=original_run)]}
-                    if endpoint == "repos/u2giants/shared-db/actions/runs/7":
+                    if endpoint == f"repos/{REPOSITORY}/actions/runs/7":
                         if run_shape and "__replace__" in run_shape:
                             return run_shape["__replace__"]
                         return {"status": "completed", "conclusion": "success",
@@ -3382,7 +3471,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             sha, authored_merge(sha), main, ancestry,
             what="original apply run 555 dispatched at " + sha,
         )
-        self.assertEqual(seen, [f"repos/u2giants/shared-db/compare/{sha}...{main}"])
+        self.assertEqual(seen, [f"repos/{REPOSITORY}/compare/{sha}...{main}"])
         # A validated exact-main target still short-circuits on identity.
         prove_preview_producer_matches_main(
             main, exact_main(main), main,
@@ -4112,6 +4201,100 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         self.assertEqual([(c["source_pr"], c["pr_head"]) for c in calls], [(101, "1" * 40)])
         self.assertNotIn("migrationTrain", result["governedEvidence"])
 
+
+class RoutineFunctionReestablishmentTests(unittest.TestCase):
+    """#3159: #3104 (PR #3131) and #2866 were forced onto the manual route because a
+    behavior-preserving CREATE OR REPLACE FUNCTION with its unchanged grants, and any
+    narrowing REVOKE, reported every risk. Real widening stays fail-closed."""
+
+    EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
+                         RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
+
+    FN = """create or replace function api.inv(p_kind text, p_search text default null)
+returns jsonb language plpgsql stable security definer set search_path to ''
+as $$ begin return jsonb_build_object('kind', p_kind); end; $$;
+comment on function api.inv(text,text) is 'inventory';
+revoke all on function api.inv(text,text) from public, anon, service_role;
+grant execute on function api.inv(text,text) to authenticated;
+"""
+
+    def classify(self, migrations):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "supabase/migrations").mkdir(parents=True)
+            for version, body in migrations:
+                (root / f"supabase/migrations/{version}_x.sql").write_text(body, encoding="utf-8")
+            return classify_sql(root, [migrations[-1][0]])
+
+    def test_the_real_3104_and_2866_migrations_are_routine(self):
+        root = Path(__file__).resolve().parents[1]
+        for version in ["20260917005650", "20260914172031"]:
+            self.assertTrue(list(root.glob(f"supabase/migrations/{version}_*.sql")), version)
+            self.assertEqual(classify_sql(root, [version]), [], version)
+
+    def test_body_only_replacement_with_the_same_header_and_grants_is_routine(self):
+        changed_body = self.FN.replace("'kind', p_kind", "'kind', upper(p_kind)")
+        self.assertEqual(self.classify([("20260101000000", self.FN), ("20260201000000", changed_body)]), [])
+
+    def test_a_narrowing_revoke_alone_is_routine(self):
+        self.assertEqual(self.classify([("20260201000000",
+            "revoke execute on function api.inv(text,text) from anon, authenticated;\n"
+            "revoke select on table core.thing from anon;")]), [])
+
+    def assert_every_risk(self, migrations):
+        self.assertEqual(self.classify(migrations), self.EVERY_RISK)
+
+    def test_a_new_function_with_no_earlier_migration_reports_every_risk(self):
+        self.assert_every_risk([("20260201000000", self.FN)])
+
+    def test_security_definer_added_reports_every_risk(self):
+        before = self.FN.replace("security definer ", "")
+        self.assert_every_risk([("20260101000000", before), ("20260201000000", self.FN)])
+
+    def test_a_return_type_change_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN.replace("returns jsonb", "returns text"))])
+
+    def test_a_grant_widened_to_anon_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "grant execute on function api.inv(text,text) to anon;\n")])
+
+    def test_an_intervening_migration_that_changed_grants_breaks_the_match(self):
+        narrowed = "revoke execute on function api.inv(text,text) from authenticated;\n"
+        self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", narrowed),
+                                ("20260201000000", self.FN)])
+
+    def test_a_changed_header_string_literal_reports_every_risk(self):
+        before = self.FN.replace("search_path to ''", "search_path to 'app', 'public'")
+        for after in (before.replace("'app', 'public'", "'evil', 'public'"),
+                      before.replace("'app', 'public'", "'App', 'public'"),
+                      before.replace("default null", "default 'a'")):
+            with self.subTest(after=after[:120]):
+                self.assert_every_risk([("20260101000000", before), ("20260201000000", after)])
+        self.assertEqual(self.classify([("20260101000000", before), ("20260201000000", before)]), [])
+        recommented = before.replace("is 'inventory'", "is 'inventory, reworded'")
+        self.assertEqual(self.classify([("20260101000000", before), ("20260201000000", recommented)]), [])
+
+    def test_an_intervening_schema_wide_privilege_change_breaks_the_match(self):
+        for between in ("revoke execute on all functions in schema api from authenticated;\n",
+                        "alter default privileges in schema api revoke execute on functions from authenticated;\n",
+                        "alter function api.old(text,text) rename to inv;\n"):
+            with self.subTest(between=between):
+                self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", between),
+                                        ("20260201000000", self.FN)])
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "grant execute on all functions in schema api to anon;\n")])
+
+    def test_an_unparseable_earlier_migration_excuses_nothing(self):
+        self.assert_every_risk([("20260101000000", self.FN), ("20260115000000", "select 'unterminated;\n"),
+                                ("20260201000000", self.FN)])
+
+    def test_a_standalone_grant_reports_every_risk(self):
+        self.assert_every_risk([("20260201000000", "grant execute on function api.inv(text,text) to authenticated;")])
+
+    def test_a_replacement_bundled_with_a_data_change_still_reports_every_risk(self):
+        self.assert_every_risk([("20260101000000", self.FN),
+                                ("20260201000000", self.FN + "delete from core.thing;\n")])
 
 from production_business_risk_gate import REPOSITORY  # noqa: E402
 

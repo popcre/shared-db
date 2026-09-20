@@ -1,7 +1,7 @@
 name: Shared DB Live Proof
 
 # Produces the durable live-proof artifact that --complete-outcome re-derives
-# for an outcome whose application_return_to is u2giants/shared-db (#2906).
+# for an outcome whose application_return_to is popcre/shared-db (#2906).
 # Read-only: the probe runs through the Management API with read_only: true.
 on:
   workflow_dispatch:

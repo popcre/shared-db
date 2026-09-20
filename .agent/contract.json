@@ -1,42 +1,47 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3170,
+  "work_issue": 3261,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Stop author-capacity resume leaving relinquish-only fields (blocked_on, worktree_state, recovery) on an active claim, and add a narrow owner-only --repair-resumed-claim mode that removes that residue after a recorded author_capacity_resumed event, so claim #2834 can be made readable again.",
-  "base_sha": "4d5bbb9f6bb1426a3c10b874bc58edc2a71eb523",
-  "dispatcher": "Claude coordinator session for shared-db lane unblock",
-  "worker": "Claude Opus 5 #3170 subagent",
-  "branch": "claude/fix-resume-worktree-state",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/agent-a556e3304fe07721f",
+  "goal": "Pause glm-5.3 in the shared-db reviewer rotation for the owner's weekly account-usage rotation (chat directive 2026-09-18), with kimi-k3 confirmed drawable and doctor-verified the same day, updating the roster, its pinned tests and the AGENTS.md rotation sentence",
+  "base_sha": "8d107ee8826d45b53c958ad54e0aa2b554191d79",
+  "dispatcher": "ZCode repo-maintenance session on owner chat instruction 2026-09-18 (issue #3261)",
+  "worker": "zcode",
+  "branch": "chore/pause-glm-5.3-reviewer-rotation",
+  "worktree": ".claude/worktrees/pause-glm-5.3",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/coordination-scenarios.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "AGENTS.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/coordination-scenarios.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "AGENTS.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write or structure change of any kind",
-    "No hand edit of a fenced claim block"
+    "do not touch any migration or database object",
+    "do not change draw, replacement, capacity or preflight behaviour beyond roster membership",
+    "do not delete or rename glm-5.3 from REVIEWERS; durable verdict evidence must keep resolving",
+    "do not unpause glm-5.3 without a new owner instruction",
+    "do not edit another session's handoff, worktree, branch, claim or pull request"
   ],
   "required_checks": [
-    "node --test scripts/coordination-scenarios.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs"
   ],
   "assumptions": [
-    "A lease line the parser reads after trimming must be removed by resume under the same reading"
+    "kimi-k3 is drawable (unpaused 2026-09-07, PR #2483) and its wrapper doctor passed read-only, preflight and auth when re-verified on 2026-09-18",
+    "pausing via RETIRED_REVIEWERS membership with a dated comment is the established mechanism, matching the 2026-09-03 kimi-k3 usage pause and the 2026-09-06 codex-gpt-5.6-sol usage retirement"
   ],
   "stop_conditions": [
-    "Stop if the repair mode could change capacity, owner, expiry, or claimed objects"
-  ]
+    "stop if removing glm-5.3 from the active rotation breaks any durable reviewer-name lookup",
+    "stop if open pull requests #3228 or #3247 editing the same script cannot be merged or closed, leaving this branch unable to rebase cleanly",
+    "stop if making the suite green would require changing reviewer draw or replacement behaviour rather than test expectations"
+  ],
+  "generation": 1
 }

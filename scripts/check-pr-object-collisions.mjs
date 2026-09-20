@@ -127,13 +127,61 @@ function pathPrefix(env = process.env) {
  * Note the deliberate absence of a `$` anchor in the line-comment regex.
  */
 export function normalizeSql(sql) {
-  return String(sql)
-    .replace(/\r\n?/g, '\n') // CRLF -> LF first (backlog item B1)
-    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
-    .split('\n')
-    .map((line) => line.replace(/--.*/, '')) // line comments, unanchored
-    .join('\n')
+  return stripSqlComments(String(sql).replace(/\r\n?/g, '\n')) // CRLF -> LF first (backlog item B1)
     .replace(/\s+/g, ' ')
+}
+
+/**
+ * Remove `--` and block comments, but never inside a single-quoted literal
+ * (issue #3183). Stripping `--` blindly cut the closing quote off
+ * `comment on view ... is '... Aggregate only -- it exposes ...'`, which
+ * unbalanced quote pairing and hid the grants that followed. Inside a
+ * dollar-quoted body comments are still stripped (an apostrophe in a body
+ * comment must not unbalance quotes either) and quotes are not tracked.
+ */
+function stripSqlComments(sql) {
+  let out = ''
+  let i = 0
+  let dollarTag = null
+  while (i < sql.length) {
+    const ch = sql[i]
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i)
+      i = nl === -1 ? sql.length : nl
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      out += ' '
+      i = end === -1 ? sql.length : end + 2
+      continue
+    }
+    if (ch === '$') {
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64))
+      if (m && (dollarTag === null || m[0] === dollarTag)) {
+        dollarTag = dollarTag === null ? m[0] : null
+        out += m[0]
+        i += m[0].length
+        continue
+      }
+    }
+    if (ch === "'" && dollarTag === null) {
+      let j = i + 1
+      while (j < sql.length) {
+        if (sql[j] === "'") {
+          if (sql[j + 1] === "'") { j += 2; continue }
+          break
+        }
+        j++
+      }
+      out += sql.slice(i, j + 1)
+      i = j + 1
+      continue
+    }
+    out += ch
+    i++
+  }
+  return out
 }
 
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)`
@@ -502,7 +550,7 @@ const DISPATCH_PATTERNS = [
     // TABLE, so its absence means table -- but `on schema`, `on sequence`,
     // `on function` must keep their own kind or a grant on a schema would
     // collide with a table of the same name.
-    kinds: ['grant', 'table', 'sequence', 'schema', 'function', 'procedure', 'type'],
+    kinds: ['grant', 'table', 'view', 'sequence', 'schema', 'function', 'procedure', 'type'],
     re: new RegExp(
       // The two negative lookaheads are both real defects found by replaying
       // this parser over 400 merged pull requests:
@@ -530,8 +578,14 @@ const DISPATCH_PATTERNS = [
       const raw = (m[1] || 'table').toLowerCase()
       // `routine` is Postgres's umbrella for function+procedure; a grant
       // written either way must collide with the other.
-      const kinds = raw === 'routine' ? ['function', 'procedure'] : [raw === 'domain' ? 'type' : raw]
-      return kinds.map((kind) => ({ action: 'grant', kind, target }))
+      // With no keyword Postgres applies the grant to a table OR a view (issue
+      // #3183), so key it as both or it never collides with work on the view.
+      const kinds = raw === 'routine' ? ['function', 'procedure']
+        : !m[1] || raw === 'table' ? ['table', 'view']
+          : [raw === 'domain' ? 'type' : raw]
+      // `relationGuess` marks the table-or-view pair so extractOperations can
+      // drop the half the same migration's own CREATE rules out (see there).
+      return kinds.map((kind) => ({ action: 'grant', kind, target, ...(kinds.length === 2 && kind !== 'function' ? { relationGuess: true } : {}) }))
     },
   },
   {
@@ -775,6 +829,32 @@ export function extractOperations(sql) {
     let m
     while ((m = re.exec(text)) !== null) for (const op of map(m)) add(op, m.index)
   }
+
+  // A keyword-less (or `on table`) grant is keyed as BOTH table and view
+  // (#3183) because the text alone cannot say which the name is. When this
+  // same migration CREATES the name, its kind is known: keep only that half,
+  // or a claim that correctly declares `table x` is refused for an undeclared
+  // `view x`. With no CREATE here (or a name created as both), keep both.
+  const createdKinds = new Map()
+  const noteCreated = (re, kind) => {
+    re.lastIndex = 0
+    let c
+    while ((c = re.exec(text)) !== null) {
+      const target = canonical(c[1])
+      if (!createdKinds.has(target)) createdKinds.set(target, new Set())
+      createdKinds.get(target).add(kind)
+    }
+  }
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:global\s+|local\s+|unlogged\s+)*table\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'table')
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:or\s+replace\s+)?(?:temp\s+|temporary\s+)?(?:recursive\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'view')
+  for (const op of [...seen.values()]) {
+    if (!op.relationGuess) continue
+    const kinds = createdKinds.get(op.target)
+    if (!kinds || kinds.size !== 1) continue
+    const other = kinds.has('table') ? 'view' : 'table'
+    seen.delete(`grant|${other}|${op.target}`)
+  }
+  for (const op of seen.values()) delete op.relationGuess
 
   return [...seen.values()].sort((a, b) =>
     `${a.kind} ${a.target} ${a.action}`.localeCompare(`${b.kind} ${b.target} ${b.action}`),

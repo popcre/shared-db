@@ -106,6 +106,35 @@ jobs:
             echo "::error::Missing scripts/check-main-tip-freshness.test.mjs"; exit 1; }
           node --test scripts/check-main-tip-freshness.test.mjs
 
+      - name: Run the queue hygiene report tests (#3199 Phase A3)
+        # Named explicitly like the freshness gate above. The hygiene report is
+        # a SCHEDULED job, so no pull-request trigger can prove it still refuses
+        # to write: these tests are what prove the subcommand strips every
+        # mutation hook, that a backed-up queue exits 0, and that an unreadable
+        # queue exits 2 instead of degrading into "no findings".
+        run: |
+          set -euo pipefail
+          test -f scripts/queue-hygiene-report.test.mjs || {
+            echo "::error::Missing scripts/queue-hygiene-report.test.mjs"; exit 1; }
+          node --test scripts/queue-hygiene-report.test.mjs
+
+      - name: Run the self-service lane boundary and route-sync tests (#3199 Phase B)
+        # The boundary classifier is MERGE-TIME enforcement: no pull-request
+        # check can prove it refuses, because the refusal happens inside the
+        # guarded merge. These tests are that proof — dirty-first fixtures for
+        # every out-of-boundary shape (FK targets, SECURITY DEFINER,
+        # RLS-before-grant, CREATE OR REPLACE, riding-along workflows), plus the
+        # sync test that keeps admission and enforcement from drifting apart
+        # (PR #3204 finding 3 made permanent). The lexing contract the
+        # classifier's two tokenizer views rely on is proven by
+        # scripts/test_self_service_boundary_lexing.py under the Python glob.
+        run: |
+          set -euo pipefail
+          for f in scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs; do
+            test -f "$f" || { echo "::error::Missing $f"; exit 1; }
+          done
+          node --test scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs
+
       - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
         # Named explicitly, like the freshness gate above: these decide how every
         # governed gate reaches GitHub. The conformance check is the half that
@@ -115,10 +144,10 @@ jobs:
         # known-dirty tree before its verdict on the real tree is believed.
         run: |
           set -euo pipefail
-          for f in scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs; do
+          for f in scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-watch.test.mjs; do
             test -f "$f" || { echo "::error::Missing $f"; exit 1; }
           done
-          node --test scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs
+          node --test scripts/lib/github-transport.test.mjs scripts/lib/github-tree.test.mjs scripts/check-github-transport-conformance.test.mjs scripts/lib/github-conditional.test.mjs scripts/lib/github-watch.test.mjs
           node scripts/check-github-transport-conformance.mjs
           # Repository identity (#2530): no new hard-coded owner/name slug. Tests first,
           # so the checker is proven able to refuse a live hard-code before its verdict.

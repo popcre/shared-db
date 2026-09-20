@@ -1671,8 +1671,7 @@ def prove_historical_original_apply_runs(
             "historical preview recovery does not name the original apply run for each "
             "version; a recovery is never accepted without a byte binding"
         )
-    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END -- SAID OUT LOUD SO NOBODY
-    # SCORES IT AS TESTED. This guard and the two below it (the run-id shape and
+    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END. This guard and the two below it (the run-id shape and
     # the source-pull-request shape) restate rules `parse_original_run_map` and
     # `parse_source_map` in scripts/historical_preview_recovery.py already
     # enforce, and re-derivation runs those parsers BEFORE this function is
@@ -1681,9 +1680,11 @@ def prove_historical_original_apply_runs(
     # `prove_preview`.
     #
     # They stay, because this function is also importable and callable on its
-    # own and must not assume its caller validated anything. But "the suite goes
-    # red if I delete it" is FALSE for all three, and #1213 round 9 is precisely
-    # about not calling such a line tested. The rules themselves ARE tested,
+    # own and must not assume its caller validated anything. Because they cannot
+    # be reached through `prove_preview`, they are driven by calling this function
+    # directly in `DirectRecordShapeGuardTests` in
+    # scripts/test_production_business_risk_gate_historical_original_runs_mutations.py
+    # (#2367), which goes red if any of them is removed. The rules are also tested,
     # per condition, in `PerConditionParserTests` in
     # scripts/test_historical_preview_recovery.py -- which is where the five
     # refusal paths of `parse_original_run_map` got their first negative tests of
@@ -2065,6 +2066,49 @@ def is_pinned_historical_disney_source(
     )
 
 
+def select_newest_check_runs(checks: list[Any]) -> dict[str, dict[str, Any]]:
+    """The newest row per check name, independent of the API's row order (issue #2730).
+
+    One head can carry several same-name check runs -- a cancelled run beside its
+    re-run. The dict comprehension this replaces kept whichever row the API
+    happened to list last, so an older cancelled run listed after the newer
+    successful one was silently selected and refused a healthy promotion (PR
+    #2527: run 34563999011 succeeded, 34563998795 was cancelled, the gate chose
+    the cancellation). The newest row is the one with the greatest check-run id:
+    ids are unique and assigned at creation, so every re-run gets a larger one.
+    A name with one row needs no ordering; two or more rows must each carry a
+    unique integer id, or the newest cannot be known and the gate refuses rather
+    than guess -- which also keeps a NEWER failure or pending run refusing over
+    an OLDER success, never the reverse.
+    """
+    rows_by_name: dict[str, list[dict[str, Any]]] = {}
+    for row in checks:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str) or not row["name"]:
+            raise RiskGateError(f"check-run row {row!r} is malformed: no check name")
+        rows_by_name.setdefault(row["name"], []).append(row)
+    newest: dict[str, dict[str, Any]] = {}
+    for name, rows in rows_by_name.items():
+        if len(rows) == 1:
+            newest[name] = rows[0]
+            continue
+        by_id: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            check_run_id = row.get("id")
+            if type(check_run_id) is not int or isinstance(check_run_id, bool) or check_run_id <= 0:
+                raise RiskGateError(
+                    f"check '{name}' has {len(rows)} rows but row {row!r} carries no "
+                    "positive integer id, so the newest cannot be selected"
+                )
+            seen = by_id.get(check_run_id)
+            if seen is not None and seen.get("conclusion") != row.get("conclusion"):
+                raise RiskGateError(
+                    f"check '{name}' repeats id {check_run_id} with different conclusions"
+                )
+            by_id[check_run_id] = row
+        newest[name] = by_id[max(by_id)]
+    return newest
+
+
 def prove_pr_and_checks(
     pr_number: int, main_sha: str, allowlist: list[str], api: Callable[[str], Any], repo_root: Path
 ) -> tuple[str, str]:
@@ -2083,7 +2127,9 @@ def prove_pr_and_checks(
     )
     checks_endpoint = f"repos/{REPOSITORY}/commits/{head}/check-runs?per_page=100"
     checks = api_sublist(api_object(api, checks_endpoint), "check_runs", checks_endpoint)
-    conclusions = {c.get("name"): c.get("conclusion") for c in checks if isinstance(c, dict)}
+    conclusions = {
+        name: row.get("conclusion") for name, row in select_newest_check_runs(checks).items()
+    }
     missing = sorted(name for name in REQUIRED_CHECKS if conclusions.get(name) != "success")
     historical_source = is_pinned_historical_disney_source(
         pr_number, head, merge_commit_sha, allowlist
@@ -2197,8 +2243,119 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         raw = matches[0].read_text(encoding="utf-8")
-        reasons.update(_classify_statements(sql_top_level_statements(raw)))
+        reasons.update(_classify_statements(
+            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version, raw)))
     return sorted(reasons)
+
+
+# ROUTINE FUNCTION RE-ESTABLISHMENT AND NARROWING REVOKES (#3159). #3104 (PR
+# #3131) and #2866 were forced onto the manual route because every CREATE OR
+# REPLACE FUNCTION outside the narrow create_function shape, and every GRANT or
+# REVOKE, reported all three risks. Two shapes are now recognised, and both stay
+# fail-closed on anything that could widen access or lose data:
+#
+#   1. REVOKE on named functions or tables. Removing a privilege can only
+#      narrow access; it never rewrites data or holds a long lock.
+#   2. A function RE-ESTABLISHED exactly as the latest earlier migration that
+#      touched it left it. Every statement of this migration naming the function
+#      must be a CREATE OR REPLACE FUNCTION, COMMENT, GRANT or REVOKE on it, and the whole
+#      ordered list must equal, byte for byte after normalisation, the list of
+#      statements naming it in the most recent earlier migration. Bodies are
+#      emptied by the tokeniser, so the comparison covers the full header
+#      (arguments, defaults, return type, SECURITY DEFINER, SET search_path) with
+#      every string literal compared exactly, and every grant, but never the body; the body is what the required
+#      independent review reads. Because the latest earlier migration is the one
+#      compared, any later migration that changed the function's privileges
+#      breaks the match, and any schema-wide grant or revoke, default-privilege
+#      change, rename or ownership move since then (or now) excuses nothing. A new function, a changed header, a new role, or a
+#      different grant order all still report every risk.
+_ROLE_LIST = rf"{_ALLOW_IDENT}(?: ?, ?{_ALLOW_IDENT})*"
+_FUNCTION_REF = rf"{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+NARROWING_REVOKE = re.compile(
+    rf"revoke (?:grant option for )?[a-z ,]+ on (?:function {_FUNCTION_REF}(?: ?, ?{_FUNCTION_REF})*"
+    rf"|(?:table )?{_ALLOW_QUALIFIED}(?: ?, ?{_ALLOW_QUALIFIED})*) from {_ROLE_LIST}(?: (?:cascade|restrict))?")
+_REPLACE_FUNCTION = re.compile(rf"create or replace function ({_ALLOW_QUALIFIED}) ?\(.*")
+_FUNCTION_PRIVILEGE = re.compile(
+    rf"(?:grant|revoke) [a-z ,]+ on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} (?:to|from) {_ROLE_LIST}")
+
+_FUNCTION_COMMENT = re.compile(rf"comment on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} is (?:''|null)")
+
+
+def _names_object(statement: str, name: str) -> bool:
+    return re.search(rf'(?<![a-z0-9_$."]){re.escape(name)}(?![a-z0-9_$"])', statement) is not None
+
+
+# A statement that can change a function's privileges or identity WITHOUT
+# naming it (#3159 review): schema-wide grants/revokes, default privileges,
+# renames and ownership moves. Seen between the latest named match and now, the
+# earlier state can no longer be trusted, so nothing is excused.
+_UNNAMED_FUNCTION_ACL_OR_IDENTITY = re.compile(
+    r"\bin schema\b|\balter default privileges\b|\brename to\b|\bowner to\b"
+    r"|\bset schema\b|\bon schema\b|\bdrop (?:schema|owned|role)\b")
+
+
+def _comparison_form(neutral: str, exact: str) -> str:
+    """Exact literals everywhere except a COMMENT's text, which grants nothing."""
+    return neutral if _FUNCTION_COMMENT.fullmatch(neutral) else exact
+
+
+class _PriorMigrations:
+    """Statements of every migration on this tree older than ``version``, newest first."""
+
+    def __init__(self, repo_root: Path, version: str, current_raw: str | None = None):
+        self.current_exact = (None if current_raw is None
+                              else sql_top_level_statements(current_raw, keep_literals=True))
+        self.files = sorted(
+            (path for path in (Path(repo_root) / "supabase/migrations").glob("*.sql")
+             if re.fullmatch(r"\d{14}", path.name[:14]) and path.name[:14] < version),
+            key=lambda path: path.name, reverse=True)
+        self._cache: dict[Path, tuple[list[str], list[str]] | None] = {}
+
+    def latest_touching(self, name: str) -> list[str] | None:
+        """The ordered statements naming ``name`` in the newest earlier migration that names it.
+
+        None when no earlier migration names it, or when a newer one cannot be
+        parsed (it might name it, so nothing older can be trusted).
+        """
+        for path in self.files:
+            if path not in self._cache:
+                text = path.read_text(encoding="utf-8")
+                neutral = sql_top_level_statements(text)
+                exact = sql_top_level_statements(text, keep_literals=True)
+                self._cache[path] = (None if neutral is None or exact is None
+                                     or len(neutral) != len(exact) else (neutral, exact))
+            parsed = self._cache[path]
+            if parsed is None:
+                return None
+            neutral, exact = parsed
+            if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in neutral):
+                return None
+            touching = [_comparison_form(s, exact[i]) for i, s in enumerate(neutral) if _names_object(s, name)]
+            if touching:
+                return touching
+        return None
+
+
+def _reestablished_functions(statements: list[str], prior: "_PriorMigrations | None") -> set[int]:
+    """Indexes of statements that re-establish a function exactly as before (#3159)."""
+    if prior is None or prior.current_exact is None or len(prior.current_exact) != len(statements):
+        return set()
+    if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in statements):
+        return set()
+    exact = prior.current_exact
+    excused: set[int] = set()
+    names = {m.group(1) for s in statements if (m := _REPLACE_FUNCTION.fullmatch(s))}
+    for name in names:
+        touching = [(i, s) for i, s in enumerate(statements) if _names_object(s, name)]
+        if not all(
+            (m := _REPLACE_FUNCTION.fullmatch(s) or _FUNCTION_PRIVILEGE.fullmatch(s)
+             or _FUNCTION_COMMENT.fullmatch(s)) and m.group(1) == name
+            for _, s in touching
+        ):
+            continue
+        if prior.latest_touching(name) == [_comparison_form(s, exact[i]) for i, s in touching]:
+            excused.update(i for i, _ in touching)
+    return excused
 
 
 def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
@@ -2239,7 +2396,7 @@ def new_column_check_risks(statement: str) -> frozenset | None:
     return NEW_COLUMN_CHECK_RISKS if checked else None
 
 
-def _classify_statements(statements: list[str] | None) -> set[str]:
+def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None) -> set[str]:
     """All three risks unless EVERY statement is recognised. Unparsed is all."""
     every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
@@ -2247,7 +2404,10 @@ def _classify_statements(statements: list[str] | None) -> set[str]:
         return every
     new_tables: set[str] = set()
     reasons: set[str] = set()
-    for s in statements:
+    reestablished = _reestablished_functions(statements, prior)
+    for index, s in enumerate(statements):
+        if index in reestablished or NARROWING_REVOKE.fullmatch(s):
+            continue
         entry = allowlist_entry(s, new_tables)
         if entry is None:
             partial = new_column_check_risks(s)
@@ -2353,7 +2513,7 @@ _IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_$]*)'
 _NAME = rf"{_IDENT}(?:\.{_IDENT})?"
 
 
-def sql_top_level_statements(raw: str) -> list[str] | None:
+def sql_top_level_statements(raw: str, keep_literals: bool = False, spans: list | None = None, keep_dollar_quoted: bool = False) -> list[str] | None:
     """Split SQL into top-level statements with literal CONTENTS neutralised.
 
     Comments are removed, string literals become '', and dollar-quoted bodies
@@ -2361,9 +2521,27 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
     can neither hide a statement nor invent one. Returns None when the text
     cannot be tokenised (an unterminated quote or comment): the caller treats
     that as high-risk rather than guessing.
+
+    Two additional output modes for the self-service additive lane (#3199),
+    neither of which changes the tokenisation itself:
+
+    * ``spans``: when a list is passed, the RAW character offsets of every
+      RETURNED statement are appended to it (aligned with the return value, so
+      empty statements dropped by the final filter drop their spans too). A
+      caller can then slice the original text for the exact statement it just
+      matched, without a second tokenizer.
+    * ``keep_dollar_quoted``: dollar-quoted bodies are kept VERBATIM instead of
+      being emptied to ``$$ $$`` (comments and '...' literals are still
+      neutralised). This is the reference-scanning view: the lane classifier
+      must see every schema-qualified name a function or view body mentions,
+      while the ALLOWLIST shapes keep consuming the default ``$$ $$`` view so
+      they cannot be fooled by body content.
     """
     out: list[str] = []
+    raw_spans: list[tuple[int, int]] = []
+    start = 0
     current: list[str] = []
+    literals: list[str] = []  # keep_literals: exact literal text, restored after folding
     i, n = 0, len(raw)
     while i < n:
         ch = raw[i]
@@ -2401,7 +2579,11 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
                         continue
                     break
                 j += 1
-            current.append("''")
+            if keep_literals:
+                literals.append(raw[i:j + 1])
+                current.append(f"'#{len(literals) - 1}'")
+            else:
+                current.append("''")
             i = j + 1
             continue
         if ch == '"':
@@ -2420,19 +2602,30 @@ def sql_top_level_statements(raw: str) -> list[str] | None:
                 end = raw.find(tag.group(0), i + len(tag.group(0)))
                 if end == -1:
                     return None
-                current.append(" $$ $$ ")
+                if keep_dollar_quoted:
+                    current.append(raw[i:end + len(tag.group(0))])
+                else:
+                    current.append(" $$ $$ ")
                 i = end + len(tag.group(0))
                 continue
         if ch == ";":
             out.append("".join(current))
+            raw_spans.append((start, i))
             current = []
+            start = i + 1
             i += 1
             continue
         current.append(ch)
         i += 1
     out.append("".join(current))
+    raw_spans.append((start, n))
     normalised = [_normalise_outside_identifiers(s) for s in out]
-    return [s for s in normalised if s]
+    if keep_literals:
+        normalised = [re.sub(r"'#(\d+)'", lambda m: literals[int(m.group(1))], s) for s in normalised]
+    kept = [(s, raw_spans[index]) for index, s in enumerate(normalised) if s]
+    if spans is not None:
+        spans.extend(span for _, span in kept)
+    return [s for s, _ in kept]
 
 
 def _normalise_outside_identifiers(statement: str) -> str:

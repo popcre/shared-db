@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 3331,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Stop scripts/orchestrator-snapshot.test.mjs asserting the pre-transfer OWNER association: derive the trusted fixture association from expectedOperatorAssociation() so the five tests that went red after the popcre transfer (#2530, bf0744f6) pass again without weakening the login check they exist to prove.",
-  "base_sha": "473ba697d5d449721de113fc0cd82acc6a052eb2",
+  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05",
   "dispatcher": "Albert Hazan, owner chat authorization: resolve through to production all open non-orchestrator GitHub Issues in this repo, resolve any and all blockers yourself",
   "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
   "branch": "claude/3331-snapshot-fixture-association",

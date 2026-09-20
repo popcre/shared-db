@@ -1,40 +1,43 @@
 {
-  "db_reads": [],
-  "assumptions_resolved": [
-    "Retained transactional loader records establish stable source and unique-row counts across repeated successful captures; exact-byte case-variant source duplicates are counted separately and never treated as distinct landed identities"
-  ],
-  "contract_ref": "refs/db-contracts/3302/1",
   "schema_version": 1,
-  "stop_conditions_hit": [],
-  "work_issue": 3302,
-  "checks": [
-    {
-      "exit_code": 0,
-      "evidence": "2 passed; zero failed, skipped or cancelled",
-      "command": "node --test scripts/issue-2863-live-proof.test.mjs"
-    },
-    {
-      "exit_code": 0,
-      "evidence": "Reverified after integrating843bc60d: production qsllyeztdwjgirsysgai target verified before each SELECT; true, absent-prepack false, absent-prod false. No writes.",
-      "command": "Read-only live probe with false controls"
-    },
-    {
-      "evidence": "truth audit OK: call_sites=310 sources=69 derived_digest=df45b8e61f6a; no companion disposition required for this SQL probe or its targeted test",
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0
-    }
-  ],
-  "db_writes": [],
-  "contract_sha256": "1994731accc3a210ac378e67cdfbe134854054fdecd00b31f14ded99bcf148b7",
+  "work_issue": 3331,
+  "outcome": "ready-for-merge",
+  "pr": 3333,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3331/11",
+  "contract_sha256": "62254fb17d1b698a31dea86229781ab53d4284ac8b471e2f430d49a636af8c22",
+  "head_sha": "37de551b21cb0bb3f570b23a85bc176bf74d638c",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/live-proofs/2863.sql",
-    "scripts/issue-2863-live-proof.test.mjs"
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
-  "pr": 3303,
-  "migration_versions": [],
-  "head_sha": "bfac4b39ac6cb926c52b4eb8c423ebb08702a06d",
-  "outcome": "ready-for-merge",
-  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05"
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 18 pass 18 fail 0 after current main integration; the same file is red with 5 failures on unmodified origin/main b1d4be2e"
+    },
+    {
+      "command": "node --test scripts/lib/repository-identity.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 10 pass 10 fail 0"
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/lib/hold-reason.test.mjs scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/db-coordination-events.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 141 pass 141 fail 0 (run together with repository-identity)"
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "clean"
+    }
+  ],
+  "assumptions_resolved": [
+    "Production trust is correct and unchanged: repos/popcre/shared-db/issues/3081/comments returns u2giants with association MEMBER, which is what expectedOperatorAssociation() requires."
+  ],
+  "stop_conditions_hit": []
 }

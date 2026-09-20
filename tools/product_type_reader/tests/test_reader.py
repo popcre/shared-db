@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -72,6 +73,94 @@ class NeverGuessTests(unittest.TestCase):
         self.assertEqual(read_product_type("Canvas 16x20").product_type_rules_version, RULES_VERSION)
 
 
+class ConstructionNeverStatesAnUnstatedMaterialTests(unittest.TestCase):
+    """A material-named construction must be required by its own rule.
+
+    Construction says how a product is built or shaped. When a construction names
+    a material — MDF, Fabric, Greyboard, PVC — the rule that produces it must be
+    unable to match a description that does not state that material, or the
+    reader is inventing the material in a different column. This test enforces
+    that for EVERY rule, so the class cannot regrow one rule at a time.
+    """
+
+    # A construction word maps to the wording that legitimately states it.
+    MATERIAL_SYNONYMS = {
+        "mdf": ("mdf",),
+        "greyboard": ("greyboard",),
+        "canvas": ("canvas",),
+        "fabric": ("fabric", "linen", "burlap", "embroidered", "oxford", "nonwoven", "felt", "plush", "woven", "jersey", "velvet", "poly", "suede"),
+        "plastic": ("plastic", "pvc", "acrylic", "polypropylene", "pp ", "tpe"),
+        "pvc": ("pvc",),
+        "metal": ("metal", "tin", "aluminum", "aluminium", "iron", "steel", "galvanized"),
+        "glass": ("glass",),
+        "ceramic": ("ceramic", "dolomite", "porcelain"),
+        "acrylic": ("acrylic",),
+        "paper": ("paper", "print", "poster", "deckle"),
+        "wood": ("wood", "plywood", "timber"),
+        "foam": ("foam", "eva"),
+        "coir": ("coir",),
+        "velvet": ("velvet",),
+        "rubber": ("rubber",),
+        "felt": ("felt",),
+        "mesh": ("mesh",),
+        "concrete": ("concrete",),
+        "lenticular": ("lenticular",),
+        "mirror": ("mirror",),
+        "yarn": ("yarn",),
+        "plush": ("plush",),
+    }
+
+    @staticmethod
+    def _alternatives(pattern: str) -> list[str]:
+        """Split a regex on its top-level `|` (ignoring `|` inside groups)."""
+        parts, depth, current = [], 0, []
+        index = 0
+        while index < len(pattern):
+            char = pattern[index]
+            if char == "\\":
+                current.append(pattern[index : index + 2])
+                index += 2
+                continue
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            if char == "|" and depth == 0:
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(char)
+            index += 1
+        parts.append("".join(current))
+        return parts
+
+    @staticmethod
+    def _states(alternative: str, words: tuple[str, ...]) -> bool:
+        """True when the alternative REQUIRES one of `words` (not optionally)."""
+        # Optional groups do not require anything; a positive lookahead does.
+        stripped = re.sub(r"\(\?:[^()]*\)\?", " ", alternative)
+        return any(word.strip() in stripped for word in words)
+
+    def test_every_material_named_construction_is_required_by_its_rule(self):
+        from tools.product_type_reader.rules import PRODUCT_RULES
+
+        offenders = []
+        for _tier, _index, product, construction, pattern in PRODUCT_RULES:
+            required = [
+                words
+                for token, words in self.MATERIAL_SYNONYMS.items()
+                if token in construction.lower().replace("-", " ").split()
+                or token == construction.lower()
+            ]
+            if not required:
+                continue
+            for alternative in self._alternatives(pattern.pattern):
+                for words in required:
+                    if not self._states(alternative, words):
+                        offenders.append(f"{product} / {construction}: {alternative.strip()}")
+        self.assertEqual(offenders, [], "construction names a material the rule does not require")
+
+
 class PublicVenueTests(unittest.TestCase):
     """This is a public repository: no licensed catalog wording may land in it.
 
@@ -84,7 +173,10 @@ class PublicVenueTests(unittest.TestCase):
         "pooh", "sonic", "coca", "cola", "nbc", "nbcu", "warner", "star wars", "care bears",
         "hulk", "thor", "joker", "shrek", "dora", "elmo", "wicked", "gotham", "avengers",
         "princess", "mickey", "minnie", "aristocats", "paw patrol", "sega", "viacom",
-        "harry potter", "nickelodeon", "spongebob", "strawberry shortcake", "kobe", "jordan",
+        "harry potter", "potter", "nickelodeon", "spongebob", "strawberry shortcake", "kobe",
+        "jordan", "paramount", "universal", "dreamworks", "illumination", "pokemon", "barbie",
+        "lego", "hello kitty", "kitty", "sega", "peppa", "bluey", "garfield", "smurf",
+        "transformers", "jurassic", "sesame", "care bear", "coca-cola", "pepsi",
     )
 
     PATHS = (
@@ -100,8 +192,16 @@ class PublicVenueTests(unittest.TestCase):
                     self.assertNotIn(token, text)
 
     def test_gold_labels_carry_no_item_number(self):
-        text = Path(self.PATHS[0]).read_text(encoding="utf-8")
-        self.assertNotRegex(text, r"\b[A-Z]{2,}\d{4,}\b")
+        """An item number is a catalog identifier, in any case or shape."""
+        wordings = [
+            row.split(",", 1)[0]
+            for row in Path(self.PATHS[0]).read_text(encoding="utf-8").splitlines()[1:]
+        ]
+        for wording in wordings:
+            with self.subTest(wording=wording):
+                # Product wording is words; a bare code or a long digit run is not.
+                self.assertNotRegex(wording, r"(?i)\b[a-z]{1,4}[-_]?\d{4,}\b")
+                self.assertNotRegex(wording, r"\b\d{5,}\b")
 
 
 class NoiseIsIgnoredTests(unittest.TestCase):

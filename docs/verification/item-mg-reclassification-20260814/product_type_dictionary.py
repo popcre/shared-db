@@ -135,10 +135,12 @@ def form_for_product(product: str) -> str:
         return "Other Storage"
     if product in {"Stationery Organizer", "Pencil Cup", "Memo Holder", "Phone Stand", "Headphone Stand"}:
         return "Stationery Organization"
-    if product in {"Tablet Stand", "Desk Organizer", "Lap Desk", "Desk Mat"}:
+    if product in {"Tablet Stand", "Lap Desk", "Desk Mat"}:
         return "Desk Accessories"
-    if product in {"Monitor Stand", "Embroidery Kit", "Display Rack", "Book"}:
+    if product in {"Monitor Stand", "Embroidery Kit", "Display Rack", "Book", "Pencil Case"}:
         return "Other Workspace"
+    if product in {"Color-Your-Own Kit", "Keychain", "Frame Set", "Growth Chart"}:
+        return "Other"
     if product in {"Door Mat", "Floor Mat", "Kitchen Mat", "Bath Mat", "Rug"}:
         return "Floor Coverings"
     if product in {"Garden Sign or Flag", "Birdhouse or Feeder", "Stepping Stone", "Garden Tool", "Garden Thermometer", "Watering Can", "Garden Kneeler", "Garden Decor"}:
@@ -184,6 +186,9 @@ def classify_semantic_signature(value: object) -> SemanticSignature:
         material=material_from_text(text),
         embellishment=embellishment,
         embellishment_state=state,
+        # Historical label, kept so older analysis output stays comparable. The
+        # reader no longer applies a hidden default: a bare "canvas" now wins only
+        # through the explicit fallback tier in rules.py (issue #3290).
         default_rule_applied="bare_canvas_means_stretched_wall_art" if product == "Canvas" else "",
     )
 

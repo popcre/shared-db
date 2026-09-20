@@ -57,6 +57,7 @@ class Outcome:
     correct: int = 0
     wrong: int = 0
     uncovered: int = 0
+    ambiguous: int = 0
 
 
 def load_gold(path: Path = GOLD_LABELS) -> dict[str, list[dict[str, str]]]:
@@ -92,12 +93,13 @@ def load_catalog(path: Path) -> list[dict[str, str]]:
     ]
 
 
-def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
+def evaluate(catalog: list[dict[str, str]], labels: dict[str, list[dict[str, str]]]):
     counts = Counter()
     wrong_examples: list[tuple[str, str, str]] = []
     uncovered_wording = Counter()
     unreadable_wording = Counter()
     product_counts = Counter()
+    ambiguous_wording = Counter()
 
     for row in catalog:
         counts["total"] += 1
@@ -117,6 +119,12 @@ def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
             counts["uncovered"] += 1
             uncovered_wording[reading.matched_wording] += 1
             continue
+        if len(gold) > 1:
+            # The wording alone admits more than one reviewed meaning. The rules
+            # still pick one deterministically, but "0 wrong" must not be read as
+            # "no ambiguity", so every such row is counted and reported.
+            counts["ambiguous"] += 1
+            ambiguous_wording[reading.matched_wording] += 1
         if any(
             entry["expected_status"] == STATUS_ACCEPTED
             and entry["expected_product_type"] == reading.product_type
@@ -148,8 +156,9 @@ def evaluate(catalog: list[dict[str, str]], labels: dict[str, dict[str, str]]):
         correct=counts["correct"],
         wrong=counts["wrong"],
         uncovered=counts["uncovered"],
+        ambiguous=counts["ambiguous"],
     )
-    return outcome, wrong_examples, uncovered_wording, unreadable_wording, product_counts
+    return outcome, wrong_examples, uncovered_wording, unreadable_wording, product_counts, ambiguous_wording
 
 
 def _vocabulary() -> frozenset[str]:
@@ -189,6 +198,9 @@ def _wording_pairs(description: str) -> set[str]:
 
 FIXTURES = Path(__file__).with_name("tests") / "fixtures" / "descriptions.csv"
 
+# Set by main() so the report can name each ambiguous wording's reviewed meanings.
+_AMBIGUOUS_LABELS: dict[str, list[dict[str, str]]] = {}
+
 
 def _check_fixtures() -> tuple[int, int]:
     """Compare the reader against the hand-written per-description gold fixtures."""
@@ -219,6 +231,7 @@ def render_report(
     uncovered_wording: Counter,
     unreadable_wording: Counter,
     product_counts: Counter,
+    ambiguous_wording: Counter,
     source: str,
     unreadable_sample: int,
 ) -> str:
@@ -239,6 +252,7 @@ def render_report(
         f"| Correct against gold labels | {outcome.correct} | {_percent(outcome.correct, outcome.accepted)} of accepted |",
         f"| **Wrong against gold labels** | **{outcome.wrong}** | {_percent(outcome.wrong, outcome.accepted)} of accepted |",
         f"| Accepted wording with no gold label | {outcome.uncovered} | {_percent(outcome.uncovered, outcome.accepted)} of accepted |",
+        f"| Read from wording that carries more than one reviewed meaning | {outcome.ambiguous} | {_percent(outcome.ambiguous, outcome.accepted)} of accepted |",
         "",
         f"Distinct product types read: {len(product_counts)}.",
         "",
@@ -249,6 +263,28 @@ def render_report(
     ]
     for product, count in sorted(product_counts.items(), key=lambda pair: (-pair[1], pair[0]))[:25]:
         lines.append(f"| {product} | {count} |")
+
+    lines += [
+        "",
+        "## Wording that carries more than one reviewed meaning",
+        "",
+        "These wordings are produced by more than one rule, so the wording alone does not settle "
+        "the product. The rules still choose one deterministically, and a row counts as correct "
+        "only against a reviewed pair — but `wrong = 0` must be read together with this table, "
+        "not instead of it.",
+        "",
+    ]
+    if not ambiguous_wording:
+        lines.append("None. Every accepted wording carries exactly one reviewed meaning.")
+    else:
+        lines.append("| Matched wording | Rows | Reviewed meanings |")
+        lines.append("|---|---:|---|")
+        for wording, count in sorted(ambiguous_wording.items(), key=lambda pair: (-pair[1], pair[0]))[:25]:
+            meanings = "; ".join(
+                f"{entry['expected_product_type']} / {entry['expected_product_construction']}"
+                for entry in _AMBIGUOUS_LABELS.get(wording, [])
+            )
+            lines.append(f"| {wording} | {count} | {meanings} |")
 
     lines += [
         "",
@@ -324,10 +360,14 @@ def main(argv: list[str] | None = None) -> int:
 
     catalog = load_catalog(args.catalog)
     labels = load_gold(args.labels)
-    outcome, wrong, uncovered, unreadable, products = evaluate(catalog, labels)
+    outcome, wrong, uncovered, unreadable, products, ambiguous = evaluate(catalog, labels)
+    _AMBIGUOUS_LABELS.clear()
+    _AMBIGUOUS_LABELS.update({wording: labels[wording] for wording in ambiguous})
 
     source = args.source or f"{args.catalog.name} ({len(catalog)} rows)"
-    report = render_report(outcome, wrong, uncovered, unreadable, products, source, args.unreadable_sample)
+    report = render_report(
+        outcome, wrong, uncovered, unreadable, products, ambiguous, source, args.unreadable_sample
+    )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(report + "\n", encoding="utf-8")
@@ -336,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"total={outcome.total} accepted={outcome.accepted} unreadable={outcome.unreadable} "
         f"placeholder={outcome.placeholder} correct={outcome.correct} wrong={outcome.wrong} "
-        f"uncovered={outcome.uncovered}"
+        f"uncovered={outcome.uncovered} ambiguous={outcome.ambiguous}"
     )
     if args.strict and (outcome.wrong or outcome.uncovered):
         print("strict gate failed: wrong or unlabelled answers remain", file=sys.stderr)

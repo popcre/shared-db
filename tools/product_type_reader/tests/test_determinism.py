@@ -22,11 +22,13 @@ from tools.product_type_reader import FIELDS, read_product_type  # noqa: E402
 from tools.product_type_reader.tests.test_reader import load_fixtures  # noqa: E402
 
 SAMPLE = [
-    'Disney Cars Nonwoven storage closet toy chest with playmat Group shot 10x15"',
-    "Floater Frame Canvas w Handpaint_Fall White & Orange Pumpkins_24x12\" x1.5\"",
-    "WB It Molded Shadowbox Pennywise standing in front of glass 16x20\" x1.125\"",
-    "Marvel Acrylic Pencil Case Spiderman 8x4\"",
-    "Marvel Thor Blue",
+    # Product wording is real; licensor and property names are placeholders, so
+    # this public file carries no licensed catalog row.
+    'Licensor Nonwoven storage closet toy chest with playmat Group shot 10x15"',
+    'Floater Frame Canvas w Handpaint_Fall White & Orange Pumpkins_24x12" x1.5"',
+    'Licensor Molded Shadowbox Character standing in front of glass 16x20" x1.125"',
+    'Licensor Acrylic Pencil Case Character 8x4"',
+    "Property Character Blue",
     "Created for Testing",
     "",
 ]
@@ -42,6 +44,7 @@ def digest(descriptions) -> str:
 
 class DeterminismTests(unittest.TestCase):
     def test_repeated_runs_are_byte_identical(self):
+        """In-process stability. Weak on its own — see the subprocess tests."""
         first = digest(SAMPLE)
         for _ in range(25):
             self.assertEqual(digest(SAMPLE), first)
@@ -51,9 +54,44 @@ class DeterminismTests(unittest.TestCase):
         backwards = {description: digest([description]) for description in reversed(SAMPLE)}
         self.assertEqual(backwards, forwards)
 
-    def test_every_fixture_is_stable_across_repeated_reads(self):
+    def test_every_fixture_is_stable_in_a_fresh_process(self):
+        """The real proof: a separate interpreter must reach the same digest.
+
+        Comparing a digest to itself inside one process cannot detect hash-seed
+        or iteration-order dependence, because the seed is fixed once per process.
+        """
         descriptions = [row["description"] for row in load_fixtures()]
-        self.assertEqual(digest(descriptions), digest(descriptions))
+        here = digest(descriptions)
+        script = (
+            "import sys; sys.path.insert(0, %r);"
+            "from tools.product_type_reader.tests.test_determinism import digest;"
+            "from tools.product_type_reader.tests.test_reader import load_fixtures;"
+            "print(digest([row['description'] for row in load_fixtures()]))" % str(REPO_ROOT)
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script], check=True, capture_output=True, text=True, env=_clean_env()
+        )
+        self.assertEqual(result.stdout.strip(), here)
+
+    def test_a_shuffled_catalog_reads_the_same_in_a_fresh_process(self):
+        """Order independence, proved across a process boundary."""
+        descriptions = [row["description"] for row in load_fixtures()]
+        shuffled = descriptions[::-1]
+        script = (
+            "import sys; sys.path.insert(0, %r);"
+            "from tools.product_type_reader.tests.test_determinism import digest;"
+            "from tools.product_type_reader.tests.test_reader import load_fixtures;"
+            "rows=[row['description'] for row in load_fixtures()][::-1];"
+            "print(digest(rows))" % str(REPO_ROOT)
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**_clean_env(), "PYTHONHASHSEED": "7919"},
+        )
+        self.assertEqual(result.stdout.strip(), digest(shuffled))
 
     def test_hash_seed_does_not_change_the_result(self):
         script = (

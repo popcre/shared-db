@@ -31,7 +31,12 @@ class DescriptionParsingTests(unittest.TestCase):
         values = ["Anti Fatigue Pvc Kitchen", "Anti Fatique Kitchen Mat", "Anti Fatique Pvc Kitchen Mat"]
         signatures = [classify_semantic_signature(value) for value in values]
         self.assertEqual({x.physical_product for x in signatures}, {"Kitchen Mat"})
-        self.assertEqual({x.construction_shape for x in signatures}, {"Anti-Fatigue PVC"})
+        # Issue #3290: the construction is now "Anti-Fatigue" rather than
+        # "Anti-Fatigue PVC". One of these three aliases never says PVC, and a
+        # construction may not state a material the description does not. PVC is
+        # recorded as the material when the wording carries it. The point of this
+        # test — all three aliases consolidate onto ONE construction — is unchanged.
+        self.assertEqual({x.construction_shape for x in signatures}, {"Anti-Fatigue"})
 
     def test_door_and_outdoor_mats_remain_separate(self):
         door = classify_semantic_signature("Crumb Rubber Door Mat_Bows 30x18")

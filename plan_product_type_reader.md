@@ -9,7 +9,7 @@ Handoff for this plan: [`HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type
 | 0 | Plan written, issue opened | ✅ done 2026-09-16 | this file; issue popcre/shared-db#3024 |
 | 0a | Orchestrator ticket #3036 opened for columns | ✅ done 2026-09-16 | issue popcre/shared-db#3036 |
 | 1 | Move reader into a permanent module | ✅ done 2026-09-20 | `tools/product_type_reader/`; old file is a thin compatibility layer; 39 legacy tests still green (issue #3290) |
-| 2 | Build the full-catalog gold set | ✅ done 2026-09-20 | `tools/product_type_reader/gold/labels.csv` (432 wordings, `coverage.py` prints `uncovered: 0`) plus 48 hand-written per-description fixtures |
+| 2 | Build the full-catalog gold set | ✅ done 2026-09-20 | `tools/product_type_reader/gold/labels.csv` (386 reviewed wording/product/construction triples, `coverage.py` prints `uncovered: 0`) plus 48 hand-written per-description fixtures |
 | 3 | Measure baseline accuracy | ✅ done 2026-09-20 | [`docs/verification/product-type-reader/README.md`](docs/verification/product-type-reader/README.md) — baseline 15,879 accepted / 2,190 unreadable of 18,731 |
 | 4 | Fix rules until the gold set is 100% | ✅ done 2026-09-20 | [`evaluation-2026-09-20.md`](docs/verification/product-type-reader/evaluation-2026-09-20.md) — 16,457 accepted, 1,612 unreadable, 662 placeholder, **wrong 0**, uncovered 0; `evaluate.py --strict` exits 0 |
 | 5 | Owner acceptance of the gold set results | ⬜ open — **Phase B is blocked on this** | ambiguous labels and the unreadable list are named in the verification README; acceptance comment goes on #3024 |

@@ -4,13 +4,14 @@
   "outcome": "ready-for-merge",
   "pr": 3332,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3290/4",
-  "contract_sha256": "b434d6416e80f0adb2a230e76b9185aa129c4096570ee5eec2bf0a7c8eb1c9ae",
+  "contract_ref": "refs/db-contracts/3290/5",
+  "contract_sha256": "2af939187ff2c907f22599630d8a3691a363cd7e7cb9680758c9b28f4be34d22",
   "head_sha": "458fb37877c144c315723eb8bf1b16fb69cb877a",
   "files_changed": [
-    ".agent/contract.json",
     ".agent/completion.json",
+    ".agent/contract.json",
     "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "docs/verification/item-mg-reclassification-20260814/test_hierarchical_item_taxonomy.py",
     "docs/verification/product-type-reader/README.md",
     "docs/verification/product-type-reader/evaluation-2026-09-20.md",
     "plan_product_type_reader.md",
@@ -34,17 +35,17 @@
     {
       "command": "python -m pytest -q docs/verification/item-mg-reclassification-20260814",
       "exit_code": 0,
-      "evidence": "39 passed: the pre-existing taxonomy tests stay green against the new package"
+      "evidence": "39 passed: the pre-existing taxonomy tests stay green; one construction label updated with its reason recorded in the test"
     },
     {
       "command": "python -m pytest -q tools/product_type_reader/tests",
       "exit_code": 0,
-      "evidence": "19 passed, 181 subtests passed: fixtures, never-guess, determinism and public-venue tests"
+      "evidence": "21 passed, 606 subtests passed: fixtures, never-guess, construction-material class invariant, determinism across processes, and public-venue tests"
     },
     {
       "command": "python tools/product_type_reader/evaluate.py --catalog <export> --strict",
       "exit_code": 0,
-      "evidence": "total=18731 accepted=16457 unreadable=1612 placeholder=662 correct=16457 wrong=0 uncovered=0"
+      "evidence": "total=18731 accepted=16457 unreadable=1612 placeholder=662 correct=16457 wrong=0 uncovered=0 ambiguous=6003"
     },
     {
       "command": "node --test scripts/public-data-venue.test.mjs",
@@ -62,7 +63,8 @@
     "Only small owner-authorized fixtures are public: the 48 regression fixtures carry real product wording with neutral licensor and property placeholders, and a test fails if a licensor or property name ever appears in them or in the gold labels.",
     "Generation 1 named a Codex worker and branch codex/product-reader-01a0bc30: that branch was never pushed and none of its allowed paths existed on main, so nothing was overwritten.",
     "The live catalog read was read-only inspection under AGENTS.md 0.0-A; the export stayed in the session scratchpad.",
-    "No database schema change was required: the seven plm.item columns already exist from orchestrator issue #3036."
+    "No database schema change was required: the seven plm.item columns already exist from orchestrator issue #3036.",
+    "The first governed review (Muse Spark 1.3 Contributor) returned REVISE; every finding was fixed as a class, with a test that fails if the material-named-construction class regrows."
   ],
   "stop_conditions_hit": []
 }

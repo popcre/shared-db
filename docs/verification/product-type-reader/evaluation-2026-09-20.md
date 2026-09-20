@@ -14,6 +14,7 @@
 | Correct against gold labels | 16457 | 100.0% of accepted |
 | **Wrong against gold labels** | **0** | 0.0% of accepted |
 | Accepted wording with no gold label | 0 | 0.0% of accepted |
+| Read from wording that carries more than one reviewed meaning | 6003 | 36.5% of accepted |
 
 Distinct product types read: 73.
 
@@ -46,6 +47,14 @@ Distinct product types read: 73.
 | Pencil Cup | 120 |
 | Wall Hook | 111 |
 | Storage Bin | 110 |
+
+## Wording that carries more than one reviewed meaning
+
+These wordings are produced by more than one rule, so the wording alone does not settle the product. The rules still choose one deterministically, and a row counts as correct only against a reviewed pair — but `wrong = 0` must be read together with this table, not instead of it.
+
+| Matched wording | Rows | Reviewed meanings |
+|---|---:|---|
+| canvas | 6003 | Canvas / Stretched; Paint-Your-Own Canvas Set / Canvas Set |
 
 ## Independent per-description gold fixtures
 

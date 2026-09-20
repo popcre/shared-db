@@ -14,7 +14,7 @@ description,expected_product_type,expected_product_construction,expected_product
 "Printed Canvas w Gold Foil_Dog on Books w Blush Roses_16x20""",Canvas,Stretched,Canvas,accepted,gold review: books in the artwork are not the product
 "Licensor Property Canvas w gel coat 'Web-Spinner' cover 13x19""",Canvas,Stretched,Canvas,accepted,gold review: Web-Spinner is artwork not a spinner rack
 "Printed Canvas w High Gloss_Blue Stained Glass 20x30"" x1.25""",Canvas,Stretched,Canvas,accepted,gold review: stained glass is an art style here
-"Framed Art Under Glass_Blue Chef Jersey_16x20""",Framed Print,Paper,Glass,accepted,gold review: a chef jersey is artwork not fabric
+"Framed Art Under Glass_Blue Chef Jersey_16x20""",Framed Print,Frame,Glass,accepted,gold review: a chef jersey is artwork not fabric
 "Licensor Property MDF Framed Dry Erase and Fabric Pin Board Cute 19x15.75"" x1""",Functional Board,Dry-Erase and Pin,MDF,accepted,gold review: a combined board is not framed fabric art
 "Printed Canvas_Bathroom Gnomes I-Brush Girl_12x12"" x1.25""",Canvas,Stretched,Canvas,accepted,gold review: I-Brush is artwork not a paint brush
 "Floater Frame Canvas w Allover Gel_Bright Brush stroke abstract art 16x24"" x1.5""",Framed Canvas,Floater Frame,Canvas,accepted,gold review: brush stroke is artwork not a paint brush

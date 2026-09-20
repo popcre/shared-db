@@ -1,37 +1,4 @@
--- Issue #2357 (#1090 successor): browser-safe read contracts for licensing entity
--- candidates, relationship candidates, and the audited resolution queue.
---
--- This migration creates THREE api views and nothing else. No review decisions and no
--- curated rows are authorized by it, and it writes no data.
---
--- Security model, and why it is shaped this way.
---
--- All three views are `security_invoker = true`, so every read runs with the caller's own
--- rights and the existing RLS policies on the base tables remain the gate. Proven live
--- against production before authoring (pg_class.relacl / has_table_privilege, not
--- information_schema, which is permission-filtered in this project and under-reports):
---
---   plm.source_resolution                 rowsecurity=t  authenticated=SELECT  anon=none  1 policy
---   plm.licensing_relationship_resolution rowsecurity=t  authenticated=SELECT  anon=none  1 policy
---   plm.licensing_source_scope            rowsecurity=t  authenticated=SELECT  anon=none  1 policy
---   plm.opa_capture                       rowsecurity=t  authenticated=NONE    anon=none  0 policies
---   plm.opa_property_character_capture    rowsecurity=t  authenticated=NONE    anon=none  0 policies
---
--- The two OPA capture tables grant SELECT to service_role ONLY and carry no policy, so a
--- browser role cannot read them at all. That asymmetry drives the one real design decision
--- here: joining those tables into an invoker view would NOT deny a browser read, it would
--- silently return zero corroboration rows and read exactly like "no evidence exists". A
--- silent zero that is indistinguishable from a real answer is worse than no column, so the
--- OPA evidence is exposed as an explicitly-labelled aggregate whose visibility the caller
--- can test (`opa_evidence_readable`), never as licensed capture rows. A caller without
--- rights sees opa_evidence_readable = false and NULL counts -- not 0, which would be a
--- false statement about the source data.
---
--- No licensed row leakage: no property_name, character_name, licensed_property_id,
--- brand_property_id, option_source_id, source hash, capture path or authentication evidence
--- appears in any of these views. Only resolution decisions, ambiguity state, scope authority
--- and bounded counts are exposed -- the same posture api.source_resolution already takes.
---
+-- Issue #2357: caller-safe candidate APIs. Schema only; no curated row writes.
 -- derived-from: none
 
 begin;
@@ -39,9 +6,52 @@ begin;
 set local lock_timeout = '2s';
 set local statement_timeout = '60s';
 
+-- PL/pgSQL is intentional: unlike an inline SQL subquery, the protected query is
+-- planned only after caller privilege checks. No definer identity or RLS bypass.
+create function plm.licensing_opa_observation_count(
+  p_source_system text, p_entity_kind text, p_source_id text
+) returns table(evidence_readable boolean, observation_count bigint)
+language plpgsql stable security invoker set search_path = '' as $function$
+declare
+  v_property_id bigint;
+  v_capture_id uuid;
+begin
+  if p_source_system is distinct from 'disney_opa'
+     or p_entity_kind is distinct from 'property'
+     or not has_table_privilege(current_user, 'plm.opa_capture', 'SELECT')
+     or not has_table_privilege(current_user, 'plm.opa_property_character_capture', 'SELECT')
+     -- A filtered slice cannot prove a complete capture count. Do not turn RLS
+     -- invisibility into a false zero, even if a future grant permits SELECT.
+     or row_security_active('plm.opa_capture'::regclass)
+     or row_security_active('plm.opa_property_character_capture'::regclass)
+     or p_source_id is null or p_source_id !~ '^[0-9]+$' then
+    return query select false, null::bigint;
+    return;
+  end if;
+  begin
+    v_property_id := p_source_id::bigint;
+  exception when numeric_value_out_of_range then
+    return query select false, null::bigint;
+    return;
+  end;
+  select c.id into v_capture_id from plm.opa_capture c
+    where c.status = 'complete'
+    order by c.source_captured_at desc, c.load_completed_at desc, c.id desc limit 1;
+  if v_capture_id is null then
+    return query select false, null::bigint;
+    return;
+  end if;
+  return query select true, count(*)
+    from plm.opa_property_character_capture o
+    where o.capture_id = v_capture_id and o.licensed_property_id = v_property_id;
+end
+$function$;
+revoke all on function plm.licensing_opa_observation_count(text,text,text) from public, anon;
+grant execute on function plm.licensing_opa_observation_count(text,text,text) to authenticated, service_role;
+
 -- ---------------------------------------------------------------------------
 -- 1. Entity candidates -- one row per source entity decision, with the scope
---    authority that governs it and bounded OPA corroboration evidence.
+--    authority that governs it and latest-complete OPA corroboration evidence.
 -- ---------------------------------------------------------------------------
 
 create view api.licensing_entity_candidates
@@ -51,7 +61,7 @@ select
   sr.entity_kind,
   sr.source_id,
   sr.resolution_status,
-  sr.resolution_reason,
+  (sr.resolution_reason is not null) as has_resolution_reason,
   -- Which canonical target the decision points at, if any. Exactly one is non-null for a
   -- matched row (enforced by source_resolution_matched_target_chk); all are null otherwise.
   sr.core_property_id,
@@ -62,11 +72,9 @@ select
   sr.dam_asset_id,
   (sr.resolution_status in ('unresolved', 'ambiguous')) as needs_decision,
   (sr.resolution_status = 'ambiguous')                  as is_ambiguous,
-  -- Scope authority: is this source system actually permitted to assert this entity kind,
-  -- and under what purpose? Aggregated so one candidate stays one row.
-  scope.authority_count,
-  scope.canonical_identity_permitted,
-  scope.source_purposes,
+  -- Scope configuration remains explicitly licensor-qualified. It does not
+  -- establish which licensor owns this unresolved entity.
+  scope.source_scope_by_licensor,
   -- OPA corroboration. Readable only by a caller with rights on the capture tables; a
   -- browser role sees false/NULL rather than a misleading zero. See the header note.
   opa.evidence_readable as opa_evidence_readable,
@@ -77,37 +85,25 @@ select
   sr.updated_at
 from plm.source_resolution sr
 left join lateral (
-  select
-    count(*)                                                           as authority_count,
-    bool_or(lss.source_purpose = 'canonical_identity')                 as canonical_identity_permitted,
-    array_agg(distinct lss.source_purpose)                             as source_purposes
+  -- A source resolution has no owning-licensor field for most entity kinds.
+  -- Report configuration per licensor, never a cross-licensor permission boolean.
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'licensor_id', lss.licensor_id,
+    'source_purpose', lss.source_purpose,
+    'authorized', lss.authorized_at is not null and lss.authorized_by is not null
+  ) order by lss.licensor_id, lss.source_purpose), '[]'::jsonb) as source_scope_by_licensor
   from plm.licensing_source_scope lss
-  where lss.source_system  = sr.source_system
-    and lss.scope_axis     = 'entity'
+  where lss.source_system = sr.source_system and lss.scope_axis = 'entity'
     and lss.permitted_kind = sr.entity_kind
 ) scope on true
-left join lateral (
-  -- has_table_privilege is the authoritative readability test here; information_schema is
-  -- permission-filtered in this project and cannot be trusted for it.
-  select
-    has_table_privilege('plm.opa_property_character_capture', 'SELECT') as evidence_readable,
-    case when has_table_privilege('plm.opa_property_character_capture', 'SELECT')
-      then (
-        select count(*)
-        from plm.opa_property_character_capture occ
-        join plm.opa_capture oc on oc.id = occ.capture_id and oc.status = 'complete'
-        where sr.source_system = 'disney_opa'
-          and sr.entity_kind   = 'property'
-          and occ.licensed_property_id::text = sr.source_id
-      )
-      else null
-    end as observation_count
+left join lateral plm.licensing_opa_observation_count(
+  sr.source_system, sr.entity_kind, sr.source_id
 ) opa on true;
 
 comment on view api.licensing_entity_candidates is
   'Browser-safe entity resolution candidates: one row per plm.source_resolution decision with '
   'its ambiguity state, the canonical target it points at, and the licensing scope authority '
-  'that governs the source system for that entity kind. Invoker security preserves the existing '
+  'configuration per licensor for that source and kind, never inferred entity ownership. Invoker security preserves the existing '
   'source_resolution and licensing_source_scope read policies. OPA corroboration is a bounded '
   'count guarded by opa_evidence_readable: a caller without rights on the capture tables sees '
   'false and NULL, never a zero that would misstate the source data. No licensed row value, '
@@ -130,10 +126,10 @@ select
   lrr.source_left_id,
   lrr.source_right_id,
   lrr.resolution_status,
-  lrr.resolution_reason,
+  (lrr.resolution_reason is not null) as has_resolution_reason,
   lrr.evidence_kind,
   lrr.is_direct_source_relationship,
-  lrr.source_evidence,
+  (lrr.source_evidence is not null) as has_source_evidence,
   lrr.core_property_id,
   lrr.core_character_id,
   lrr.core_style_guide_id,
@@ -144,7 +140,8 @@ select
   -- A relationship can only reach 'matched' on direct_source_assertion evidence
   -- (licensing_relationship_resolution's own check constraint). Surfacing that as a column
   -- tells a reviewer why an otherwise-complete row is not eligible to be matched.
-  (lrr.evidence_kind = 'direct_source_assertion')        as eligible_for_match,
+  (lrr.evidence_kind = 'direct_source_assertion'
+    and coalesce(scope.relationship_evidence_permitted, false)) as eligible_for_match,
   scope.authority_count,
   scope.relationship_evidence_permitted,
   scope.source_purposes,
@@ -156,8 +153,8 @@ from plm.licensing_relationship_resolution lrr
 left join lateral (
   select
     count(*)                                              as authority_count,
-    bool_or(lss.source_purpose = 'relationship_evidence') as relationship_evidence_permitted,
-    array_agg(distinct lss.source_purpose)                as source_purposes
+    coalesce(bool_or(lss.source_purpose = 'relationship_evidence' and lss.authorized_at is not null and lss.authorized_by is not null), false) as relationship_evidence_permitted,
+    coalesce(array_agg(distinct lss.source_purpose order by lss.source_purpose), '{}'::text[]) as source_purposes
   from plm.licensing_source_scope lss
   where lss.licensor_id    = lrr.licensor_id
     and lss.source_system  = lrr.source_system
@@ -185,6 +182,7 @@ with (security_invoker = true) as
 with entity_queue as (
   select
     'entity'::text        as scope_axis,
+    null::uuid           as licensor_id,
     sr.source_system,
     sr.entity_kind        as item_kind,
     sr.resolution_status,
@@ -193,11 +191,12 @@ with entity_queue as (
     max(sr.updated_at)    as latest_updated_at
   from plm.source_resolution sr
   where sr.resolution_status in ('unresolved', 'ambiguous', 'deferred')
-  group by 1, 2, 3, 4
+  group by 1, 2, 3, 4, 5
 ),
 relationship_queue as (
   select
     'relationship'::text   as scope_axis,
+    lrr.licensor_id,
     lrr.source_system,
     lrr.relationship_kind  as item_kind,
     lrr.resolution_status,
@@ -206,10 +205,11 @@ relationship_queue as (
     max(lrr.updated_at)    as latest_updated_at
   from plm.licensing_relationship_resolution lrr
   where lrr.resolution_status in ('unresolved', 'ambiguous', 'deferred')
-  group by 1, 2, 3, 4
+  group by 1, 2, 3, 4, 5
 )
 select
   q.scope_axis,
+  q.licensor_id,
   q.source_system,
   q.item_kind,
   q.resolution_status,
@@ -225,7 +225,7 @@ from (
 
 comment on view api.licensing_resolution_queue is
   'Audited licensing resolution backlog: counts of open decisions (unresolved, ambiguous, deferred) '
-  'bucketed by axis, source system, item kind and status, with the age of the oldest open item. '
+  'bucketed by axis, licensor (NULL for unassigned entities), source system, item kind and status, with the age of the oldest open item. '
   'Aggregate only -- it exposes no source identifier and no row content, so it stays readable '
   'without widening access to any licensed value. Invoker security preserves the existing read '
   'policies, so the counts a caller sees are the counts that caller is entitled to see.';
@@ -245,6 +245,13 @@ declare
   v_view text;
   v_exposed text;
 begin
+  if not exists (
+    select 1 from pg_proc p join pg_language l on l.oid=p.prolang
+    where p.oid=to_regprocedure('plm.licensing_opa_observation_count(text,text,text)')
+      and not p.prosecdef and p.provolatile='s' and l.lanname='plpgsql'
+  ) then
+    raise exception '#2357 VERIFY FAILED: helper must be non-inlined stable SECURITY INVOKER';
+  end if;
   foreach v_view in array array[
     'api.licensing_entity_candidates',
     'api.licensing_relationship_candidates',
@@ -259,7 +266,7 @@ begin
     -- the views would read with the definer's rights and bypass every base-table policy.
     if not exists (
       select 1 from pg_class c
-      where c.oid = to_regclass(v_view)
+      where c.oid = to_regclass(v_view) and c.relkind = 'v'
         and 'security_invoker=true' = any(coalesce(c.reloptions, '{}'))
     ) then
       raise exception '#2357 VERIFY FAILED: % is not security_invoker', v_view;
@@ -277,7 +284,7 @@ begin
     end if;
 
     -- PUBLIC must not hold a residual grant either.
-    if has_table_privilege('public', v_view, 'SELECT') then
+    if exists (select 1 from pg_class c, lateral aclexplode(coalesce(c.relacl, acldefault('r',c.relowner))) a where c.oid=to_regclass(v_view) and a.grantee=0 and a.privilege_type='SELECT') then
       raise exception '#2357 VERIFY FAILED: PUBLIC can read %', v_view;
     end if;
   end loop;
@@ -303,7 +310,7 @@ begin
     and a.attname in (
       'property_name','character_name','licensed_property_id','brand_property_id',
       'option_source_id','source_row_sha256','chunk_sha256','source_manifest_sha256',
-      'source_commit_sha','capture_key','created_by'
+      'source_commit_sha','capture_key','created_by','source_evidence','resolution_reason'
     );
   if v_exposed is not null then
     raise exception '#2357 VERIFY FAILED: licensed or capture-identity column exposed: %', v_exposed;

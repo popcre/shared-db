@@ -28,7 +28,9 @@ export function expectedPolicy({ activation, approvalSource, documentsOnly = isD
 }
 
 export function checkPolicy(document, expected) {
-  const section = String(document).split('## Policy matrix\n')[1]?.split('\n## ')[0]
+  const sections = String(document).split('## Policy matrix\n')
+  if (sections.length !== 2) throw new Error('Current workflow requires one explicit Policy matrix section')
+  const section = sections[1]?.split('\n## ')[0]
   if (!section) throw new Error('Current workflow requires one explicit Policy matrix section')
   const rows = new Map()
   for (const line of section.split('\n')) {

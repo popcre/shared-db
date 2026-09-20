@@ -20,6 +20,7 @@ test('actual activation and classifier disagreement cannot be hidden by document
 })
 test('weakened instruction classification is refused', () => assert.throws(() => checkPolicy(document, expectedPolicy({ activation: { active: true }, approvalSource: source, documentsOnly: () => true })), /agent-instructions/))
 test('matrix rows cannot be duplicated, omitted or expanded silently', () => {
+  assert.throws(() => checkPolicy(document + '\n## Policy matrix\n', expected), /one explicit/)
   assert.throws(() => checkPolicy(document.replace('| authors | unlimited | Owner ruling 2026-09-16 |', ''), expected), /authors/)
   assert.throws(() => checkPolicy(document.replace('| authors | unlimited | Owner ruling 2026-09-16 |', '| authors | unlimited | Owner ruling 2026-09-16 |\n| authors | unlimited | Owner ruling 2026-09-16 |'), expected), /duplicated/)
   assert.throws(() => checkPolicy(document.replace('| authors | unlimited | Owner ruling 2026-09-16 |', '| invented | yes | none |'), expected), /Unrecognized/)

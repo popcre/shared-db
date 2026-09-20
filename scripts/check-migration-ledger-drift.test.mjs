@@ -597,3 +597,21 @@ test('a clean PRODUCTION run keeps its unqualified clearance', () => {
   const report = formatReport({ target: 'production', projectRef: 'x', baseRef: 'origin/main', drift })
   assert.match(report, /NO DRIFT\. Every version merged to the base branch/)
 })
+
+test('the printed SCOPE block states the ACTUAL rule, all three disjuncts', () => {
+  // A printed rule that understates what was compared is the same defect class as an
+  // overstated clearance: it is the line a reader quotes. Governed review, round 2.
+  const drift = assessDrift(computeDrift([DFLOW_BASE], [DFLOW_BASE]), {})
+  const report = formatReport({
+    target: 'sandbox',
+    projectRef: 'x',
+    baseRef: 'origin/main',
+    drift,
+    sandboxScope: { baseline: DFLOW_BASE, inScope: [DFLOW_BASE], registeredCount: 1, excludedCount: 686 },
+  })
+  assert.match(report, /already has a row in this ledger/)
+  assert.match(report, /target registry records it for this database \(1 version\(s\)\)/)
+  assert.match(report, /regardless of the baseline/)
+  assert.match(report, /`dflow`, `designflow` or `hts_rag`/)
+  assert.match(report, /686 merged version\(s\) matched none of the three/)
+})

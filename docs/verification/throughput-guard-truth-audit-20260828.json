@@ -2186,13 +2186,6 @@
       "line_sha256": "5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d",
       "disposition": "excluded",
       "reason": "Workflow-local guard (#3271): when the watcher pass wrote no pass.json, the step writes an error object so the summary and relay still report a failed pass. It is a statement about a CI scratch file, not about any database object, so no truth enrichment applies."
-    },
-    {
-      "site": "scripts/run-governed-review.mjs:690",
-      "semantic_key": "scripts/run-governed-review.mjs:a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428:1",
-      "line_sha256": "a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428",
-      "disposition": "excluded",
-      "reason": "Prose in an explanatory comment in scripts/run-governed-review.mjs. The word 'missing' appears in the phrase 'the missing-prompt case', describing why equals-form prompt arguments are handled in the injection loop (governed review of PR #3338). It asserts nothing about a migration being missing, never created, or not applied, and changes no behavior."
     }
   ],
   "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."

@@ -1,82 +1,43 @@
 {
   "schema_version": 1,
-  "work_issue": 3353,
+  "work_issue": 3331,
   "outcome": "ready-for-merge",
-  "pr": 3354,
+  "pr": 3333,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3353/2",
-  "contract_sha256": "722c15351729dab916292beaf552c8e555aec78e0e6b544430fae5b42f016600",
-  "head_sha": "523ff2526b4ead2f3b71ce432ca4a1fec9da7367",
+  "contract_ref": "refs/db-contracts/3331/11",
+  "contract_sha256": "62254fb17d1b698a31dea86229781ab53d4284ac8b471e2f430d49a636af8c22",
+  "head_sha": "37de551b21cb0bb3f570b23a85bc176bf74d638c",
   "files_changed": [
-    "AGENTS.md",
-    "HANDOFF.d/2026-09-16T1330Z-edge-dev-claude-498-owner-on-record-refusals.md",
-    "config/orchestrator-global-invalidators-v1.json",
-    "config/outcome-timestamp-recovery.json",
-    "docs/agents/section-4-anti-collision-rules.md",
-    "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/agent-work-contract-git-evidence.mjs",
-    "scripts/agent-work-contract-git-evidence.test.mjs",
-    "scripts/lib/reviewer-caller-env.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/admission-outcome.test.mjs",
-    "scripts/orchestrator-flow/admission.mjs",
-    "scripts/orchestrator-flow/legacy-relation-alias.test.mjs",
-    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
-    "scripts/queue-hygiene-report.test.mjs",
-    "scripts/run-governed-review.mjs",
-    "scripts/run-governed-review.test.mjs"
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "scripts/orchestrator-snapshot.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test scripts/orchestrator-snapshot.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 680, pass 680, fail 0"
+      "evidence": "tests 18 pass 18 fail 0 after current main integration; the same file is red with 5 failures on unmodified origin/main b1d4be2e"
     },
     {
-      "command": "node --test scripts/run-governed-review.test.mjs scripts/queue-hygiene-report.test.mjs",
+      "command": "node --test scripts/lib/repository-identity.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 87, pass 87, fail 0"
+      "evidence": "tests 10 pass 10 fail 0"
     },
     {
-      "command": "node --test scripts/orchestrator-flow/*.test.mjs",
+      "command": "node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/lib/hold-reason.test.mjs scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/db-coordination-events.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 345, pass 345, fail 0"
+      "evidence": "tests 141 pass 141 fail 0 (run together with repository-identity)"
     },
     {
-      "command": "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-activation.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/check-documents-only-pull-request.test.mjs",
+      "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
-      "evidence": "tests 61, pass 61, fail 0"
-    },
-    {
-      "command": "node --test scripts/throughput-guard/*.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 59, pass 59, fail 0"
-    },
-    {
-      "command": "node scripts/check-throughput-truth-audit.mjs",
-      "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=311 sources=69 derived_digest=871e1ed90397"
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "no whitespace errors"
-    },
-    {
-      "command": "node --test scripts/**/*.test.mjs scripts/*.test.mjs tools/*.test.mjs",
-      "exit_code": 1,
-      "evidence": "NON-REQUIRED DIAGNOSTIC, recorded with its true non-zero exit. 3560 tests, 3512 pass, 48 fail. The identical 48 failures occur on unmodified origin/main 473ba697 in a clean worktree (3507 tests, 3459 pass, 48 fail) and the failing-test-name sets are identical, so this branch introduces no regression. They are local-environment failures; their CI counterparts are green. This is evidence of no regression, never a claim that the sweep passed."
+      "evidence": "clean"
     }
   ],
   "assumptions_resolved": [
-    "All 48 regression tests contributed by the ten absorbed pull requests are present and passing here.",
-    "Each absorbed pull request's own tests were re-run against its own reverted fix: #3316 3/3, #3317 3/3, #3334 1/1 and #3344 2/3 fail at test level, and #3314, #3315, #3322, #3325, #3326 and #3338 fail at file level because the reverted fix removes symbols their tests import. #3344's third test asserts that an existing refusal still refuses, so passing both with and without the fix is its intended behaviour.",
-    "PR #3330 merged to main independently at 17:10:58Z; its content arrives through the base and issue #2832 is not closed by this pull request.",
-    "PR #3308 is actively worked by another session and was deliberately not absorbed."
+    "Production trust is correct and unchanged: repos/popcre/shared-db/issues/3081/comments returns u2giants with association MEMBER, which is what expectedOperatorAssociation() requires."
   ],
   "stop_conditions_hit": []
 }

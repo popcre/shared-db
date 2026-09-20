@@ -29,7 +29,6 @@
 // check the list against the rule without running anything.
 const RULEBOOK_BASENAMES = new Set(['agents.md', 'claude.md'])
 const RULEBOOK_DIRECTORY_SEGMENTS = ['.claude/skills/', 'skills/', '.claude/agents/', '.claude/commands/']
-const RULEBOOK_BASENAME_PATTERN = /^plan_.*\.md$/
 
 // Prose document extensions. Deliberately short: a new extension is a decision,
 // not an oversight, and the safe default for an unlisted one is "not a document".
@@ -47,7 +46,6 @@ export function isRulebookPath(path) {
   if (!normalized) return true
   const basename = normalized.slice(normalized.lastIndexOf('/') + 1)
   if (RULEBOOK_BASENAMES.has(basename)) return true
-  if (RULEBOOK_BASENAME_PATTERN.test(basename)) return true
   const probe = `/${normalized}`
   return RULEBOOK_DIRECTORY_SEGMENTS.some((segment) => probe.includes(`/${segment}`))
 }

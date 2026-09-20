@@ -4,7 +4,7 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Accept only provenance-verified automatic-review companion artifacts without weakening preview evidence checks",
-  "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
   "dispatcher": "Codex orchestrator parent 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
   "worker": "01a0bf43-3c49-7812-b4d9-b3cb6e89e1c1",
   "branch": "codex/sku2478-recovery-audit-0920",
@@ -42,5 +42,5 @@
   "stop_conditions": [
     "Stop before overlapping another agent files"
   ],
-  "generation": 2
+  "generation": 3
 }

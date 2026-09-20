@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3308,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3305/2",
-  "contract_sha256": "29c1626b5732a12f5495da22e7a3da79dda8b0060e05d3389c5fe3fd3013d817",
+  "contract_ref": "refs/db-contracts/3305/3",
+  "contract_sha256": "e9eb325a501dd9b1cba4a01554116c66006d75e01cc66f13cc533ce68e920a56",
   "head_sha": "9f0109eb660feef32b762f07b441404a5fa99027",
   "files_changed": [
     "scripts/orchestrator-flow/preview-artifact-selection.mjs",

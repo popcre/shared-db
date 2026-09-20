@@ -12,8 +12,8 @@
 // parseAuthorLease, githubIo) so the derivation stays THE audit's derivation,
 // never a parallel one. The lane script itself is untouched by this change.
 //
-// WHAT THIS REPORTS — ONLY the hygiene sections the audit also prints:
-// unlabelled issues, expired author leases, and NOT ORCHESTRATOR WORK aging.
+// Also reports explicit prerequisite stages and current accepted-stage evidence,
+// ownership, cycles, and verified work awaiting administrative closure.
 //
 // THE TWO PROPERTIES THAT MAKE IT SCHEDULABLE:
 //   1. WRITE-FREE BY CONSTRUCTION. `hygieneReportIo` strips every githubIo
@@ -178,8 +178,10 @@ export function main(argv = [], now = new Date(), io = githubIo) {
       const unaddressed = result.notOrchestratorWork.filter((item)=>item.needsReturnAddress)
       if (unaddressed.length) console.error(`NO RETURN ADDRESS on ${unaddressed.map((item)=>`#${item.issue}`).join(', ')} — a reject with no forwarding address closes into silence.`)
     }
-    if (!result.unlabelled.length && !result.expiredClaims.length) console.error('Queue hygiene clean: no unlabelled issues, no expired author leases.')
-    return report.dependency_hygiene.unverifiable.length || report.dependency_hygiene.outcomes.some(row => row.delivery === 'unverifiable' || row.dependencies.some(dependency => dependency.status === 'unknown')) ? 2 : 0
+    const unknown = report.dependency_hygiene.unverifiable.length || report.dependency_hygiene.outcomes.some(row => row.delivery === 'unverifiable' || row.dependencies.some(dependency => dependency.status === 'unknown'))
+    if (unknown) console.error('INCOMPLETE: dependency or completion evidence is unverifiable; inspect dependency_hygiene findings.')
+    else if (!result.unlabelled.length && !result.expiredClaims.length) console.error('Queue hygiene clean: no unlabelled issues, no expired author leases. Dependency and ownership findings are listed separately.')
+    return unknown ? 2 : 0
   } catch (error) {
     console.error(`REFUSED: ${error.message}`)
     return 2

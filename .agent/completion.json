@@ -10,7 +10,7 @@
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "Fresh run after faed5557 integration: focused proof tests 2 passed and live-proof guard tests 10 passed; zero failed, skipped, cancelled or todo.",
+      "evidence": "Fresh current-main integration: focused proof tests 2 passed and live-proof guard tests 10 passed; zero failed, skipped, cancelled or todo.",
       "command": "node --test scripts/issue-2863-live-proof.test.mjs"
     },
     {
@@ -34,7 +34,7 @@
   ],
   "pr": 3303,
   "migration_versions": [],
-  "head_sha": "d7d46bf6b0456d18b4eed3f48f4e9f3eee22c7f9",
+  "head_sha": "c49464d0bee4cbfb5016ae987acd9bae45e83a19",
   "outcome": "ready-for-merge",
-  "base_sha": "faed5557befa7d0ae3318e7406ad3774fce56aa2"
+  "base_sha": "905ec8e29d1175ce8e312d9fb1c90dbff02e17ca"
 }

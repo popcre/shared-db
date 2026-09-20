@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3370/1",
   "contract_sha256": "0bfda7e4df238714aeadd0161cd02f58dca5805c2caa1926b2c17e46de275845",
-  "head_sha": "03577da6bf8e80a1c2870294d572604bffd5149e",
+  "head_sha": "ff7461c79cb2e9605e994fb7cb1f2480ece72e6a",
   "base_sha": "18c2610526e9b34a9d5af3818853cf1fb63e8979",
   "files_changed": [
     "AGENTS.md",

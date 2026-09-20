@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/2662/17",
   "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
-  "head_sha": "3dbb764ba32e1dfddd46189e2d1ee402dea5d543",
+  "head_sha": "5f1b7daea1170a57c2a6a3db7bccb79b66ccb9b5",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -73,7 +73,8 @@
     "Local CRM/DAM/PIM/DesignFlow source searches found no six-view consumers; Data Admin has moved into DAM.",
     "Preview and production reserved migration version absent before authorship.",
     "Source inventory exact function remains SECURITY DEFINER; existing authenticated RPC behavior test passes unchanged.",
-    "Scope is bounded six-view subset only. Broader issue2662 findings remain open; parent owns review,preview,merge,production."
+    "Scope is bounded six-view subset only. Broader issue2662 findings remain open; parent owns review,preview,merge,production.",
+    "Issue2662 is now explicitly bounded to these six views; original broader findings retained in owned successors3327/3328/3329 and2326. PR3304 closes only this bounded outcome. Current-main70b0cad2 integrated reviewer parser repair; SQL migration and six tests remain byte-identical to hosted passing run35518490787."
   ],
   "stop_conditions_hit": []
 }

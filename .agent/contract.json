@@ -1,81 +1,81 @@
 {
-    "schema_version": 1,
-    "generation": 17,
-    "work_issue": 2662,
-    "work_type": "structural",
-    "route": "shared-db-orchestrator",
-    "goal": "Close the remaining caller-free portion of issue #2662 by removing authenticated SELECT from six definer-semantics views while preserving service-role access and each view definition.",
-    "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
-    "dispatcher": "Codex orchestrator marker 3297; parent task 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
-    "worker": "Codex six_view_recovery task 01a0bf4f-dd8d-7522-b28f-465c67d77b4d on 916-ALIEN",
-    "branch": "codex/2662-six-views-01a0bc14",
-    "worktree": "D:/repos/worktrees/shared-db-six-view-audit-01a0bf00",
-    "allowed_paths": [
-        ".agent/contract.json",
-        ".agent/completion.json",
-        ".github/live-proofs/2662.sql",
-        "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
-        "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
-        "supabase/tests/app_serving_status_contracts.sql",
-        "supabase/tests/opa_property_studio_resolution_contracts.sql",
-        "supabase/tests/source_capture_inventory_contracts.sql",
-        "supabase/tests/sega_landing_contracts.sql",
-        "supabase/tests/wildbrain_landing_contracts.sql"
-    ],
-    "file_writes": [
-        ".agent/contract.json",
-        ".agent/completion.json",
-        ".github/live-proofs/2662.sql",
-        "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
-        "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
-        "supabase/tests/app_serving_status_contracts.sql",
-        "supabase/tests/opa_property_studio_resolution_contracts.sql",
-        "supabase/tests/source_capture_inventory_contracts.sql",
-        "supabase/tests/sega_landing_contracts.sql",
-        "supabase/tests/wildbrain_landing_contracts.sql"
-    ],
-    "db_reads": [
-        "catalog pg_class",
-        "catalog pg_namespace",
-        "catalog information_schema.role_table_grants"
-    ],
-    "db_writes": [
-        "view api.crm_factory_picker_list",
-        "view api.opa_disney_property",
-        "view api.opa_lucasfilm_property",
-        "view api.opa_marvel_property",
-        "view api.pm_factory_list",
-        "view api.source_capture_inventory",
-        "table api.crm_factory_picker_list",
-        "table api.opa_disney_property",
-        "table api.opa_lucasfilm_property",
-        "table api.opa_marvel_property",
-        "table api.pm_factory_list",
-        "table api.source_capture_inventory"
-    ],
-    "prohibited_actions": [
-        "Do not alter any view definition, columns, comments, ownership, or underlying row-security policy.",
-        "Do not revoke from service_role or postgres and do not grant a replacement broad role.",
-        "Do not touch any object or file outside this contract.",
-        "Do not apply preview or production, merge, or dispatch production from this worker."
-    ],
-    "required_checks": [
-        "git diff --check",
-        "bash scripts/check-sql.sh",
-        "supabase/tests against an ephemeral database"
-    ],
-    "assumptions": [
-        "The six objects are the revised Group 1 in the issue record and have no application caller or production Data API traffic requiring authenticated SELECT.",
-        "Service-role access remains the supported server-side access path for these six views.",
-        "Claim #3294 reserved migration version 20260920005114 and protects the six exact views.",
-        "Prospective recovery: publish contract and open contract-only draft PR before parent rebinds claim 3294; no SQL authoring until rebind succeeds. Original remote machine work remains unseen and preserved; no retirement or deletion authorized.",
-        "Six-view subset only: production proof does not close broader issue 2662 findings.",
-        "The six table entries are conservative parser aliases of the same six catalog-proven views for relation REVOKE syntax, not additional database objects. Generation 17 records the supported claim expansion; generation 16 prospectively authorized the unchanged implementation."
-    ],
-    "stop_conditions": [
-        "Stop if any claimed view no longer grants SELECT to authenticated before the migration, because the live premise has changed.",
-        "Stop if any claimed view lacks service_role SELECT before or after the migration.",
-        "Stop if implementation requires changing a view definition or an object outside the six exact claims.",
-        "Stop on any gate refusal; never weaken a guard."
-    ]
+  "schema_version": 1,
+  "generation": 17,
+  "work_issue": 2662,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Close the remaining caller-free portion of issue #2662 by removing authenticated SELECT from six definer-semantics views while preserving service-role access and each view definition.",
+  "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
+  "dispatcher": "Codex orchestrator marker 3297; parent task 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
+  "worker": "Codex six_view_recovery task 01a0bf4f-dd8d-7522-b28f-465c67d77b4d on 916-ALIEN",
+  "branch": "codex/2662-six-views-01a0bc14",
+  "worktree": "D:/repos/worktrees/shared-db-six-view-audit-01a0bf00",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog information_schema.role_table_grants"
+  ],
+  "db_writes": [
+    "view api.crm_factory_picker_list",
+    "view api.opa_disney_property",
+    "view api.opa_lucasfilm_property",
+    "view api.opa_marvel_property",
+    "view api.pm_factory_list",
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
+  ],
+  "prohibited_actions": [
+    "Do not alter any view definition, columns, comments, ownership, or underlying row-security policy.",
+    "Do not revoke from service_role or postgres and do not grant a replacement broad role.",
+    "Do not touch any object or file outside this contract.",
+    "Do not apply preview or production, merge, or dispatch production from this worker."
+  ],
+  "required_checks": [
+    "git diff --check",
+    "bash scripts/check-sql.sh",
+    "supabase/tests against an ephemeral database"
+  ],
+  "assumptions": [
+    "The six objects are the revised Group 1 in the issue record and have no application caller or production Data API traffic requiring authenticated SELECT.",
+    "Service-role access remains the supported server-side access path for these six views.",
+    "Claim #3294 reserved migration version 20260920005114 and protects the six exact views.",
+    "Prospective recovery: publish contract and open contract-only draft PR before parent rebinds claim 3294; no SQL authoring until rebind succeeds. Original remote machine work remains unseen and preserved; no retirement or deletion authorized.",
+    "Six-view subset only: production proof does not close broader issue 2662 findings.",
+    "The six table entries are conservative parser aliases of the same six catalog-proven views for relation REVOKE syntax, not additional database objects. Generation 17 records the supported claim expansion; generation 16 prospectively authorized the unchanged implementation."
+  ],
+  "stop_conditions": [
+    "Stop if any claimed view no longer grants SELECT to authenticated before the migration, because the live premise has changed.",
+    "Stop if any claimed view lacks service_role SELECT before or after the migration.",
+    "Stop if implementation requires changing a view definition or an object outside the six exact claims.",
+    "Stop on any gate refusal; never weaken a guard."
+  ]
 }

@@ -15,7 +15,7 @@
     },
     {
       "exit_code": 0,
-      "evidence": "Production target qsllyeztdwjgirsysgai verified before each SELECT. Original passed=true; absent prepack witness passed=false; absent production-detail witness passed=false. No database writes.",
+      "evidence": "Reverified after integrating843bc60d: production qsllyeztdwjgirsysgai target verified before each SELECT; true, absent-prepack false, absent-prod false. No writes.",
       "command": "Read-only live probe with false controls"
     },
     {
@@ -34,6 +34,7 @@
   ],
   "pr": 3303,
   "migration_versions": [],
-  "head_sha": "e6a6e7be7fe1089182301b987ee754b539e8803a",
-  "outcome": "ready-for-merge"
+  "head_sha": "bfac4b39ac6cb926c52b4eb8c423ebb08702a06d",
+  "outcome": "ready-for-merge",
+  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05"
 }

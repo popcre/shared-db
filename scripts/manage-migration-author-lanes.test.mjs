@@ -5126,6 +5126,50 @@ test('completeWork publishes a fully proven merged report and reads it back', ()
   assert.equal(io.posted.length, 1)
 })
 
+function typedCompletionIo(options = {}, structural = false) {
+  const io = completionIo({ pr: { merged_at: 'x', merge_commit_sha: 'abc1234' }, ...options })
+  io.getIssue = () => ({ body: '```db-work-scope\n' + [
+    'status: ready', `work_type: ${structural ? 'structural' : 'repo-maintenance'}`,
+    `route: ${structural ? 'shared-db-orchestrator' : 'repo-maintenance'}`,
+    `change_type: ${structural ? 'function' : 'reviewer-tooling'}`, 'priority: 1',
+    'writes:', ...(structural ? ['- function public.example'] : []),
+  ].join('\n') + '\n```' })
+  return io
+}
+
+test('typed nonstructural maintenance completes only with authentic merged evidence', () => {
+  const io = typedCompletionIo()
+  assert.equal(completeWork({ issue: 5, report: mergedRecord(5) }, io).outcome, 'merged')
+  assert.equal(io.posted.length, 1)
+  assert.match(io.posted[0], /db-work-completion/)
+})
+
+for (const [name, options, expected] of [
+  ['unmerged PR', { pr: { merged_at: null } }, /is not merged/],
+  ['wrong merge SHA', { pr: { merged_at: 'x', merge_commit_sha: 'deadbee' } }, /does not match GitHub's merge_commit_sha/],
+  ['merge outside main', { ancestry: false }, /not contained in the history of main/],
+  ['undeclared migration', { files: [{ filename: 'supabase/migrations/20260823120000_a.sql' }] }, /do not match the versions/],
+  ['existing immutable completion', { comments: [completionComment(mergedRecord(5))] }, /completion is immutable/],
+]) {
+  test(`typed maintenance still refuses ${name} without publishing`, () => {
+    const io = typedCompletionIo(options)
+    assert.throws(() => completeWork({ issue: 5, report: mergedRecord(5) }, io), expected)
+    assert.equal(io.posted.length, 0)
+  })
+}
+
+test('typed structural work still cannot complete at merge even with authentic evidence', () => {
+  const io = typedCompletionIo({}, true)
+  assert.throws(() => completeWork({ issue: 5, report: mergedRecord(5) }, io), /authoritative outcome lifecycle/)
+  assert.equal(io.posted.length, 0)
+})
+
+test('typed maintenance cannot complete without reading back its published evidence', () => {
+  const io = typedCompletionIo()
+  io.issueComments = () => []
+  assert.throws(() => completeWork({ issue: 5, report: mergedRecord(5) }, io), /could not be read back/)
+})
+
 // --activate-review-cutover (issue #1777 handover)
 
 function freshCutoverIo(){const io=reviewIo();io.refs.delete(REVIEW_ACTIVE_CUTOVER_REF);return io}

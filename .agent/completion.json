@@ -6,9 +6,9 @@
   "migration_versions": [
     "20260920151128"
   ],
-  "contract_ref": "refs/db-contracts/3175/2",
-  "contract_sha256": "b6fe0e778f71093ba4761769c6c395273fe2bcfa847d47e1aeb95756d687faea",
-  "head_sha": "9d815cfcca2e9b65905656f33087e2f6d5e257c8",
+  "contract_ref": "refs/db-contracts/3175/3",
+  "contract_sha256": "5830bd091fccce950ef7262b92b30fb07bc41b824ca2eda7d1aa2dce1560f993",
+  "head_sha": "c9dd41088016bfe0c100cdd9630c36a4c1ca05a1",
   "files_changed": [
     ".agent/contract.json",
     ".agent/completion.json",
@@ -48,7 +48,8 @@
   "assumptions_resolved": [
     "Production read-only target qsllyeztdwjgirsysgai: both current function bodies exactly matched repository source20260905043023 before authoring.",
     "Claim3307 protects exactly the two changed functions; no columns/public wrapper signatures/ACLs changed.",
-    "Historical failed observations remain untouched and can still block overall readiness until legitimate successful comparison evidence exists."
+    "Historical failed observations remain untouched and can still block overall readiness until legitimate successful comparison evidence exists.",
+    "Current main70b0cad2 integrated; migration, focused SQL test and live proof byte-identical to tested implementation9d815cfc. New exact-head CI required before merge."
   ],
   "stop_conditions_hit": []
 }

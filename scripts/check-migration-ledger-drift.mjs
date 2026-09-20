@@ -85,6 +85,83 @@ export const MIGRATIONS_DIR = 'supabase/migrations'
  * 2) against a project that no longer exists, which is how the stale value was caught.
  */
 
+/**
+ * SANDBOX SCOPE — the DesignFlow consolidated NON-PRODUCTION database (issue #2986).
+ *
+ * WHY THIS TARGET NEEDS A SCOPE AT ALL, AND THE OTHER TWO DO NOT.
+ * `production` and `preview` are the shared POP database and its rehearsal branch: every
+ * migration merged here is owed to both, so "merged version with no ledger row" is drift
+ * with no further qualification. The sandbox is a DIFFERENT database. It was seeded from a
+ * structure dump and then stamped only with the DesignFlow contract migrations applied to
+ * it afterwards, so the overwhelming majority of this repository's 700-odd migrations were
+ * never owed to it. Comparing the whole tree against its ledger would report ~690 false
+ * gaps on the first run — a scheduled check that is red on day one and stays red is trained
+ * away inside a week (AGENTS.md, migration-ledger-drift.yml, "would be trained away").
+ *
+ * THE RULE, IN ONE LINE. A merged version is in scope for the sandbox when it is ALREADY IN
+ * ITS LEDGER, or when it touches the `dflow` schema and is not older than the ledger's
+ * earliest row.
+ *
+ *   * "already in its ledger" is what keeps a legitimately applied version from being
+ *     misreported as an orphan just because this scope rule did not predict it. Orphan
+ *     detection therefore still means what it means everywhere else: a ledger row with NO
+ *     FILE ON MAIN — DDL that reached this database from outside merged history.
+ *   * the BASELINE is DERIVED, not configured: it is the earliest version the sandbox
+ *     ledger itself carries. Everything before it is inside the seed dump and has no ledger
+ *     row by construction. A derived baseline cannot go stale the way a checked-in one
+ *     would, and an empty ledger is already `Unknown` rather than a baseline of nothing.
+ *   * `dflow` is matched in the migration TEXT, which OVER-reports rather than under-
+ *     reports: a migration that merely mentions the schema is listed and can be dismissed
+ *     by a reader, whereas a missed one is the exact invisible-loss failure this file
+ *     exists to prevent.
+ *
+ * THE EXCLUSION IS COUNTED AND EXPLAINED IN THE REPORT, never silently applied.
+ */
+export const SANDBOX_TARGET = 'sandbox'
+
+/**
+ * The name the production guard's target registry knows this database by. `--target
+ * sandbox` is the operator-facing word (it is what the owner asked for and what the
+ * DB_*_SANDBOX secrets are called); `designflow-nonprod` is the registry's word for the
+ * same database. Mapping here keeps one vocabulary in each place instead of renaming
+ * either one.
+ */
+export const CLASSIFIER_TARGETS = Object.freeze({ production: 'production', preview: 'preview', sandbox: 'designflow-nonprod' })
+
+export const DFLOW_SCHEMA_PATTERN = String.raw`\bdflow\b`
+
+/**
+ * @param {string[]} mainVersions      every version merged to the base branch
+ * @param {string[]} dflowVersions     versions whose migration text mentions the dflow schema
+ * @param {string[]} appliedVersions   versions with a row in the sandbox ledger
+ */
+export function sandboxInScopeVersions(mainVersions, dflowVersions, appliedVersions) {
+  const applied = [...new Set((appliedVersions ?? []).map(String))].sort()
+  if (applied.length === 0) {
+    throw new Unknown(
+      'the sandbox migration ledger came back EMPTY, so the scope baseline could not be derived. ' +
+        'Refusing to guess which merged migrations this database is owed.',
+    )
+  }
+  if (!Array.isArray(dflowVersions) || dflowVersions.length === 0) {
+    throw new Unknown(
+      'no merged migration mentions the `dflow` schema, which cannot be true of a repository ' +
+        'that owns the DesignFlow contract. The scope read failed; nothing was compared.',
+    )
+  }
+  const baseline = applied[0]
+  const appliedSet = new Set(applied)
+  const dflow = new Set(dflowVersions.map(String))
+  const inScope = mainVersions.filter((version) => appliedSet.has(version) || (version >= baseline && dflow.has(version)))
+  if (inScope.length === 0) {
+    throw new Unknown(
+      `no merged migration is in scope for the sandbox at baseline ${baseline}. Refusing to ` +
+        'report on an empty comparison: that would clear this database without comparing anything.',
+    )
+  }
+  return { baseline, inScope, excludedCount: mainVersions.length - inScope.length }
+}
+
 export const PENDING_KINDS = new Set(['genuinely-pending', 'guarded-batch', 'deliberately-held', 'retired', 'base-absent', 'foreign-target'])
 export const INTENTIONALLY_EXCLUDED_KINDS = new Set(['deliberately-held', 'retired'])
 
@@ -238,11 +315,24 @@ export function assessDrift(drift, pendingClassifications) {
   }
 }
 
-export function formatReport({ target, projectRef, baseRef, drift, fileByVersion = {}, pendingClassifications = {} }) {
+export function formatReport({ target, projectRef, baseRef, drift, fileByVersion = {}, pendingClassifications = {}, sandboxScope = null }) {
   const lines = []
   lines.push(`Migration ledger drift — ${target} (${projectRef})`)
   lines.push(`  merged on ${baseRef}: ${drift.mergedCount} version(s)`)
   lines.push(`  applied in supabase_migrations.schema_migrations: ${drift.appliedCount} version(s)`)
+  if (sandboxScope) {
+    // The exclusion is stated every run, with the rule and the derived baseline, so a
+    // reader can challenge the scope claim instead of trusting a number.
+    lines.push('')
+    lines.push('SCOPE — this is the DesignFlow consolidated NON-PRODUCTION database, not the')
+    lines.push('shared POP database. A merged version counts here only when it is already in')
+    lines.push(`this ledger, or when it touches the \`dflow\` schema and is not older than the`)
+    lines.push(`derived baseline ${sandboxScope.baseline} (the earliest row this ledger carries;`)
+    lines.push('everything before it is inside the seed dump and has no row by construction).')
+    lines.push(`${sandboxScope.excludedCount} merged version(s) were excluded by that rule and are NOT owed to this`)
+    lines.push('database. If one of them IS owed, the rule is wrong and the migration really is')
+    lines.push('overdue — say so on the issue rather than reading this line as a clearance.')
+  }
   lines.push('')
 
   if (!drift.driftFound && drift.mergedNotApplied.length === 0) {
@@ -380,8 +470,34 @@ export function mainMigrationFiles(baseRef = 'origin/main') {
 // is unit-testable without a network.
 // ---------------------------------------------------------------------------
 
+/**
+ * The migration files on the base branch whose TEXT mentions the `dflow` schema.
+ *
+ * One `git grep` against the ref, never a per-file read. Exit status 1 from git means "no
+ * match", which for this repository is impossible and is therefore `Unknown` rather than an
+ * empty scope — an empty scope would clear the sandbox without comparing anything.
+ */
+export function dflowMigrationFiles(baseRef = 'origin/main') {
+  const resolved = resolveFreshBaseRef(baseRef)
+  let out
+  try {
+    out = execFileSync('git', ['-C', repoRoot, 'grep', '-lI', '--extended-regexp', '-e', DFLOW_SCHEMA_PATTERN, resolved, '--', MIGRATIONS_DIR], {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    })
+  } catch (error) {
+    throw new Unknown(`\`git grep\` over ${resolved} failed, so the sandbox scope could not be read: ${error.shortMessage || error.message}`)
+  }
+  return out
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith('.sql'))
+    .map((line) => line.slice(line.indexOf(':') + 1))
+}
+
 export const defaultIo = {
   mainMigrationFiles,
+  dflowMigrationFiles,
   fetchAppliedVersions,
   guardClassifications,
 }
@@ -397,20 +513,33 @@ export async function runDriftCheck({ target, baseRef = 'origin/main', io = defa
   }
 
   const files = await io.mainMigrationFiles(baseRef)
-  const mainVersions = versionsFromFilenames(files)
+  const allMainVersions = versionsFromFilenames(files)
   const fileByVersion = {}
   for (const file of files) fileByVersion[file.split('/').pop().slice(0, 14)] = file
 
   const appliedVersions = await io.fetchAppliedVersions(projectRef)
+
+  // The sandbox is a different database and is owed a different subset. Everything
+  // else about the comparison, including both drift directions, is unchanged.
+  let sandboxScope = null
+  let mainVersions = allMainVersions
+  if (target === SANDBOX_TARGET) {
+    const scopeFiles = await (io.dflowMigrationFiles ?? dflowMigrationFiles)(baseRef)
+    sandboxScope = sandboxInScopeVersions(allMainVersions, versionsFromFilenames(scopeFiles), appliedVersions)
+    mainVersions = sandboxScope.inScope
+  }
+
   const rawDrift = computeDrift(mainVersions, appliedVersions)
   const classify = io.guardClassifications ?? guardClassifications
   // Pass the target being checked: scope is DERIVED per target (issue #2820), so
-  // classifying a preview run as though it were production would be wrong.
-  const pendingClassifications = await classify(rawDrift.mergedNotApplied, appliedVersions, target)
+  // classifying a preview run as though it were production would be wrong. The
+  // classifier knows the sandbox by its registry name, not by the operator word.
+  const classifierTarget = CLASSIFIER_TARGETS[target] ?? target
+  const pendingClassifications = await classify(rawDrift.mergedNotApplied, appliedVersions, classifierTarget)
   validatePendingClassifications(rawDrift.mergedNotApplied, pendingClassifications)
   const drift = assessDrift(rawDrift, pendingClassifications)
 
-  return { projectRef, baseRef, target, drift, fileByVersion, pendingClassifications }
+  return { projectRef, baseRef, target, drift, fileByVersion, pendingClassifications, sandboxScope }
 }
 
 // ---------------------------------------------------------------------------
@@ -436,9 +565,15 @@ Does the migration ledger match what is merged? Reports drift in BOTH directions
 
   node scripts/check-migration-ledger-drift.mjs --target production
   node scripts/check-migration-ledger-drift.mjs --target preview --json
+  node scripts/check-migration-ledger-drift.mjs --target sandbox
 
 Options:
-  --target <production|preview>  Which database's ledger to read. Required.
+  --target <production|preview|sandbox>
+                                 Which database's ledger to read. Required.
+                                 "sandbox" is the DesignFlow consolidated
+                                 non-production database (issue #2986); it is
+                                 owed a derived SUBSET of the merged tree, and
+                                 every run states that scope and its baseline.
   --base-ref <ref>               Git ref holding the merged truth (default origin/main).
   --json                         Machine-readable output.
 
@@ -467,7 +602,7 @@ export async function main(argv) {
     return 0
   }
   if (!options.target) {
-    console.error('UNKNOWN: --target is required (production or preview).')
+    console.error('UNKNOWN: --target is required (production, preview or sandbox).')
     console.error(USAGE)
     return 2
   }

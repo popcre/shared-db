@@ -24,6 +24,14 @@
 #   * NOT `shared-supabase-migrations.yml` — that is the APPLY lane. A drift
 #     report that only runs when somebody applies migrations cannot report the
 #     drift caused by nobody applying them. That is the exact defect.
+# NON-PRODUCTION IS WATCHED THE SAME WAY (issue #2986, added 2026-09-20)
+# -----------------------------------------------------------------------
+# On 2026-09-15 the DesignFlow sandbox database was found three migrations behind
+# the canonical trusted-backend actor contract. Every RFQ Step change on alsand
+# failed with HTTP 500, and the owner could not change a Step at all. Nothing had
+# reported that gap, because this workflow only ever asked production. It now asks
+# the sandbox on the same push and schedule legs, with its own throttled alarm.
+#
 #   * A dedicated workflow, on THREE triggers, mirroring the design of
 #     `orchestrator-marker-guard.yml`:
 #       - push to `main`, so drift is announced at the moment a merge creates it;
@@ -58,7 +66,7 @@ on:
         type: choice
         required: true
         default: production
-        options: [production, preview]
+        options: [production, preview, sandbox]
 
 permissions:
   contents: read
@@ -69,10 +77,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # WHICH DATABASES THIS RUN CHECKS.
+  #
+  # Issue #2986: the sandbox (the DesignFlow consolidated non-production database that
+  # `sandbox-albert` reads) drifted three migrations behind and nothing reported it,
+  # because only production was ever watched. Non-production drift is now reported the
+  # same way and on the same schedule.
+  #
+  # `preview` stays OFF the unattended legs on purpose: the preview branch is rebuilt,
+  # so a scheduled comparison against it reports the rebuild rather than a mistake. It
+  # remains available on demand, which is what it was always for.
+  targets:
+    name: Which ledgers to compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            case "${INPUT_TARGET}" in
+              production|preview|sandbox) ;;
+              # Fail closed. A dispatch naming something this workflow does not know
+              # must stop here rather than silently checking nothing.
+              *) echo "::error::unknown dispatch target '${INPUT_TARGET}'" >&2; exit 1 ;;
+            esac
+            echo "list=[\"${INPUT_TARGET}\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo 'list=["production","sandbox"]' >> "$GITHUB_OUTPUT"
+          fi
+
   drift:
-    name: Migration ledger drift
+    name: Migration ledger drift (${{ matrix.target }})
+    needs: targets
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      # One database failing must never hide the other's result.
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.list) }}
     steps:
       # fetch-depth: 0 is REQUIRED. The script resolves origin/main to read the
       # merged migration set; on a shallow checkout it exits 2 rather than
@@ -97,7 +146,7 @@ jobs:
           # Read-only use: the script runs one constant SELECT and has no code
           # path that can issue any other statement.
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          TARGET: ${{ inputs.target || 'production' }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -uo pipefail
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
@@ -134,10 +183,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          TARGET: ${{ matrix.target }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          TITLE="MIGRATION LEDGER DRIFT — merged work may not be applied"
+          # Production keeps its ORIGINAL title. The throttle matches on the exact
+          # string, so renaming it would file a duplicate beside any alarm already
+          # open. Every other database gets its own title, and therefore its own
+          # independent throttle: a stuck sandbox alarm must never mask production.
+          SUFFIX=""
+          [ "${TARGET}" = "production" ] || SUFFIX=" (${TARGET})"
+          TITLE="MIGRATION LEDGER DRIFT${SUFFIX} — merged work may not be applied"
 
           # Enumerate and match client-side, not with a server-side search
           # filter: an eventually-consistent empty answer files a duplicate.
@@ -150,7 +206,7 @@ jobs:
           fi
 
           cat > /tmp/alarm-body.md <<BODY
-          The scheduled \`Migration ledger drift\` run failed against **production**.
+          The scheduled \`Migration ledger drift\` run failed against **${TARGET}**.
 
           Either migrations are **merged to \`main\` and not applied**, or the ledger holds a
           row with **no file on \`main\`**, or the check **could not run at all**.
@@ -164,7 +220,7 @@ jobs:
 
           Check by hand:
 
-              SUPABASE_ACCESS_TOKEN=... node scripts/check-migration-ledger-drift.mjs --target production
+              SUPABASE_ACCESS_TOKEN=... node scripts/check-migration-ledger-drift.mjs --target ${TARGET}
 
           **Close this issue by hand once resolved.** It is throttled: while it is open, no
           further alarm issues are filed.

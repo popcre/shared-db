@@ -23,6 +23,8 @@ import {
   fetchAppliedVersions,
   guardClassifications,
   validatePendingClassifications,
+  PROJECT_REFS,
+  sandboxInScopeVersions,
 } from './check-migration-ledger-drift.mjs'
 
 test('origin/main is refreshed before any migration-tree verification read', () => {
@@ -408,4 +410,108 @@ test('a foreign-target classification with no reason is still REFUSED', () => {
     () => validatePendingClassifications([FOREIGN], { [FOREIGN]: { kind: 'foreign-target', reason: '   ' } }),
     /unknown or reasonless classification/,
   )
+})
+
+// ---------------------------------------------------------------------------
+// SANDBOX TARGET — the DesignFlow consolidated non-production database (#2986).
+//
+// Every assertion below proves a REFUSAL or a non-obvious exclusion boundary.
+// The one that matters most is "an applied version stays in scope": without it
+// the scope rule turns legitimately applied migrations into phantom orphan rows,
+// which reads as DDL from outside merged history and would send somebody hunting
+// a breach that never happened.
+// ---------------------------------------------------------------------------
+
+const DFLOW_BASE = '20260904143518'
+
+test('the sandbox is a known target with its own project ref', () => {
+  assert.equal(typeof PROJECT_REFS.sandbox, 'string')
+  assert.match(PROJECT_REFS.sandbox, /^[a-z]{20}$/)
+  assert.notEqual(PROJECT_REFS.sandbox, PROJECT_REFS.production)
+  assert.notEqual(PROJECT_REFS.sandbox, PROJECT_REFS.preview)
+})
+
+test('sandbox scope REFUSES an empty ledger instead of inventing a baseline', () => {
+  assert.throws(
+    () => sandboxInScopeVersions([DFLOW_BASE], [DFLOW_BASE], []),
+    /scope baseline could not be derived/,
+  )
+})
+
+test('sandbox scope REFUSES a dflow read that came back empty', () => {
+  assert.throws(
+    () => sandboxInScopeVersions([DFLOW_BASE], [], [DFLOW_BASE]),
+    /no merged migration mentions the `dflow` schema/,
+  )
+})
+
+test('sandbox scope REFUSES when the rule leaves nothing to compare', () => {
+  assert.throws(
+    () => sandboxInScopeVersions(['20260101000000'], ['20260101000000'], ['20270101000000']),
+    /Refusing to report on an empty comparison/,
+  )
+})
+
+test('an APPLIED version stays in scope even when the dflow rule would drop it', () => {
+  const scope = sandboxInScopeVersions(
+    ['20260101000000', DFLOW_BASE, '20260905072856'],
+    ['20260905072856'],
+    [DFLOW_BASE],
+  )
+  assert.equal(scope.baseline, DFLOW_BASE)
+  assert.deepEqual(scope.inScope, [DFLOW_BASE, '20260905072856'])
+  assert.equal(scope.excludedCount, 1)
+  assert.equal(
+    computeDrift(scope.inScope, [DFLOW_BASE]).appliedNotMerged.length,
+    0,
+    'an applied version must never be reported as an orphan ledger row by the scope rule alone',
+  )
+})
+
+test('a dflow migration OLDER than the derived baseline is excluded, not reported', () => {
+  const scope = sandboxInScopeVersions(['20260710135950', DFLOW_BASE], ['20260710135950', DFLOW_BASE], [DFLOW_BASE])
+  assert.deepEqual(scope.inScope, [DFLOW_BASE])
+  assert.equal(scope.excludedCount, 1)
+})
+
+test('a sandbox run classifies against the registry name, never the operator word', async () => {
+  const seen = []
+  const result = await runDriftCheck({
+    target: 'sandbox',
+    baseRef: 'abc123',
+    io: {
+      mainMigrationFiles: async () => files([DFLOW_BASE, '20260101000000', '20260905072856']),
+      dflowMigrationFiles: async () => files([DFLOW_BASE, '20260101000000', '20260905072856']),
+      fetchAppliedVersions: async () => [DFLOW_BASE],
+      guardClassifications: async (versions, _applied, target) => {
+        seen.push(target)
+        return classifications(versions)
+      },
+    },
+  })
+  assert.deepEqual(seen, ['designflow-nonprod'], 'the classifier knows this database by its registry name')
+  assert.deepEqual(result.drift.actionableMergedNotApplied, ['20260905072856'])
+  assert.equal(result.sandboxScope.baseline, DFLOW_BASE)
+  assert.equal(result.sandboxScope.excludedCount, 1)
+})
+
+test('a sandbox report STATES its scope, baseline and exclusion count', () => {
+  const drift = assessDrift(computeDrift([DFLOW_BASE], [DFLOW_BASE]), {})
+  const report = formatReport({
+    target: 'sandbox',
+    projectRef: 'x',
+    baseRef: 'origin/main',
+    drift,
+    sandboxScope: { baseline: DFLOW_BASE, inScope: [DFLOW_BASE], excludedCount: 694 },
+  })
+  assert.match(report, /SCOPE — this is the DesignFlow consolidated NON-PRODUCTION database/)
+  assert.match(report, new RegExp(`derived baseline ${DFLOW_BASE}`))
+  assert.match(report, /694 merged version\(s\) were excluded/)
+  assert.match(report, /the rule is wrong and the migration really is/)
+})
+
+test('a production report says nothing about sandbox scope', () => {
+  const drift = assessDrift(computeDrift(MERGED, MERGED), {})
+  const report = formatReport({ target: 'production', projectRef: 'x', baseRef: 'origin/main', drift })
+  assert.doesNotMatch(report, /NON-PRODUCTION database/)
 })

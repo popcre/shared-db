@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3370/1",
   "contract_sha256": "0bfda7e4df238714aeadd0161cd02f58dca5805c2caa1926b2c17e46de275845",
-  "head_sha": "ff7461c79cb2e9605e994fb7cb1f2480ece72e6a",
-  "base_sha": "18c2610526e9b34a9d5af3818853cf1fb63e8979",
+  "head_sha": "30c86ef606f6564fec4db548931f3ac620dc2f4f",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
   "files_changed": [
     "AGENTS.md",
     "docs/agents/current-workflow.md",

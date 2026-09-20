@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3387/2",
   "contract_sha256": "b1e7188bfc5cfa5bd48ab5826d769a74f8df5f80d38f647cf1493b8fa0773b74",
-  "head_sha": "657bc35172ca7423ece2abacb68504b2add9db0b",
+  "head_sha": "fc06dc0afefd5e172daac4e0f7a8c5ede3ab49e0",
   "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
   "files_changed": [
     "docs/verification/throughput-dispositions/scripts~lib~review-packet.mjs.json",
@@ -21,7 +21,7 @@
     {
       "exit_code": 0,
       "command": "node --test scripts/run-governed-review.test.mjs scripts/lib/review-packet.test.mjs",
-      "evidence": "87 tests passed; 0 failed, cancelled, skipped or todo"
+      "evidence": "90 tests passed; 0 failed, cancelled, skipped or todo"
     },
     {
       "exit_code": 0,

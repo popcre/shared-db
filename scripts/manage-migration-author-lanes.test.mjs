@@ -2478,6 +2478,14 @@ test('an ineligible reviewer stays readable but receives no new assignment',()=>
   assert.notEqual(next.reviewer,ineligible)
 })
 
+test('reviewer cursor accepts the bounded current allowlist suffix without accepting malformed trailing data',()=>{
+  const head='a'.repeat(40)
+  const current={message:`db-coordination reviewer-cursor sequence=3374 reviewer=muse-spark-1.3-contributor issue=3291 pr=3292 head=${head} allowlist=grok-4.6,muse-spark-1.3-contributor`}
+  assert.deepEqual(parseReviewCursor(current),{sequence:3374,reviewer:'muse-spark-1.3-contributor',issue:3291,pr:3292,headSha:head,slot:null,reviewerAllowlist:['grok-4.6','muse-spark-1.3-contributor']})
+  assert.throws(()=>parseReviewCursor({message:`${current.message} unexpected=value`}),/does not point to a recognized assignment/)
+  assert.throws(()=>parseReviewCursor({message:`db-coordination reviewer-cursor sequence=1 reviewer=grok-4.6 issue=1 pr=2 head=${head} allowlist=`}),/does not point to a recognized assignment/)
+})
+
 test('two consecutive terminal no-verdict failures form an immutable idempotent chain',()=>{
   const io=failedReviewIo()
   const first=replaceFailedReviewer(replacementRequest,io)

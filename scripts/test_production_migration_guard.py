@@ -264,6 +264,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20260911212849",
+                "20260917112129",
                 "20260906222338",
                 "20260814170749",
                 "20260726190000",
@@ -299,6 +301,24 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "20260903200951"):
             parse_allowlist("20260903200951,20260905024139")
         self.assertEqual(parse_allowlist("20260905024139"), ["20260905024139"])
+    def test_issue_2478_stranded_originals_remain_retired(self) -> None:
+        for version in ("20260911212849", "20260917112129"):
+            for allowlist in (version, f"{version},20260907031246"):
+                with self.subTest(version=version, allowlist=allowlist):
+                    with self.assertRaisesRegex(GuardError, version):
+                        parse_allowlist(allowlist)
+            for applied in (set(), {version}):
+                with self.subTest(version=version, applied=applied):
+                    self.assertEqual(classify_pending_version(version, applied, REPO)["kind"], "retired")
+
+    def test_issue_2478_retirement_preserves_historical_sql(self) -> None:
+        import hashlib
+        hashes = {'20260911212849': '78391d7d8e3b803c0998a407876872fa8006030742edce9a45c0724a3c75ecdf', '20260917112129': '33f1c60ca671be24bde8c78dfa218821398d73c5c1011025a434aff52111470e'}
+        for version, digest in hashes.items():
+            with self.subTest(version=version):
+                original = REPO / "supabase/migrations" / f"{version}_shared_style_group_sku_key.sql"
+                self.assertEqual(hashlib.sha256(original.read_text(encoding="utf-8").encode()).hexdigest(), digest)
+
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
             with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20260906222338"):

@@ -1,51 +1,56 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
-  "work_type": "repo-maintenance",
-  "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
+  "generation": 2,
+  "work_issue": 3282,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Restore bounded PDF backfill claim and remaining-count without changing eligible rows or timeouts.",
   "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "dispatcher": "Codex orchestrator marker 3297",
+  "worker": "codex:pdf-3282-916",
+  "branch": "codex/issue-3282-pdf-claim-analysis",
+  "worktree": "D:/repos/worktrees/shared-db-3282-pdf-01a0bf00",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
+    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
+    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "db_reads": [
+    "table public.assets",
+    "table public.pdf_text_samples",
+    "function public.is_style_guide_source_pdf"
+  ],
+  "db_writes": [
+    "function public.claim_pdf_backfill_batch",
+    "function public.count_pdf_backfill_remaining",
+    "index public.idx_assets_licensing_pdf_backfill_candidates",
+    "table public.assets"
+  ],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No production writes, preview applies, or merges by author.",
+    "No timeout increase, data deletion, signature change, grant change, or eligibility change.",
+    "public.assets write lock authorizes only named index creation; no column or row changes."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "git diff --check",
+    "PDF backfill SQL behavioral contracts",
+    "SQL migration guards"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "Claim 3300 reserves version 20260920144819.",
+    "Production catalog confirms helper is immutable and file_type is public.file_type enum.",
+    "Application return repository is u2giants/popdam3, verified through GitHub.",
+    "Generation2 adds parser-required parent-table index lock after guarded claim3300 expansion; SQL bytes unchanged."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop on scope or claim collision.",
+    "Stop if preview plan and timing fail to show bounded performance below existing eight second ceiling."
   ]
 }

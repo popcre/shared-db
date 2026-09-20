@@ -38,12 +38,12 @@ begin
   insert into ingest.sync_run(source_system,source_name,status,started_at,finished_at)
   values('coldlion','coldlion_licensors_properties_api','succeeded',now()+interval '1 day',now()+interval '1 day') returning id into cl_id;
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-01',opts);
-  if (o->>'pass')::boolean is not true or o->'designflow_lane' <> '{"status":"retired","required":false}'::jsonb then
+  if (o->>'pass')::boolean is not true or o->'designflow_lane' is distinct from '{"status":"retired","required":false}'::jsonb then
     raise exception 'fresh ColdLion must pass independently of DesignFlow: %',o;
   end if;
   if (o->>'designflow_ok')::boolean is not true then raise exception 'compatibility flag missing'; end if;
   h:=plm.check_taxonomy_sync_health(interval '36 hours',opts);
-  if (h->>'ok')::boolean is not true or h->'designflow_lane' <> '{"status":"retired","required":false}'::jsonb then
+  if (h->>'ok')::boolean is not true or h->'designflow_lane' is distinct from '{"status":"retired","required":false}'::jsonb then
     raise exception 'healthy active lane blocked by retired lane: %',h;
   end if;
   insert into ingest.sync_run(source_system,source_name,status,started_at,finished_at)
@@ -56,14 +56,14 @@ begin
 
   h:=plm.check_taxonomy_sync_health(interval '-100 years',opts);
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-03',opts||'{"max_success_age":"-100 years"}');
-  if (h->>'ok')::boolean is not false or not (h->'issues' @> '[{"kind":"stale_run","lane":"coldlion"}]') or (o->>'pass')::boolean is not false then raise exception 'ColdLion freshness guard lost'; end if;
+  if (h->>'ok')::boolean is not false or (h->'issues' @> '[{"kind":"stale_run","lane":"coldlion"}]') is not true or (o->>'pass')::boolean is not false then raise exception 'ColdLion freshness guard lost'; end if;
 
   insert into ingest.sync_run(source_system,source_name,status,started_at,finished_at)
   values('coldlion','coldlion_licensors_properties_api','failed',now()+interval '3 days',now()+interval '3 days'),
         ('coldlion','coldlion_licensors_properties_api','failed',now()+interval '4 days',now()+interval '4 days');
   h:=plm.check_taxonomy_sync_health(interval '36 hours',opts);
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-04',opts);
-  if (h->>'ok')::boolean is not false or not (h->'issues' @> '[{"kind":"two_consecutive_failures","lane":"coldlion"}]') or not (o->'diffs' @> '[{"kind":"coldlion_lane"}]') then raise exception 'ColdLion failure guard lost'; end if;
+  if (h->>'ok')::boolean is not false or (h->'issues' @> '[{"kind":"two_consecutive_failures","lane":"coldlion"}]') is not true or (o->'diffs' @> '[{"kind":"coldlion_lane"}]') is not true then raise exception 'ColdLion failure guard lost'; end if;
 
   perform set_config('test3175.snapshot',(s||'{"designflow_source_ref_count":1}')::text,true);
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-05',opts);
@@ -87,7 +87,7 @@ begin
   perform set_config('test3175.snapshot',s::text,true);
   h:=plm.check_taxonomy_sync_health(interval '36 hours','{"skip_alert":true}');
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-07','{"skip_alert":true}');
-  if h->>'reason'<>'no_active_baseline' or o->>'reason'<>'no_active_baseline' then raise exception 'missing baseline refusal lost'; end if;
+  if h->>'reason' is distinct from 'no_active_baseline' or o->>'reason' is distinct from 'no_active_baseline' then raise exception 'missing baseline refusal lost'; end if;
   h:=plm.check_taxonomy_sync_health(interval '36 hours',opts||'{"baseline_key":"test3175-unreadable"}');
   if (h->>'baseline_unreadable')::boolean is not true then raise exception 'unreadable baseline refusal lost'; end if;
   o:=plm.record_taxonomy_parallel_observation(date '1900-01-08',opts||'{"force_fail":true}');

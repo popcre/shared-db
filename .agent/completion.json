@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3354,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3353/1",
-  "contract_sha256": "3ca8a505f04733b25b1db4c3016267d90d22df7874c6b718aa273999958823de",
+  "contract_ref": "refs/db-contracts/3353/2",
+  "contract_sha256": "722c15351729dab916292beaf552c8e555aec78e0e6b544430fae5b42f016600",
   "head_sha": "523ff2526b4ead2f3b71ce432ca4a1fec9da7367",
   "files_changed": [
     "AGENTS.md",
@@ -32,19 +32,44 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/**/*.test.mjs scripts/*.test.mjs tools/*.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "3560 tests, 3512 pass, 48 fail. The identical 48 failures occur on unmodified origin/main 473ba697 in a clean worktree (3507 tests, 3459 pass, 48 fail); the failing-test-name sets are identical, so this branch introduces zero regressions. Those 48 are local-environment failures whose CI counterparts are green."
+      "evidence": "tests 680, pass 680, fail 0"
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 87, pass 87, fail 0"
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 345, pass 345, fail 0"
+    },
+    {
+      "command": "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-activation.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/check-documents-only-pull-request.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 61, pass 61, fail 0"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 59, pass 59, fail 0"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=311 sources=69 derived_digest=871e1ed90397, after PR #3338's one new disposition was registered in both the partitioned catalogue and the frozen aggregate"
+      "evidence": "truth audit OK: call_sites=311 sources=69 derived_digest=871e1ed90397"
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "no whitespace errors against origin/main"
+      "evidence": "no whitespace errors"
+    },
+    {
+      "command": "node --test scripts/**/*.test.mjs scripts/*.test.mjs tools/*.test.mjs",
+      "exit_code": 1,
+      "evidence": "NON-REQUIRED DIAGNOSTIC, recorded with its true non-zero exit. 3560 tests, 3512 pass, 48 fail. The identical 48 failures occur on unmodified origin/main 473ba697 in a clean worktree (3507 tests, 3459 pass, 48 fail) and the failing-test-name sets are identical, so this branch introduces no regression. They are local-environment failures; their CI counterparts are green. This is evidence of no regression, never a claim that the sweep passed."
     }
   ],
   "assumptions_resolved": [

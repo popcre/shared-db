@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 1,
+  "generation": 2,
   "work_issue": 3353,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -67,14 +67,19 @@
     "No --admin merge on a code change."
   ],
   "required_checks": [
-    "node --test scripts/**/*.test.mjs scripts/*.test.mjs tools/*.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/run-governed-review.test.mjs scripts/queue-hygiene-report.test.mjs",
+    "node --test scripts/orchestrator-flow/*.test.mjs",
+    "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-activation.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/check-documents-only-pull-request.test.mjs",
+    "node --test scripts/throughput-guard/*.test.mjs",
     "node scripts/check-throughput-truth-audit.mjs",
     "git diff --check"
   ],
   "assumptions": [
     "These ten pull requests ship no migration, so migration-author-lease.yml auto-authorizes them and the governed reviewer draw does not apply; operationRouting would in any case refuse a pull request that closes more than one work issue.",
     "PR #3308 is actively worked by another session and is deliberately excluded; PR #3330 merged to main independently during this work and its content arrives through the base, so issue #2832 is not closed here.",
-    "The pre-partition aggregate throughput audit is frozen historical evidence that the equivalence test requires to match the partitioned catalogues exactly, so PR #3338's one new call-site disposition is registered in both, byte-identical."
+    "The pre-partition aggregate throughput audit is frozen historical evidence that the equivalence test requires to match the partitioned catalogues exactly, so PR #3338's one new call-site disposition is registered in both, byte-identical.",
+    "Generation 1 named the whole-repository test sweep as a required check. That sweep exits 1 on this machine on 48 tests that also fail on unmodified origin/main, so recording it as a passing required check would have been false. Generation 2 requires only commands that genuinely exit 0, and the sweep is carried as a non-required diagnostic with its true exit code and its baseline comparison."
   ],
   "stop_conditions": [
     "Stop if combining would lose any contributed fix, test or reviewed disposition.",

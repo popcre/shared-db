@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3330,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2832/2",
-  "contract_sha256": "25b8968ec4ef8cdb653dc19342822b22053e6a7c31753c43ec738cf7ce6be683",
-  "head_sha": "1aef414353b9d329ccccd14c9713a0522d0f7226",
+  "contract_ref": "refs/db-contracts/2832/3",
+  "contract_sha256": "630f0ba91fa339adfd4858f84ae85c8fbc731630d00acb8fd2a3a59d4aad3434",
+  "head_sha": "9ce37888d6c9a7693552827bfe7071dabfaed8d7",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "docs/verification/throughput-dispositions/.github~workflows~coldlion-licensor-property-alert-monitor.yml.json",
     "docs/verification/throughput-dispositions/.github~workflows~coldlion-licensor-property-phase6-parallel.yml.json",
     "docs/verification/throughput-dispositions/.github~workflows~coldlion-licensor-property-production.yml.json",
@@ -88,17 +90,17 @@
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=310 sources=69 derived_digest=df45b8e61f6a at implementation head 1aef4143"
+      "evidence": "truth audit OK: call_sites=310 sources=69 derived_digest=df45b8e61f6a at implementation head 9ce37888 after merging main c477c8e8"
     },
     {
       "command": "node --test scripts/throughput-guard/*.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 59 pass 59 fail 0 at implementation head 1aef4143"
+      "evidence": "tests 59 pass 59 fail 0 at implementation head 9ce37888 after merging main c477c8e8"
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed at implementation head 1aef4143"
+      "evidence": "git diff --check origin/main...HEAD passed at implementation head 9ce37888"
     }
   ],
   "assumptions_resolved": [

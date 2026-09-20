@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 2,
+  "generation": 3,
   "work_issue": 2832,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -42,7 +42,8 @@
   "assumptions": [
     "Issue 2832 is also Step 2 of the concurrently open planning PR 3318 under tracker 3306; this implementation follows that published design rather than a competing shape, and no implementation work had started there.",
     "The pre-partition aggregate is retained as historical evidence only and is never read by the checker.",
-    "Generation 2 supersedes generation 1 only to express the disposition directory as a scoped glob; the goal, prohibitions and required checks are unchanged."
+    "Generation 2 supersedes generation 1 only to express the disposition directory as a scoped glob; the goal, prohibitions and required checks are unchanged.",
+    "The evidence pair is rebound in a single commit on top of implementation head 9ce37888, which already carries the merge of main c477c8e8."
   ],
   "stop_conditions": [
     "Stop if the partition cannot preserve every existing disposition byte for byte.",

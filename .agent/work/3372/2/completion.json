@@ -6,10 +6,11 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3372/2",
   "contract_sha256": "a6597f45bd53310d3ce04b5eca7e73a4a646be212f302c95c2ecb79842f2cd60",
-  "head_sha": "e1a07f42f444b0bc49e7abe1aeaa58afa01933a0",
-  "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
+  "head_sha": "8c3d4d7ac90d4e7d57e174ba1d7047f58fb06a80",
+  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
   "files_changed": [
     ".agent/work/3372/2/contract.json",
+    ".agent/work/3372/2/completion.json",
     "AGENTS.md",
     "docs/disney-dcp-withdrawal-answer-routing.md"
   ],

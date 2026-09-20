@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3393/1",
   "contract_sha256": "251e4904c158d3d922c70eb3cacb9be8db46f6c4b803ca0dc01b1f703c266af0",
-  "head_sha": "0a92549fc2795be465a9ad5f0f0625a0bc0a8b32",
+  "head_sha": "40477e25d3dbfefa3ea8c080cc8b4533db104050",
   "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
   "files_changed": [
     "scripts/check-live-proof-probe.mjs",
@@ -17,7 +17,7 @@
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "14 tests passed, 0 failures, cancelled, skipped or todo",
+      "evidence": "15 tests passed, 0 failures, cancelled, skipped or todo",
       "command": "node --test scripts/check-live-proof-probe.test.mjs"
     },
     {

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "work_issue": 2357,
-  "outcome": "failed",
+  "outcome": "ready-for-merge",
   "pr": 2835,
   "migration_versions": [
     "20260920151046"
   ],
-  "contract_ref": "refs/db-contracts/2357/6",
-  "contract_sha256": "a53415f59b71370c774fc65fdc5e7c14d890f7f06fad38de72911d2e2c853197",
-  "head_sha": "ea358930ba18a212c01b2bab93f3c92e079a6046",
+  "contract_ref": "refs/db-contracts/2357/7",
+  "contract_sha256": "4362bde0dc2b8789547ef59d4534cb1b72e098af961428551b107c0a91d7fccc",
+  "head_sha": "dd098651855e20bfb4a76d7495b726af31d66798",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -60,17 +60,17 @@
     {
       "exit_code": 0,
       "command": "node scripts/agent-work-contract-git-evidence.mjs",
-      "evidence": "Prior evidence seal passed with explicit contract/report/base/head arguments; this gen5 seal is reverified immediately after commit."
+      "evidence": "Evidence pair rebound to current main; git facts derived from current implementation and verified after evidence-only commit."
     }
   ],
   "assumptions_resolved": [
     "Preview and production target-verified ledgers lack both old versions; production lacks all3 views/helper.",
     "No old scalar Style Guide inference assertion remains in current OPA test; existing file untouched.",
     "No shared database write or credential disclosure occurred.",
-    "Parent guarded supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0 resolved timestamp blocker; old reservation retained."
+    "Parent guarded supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0 resolved timestamp blocker; old reservation retained.",
+    "Current outcome gate requires generated types at application verification, not structural merge. Parent owns serialized merge and promotion."
   ],
-  "stop_conditions_hit": [
-    "Generated api/plm types require parent-authorized preview stage; no generated artifact exists yet. No ready-for-merge or production-complete outcome asserted."
-  ],
-  "reason": "Generated api/plm types need parent-authorized preview stage; this is an intermediate recovery evidence record, not merge authorization."
+  "stop_conditions_hit": [],
+  "reason": "Implementation ready for governed exact-head review and merge gates. No shared database writes performed. Genuine generated types and final application verification remain after merged-main preview under the normal automatic workflow.",
+  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f"
 }

@@ -22,12 +22,13 @@
   "db_writes": [],
   "contract_sha256": "1994731accc3a210ac378e67cdfbe134854054fdecd00b31f14ded99bcf148b7",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/2863.sql",
-    "scripts/issue-2863-live-proof.test.mjs",
-    ".agent/contract.json"
+    "scripts/issue-2863-live-proof.test.mjs"
   ],
   "pr": 3303,
   "migration_versions": [],
-  "head_sha": "79efaea2608c57bf04157ebad6f46bfddda75682",
+  "head_sha": "444509163afcf44bd73a3d892ece83b4ce6a1ddf",
   "outcome": "ready-for-merge"
 }

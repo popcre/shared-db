@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases } from './manage-migration-author-lanes.mjs'
+import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
@@ -8857,4 +8857,93 @@ test('issue 3182: REAL main command wires --rebind-claim-worktree with every ide
   const io=rebindIo(),args=['--rebind-claim-worktree','--issue','764','--claim-number','1056','--owner',rebindArgs.owner,'--branch',rebindArgs.branch,'--worktree',rebindArgs.worktree,'--target-worktree',rebindArgs.targetWorktree,'--pr','1047','--head-sha',rebindArgs.headSha]
   assert.equal(main(args,NOW,io),0)
   assert.equal(parseAuthorLease(io.issue.body,NOW).worktree,rebindArgs.targetWorktree)
+})
+
+// ---------------------------------------------------------------------------
+// Issues #2448 (2), #3125 and #2491 -- migration-author-lane tooling repairs.
+// Each test below was run against the UNFIXED script first and observed to
+// fail; see the pull request body for the recorded failure lines.
+// ---------------------------------------------------------------------------
+
+// #2448 defect 2. `CLAIM: #2433 HANDOVER: preview rehearsal owed for merged PR
+// #2423` was dead on arrival: the second reference came from the work issue's
+// own title, nothing warned at claim time, and the claim had already spent a
+// permanent migration version before a later command refused it.
+test('#2448 a second issue reference in a claim title is refused at --claim time, before any version is spent',async()=>{
+  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {formatEventComment}=await import('./db-coordination-events.mjs')
+  const {io}=admittedReviewIo()
+  // A COMPLETE fixture on purpose: without the guard this claim would otherwise
+  // SUCCEED and spend a permanent migration version, which is the defect. A
+  // fixture that merely crashed first would make this test vacuous.
+  io.issueComments=()=>['entered','classified','dispatched'].map((state,index)=>({author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['artifact:dispatch-fixture-2929']:[]}))}))
+  io.commentIssue=()=>{}
+  let reservations=0
+  const reserve=io.reserveVersion
+  io.reserveVersion=(...args)=>{reservations++;return reserve?.(...args)}
+  let mutexes=0
+  const createRef=io.createRef
+  io.createRef=(ref,sha)=>{if(ref===MUTEX_REF)mutexes++;return createRef(ref,sha)}
+  assert.throws(
+    ()=>acquireAuthorLane({...opts,task:'#41 HANDOVER: preview rehearsal owed for merged PR #2423',objects:['table core.example'],admitIssue:41,claim:true},NOW,io),
+    /also names #2423/,
+    'a borrowed title carrying a second issue reference must refuse by name')
+  assert.equal(reservations,0,'an ambiguous title must not spend a migration version')
+  assert.equal(mutexes,0,'an ambiguous title must refuse before the coordination mutex')
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  // Scope is exactly the SECOND reference. A single reference still works, and a
+  // title with none is unchanged -- such claims already exist and the surrounding
+  // code handles them; refusing those here would be a new rule, not this repair.
+  assert.equal(assertUnambiguousClaimTitle('#41 ordinary work'),'#41')
+  assert.equal(assertUnambiguousClaimTitle('race-1'),null)
+})
+
+// #3125. `--claim --objects` refused a valid claim whose writes were listed in a
+// different order from the admitted issue's (already sorted) writes.
+async function twoWriteAdmittedIo(){
+  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {formatEventComment}=await import('./db-coordination-events.mjs')
+  const {io}=admittedReviewIo()
+  const body=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.zeta','  - table core.alpha','```'].join('\n')
+  io.getIssue=()=>({number:41,state:'open',title:'ordered writes',body,createdAt:'2026-09-11T00:00:00Z'})
+  io.getPrFiles=()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added',content:'create table core.zeta(id bigint);create table core.alpha(id bigint);'}]
+  io.getFileAt=()=> 'create table core.zeta(id bigint);create table core.alpha(id bigint);'
+  const history=['entered','classified','dispatched'].map((state,index)=>({author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['artifact:dispatch-fixture-2929']:[]}))}))
+  io.issueComments=()=>history
+  io.commentIssue=()=>{}
+  return io
+}
+test('#3125 --claim --objects admits the admitted writes in any order and still refuses a wrong object',async()=>{
+  const sorted=acquireAuthorLane({...opts,task:'#41',objects:['table core.alpha','table core.zeta'],admitIssue:41,claim:true},NOW,await twoWriteAdmittedIo())
+  assert.ok(sorted.claim,'sorted order must be admitted')
+  const reversed=acquireAuthorLane({...opts,task:'#41',objects:['table core.zeta','table core.alpha'],admitIssue:41,claim:true},NOW,await twoWriteAdmittedIo())
+  assert.ok(reversed.claim,'the SAME writes in another order must be admitted, not refused')
+  // Set semantics only: a different object, a missing one and a duplicate all still refuse.
+  for(const objects of [['table core.zeta','table core.other'],['table core.zeta'],['table core.zeta','table core.zeta','table core.alpha']]){
+    const refusalIo=await twoWriteAdmittedIo()
+    assert.throws(
+      ()=>acquireAuthorLane({...opts,task:'#41',objects,admitIssue:41,claim:true},NOW,refusalIo),
+      /must exactly match admitted issue #41 writes|duplicate|exactly one/,
+      `objects ${JSON.stringify(objects)} must still refuse`)
+  }
+})
+
+// #2491. An ordinary claim apply binds and names its artifact after the CLAIM
+// head it checked out, never the dispatch run head, so preparation could never
+// match a version that was already applied.
+test('#2491 an already-applied version matches its original claim-head apply when the caller proves that head',()=>{
+  const appliedCommit='bcc2603977678db73b4ca12d3ed1312a1bff64e2'
+  const input={issue:2491,pr:2500,versions:['20260907131728'],mergeCommitSha:null}
+  const io=pinnedHistoricalClaimApplyIo()
+  assert.deepEqual(
+    validateOriginalPreviewApplyEvidence({...input,claimHeadSha:appliedCommit},io),
+    {type:'preview-apply',run_id:'34157812748'},
+    'the claim-head apply is the evidence; preparation must accept it')
+  // Nothing is relaxed. Without a proven claim head the old refusal stands, a
+  // different proven head refuses, and a non-claim binding is never admitted
+  // on this path.
+  assert.throws(()=>validateOriginalPreviewApplyEvidence(input,io),/found 0|no acceptable/)
+  assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,claimHeadSha:'c'.repeat(40)},io),/found 0|no acceptable/)
+  const merged=immutablePreviewApplyIo()
+  assert.throws(()=>validateOriginalPreviewApplyEvidence({...input,claimHeadSha:appliedCommit},merged),/found 0|no acceptable/)
 })

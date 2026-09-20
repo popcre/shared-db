@@ -1164,9 +1164,11 @@ passed" unless you count the contexts.** On 2026-09-17 three consecutive pushes 
 empty-commit re-push did nothing at all; after merging current `main` into the branch and
 resolving the conflict, the very next push (`1819ad5d`) created all 19 check runs at once.
 **Know the discriminator:** a PR that merely LAGS `main` but still auto-merges cleanly runs
-everything normally — only the unresolvable-conflict state suppresses runs. This bites routinely
-here because every merged PR carries its own `.agent/` evidence pair, and each such merge
-conflicts every open PR that also carries one. Before concluding that checks were lost, run:
+everything normally — only the unresolvable-conflict state suppresses runs. This bit routinely
+here while every merged PR wrote its own `.agent/` evidence into the same two shared paths, so
+each such merge conflicted every open PR that also carried a pair; issue #2708 moved that evidence
+to `.agent/work/<issue>/<generation>/` on 2026-09-20, which removes that particular cause but not
+this failure mode, which any conflict produces. Before concluding that checks were lost, run:
 
 ```bash
 gh pr view <n> --json mergeable,mergeStateStatus

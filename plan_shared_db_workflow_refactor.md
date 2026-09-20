@@ -28,7 +28,7 @@ whose predecessor is unmet.
 
 | # | Step | Existing issue | Live status 2026-09-20 | State |
 |---|---|---|---|---|
-| 1 | **Task evidence collisions** — every PR writes the same two `.agent` files, so every merge conflicts every other open PR | #2708 | OPEN, active today | ⬜ open — **do this first** |
+| 1 | **Task evidence collisions** — every PR writes the same two `.agent` files, so every merge conflicts every other open PR | #2708 | CLOSED 2026-09-20 | ✅ **DONE** — evidence moved to `.agent/work/<issue>/<generation>/` |
 | 2 | **Global audit-artifact contention** — the throughput truth-audit count and digest are one file every concurrent PR must edit | #2832 | OPEN, 2026-09-17 | ⬜ open |
 | 3 | **Required-check truth** — a conflict-dirty PR starts no `pull_request` workflows and looks green; agents serialise CI and re-push per finding | #3002 | OPEN, active today | ⬜ open |
 | 4 | **Overly broad serialization** — narrow each lock to the object it actually protects; keep the one-at-a-time preview apply, guarded merge and production lane | #3002, #2832 | OPEN | ⬜ open |
@@ -44,15 +44,17 @@ Closed work that is a **reference, not work to repeat**: #3199 (self-service add
 hygiene, zero-touch wait chain) and #3027 (live acceptance proofs for Steps 1–4, 6, 7), both closed
 2026-09-18. Read them before re-proposing anything they already landed.
 
-## Why step 1 comes first
+## Why step 1 came first (it has now landed)
 
 Every merged PR in this repository carries its own `.agent/` evidence pair, and merging any one of
 them conflicts every other open PR that carries a pair. Two costs follow, and both were observed
 live on 2026-09-17: the treadmill of refreshing a branch purely to restore a file nothing read, and
 the failure mode now written into `AGENTS.md` §5.2-A — a conflict-dirty PR starts **no**
 `pull_request` workflows at all, so `gh pr checks` looks green while every merge-tree guard
-silently never ran. Step 1 removes the cause of both. Until it lands, every other step in this
-plan pays that tax on each of its own PRs, so ordering is not a preference here.
+silently never ran. Step 1 removed the cause of the first: as of 2026-09-20 evidence lives at
+`.agent/work/<issue>/<generation>/`, so unrelated pull requests no longer collide on it. The
+second cost — a conflict-dirty PR starting no `pull_request` workflows — is a property of any
+conflict, and is now written down in `AGENTS.md` §5.2-A.
 
 ## The safeguards that are explicitly NOT in scope
 

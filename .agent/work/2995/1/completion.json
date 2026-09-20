@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 2995,
+  "outcome": "ready-for-merge",
+  "pr": 3382,
+  "migration_versions": [
+    "20260920202755"
+  ],
+  "contract_ref": "refs/db-contracts/2995/1",
+  "contract_sha256": "1677ea762614aeadcff9e4294ca3f95827226a2a9559e6fed58bddd5fd7f7b74",
+  "head_sha": "b4f554c329d7956cd35b41fcbc2d9693a126e896",
+  "base_sha": "51b0591c7fe862158d3fde0d5d7933b43f6aac12",
+  "files_changed": [
+    "supabase/migrations/20260920202755_hts_rag_classification_jobs.sql",
+    "supabase/tests/hts_rag_classification_jobs_contract.sql"
+  ],
+  "db_reads": [
+    "table hts_rag.hts_rag_determinations",
+    "table hts_rag.hts_rag_debate_runs",
+    "table hts_rag.hts_rag_provider_responses"
+  ],
+  "db_writes": [
+    "table hts_rag.hts_rag_classification_jobs",
+    "index hts_rag.hts_rag_classification_jobs_status_idx",
+    "index hts_rag.hts_rag_classification_jobs_owner_idx",
+    "index hts_rag.hts_rag_classification_jobs_rfq_idx",
+    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_classification_jobs",
+    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_classification_jobs",
+    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_classification_jobs",
+    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_classification_jobs",
+    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_classification_jobs",
+    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_classification_jobs"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed; live-ledger check explicitly not run without live credentials",
+      "command": "bash scripts/check-sql.sh"
+    },
+    {
+      "exit_code": 0,
+      "evidence": "Actual HTS foundation/provenance/new migration applied; classification jobs and shared-schema contracts passed; deliberate immutable-input grant was detected then rolled back",
+      "command": "psql rollback tests on disposable PostgreSQL 18 port55995"
+    },
+    {
+      "exit_code": 0,
+      "evidence": "No dynamic markers; static migration needs no verification sidecar",
+      "command": "python scripts/check_production_verification_sidecars.py --scan-version 20260920202755"
+    }
+  ],
+  "assumptions_resolved": [
+    "Estimated cost is mutable as root approved; maximum attempts is immutable",
+    "Actual preview-generated types and sandbox connection proof follow governed deployment"
+  ],
+  "stop_conditions_hit": []
+}

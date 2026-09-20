@@ -7,7 +7,7 @@ import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migratio
 import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
 import { ENGINES } from './lib/orchestrator-routing.mjs'
-import { spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-migration-author-lanes.mjs'
@@ -8857,4 +8857,72 @@ test('issue 3182: REAL main command wires --rebind-claim-worktree with every ide
   const io=rebindIo(),args=['--rebind-claim-worktree','--issue','764','--claim-number','1056','--owner',rebindArgs.owner,'--branch',rebindArgs.branch,'--worktree',rebindArgs.worktree,'--target-worktree',rebindArgs.targetWorktree,'--pr','1047','--head-sha',rebindArgs.headSha]
   assert.equal(main(args,NOW,io),0)
   assert.equal(parseAuthorLease(io.issue.body,NOW).worktree,rebindArgs.targetWorktree)
+})
+
+// ISSUE #2678 -- A HEALTHY REVIEWER MUST NOT LOOK LIKE A BROKEN MACHINE.
+// On 2026-09-10 `ai-kimi` and `ai-muse` both refused governed reviews with
+// `doctor could not be run (exit 1) and named no check -- this is a LOCAL
+// dependency fault on this machine`. Neither was faulty: the wrapper exits 1
+// before any check line when its own `AI_<PROVIDER>_CALLER` is unset, because
+// credentialed execution never guesses its caller. These tests spawn a real
+// wrapper shim with exactly that behaviour, so the probe is proved end to end.
+import { unnamedDoctorFailure } from './manage-migration-author-lanes.mjs'
+
+const callerWrapperDir=()=>{
+  const dir=mkdtempSync(path.join(tmpdir(),'reviewer-caller-'))
+  const win=process.platform==='win32'
+  const file=path.join(dir,win?'ai-muse.cmd':'ai-muse')
+  writeFileSync(file,win
+    ?'@echo off\r\nif "%AI_MUSE_CALLER%"=="" (\r\n echo AI_MUSE_CALLER must be set explicitly to codex or claude; credentialed execution never guesses the caller 1>&2\r\n exit /b 1\r\n)\r\necho auth : OK\r\n'
+    :'#!/bin/sh\nif [ -z "$AI_MUSE_CALLER" ]; then\n  echo "AI_MUSE_CALLER must be set explicitly to codex or claude; credentialed execution never guesses the caller" >&2\n  exit 1\nfi\necho "auth : OK"\n')
+  if(!win)execFileSync('chmod',['755',file])
+  return dir
+}
+
+test('issue 2678: the doctor probe tells the wrapper who is calling, so a healthy reviewer passes',()=>{
+  const dir=callerWrapperDir(), PATH_KEY=Object.keys(process.env).find((k)=>k.toLowerCase()==='path')??'PATH'
+  const originalPath=process.env[PATH_KEY], originalCaller=process.env.AI_MUSE_CALLER, originalClaude=process.env.CLAUDECODE
+  try{
+    process.env[PATH_KEY]=`${dir}${path.delimiter}${originalPath}`
+    delete process.env.AI_MUSE_CALLER
+    process.env.CLAUDECODE='1'
+    // BEFORE THE FIX this probe spawned the wrapper with no caller variable, the
+    // wrapper refused, and the probe called a healthy reviewer a local fault.
+    const doctor=githubIo.reviewerDoctor('ai-muse')
+    assert.equal(doctor.ok,true,`doctor should pass with a detected caller; got ${JSON.stringify(doctor)}`)
+    assert.deepEqual(doctor.failingChecks,[])
+  }finally{
+    process.env[PATH_KEY]=originalPath
+    if(originalCaller===undefined)delete process.env.AI_MUSE_CALLER;else process.env.AI_MUSE_CALLER=originalCaller
+    if(originalClaude===undefined)delete process.env.CLAUDECODE;else process.env.CLAUDECODE=originalClaude
+    rmSync(dir,{recursive:true,force:true})
+  }
+})
+
+test('issue 2678: an explicitly exported caller is never overruled by detection',()=>{
+  const dir=callerWrapperDir(), PATH_KEY=Object.keys(process.env).find((k)=>k.toLowerCase()==='path')??'PATH'
+  const originalPath=process.env[PATH_KEY], originalCaller=process.env.AI_MUSE_CALLER
+  try{
+    process.env[PATH_KEY]=`${dir}${path.delimiter}${originalPath}`
+    process.env.AI_MUSE_CALLER='codex'
+    assert.equal(githubIo.reviewerDoctor('ai-muse').ok,true)
+  }finally{
+    process.env[PATH_KEY]=originalPath
+    if(originalCaller===undefined)delete process.env.AI_MUSE_CALLER;else process.env.AI_MUSE_CALLER=originalCaller
+    rmSync(dir,{recursive:true,force:true})
+  }
+})
+
+test('issue 2678: a doctor that names no check quotes the wrapper instead of blaming the machine',()=>{
+  const said='AI_MUSE_CALLER must be set explicitly to codex or claude; credentialed execution never guesses the caller'
+  const message=unnamedDoctorFailure('ai-muse',{status:1},`\n${said}\n`)
+  assert.match(message,/doctor could not be run \(exit 1\)/)
+  assert.match(message,/never guesses the caller/)
+  assert.doesNotMatch(message,/named no check/)
+  // Only when the wrapper truly said nothing does the old wording stand.
+  assert.match(unnamedDoctorFailure('ai-muse',{status:1},''),/named no check/)
+  // Wrapper diagnostics travel into refusals, so one line, length-capped.
+  const long=unnamedDoctorFailure('ai-muse',{status:1},'x'.repeat(900))
+  assert.equal(long.includes('\n'),false)
+  assert.ok(long.length<400,`refusal text should be capped; got ${long.length}`)
 })

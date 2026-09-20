@@ -11,6 +11,7 @@ import { lineOpensWithVerdictWord, isVerdictFor } from './lib/review-verdict.mjs
 import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
 // Issue #2729 Step 7: one lifecycle source of truth decides retry versus reroute.
 import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './orchestrator-flow/start-reroute.mjs'
+import { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
 
 export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['issue','pr','headSha','reviewer','wrapper','worktree','reviewSlot','replacementSequence','assignmentId','skipDoctor'])
 export function parseArgs(argv){
@@ -434,7 +435,16 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   // recorded is not started, so the watcher can never reroute a review that is running.
   if(typeof deps.recordStart!=='function')throw new Error('review start recorder is required; no reviewer was started')
   lifecycle.push(lifecycleEvent(deps,assignment,'review_started',{marker:deps.recordStart(options)}))
-  const run=deps.spawn(plan.file,plan.args,{cwd:options.worktree,env:{...process.env,AI_REVIEW_SOURCE_RECEIPT_FILE:receipt.path},encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','pipe']})
+  // Issue #2678: the wrapper is told WHO is calling it in the environment this
+  // runner spawns, not left to whatever an operator happened to export first. A
+  // programmatic caller of this function now gets the same environment the CLI does.
+  // `required:false`: the CLI path already refused up front, in
+  // `prepareGovernedReview`, when the caller could not be determined. Refusing a
+  // SECOND time here -- after the start marker is written and the reviewer is
+  // committed -- would turn an environment question into a started-but-failed
+  // review, so this only carries the caller through when there is one to carry.
+  const callerEnv=reviewCallerEnvironment(options.wrapper,process.env,{required:false})
+  const run=deps.spawn(plan.file,plan.args,{cwd:options.worktree,env:{...process.env,...callerEnv,AI_REVIEW_SOURCE_RECEIPT_FILE:receipt.path},encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','pipe']})
   let rawBody=String(run.stdout??'').trim()
   // Issue #2244: the codex wrapper's verdict lives in its published report, not on
   // standard output. Transcribe it into this runner's grammar BEFORE parsing, and
@@ -621,16 +631,12 @@ export function governedReviewDeps(env=process.env){
 }
 // #498 items 16-17 (popcre/ai-devops): refuse or repair paperwork faults BEFORE any
 // reviewer starts, so no review round is spent without a recordable verdict.
-export const REVIEW_CALLER_VARIABLES=Object.freeze({'ai-muse':'AI_MUSE_CALLER','ai-grok-review':'AI_GROK_CALLER','ai-glm':'AI_GLM_CALLER','ai-kimi':'AI_KIMI_CALLER','ai-qwen':'AI_QWEN_CALLER','ai-gemini':'AI_GEMINI_CALLER','ai-deepseek-agent':'AI_DEEPSEEK_CALLER','ai-codex-review':'AI_CODEX_REVIEW_CALLER'})
-export function reviewCallerEnvironment(wrapper,env=process.env){
-  const variable=REVIEW_CALLER_VARIABLES[wrapperBaseName(wrapper)]
-  if(!variable)return {}
-  const current=String(env[variable]??'').trim()
-  if(current)return {[variable]:current}
-  const detected=env.CLAUDECODE==='1'?'claude':(env.CODEX_THREAD_ID||env.CODEX_SANDBOX)?'codex':''
-  if(!detected)throw new Error(`${wrapperBaseName(wrapper)} needs ${variable} set to the assistant running this review, and it could not be detected. No reviewer was started. Rerun with ${variable}=claude (or codex) in the environment.`)
-  return {[variable]:detected}
-}
+// Issue #2678: the mapping and the caller decision now live in
+// `lib/reviewer-caller-env.mjs`, so the author-lane `doctor` probe answers to the
+// very same rule instead of spawning a credentialed wrapper with no caller at
+// all. Re-exported from here because callers and tests already import them from
+// this module.
+export { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment }
 export function readLivePullRequestHead(pr,github=readGitHub){
   const response=github(['api',`repos/${REPO}/pulls/${Number(pr)}`])
   if(response.error||response.status!==0)throw new Error(`could not read the live head of pull request #${Number(pr)}; no reviewer was started`)

@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3296,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3295/4",
-  "contract_sha256": "11db9cff4d5dd419d153bf12370758bef9f03352b457c5ff284b86a69613194d",
-  "head_sha": "0c8a64c4648c4341665f17d5cedea8b5e87931dd",
+  "contract_ref": "refs/db-contracts/3295/5",
+  "contract_sha256": "d25cd9a0863ea900fe8bf0f90261e94a73dc4e4ad104fb77d2f773e813cc3e4e",
+  "head_sha": "bdd29b1cf5dd5dcafd8bdd8a34ede4ed051418b6",
   "files_changed": [
     ".agent/completion.json",
     ".agent/contract.json",
@@ -28,7 +28,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Recovery re-ran both required suites after publication of generation 4 against merged current main: focused 42 and full 176 passed, 0 failed/skipped/cancelled.",
+    "Recovery re-ran both required suites after publication of generation 5 against merged current main: focused 42 and full 176 passed, 0 failed/skipped/cancelled.",
     "Implementation SQL still preserves atomic transaction, target checks, timeout and prior-raw fallback; no implementation changes during recovery.",
     "Original production investigation and cost comparison are historical evidence recorded by prior worker, not a new live measurement by this recovery.",
     "This completion reports offline repair validation only. A future scheduled-run result remains separate live proof."

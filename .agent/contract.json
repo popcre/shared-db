@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 3295,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Validate recovered ColdLion timeout repair against current main, preserving source repair, with fresh tests and truthful evidence. Prior production investigation remains historical evidence.",
-  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
   "dispatcher": "Codex non-orchestrator repository-maintenance session for issue #3295",
   "worker": "Codex chat 01a0bf3f-596f-7e20-be04-2d2d8eb12320 on 916-ALIEN (coldlion_recovery subagent)",
   "branch": "codex/3295-recovery-01a0bf00",

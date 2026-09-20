@@ -4,7 +4,7 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Recover candidate APIs: real caller reads, latest-complete OPA evidence, licensor-qualified scope metadata, private-text exclusion, and role-based regression proof",
-  "base_sha": "57269b19416ccca6c20a0053ed05e397b1bd0e19",
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
   "dispatcher": "Codex orchestrator chat 01a0bf00-fa7b-73d1-b447-fc4c89c50b96 on 916-alien",
   "worker": "Codex licensing_recovery; legacy Claude claim owner retained only for guarded recovery",
   "branch": "claude/issue-2357-licensing-candidate-apis",
@@ -62,5 +62,5 @@
     "Any additional claimed object needed requires parent scope expansion",
     "If invoker helper cannot preserve caller permissions and RLS redesign before release"
   ],
-  "generation": 5
+  "generation": 6
 }

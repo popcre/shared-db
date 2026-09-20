@@ -71,5 +71,6 @@
   ],
   "stop_conditions_hit": [
     "Generated api/plm types require parent-authorized preview stage; no generated artifact exists yet. No ready-for-merge or production-complete outcome asserted."
-  ]
+  ],
+  "reason": "Generated api/plm types need parent-authorized preview stage; this is an intermediate recovery evidence record, not merge authorization."
 }

@@ -1,51 +1,48 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "work_issue": 3305,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Accept only provenance-verified automatic-review companion artifacts without weakening preview evidence checks",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Codex orchestrator parent 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
+  "worker": "01a0bf43-3c49-7812-b4d9-b3cb6e89e1c1",
+  "branch": "codex/sku2478-recovery-audit-0920",
+  "worktree": "D:\\repos\\shared-db-worktrees\\sku2478-recovery-audit-0920",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database or production writes",
+    "Lane-manager edits only import and validateOriginalPreviewApplyEvidence artifact-selection block; tests only related fixtures",
+    "Do not weaken manifest or ledger evidence"
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
+    "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "Existing successful preview with automatic companion is reproducibly rejected",
+    "Current-main refresh d5285ef3 preserves implementation; 639 tests re-run successfully before final evidence binding",
+    "Refreshed onto70b0cad2 reviewer allowlist changes without overlapping selector code;673 tests passed"
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
-  ]
+    "Stop before overlapping another agent files"
+  ],
+  "generation": 5
 }

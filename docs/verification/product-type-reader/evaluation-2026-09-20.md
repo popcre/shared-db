@@ -126,4 +126,3 @@ None. Every accepted wording carries a reviewed gold label.
 | print in | 7 |
 | under glass | 7 |
 | wall decor | 7 |
-

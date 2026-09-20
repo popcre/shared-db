@@ -8,8 +8,10 @@
   ],
   "contract_ref": "refs/db-contracts/2662/17",
   "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
-  "head_sha": "38fe015daae7f69c0cde800f9776cef3316809a1",
+  "head_sha": "f4f6762650e0c13c582a5697df21a05530665933",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     ".github/live-proofs/2662.sql",
     "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
     "supabase/tests/app_serving_status_contracts.sql",
@@ -63,6 +65,11 @@
       "command": "python -m unittest scripts.test_shared_db_live_proof -q",
       "exit_code": 0,
       "evidence": "6 tests passed,0 failures; probe alias normalized to lowercase as required by committed probe contract. SQL semantics unchanged."
+    },
+    {
+      "command": "native refreshed readiness",
+      "exit_code": 0,
+      "evidence": "Exact-head carry validates two approvals/two assignments and unchanged implementation digest; current claim 3294 verified; collision guard clear; SQL static checks pass; risk classifier returns zero findings. No preview or production write."
     }
   ],
   "assumptions_resolved": [

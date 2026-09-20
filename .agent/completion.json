@@ -1,49 +1,38 @@
 {
   "schema_version": 1,
-  "work_issue": 3282,
+  "work_issue": 3299,
   "outcome": "ready-for-merge",
-  "pr": 3301,
-  "migration_versions": [
-    "20260920144819"
-  ],
-  "contract_ref": "refs/db-contracts/3282/1",
-  "contract_sha256": "c25e11e555fe76332221922b7e359ccd6cc25eaa3efaff364a15b5a8c79f9ecd",
-  "head_sha": "656ae5eb040e73f3979c9fb91f95e07523faab10",
+  "pr": 3293,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3299/1",
+  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
+  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
   "files_changed": [
-    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
-    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
+    ".github/live-proofs/2611.sql"
   ],
-  "db_reads": [
-    "table public.assets",
-    "table public.pdf_text_samples",
-    "function public.is_style_guide_source_pdf"
-  ],
-  "db_writes": [
-    "function public.claim_pdf_backfill_batch",
-    "function public.count_pdf_backfill_remaining",
-    "index public.idx_assets_licensing_pdf_backfill_candidates"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "checks": [
     {
-      "evidence": "git diff --check origin/main...HEAD exit0 at refreshed implementation656ae5eb.",
+      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+    },
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "exit_code": 0,
+      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+    },
+    {
       "command": "git diff --check",
-      "exit_code": 0
-    },
-    {
-      "evidence": "psql ON_ERROR_STOP=1, isolated local PostgreSQL18 port55482: BEGIN / DO / ROLLBACK pass. Covers eligible/deleted/completed/non-PDF rows, thumbnail flags, 0/1/negative/null limits, original query order and claim/count equivalence. Synthetic100000 rows with98 of100 candidates completed: index-only candidate scan; claim/count0.203-0.604ms. Not production timing proof. Refreshed branch suite rerun at b7eeddce on same isolated database: BEGIN DO ROLLBACK passes;656ae5eb changes only terminal blank line.",
-      "command": "PDF backfill SQL behavioral contracts",
-      "exit_code": 0
-    },
-    {
-      "evidence": "bash scripts/check-sql.sh exit0 after merge57269b19 at implementation b7eeddce. Static only; preview and production proof remain release gates.",
-      "command": "SQL migration guards",
-      "exit_code": 0
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main...HEAD passed after main integration"
     }
   ],
   "assumptions_resolved": [
-    "Production catalog read as supabase_read_only_user on qsllyeztdwjgirsysgai confirms immutable helper, enum type and unique pdf_text_samples.asset_id index.",
-    "u2giants/popdam3 is the verified application repository.",
-    "ready-for-merge is author handoff vocabulary; independent reviews, preview rehearsal and production proof are still mandatory and owned by orchestrator."
+    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
+    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
+    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
   ],
   "stop_conditions_hit": []
 }

@@ -1,53 +1,44 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3282,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Restore bounded PDF backfill claim and remaining-count without changing eligible rows or timeouts.",
+  "work_issue": 3299,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
   "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Codex orchestrator marker 3297",
-  "worker": "codex:pdf-3282-916",
-  "branch": "codex/issue-3282-pdf-claim-analysis",
-  "worktree": "D:/repos/worktrees/shared-db-3282-pdf-01a0bf00",
+  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
+  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
+  "branch": "codex/recover-prepack-proof-20260920",
+  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
   "allowed_paths": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
-    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
+    ".github/live-proofs/2611.sql"
   ],
   "file_writes": [
     ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260920144819_pdf_backfill_indexed_candidates.sql",
-    "supabase/tests/pdf_backfill_indexed_candidates_contracts.sql"
+    ".github/live-proofs/2611.sql"
   ],
-  "db_reads": [
-    "table public.assets",
-    "table public.pdf_text_samples",
-    "function public.is_style_guide_source_pdf"
-  ],
-  "db_writes": [
-    "function public.claim_pdf_backfill_batch",
-    "function public.count_pdf_backfill_remaining",
-    "index public.idx_assets_licensing_pdf_backfill_candidates"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No production writes, preview applies, or merges by author.",
-    "No timeout increase, data deletion, signature change, grant change, or eligibility change."
+    "No database write, migration, function, view, role, grant, index, or timeout change.",
+    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
+    "Do not merge PR #3293; the parent owns merge and outcome closure."
   ],
   "required_checks": [
-    "git diff --check",
-    "PDF backfill SQL behavioral contracts",
-    "SQL migration guards"
+    "python -m unittest scripts.test_shared_db_live_proof",
+    "node --test scripts/check-live-proof-probe.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Claim 3300 reserves version 20260920144819.",
-    "Production catalog confirms helper is immutable and file_type is public.file_type enum.",
-    "Application return repository is u2giants/popdam3, verified through GitHub."
+    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
+    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
+    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
   ],
   "stop_conditions": [
-    "Stop on scope or claim collision.",
-    "Stop if preview plan and timing fail to show bounded performance below existing eight second ceiling."
+    "Stop if the repair requires any database object or timeout change.",
+    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
   ]
 }

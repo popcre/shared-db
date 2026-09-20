@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 3290,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -37,9 +37,10 @@
     "No Phase B population without Albert acceptance"
   ],
   "required_checks": [
-    "Existing taxonomy tests pass",
-    "Product reader and evaluator regression tests pass",
-    "Full-catalog evaluation records honest coverage, wrong and unreadable counts"
+    "python -m pytest -q docs/verification/item-mg-reclassification-20260814",
+    "python -m pytest -q tools/product_type_reader/tests",
+    "python tools/product_type_reader/evaluate.py --catalog <export> --strict",
+    "node --test scripts/public-data-venue.test.mjs"
   ],
   "assumptions": [
     "Phase A source is complete coldlion.item_header catalog",

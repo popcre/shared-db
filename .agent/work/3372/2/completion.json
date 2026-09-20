@@ -9,6 +9,7 @@
   "head_sha": "e1a07f42f444b0bc49e7abe1aeaa58afa01933a0",
   "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
   "files_changed": [
+    ".agent/work/3372/2/contract.json",
     "AGENTS.md",
     "docs/disney-dcp-withdrawal-answer-routing.md"
   ],

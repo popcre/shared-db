@@ -1,38 +1,40 @@
 {
   "schema_version": 1,
-  "work_issue": 3299,
+  "work_issue": 3313,
   "outcome": "ready-for-merge",
-  "pr": 3293,
+  "pr": 3317,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3299/1",
-  "contract_sha256": "fa281599c14ffd85d9d727342054c2b08cc04c734894e583185e9378b489ef59",
-  "head_sha": "7e178c70667cd5cd7df698eb21616957381d333d",
+  "contract_ref": "refs/db-contracts/3313/1",
+  "contract_sha256": "c1dad4aadca3419f889fe41b0e6508abb5c4f1b0373595152b1a1607cb413584",
+  "head_sha": "fa33ff15ea0b789a9535d3cfd63688cf43ce940d",
   "files_changed": [
-    ".github/live-proofs/2611.sql"
+    "config/outcome-timestamp-recovery.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_shared_db_live_proof",
+      "evidence": "77passed0failed0skipped",
       "exit_code": 0,
-      "evidence": "6 passed 0 skipped after main integration at7e178c70"
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs"
     },
     {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "evidence": "609passed0failed0skipped",
       "exit_code": 0,
-      "evidence": "10 passed 0 failed 0 skipped after main integration at7e178c70"
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
     },
     {
-      "command": "git diff --check",
+      "evidence": "No whitespace errors",
       "exit_code": 0,
-      "evidence": "git diff --check origin/main...HEAD passed after main integration"
+      "command": "git diff --check"
     }
   ],
   "assumptions_resolved": [
-    "Recovered existing proof implementation unchanged; prospective contract3299/1 governs evidence rebind only.",
-    "Fresh six Python tests and ten probe tests passed; original production timing remains prior-session evidence.",
-    "Grant proof3191 verified via durable successful run35479619996; new proof2611 awaits merged main."
+    "Original2611 comments unchanged; configured read-only validator matched only exact dispatched716e9f6122866e84",
+    "Parent approved specific immutable incident recovery design before implementation"
   ],
   "stop_conditions_hit": []
 }

@@ -60,4 +60,4 @@ SELECT EXISTS (SELECT 1 FROM prepack_replay)
      WHERE has_table_privilege(roles.name, t.name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
    )
    AND has_table_privilege('service_role','coldlion.prepack_detail','SELECT')
-   AND has_table_privilege('service_role','coldlion.prod_detail','SELECT') AS passed;
+   AND has_table_privilege('service_role','coldlion.prod_detail','SELECT') as passed;

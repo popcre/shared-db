@@ -23,6 +23,7 @@ import {
   fetchAppliedVersions,
   guardClassifications,
   validatePendingClassifications,
+  LEDGER_PROJECT_REFS,
   PROJECT_REFS,
   sandboxInScopeVersions,
 } from './check-migration-ledger-drift.mjs'
@@ -424,11 +425,16 @@ test('a foreign-target classification with no reason is still REFUSED', () => {
 
 const DFLOW_BASE = '20260904143518'
 
-test('the sandbox is a known target with its own project ref', () => {
-  assert.equal(typeof PROJECT_REFS.sandbox, 'string')
-  assert.match(PROJECT_REFS.sandbox, /^[a-z]{20}$/)
-  assert.notEqual(PROJECT_REFS.sandbox, PROJECT_REFS.production)
-  assert.notEqual(PROJECT_REFS.sandbox, PROJECT_REFS.preview)
+test('the sandbox is a WATCHED ledger and NOT one of the shared projects', () => {
+  // It must stay out of PROJECT_REFS: guards such as check-applied-migration-edit
+  // iterate that map and apply their rule to every entry, so adding a consumer's
+  // own database there silently enrols it in questions that do not apply to it.
+  assert.equal(PROJECT_REFS.sandbox, undefined, 'the sandbox is not a shared project this repository owns')
+  assert.equal(typeof LEDGER_PROJECT_REFS.sandbox, 'string')
+  assert.match(LEDGER_PROJECT_REFS.sandbox, /^[a-z]{20}$/)
+  assert.notEqual(LEDGER_PROJECT_REFS.sandbox, PROJECT_REFS.production)
+  assert.notEqual(LEDGER_PROJECT_REFS.sandbox, PROJECT_REFS.preview)
+  for (const [name, ref] of Object.entries(PROJECT_REFS)) assert.equal(LEDGER_PROJECT_REFS[name], ref, `${name} must still be watched`)
 })
 
 test('sandbox scope REFUSES an empty ledger instead of inventing a baseline', () => {

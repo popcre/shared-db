@@ -2,12 +2,22 @@
 import { runGitHubCommand } from '../lib/github-transport.mjs'
 import { currentRepository } from '../lib/repository-identity.mjs'
 
+// THE TWO SHARED PROJECTS THIS REPOSITORY OWNS. Several guards iterate this map and
+// apply their rule to EVERY entry, so a database added here is silently enrolled in
+// all of them. Nothing may be added without checking every consumer first.
+export const PROJECT_REFS=Object.freeze({production:'qsllyeztdwjgirsysgai',preview:'mvpkijzfmfcxhnzqogzs'})
+
 // `sandbox` is the DesignFlow CONSOLIDATED NON-PRODUCTION Supabase project (issue #2986).
-// It is neither shared production nor the shared-db-schema-rehearsal preview branch. It is
+// It is neither shared production nor the shared-db-schema-rehearsal preview branch: it is
 // the database `sandbox-albert` reads, the one the DB_*_SANDBOX settings in GCP project
 // lithe-breaker-323913 point at. A project ref is not a credential; the read below still
 // needs SUPABASE_ACCESS_TOKEN and still runs the one constant SELECT.
-export const PROJECT_REFS=Object.freeze({production:'qsllyeztdwjgirsysgai',preview:'mvpkijzfmfcxhnzqogzs',sandbox:'xupnyeifmpsacrqahwwm'})
+//
+// It is DELIBERATELY kept out of `PROJECT_REFS` above. It is a ledger this repository
+// WATCHES, not a shared project it owns, and the guards that iterate `PROJECT_REFS` —
+// `check-applied-migration-edit.mjs` among them — ask questions about the shared
+// projects that have no meaning against a consumer's own database.
+export const LEDGER_PROJECT_REFS=Object.freeze({...PROJECT_REFS,sandbox:'xupnyeifmpsacrqahwwm'})
 export const APPLIED_VERSIONS_SQL='select version from supabase_migrations.schema_migrations order by version'
 export class Unknown extends Error {}
 

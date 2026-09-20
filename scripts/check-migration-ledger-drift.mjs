@@ -67,8 +67,8 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { APPLIED_VERSIONS_SQL, fetchAppliedVersions, PROJECT_REFS, Unknown } from './orchestrator-flow/read-preview-ledger.mjs'
-export { APPLIED_VERSIONS_SQL, fetchAppliedVersions, PROJECT_REFS, Unknown }
+import { APPLIED_VERSIONS_SQL, fetchAppliedVersions, LEDGER_PROJECT_REFS, PROJECT_REFS, Unknown } from './orchestrator-flow/read-preview-ledger.mjs'
+export { APPLIED_VERSIONS_SQL, fetchAppliedVersions, LEDGER_PROJECT_REFS, PROJECT_REFS, Unknown }
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -507,9 +507,11 @@ export const defaultIo = {
  * @throws {Unknown} whenever anything could not be determined.
  */
 export async function runDriftCheck({ target, baseRef = 'origin/main', io = defaultIo }) {
-  const projectRef = PROJECT_REFS[target]
+  // Every ledger this repository WATCHES, which is a superset of the shared projects
+  // it owns: the sandbox is watched here and nowhere else (issue #2986).
+  const projectRef = LEDGER_PROJECT_REFS[target]
   if (!projectRef) {
-    throw new Unknown(`unknown --target ${JSON.stringify(target)}; expected one of: ${Object.keys(PROJECT_REFS).join(', ')}`)
+    throw new Unknown(`unknown --target ${JSON.stringify(target)}; expected one of: ${Object.keys(LEDGER_PROJECT_REFS).join(', ')}`)
   }
 
   const files = await io.mainMigrationFiles(baseRef)

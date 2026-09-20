@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3321,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3001/1",
-  "contract_sha256": "d033327102902ca027cd52928ebed01b2ea5a74ff082c148930ac0668b7a9b8e",
+  "contract_ref": "refs/db-contracts/3001/2",
+  "contract_sha256": "949183071a25b45aa2c58e9896d0adaba1fdae8fb7839eaf92495773c4914ea8",
   "head_sha": "708c83118f66e06901f7d11462ea4d1a3a3fe9e1",
   "files_changed": [
     "scripts/check_pass2_routine_supersession.py",

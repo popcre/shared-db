@@ -77,3 +77,16 @@ test('immutable final record contradictions fail before stage acceptance', () =>
     { schema_version: 1, work_issue: 10, outcome: 'merged', pr: 99, merge_sha: 'd'.repeat(40), migration_versions: [] },
   ]) assert.equal(classifyDependency(declaration, state({ comments: [comment(event()), finalComment(record)] })).satisfied, false)
 })
+
+
+test('stage envelope rejects coercible fields and unknown assertions; verifier cannot rewrite the event', () => {
+  for (const field of ['repository', 'head_sha', 'merge_sha', 'evidence_digest']) {
+    const value = event(); value[field] = [value[field]]; value.event_id = stageEventKey(value)
+    assert.throws(() => validateStageEvent(value))
+  }
+  assert.throws(() => validateStageEvent(event({ accepted: true })), /unknown fields/)
+  const result = classifyDependency(declaration, state({ verifyStageEvidence: value => { value.pr = 100; return verified() } }))
+  assert.equal(result.satisfied, false)
+  assert.equal(classifyDependency(declaration, state({ verifyStageEvidence: () => Object.create(verified()) })).satisfied, false)
+  assert.equal(findStageEvents([comment(event()), comment(Object.fromEntries(Object.entries(event()).reverse()))]).length, 1)
+})

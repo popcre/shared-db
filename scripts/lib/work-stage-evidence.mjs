@@ -5,6 +5,7 @@ export const REQUIRED_STAGES = Object.freeze(['implementation-merged', 'database
 export const STAGE_FENCE = 'db-work-stage'
 const SHA = /^[0-9a-f]{40}$/
 const DIGEST = /^[0-9a-f]{64}$/
+const EVENT_FIELDS = Object.freeze(['schema_version', 'repository', 'work_issue', 'stage', 'pr', 'head_sha', 'merge_sha', 'evidence_digest', 'evidence_ref', 'event_id'])
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 
 export function stageEventKey(event) {
@@ -14,16 +15,17 @@ export function stageEventKey(event) {
 }
 
 export function validateStageEvent(event) {
-  if (!event || Array.isArray(event) || event.schema_version !== 1) throw new Error('stage event schema_version must be 1')
-  if (!REPOSITORY.test(event.repository ?? '')) throw new Error('stage event repository is required')
+  if (!event || typeof event !== 'object' || Array.isArray(event) || event.schema_version !== 1) throw new Error('stage event schema_version must be 1')
+  if (Object.keys(event).some(key => !EVENT_FIELDS.includes(key))) throw new Error('stage event has unknown fields')
+  if (typeof event.repository !== 'string' || !REPOSITORY.test(event.repository)) throw new Error('stage event repository is required')
   if (!Number.isSafeInteger(event.work_issue) || event.work_issue <= 0) throw new Error('stage event work_issue must be positive')
   if (!REQUIRED_STAGES.includes(event.stage) || event.stage === 'complete') throw new Error('stage event must name an intermediate required stage; complete uses the final record')
   if (!Number.isSafeInteger(event.pr) || event.pr <= 0) throw new Error('stage event pr must be positive')
-  for (const field of ['head_sha', 'merge_sha']) if (!SHA.test(event[field] ?? '')) throw new Error(`stage event ${field} must be an exact SHA`)
-  if (!DIGEST.test(event.evidence_digest ?? '')) throw new Error('stage event evidence_digest must be sha256')
+  for (const field of ['head_sha', 'merge_sha']) if (typeof event[field] !== 'string' || !SHA.test(event[field])) throw new Error(`stage event ${field} must be an exact SHA`)
+  if (typeof event.evidence_digest !== 'string' || !DIGEST.test(event.evidence_digest)) throw new Error('stage event evidence_digest must be sha256')
   if (typeof event.evidence_ref !== 'string' || !event.evidence_ref.trim()) throw new Error('stage event evidence_ref is required')
   if (event.event_id !== stageEventKey(event)) throw new Error('stage event id does not bind task, stage and evidence digest')
-  return event
+  return Object.freeze(event)
 }
 
 // Comments are transport, never proof. The trusted operator may publish an event,
@@ -37,7 +39,7 @@ export function findStageEvents(comments) {
     if (matches.length !== 1) throw new Error('a stage comment must contain exactly one event')
     const event = validateStageEvent(JSON.parse(matches[0][1]))
     const prior = events.get(event.event_id)
-    if (prior && JSON.stringify(prior) !== JSON.stringify(event)) throw new Error('conflicting stage event reuses an immutable event id')
+    if (prior && EVENT_FIELDS.some(field => prior[field] !== event[field])) throw new Error('conflicting stage event reuses an immutable event id')
     events.set(event.event_id, event)
   }
   return [...events.values()]
@@ -50,7 +52,7 @@ export function findStageEvents(comments) {
  * Missing verifier/checks never authorize readiness. No stage implies another.
  */
 export function verifyAcceptedStage({ issue, stage, repository, comments, verify }) {
-  if (!REPOSITORY.test(repository ?? '')) throw new Error('current repository identity is required')
+  if (typeof repository !== 'string' || !REPOSITORY.test(repository)) throw new Error('current repository identity is required')
   if (!REQUIRED_STAGES.includes(stage) || stage === 'complete') throw new Error('intermediate required stage is invalid')
   const events = findStageEvents(comments).filter(event => event.work_issue === issue && event.stage === stage)
   if (!events.length) return { satisfied: false, status: 'waiting', reason: `dependency #${issue} has no ${stage} event` }
@@ -62,7 +64,7 @@ export function verifyAcceptedStage({ issue, stage, repository, comments, verify
     const proof = verify(event)
     if (!proof || typeof proof.then === 'function') throw new Error('stage verifier must return completed evidence checks')
     const checks = ['repositoryMatches', 'issueLinked', 'prMerged', 'headMatches', 'mergeMatches', 'mergeInMain', 'evidenceDigestMatches', 'evidenceAuthorized', 'evidenceCurrent', 'notRevoked', 'stageAccepted']
-    for (const check of checks) if (proof[check] !== true) throw new Error(`stage evidence did not prove ${check}`)
+    for (const check of checks) if (!Object.hasOwn(proof, check) || proof[check] !== true) throw new Error(`stage evidence did not prove ${check}`)
   }
   return { satisfied: true, status: 'accepted-stage', reason: `dependency #${issue} verified ${stage}; issue closure is administrative`, events }
 }

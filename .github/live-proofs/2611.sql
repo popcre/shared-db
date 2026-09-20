@@ -7,14 +7,18 @@
 --      (docs/verification/prepack-exclusion-20260911.md) appears in the view,
 --      while at least one of them is still in plm.item and classified as a head,
 --      so the exclusion is shown to bite rather than to pass on absent rows
-with heads(item_number) as (
-  values ('AA814DYCR01'), ('AAH62NBEX01'), ('AAH62WBLB01'), ('VF122FKFK01'),
-         ('VF122FKFK02'), ('VF122FKFK03'), ('VFS22FKFK01')
-), v as (
+with v as (
   select c.oid
   from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'plm' and c.relname = 'item_missing_attribution' and c.relkind = 'v'
+), head_items as materialized (
+  select i.item_number, i.raw
+  from plm.item i
+  where i.item_number = any (array[
+    'AA814DYCR01', 'AAH62NBEX01', 'AAH62WBLB01', 'VF122FKFK01',
+    'VF122FKFK02', 'VF122FKFK03', 'VFS22FKFK01'
+  ]::text[])
 )
 select (
   exists (select 1 from supabase_migrations.schema_migrations where version = '20260917081048')
@@ -23,10 +27,15 @@ select (
   and (select bool_and(pg_get_viewdef(oid) like '%prepack_role%') from v)
   and (select bool_and(not has_table_privilege('anon', oid, 'SELECT')) from v)
   and not exists (
-    select 1 from plm.item_missing_attribution m join heads h on h.item_number = m.item_number
+    select 1
+    from plm.item_missing_attribution m
+    where m.item_number = any (array[
+      'AA814DYCR01', 'AAH62NBEX01', 'AAH62WBLB01', 'VF122FKFK01',
+      'VF122FKFK02', 'VF122FKFK03', 'VFS22FKFK01'
+    ]::text[])
   )
   and exists (
-    select 1 from plm.item i join heads h on h.item_number = i.item_number
+    select 1 from head_items i
     where plm.prepack_role(i.item_number, i.raw ->> 'companyCode', i.raw ->> 'divisionCode') = 'head'
   )
 ) as passed

@@ -193,6 +193,13 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": ".github/workflows/reviewer-start-watch.yml:147",
+      "semantic_key": ".github/workflows/reviewer-start-watch.yml:5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d:1",
+      "line_sha256": "5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d",
+      "disposition": "excluded",
+      "reason": "Workflow-local guard (#3271): when the watcher pass wrote no pass.json, the step writes an error object so the summary and relay still report a failed pass. It is a statement about a CI scratch file, not about any database object, so no truth enrichment applies."
+    },
+    {
       "site": ".github/workflows/shared-supabase-migrations.yml:272",
       "semantic_key": ".github/workflows/shared-supabase-migrations.yml:12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca:1",
       "line_sha256": "12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca",
@@ -298,11 +305,25 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": ".github/workflows/tools-offline-tests.yml:118",
+      "semantic_key": ".github/workflows/tools-offline-tests.yml:c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56:1",
+      "line_sha256": "c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56",
+      "disposition": "excluded",
+      "reason": "CI presence check for the queue hygiene report test file (#3199 Phase A3). The word \"Missing\" here reports an absent TEST FILE in the workflow checkout, not an absent database object, so it carries no truth claim about catalog state and must never be enriched."
+    },
+    {
       "site": ".github/workflows/tools-offline-tests.yml:134",
       "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:1",
       "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
       "disposition": "excluded",
       "reason": "CI presence check for the self-service lane boundary and route-sync tests (#3199 Phase B). The word \"Missing\" reports an absent TEST FILE in the workflow checkout, not an absent database object; excluded exactly like its freshness-gate and hygiene-report twins."
+    },
+    {
+      "site": ".github/workflows/tools-offline-tests.yml:148",
+      "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:2",
+      "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
+      "disposition": "excluded",
+      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
     },
     {
       "site": "scripts/agent-work-contract.mjs:83",
@@ -368,13 +389,6 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
-      "site": "scripts/benchmark_popsg_search_v2_production.py:14",
-      "semantic_key": "scripts/benchmark_popsg_search_v2_production.py:692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc:1",
-      "line_sha256": "692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc",
-      "disposition": "excluded",
-      "reason": "Synthetic disposable benchmark fixture uses the missing preview-state enum as an input; it makes no claim that a live schema object or source capture is absent."
-    },
-    {
       "site": "scripts/benchmark_popsg_search_v2.py:13",
       "semantic_key": "scripts/benchmark_popsg_search_v2.py:692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc:1",
       "line_sha256": "692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc",
@@ -382,30 +396,16 @@
       "reason": "Synthetic search filter value missing denotes an unavailable thumbnail, not a claim about missing catalog objects or migration evidence."
     },
     {
+      "site": "scripts/benchmark_popsg_search_v2_production.py:14",
+      "semantic_key": "scripts/benchmark_popsg_search_v2_production.py:692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc:1",
+      "line_sha256": "692d1cb0b25417625966fe67514c6f9b6cc2bfc81de7d878a6fe0cca7fdb1ddc",
+      "disposition": "excluded",
+      "reason": "Synthetic disposable benchmark fixture uses the missing preview-state enum as an input; it makes no claim that a live schema object or source capture is absent."
+    },
+    {
       "site": "scripts/catalog-truth.mjs:14",
       "semantic_key": "scripts/catalog-truth.mjs:dc299927710ce668393c11ef50b43a3ef9cf60d8b0e73d1eca1e4db32dc0f3aa:1",
       "line_sha256": "dc299927710ce668393c11ef50b43a3ef9cf60d8b0e73d1eca1e4db32dc0f3aa",
-      "disposition": "enriched",
-      "reason": "This call site reports independent evidence and preserves the existing refusal exit."
-    },
-    {
-      "site": "scripts/check_pass2_routine_supersession.py:23",
-      "semantic_key": "scripts/check_pass2_routine_supersession.py:655746e0ec9435b21a9fabc5c13612aec794fdeb6a242417787ccffd8a9e3198:1",
-      "line_sha256": "655746e0ec9435b21a9fabc5c13612aec794fdeb6a242417787ccffd8a9e3198",
-      "disposition": "excluded",
-      "reason": "Explanatory docstring prose describing why a contract test reports a function missing its intended grants; it is narrative documentation, not a code path that diagnoses or reports a missing object."
-    },
-    {
-      "site": "scripts/check_production_verification_sidecars.py:61",
-      "semantic_key": "scripts/check_production_verification_sidecars.py:6e494c651ced298d5cee9dbaae0bbdf9c4b0fbf8e72e5f9669e9bd6e7626b876:1",
-      "line_sha256": "6e494c651ced298d5cee9dbaae0bbdf9c4b0fbf8e72e5f9669e9bd6e7626b876",
-      "disposition": "enriched",
-      "reason": "This call site reports independent evidence and preserves the existing refusal exit."
-    },
-    {
-      "site": "scripts/check_production_verification_sidecars.py:53",
-      "semantic_key": "scripts/check_production_verification_sidecars.py:e47fc51b7d39934fc8bf83e0788a61943d78d1174ad1dd72357cc9f5e75b2b97:1",
-      "line_sha256": "e47fc51b7d39934fc8bf83e0788a61943d78d1174ad1dd72357cc9f5e75b2b97",
       "disposition": "enriched",
       "reason": "This call site reports independent evidence and preserves the existing refusal exit."
     },
@@ -753,32 +753,32 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "site": "scripts/check_pass2_routine_supersession.py:23",
+      "semantic_key": "scripts/check_pass2_routine_supersession.py:655746e0ec9435b21a9fabc5c13612aec794fdeb6a242417787ccffd8a9e3198:1",
+      "line_sha256": "655746e0ec9435b21a9fabc5c13612aec794fdeb6a242417787ccffd8a9e3198",
+      "disposition": "excluded",
+      "reason": "Explanatory docstring prose describing why a contract test reports a function missing its intended grants; it is narrative documentation, not a code path that diagnoses or reports a missing object."
+    },
+    {
+      "site": "scripts/check_production_verification_sidecars.py:61",
+      "semantic_key": "scripts/check_production_verification_sidecars.py:6e494c651ced298d5cee9dbaae0bbdf9c4b0fbf8e72e5f9669e9bd6e7626b876:1",
+      "line_sha256": "6e494c651ced298d5cee9dbaae0bbdf9c4b0fbf8e72e5f9669e9bd6e7626b876",
+      "disposition": "enriched",
+      "reason": "This call site reports independent evidence and preserves the existing refusal exit."
+    },
+    {
+      "site": "scripts/check_production_verification_sidecars.py:53",
+      "semantic_key": "scripts/check_production_verification_sidecars.py:e47fc51b7d39934fc8bf83e0788a61943d78d1174ad1dd72357cc9f5e75b2b97:1",
+      "line_sha256": "e47fc51b7d39934fc8bf83e0788a61943d78d1174ad1dd72357cc9f5e75b2b97",
+      "disposition": "enriched",
+      "reason": "This call site reports independent evidence and preserves the existing refusal exit."
+    },
+    {
       "site": "scripts/experiment_611_db_push_atomicity.sh:140",
       "semantic_key": "scripts/experiment_611_db_push_atomicity.sh:03d91ac66d438482ddacf7ed63810b052889ef9fd2027e0574afd2cf824bc75d:1",
       "line_sha256": "03d91ac66d438482ddacf7ed63810b052889ef9fd2027e0574afd2cf824bc75d",
       "disposition": "excluded",
       "reason": "This discovered shell guard keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/historical_preview_recovery.py:122",
-      "semantic_key": "scripts/historical_preview_recovery.py:059ddfaa9bc2681385b08bedcb8d7c3bfe65d383d595dd4bf8dfea21a4b52a85:1",
-      "line_sha256": "059ddfaa9bc2681385b08bedcb8d7c3bfe65d383d595dd4bf8dfea21a4b52a85",
-      "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/historical_preview_recovery.py:102",
-      "semantic_key": "scripts/historical_preview_recovery.py:7d0f0f7443e657f961669221c2e509194c130623d3b565bd3ca45e55e180a3b3:1",
-      "line_sha256": "7d0f0f7443e657f961669221c2e509194c130623d3b565bd3ca45e55e180a3b3",
-      "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/historical_preview_recovery.py:31",
-      "semantic_key": "scripts/historical_preview_recovery.py:cc5fe0d1f54bb8415b7b1592e5806f9f343c1ee0adb24fb5da8ce0a61579b227:1",
-      "line_sha256": "cc5fe0d1f54bb8415b7b1592e5806f9f343c1ee0adb24fb5da8ce0a61579b227",
-      "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
       "site": "scripts/historical-item-mg-reclassification/build-manifest.mjs:47",
@@ -835,6 +835,27 @@
       "line_sha256": "e8b31e35869f65ef1cb3e8da8b78f22a118d7640948fd1b3ecadea22555031e9",
       "disposition": "excluded",
       "reason": "This line reports a read-only post-apply verification failure for the reclassification executor; it describes a live database row or function that is absent and makes no throughput derivability claim."
+    },
+    {
+      "site": "scripts/historical_preview_recovery.py:122",
+      "semantic_key": "scripts/historical_preview_recovery.py:059ddfaa9bc2681385b08bedcb8d7c3bfe65d383d595dd4bf8dfea21a4b52a85:1",
+      "line_sha256": "059ddfaa9bc2681385b08bedcb8d7c3bfe65d383d595dd4bf8dfea21a4b52a85",
+      "disposition": "excluded",
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+    },
+    {
+      "site": "scripts/historical_preview_recovery.py:102",
+      "semantic_key": "scripts/historical_preview_recovery.py:7d0f0f7443e657f961669221c2e509194c130623d3b565bd3ca45e55e180a3b3:1",
+      "line_sha256": "7d0f0f7443e657f961669221c2e509194c130623d3b565bd3ca45e55e180a3b3",
+      "disposition": "excluded",
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+    },
+    {
+      "site": "scripts/historical_preview_recovery.py:31",
+      "semantic_key": "scripts/historical_preview_recovery.py:cc5fe0d1f54bb8415b7b1592e5806f9f343c1ee0adb24fb5da8ce0a61579b227:1",
+      "line_sha256": "cc5fe0d1f54bb8415b7b1592e5806f9f343c1ee0adb24fb5da8ce0a61579b227",
+      "disposition": "excluded",
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
       "site": "scripts/import-order-list-xlsx.py:2006",
@@ -1045,6 +1066,13 @@
       "line_sha256": "a3035e88f0dd1717b214c9b0742c1efb752dda15ff0a8d6aed632ed9c44eb66b",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+    },
+    {
+      "site": "scripts/manage-migration-author-lanes.mjs:1381",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c:1",
+      "line_sha256": "a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c",
+      "disposition": "excluded",
+      "reason": "Parses the literal \"<sha> missing\" line that git cat-file --batch prints for an absent object; the SHA is hydrated by fetch or the read throws. It says nothing about migration or database-object state."
     },
     {
       "site": "scripts/manage-migration-author-lanes.mjs:2302",
@@ -2062,6 +2090,14 @@
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
     },
     {
+      "source": "scripts/run-governed-review.mjs",
+      "site": "scripts/run-governed-review.mjs:690",
+      "semantic_key": "scripts/run-governed-review.mjs:a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428:1",
+      "line_sha256": "a94750588b1ca95c97d6ba47f5de511d5321380b02fdf8d2f5f15f15ac95a428",
+      "disposition": "excluded",
+      "reason": "Prose in an explanatory comment. The word 'missing' appears in the phrase 'the missing-prompt case', describing why equals-form prompt arguments are handled in the injection loop (issue #2998, governed review of PR #3338). It asserts nothing about a database object or migration being missing, and changes no behavior."
+    },
+    {
       "site": "scripts/run-governed-review.mjs:151",
       "semantic_key": "scripts/run-governed-review.mjs:adc27317ab55f760c19af233e4abe0dcc73f007cc7e3057b83464ff32c845932:1",
       "line_sha256": "adc27317ab55f760c19af233e4abe0dcc73f007cc7e3057b83464ff32c845932",
@@ -2102,6 +2138,13 @@
       "line_sha256": "e21af329f52876332f4c8e4d45f269e64cd222871049fbd9e5f5270509eec255",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+    },
+    {
+      "site": "scripts/test-fixtures/github-wire-fake.mjs:80",
+      "semantic_key": "scripts/test-fixtures/github-wire-fake.mjs:ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4:1",
+      "line_sha256": "ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4",
+      "disposition": "excluded",
+      "reason": "Test fixture that emits the literal \"<sha> missing\" line of the git cat-file --batch protocol for unknown commits; no migration or database-object state is described."
     },
     {
       "site": "scripts/throughput-guard/ledger-lib.mjs:13",
@@ -2151,42 +2194,8 @@
       "line_sha256": "c306e35745386b717b583be41a182e378d17ce899e352842a4d0cfbae51ccc3c",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
-    },
-    {
-      "site": "scripts/manage-migration-author-lanes.mjs:1381",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c:1",
-      "line_sha256": "a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c",
-      "disposition": "excluded",
-      "reason": "Parses the literal \"<sha> missing\" line that git cat-file --batch prints for an absent object; the SHA is hydrated by fetch or the read throws. It says nothing about migration or database-object state."
-    },
-    {
-      "site": "scripts/test-fixtures/github-wire-fake.mjs:80",
-      "semantic_key": "scripts/test-fixtures/github-wire-fake.mjs:ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4:1",
-      "line_sha256": "ec548c3c520dc3669076737706221eeba420a67191ae21779cbaed543a1dc4e4",
-      "disposition": "excluded",
-      "reason": "Test fixture that emits the literal \"<sha> missing\" line of the git cat-file --batch protocol for unknown commits; no migration or database-object state is described."
-    },
-    {
-      "site": ".github/workflows/tools-offline-tests.yml:118",
-      "semantic_key": ".github/workflows/tools-offline-tests.yml:c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56:1",
-      "line_sha256": "c22603525ed4d2630a06407de00fca17ad8fb56e69673a6a493bcad40d89ac56",
-      "disposition": "excluded",
-      "reason": "CI presence check for the queue hygiene report test file (#3199 Phase A3). The word \"Missing\" here reports an absent TEST FILE in the workflow checkout, not an absent database object, so it carries no truth claim about catalog state and must never be enriched."
-    },
-    {
-      "site": ".github/workflows/tools-offline-tests.yml:148",
-      "semantic_key": ".github/workflows/tools-offline-tests.yml:d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8:2",
-      "line_sha256": "d5a626c2543aa053b14be20e283e895a018d584a660c4bcc07828a13d9cb74c8",
-      "disposition": "excluded",
-      "reason": "Issue #2342: a presence check that refuses when a transport test file is absent, so the conformance step cannot pass by silently running nothing. It reports a missing FILE, not a missing database object, and derives no throughput claim."
-    },
-    {
-      "site": ".github/workflows/reviewer-start-watch.yml:147",
-      "semantic_key": ".github/workflows/reviewer-start-watch.yml:5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d:1",
-      "line_sha256": "5b1a8f45ec173737602ee8a2c2491cf721d2a3dd9a69240a43f9db7822471a8d",
-      "disposition": "excluded",
-      "reason": "Workflow-local guard (#3271): when the watcher pass wrote no pass.json, the step writes an error object so the summary and relay still report a failed pass. It is a statement about a CI scratch file, not about any database object, so no truth enrichment applies."
     }
   ],
-  "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review."
+  "disposition": "Every discovered site has an explicit reviewed disposition bound to its source-line content; line movement alone does not require regeneration, while a content change requires review.",
+  "call_site_count": 311
 }

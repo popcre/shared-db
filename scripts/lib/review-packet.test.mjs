@@ -59,3 +59,20 @@ test('brief storage is create-only and private; empty brief refuses', () => {
   assert.deepEqual(saved[2], { flag: 'wx', mode: 0o600 })
   assert.throws(() => storeReviewBrief(' '), /empty/)
 })
+test('huge context and incomplete pagination refuse instead of dropping prior refusals', () => {
+  assert.throws(() => buildReviewBrief({ ...fixture, comments: [{ body: 'x'.repeat(1024 * 1024), html_url: 'https://github.com/example' }] }), /no evidence was truncated/)
+  assert.throws(() => loadReviewBrief(options, source, { github: args => args[1].includes('page=') ? { status: 0, stdout: JSON.stringify(Array.from({ length: 100 }, () => ({ body: 'finding', html_url: 'https://github.com/example' }))) } : github(args) }), /bounded read/)
+})
+test('complete evidence cannot hide a missing ordinary-provider terminal adapter', () => {
+  assert.throws(() => prepareCompleteReviewBrief({ ...options, wrapperArgs: ['new', 'review'] }, source, { github }), /no terminal VERDICT instruction/)
+})
+test('prompt-file and equals forms preserve author evidence and receive all assessment classes', () => {
+  for (const args of [['new', 'review', '--prompt-file', 'author.md'], ['new', 'review', '--prompt-file=author.md'], ['new', 'review', '--prompt=author evidence']]) {
+    let stored
+    const io = { readFile: () => 'author evidence', tempDir: () => 'temp', writeFile: (_path, text) => { stored = text } }
+    const result = prepareCompleteReviewBrief({ ...options, wrapperArgs: args }, source, { github, files: io, store: text => { stored = text; return 'brief.md' } })
+    assert.ok(result.wrapperArgs.some(x => x.startsWith('--prompt-file')))
+    for (const [title] of REVIEW_ASSESSMENTS) assert.ok(stored.includes(title))
+    assert.match(stored, /author evidence/)
+  }
+})

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "generation": 10,
+  "work_issue": 2876,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Repair the post-apply catalog verifier row-count query so PostgreSQL orders composite rows by their name field instead of applying a JSON operator to a record, while preserving full catalog verification.",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
+  "dispatcher": "Repository-maintenance session resolving open non-orchestrator issues",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/issue-2876-row-order-2e3c24d5",
+  "worktree": "D:/repos/shared-db-worktrees/issue-2876-row-order-2e3c24d5",
+  "allowed_paths": [
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2876/10/contract.json",
+    ".agent/work/2876/10/completion.json"
+  ],
+  "file_writes": [
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2876/10/contract.json",
+    ".agent/work/2876/10/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database read or write.",
+    "No migration, preview, production dispatch, or workflow replay.",
+    "No weakening, skipping, or replacing any catalog verification or enforcement path.",
+    "No write outside the verifier, its regression test, the reviewed detector-hash baseline, and the evidence pair."
+  ],
+  "required_checks": [
+    "failing regression for the SQLSTATE 42883 composite-record query shape",
+    "full production catalog-verification test suite",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
+    "ai-task-gates check --before review",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The derived-table alias x is a PostgreSQL composite record, so deterministic ordering must use x.name rather than x->>'name'.",
+    "The reviewed detector baseline pins the verifier's exact bytes, so repairing the verifier requires regenerating that hash in the same change."
+  ],
+  "stop_conditions": [
+    "Stop if the repair requires any database access or workflow replay.",
+    "Stop if full catalog verification cannot be preserved."
+  ]
+}

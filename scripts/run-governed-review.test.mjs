@@ -851,3 +851,34 @@ test('review start marker is recorded before the provider spawns, and a failed r
   assert.deepEqual(order,[])
   assert.throws(()=>reviewStartedRef({issue:1,pr:2,headSha:'short'},1),/exact issue/)
 })
+
+// ISSUE #2998 item 1 + ISSUE #2923: the brief, checked before a reviewer draw.
+import { PROBE_REVIEW_CHECKLIST } from './run-governed-review.mjs'
+test('#2998-1 a promptless handoff refuses before a draw; #2923 the probe checklist is front-loaded',()=>{
+  const live='a'.repeat(40)
+  const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
+  const written={}
+  const files=(text)=>({readFile:()=>text,writeFile:(p,t)=>{written[p]=t},tempDir:()=>'T'})
+
+  // #2998 item 1. Wrapper args carrying NEITHER --prompt NOR --prompt-file got no
+  // injection at all, so the reviewer was sent a prompt with no terminal VERDICT line
+  // and the approval was unrecordable. That now refuses before the draw.
+  assert.throws(
+    ()=>prepareGovernedReview({pr:2998,wrapper:'ai-muse',wrapperArgs:['new','s1']},{env:{CLAUDECODE:'1'},github,files:files('x')}),
+    /carries no terminal VERDICT instruction.*neither --prompt nor --prompt-file.*No reviewer was started/s)
+  assert.throws(
+    ()=>promptHeadContract(['send','--prompt'],live),
+    /carries no terminal VERDICT instruction/)
+
+  // #2923. A single round must be asked for all three probe classes up front.
+  const prepared=prepareGovernedReview({pr:2923,wrapper:'ai-muse',wrapperArgs:['new','s1','--prompt-file','brief.md']},{env:{CLAUDECODE:'1'},github,files:files('Review it.')})
+  const body=written[prepared.options.wrapperArgs[3]]
+  assert.ok(body.startsWith('Review it.'))
+  for(const cue of [/\bindex\b/i,/volatilit/i,/IMMUTABLE/,/STABLE/,/VOLATILE/,/[Ee]xact object/])assert.match(body,cue)
+  assert.ok(body.includes(PROBE_REVIEW_CHECKLIST.trim().split('\n')[0]))
+  // The checklist is additive and the verdict contract still terminates the brief.
+  assert.match(body,/report everything else\s*\nyou would normally raise as well; this list is a floor, never a ceiling/i)
+  assert.ok(body.trimEnd().endsWith(`VERDICT: APPROVE ${live} | VERDICT: REVISE ${live} | VERDICT: REJECT ${live}`))
+  // An inline --prompt carries the same checklist.
+  assert.match(promptHeadContract(['send','--prompt','go'],live)[2],/volatilit/i)
+})

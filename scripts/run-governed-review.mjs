@@ -640,10 +640,41 @@ export function readLivePullRequestHead(pr,github=readGitHub){
   if(!/^[0-9a-f]{40}$/.test(head))throw new Error(`pull request #${Number(pr)} has no valid live head; no reviewer was started`)
   return head
 }
+// ISSUE #2923 -- the reviewer brief, not the reviewer, was the throughput problem.
+//
+// Observed 2026-09-14 on the #2922 live-proof probe: each governed review round
+// surfaced exactly ONE more gap, so a small read-only probe needed three rounds. Grok
+// returned REVISE twice for loose index / function-volatility / exact-object checks in
+// the probe SQL -- each fixed, each re-reviewed. Grok was not broken; the brief never
+// said those were things to check, so they could only be found one at a time.
+//
+// Front-loading the checklist makes one round find all three classes of gap instead of
+// one per round. This ADDS to what a reviewer must check. It removes nothing, makes
+// nothing optional, and lowers no bar -- the reviewer still reaches their own verdict
+// and REVISE/REJECT still mean exactly what they meant before. Fewer rounds here comes
+// from asking for everything up front, never from asking for less.
+export const PROBE_REVIEW_CHECKLIST = `
+Check all of the following in this single round, and report every gap you find at once.
+Do not stop at the first problem -- a partial list costs another full review round.
+
+1. Index usage. Does every predicate and join the change relies on have an index that
+   actually serves it? Call out loose or unused index assumptions explicitly, including
+   an index that exists but cannot be used as written.
+2. Function volatility. Is every function's volatility marker (IMMUTABLE / STABLE /
+   VOLATILE) correct for what its body actually does? A body that reads tables is not
+   IMMUTABLE; a marker looser than the body is a correctness bug, not a style note.
+3. Exact object checks. Does the change assert the exact objects it depends on --
+   schema, table, view, function signature, column -- rather than inferring existence?
+   A check that a name merely exists is not a check that the right object exists.
+
+These three are mandatory and additional to your normal review. Report everything else
+you would normally raise as well; this list is a floor, never a ceiling.
+`
 export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={}){
   const list=[...wrapperArgs]
+  let carried=false
   const instruction=`
-
+${PROBE_REVIEW_CHECKLIST}
 Authoritative pull request head (injected by the governed review runner): ${head}
 Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVISE ${head} | VERDICT: REJECT ${head}
 `
@@ -656,9 +687,25 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
   for(let i=0;i<list.length;i++){
     if(list[i]==='--prompt-file'&&i+1<list.length){
       const text=readFile(list[i+1]);stale(text)
-      const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i+1]=copy;i++
-    }else if(list[i]==='--prompt'&&i+1<list.length){stale(list[i+1]);list[i+1]=`${list[i+1]}${instruction}`;i++}
+      const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i+1]=copy;i++;carried=true
+    }else if(list[i]==='--prompt'&&i+1<list.length){stale(list[i+1]);list[i+1]=`${list[i+1]}${instruction}`;i++;carried=true}
   }
+  // ISSUE #2998 item 1 -- validate the terminal VERDICT instruction BEFORE a reviewer
+  // draw is consumed.
+  //
+  // Observed: an approval was given TWICE and could not be recorded either time,
+  // because the prompt that was actually sent never carried the terminal VERDICT line.
+  // The reviewer did the work, said yes, and the verdict was unrecordable. Two draws
+  // spent for zero recorded verdicts.
+  //
+  // The injection loop above only rewrites `--prompt` / `--prompt-file`. If the wrapper
+  // args carry NEITHER, nothing is injected and the contract silently rides on a prompt
+  // that does not exist -- which is precisely the observed failure. This refuses that
+  // handoff here, before anything irreversible, instead of discovering it afterwards.
+  //
+  // This makes no verdict optional and weakens no gate: it turns a silent, unrecordable
+  // review into a named refusal with no reviewer started and no capacity spent.
+  if(!carried)throw new Error('the outbound reviewer prompt carries no terminal VERDICT instruction, because the wrapper arguments contain neither --prompt nor --prompt-file. No reviewer was started and no reviewer capacity was spent. A reviewer sent a prompt without the terminal "VERDICT: <DECISION> <head>" line can approve the work and still leave nothing recordable. Pass the brief with --prompt or --prompt-file so the runner can bind it to the live head.')
   return list
 }
 export function prepareGovernedReview(options,{env=process.env,github=readGitHub,files}={}){

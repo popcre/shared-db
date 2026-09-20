@@ -8697,3 +8697,55 @@ test('issue 3182: REAL main command wires --rebind-claim-worktree with every ide
   assert.equal(main(args,NOW,io),0)
   assert.equal(parseAuthorLease(io.issue.body,NOW).worktree,rebindArgs.targetWorktree)
 })
+
+// ISSUE #2998 item 3 — READINESS IS ASSERTED BEFORE THE DRAW, NOT AFTER IT.
+//
+// Observed: a merge was declined twice with no reason given; the real cause was that
+// the PR was still a DRAFT, and two reviewer draws were spent discovering it. This
+// drives the real CLI branch, exactly as the #2102 guard above does, because a guard
+// that no test drives can be deleted from the CLI without failing CI.
+//
+// It also proves the guard REFUSES rather than approves: the draw must never be
+// reached, and a refusal is never recorded as a verdict.
+import { assertReviewerDrawReadiness } from './manage-migration-author-lanes.mjs'
+function readinessRun(pr){
+  let drew=false
+  const io={
+    pullRequestFiles(){return [{filename:'supabase/migrations/20260920000000_x.sql'}]},
+    getPr(){return pr},
+    listIssues(){drew=true;throw new Error('the reviewer draw must not be reached')}
+  }
+  const errors=[],original=console.error
+  console.error=(message)=>errors.push(String(message))
+  let code
+  try{code=main(['--assign-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40)],NOW,io)}
+  finally{console.error=original}
+  return {code,stderr:errors.join('\n'),drew}
+}
+
+test('#2998-3 a DRAFT pull request refuses before any reviewer draw is consumed',()=>{
+  const refused=readinessRun({draft:true,mergeable:true,state:'open'})
+  assert.equal(refused.code,2)
+  assert.match(refused.stderr,/still a DRAFT/)
+  assert.match(refused.stderr,/no reviewer was drawn and no reviewer capacity was spent/)
+  assert.equal(refused.drew,false)
+  // The refusal is a refusal. It never reads as an approval or a recorded verdict.
+  assert.ok(!/APPROVE|VERDICT/.test(refused.stderr))
+})
+
+test('#2998-3 a conflicted pull request refuses, and unknown mergeability still proceeds',()=>{
+  const conflicted=readinessRun({draft:false,mergeable:false,state:'open'})
+  assert.equal(conflicted.code,2)
+  assert.match(conflicted.stderr,/conflicts with its base branch/)
+  assert.equal(conflicted.drew,false)
+  // GitHub computes `mergeable` asynchronously. A null must NOT refuse — otherwise a
+  // timing race becomes a false refusal. It proceeds to the draw exactly as before,
+  // and the guarded merge lane still refuses a real conflict later.
+  assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:null})}),{draft:false,mergeable:null})
+  // A ready, mergeable PR is cleared.
+  assert.deepEqual(assertReviewerDrawReadiness(1,{getPr:()=>({draft:false,mergeable:true})}),{draft:false,mergeable:true})
+  // An unreadable PR proceeds exactly as before: a transport fault is never silently
+  // converted into a reviewer refusal.
+  assert.equal(assertReviewerDrawReadiness(1,{getPr:()=>{throw new Error('boom')}}),null)
+  assert.equal(assertReviewerDrawReadiness(1,{}),null)
+})

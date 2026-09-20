@@ -17,6 +17,11 @@
       "exit_code": 0,
       "evidence": "Production target qsllyeztdwjgirsysgai verified before each SELECT. Original passed=true; absent prepack witness passed=false; absent production-detail witness passed=false. No database writes.",
       "command": "Read-only live probe with false controls"
+    },
+    {
+      "evidence": "truth audit OK: call_sites=310 sources=69 derived_digest=df45b8e61f6a; no companion disposition required for this SQL probe or its targeted test",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0
     }
   ],
   "db_writes": [],
@@ -29,6 +34,6 @@
   ],
   "pr": 3303,
   "migration_versions": [],
-  "head_sha": "2dbc0a3b9c2dbefd5e22371db93b12542db0e659",
+  "head_sha": "e6a6e7be7fe1089182301b987ee754b539e8803a",
   "outcome": "ready-for-merge"
 }

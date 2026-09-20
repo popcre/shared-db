@@ -960,24 +960,19 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    claimed the exclusion existed, and it never did. Promotions are serialised
    among themselves by the workflow `concurrency` group, not by this lock.
 
-   **Every pull request enters through that guarded merge lane, including
-   documentation-only and other non-migration changes.** A pull request that
-   changes no migration needs no migration-author claim, but the lease workflow
-   does not auto-authorize it: the guarded merge still proves the exact head,
-   current-main relationship, collision result, and governed review while it
-   holds the merge lock.
+   **Code and executable instructions use the guarded merge lane.** A change with
+   no migration needs no migration-author claim; its applicable exact-head review,
+   current-main relationship and collision protections remain enforced.
 
-   **One exemption, 2026-09-02 (#2102): a documents-only pull request draws no
-   database reviewer, and the merge gate requires no verdict for it.** It still
-   enters this same lane and still runs every other check; only the external
-   reviewer draw is skipped, because PR #2034 and PR #2070 spent migration
-   reviewer capacity on prose. Rulebook files — `AGENTS.md`, anything under
-   `.claude/skills/` or `skills/`, and `plan_*.md` — are **not** documents for
-   this purpose, and one non-document file of any kind removes the exemption from
-   the whole pull request. The classifier is
-   `scripts/lib/documents-only-change.mjs`; it fails closed on an empty,
-   unreadable or absent file list, and a refusal already recorded at the exact
-   head still blocks the merge.
+   **Documentation-only changes use the lightweight route** (owner ruling
+   2026-09-20), including standalone `plan_*.md` files. Prove the complete change
+   with the base-owned classifier in `scripts/lib/documents-only-change.mjs`;
+   empty, unreadable or incomplete inventory cannot qualify. Full engineering
+   CI and external reviewer waits are not required. `AGENTS.md`, `CLAUDE.md`,
+   skill/agent/command instructions and any mixed executable change retain
+   engineering protection. The existing narrow link-only routing-pointer
+   classifier does not exempt behavior-changing instructions. Exact-head
+   refusals remain binding. See the current workflow for the route map.
 
    When production acquires its lock, the production
    workflow revokes every open pull request's earlier merge authorization before

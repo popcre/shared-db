@@ -1,44 +1,41 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3299,
+  "work_issue": 3331,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Repair the #2611 production live-proof query plan so its seven recorded prepack heads are filtered before expensive function evaluation, without weakening any metadata, exclusion, or positive catch-control assertion.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Parent orchestrator authorized prospective recovery of PR3293; preserve prior implementation history",
-  "worker": "Codex chat 01a0bf3e-3a02-7242-bd2c-07007f1994e9 on 916-ALIEN",
-  "branch": "codex/recover-prepack-proof-20260920",
-  "worktree": "D:/repos/worktrees/shared-db-prepack-proof-20260920",
+  "goal": "Stop scripts/orchestrator-snapshot.test.mjs asserting the pre-transfer OWNER association: derive the trusted fixture association from expectedOperatorAssociation() so the five tests that went red after the popcre transfer (#2530, bf0744f6) pass again without weakening the login check they exist to prove.",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "dispatcher": "Albert Hazan, owner chat authorization: resolve through to production all open non-orchestrator GitHub Issues in this repo, resolve any and all blockers yourself",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/3331-snapshot-fixture-association",
+  "worktree": "D:/repos/shared-db-worktrees/verify-3081-3048-a7f2c1",
   "allowed_paths": [
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    ".agent/completion.json"
   ],
   "file_writes": [
+    "scripts/orchestrator-snapshot.test.mjs",
     ".agent/contract.json",
-    ".agent/completion.json",
-    ".github/live-proofs/2611.sql"
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database write, migration, function, view, role, grant, index, or timeout change.",
-    "Do not remove or weaken any original #2611 proof assertion, identifier, or catch control.",
-    "Do not merge PR #3293; the parent owns merge and outcome closure."
+    "No database read or write of any kind",
+    "No migration file change",
+    "No production command or workflow dispatch",
+    "No change to production trust logic in scripts/lib/repository-identity.mjs"
   ],
   "required_checks": [
-    "python -m unittest scripts.test_shared_db_live_proof",
-    "node --test scripts/check-live-proof-probe.test.mjs",
-    "git diff --check"
+    "node --test scripts/orchestrator-snapshot.test.mjs",
+    "node --test scripts/lib/repository-identity.test.mjs"
   ],
   "assumptions": [
-    "Existing proof SQL was authored before this recovery contract under issue2611 generation11. This prospective contract governs evidence rebinding and validation, not retroactive authorship.",
-    "Production grant proof3191 verified in successful run35479619996; no grant repeat authorized.",
-    "Original ordinary Muse approval applies old head592c26b and requires new governed exact-head review after evidence update."
+    "Production trust is correct: u2giants is MEMBER on popcre/shared-db, verified live against repos/popcre/shared-db/issues/3081/comments"
   ],
   "stop_conditions": [
-    "Stop if the repair requires any database object or timeout change.",
-    "Stop if any of the seven identifiers or either data catch control cannot be preserved."
+    "Stop if the repair would need a change to production trust logic rather than the test fixture"
   ]
 }

@@ -8,6 +8,8 @@
   "contract_sha256": "51fc2a580e37e2f23f7b3b0c58ce5507f99848dcbb5815cb34362549768373cc",
   "head_sha": "c76b13c2106a38ed93bf3c7925dcdf74d042a0c7",
   "files_changed": [
+    ".agent/work/3342/2/completion.json",
+    ".agent/work/3342/2/contract.json",
     ".github/workflows/shared-db-2870-observation.yml",
     "docs/verification/throughput-dispositions/scripts~proofs~shared-db-2870-observation.mjs.json",
     "scripts/proofs/2870-catalog.sql",

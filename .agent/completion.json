@@ -10,12 +10,12 @@
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "2 passed; zero failed, skipped, cancelled or todo. Additional live-proof guard suite: 10 passed.",
+      "evidence": "Fresh run after faed5557 integration: focused proof tests 2 passed and live-proof guard tests 10 passed; zero failed, skipped, cancelled or todo.",
       "command": "node --test scripts/issue-2863-live-proof.test.mjs"
     },
     {
       "exit_code": 0,
-      "evidence": "Freshly reverified after integrating f1fef457: target qsllyeztdwjgirsysgai, identity supabase_read_only_user, transaction_read_only on; actual probe true, absent-prepack control false, absent-prod control false. No writes.",
+      "evidence": "Parent orchestrator freshly verified in this session: production read-only actual probe true, absent-prepack control false, absent-prod control false; source SQL byte-identical to prior verified proof. No writes.",
       "command": "Read-only live probe with false controls"
     },
     {
@@ -32,7 +32,7 @@
   ],
   "pr": 3303,
   "migration_versions": [],
-  "head_sha": "3e2d3aaac95f0e92c0c241a3c3886542656bc334",
+  "head_sha": "d7d46bf6b0456d18b4eed3f48f4e9f3eee22c7f9",
   "outcome": "ready-for-merge",
-  "base_sha": "f1fef4575edb0b27575dd0a20838384e1cf66db0"
+  "base_sha": "faed5557befa7d0ae3318e7406ad3774fce56aa2"
 }

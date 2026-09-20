@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "work_issue": 3290,
+  "outcome": "ready-for-merge",
+  "pr": 3332,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3290/8",
+  "contract_sha256": "3f00945bed421c20ddf4b09cd5f2689307830938f0f278d90a76dc0b6e02622d",
+  "head_sha": "812d84edf54087952b67d562f0f03d96b4f51d5f",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "docs/verification/item-mg-reclassification-20260814/test_hierarchical_item_taxonomy.py",
+    "docs/verification/product-type-reader/README.md",
+    "docs/verification/product-type-reader/evaluation-2026-09-20.md",
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs",
+    "tools/product_type_reader/README.md",
+    "tools/product_type_reader/__init__.py",
+    "tools/product_type_reader/evaluate.py",
+    "tools/product_type_reader/gold/coverage.py",
+    "tools/product_type_reader/gold/labels.csv",
+    "tools/product_type_reader/normalization.py",
+    "tools/product_type_reader/reader.py",
+    "tools/product_type_reader/rules.py",
+    "tools/product_type_reader/tests/__init__.py",
+    "tools/product_type_reader/tests/fixtures/descriptions.csv",
+    "tools/product_type_reader/tests/test_determinism.py",
+    "tools/product_type_reader/tests/test_reader.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python -m pytest -q docs/verification/item-mg-reclassification-20260814",
+      "exit_code": 0,
+      "evidence": "39 passed: the pre-existing taxonomy tests stay green; one construction label updated with its reason recorded in the test"
+    },
+    {
+      "command": "python -m pytest -q tools/product_type_reader/tests",
+      "exit_code": 0,
+      "evidence": "61 passed, 1000 subtests passed across the reader tests and the 39 pre-existing taxonomy tests"
+    },
+    {
+      "command": "python tools/product_type_reader/evaluate.py --catalog <export> --strict",
+      "exit_code": 0,
+      "evidence": "total=18731 accepted=16468 unreadable=1601 placeholder=662 correct=16468 wrong=0 uncovered=0 ambiguous=6003 (one reviewed ambiguous-by-design wording)"
+    },
+    {
+      "command": "node --test scripts/public-data-venue.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 passed, 0 failed with the two reader CSVs allowed by name"
+    }
+  ],
+  "notes": [
+    "Phase A only. No database write, no schema change, no migration: the seven plm.item columns this reader fills already landed through orchestrator issue #3036 (PR #3108, migration 20260916231639), so no structural work was required or authored here.",
+    "The full-catalog evaluation read production coldlion.item_header through a session forced read only, under AGENTS.md 0.0-A. The export stayed in the session scratchpad and no catalog row is committed.",
+    "Owner acceptance (plan step 5) remains open on #3024; Phase B must not start before it."
+  ],
+  "assumptions_resolved": [
+    "Phase A source is the complete coldlion.item_header catalog: 18,731 non-null descriptions were read on 2026-09-20 and every one was evaluated.",
+    "Only small owner-authorized fixtures are public: the 48 regression fixtures carry real product wording with neutral licensor and property placeholders, and a test fails if a licensor or property name ever appears in them or in the gold labels.",
+    "Generation 1 named a Codex worker and branch codex/product-reader-01a0bc30: that branch was never pushed and none of its allowed paths existed on main, so nothing was overwritten.",
+    "The live catalog read was read-only inspection under AGENTS.md 0.0-A; the export stayed in the session scratchpad.",
+    "No database schema change was required: the seven plm.item columns already exist from orchestrator issue #3036.",
+    "The first governed review (Muse Spark 1.3 Contributor) returned REVISE; every finding was fixed as a class, with a test that fails if the material-named-construction class regrows.",
+    "The second governed review returned REVISE; every finding was answered as a class, and the strict gate now refuses unreviewed wording ambiguity.",
+    "PR #3323 moved agent evidence to generation-keyed paths; this pair now lives at .agent/work/3290/8/ and the legacy fixed pair is left exactly as main has it."
+  ],
+  "stop_conditions_hit": []
+}

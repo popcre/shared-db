@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "generation": 8,
+  "work_issue": 3290,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement Phase A product reader, independently evaluated against full catalog; no database writes; retain owner acceptance gate on #3024.",
+  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
+  "dispatcher": "Albert Hazan chat request: resolve through to production all open non-orchestrator GitHub issues in this repo",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/3290-product-reader-2e3c24d5",
+  "worktree": "D:/repos/shared-db-worktrees/3290-product-reader-2e3c24d5",
+  "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "tools/product_type_reader/**",
+    "docs/verification/product-type-reader/**",
+    "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs",
+    "docs/verification/item-mg-reclassification-20260814/test_hierarchical_item_taxonomy.py"
+  ],
+  "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "tools/product_type_reader/**",
+    "docs/verification/product-type-reader/**",
+    "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "plan_product_type_reader.md",
+    "scripts/public-data-venue.test.mjs",
+    "docs/verification/item-mg-reclassification-20260814/test_hierarchical_item_taxonomy.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database writes or schema changes",
+    "No historical MG learning",
+    "No raw catalog exports in public repository",
+    "No Phase B population without Albert acceptance"
+  ],
+  "required_checks": [
+    "python -m pytest -q docs/verification/item-mg-reclassification-20260814",
+    "python -m pytest -q tools/product_type_reader/tests",
+    "python tools/product_type_reader/evaluate.py --catalog <export> --strict",
+    "node --test scripts/public-data-venue.test.mjs"
+  ],
+  "assumptions": [
+    "Phase A source is complete coldlion.item_header catalog",
+    "Owner-authorized small fixtures only may be public",
+    "Generation 1 of this contract was published by a Codex worker whose branch codex/product-reader-01a0bc30 was never pushed and whose allowed paths are untouched on main; this generation rebinds the same scope to the session that did the work",
+    "Read-only live catalog acquisition is separate private-evidence work in u2giants/licensor-source-data; this contract covers public code and aggregate reports only",
+    "The full-catalog evaluation read production coldlion.item_header with a read-only session under AGENTS.md 0.0-A (inspection, no issue or dispatch required); the export stayed in the session scratchpad and no catalog row is committed",
+    "The public data venue guard allows the two reader CSVs by name; a new test in tools/product_type_reader/tests/test_reader.py fails if a licensor or property name ever appears in them, so the allowance cannot silently widen",
+    "The governed review required exhausting the material-named-construction class; that renamed one legacy construction label (Anti-Fatigue PVC to Anti-Fatigue), so the pre-existing consolidation test asserts the corrected label while still asserting consolidation",
+    "Generation 6 re-publishes the same scope so the contract and completion evidence land in one commit, as the git-evidence check requires.",
+    "Second governed review returned REVISE; every finding answered as a class, including an allowlist-shaped public-venue backstop and a strict gate that refuses unreviewed wording ambiguity.",
+    "Generation 8 re-publishes the same scope so contract and completion land in one commit after the main merge, as the git-evidence check requires."
+  ],
+  "stop_conditions": [
+    "Any unreviewed gold label prevents accuracy acceptance",
+    "Any independent review refusal must be repaired",
+    "Missing live source access prevents full-catalog proof",
+    "Any need for a database schema change stops for the orchestrator"
+  ]
+}

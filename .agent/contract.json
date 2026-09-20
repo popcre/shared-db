@@ -37,10 +37,11 @@
     "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "Existing successful preview with automatic companion is reproducibly rejected"
+    "Existing successful preview with automatic companion is reproducibly rejected",
+    "Current-main refresh d5285ef3 preserves implementation; 639 tests re-run successfully before final evidence binding"
   ],
   "stop_conditions": [
     "Stop before overlapping another agent files"
   ],
-  "generation": 3
+  "generation": 4
 }

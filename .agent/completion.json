@@ -1,36 +1,82 @@
 {
   "schema_version": 1,
-  "work_issue": 3305,
+  "work_issue": 2662,
   "outcome": "ready-for-merge",
-  "pr": 3308,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3305/8",
-  "contract_sha256": "ce60ceaf53e6c6df21a375a1a86d8c6585bd1dc0c92d45888d28d9ee95346702",
-  "head_sha": "4534892bac8f71153f8757259b870146f9641565",
-  "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
-    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs"
+  "pr": 3304,
+  "migration_versions": [
+    "20260920005114"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2662/17",
+  "contract_sha256": "36d7e293706d2afd7f10f0c437dce01ae92fb83edf3b2fa4be62a08c527886e1",
+  "head_sha": "54dfddf7bb21e6df0e036a6eb711fda426c9cf0b",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260920005114_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog information_schema.role_table_grants"
+  ],
+  "db_writes": [
+    "view api.crm_factory_picker_list",
+    "view api.opa_disney_property",
+    "view api.opa_lucasfilm_property",
+    "view api.opa_marvel_property",
+    "view api.pm_factory_list",
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
+      "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "tests 30 pass 30 fail 0 cancelled 0 skipped 0 todo 0 on 916-alien at implementation head 4534892bac8f71153f8757259b870146f9641565"
+      "evidence": "git diff --check origin/main...HEAD passed after integration of faed5557befa7d0ae3318e7406ad3774fce56aa2."
     },
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "tests 643 pass 643 fail 0 cancelled 0 skipped 0 todo 0 on 916-alien at implementation head 4534892bac8f71153f8757259b870146f9641565"
+      "evidence": "Static SQL guards rerun successfully after integration of faed5557; script executed from an LF-normalized temporary sibling for Windows CRLF compatibility. Live-ledger guard was not configured; this proves static checks only."
+    },
+    {
+      "command": "supabase/tests against an ephemeral database",
+      "exit_code": 0,
+      "evidence": "GitHub run35518490787 at849d1e0b018e075a38e46bce3d8137a3a77f3c71 succeeded:190 passed,0 unquarantined failed,1 quarantine passed,12 existing quarantine failures. All6 changed/added test files explicitly PASS. Main integration6910a070 changed none of these tested migration/test files; incoming proof2611 change is separate."
+    },
+    {
+      "command": "psql local isolated PostgreSQL18 six-view fixture",
+      "exit_code": 0,
+      "evidence": "42 authenticated denials,6 service reads,4 unchanged browser controls pass. Snapshot exact delta is6 removed authenticated SELECT grants; no added grants, view definition/owner/options changes. Live probe returns true."
+    },
+    {
+      "command": "python -m unittest scripts.test_shared_db_live_proof -q",
+      "exit_code": 0,
+      "evidence": "6 tests passed,0 failures; probe alias normalized to lowercase as required by committed probe contract. SQL semantics unchanged."
     }
   ],
   "assumptions_resolved": [
-    "Authentic run35228140178 reproduced artifact-count refusal; selector now selects correct artifact10499394912",
-    "Parent explicitly authorized isolated integration hunk; reviewer code unchanged"
+    "Parent rebind preserved old owner/version/locks and unseen remote work; supported expansion added only parser aliases for six catalog views.",
+    "Current production24h logs zero6-name hits in845279 entries; positive controls23582 plm_item_list/845153 REST requests.",
+    "Local CRM/DAM/PIM/DesignFlow source searches found no six-view consumers; Data Admin has moved into DAM.",
+    "Preview and production reserved migration version absent before authorship.",
+    "Source inventory exact function remains SECURITY DEFINER; existing authenticated RPC behavior test passes unchanged.",
+    "Scope is bounded six-view subset only. Broader issue2662 findings remain open; parent owns review,preview,merge,production.",
+    "Issue2662 is now explicitly bounded to these six views; original broader findings retained in owned successors3327/3328/3329 and2326. PR3304 closes only this bounded outcome. Current-main70b0cad2 integrated reviewer parser repair; SQL migration and six tests remain byte-identical to hosted passing run35518490787.",
+    "Refresh 2026-09-20: integration of faed5557 changes no migration, test SQL, or live probe bytes versus approved 4a76f2db. Hosted and local database evidence above is historical, not rerun; hosted CI will run on the refreshed PR head. Existing authentic approvals require native content-preserving carry-forward validation."
   ],
   "stop_conditions_hit": [],
-  "base_sha": "f1fef4575edb0b27575dd0a20838384e1cf66db0"
+  "base_sha": "faed5557befa7d0ae3318e7406ad3774fce56aa2"
 }

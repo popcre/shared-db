@@ -1,51 +1,46 @@
 {
   "schema_version": 1,
   "generation": 1,
-  "work_issue": 3291,
+  "work_issue": 2549,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Separate the workflow dispatch identity from the applied checkout identity in validateOriginalPreviewApplyEvidence, so a supported merged-main rehearsal dispatched from a later main than the merged commit it checked out is no longer rejected, while every other refusal is preserved.",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/2549-2781-evidence-identity",
+  "worktree": "D:/repos/shared-db-worktrees/evidence-identity-2549-2781",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
     ".agent/contract.json",
-    ".agent/completion.json"
+    ".agent/completion.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No migration, database read or write, schema, role, grant, or production command.",
+    "Do not weaken the artifact producer check, the source pull request and merge-commit binding, the digest, content manifest, or exact ledger-delta checks.",
+    "No hardcoded issue #2509 exception, waiver, or synthetic provenance.",
+    "Do not accept an applied checkout that is not proven to lie between the merge commit and the dispatch head."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "GitHub run.head_sha identifies the commit a workflow_dispatch was started from; the preview instance binding's appliedCommit identifies the commit the run checked out and applied, and the artifact is named for that checkout.",
+    "An unavailable or non-lineal commit comparison must answer 'not proven', so a caller without io.compareCommits keeps the existing same-commit behaviour only.",
+    "Issue #2781 is already delivered on main by merged PR #2780; this contract covers issue #2549 only."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if the supported merged-main tuple cannot be expressed without relaxing source-PR or merge-commit provenance.",
+    "Stop if any existing positive or negative preview-evidence regression changes verdict."
   ]
 }

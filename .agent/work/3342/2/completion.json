@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 3342,
+  "outcome": "ready-for-merge",
+  "pr": 3345,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3342/2",
+  "contract_sha256": "51fc2a580e37e2f23f7b3b0c58ce5507f99848dcbb5815cb34362549768373cc",
+  "head_sha": "32d0fc3906139605d6d117328edba92429439f1a",
+  "files_changed": [
+    ".github/workflows/shared-db-2870-observation.yml",
+    "docs/verification/throughput-dispositions/scripts~proofs~shared-db-2870-observation.mjs.json",
+    "scripts/proofs/2870-catalog.sql",
+    "scripts/proofs/2870-contract.json",
+    "scripts/proofs/shared-db-2870-observation.mjs",
+    "scripts/proofs/shared-db-2870-observation.test.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "Current integrated audit passed:311 call sites,70 sources, derived digest c2c6af243778.",
+      "exit_code": 0,
+      "command": "node scripts/check-throughput-truth-audit.mjs"
+    },
+    {
+      "evidence": "Combined audit and producer test execution passed28 tests,0 failures,0 skipped; integrated tests2026-09-20.",
+      "exit_code": 0,
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+    },
+    {
+      "evidence": "Combined audit and producer test execution passed28 tests,0 failures,0 skipped;12 producer tests included.",
+      "exit_code": 0,
+      "command": "node --test scripts/proofs/shared-db-2870-observation.test.mjs"
+    },
+    {
+      "evidence": "Actual governed Muse follow-up APPROVE32d0fc3906139605d6d117328edba92429439f1a, sequence3433, durable refs/db-review-verdicts/3342-3345-32d0fc3906139605d6d117328edba92429439f1a commit8c7f3d83d81ee99fba2d94d4dc2f0c68eef318ae. No findings. Source-only review; no live queries.",
+      "exit_code": 0,
+      "command": "Independent exact-head review"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation2 prospective contract published before its two source correction edits; original producer source was prospectively covered by generation1.",
+    "Four producer Git blobs remain equal to backend PR102 pins at0fa7647524042fdda47be7078b14b409173e3908; no backend source changed.",
+    "Production audit checker and frozen historical aggregate unchanged against current main. Regression retains missing/stale refusal for additions, changes and removals.",
+    "Legacy root evidence restored exactly to main; only keyed3342 generation2 evidence pair is changed.",
+    "No live database queries/writes, secret provisioning, dispatch or lifecycle acceptance. Root owns central merge/live acceptance; Uma owns backend merge."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05"
+}

@@ -1,33 +1,71 @@
 {
   "schema_version": 1,
-  "work_issue": 3261,
-  "outcome": "ready-for-merge",
-  "pr": 3258,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3261/1",
-  "contract_sha256": "e25d24d9b6b87b38332beab0dca9a467e68f121263fd669772eb9c75a2b238f9",
-  "head_sha": "ae53f8eca1d385fa02e048514c001343c7831404",
-  "files_changed": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "AGENTS.md"
+  "work_issue": 2357,
+  "outcome": "failed",
+  "pr": 2835,
+  "migration_versions": [
+    "20260917090439"
   ],
-  "db_reads": [],
-  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2357/4",
+  "contract_sha256": "72e32c8a8725dffc3e3ea193fce6ba5e4c8ddc2bb2160da0ee5cc70e157d9fc6",
+  "head_sha": "6c53b51ba0a4385de19cde2f119d83a2fce52401",
+  "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
+    ".github/live-proofs/2357.sql",
+    "supabase/migrations/20260917090439_licensing_candidate_and_review_apis.sql",
+    "supabase/tests/licensing_candidate_and_review_apis.sql"
+  ],
+  "db_reads": [
+    "table plm.source_resolution",
+    "table plm.licensing_relationship_resolution",
+    "table plm.licensing_source_scope",
+    "table plm.opa_capture",
+    "table plm.opa_property_character_capture"
+  ],
+  "db_writes": [
+    "view api.licensing_entity_candidates",
+    "view api.licensing_relationship_candidates",
+    "view api.licensing_resolution_queue",
+    "table api.licensing_entity_candidates",
+    "table api.licensing_relationship_candidates",
+    "function plm.licensing_opa_observation_count"
+  ],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
-      "exit_code": 0,
-      "evidence": "Recovered current-main implementation ae53f8eca1d385fa02e048514c001343c7831404: 609 tests passed, 0 failed, 0 cancelled, 0 skipped, 0 todo."
+      "evidence": "PostgreSQL18 localhost55457: real browser, anon, service reads; latest-complete selection; licensor-grain and scope isolation; private text; root and observation RLS; overflow and genuine-zero controls passed. Local baseline uses actual source table definitions with minimal canonical reference scaffolding; full-history replay remains CI.",
+      "command": "Focused SQL contracts in isolated local PostgreSQL",
+      "exit_code": 0
     },
     {
-      "command": "node --test scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/repair-voided-findings.test.mjs scripts/refresh-code-pr-branch.test.mjs",
-      "exit_code": 0,
-      "evidence": "Recovered current-main implementation ae53f8eca1d385fa02e048514c001343c7831404: 113 tests passed, 0 failed, 0 cancelled, 0 skipped, 0 todo."
+      "evidence": "Backdated migration20260917090439 precedes main maximum20260918180012. Awaiting parent guarded version supersession; no bypass.",
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 1
+    },
+    {
+      "evidence": "Live-proof probe present .github/live-proofs/2357.sql; SQL returns passed=true on local throwaway database.",
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Expected-count guard passed.",
+      "command": "node scripts/check-expected-count-patterns.mjs",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Verify-cost guard passed.",
+      "command": "node scripts/check-migration-verify-cost.mjs",
+      "exit_code": 0
     }
   ],
   "assumptions_resolved": [
-    "PR #3247 merged (2026-09-18T14:51:07Z) and this branch rebased cleanly onto merged main; no stop condition fired — the same-file collision was resolved by that merge, not by weakening anything here. Later main movement (reviewer-start-watch and reroute-budget work) touched none of this branch's three files."
+    "Preview and production target-verified ledgers lack both old versions; production lacks all3 views/helper.",
+    "No old scalar Style Guide inference assertion remains in current OPA test; existing file untouched.",
+    "No shared database write or credential disclosure occurred."
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [
+    "Parent controls sanctioned supersession of backdated reserved version before full SQL gate can pass.",
+    "Generated api/plm types require parent-authorized preview stage and existing Generate database types workflow; not yet generated.",
+    "No external exact-head review or live browser acceptance claimed."
+  ]
 }

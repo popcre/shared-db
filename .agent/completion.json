@@ -6,8 +6,10 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2998/1",
   "contract_sha256": "efd4a7463f2b606a6a515aa6ea2cab69b5614a601da8671aa6c2535480930092",
-  "head_sha": "cf96c3bd6a8e61020a64cc0b1910e24add7dcb39",
+  "head_sha": "2528bdd1b1d73522e729705d6a286851da2e6c5a",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "AGENTS.md",
     "scripts/agent-work-contract-git-evidence.mjs",
     "scripts/agent-work-contract-git-evidence.test.mjs",
@@ -22,7 +24,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/reviewer-wire-budget.test.mjs",
       "exit_code": 0,
-      "evidence": "744 pass 0 fail 0 skipped across the six affected suites"
+      "evidence": "747 pass 0 fail 0 skipped across the six affected suites after the governed review fixes"
     },
     {
       "command": "node scripts/check-github-transport-conformance.mjs",
@@ -42,7 +44,8 @@
   ],
   "assumptions_resolved": [
     "Issue #2915 confirmed already delivered on main: cdc74cb5 and 3cef6b68 are ancestors of origin/main, and reverting them in a scratch worktree drops the reviewTargetIsRecordable export that main's own binding suite depends on.",
-    "PR #3316 does not overlap the lines changed here, so this branch was cut from origin/main rather than rebased onto it."
+    "PR #3316 does not overlap the lines changed here, so this branch was cut from origin/main rather than rebased onto it.",
+    "Governed review by muse-spark-1.3-contributor at 4293802d returned REVISE; its two Medium and one Low findings are fixed, and its closed/merged suggestion is deliberately not taken because it would undo issue #2915."
   ],
   "stop_conditions_hit": []
 }

@@ -1,45 +1,51 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3001,
+  "work_issue": 3305,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Close #3001: confirm the single sidecar declaration registry is on main, add direct tests for the two edge cases left untested by PR #2980 (multiword argument types, procedure OUT arguments), and repair the ambiguous DROP ROUTINE form so a procedure re-created after the drop is no longer wrongly dropped on replay.",
-  "base_sha": "7d98876e072a6ec6d55548264cef2d7ca6acf769",
-  "dispatcher": "Owner Albert Hazan chat authorization to resolve open non-orchestrator issues",
-  "worker": "Claude Opus 5 subagent on 916-alien",
-  "branch": "claude/3001-sidecar-registry",
-  "worktree": "D:/repos/shared-db-worktrees/claude-3001-sidecar-registry",
+  "goal": "Accept only provenance-verified automatic-review companion artifacts without weakening preview evidence checks",
+  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05",
+  "dispatcher": "Codex orchestrator parent 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
+  "worker": "01a0bf43-3c49-7812-b4d9-b3cb6e89e1c1",
+  "branch": "codex/sku2478-recovery-audit-0920",
+  "worktree": "D:\\repos\\shared-db-worktrees\\sku2478-recovery-audit-0920",
   "allowed_paths": [
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "file_writes": [
+    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
+    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
     ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/check_pass2_routine_supersession.py",
-    "scripts/test_check_pass2_routine_supersession.py"
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database, migration, preview, production, claim or marker mutation.",
-    "No weakening of any delivery-preflight or risk-gate refusal; the drop-replay guard may only become more conservative.",
-    "No workflow, repository setting or branch protection change."
+    "No database or production writes",
+    "Lane-manager edits only import and validateOriginalPreviewApplyEvidence artifact-selection block; tests only related fixtures",
+    "Do not weaken manifest or ledger evidence"
   ],
   "required_checks": [
-    "git diff --check",
-    "python -m unittest scripts.test_check_pass2_routine_supersession",
-    "node --test scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs"
+    "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
   ],
   "assumptions": [
-    "The single sidecar declaration registry asked for by #3001 was already delivered to main under #3028 (config/production-verification-sidecar-registry.json plus load_sidecar_registry in scripts/production_business_risk_gate.py); it is verified and reported, not reimplemented.",
-    "PR #2970, which owned scripts/production_business_risk_gate.py when #3001 was filed, is merged, and no open pull request touches the risk-gate or preflight files."
+    "Existing successful preview with automatic companion is reproducibly rejected",
+    "Current-main refresh d5285ef3 preserves implementation; 639 tests re-run successfully before final evidence binding",
+    "Refreshed onto70b0cad2 reviewer allowlist changes without overlapping selector code;673 tests passed",
+    "Refreshed onto current main c477c8e8 (docs-only movement, no overlap with this diff); selector tests re-run green before evidence binding",
+    "Refreshed onto current main 473ba697 (no overlap with this diff outside .agent evidence); selector tests re-run green before evidence binding",
+    "Refreshed onto current main 843bc60d; 30 selector tests and 643 lane-manager tests re-run green on 916-alien at implementation head c3462769"
   ],
   "stop_conditions": [
-    "Stop if consolidating or changing the guard would drop any existing preflight refusal.",
-    "Stop if the drop-guard change blocks existing main migrations without a real rebuild defect."
-  ]
+    "Stop before overlapping another agent files"
+  ],
+  "generation": 8
 }

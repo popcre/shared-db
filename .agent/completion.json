@@ -1,38 +1,37 @@
 {
   "schema_version": 1,
-  "work_issue": 3191,
+  "work_issue": 2611,
   "outcome": "ready-for-merge",
-  "pr": 3277,
-  "migration_versions": [
-    "20260918180012"
-  ],
-  "contract_ref": "refs/db-contracts/3191/2",
-  "contract_sha256": "4356cf72dafdf5f84c5be07437c445d6b3bf5a5f7ef1ed0f60a357d9b23ef384",
-  "head_sha": "9ed79890f214c265dd5b57b997ad85cfad29a7fb",
+  "pr": 3293,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2611/11",
+  "contract_sha256": "4ee5fd053f32aba1bbeca91454216230486b2206261049ac5c0b9d11a969bb1a",
+  "head_sha": "b0a9bffa405b548b424053131ef42752290b1843",
   "files_changed": [
-    ".github/live-proofs/3191.sql",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    ".github/live-proofs/2611.sql"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role"
-  ],
+  "db_writes": [],
   "checks": [
     {
-      "command": "supabase/tests against an ephemeral database",
+      "command": "python -m unittest scripts.test_shared_db_live_proof",
       "exit_code": 0,
-      "evidence": "ephemeral_check_run_id 35415550424 (PR #3277 head 160bc1e4, byte-identical migration): artifact supabase-contract-test-logs/applied-migrations.txt positively lists 20260918180012_prepack_role_read_only_proof_grant.sql; re-verified green on the final head before guarded merge dispatch"
+      "evidence": "6 tests passed in 0.085 seconds"
     },
     {
-      "command": "SQL migration guards",
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
       "exit_code": 0,
-      "evidence": "run 35415550535 green at 160bc1e4; re-verified green on the final head before guarded merge dispatch"
+      "evidence": "10 tests passed, 0 failed"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
     }
   ],
   "assumptions_resolved": [
-    "supabase_read_only_user already has SELECT on plm.item_missing_attribution on production (has_table_privilege true) and lacks only EXECUTE on plm.prepack_role.",
-    "Reviews: qwen REVISE at 209ebc35 (role dependency, RLS disclosure, evidence binding) and muse REVISE at 799cd15 (do-block grant invisible to catalog verification). Resolved with a plain top-level grant, a header documenting the role dependency and the SECURITY DEFINER disclosure, and this evidence pair. The search_path=pg_catalog,public low finding on the existing function is out of scope.",
-    "Qwen REVISE at 53e93ca9: contract generation 2 now authorizes the live-proof path; check evidence cites the positive applied record; the probe also counts plm.item_missing_attribution. Its finding that files_changed must list four paths is not reproduced: git diff --name-only b32c435a..head_sha lists exactly the two paths because the .agent files were reset to base content in the implementation commit."
+    "The bounded production query returned passed=true as supabase_read_only_user in 0.5 seconds while retaining all original assertions.",
+    "The isolated unchanged #3191 proof completed successfully in workflow run 35479619996, so its full-view count remains unchanged."
   ],
   "stop_conditions_hit": []
 }

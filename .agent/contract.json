@@ -1,51 +1,51 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "work_issue": 3337,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Publish Albert's evidence-backed implementation plan for removing shared-db workflow bottlenecks, with its audit, discoverable routing links and issue-bound handoff, without changing database structure, production behavior, repository settings or reviewer policy.",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
+  "dispatcher": "Codex planning session acting on Albert's 2026-09-20 request to write a detailed plan covering all workflow problems; publication outcome issue #3337 keeps implementation tracker #3306 open",
+  "worker": "codex",
+  "branch": "codex/orchestrator-workflow-refactor-plan",
+  "worktree": "C:/Users/ahazan2/.codex/worktrees/orchestrator-workflow-audit/shared-db",
   "allowed_paths": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
+    "AGENTS.md",
+    "HANDOFF.d/2026-09-20T1507Z-916-codex-workflow-refactor.md",
+    "docs/ai-session-instructions/shared-supabase-branch-workflow.md",
+    "docs/verification/shared-db-workflow-bottleneck-audit-20260920.md",
+    "plan_shared_db_workflow_refactor.md",
     ".agent/contract.json",
     ".agent/completion.json"
   ],
   "file_writes": [
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "AGENTS.md",
+    "HANDOFF.d/2026-09-20T1507Z-916-codex-workflow-refactor.md",
+    "docs/ai-session-instructions/shared-supabase-branch-workflow.md",
+    "docs/verification/shared-db-workflow-bottleneck-audit-20260920.md",
+    "plan_shared_db_workflow_refactor.md"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "do not edit migrations, database objects, workflow behavior or repository settings",
+    "do not activate a new production route or change reviewer count policy",
+    "do not close the implementation tracker or other sessions' issues",
+    "do not edit another session's handoff, worktree, claim, branch or pull request"
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/check-handoff-contract.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/lib/documents-only-change.test.mjs",
+    "python plan structure and local-link validation",
+    "independent exact-head plan review"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "the planning artifacts remain non-executable Markdown and AGENTS/topic-guide edits are declarative links",
+    "the current repository contract requires evidence for AGENTS.md and plan files even though a narrower lightweight prose authorization succeeds"
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
-  ]
+    "stop if the plan's current implementation requirements would require a database or production mutation during publication",
+    "stop if the current policy requires a review result that cannot be obtained through the governed reviewer path",
+    "stop if refresh from current main changes the plan's cited safety baseline and cannot be reconciled without re-auditing it"
+  ],
+  "generation": 1
 }

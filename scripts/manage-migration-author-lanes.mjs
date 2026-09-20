@@ -770,6 +770,27 @@ export const OUTSIDE_ORCHESTRATOR_EXITS = Object.freeze(['repo-session', 'return
 export const RETURN_ADDRESS_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 export const RETURNED_MARKER = 'RETURNED TO'
 
+// A returned COPY carries its provenance in its BODY, never in its comments: it
+// is a brand new issue, so it has no comments at all. The already-returned guard
+// read comments only, so when `return_to` named THIS repository the copy landed
+// back in this queue looking like a fresh reject, and returning it minted the
+// next generation forever (issue #2836; #2619/#2620/#2621 -> #2692/#2691/#2690).
+// The same loop is reachable across repositories whenever two repos address each
+// other, so the guard is written against the COPY, not against the address.
+// `LEGACY_RETURNED_COPY_PATTERN` recognises the copies already filed, which
+// carry the provenance line but not the explicit marker.
+export const RETURNED_COPY_MARKER = 'RETURNED COPY OF'
+export const LEGACY_RETURNED_COPY_PATTERN = /^Returned from [A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+ by the shared-db orchestrator\./m
+
+// Returns the provenance line when `body` is a returned copy, else null.
+export function returnedCopyProvenance(body = '') {
+  const text = String(body ?? '')
+  const marked = text.split(/\r?\n/).map((line)=>line.trim()).find((line)=>line.startsWith(RETURNED_COPY_MARKER))
+  if (marked) return marked
+  const legacy = LEGACY_RETURNED_COPY_PATTERN.exec(text)
+  return legacy ? legacy[0] : null
+}
+
 export function requiresReturnAddress(workType) {
   return NON_STRUCTURAL_EXITS[workType] === 'reject'
 }
@@ -935,7 +956,10 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
         exit: queueExit(scope.workType),
         blockedOnOwner: scope.route === 'owner-only',
         returnTo: scope.returnTo,
-        needsReturnAddress: requiresReturnAddress(scope.workType) && !scope.returnTo,
+        // A copy that was already returned here must never be asked for a
+        // forwarding address or returned again (issue #2836).
+        returnedCopyOf: returnedCopyProvenance(issue.body),
+        needsReturnAddress: requiresReturnAddress(scope.workType) && !scope.returnTo && !returnedCopyProvenance(issue.body),
       })
     }
     if (scope.status !== 'ready') { skipped.push({ issue:issue.number, reason:`status:${scope.status}`, workType:scope.workType, route:scope.route }); continue }
@@ -1079,9 +1103,14 @@ export function returnIssueToOwner(number, io, { alreadyReturned } = {}) {
   const priorComments = alreadyReturned ?? io.getIssueComments(number).map((comment)=>comment.body ?? '')
   const prior = priorComments.find((body)=>body.includes(RETURNED_MARKER))
   if (prior) throw new LaneError(`issue #${number} was already returned: ${prior.trim()}`)
+  // The copy's own provenance, read from the BODY. Without this a same-repo
+  // return_to loops forever (issue #2836).
+  const copyOf = returnedCopyProvenance(issue.body)
+  if (copyOf) throw new LaneError(`issue #${number} is itself a returned copy (${copyOf}); returning it again would mint another generation`)
 
   const body = [
     `Returned from ${REPO}#${number} by the shared-db orchestrator.`,
+    `${RETURNED_COPY_MARKER} https://github.com/${REPO}/issues/${number}`,
     '',
     `This is **${scope.workType}** work. Under the shared-db admission test (AGENTS.md 0.0-C) it changes the CONTENTS of the shared database, not its SHAPE, so the session working in this repository owns it outright — no shared-db issue, no dispatch, no migration.`,
     '',
@@ -8681,9 +8710,14 @@ export function main(argv, now = new Date(), io = githubIo) {
         const outside = result.notOrchestratorWork.filter((item)=>OUTSIDE_ORCHESTRATOR_EXITS.includes(item.exit))
         const describe = (item) => {
           const owner = item.blockedOnOwner ? ' [blocked on owner decision]' : ''
-          const address = item.exit === 'reject'
-            ? (item.returnTo ? ` -> ${item.returnTo}` : ' -> NO RETURN ADDRESS: add `return_to: owner/repo` before returning it')
-            : ''
+          const address = item.exit !== 'reject'
+            ? ''
+            : item.returnedCopyOf
+              // The classification stays REJECT — it is correct — but this row
+              // has already been returned once and must not be returned again
+              // (issue #2836).
+              ? ` -> ALREADY RETURNED (${item.returnedCopyOf}): do NOT run --return-issue; hand it to the owning session`
+              : (item.returnTo ? ` -> ${item.returnTo}` : ' -> NO RETURN ADDRESS: add `return_to: owner/repo` before returning it')
           return `  #${item.issue} ${item.exit.toUpperCase()} — work_type ${item.workType}, route ${item.route}${owner}${address}`
         }
         if (actionable.length) {

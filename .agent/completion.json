@@ -6,10 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2998/1",
   "contract_sha256": "efd4a7463f2b606a6a515aa6ea2cab69b5614a601da8671aa6c2535480930092",
-  "head_sha": "1e9f2bb75d5f659a7ab519830b895aecfa1b3a80",
+  "head_sha": "cf96c3bd6a8e61020a64cc0b1910e24add7dcb39",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
     "AGENTS.md",
     "scripts/agent-work-contract-git-evidence.mjs",
     "scripts/agent-work-contract-git-evidence.test.mjs",

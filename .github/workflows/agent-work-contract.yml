@@ -51,6 +51,7 @@ jobs:
           scripts/agent-work-contract.test.mjs
           scripts/agent-work-contract-activation.test.mjs
           scripts/agent-work-contract-git-evidence.test.mjs
+          scripts/lib/agent-evidence-paths.test.mjs
           scripts/check-documents-only-pull-request.test.mjs
 
       - name: Report the activation mode, so nobody has to guess
@@ -83,14 +84,28 @@ jobs:
           # files under .agent/. The activation PR's pair remains on main, so
           # mere filesystem presence is not current-PR evidence. Compare the
           # exact PR base and head before reading either file.
+          #
+          # THE PAIR'S PATHS ARE NO LONGER FIXED (#2708). Each pull request writes
+          # .agent/work/<work_issue>/<generation>/{contract,completion}.json, so two
+          # unrelated pull requests cannot collide on one path and force each other
+          # through a full re-review. The legacy .agent/contract.json pair is still
+          # accepted. The resolver -- not this shell -- decides which two files this
+          # pull request's evidence is, and it fails closed on more than one pair.
           CONTRACT=.agent/contract.json
           REPORT=.agent/completion.json
 
           if [ -n "$PR_NUMBER" ]; then
-            PAIR_STATE=$(node scripts/agent-work-contract-git-evidence.mjs \
-              --classify-evidence-pair \
+            RESOLVED=$(node scripts/agent-work-contract-git-evidence.mjs \
+              --resolve-evidence-pair \
               --pr-base-sha "$PR_BASE_SHA" \
               --pr-head-sha "$PR_HEAD_SHA")
+            PAIR_STATE=$(echo "$RESOLVED" | cut -d' ' -f1)
+            RESOLVED_CONTRACT=$(echo "$RESOLVED" | cut -d' ' -f2)
+            RESOLVED_REPORT=$(echo "$RESOLVED" | cut -d' ' -f3)
+            if [ -n "$RESOLVED_CONTRACT" ] && [ -n "$RESOLVED_REPORT" ]; then
+              CONTRACT="$RESOLVED_CONTRACT"
+              REPORT="$RESOLVED_REPORT"
+            fi
           else
             # A manual dispatch has no PR diff. Validate the checked-out pair as
             # repository evidence, but do not render a PR gate verdict.
@@ -100,7 +115,11 @@ jobs:
           case "$PAIR_STATE" in
             inherited|current) ;;
             partial)
-              echo "::error::A pull request must change both $CONTRACT and $REPORT together."
+              echo "::error::A pull request must change its contract and its completion report together."
+              exit 1
+              ;;
+            conflicted)
+              echo "::error::This pull request carries more than one agent evidence pair. Exactly one pair, at .agent/work/<work_issue>/<generation>/, may be present (#2708)."
               exit 1
               ;;
             *)
@@ -141,7 +160,7 @@ jobs:
               echo "This pull request changes only prose documents, so the agent work contract pair is not required (#2591)."
               exit 0
             fi
-            echo "::error::Enforced mode requires this pull request to change both $CONTRACT and $REPORT. Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
+            echo "::error::Enforced mode requires this pull request to change both .agent/work/<work_issue>/<generation>/contract.json and .agent/work/<work_issue>/<generation>/completion.json (#2708). Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
             exit 1
           fi
 

@@ -4,10 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3274,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3273/1",
-  "contract_sha256": "29b63f652b5aa505f5ac82ad0beaa21b2654021137c705b49ec67daf3d0c39df",
-  "head_sha": "37cbdedd9d99a4dbb35a94461795a8d56ea0794c",
+  "contract_ref": "refs/db-contracts/3273/4",
+  "contract_sha256": "9037a9484dec2efcb78778c7398fe1c43ad72c238b17023aceb68ce9a1c40f2e",
+  "head_sha": "421ff31f7abd33c465f289d2fcb50ab3013997c8",
   "files_changed": [
+    ".agent/completion.json",
+    ".agent/contract.json",
     "scripts/check-pr-source-collisions.mjs",
     "scripts/check-pr-source-collisions.test.mjs"
   ],
@@ -33,7 +35,8 @@
   "assumptions_resolved": [
     "the rule relaxes queue order only inside scripts/check-pr-source-collisions.mjs; no other gate was touched",
     "a dated nudge is an issue comment on the stale PR carrying the machine-readable stale-place-nudge marker naming the newer PR number; the gate cannot bind a comment to a session, so the marker is the enforceable proxy (documented in the rule header)",
-    "GitHub pull detail, pull commits, issue comments, timeline and check runs proved sufficient for the activity, health and nudge signals; all are gathered only for overlapping predecessors and any unreadable read throws, which main() turns into a refusal"
+    "GitHub pull detail, pull commits, issue comments, timeline and check runs proved sufficient for the activity, health and nudge signals; all are gathered only for overlapping predecessors and any unreadable read throws, which main() turns into a refusal",
+    "Verified 2026-09-20: merging origin/main (b1d4be2e) conflicted only on the .agent pair; this pull requests own pair was kept and republished as generation 3. The stale-place rule releases only the protected-source QUEUE SLOT and changes no review or check requirement; 16 unit tests pass."
   ],
   "stop_conditions_hit": []
 }

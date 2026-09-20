@@ -4,18 +4,22 @@
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Implement the stale-place rule in scripts/check-pr-source-collisions.mjs: a non-draft open PR editing scripts/manage-migration-author-lanes.mjs no longer precedes a newer PR when it has had no activity for 24+ hours, its latest checks are failing or it conflicts with main, and the newer PR's session has posted a dated nudge comment on it naming the stale state; it reclaims its place once refreshed and green.",
-  "base_sha": "bd647f6ad701f51b8d0263614b1d73763f2f6f2d",
+  "base_sha": "b1d4be2ef30862db0f5df4fddd83479815adfa99",
   "dispatcher": "repo-maintenance session for issue #3273",
   "worker": "kimi",
   "branch": "kimi/issue-3273-stale-place-rule",
   "worktree": "C:/repos/shared-db-wt-3273",
   "allowed_paths": [
     "scripts/check-pr-source-collisions.mjs",
-    "scripts/check-pr-source-collisions.test.mjs"
+    "scripts/check-pr-source-collisions.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "file_writes": [
     "scripts/check-pr-source-collisions.mjs",
-    "scripts/check-pr-source-collisions.test.mjs"
+    "scripts/check-pr-source-collisions.test.mjs",
+    ".agent/contract.json",
+    ".agent/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -33,11 +37,13 @@
   "assumptions": [
     "the stale-place rule relaxes queue order only within scripts/check-pr-source-collisions.mjs; no other gate changes",
     "a dated nudge comment is an issue comment on the stale PR carrying the machine-readable stale-place nudge marker that names the newer PR number",
-    "GitHub pull detail (updated_at, mergeable), check runs, and issue comments are the activity, health, and nudge signals"
+    "GitHub pull detail (updated_at, mergeable), check runs, and issue comments are the activity, health, and nudge signals",
+    "Generation 2 republishes the same change set after origin/main was merged in on 2026-09-20 to clear a conflict limited to the .agent evidence pair; the stale-place implementation and its tests are unchanged between generations."
   ],
   "stop_conditions": [
     "stop if the rule cannot be implemented without editing files outside allowed_paths",
     "stop if a test fails for a reason unrelated to these two files",
     "stop if implementing the rule would require weakening fail-closed behaviour on unreadable signals"
-  ]
+  ],
+  "generation": 4
 }

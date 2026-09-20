@@ -1,46 +1,45 @@
 {
   "schema_version": 1,
-  "generation": 2,
-  "work_issue": 3191,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Fix #3191: grant EXECUTE on plm.prepack_role(text,text,text) to supabase_read_only_user so the #2611 live proof can count plm.item_missing_attribution on production. No role membership.",
-  "base_sha": "b32c435a722c5f5f37425de2c9c303e4065830d6",
-  "dispatcher": "shared-db orchestrator (marker #3275), relaying Albert chat instruction: \"clear #3218, #3104, #3091, #3023, #3036, #3174, #3264, #3191, #3091, #2870\"",
-  "worker": "Claude sub-agent, chat e81e0ac2-472a-4227-92b3-16fce6a866ee on edge-dev",
-  "branch": "claude/3191-prepack-proof-grant",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/wt-3191-prepack-grant",
+  "generation": 1,
+  "work_issue": 3295,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Make ColdLion master change logging use one set-based latest-prior lookup per table so a changed item snapshot cannot perform one ordered change-log scan per row.",
+  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
+  "dispatcher": "Codex non-orchestrator repository-maintenance session for issue #3295",
+  "worker": "Codex chat 01a0bc45-92ef-7f73-b936-4b661d76e979 on EDGE-DEV",
+  "branch": "codex/3295-coldlion-set-based-change-log",
+  "worktree": "C:/Users/ahazan/.codex/worktrees/coldlion-timeout-investigation/shared-db",
   "allowed_paths": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/live-proofs/3191.sql",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "file_writes": [
     ".agent/completion.json",
     ".agent/contract.json",
-    ".github/live-proofs/3191.sql",
-    "supabase/migrations/20260918180012_prepack_role_read_only_proof_grant.sql"
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "db_reads": [],
-  "db_writes": [
-    "function plm.prepack_role"
-  ],
+  "db_writes": [],
   "prohibited_actions": [
-    "Never grant role membership (e.g. authenticated) to supabase_read_only_user.",
-    "Never run a manual production command; production only through the automatic promotion lane.",
-    "Never grant anything beyond EXECUTE on this one function."
+    "Do not change any migration, database object, timeout, workflow schedule, or live database row.",
+    "Do not weaken or remove change-log audit payloads, target proof, transaction atomicity, or failure reporting.",
+    "Do not touch issue #3179, issue #3180, or the prepack loader."
   ],
   "required_checks": [
-    "supabase/tests against an ephemeral database",
-    "SQL migration guards"
+    "node --test tools/coldlion-landing-masters.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
   ],
   "assumptions": [
-    "Author lane claim #3276 reserved version 20260918180012. This contract was published after the implementation commit 379e7913 (author missed the publish-first step); scope is unchanged from the #3191 db-work-scope and the claim.",
-    "Generation 2 adds .github/live-proofs/3191.sql, the read-only production probe the guarded merge lane requires for an issue that returns to shared-db."
+    "Production keeps its existing 120-second statement timeout.",
+    "The latest prior new_raw row remains the preferred previous_raw audit payload, falling back to the current table projection when no prior change exists."
   ],
   "stop_conditions": [
-    "Stop on any gate refusal; never weaken a guard.",
-    "Stop if the production proof still reports a permission error."
+    "Stop if preserving audit semantics requires a database-structure change.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
   ]
 }

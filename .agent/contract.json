@@ -1,51 +1,52 @@
 {
   "schema_version": 1,
-  "generation": 1,
-  "work_issue": 3291,
+  "generation": 3,
+  "work_issue": 2678,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Prospectively reconstruct and complete the published EDGE-DEV reviewer allowlist change: preserve durable permissions across initial allocation, retry, later slots, returned assignments and replacements, while preserving preflight, independence, exact-head and unlimited-concurrency rules.",
-  "base_sha": "7c5c4680e2f844d1311163766b7194bc3ee42975",
-  "dispatcher": "Albert authorized recovery in Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 2026-09-20",
-  "worker": "Codex chat 01a0bf01-4e8c-7b02-bcc7-2f6e7cd69543 on 916-ALIEN",
-  "branch": "codex/reconstruct-reviewer-allowlist-3291",
-  "worktree": "C:\\Users\\ahazan2\\.codex\\worktrees\\recover-edge-reviewer-allowlist\\shared-db",
+  "goal": "Pass each reviewer wrapper its own AI_*_CALLER in the environment the governed runner and the author-lane doctor probe spawn, and quote the wrapper's own stderr line when a doctor names no check, so healthy reviewers stop being refused as local dependency faults.",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator issues in this repository through to production",
+  "worker": "Claude chat 2e3c24d5-f6b8-44f8-b49f-3c67c1647d13 on 916-alien",
+  "branch": "claude/2678-reviewer-caller-env",
+  "worktree": "D:/repos/shared-db-worktrees/github-issues-production-0ec2db",
   "allowed_paths": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/lib/reviewer-caller-env.mjs",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/run-governed-review.mjs"
   ],
   "file_writes": [
+    ".agent/contract.json",
+    ".agent/completion.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/lib/reviewer-caller-env.mjs",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/agents/section-4-anti-collision-rules.md",
-    ".agent/contract.json",
-    ".agent/completion.json"
+    "scripts/run-governed-review.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database writes or migrations",
-    "No fabricated pre-work evidence for the original EDGE-DEV implementation",
-    "No bypass of collision, reviewer, exact-head, request-budget or guarded-merge checks",
-    "No provider disablement or invented provider failures"
+    "No database write, migration, function, view, role, grant, index, or timeout change.",
+    "Do not weaken any existing reviewer preflight refusal, and never report a probe that did not run as a pass.",
+    "Do not invent a caller identity the environment does not support."
   ],
   "required_checks": [
-    "node --check scripts/manage-migration-author-lanes.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+    "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    "git diff --check"
   ],
   "assumptions": [
-    "Original source PR3292 head c63fe706d7b447e75208658de7c3729afcf08496 predates this contract and had no published contract. This record is prospective authority for reconstruction and repair, not retrospective authority for that implementation.",
-    "Original source and repaired atomic-return behavior may be reused transparently after this publication.",
-    "Two executed in-memory tests proved widening on fresh slot2 and same-head redraw following exclusion; both require regression coverage.",
-    "EDGE-DEV is permanently inaccessible by owner statement. Only published evidence can be recovered.",
-    "Conflicting PR3258 must finish independently before this PR may merge."
+    "The caller variable per wrapper is the mapping already recorded in run-governed-review.mjs; this change moves it to a shared module rather than re-deriving it.",
+    "An undetectable caller is left unset for the doctor probe and for the spawn, because the governed review path already refuses up front when no caller can be determined.",
+    "The new shared module joins the global invalidator inventory because it is inside the manager's import closure."
   ],
   "stop_conditions": [
-    "Stop on unverifiable durable policy or conflicting permission sets",
-    "Stop before merge unless independent exact-head review and all required guards pass",
-    "Stop if scope requires files outside the published allowed paths"
+    "Stop if the repair requires any database object change.",
+    "Stop if the caller cannot be determined without guessing for the governed review path."
   ]
 }

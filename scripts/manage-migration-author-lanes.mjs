@@ -1330,6 +1330,12 @@ function recordReviewGraphQuota(rateLimit){
 }
 function consumeReviewWireRequest(){
   if(!reviewWireBudget)return
+  // Issue #2844: proving the mutex release is not a derived-budget consumer. It runs
+  // only after every counted request of the operation is already spent, it is hard
+  // bounded by this allowance, and being squeezed out of it is exactly what reported
+  // a successful draw as RECOVERY REQUIRED. The ceiling itself is NOT widened: no
+  // request outside the release proof may borrow from this allowance.
+  if(reviewWireBudget.releaseProofAllowance>0){reviewWireBudget.releaseProofAllowance-=1;return}
   const limit=reviewWireBudget.limit??REVIEW_OPERATION_REQUEST_LIMIT
   const usable=reviewWireBudget.locked&&!reviewWireBudget.cleanup?limit-(reviewWireBudget.cleanupReserve??0):limit
   if(reviewWireBudget.count>=usable)throw new LaneError(`reviewer operation '${reviewWireBudget.operation??'reviewer-operation'}' exhausted its derived ${limit}-request budget before request ${reviewWireBudget.count+1}${usable!==limit?` (${limit-usable} held back as the mutex-release reserve)`:''}. This ceiling is DERIVED for this operation, not a global default: see the derivation cited beside its constant in scripts/manage-migration-author-lanes.mjs. Re-derive it from a written measurement rather than widening it (issue #2075)`)
@@ -2452,6 +2458,14 @@ export const githubIo = {
   },
   createRef(ref, sha) {
     return createRefWithReadback(ref,sha,{readRef:(target)=>this.readRef(target)})
+  },
+  // Issues #2457/#2844: a confirmation read that never comes from the git replica.
+  // Used only to confirm an apparently-unreleased mutex before refusing, so it is
+  // paid once, from the mutex-release reserve, on a path that is already failing.
+  readRefOverApi(ref) {
+    const short = ref.replace(/^refs\//, '')
+    try { return ghJson(['api', `repos/${REPO}/git/ref/${short}`],{expectedFailure:EXPECTED_REF_ABSENCE})?.object?.sha ?? null }
+    catch (error) { if (isConfirmedRefAbsence(error)) return null; throw error }
   },
   readRef(ref) {
     if(reviewWireBudget)return gitRemoteRefs([ref]).get(ref)??null
@@ -4320,6 +4334,7 @@ export function excludeReviewerForPr({issue,pr,reviewer,reason,evidenceSha},io=g
     }
     const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-exclusion-lock issue=${issue} pr=${pr} reviewer=${reviewer}`)
     requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE);acquireReviewMutex(ownerSha,io)
+    let completedResult=null
     try{
       if(!repeat&&io.readRef(ref))throw new LaneError(`reviewer ${reviewer} was excluded concurrently; retry to inspect the durable record`)
       const sha=repeat?repeat.sha:io.makeOwnerCommit(`db-coordination reviewer-exclusion reviewer=${reviewer} issue=${issue} pr=${pr} reason=${reason} evidence=${evidenceSha}`)
@@ -4374,10 +4389,10 @@ export function excludeReviewerForPr({issue,pr,reviewer,reason,evidenceSha},io=g
         if(!repeat&&!io.createRef(ref,sha)&&readRefAfterWrite(ref,sha,io)!==sha)throw new LaneError('reviewer exclusion record could not be proved')
         for(const row of leaseReleaseRows)releaseOwnedRef(row.ref,row.sha,io)
       }
-      return {issue,pr,reviewer,reason,evidenceSha,ref,sha,releasedLease:releaseLease,
+      return completedResult={issue,pr,reviewer,reason,evidenceSha,ref,sha,releasedLease:releaseLease,
         returned:returns.map((row)=>({assignmentRef:row.ref,assignmentSha:row.sha,headSha:row.headSha,slot:row.slot,replacementSequence:row.replacementSequence,ref:row.returnRef,sha:row.returnSha}))}
     }
-    finally{finalizeReviewMutex(ownerSha,io)}
+    finally{finalizeReviewMutexPreservingResult(ownerSha,io,completedResult)}
   })
 }
 
@@ -4428,27 +4443,54 @@ function reviewOperationIo(io){
   return proxy
 }
 
+// Bounded readback ladder for the atomic mutex release (issues #2457, #2844): same
+// shape as releaseOwnedRef's, ~10.5s instead of the former ~3s.
+const MUTEX_RELEASE_READBACK_DELAYS_MS=[0,500,1000,2000,3000,4000]
+// Issue #2457: an operation that COMPLETED must never lose its result because the
+// mutex release that follows it could not be proved. The completed result is carried
+// on the thrown error and printed by the caller, so the operator learns which reviewer
+// was drawn instead of having to read refs/db-review-active by hand -- and learns that
+// a retry would draw a SECOND reviewer.
+function finalizeReviewMutexPreservingResult(ownerSha,io,completed){
+  try{return finalizeReviewMutex(ownerSha,io)}
+  catch(error){
+    if(completed===undefined||completed===null)throw error
+    const preserved=new LaneError(`${error.message}; THE OPERATION ITSELF COMPLETED -- do not retry it, a retry would repeat a draw that already succeeded. Its result: ${JSON.stringify(completed)}`)
+    preserved.completedResult=completed
+    throw preserved
+  }
+}
 function finalizeReviewMutex(ownerSha,io){
   const previous=reviewWireBudget?.cleanup
   if(reviewWireBudget)reviewWireBudget.cleanup=true
   try{
     if(io.atomicReviewMutexRelease){
+      if(reviewWireBudget)reviewWireBudget.releaseProofAllowance=MUTEX_RELEASE_READBACK_DELAYS_MS.length+2
       requireOwnedRef(MUTEX_REF,ownerSha,io)
       io.atomicReviewMutexRelease(ownerSha)
       // Issue #3187: the atomic deletion was accepted against ownerSha, so release is proved once
       // the ref no longer names OUR owner commit. A rival acquiring it inside the readback window
       // (seen live on #3192) is still a proved release; a lagging read is re-read, never assumed.
+      // Issues #2457/#2844: the readback above is served by a git replica that has been
+      // seen lagging the accepted deletion by several seconds, which reported a SUCCESSFUL
+      // assignment as RECOVERY REQUIRED against a mutex that was already gone. The refusal
+      // is kept -- an orphaned mutex must never be assumed released -- but the readback now
+      // waits on the same bounded ladder releaseOwnedRef uses, and an answer that still
+      // names our owner commit is confirmed once against GitHub's ref API before refusing,
+      // because that read does not come from the lagging git replica.
       let released=false
-      for(let attempt=0;attempt<3&&!released;attempt++){
-        if(attempt)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1000*attempt)
+      for(const delay of MUTEX_RELEASE_READBACK_DELAYS_MS){
+        if(delay)(io.wait ?? ((ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)))(delay)
         released=io.readReviewRefs([MUTEX_REF]).get(MUTEX_REF)!==ownerSha
+        if(released)break
       }
+      if(!released&&typeof io.readRefOverApi==='function')released=io.readRefOverApi(MUTEX_REF)!==ownerSha
       if(!released)throw new LaneError(`release of ${MUTEX_REF} could not be proved after atomic deletion`)
       return true
     }
     return releaseOwnedRef(MUTEX_REF,ownerSha,io)
   }catch(error){throw new LaneError(`${error.message}; RECOVERY REQUIRED: ${MUTEX_REF} expected SHA ${ownerSha}. Use the guarded recover-author-mutex.yml procedure and do not retry blindly`)}
-  finally{if(reviewWireBudget)reviewWireBudget.cleanup=previous}
+  finally{if(reviewWireBudget){reviewWireBudget.cleanup=previous;reviewWireBudget.releaseProofAllowance=0}}
 }
 function requireReviewWireCapacity(required,when='refused before mutex acquisition'){const limit=reviewWireBudget?.limit??REVIEW_OPERATION_REQUEST_LIMIT;if(reviewWireBudget&&reviewWireBudget.count+required>limit)throw new LaneError(`reviewer operation cannot fit ${required} remaining requests inside the ${limit}-request budget; ${when}`)}
 function acquireReviewMutex(ownerSha,io){
@@ -5592,6 +5634,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
   requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE)
   acquireReviewMutex(ownerSha,io)
+  let completedResult=null
   try{
     if(admissionOptions)requirePrOperationRoute(admissionOptions,io,{pr,headSha,issue,mutexOwner:ownerSha,allowMerged:true,reviewSnapshot:true})
     const exclusions=reviewerExclusions(request.issue,request.pr,io,{fresh:true})
@@ -5797,7 +5840,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
         ])
         const refs=io.readReviewRefs([MUTEX_REF,leaseRef,REVIEW_CURSOR_REF,assignmentRef])
         if(refs.get(MUTEX_REF)!==ownerSha||refs.get(leaseRef)!==leaseSha||refs.get(REVIEW_CURSOR_REF)!==assignmentSha||refs.get(assignmentRef)!==assignmentSha)throw new LaneError('atomic review assignment readback mismatch')
-        return {sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request}
+        return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request}
       }
       requireOwnedRef(MUTEX_REF,ownerSha,io)
       if(selectedStale){
@@ -5812,7 +5855,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!io.createRef(assignmentRef,assignmentSha)&&(!io.readReviewRefs&&readRefAfterWrite(assignmentRef,assignmentSha,io)!==assignmentSha))throw new LaneError('review assignment record could not be proved; retry the same assignment')
       assignmentCreated=true
       if(io.readReviewRefs){const refs=io.readReviewRefs([MUTEX_REF,leaseRef,REVIEW_CURSOR_REF,assignmentRef]);if(refs.get(MUTEX_REF)!==ownerSha||refs.get(leaseRef)!==leaseSha||refs.get(REVIEW_CURSOR_REF)!==assignmentSha||refs.get(assignmentRef)!==assignmentSha)throw new LaneError('batched review assignment readback mismatch')}
-      return {sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request}
+      return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request}
     }catch(error){
       const rollback=[]
       try{if(assignmentCreated&&io.readRef(assignmentRef)===assignmentSha)releaseOwnedRef(assignmentRef,assignmentSha,io)}catch(e){rollback.push(e.message)}
@@ -5822,7 +5865,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(rollback.length)throw new LaneError(`review assignment failed (${error.message}) and rollback was incomplete: ${rollback.join('; ')}`)
       throw error
     }
-  }finally{finalizeReviewMutex(ownerSha,io)}
+  }finally{finalizeReviewMutexPreservingResult(ownerSha,io,completedResult)}
 }
 
 // The review mutex is shared with author acquisition and is held only for seconds.

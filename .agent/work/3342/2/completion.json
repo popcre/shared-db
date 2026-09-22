@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3342/2",
   "contract_sha256": "51fc2a580e37e2f23f7b3b0c58ce5507f99848dcbb5815cb34362549768373cc",
-  "head_sha": "951435c57a0ad6f97ea7b9d94f2f812c45e09470",
+  "head_sha": "e3a34f0511f7e1e143f4240cc3ef3a24a8b2cd5c",
   "files_changed": [
     ".agent/work/3342/2/completion.json",
     ".agent/work/3342/2/contract.json",
@@ -21,24 +21,24 @@
   "db_writes": [],
   "checks": [
     {
-      "evidence": "Current integrated audit passed:312 call sites,70 sources, derived digest5adcf9278b54.",
+      "evidence": "Current integrated audit passed: 312 call sites, 70 sources, derived digest 5adcf9278b54 at e3a34f0511f7e1e143f4240cc3ef3a24a8b2cd5c.",
       "exit_code": 0,
       "command": "node scripts/check-throughput-truth-audit.mjs"
     },
     {
-      "evidence": "Combined audit and producer test execution passed28 tests,0 failures,0 skipped; integrated tests2026-09-20.",
+      "evidence": "Combined audit and producer test execution passed 28 tests, 0 failures, 0 skipped at e3a34f0511f7e1e143f4240cc3ef3a24a8b2cd5c.",
       "exit_code": 0,
       "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
     },
     {
-      "evidence": "Combined audit and producer test execution passed28 tests,0 failures,0 skipped;12 producer tests included.",
+      "evidence": "Combined audit and producer test execution passed 28 tests, 0 failures, 0 skipped; 12 producer tests included at e3a34f0511f7e1e143f4240cc3ef3a24a8b2cd5c.",
       "exit_code": 0,
       "command": "node --test scripts/proofs/shared-db-2870-observation.test.mjs"
     },
     {
       "command": "Independent exact-head review",
       "exit_code": 0,
-      "evidence": "Actual governed Grok4.6 APPROVE951435c57a0ad6f97ea7b9d94f2f812c45e09470, sequence3456, durable refs/db-review-verdicts/3342-3345-951435c57a0ad6f97ea7b9d94f2f812c45e09470 commit4ea61b4fd24ed57cd65fcba3e72dd23c303ef11c. No concrete correctness/security defects. Source review only."
+      "evidence": "Governed Grok 4.6 APPROVE of implementation head 951435c57a0ad6f97ea7b9d94f2f812c45e09470, sequence 3456, durable refs/db-review-verdicts/3342-3345-951435c57a0ad6f97ea7b9d94f2f812c45e09470 commit 4ea61b4fd24ed57cd65fcba3e72dd23c303ef11c. Refresh merge e3a34f0511f7e1e143f4240cc3ef3a24a8b2cd5c adds current main only; reviewed observer source bytes are unchanged. Current merged head passed the focused tests. No new independent review of merge commit is claimed."
     }
   ],
   "assumptions_resolved": [
@@ -49,5 +49,5 @@
     "No live database queries/writes, secret provisioning, dispatch or lifecycle acceptance. Root owns central merge/live acceptance; Uma owns backend merge."
   ],
   "stop_conditions_hit": [],
-  "base_sha": "18c2610526e9b34a9d5af3818853cf1fb63e8979"
+  "base_sha": "c384c26cc7865419c37f6b1520028e1053f65c23"
 }

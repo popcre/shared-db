@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3413,
+  "pr": 3410,
+  "outcome": "ready-for-merge",
+  "base_sha": "c384c26cc7865419c37f6b1520028e1053f65c23",
+  "head_sha": "5b4985a4a7f850da565324d37b87f060fa0759ff",
+  "contract_ref": "refs/db-contracts/3413/1",
+  "contract_sha256": "4640c62d4c278a22a1af14606f153aa10090d0b96432959443e993e46b45eaeb",
+  "checks": [
+    {
+      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "25 pass, 0 fail, 0 skipped at implementation head 5b4985a4a."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "exit_code": 0,
+      "evidence": "6 pass, 0 fail, 0 skipped at implementation head 5b4985a4a."
+    },
+    {
+      "command": "node --test --test-name-pattern=\"2758 merge lane|issue 1688 routes non-migration\" scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "2 pass, 0 fail, 0 skipped at implementation head 5b4985a4a."
+    }
+  ],
+  "files_changed": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "migration_versions": [],
+  "db_reads": [],
+  "db_writes": [],
+  "assumptions_resolved": [
+    "The existing classifier is still authoritative for independent main movement",
+    "Unreadable git and overlap still refuse"
+  ],
+  "stop_conditions_hit": []
+}

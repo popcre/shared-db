@@ -1,106 +1,38 @@
 {
-  "schema_version": 1,
-  "work_issue": 3280,
-  "outcome": "ready-for-merge",
-  "pr": 3279,
-  "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3280/5",
-  "contract_sha256": "428a938b7e7fd859bdf9ebb1161fb76111f2eadf800dea258d5b6abfce04a024",
-  "head_sha": "9fecf97c69b015f6aa0f0c51ba79d2f5aee861c8",
-  "files_changed": [
-    ".github/workflows/agent-work-contract.yml",
-    ".github/workflows/cancelled-work-guard.yml",
-    ".github/workflows/coldlion-promotion-contract-tests.yml",
-    ".github/workflows/database-contract-tests.yml",
-    ".github/workflows/domain-ownership.yml",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/handoff-contract-guard.yml",
-    ".github/workflows/intake-pointer-guard.yml",
-    ".github/workflows/merge-queue-gate.yml",
-    ".github/workflows/migration-author-lease.yml",
-    ".github/workflows/orchestrator-marker-guard.yml",
-    ".github/workflows/pr-object-collision.yml",
-    ".github/workflows/queue-sensitive-aggregate.yml",
-    ".github/workflows/shared-supabase-migrations.yml",
-    ".github/workflows/tools-offline-tests.yml",
-    "docs/merge-queue-operation.md",
-    "docs/verification/throughput-guard-truth-audit-20260828.json",
-    "scripts/check-applied-migration-edit.mjs",
-    "scripts/check-cancelled-work.mjs",
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/check-handoff-contract.mjs",
-    "scripts/check-live-proof-probe.mjs",
-    "scripts/check-live-proof-probe.test.mjs",
-    "scripts/check-merge-queue-workflows.test.mjs",
-    "scripts/check-production-verification-sidecars.mjs",
-    "scripts/check-sql.sh",
-    "scripts/check-sql.test.mjs",
-    "scripts/configure-merge-queue.mjs",
-    "scripts/configure-merge-queue.test.mjs",
-    "scripts/lib/resolve-base-ref.mjs",
-    "scripts/merge-queue-contract.mjs",
-    "scripts/merge-queue-contract.test.mjs",
-    "scripts/throughput-guard/check-production-verification-sidecars.test.mjs"
-  ],
   "db_reads": [],
-  "db_writes": [],
+  "assumptions_resolved": [
+    "Retained transactional loader records establish stable source and unique-row counts across repeated successful captures; exact-byte case-variant source duplicates are counted separately and never treated as distinct landed identities"
+  ],
+  "contract_ref": "refs/db-contracts/3302/1",
+  "schema_version": 1,
+  "stop_conditions_hit": [],
+  "work_issue": 3302,
   "checks": [
     {
-      "command": "node --test scripts/check-merge-queue-workflows.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 13 pass 13 fail 0 skipped 0 at 9fecf97c"
+      "evidence": "Current-main integration: focused proof tests 2 passed and live-proof guard tests 10 passed; zero failed, skipped, cancelled or todo.",
+      "command": "node --test scripts/issue-2863-live-proof.test.mjs"
     },
     {
-      "command": "node --test scripts/merge-queue-contract.test.mjs",
       "exit_code": 0,
-      "evidence": "tests 15 pass 15 fail 0 skipped 0 at 9fecf97c"
+      "evidence": "Parent orchestrator production verification retained unchanged: actual read-only probe true, absent-prepack control false, absent-prod control false. Probe bytes checked identical to reviewed head db6b9daed14ba15c412848b46a22c2178cb6af8e; refresh changes no SQL.",
+      "command": "Read-only live probe with false controls"
     },
     {
-      "command": "node --test scripts/configure-merge-queue.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 13 pass 13 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-sql.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 58 pass 58 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 6 pass 6 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-live-proof-probe.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 11 pass 11 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-applied-migration-edit.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 35 pass 35 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-cancelled-work.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 22 pass 22 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-handoff-contract.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 16 pass 16 fail 0 skipped 0 at 9fecf97c"
-    },
-    {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs",
-      "exit_code": 0,
-      "evidence": "tests 60 pass 60 fail 0 skipped 0 at 9fecf97c"
+      "evidence": "truth audit OK: call_sites=311 sources=69 derived_digest=871e1ed90397; no companion disposition required for this SQL probe or its targeted test",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0
     }
   ],
-  "assumptions_resolved": [
-    "Generations 1-4 remain immutable; this is generation 5 after rebasing onto current main and squashing to one implementation commit.",
-    "Six base-ref-by-name consumers resolve through one shared resolver; the sweep test derives its list from that import rather than hand-listing it.",
-    "The throughput truth audit was rebound for the one new call site the shared resolver introduces (312 sites)."
+  "db_writes": [],
+  "contract_sha256": "1994731accc3a210ac378e67cdfbe134854054fdecd00b31f14ded99bcf148b7",
+  "files_changed": [
+    ".github/live-proofs/2863.sql",
+    "scripts/issue-2863-live-proof.test.mjs"
   ],
-  "stop_conditions_hit": []
+  "pr": 3303,
+  "migration_versions": [],
+  "head_sha": "5a94afd71636d046081ef80785d997a591642175",
+  "outcome": "ready-for-merge",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b"
 }

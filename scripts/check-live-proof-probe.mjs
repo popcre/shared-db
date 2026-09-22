@@ -23,6 +23,7 @@ import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
 import { currentRepository, isThisRepositoryOrHistorical } from './lib/repository-identity.mjs'
+import { LEGACY_CONTRACT_PATH, resolveEvidencePair } from './lib/agent-evidence-paths.mjs'
 
 const SCOPE_FENCE = /```db-work-scope\s*\n([\s\S]*?)```/g
 
@@ -123,7 +124,6 @@ export function main({
   error = console.error,
 } = {}) {
   try {
-    const contract = fileExists('.agent/contract.json') ? JSON.parse(readFile('.agent/contract.json')) : null
     // Issue #3280 governed review round 2 (muse-spark-1.3-contributor): this was
     // the most dangerous base-ref consumer on the merge queue path -- origin/main
     // hardcoded, with no --base flag to override it. On a merge_group run that ref
@@ -131,6 +131,11 @@ export function main({
     // branch when the ref is absent and throws (never skips) when it cannot.
     const base = resolveBaseRef('origin/main', { git: gitProbe(git) })
     const { changed, removed } = parseNameStatus(git(['diff', '--name-status', '-M', `${base}...HEAD`]))
+    // #2708: the contract lives at its generation-keyed path, or at the legacy
+    // fixed one. Read whichever this pull request actually carries; the changed
+    // file list is what names it, so a pull request never reads another one's.
+    const contractPath = [resolveEvidencePair(changed).contract, LEGACY_CONTRACT_PATH].find((path) => path && fileExists(path))
+    const contract = contractPath ? JSON.parse(readFile(contractPath)) : null
     const result = evaluateProbe({
       contract,
       changedFiles: changed,

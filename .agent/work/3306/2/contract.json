@@ -1,0 +1,41 @@
+{
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "assumptions": [
+    "classifyBranchFreshness is the authoritative #2758 independence judge",
+    "Unreadable tip or git classification failure must refuse"
+  ],
+  "base_sha": "5018b9013b56d5c8b4fb68f6c0306d7736f46588",
+  "branch": "codex/2758-merge-lane-independent-main",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Claude MiMo Desktop session ses_ffe5f3502886afferuQXFHy584",
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "generation": 2,
+  "goal": "Honor #2758 independent-main movement at merge-lane acquisition",
+  "prohibited_actions": [
+    "No database changes",
+    "No concurrency limits",
+    "No administrative bypass of required checks",
+    "No weakening of classifyBranchFreshness refusal cases"
+  ],
+  "required_checks": [
+    "node --test scripts/check-main-tip-freshness.test.mjs",
+    "node --test --test-name-pattern=\"2758 merge lane|issue 1688 routes non-migration\" scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
+  "stop_conditions": [
+    "Scope extends beyond owned files",
+    "classifyBranchFreshness refusal cases would be weakened"
+  ],
+  "work_issue": 3306,
+  "work_type": "repo-maintenance",
+  "worker": "claude",
+  "worktree": "C:/repos/shared-db-wt-2758-merge-freshness"
+}

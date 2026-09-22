@@ -15,6 +15,32 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / 'supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql'
 PROOF = ROOT / '.github/live-proofs/2110.sql'
 
+
+def postgres_tools():
+    """Find one installed PostgreSQL bin directory, including server tools.
+
+    Linux packages often put only psql on PATH and keep initdb/pg_ctl under
+    /usr/lib/postgresql/<version>/bin. pg_config identifies the matching bin.
+    """
+    candidates = []
+    pg_config = shutil.which('pg_config')
+    if pg_config:
+        result = subprocess.run([pg_config, '--bindir'], capture_output=True, text=True)
+        if result.returncode == 0:
+            candidates.append(Path(result.stdout.strip()))
+    candidates.extend(sorted(Path('/usr/lib/postgresql').glob('*/bin'), reverse=True))
+    psql = shutil.which('psql')
+    if psql:
+        candidates.append(Path(psql).resolve().parent)
+    for directory in candidates:
+        tools = tuple(directory / name for name in ('psql', 'pg_ctl', 'initdb'))
+        if all(tool.is_file() for tool in tools):
+            return tuple(str(tool) for tool in tools)
+        windows_tools = tuple(directory / f'{name}.exe' for name in ('psql', 'pg_ctl', 'initdb'))
+        if all(tool.is_file() for tool in windows_tools):
+            return tuple(str(tool) for tool in windows_tools)
+    raise RuntimeError('Installed PostgreSQL psql, pg_ctl and initdb binaries required')
+
 FIXTURE = '''
 CREATE SCHEMA app; CREATE SCHEMA plm; CREATE SCHEMA dflow;
 CREATE SCHEMA designflow_frozen_20260710;
@@ -50,12 +76,9 @@ class RetirementTests(unittest.TestCase):
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))
             cls.port = s.getsockname()[1]
-        cls.psql = shutil.which('psql')
-        cls.pgctl = shutil.which('pg_ctl')
+        cls.psql, cls.pgctl, cls.initdb = postgres_tools()
         cls.counter = 0
-        if not cls.psql or not cls.pgctl or not shutil.which('initdb'):
-            raise RuntimeError('Local PostgreSQL binaries required')
-        subprocess.run(['initdb','-D',str(cls.directory / 'data'),'-U','postgres','-A','trust','--no-locale'],check=True,capture_output=True)
+        subprocess.run([cls.initdb,'-D',str(cls.directory / 'data'),'-U','postgres','-A','trust','--no-locale'],check=True,capture_output=True)
         # Windows postgres inherits pg_ctl handles: use a file, never a pipe
         # whose EOF would wait for the database server to exit.
         with (cls.directory / 'start.log').open('wb') as output:

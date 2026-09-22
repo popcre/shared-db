@@ -1,4 +1,4 @@
--- Live proof for #2478 (migration 20260917112129, PR #2846, claim #2745). Read-only.
+-- Live proof for #2478 (migration 20260920203337, claim #2745). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger
 --   2. public.style_group_key_for_sku(text) exists, is IMMUTABLE and SECURITY INVOKER,
@@ -20,7 +20,7 @@ with helper as (
     and p.proname in ('rebuild_style_groups_batch', 'reconcile_style_group_drift')
 )
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260917112129')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260920203337')
   and (select count(*) from helper) = 1
   and (select bool_and(provolatile = 'i' and not prosecdef) from helper)
   and (select bool_and(not has_function_privilege('anon', oid, 'EXECUTE')

@@ -10,8 +10,6 @@
   "contract_sha256": "bbb97eaa65830d6937a5faaf6b786772fa37ecc980cffac22105ef45fbb14429",
   "head_sha": "663b3c598068529b6700c3c465704ad7d003ddff",
   "files_changed": [
-    ".agent/work/2478/11/completion.json",
-    ".agent/work/2478/11/contract.json",
     ".github/live-proofs/2478.sql",
     "scripts/production_migration_guard.py",
     "scripts/test_post_batch_app_verification.py",

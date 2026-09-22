@@ -12,7 +12,7 @@ Put this whole list to Albert in one message before any step that needs it. Do n
 
 ### Blocking
 
-1. **Issue #2701 (non-orchestrator): production Property Matches proof.** The repository gate refused the browser proof because this chat did not name the exact production resource and action: `production is forbidden for ui-live-workflow; needs Albert naming exact resource and action`. Recommend Albert explicitly authorize read-only browser validation at `https://data.designflow.app` for the Property Matches page, using dedicated Licensing and Administrator test identities. This blocks the final acceptance proof; it does not block repository fixes.
+1. **Issue #2701 (non-orchestrator): production Property Matches proof.** The repository gate refused the browser proof because this chat did not name the exact production resource and action: `production is forbidden for ui-live-workflow; needs Albert naming exact resource and action`. Recommend Albert explicitly authorize read-only browser validation in the DB Data Admin-owned production UI at `https://data.designflow.app` for the Property Matches page, using dedicated Licensing and Administrator test identities. This blocks the final acceptance proof; it does not block repository fixes.
 2. **Issue #2290 (non-orchestrator): ColdLion production deployment remains on owner HOLD.** Recommend keeping the hold until Ilona or Laura confirms that the current production licensor/property data is correct, then have Albert explicitly lift it. This blocks deployment actions only.
 
 ### External, not an Albert decision
@@ -27,7 +27,7 @@ Put this whole list to Albert in one message before any step that needs it. Do n
 
 ## 1. What this application is
 
-`popcre/shared-db` is the public source-of-truth repository for the shared Supabase database used by POP Creations applications. It holds migrations and the governance automation that keeps concurrent database authors, reviewers, preview rehearsals, guarded merges, and production promotion from colliding. GitHub is at `https://github.com/popcre/shared-db`; production UI evidence for DesignFlow is at `https://data.designflow.app`.
+`popcre/shared-db` is the public source-of-truth repository for the shared Supabase database used by POP Creations applications. It holds migrations and the governance automation that keeps concurrent database authors, reviewers, preview rehearsals, guarded merges, and production promotion from colliding. GitHub is at `https://github.com/popcre/shared-db`; DesignFlow production UI evidence is collected in the DB Data Admin-owned application at `https://data.designflow.app`.
 
 This handoff concerns **repository-maintenance and proof work that does not change database structure**. Structural work belongs to the single live orchestrator. The handoff contract uses issue #2829 (non-orchestrator) as the first restart point; when that issue is finished, the successor may delete this file only after carrying every remaining obligation below into its own handoff or proving it is already durable in its linked issue.
 
@@ -120,7 +120,7 @@ Only the incorrect `non-orchestrator` label was removed from the following still
 6. **Wait for Claude PR #3320, then recover PR #2607 for #2596 (non-orchestrator).** Re-read both diffs and preserve Claude's landed contract changes while rebasing the bounded-closeout plan and tooling. You will know it worked when #3320 is no longer open, #2607 is conflict-free, checks pass, and #2596 closes with the merged proof.
 7. **Implement #2831/#2787/#3324/#3348 (all non-orchestrator) as one serialized file-overlap bundle.** Use one worktree and one worker because the issues share lane and governed-review files. You will know it worked when all four issue contracts map to tested changes, no duplicate implementation exists, and the single PR passes the offline tools suite.
 8. **Re-check other owners before acting on #2326, #3342, #3353, or #3343 (all non-orchestrator).** Read current threads and signed GitHub activity. You will know ownership is safe when the prior owner has completed, explicitly handed off, or is unreachable with a durable recovery contract.
-9. **Ask Albert once for the two §0 decisions when their prerequisites are ready.** You will know the #2701 authorization is sufficient when it names `https://data.designflow.app`, read-only Property Matches validation, and the two roles; you will know #2290 is released only when Albert explicitly lifts the hold after business confirmation.
+9. **Ask Albert once for the two §0 decisions when their prerequisites are ready.** You will know the #2701 authorization is sufficient when it names the DB Data Admin-owned `https://data.designflow.app`, read-only Property Matches validation, and the two roles; you will know #2290 is released only when Albert explicitly lifts the hold after business confirmation.
 10. **At the next natural stop, write a successor handoff and retire this one only under the successor rule.** You will know it is safe when #2829 is done, every still-open item above is carried into the successor file or closed with proof, and no unique decision/dead end would be lost.
 
 ## 7. Constraints and gotchas in force
@@ -143,7 +143,7 @@ Only the incorrect `non-orchestrator` label was removed from the following still
 - Repository checkout for reads/landing: `D:\repos\shared-db`; this closeout used its own Codex-managed worktree.
 - GitHub CLI was authenticated for `popcre/shared-db` and could read/write issues, PRs, labels, and branches during the session.
 - Git remote `origin` is the authoritative repository. Current main SHA is recorded in §3.
-- Production UI: `https://data.designflow.app`. No production browser session was opened.
+- Production UI: the DB Data Admin-owned application at `https://data.designflow.app`. No production browser session was opened.
 - Development Data Admin credentials exist in 1Password vault `vibe_coding`; no secret values were copied into chat, GitHub, logs, or this file. A dedicated production Licensing/Admin test identity was not found.
 - No Supabase access token was loaded or used by this session; no live catalog or migration-ledger command was run.
 

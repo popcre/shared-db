@@ -6344,6 +6344,12 @@ test('#2509 emits only the existing no-write historical recovery manifest from i
 
 test('a merged claim still reaches the post-merge rehearsal route instead of being stranded',()=>{
   const {io,mainSha,head,version}=mergedRehearsalIo()
+  const gate=io.previewGateProof
+  io.previewGateProof=(issue,pr,reviewedHead,bundleId,dependencies,mergeCommitSha)=>{
+    assert.equal(mergeCommitSha,'b'.repeat(40))
+    assert.equal(reviewedHead,head)
+    return gate(issue,pr,reviewedHead,bundleId,dependencies,mergeCommitSha)
+  }
   const candidate=deriveLivePreviewCandidate(1769,io)
   assert.equal(candidate.route,'merged_rehearsal')
   assert.equal(candidate.pr,1809)

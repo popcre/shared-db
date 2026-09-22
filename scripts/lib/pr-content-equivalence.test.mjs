@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { isContentPreservingRefresh } from './pr-content-equivalence.mjs'
+import { mergedReviewComparisonBase } from '../manage-migration-author-lanes.mjs'
 
 const git = (repo, args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 function write(repo, files) { for (const [path, body] of Object.entries(files)) { mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), body) } }
@@ -212,9 +213,15 @@ test('POSITIVE CONTROL: after the merge, a superseded head is not identical agai
     git(repo, ['merge', '-q', '--no-ff', '--no-edit', 'pr'])
     const stale = check(repo, revised, merged)
     assert.equal(stale.ok, false, stale.reason); assert.match(stale.reason, /already contained/)
-    const beforeMerge = (a, b) => isContentPreservingRefresh({ approvedHead: a, head: b, mainRef: 'main^1', gitRunner: (args) => git(repo, args) })
+    const mergeCommitSha = git(repo, ['rev-parse', 'main']).trim()
+    const base = mergedReviewComparisonBase({ mergeCommitSha, head: merged, main: mergeCommitSha, gitRunner: (args) => git(repo, args) })
+    assert.equal(base, git(repo, ['rev-parse', 'main^1']).trim())
+    const beforeMerge = (a, b) => isContentPreservingRefresh({ approvedHead: a, head: b, mainRef: base, gitRunner: (args) => git(repo, args) })
     assert.equal(beforeMerge(revised, merged).ok, false)
     const carried = beforeMerge(fixed, merged); assert.equal(carried.ok, true, carried.reason)
+    assert.match(carried.implementation_digest, /^[0-9a-f]{64}$/)
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha, head: revised, main: mergeCommitSha, gitRunner: (args) => git(repo, args) }), /second parent/)
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha, head: merged, main: fixed, gitRunner: (args) => git(repo, args) }), /not proven in current main/)
     assert.notEqual(approved, fixed)
   } finally { rmSync(repo, { recursive: true, force: true }) }
 })

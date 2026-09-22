@@ -29,6 +29,17 @@ export function pendingRequiredContexts(protectedContexts=[],observed=new Map())
   const byName=observed instanceof Map?observed:new Map(Object.entries(observed))
   return protectedContexts.filter((name)=>name!==MERGE_SELF_CONTEXT&&byName.get(name)!=='SUCCESS')
 }
+// Preview runs after a guarded merge. The current main tip already contains the
+// reviewed head, so its pull-request diff is empty. Bind carry comparison to
+// GitHub's actual merge commit and use its first parent (main before the merge).
+export function mergedReviewComparisonBase({mergeCommitSha,head,main,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8'})}){
+  const merge=String(mergeCommitSha??'').toLowerCase(),reviewed=String(head??'').toLowerCase(),tip=String(main??'').toLowerCase()
+  if(![merge,reviewed,tip].every((sha)=>/^[0-9a-f]{40}$/.test(sha)))throw new LaneError('merged review comparison requires exact merge, head and main SHAs')
+  const parents=String(gitRunner(['rev-list','--parents','-n','1',merge])).trim().toLowerCase().split(/\s+/)
+  if(parents.length!==3||parents[0]!==merge||parents[2]!==reviewed)throw new LaneError(`merge commit ${merge} does not have reviewed head ${reviewed} as its second parent`)
+  try{gitRunner(['merge-base','--is-ancestor',merge,tip])}catch{throw new LaneError(`merge commit ${merge} is not proven in current main ${tip}`)}
+  return parents[1]
+}
 export function selectNewestCommitStatus(rows,context){
   if(!Array.isArray(rows))throw new LaneError('commit status history is unreadable')
   const matching=rows.filter((row)=>row?.context===context).map((row)=>{
@@ -2449,13 +2460,17 @@ export const githubIo = {
   // blobs are cached by SHA, so a file unchanged across refs is fetched once.
   getFileAt(file,ref){const text=laneTreeReader.readFileAtRef(REPO,file,ref);if(text===null)throw new LaneError(`could not read ${file} at ${ref}`);return text},
   treeFiles(ref){return laneTreeReader.pathsAtRef(REPO,ref)},
-  previewGateProof(issue,pr,head,bundleId,dependencies=[]){
+  previewGateProof(issue,pr,head,bundleId,dependencies=[],mergeCommitSha=null){
     const protectedContexts=ghJson(['api',`repos/${REPO}/branches/main/protection/required_status_checks`])?.contexts??[]
     const checks=JSON.parse(gh(['pr','checks',String(pr),'--repo',REPO,'--json','name,state']))
     const byName=new Map(checks.map((row)=>[row.name,String(row.state).toUpperCase()]))
     const failed=pendingRequiredContexts(protectedContexts,byName)
     if(failed.length)throw new LaneError(`required full CI is not successful on the current head: ${failed.join(', ')}`)
-    assertDurableReviewApproval(issue,pr,head,this)
+    const reviewIo=mergeCommitSha?{
+      ...this,
+      contentPreservingRefresh:(approvedHead,currentHead)=>this.contentPreservingRefresh(approvedHead,currentHead,{mergeCommitSha})
+    }:this
+    assertDurableReviewApproval(issue,pr,head,reviewIo)
     const states=dependencies.length?this.dependencyStates(dependencies):{},closure=classifyDependencies(issue,dependencies,states)
     if(!closure.satisfied)throw new LaneError(`migration dependency closure is incomplete: ${closure.blocked.map((row)=>`#${row.number}`).join(', ')}`)
     return {full_ci_success:true,review_approved:true,dependency_closure_complete:true}
@@ -2493,12 +2508,13 @@ export const githubIo = {
   mainSha() { return ghJson(['api', `repos/${REPO}/git/ref/heads/main`])?.object?.sha ?? null },
   // Fetches the exact commits it compares, so a stale local checkout cannot answer.
   // Any failure answers "not equivalent" and the exact-head rule stands.
-  contentPreservingRefresh(approvedHead,head){
+  contentPreservingRefresh(approvedHead,head,{mergeCommitSha=null}={}){
     try{
       const main=this.mainSha();if(!/^[0-9a-f]{40}$/.test(String(main)))return{ok:false,reason:'main tip unreadable'}
-      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),main],{stdio:['ignore','pipe','pipe']})
-      return isContentPreservingRefresh({approvedHead,head,mainRef:main})
-    }catch(error){return{ok:false,reason:`could not fetch the heads to compare: ${String(error?.message??error).split('\n')[0]}`}}
+      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),main,...(mergeCommitSha?[String(mergeCommitSha)]:[])],{stdio:['ignore','pipe','pipe']})
+      const mainRef=mergeCommitSha?mergedReviewComparisonBase({mergeCommitSha,head,main}):main
+      return isContentPreservingRefresh({approvedHead,head,mainRef})
+    }catch(error){return{ok:false,reason:`could not prove the heads equivalent: ${String(error?.message??error).split('\n')[0]}`}}
   },
   getCommit(sha) {
     // Issue #3187: a reviewer operation reads commit objects over git; same shape.
@@ -3067,7 +3083,7 @@ export function deriveLivePreviewCandidate(issue,io,{claimNumber=null}={}){
   const bundle=buildEvidenceBundle({migrations,focusedFiles:changed.filter((file)=>file.startsWith('supabase/tests/')),verificationFiles:changed.filter((file)=>file.startsWith('scripts/production-verification-sidecars/')),writes:lease.writes,reads:lease.reads,migrationOrderDigest:sha256(canonicalJson(order)),issue,pr:pr.number,claim:claim.number,baseMainSha:pr.base.sha,integrationSha:head},{isClean:()=>true,fileExists:(file)=>contents.has(file),readFile:(file)=>contents.get(file)})
   const work=io.getIssue(issue),scope=parseQueueScope(work?.body??'')
   if(!scope)throw new LaneError(`issue #${issue} has no db-work-scope block; add exactly one before preparing preview dispatch`)
-  const gate=io.previewGateProof(issue,pr.number,head,bundle.bundle_id,scope.dependencies)
+  const gate=io.previewGateProof(issue,pr.number,head,bundle.bundle_id,scope.dependencies,merged?mergeCommit:null)
   const main=io.mainSha(),mainVersions=io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)),preview=io.previewLedger?.()??livePreviewLedger(),originalApplyEvidence=versions.every((version)=>preview.versions.includes(version))?validateOriginalPreviewApplyEvidence({issue,pr:pr.number,versions,mergeCommitSha:merged?pr.merge_commit_sha:null,claimHeadSha:head},io):null
   const claimRows=claims.map((row)=>{const linked=io.openPulls().find((p)=>p.head?.ref===row.lease.branch);return{issue:claimTitleWorkIssue(row.claim),pr:linked?.number??0,versions:[row.lease.version],merged:false}}).filter((row)=>row.pr&&row.issue!==null)
   const databasePreview=databasePreviewRequiredFromEvidenceBundle(bundle)

@@ -3279,6 +3279,30 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
   )
 })
 
+test('#2758 merge lane accepts independently moved main only through classifyBranchFreshness', () => {
+  const io=memoryIo()
+  io.getPrFiles=()=>[{path:'docs/operations.md',status:'modified'}]
+  // Matching tip keeps the original exact-equality path: no git classification.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})
+  io.mainSha=()=> 'main'
+  const lock=acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io)
+  assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+  releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+  // Unequal tip with unclassifiable SHAs stays a refusal, never a silent pass.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'older-main'}})
+  io.mainSha=()=> 'newer-main'
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+  // An unreadable tip is a refusal, not an independence grant.
+  io.mainSha=()=> null
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+})
+
 test('issue 1688 permits success only after the appropriate merge lock is acquired', () => {
   const leaseWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/migration-author-lease.yml',import.meta.url)),'utf8')
   const mergeWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml',import.meta.url)),'utf8')

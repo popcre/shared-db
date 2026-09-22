@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "work_issue": 2478,
+  "outcome": "ready-for-merge",
+  "pr": 3385,
+  "migration_versions": [
+    "20260920203337"
+  ],
+  "contract_ref": "refs/db-contracts/2478/11",
+  "contract_sha256": "bbb97eaa65830d6937a5faaf6b786772fa37ecc980cffac22105ef45fbb14429",
+  "head_sha": "663b3c598068529b6700c3c465704ad7d003ddff",
+  "files_changed": [
+    ".agent/work/2478/11/completion.json",
+    ".agent/work/2478/11/contract.json",
+    ".github/live-proofs/2478.sql",
+    "scripts/production_migration_guard.py",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20260920203337_shared_style_group_sku_key.sql"
+  ],
+  "db_reads": [
+    "supabase_migrations.schema_migrations"
+  ],
+  "db_writes": [
+    "function public.style_group_key_for_sku",
+    "function public.rebuild_style_groups_batch",
+    "function public.reconcile_style_group_drift"
+  ],
+  "checks": [
+    {
+      "evidence": "Exit 0 with no whitespace errors after main 7d1687c8 refresh",
+      "exit_code": 0,
+      "command": "git diff --check"
+    },
+    {
+      "evidence": "277 tests passed, 0 failures, 0 skipped in 68.175 seconds after main refresh",
+      "exit_code": 0,
+      "command": "python -m unittest scripts.test_production_migration_guard"
+    },
+    {
+      "evidence": "Static checks passed after main refresh; no database migration run; live-ledger Guard B2 was not configured locally",
+      "exit_code": 0,
+      "command": "bash scripts/check-sql.sh"
+    },
+    {
+      "evidence": "Live-proof probe present: .github/live-proofs/2478.sql after main refresh",
+      "exit_code": 0,
+      "command": "node scripts/check-live-proof-probe.mjs"
+    },
+    {
+      "evidence": "142 tests passed, 0 failures, 0 skipped in 0.371 seconds after main refresh",
+      "exit_code": 0,
+      "command": "python -m unittest scripts.test_post_batch_app_verification"
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh ledger reads 2026-09-20T20:32:08Z: production absent both old versions; preview absent 20260911212849 and present 20260917112129; both derived-from bases applied on both targets",
+    "Supported atomic reissue retained old reservation and created retirement evidence 5ecc1ad8be6c79631a4f0e1f679238d6bc7377a4",
+    "New executable SQL exactly matches old SQL after newline normalization; old SQL hash tests pass",
+    "Implementation complete; actual independent reviews, new preview rehearsal, guarded merge and automatic production live proof still required; no database write performed",
+    "CI identified sibling retired-set expectation and self-referential files_changed mistake; both corrected under prospective generation11. Earlier approval does not authorize updated head.",
+    "Merged current main 7d1687c83dce4fcf94b1152cebc23f27fbd89adb into implementation head ccda6d8546de28c304cf955d8ac7660286ab0a24; content-equivalence returned ok=true, digest e64ed5c88ecb3ae8c775742f9774fe4f5d51a990de15bd4daad0b9bd7b10df50; no reviewed implementation file changed.",
+    "Both immutable contract and completion files are carried after implementation head 663b3c598068529b6700c3c465704ad7d003ddff so the CI evidence boundary can verify their exact custody."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "7d1687c83dce4fcf94b1152cebc23f27fbd89adb"
+}

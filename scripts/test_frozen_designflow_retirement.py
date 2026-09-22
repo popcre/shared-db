@@ -82,7 +82,11 @@ class RetirementTests(unittest.TestCase):
         # Windows postgres inherits pg_ctl handles: use a file, never a pipe
         # whose EOF would wait for the database server to exit.
         with (cls.directory / 'start.log').open('wb') as output:
-            subprocess.run([cls.pgctl,'-D',str(cls.directory / 'data'),'-l',str(cls.directory / 'server.log'),'-o',f'-h 127.0.0.1 -p {cls.port}','-w','start'],check=True,stdout=output,stderr=output,timeout=60)
+            start = subprocess.run([cls.pgctl,'-D',str(cls.directory / 'data'),'-l',str(cls.directory / 'server.log'),'-o',f'-h 127.0.0.1 -p {cls.port} -c unix_socket_directories=','-w','start'],stdout=output,stderr=output,timeout=60)
+        if start.returncode:
+            server_log = (cls.directory / 'server.log')
+            detail = server_log.read_text(errors='replace') if server_log.exists() else (cls.directory / 'start.log').read_text(errors='replace')
+            raise RuntimeError(f'Synthetic PostgreSQL startup failed: {detail[-2000:]}')
 
     @classmethod
     def tearDownClass(cls):

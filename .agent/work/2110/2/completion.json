@@ -11,6 +11,8 @@
   "head_sha": "1f0ec992d3f6e628ad0aa6209837a5a37f769bc4",
   "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
   "files_changed": [
+    ".agent/work/2110/2/completion.json",
+    ".agent/work/2110/2/contract.json",
     ".github/live-proofs/2110.sql",
     "docs/verification/2110-frozen-designflow-retirement.md",
     "scripts/test_frozen_designflow_retirement.py",

@@ -2493,11 +2493,16 @@ export const githubIo = {
   mainSha() { return ghJson(['api', `repos/${REPO}/git/ref/heads/main`])?.object?.sha ?? null },
   // Fetches the exact commits it compares, so a stale local checkout cannot answer.
   // Any failure answers "not equivalent" and the exact-head rule stands.
-  contentPreservingRefresh(approvedHead,head){
+  // #3411: a MERGED pull request is judged against its guarded merge commit's
+  // first parent (main as the merge saw it), exactly like the merge gate's
+  // resolveApprovalMainRef. Against current main its diff is empty (#3146).
+  contentPreservingRefresh(approvedHead,head,pr=null){
     try{
-      const main=this.mainSha();if(!/^[0-9a-f]{40}$/.test(String(main)))return{ok:false,reason:'main tip unreadable'}
-      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),main],{stdio:['ignore','pipe','pipe']})
-      return isContentPreservingRefresh({approvedHead,head,mainRef:main})
+      const base=resolveLaneApprovalBase(pr,head,this);if(!base.ok)return base
+      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),base.fetch],{stdio:['ignore','pipe','pipe']})
+      let mainRef=base.fetch
+      if(base.firstParentOf){mainRef=String(execFileSync('git',['rev-parse','--verify',`${base.firstParentOf}^1^{commit}`],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim().toLowerCase();if(!/^[0-9a-f]{40}$/.test(mainRef))return{ok:false,reason:`could not resolve the first parent of merge commit ${base.firstParentOf}`}}
+      return isContentPreservingRefresh({approvedHead,head,mainRef})
     }catch(error){return{ok:false,reason:`could not fetch the heads to compare: ${String(error?.message??error).split('\n')[0]}`}}
   },
   getCommit(sha) {
@@ -4848,6 +4853,23 @@ export function headVerdictBlocksReplacement(issue,pr,headSha,io,options={}){
 // of B and the pull request's own diff is identical at both (`.agent/` aside).
 // A refusal at B, or at any content-identical earlier head, still blocks. With no
 // `io.contentPreservingRefresh` nothing is carried.
+// #3411: which main a prior-head APPROVE is compared against. An open pull
+// request: the current main tip. A merged one: the first parent of its merge
+// commit, and only when that merge commit is in main history and the pull
+// request's recorded head is the head being judged. Anything unreadable refuses.
+export function resolveLaneApprovalBase(pr,head,io){
+  const tip=()=>{const main=io.mainSha();return /^[0-9a-f]{40}$/.test(String(main))?{ok:true,fetch:main}:{ok:false,reason:'main tip unreadable'}}
+  if(pr==null)return tip()
+  const live=io.getPr(Number(pr))
+  if(!live||typeof live!=='object')return{ok:false,reason:`pull request #${pr} is unreadable`}
+  if(live.merged!==true&&!live.merged_at)return tip()
+  const merge=String(live.merge_commit_sha??'').toLowerCase()
+  if(!/^[0-9a-f]{40}$/.test(merge))return{ok:false,reason:`pull request #${pr} is merged but has no exact merge commit to judge its diff against`}
+  if(String(live.head?.sha??'').toLowerCase()!==String(head).toLowerCase())return{ok:false,reason:`pull request #${pr} merged head ${live.head?.sha??'unknown'} is not the head being judged ${head}`}
+  if(io.mergeCommitInMain?.(merge)!==true)return{ok:false,reason:`pull request #${pr} merge commit ${merge} is not proven in main history`}
+  return{ok:true,fetch:merge,firstParentOf:merge}
+}
+
 export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo){
   const head=String(headSha).toLowerCase()
   try{return assertExactDurableReviewApproval(issue,pr,head,io)}catch(exactError){
@@ -4864,7 +4886,7 @@ export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo){
     // and that refusal must still block (grok review of PR #2780).
     const priors=[...new Set([REVIEW_ASSIGNMENT_REF_PREFIX,REVIEW_REPLACEMENT_REF_PREFIX,REVIEW_RETURN_REF_PREFIX,REVIEW_VERDICT_REF_PREFIX,REVIEW_VERDICT_REPLACEMENT_REF_PREFIX].flatMap((p)=>(io.listRefs(prefix(p))??[]).map(({ref})=>new RegExp(`^${Number(issue)}-${Number(pr)}-([0-9a-f]{40})`).exec(String(ref).slice(p.length+1))?.[1])).filter(Boolean))].filter((sha)=>sha!==head)
     // #2728: a carry records the approved implementation digest; a proof without one carries nothing.
-    const equivalent=priors.filter((sha)=>{const proof=io.contentPreservingRefresh(sha,head);return proof?.ok===true&&/^[0-9a-f]{64}$/.test(String(proof.implementation_digest??''))})
+    const equivalent=priors.filter((sha)=>{const proof=io.contentPreservingRefresh(sha,head,Number(pr));return proof?.ok===true&&/^[0-9a-f]{64}$/.test(String(proof.implementation_digest??''))})
     for(const sha of equivalent){
       let rows
       try{rows=readReviewVerdicts(issue,pr,sha,io)}catch(error){throw new LaneError(`${exactError.message}; an APPROVE cannot be carried forward because the reviewer records at head ${sha}, whose pull request diff is identical to this head, could not be read: ${error?.message??error}`)}

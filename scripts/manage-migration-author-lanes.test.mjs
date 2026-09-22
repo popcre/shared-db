@@ -9565,3 +9565,24 @@ test('#2824 --set-scope-status is reachable from the CLI and reports the transit
   assert.match(text, /status: blocked -> ready/)
   assert.equal(parseQueueScope(io.currentBody()).status, 'ready')
 })
+
+// #3411: a merged pull request's prior-head APPROVE is compared against the
+// first parent of its guarded merge commit, never the current main tip.
+test('resolveLaneApprovalBase judges a merged PR against its merge commit first parent', async () => {
+  const { resolveLaneApprovalBase } = await import('./manage-migration-author-lanes.mjs')
+  const head = 'd'.repeat(40), merge = 'e'.repeat(40), tip = 'f'.repeat(40)
+  const io = (pr, inMain = true) => ({ mainSha: () => tip, getPr: () => pr, mergeCommitInMain: () => inMain })
+  assert.deepEqual(resolveLaneApprovalBase(null, head, io(null)), { ok: true, fetch: tip })
+  assert.deepEqual(resolveLaneApprovalBase(1, head, io({ merged: false, head: { sha: head } })), { ok: true, fetch: tip })
+  const merged = { merged: true, merge_commit_sha: merge, head: { sha: head } }
+  assert.deepEqual(resolveLaneApprovalBase(1, head, io(merged)), { ok: true, fetch: merge, firstParentOf: merge })
+  assert.equal(resolveLaneApprovalBase(1, head, io(merged, false)).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, 'a'.repeat(40), io(merged)).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, head, io({ merged: true, head: { sha: head } })).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, head, io(null)).ok, false)
+})
+
+test('assertDurableReviewApproval passes the pull request number to the refresh comparison', () => {
+  const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'manage-migration-author-lanes.mjs'), 'utf8')
+  assert.match(src, /io\.contentPreservingRefresh\(sha,head,Number\(pr\)\)/)
+})

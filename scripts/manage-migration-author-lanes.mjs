@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { resolveEvidencePair, isEvidencePath } from './lib/agent-evidence-paths.mjs'
 
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch } from './lib/github-transport.mjs'
@@ -484,14 +485,23 @@ export const REVIEWERS = Object.freeze([
 // PAUSED 2026-09-18 (owner instruction, chat directive, no issue): 'glm-5.3'.
 // No provider fault is alleged and no health check failed -- the owner is
 // rotating providers in and out of the active pool through the week to spread
-// account usage, and this week GLM sits out. Kimi K3 stays in and was verified
+// account usage, and this week GLM sits out. Kimi K3 stayed in then and was verified
 // the same day (`AI_KIMI_CALLER=claude ai-kimi doctor`: read-only PASS,
-// preflight PASS, auth OK). This is a PAUSE, not a retirement: restoring GLM is
+// preflight PASS, auth OK); Kimi was itself paused on 2026-09-22 (below). This is a PAUSE, not a retirement: restoring GLM is
 // a one-line deletion from this list once the owner asks for it back, and its
 // REVIEWERS row stays so every durable verdict it already recorded still
 // authorizes a merge. The 2026-09-17 owner ruling -- GLM never reviews
 // GLM-orchestrated work -- is unaffected and keeps binding when GLM returns.
-export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contributor', 'deepseek-chat', 'codex-gpt-5.6-sol', 'glm-5.3'])
+//
+// PAUSED 2026-09-22 (owner instruction, issue #3423): 'kimi-k3'.
+// The Kimi account has been out of credit and suspended since 2026-09-17, so
+// every draw that landed on it failed and left the PR "waiting for a reviewer"
+// until a replacement round. The owner confirmed the live pool is exactly four:
+// Grok, Qwen, Muse and Gemini (GLM stays paused above). This is a PAUSE, not a
+// retirement: restoring Kimi is a one-line deletion from this list once the
+// account has credit AND `AI_KIMI_CALLER=claude ai-kimi doctor` passes. Its
+// REVIEWERS row stays so every durable verdict it recorded still authorizes.
+export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contributor', 'deepseek-chat', 'codex-gpt-5.6-sol', 'glm-5.3', 'kimi-k3'])
 
 // Not retired -- quarantined pending a passing live qualification. Kept separate
 // from RETIRED_REVIEWERS on purpose: retirement is a permanent disposition,
@@ -2076,8 +2086,10 @@ export function buildDatabasePreviewFileSnapshot(files,base,head,readContent){
 export const githubIo = {
   enforceAdmission:true,
   // Owner ruling 2026-09-11 (marker #2758): no global FIFO for reviewer draws. Any PR
-  // draws any free usable provider immediately; the per-provider lease, engine
-  // exclusions, and exact-head binding in assignNextReviewerOperation still apply.
+  // draws any usable provider immediately. There is NO per-reviewer concurrency
+  // limit (owner rule): a provider already holding live leases is drawn again,
+  // because the exact-head protocol below keeps one lease ref per review. Engine
+  // exclusions and exact-head binding in assignNextReviewerOperation still apply.
   enableReviewerQueue:false,
   enableReviewerSilence:true,
   requiresExactReviewHeadSha: true,
@@ -2494,12 +2506,32 @@ export const githubIo = {
   mainSha() { return ghJson(['api', `repos/${REPO}/git/ref/heads/main`])?.object?.sha ?? null },
   // Fetches the exact commits it compares, so a stale local checkout cannot answer.
   // Any failure answers "not equivalent" and the exact-head rule stands.
-  contentPreservingRefresh(approvedHead,head){
-    try{
-      const main=this.mainSha();if(!/^[0-9a-f]{40}$/.test(String(main)))return{ok:false,reason:'main tip unreadable'}
-      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),main],{stdio:['ignore','pipe','pipe']})
-      return isContentPreservingRefresh({approvedHead,head,mainRef:main})
-    }catch(error){return{ok:false,reason:`could not fetch the heads to compare: ${String(error?.message??error).split('\n')[0]}`}}
+  // #3411: a MERGED pull request is judged against its guarded merge commit's
+  // first parent (main as the merge saw it). The guarded migration lane uses
+  // two-parent --merge; a squash has no reviewed second parent and cannot carry
+  // a prior approval here. The broader merge gate also serves prose-only PRs.
+  contentPreservingRefresh(approvedHead,head,pr=null,context=null,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})){
+    const key=`${Number(pr)}:${String(head).toLowerCase()}`
+    if(context?.key!==undefined&&context.key!==key)return{ok:false,reason:'review comparison context was reused for a different pull request or head'}
+    if(context?.refusal)return context.refusal
+    const refuse=(result)=>{if(context){context.key=key;context.refusal=result}return result}
+    let prepared=context?.prepared
+    if(!prepared){
+      let base
+      try{base=resolveLaneApprovalBase(pr,head,this)}catch(error){return refuse({ok:false,reason:`could not resolve pull request comparison base: ${String(error?.message??error).split('\n')[0]}`})}
+      if(!base.ok)return refuse(base)
+      try{gitRunner(['fetch','--no-tags','-q','origin',String(head),base.fetch,...(base.currentMain?[base.currentMain]:[])])}
+      catch(error){return refuse({ok:false,reason:`could not fetch the heads to compare: ${String(error?.message??error).split('\n')[0]}`})}
+      let mainRef=base.fetch
+      if(base.firstParentOf){
+        try{mainRef=mergedReviewComparisonBase({mergeCommitSha:base.firstParentOf,head,main:base.currentMain,gitRunner})}
+        catch(error){return refuse({ok:false,reason:String(error?.message??error).split('\n')[0]})}
+      }
+      prepared={mainRef}
+      if(context){context.key=key;context.prepared=prepared}
+    }
+    try{return isContentPreservingRefresh({approvedHead,head,mainRef:prepared.mainRef,gitRunner})}
+    catch(error){return{ok:false,reason:`could not compare the pull request diff: ${String(error?.message??error).split('\n')[0]}`}}
   },
   getCommit(sha) {
     // Issue #3187: a reviewer operation reads commit objects over git; same shape.
@@ -4849,6 +4881,38 @@ export function headVerdictBlocksReplacement(issue,pr,headSha,io,options={}){
 // of B and the pull request's own diff is identical at both (`.agent/` aside).
 // A refusal at B, or at any content-identical earlier head, still blocks. With no
 // `io.contentPreservingRefresh` nothing is carried.
+// #3411: which main a prior-head APPROVE is compared against. An open pull
+// request: the current main tip. A merged one: the first parent of its merge
+// commit, and only when that merge commit is in main history and the pull
+// request's recorded head is the head being judged. Anything unreadable refuses.
+export function mergedReviewComparisonBase({mergeCommitSha,head,main,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})}){
+  const merge=String(mergeCommitSha??'').toLowerCase(),reviewed=String(head??'').toLowerCase(),tip=String(main??'').toLowerCase()
+  if(![merge,reviewed,tip].every((sha)=>/^[0-9a-f]{40}$/.test(sha)))throw new LaneError('merged review comparison requires exact merge, head and main SHAs')
+  const parents=String(gitRunner(['rev-list','--parents','-n','1',merge])).trim().toLowerCase().split(/\s+/)
+  if(parents.length!==3||parents[0]!==merge||parents[2]!==reviewed)throw new LaneError(`merge commit ${merge} does not have reviewed head ${reviewed} as its second parent`)
+  try{gitRunner(['merge-base','--is-ancestor',merge,tip])}catch{throw new LaneError(`merge commit ${merge} is not proven in current main ${tip}`)}
+  return parents[1]
+}
+
+export function resolveLaneApprovalBase(pr,head,io){
+  const tip=()=>{const main=io.mainSha();return /^[0-9a-f]{40}$/.test(String(main))?{ok:true,fetch:main}:{ok:false,reason:'main tip unreadable'}}
+  if(pr==null)return tip()
+  const live=io.getPr(Number(pr))
+  if(!live||typeof live!=='object')return{ok:false,reason:`pull request #${pr} is unreadable`}
+  if(Number(live.number)!==Number(pr))return{ok:false,reason:`pull request #${pr} response does not identify that exact pull request`}
+  if(live.merged!==true){
+    if(live.merged_at)return{ok:false,reason:`pull request #${pr} has inconsistent merged state`}
+    return tip()
+  }
+  const merge=String(live.merge_commit_sha??'').toLowerCase()
+  if(!/^[0-9a-f]{40}$/.test(merge))return{ok:false,reason:`pull request #${pr} is merged but has no exact merge commit to judge its diff against`}
+  if(String(live.head?.sha??'').toLowerCase()!==String(head).toLowerCase())return{ok:false,reason:`pull request #${pr} merged head ${live.head?.sha??'unknown'} is not the head being judged ${head}`}
+  if(io.mergeCommitInMain?.(merge)!==true)return{ok:false,reason:`pull request #${pr} merge commit ${merge} is not proven in main history`}
+  const currentMain=io.mainSha()
+  if(!/^[0-9a-f]{40}$/.test(String(currentMain)))return{ok:false,reason:'main tip unreadable'}
+  return{ok:true,fetch:merge,firstParentOf:merge,currentMain}
+}
+
 export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo){
   const head=String(headSha).toLowerCase()
   try{return assertExactDurableReviewApproval(issue,pr,head,io)}catch(exactError){
@@ -4865,7 +4929,8 @@ export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo){
     // and that refusal must still block (grok review of PR #2780).
     const priors=[...new Set([REVIEW_ASSIGNMENT_REF_PREFIX,REVIEW_REPLACEMENT_REF_PREFIX,REVIEW_RETURN_REF_PREFIX,REVIEW_VERDICT_REF_PREFIX,REVIEW_VERDICT_REPLACEMENT_REF_PREFIX].flatMap((p)=>(io.listRefs(prefix(p))??[]).map(({ref})=>new RegExp(`^${Number(issue)}-${Number(pr)}-([0-9a-f]{40})`).exec(String(ref).slice(p.length+1))?.[1])).filter(Boolean))].filter((sha)=>sha!==head)
     // #2728: a carry records the approved implementation digest; a proof without one carries nothing.
-    const equivalent=priors.filter((sha)=>{const proof=io.contentPreservingRefresh(sha,head);return proof?.ok===true&&/^[0-9a-f]{64}$/.test(String(proof.implementation_digest??''))})
+    const comparisonContext={}
+    const equivalent=priors.filter((sha)=>{const proof=io.contentPreservingRefresh(sha,head,Number(pr),comparisonContext);return proof?.ok===true&&/^[0-9a-f]{64}$/.test(String(proof.implementation_digest??''))})
     for(const sha of equivalent){
       let rows
       try{rows=readReviewVerdicts(issue,pr,sha,io)}catch(error){throw new LaneError(`${exactError.message}; an APPROVE cannot be carried forward because the reviewer records at head ${sha}, whose pull request diff is identical to this head, could not be read: ${error?.message??error}`)}
@@ -7155,15 +7220,24 @@ export function verifyMergedPrIssueBinding({pr,issue}, io = githubIo) {
   const work=io.getIssue(issue)
   if(!work||Number(work.number)!==issue)throw new LaneError(`merged PR issue binding refused: issue #${issue} is unreadable`)
   if(String(work.state??'').toLowerCase()!=='open')throw new LaneError(`merged PR issue binding refused: issue #${issue} is not open; a binding never reopens closed work`)
-  let completion
-  try{completion=JSON.parse(io.getFileAt('.agent/completion.json',livePr.head.sha))}catch{throw new LaneError(`merged PR issue binding refused: .agent/completion.json at pull request #${pr} head is unreadable`)}
-  if(Number(completion?.work_issue)!==issue||Number(completion?.pr)!==pr)throw new LaneError(`merged PR issue binding refused: completion record names issue #${completion?.work_issue} and PR #${completion?.pr}`)
   const prFiles=io.getPrFiles(pr)
   if(!Array.isArray(prFiles)||!prFiles.length)throw new LaneError(`merged PR issue binding refused: pull request #${pr} file inventory is unreadable`)
   for(const file of prFiles){
     const migration=[file?.filename,file?.previous_filename].some((value)=>MIGRATION_PATH.test(String(value??'').replace(/\\/g,'/')))
     if(migration&&(file?.previous_filename!==undefined||!['added','modified'].includes(String(file?.status).toLowerCase())))throw new LaneError(`merged PR issue binding refused: migration file ${file?.filename} is ${file?.status}; only added or modified migrations can be bound`)
   }
+  for(const file of prFiles){
+    if(typeof file?.filename!=='string'||!file.filename||typeof file?.status!=='string')throw new LaneError(`merged PR issue binding refused: pull request #${pr} file inventory is unreadable`)
+    if([file.filename,file.previous_filename].some(isEvidencePath)&&(file.previous_filename!==undefined||!['added','modified'].includes(file.status.toLowerCase())))throw new LaneError(`merged PR issue binding refused: evidence file ${file.filename} is ${file.status}; only added or modified evidence can be bound`)
+  }
+  if(!Number.isSafeInteger(livePr.changed_files)||livePr.changed_files!==prFiles.length||new Set(prFiles.map((file)=>file.filename)).size!==prFiles.length)throw new LaneError(`merged PR issue binding refused: pull request #${pr} file inventory is incomplete or duplicated`)
+  const pair=resolveEvidencePair(prFiles.map((file)=>file.filename),{readFile:(path)=>io.getFileAt(path,livePr.head.sha)})
+  if(pair.state!=='current')throw new LaneError(`merged PR issue binding refused: pull request #${pr} evidence is ${pair.state}; exactly one PR-owned complete pair is required`)
+  if(pair.key!=='legacy'&&pair.key.split('/')[0]!==String(issue))throw new LaneError(`merged PR issue binding refused: evidence path names issue #${pair.key.split('/')[0]}`)
+  let completion
+  try{completion=JSON.parse(io.getFileAt(pair.completion,livePr.head.sha))}catch{throw new LaneError(`merged PR issue binding refused: ${pair.completion} at pull request #${pr} head is unreadable`)}
+  if(Number(completion?.work_issue)!==issue||Number(completion?.pr)!==pr)throw new LaneError(`merged PR issue binding refused: completion record names issue #${completion?.work_issue} and PR #${completion?.pr}`)
+  if(pair.key!=='legacy'&&completion.contract_ref!==`refs/db-contracts/${pair.key}`)throw new LaneError(`merged PR issue binding refused: completion contract_ref does not match evidence key ${pair.key}`)
   const versions=migrationVersions(prFiles).sort()
   const recorded=Array.isArray(completion.migration_versions)?completion.migration_versions.map(String).sort():[]
   if(!versions.length||versions.length!==recorded.length||versions.some((v,i)=>v!==recorded[i]))throw new LaneError(`merged PR issue binding refused: PR migrations ${versions.join(',')||'none'} do not equal completion record ${recorded.join(',')||'none'}`)
@@ -7872,12 +7946,9 @@ export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
     const claimed=new Set(claimObjects),parsed=(target[0].objects??[]).length?validateClaimObjects(target[0].objects):[]
     const uncovered=parsed.filter((object)=>!claimed.has(object))
     if(uncovered.length)throw new LaneError(`claim does not cover parsed pull request objects: ${uncovered.join(', ')}`)
-    const renewalScope=parseQueueScope(workIssue.body)
-    if(renewalScope.workType==='structural'){
-      const authorized=new Set([...renewalScope.objects.map(normalizeObject),...parsed])
-      const unsupported=claimObjects.filter((object)=>!authorized.has(object))
-      if(unsupported.length)throw new LaneError(`claim carries objects unsupported by its issue or pull request: ${unsupported.join(', ')}`)
-    }
+    // Historical claims may protect more objects than the current issue or PR
+    // writes. The forward checks above require every current issue and parsed
+    // PR write to be covered; renewal retains the entire existing claim.
     const others=claims.filter((claim)=>String(claim.number)!==String(options.claim)),otherPrs=sources.filter((source)=>source!==target[0])
     assertLaneAvailable(others,lease.objects,now,{prSources:otherPrs})
     requireOwnedRef(MUTEX_REF,ownerSha,io)

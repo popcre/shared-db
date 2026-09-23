@@ -1,6 +1,6 @@
 > ⚠️ **Auto-synced — do not hand-edit the copies.**
 >
-> [`u2giants/shared-db`](https://github.com/u2giants/shared-db) is the **single source of truth**. Its entire contents are mirrored into the **`shared-db/` folder** of every consumer repo (CRM, DAM, PM/PIM, DesignFlow PLM) on each push to `main`.
+> [`popcre/shared-db`](https://github.com/popcre/shared-db) (formerly `u2giants/shared-db`; moved 2026-09-18, old links redirect) is the **single source of truth**. Its entire contents are mirrored into the **`shared-db/` folder** of every consumer repo (CRM, DAM, PM/PIM, DesignFlow PLM) on each push to `main`.
 >
 > **Reading this inside a consumer repo's `shared-db/` folder?** It's a read-only copy — edits here are overwritten on the next sync. Change the canonical repo instead.
 
@@ -53,7 +53,7 @@ The guarded row-application work is planned in [`plan_historical_mg_reclassifica
 - **Reviewer lease capacity truth (issues #2058 and #1851):** [`plan_reviewer_lease_capacity_truth.md`](plan_reviewer_lease_capacity_truth.md). Read its STATUS table first — do not re-derive its root cause or re-plan its steps. Repository-maintenance work that authorizes **no** database change; implement it in a fresh isolated session outside the structure/schema orchestrator. It releases terminally failed reviewer slots without requiring a replacement draw, timestamps leases, adds a read-only capacity report, and makes the exhaustion refusal name its true cause. Never hand-delete a `refs/db-review-active/*` ref and never post a synthetic verdict to free capacity — both were considered and rejected, and both silently un-review a database change.
 - **Orchestrator throughput Phase 2 (issue #1738):** [`plan_orchestrator_throughput_phase_2.md`](plan_orchestrator_throughput_phase_2.md). Read its STATUS table first. It uses the completed `shared-db.orch` transcript to separate protected claims from worker capacity, preserve content-addressed evidence across unrelated `main` movement, schedule shared-preview dependencies, and qualify routes before expensive gates. This is repository-maintenance work outside the structure/schema orchestrator.
   **No concurrency ceilings (owner ruling, 2026-09-16):** any number of migration authors may hold leases, any number of sub-agents may run, and one reviewer may run any number of reviews at once. The only admission controls are exact-object collision locks, unique migration version reservation, and the one-at-a-time preview apply, guarded merge, and production promotion lanes — those are safety isolation, not caps. Never reintroduce a count limit. Two physical limits remain and fail closed: the live-lease listing (`REVIEW_REF_ROW_LIMIT` and the GraphQL command size); the sanctioned response is `--reap-abandoned-review-leases --apply-recovery`, never a cap. The capacity report and start watch also refuse loudly past their per-lease read budget; that degrades reporting only, never draws.
-  Phase 2 is active: protected claims never disappear when author capacity is relinquished; preview dependencies are waits, not successful checks. Before manual preview dispatch resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and use only the matching instruction. Historical recovery is apply-only; historical dry-run proves nothing. `--repair-preview-ready <ready-id> --issue <n>` may repair only a v2-bound stale wrong digest; a corrupt live digest stops for owner decision without mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or wait queue (issue #3130). The live orchestrator engine is always excluded: Codex cannot review a Codex-orchestrated change, and Claude cannot review a Claude-orchestrated change. Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438) after a recorded live re-qualification; Kimi K3 was unpaused on 2026-09-07 (PR #2483) and is drawable again; Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485) by owner instruction and is not drawable. The gate this repo enforces before any reviewer runs is `reviewerExecutionPreflight`, which runs the wrapper's own `doctor` and refuses rather than report ready on a probe it never ran.
+  Phase 2 is active: protected claims never disappear when author capacity is relinquished; preview dependencies are waits, not successful checks. Before manual preview dispatch resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and use only the matching instruction. Historical recovery is apply-only; historical dry-run proves nothing. `--repair-preview-ready <ready-id> --issue <n>` may repair only a v2-bound stale wrong digest; a corrupt live digest stops for owner decision without mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or wait queue (issue #3130). The live orchestrator engine is always excluded: Codex cannot review a Codex-orchestrated change, and Claude cannot review a Claude-orchestrated change. Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438) after a recorded live re-qualification; Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423) and is not drawable; Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485) by owner instruction and is not drawable. The gate this repo enforces before any reviewer runs is `reviewerExecutionPreflight`, which runs the wrapper's own `doctor` and refuses rather than report ready on a probe it never ran.
 - **Making throughput guards tell the truth (hash-bound verification sidecars, typed catalog truth, regression corpus and causal blocker measures):** [`plan_orchestrator_throughput_guard_truth.md`](plan_orchestrator_throughput_guard_truth.md). Read its STATUS table first — do not re-derive its analysis or re-plan its steps. Repository-maintenance work that authorizes **no** database change; do not route it to the structure/schema orchestrator. It preserves every refusal while separating migration-file, ledger and live-catalog evidence so “not derivable” is never reported as “absent.”
 - **Paramount capture validation after the 2026-08-24 preview rehearsal:** [`fix_Paramount_capture_against_preview.md`](fix_Paramount_capture_against_preview.md). **Complete — do not re-run it to make the document current.** The three required migrations and the JSON-null repair are on preview, and the full Paramount capture succeeded and was verified there. The JSON-null structural repair alone was later promoted to production under separate owner authorization (issue #1418). No production Paramount *data capture* has been authorized or performed; that remains a separate owner decision.
 - OrderList source contract: [`docs/app-migration-notes/popdam-order-list.md`](docs/app-migration-notes/popdam-order-list.md), with formula detail in [`docs/app-migration-notes/popdam-order-list-formula-audit-20260807.md`](docs/app-migration-notes/popdam-order-list-formula-audit-20260807.md). Owner ruling: Google OrderList and future Coldlion rows are the same orders; `plm.item` is the ultimate item list. One canonical order/line must retain separate Google and Coldlion source refs.
@@ -85,8 +85,14 @@ AI sessions from breaking each other through the one database they all depend on
 > under §6.4. **§0.0-C is the orchestrator's own admission test**: anything that fails the shape
 > test is REJECTED (it belongs to another session) or FORKED to a fresh sub-agent — never worked
 > in the orchestrator's own context window.
-> **Any other session with a STRUCTURE change opens a GitHub issue and stops:**
-> `gh issue create --repo u2giants/shared-db --label db-work --title "HANDOVER: …" --body-file <file>`.
+> **Any other session with a STRUCTURE change opens a GitHub issue and stops — with ONE
+> exception (issue #3199 Phase B):** an additive change whose every named object lives in
+> `{crm, pim, dam}` may instead take the **self-service additive lane** — declare
+> `route: self-service-additive` in the issue's `db-work-scope`, claim the lane yourself
+> (`--claim --admit-issue`), draw both reviewers yourself (`--assign-reviewer`), and dispatch the
+> guarded merge yourself; the merge-time boundary classifier enforces the scope. Everything else
+> (shared objects, other schemas, brand-new schemas) still hands over:
+> `gh issue create --repo popcre/shared-db --label db-work --title "HANDOVER: …" --body-file <file>`.
 > ⛔ **EVERY issue this repo receives carries the `db-work` label AND a `db-work-scope`
 > block — no exceptions, including bug reports, tooling defects and CI complaints
 > that feel unrelated to the queue.** `--label db-work` is not optional decoration and
@@ -133,7 +139,7 @@ AI sessions from breaking each other through the one database they all depend on
 
 > ## ⚠️ A structural migration returning to shared-db carries its live-proof probe
 >
-> When a structural outcome's `db-work-scope` says `application_return_to: u2giants/shared-db`,
+> When a structural outcome's `db-work-scope` says `application_return_to: popcre/shared-db`,
 > its migration pull request must also commit `.github/live-proofs/<work_issue>.sql`: ONE
 > read-only `SELECT`/`WITH` statement returning one row with a boolean column aliased `passed`.
 > The `Shared DB Live Proof` workflow ([`.github/workflows/shared-db-live-proof.yml`](.github/workflows/shared-db-live-proof.yml))
@@ -350,6 +356,19 @@ Before opening, accepting, or acting on any item, answer one question:
 **Yes → accept.** It is queue work: `work_type: structural`, `route: shared-db-orchestrator`, exact
 objects listed, dispatched to a sub-agent in an isolated worktree as usual.
 
+**Structural work has a second ROUTE, never a second work type (issue #3199 Phase B):**
+`route: self-service-additive` admits the same structural work WITHOUT orchestrator triage when it
+is additive and every named object lives in the app-owned `{crm, pim, dam}` schemas. The boundary
+is enforced AT MERGE TIME by `scripts/check-self-service-additive-lane.mjs` inside the guarded
+merge, pre-lock — a declared route whose pull request fails the classifier never merges. The
+author session claims the lane (`--claim --admit-issue`), draws both reviewers itself
+(`--assign-reviewer`), and dispatches the guarded merge itself; every existing gate (collision
+locks, version reservation, exact-head review, serial preview/merge/promotion) is unchanged. The
+orchestrator never dispatches, refills or reviews this route; `--queue-audit` prints it in its own
+section. Out of the lane: `plm`/`api`/`core`/`public`/`ingest`/`storage`/`dflow`/`app`, any
+brand-new schema, any data statement, `CREATE OR REPLACE`, `SECURITY DEFINER`, and grants to
+browser roles on `crm`/`pim` objects without RLS.
+
 **No → `accept` is never one of the exits. Each non-structural work type names where it goes
 instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
 `scripts/manage-migration-author-lanes.mjs`; the two must agree.
@@ -374,6 +393,32 @@ instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
   takes no action on them.
 - **RETURN-TO-OWNER** — `security-settings`. It needs authority the orchestrator does not have.
   Put it to Albert; do not dispatch it to any session.
+
+### Every dispatch carries the waiting instruction (issue #2998 item 4, added 2026-09-20)
+
+**Copy this into every dispatch prompt, in these words:**
+
+> Keep polling. Do not stop while waiting. Poll every 5 minutes. Never use `gh run watch`.
+
+**Why it is in the rulebook and not left to each dispatcher's judgement.** Dispatched agents
+**ended their turns mid-wait**, treating "waiting for a check" as "finished". The work was
+neither done nor handed back, and the lane looked busy while nothing was running — the worst of
+both, because the next session cannot tell a live wait from an abandoned one.
+
+The two specifics are not decoration:
+
+- **The 5-minute floor** keeps parallel agents off the GitHub burst limit. Several sessions run
+  this repo at once; a tight poll loop from each is how the whole fleet hits a secondary rate
+  limit together, and §5.2-B item 4 explains why a rate-limited gate read is dangerous rather
+  than merely slow.
+- **The `gh run watch` ban** exists because it holds a connection open for the whole run and
+  returns nothing a poll would not, while being the command most likely to be sitting there when
+  a session's turn ends.
+
+A wait with no end in sight is not waited on forever: set a threshold before starting it, and
+when the threshold passes, diagnose the stall — read the log, name the hanging step — instead of
+waiting on. Ending a turn to report "still waiting, nothing changed" is the failure this rule
+exists to stop.
 
 ### OWNER RULING, 2026-08-21 (issue #1366) — the orchestrator does structure and schema ONLY
 
@@ -704,7 +749,7 @@ orchestrator may retire the file — but say so in the pull request body, with t
 
 ## 2.1 Host/server boundary
 
-This repo owns shared database schema, Supabase migrations, PLM import code, and the `systemd/plm-sync.*` templates. Durable host/OS changes on `hetz` are owned by the canonical Ansible repo at `/worksp/ansible` / [`u2giants/ansible`](https://github.com/u2giants/ansible), then applied by GitHub Actions.
+This repo owns shared database schema and Supabase migrations. (The PLM import code and the `systemd/plm-sync.*` templates were removed by #2794 and must not be recreated.) Durable host/OS changes on `hetz` are owned by the canonical Ansible repo at `/worksp/ansible` / [`u2giants/ansible`](https://github.com/u2giants/ansible), then applied by GitHub Actions.
 
 Route packages, users, firewall, SSH/sudo, Docker engine or daemon config, systemd units/timers, cron, `/etc`, `/usr/local/bin`, `/usr/local/sbin`, Cloudflare Tunnel 1, Coolify host glue, and backup/DNS watchdogs through an Ansible PR. Do not SSH, sudo, or hand-edit the host directly for durable infrastructure changes. App/database code and templates that belong to `shared-db` still change here; deploying those templates onto the host belongs in Ansible. Break-glass direct host repair must be explicit and followed by an Ansible PR that captures or reconciles the drift.
 
@@ -754,7 +799,8 @@ rules below are the operative summary.
      team's applied work. Land or coordinate the other branch instead. A migration left
      rehearsed-but-unmerged blocks everyone, so **open its PR the same session.**
    - Every open `db-work` issue carries one authoritative `db-work-scope` block. Only
-     `ready + structural + shared-db-orchestrator` can enter an author lane, and it must name
+     `ready + structural + shared-db-orchestrator` (or `route: self-service-additive` for additive
+     work confined to `{crm,pim,dam}` — merge-time-classifier-enforced, no orchestrator triage) can enter an author lane, and it must name
      every exact object. Outside-sourced writes into curated `core.*` Master Data use
      `curated-master-data` / `curated-master-data-governance` — §6.4 governance. It normally stays
      outside author lanes, but a fork that ships `supabase/migrations/*` must claim a lane before
@@ -776,13 +822,24 @@ rules below are the operative summary.
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
-    Grok 4.6, GLM 5.3, Kimi K3, Qwen 3.8 Max, Muse Spark 1.3 Contributor, and
+    Grok 4.6, Qwen 3.8 Max, Muse Spark 1.3 Contributor, and
     Gemini 3.8 Flash High, minus the live orchestrator's own engine — exactly
     `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`. Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
-    was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor and is
-    drawable again. Qwen 3.8 Max was unquarantined on 2026-09-07 by owner
+    was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
+    is paused again as of 2026-09-22 (see below). Qwen 3.8 Max was unquarantined on 2026-09-07 by owner
     instruction (ai-devops PR #316, merge `795902d8`) and is drawable again.
+    **GLM 5.3 is paused as of 2026-09-18** (owner instruction, chat directive —
+    weekly account-usage rotation, no provider fault; Kimi verified healthy the
+    same day) and is not drawable until it is removed from `RETIRED_REVIEWERS`;
+    restoring it is a one-line deletion. The 2026-09-17 ruling that GLM never
+    reviews GLM-orchestrated work still binds when it returns.
+    **Kimi K3 is paused as of 2026-09-22** (owner instruction, issue #3423): its
+    account has been out of credit since 2026-09-17, so every draw on it failed and
+    left the PR waiting for a replacement. Restore it with a one-line deletion from
+    `RETIRED_REVIEWERS` once the account has credit and its wrapper doctor passes.
+    A reviewer already running other reviews is never a reason to wait: there is
+    no per-reviewer concurrency limit.
     DeepSeek is inactive: it was RETIRED on 2026-09-01 (issue #2078) and is not drawable.
     **Codex GPT-5.6 Sol is NOT in the rotation:** the owner retired it
     permanently on 2026-09-06 (issue #2485) once the other providers were
@@ -812,7 +869,7 @@ rules below are the operative summary.
    again.
 
    ⚠️ **Merging requires an APPROVE pinned to the EXACT head being merged, and the merge gate now enforces it (#1816, 2026-08-29).** A reviewer assignment is not an approval, and an approval of an earlier head is not an approval of these bytes: answering a `REJECT` with a new commit requires a fresh exact-head review before that commit can merge. Enforced by `scripts/check-exact-head-approval.mjs`, run twice in `guarded-migration-merge` (up front, then re-proven under the merge lock). Before this it was convention only, and PR #1809 merged unapproved bytes onto `main`. Free-text verdicts are unauthorized by default and count only from GitHub's OWNER, MEMBER or COLLABORATOR associations. The gate still does **not** prove the assigned provider is the commenter, because assignment refs do not carry an identity that can be bound to GitHub authorship. Do not cite a pass as proof of who reviewed. Full limits in `docs/agents/section-4-anti-collision-rules.md`. ⚠️ **One exemption, added 2026-09-02 (#2102): a documents-only pull request draws no reviewer and the gate requires no verdict for it — see rule 18. Rulebook files are not documents.**
-   ⚠️ **Refreshing from main keeps the APPROVE (#2758, 2026-09-11).** An APPROVE recorded at head A still counts at a later head B when A is an ancestor of B and the pull request's own diff against its merge base with main is byte-identical at both, ignoring only `.agent/` evidence files (`scripts/lib/pr-content-equivalence.mjs`, used by the merge gate and the preview gate). Any change of the author's own, even whitespace in SQL, needs a new review, as does main editing a file the pull request also edits; a refusal at any equivalent head (found through its assignments, returns or verdicts) is never carried past, and a head with reviewer records of its own (an assignment, return or verdict) is judged on those alone. By the same rule, a main that moved after dispatch no longer stops the guarded merge when the pull request touches no file or migration version main changed, merges into it cleanly, and keeps its own diff; and a production promotion no longer rejects its preview proof because main later gained another migration's verification sidecar, unless that migration names an object the promoted migration names.
+   ⚠️ **Refreshing from main keeps the APPROVE (#2758, 2026-09-11).** An APPROVE recorded at head A still counts at a later head B when A is an ancestor of B and the pull request's own diff against its merge base with main is byte-identical at both, ignoring only `.agent/` evidence files (`scripts/lib/pr-content-equivalence.mjs`, used by the merge gate and the preview gate). **The exclusion is the whole `.agent/` tree**, so it still covers the per-pull-request evidence paths `.agent/work/<work_issue>/<generation>/` introduced by #2708 (2026-09-20); an APPROVE carried forward across a refresh is unchanged by that move. Any change of the author's own, even whitespace in SQL, needs a new review, as does main editing a file the pull request also edits; a refusal at any equivalent head (found through its assignments, returns or verdicts) is never carried past, and a head with reviewer records of its own (an assignment, return or verdict) is judged on those alone. By the same rule, a main that moved after dispatch no longer stops the guarded merge when the pull request touches no file or migration version main changed, merges into it cleanly, and keeps its own diff; and a production promotion no longer rejects its preview proof because main later gained another migration's verification sidecar, unless that migration names an object the promoted migration names.
 
    **Merge first, then rehearse on preview from merged `main`, then promote.** A rehearsal runs
    **once** — an applied version can never be applied again, so a re-dispatch and a GitHub
@@ -1096,7 +1153,7 @@ That is **GitHub hosted-runner starvation, not a collision**, and not a fault in
 
 ```bash
 gh run view <run-id> --log-failed
-gh api repos/u2giants/shared-db/actions/runs/<run-id>/jobs --jq '.jobs[] | {name, conclusion, steps: [.steps[].conclusion]}'
+gh api repos/popcre/shared-db/actions/runs/<run-id>/jobs --jq '.jobs[] | {name, conclusion, steps: [.steps[].conclusion]}'
 ```
 
 A job whose steps are all `null`/empty never ran. Re-run it; do not go looking for a code defect,
@@ -1310,6 +1367,7 @@ in place, the way §6.13-A supersedes §6.13. CI workflow comments and
 | [`docs/agents/runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md) | §9, §10.1–§10.3, §11 in full — credentials, CLI, hosted-Supabase traps |
 | [`docs/owner-rulings.md`](docs/owner-rulings.md) | §6.1–§6.17, §0.1-A, §4.2, §4.3 in full — every owner ruling with its reasoning, incident and measured numbers |
 | [`docs/production-promotion-procedure.md`](docs/production-promotion-procedure.md) | §5.1 in full — the bounded-checkout recipe and the production apply lane |
+| [`docs/agents/ephemeral-route-hop-table.md`](docs/agents/ephemeral-route-hop-table.md) | The self-service additive lane's end-to-end merge route — who may dispatch, the boundary classifier, and the completion hops |
 
 **Where `AGENTS.md` and a long-form file differ in wording, `AGENTS.md` wins** — it is the
 authoritative statement of policy.

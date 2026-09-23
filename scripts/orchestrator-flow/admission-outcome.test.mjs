@@ -1,13 +1,16 @@
 import test from 'node:test'
+import { currentRepository, expectedOperatorAssociation } from '../lib/repository-identity.mjs'
+// Fixtures follow the resolved repository identity and its operator association (#3255).
+const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
 import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
-import { advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
+import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
 
 const issue = (body, number = 41) => ({ number, state: 'open', title: 'structural outcome', body, createdAt: '2026-09-11T00:00:00Z' })
-const ownerComment = (body) => ({body,author_association:'OWNER',author:'u2giants'})
+const ownerComment = (body) => ({body,author_association:OPERATOR_ASSOCIATION,author:'u2giants'})
 const serializedIo = (io = {}) => {
   const refs=new Map();let sequence=0
   return {...io,
@@ -344,7 +347,7 @@ test('a completed live outcome is re-admitted without reopening its closed issue
   let state='closed',updates=0
   const merge='b'.repeat(40)
   const completion={schema_version:1,work_issue:41,outcome:'live_verified',pr:7,merge_sha:merge,application_repository:'u2giants/example-app',application_commit_sha:'c'.repeat(40),live_evidence:'artifact:live-proof'}
-  const comments=[{author_association:'OWNER',author:'u2giants',body:`\`\`\`db-work-completion\n${JSON.stringify(completion)}\n\`\`\``}]
+  const comments=[{author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:`\`\`\`db-work-completion\n${JSON.stringify(completion)}\n\`\`\``}]
   const io={
     closingIssuesForPr:()=>[{number:41,state}],getIssue:()=>({...issue(scopeBody()),state}),updateIssue:(_n,fields)=>{updates++;state=fields.state},
     issueComments:()=>comments,getPr:()=>({head:{sha:'a'.repeat(40)},merged_at:'2026-09-11T00:00:00Z',merge_commit_sha:merge}),
@@ -381,7 +384,7 @@ test('trusted malformed duplicate or mismatched completion refuses without reope
     [`\`\`\`db-work-completion\n${JSON.stringify({...valid,pr:99})}\n\`\`\``],
   ]){
     let state='closed',updates=0
-    const comments=bodies.map((body)=>({author_association:'OWNER',author:'u2giants',body:typeof body==='string'?body:`\`\`\`db-work-completion\n${JSON.stringify(body)}\n\`\`\``}))
+    const comments=bodies.map((body)=>({author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:typeof body==='string'?body:`\`\`\`db-work-completion\n${JSON.stringify(body)}\n\`\`\``}))
     const io={closingIssuesForPr:()=>[{number:41,state}],getIssue:()=>({...issue(scopeBody()),state}),updateIssue:()=>{updates++},issueComments:()=>comments,getPr:()=>({head:{sha:'a'.repeat(40)},merged_at:'2026-09-11T00:00:00Z',merge_commit_sha:'b'.repeat(40)}),getFileAt:()=>'create table core.example(id bigint);',getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}]}
     assert.throws(()=>admitIssue(41,io,{pr:7}));assert.equal(state,'closed');assert.equal(updates,0)
   }
@@ -411,7 +414,7 @@ test('forged or stale refusal comments cannot suppress current owner refusal pro
   const make=(overrides,association)=>({author_association:association,body:formatEventComment(coordinationEvent({
     eventType:'rejected_non_structural',workIssue:41,actor:'manage-migration-author-lanes',timestamp:'2026-09-11T00:00:00Z',result:'refused',detail:result.reason,return_to:result.return_to,evidence_required:result.evidence_required,...overrides,
   }))})
-  const comments=[make({},'NONE'),make({return_to:'u2giants/stale-app'},'OWNER'),make({},'OWNER')]
+  const comments=[make({},'NONE'),make({return_to:'u2giants/stale-app'},OPERATOR_ASSOCIATION),make({},OPERATOR_ASSOCIATION)]
   const io=serializedIo({enforceAdmission:true,getIssue:()=>issue(body),issueComments:()=>comments,commentIssue:(_n,value)=>comments.push(ownerComment(value))})
   const old=console.error;console.error=()=>{}
   try{assert.equal(managerMain(['--admit-issue','41'],new Date(),io),2)}finally{console.error=old}
@@ -463,7 +466,7 @@ test('outcome lifecycle refuses every skip and merge is not live completion', ()
 })
 
 test('untrusted forged and malformed event comments cannot alter lifecycle history',()=>{
-  const trusted=eventComments('classified').map((row)=>({...row,author_association:'OWNER',author:'u2giants'}))
+  const trusted=eventComments('classified').map((row)=>({...row,author_association:OPERATOR_ASSOCIATION,author:'u2giants'}))
   const forged={...eventComments('live_verified').at(-1),author_association:'NONE'}
   const malformed={body:'```db-coordination-event\n{bad json}\n```',author_association:'NONE'}
   const missingAssociation={body:eventComments('live_verified').at(-1).body}
@@ -511,6 +514,9 @@ test('claim admission and dispatched event share one author-mutex ownership inte
   try{assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.example'],new Date('2026-09-11T00:00:00Z'),io),0)}finally{console.log=old}
   assert.deepEqual(labels,['lock','event','event','claim','event','unlock'])
   assert.equal(outcomeHistory(comments,41).state,'dispatched')
+  const history=outcomeHistory(comments,41)
+  assert.equal(history.valid,true)
+  assert.ok(Date.parse(history.events.at(-1).timestamp)>=Date.parse(history.events[1].timestamp),'claim dispatch must follow admission publication, not command-start clock')
 })
 
 test('lost dispatched-comment response tolerates delayed exact-event visibility and preserves the claim',()=>{
@@ -878,5 +884,113 @@ test('outcome comments trust only the operator login with the owner-implied asso
   assert.deepEqual(trustedOutcomeComments(org, 'popcre/shared-db'), [org[0]])
   const forged = { body: formatEventComment(outcomeEvent({ issue: 41, state: 'entered', actor: 'forger', timestamp: '2026-09-11T00:00:00Z' })), author: 'mallory', author_association: 'OWNER' }
   assert.equal(outcomeHistory([forged], 41).events.length, 0)
-  assert.equal(outcomeHistory([{ ...forged, author: 'u2giants' }], 41).events.length, 1)
+  assert.equal(outcomeHistory([{ ...forged, author: 'u2giants', author_association: OPERATOR_ASSOCIATION }], 41).events.length, 1)
+})
+
+test('self-service-additive admission confines writes to the {crm,pim,dam} app-owned schemas (#3199 round-2 review)', () => {
+  const laneBody = (object) => scopeBody({ object }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  const shared = issue(laneBody('table core.customer_ext'))
+  assert.throws(() => evaluateAdmission(shared, parseQueueScope(shared.body), null), /writes outside the \{crm,pim,dam\} app-owned schemas: table core\.customer_ext/)
+  const schemaless = issue(laneBody('schema crm'))
+  assert.throws(() => evaluateAdmission(schemaless, parseQueueScope(schemaless.body), null), /writes outside the \{crm,pim,dam\}/)
+  const inBoundary = issue(laneBody('table crm.note'))
+  assert.equal(evaluateAdmission(inBoundary, parseQueueScope(inBoundary.body), null).admitted, true)
+})
+
+test('the outcome lifecycle completes BOTH structural routes (#3199 round-2 review High)', () => {
+  const build = (route) => {
+    const io = { getIssue: () => issue(scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', `route: ${route}`), 41) }
+    return io
+  }
+  // The self-service route must clear the same route gate the orchestrator
+  // route clears; before the fix this threw 'only an admitted structural
+  // outcome can complete' for route self-service-additive.
+  const admitted = scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  for (const route of ['shared-db-orchestrator', 'self-service-additive']) {
+    const row = issue(admitted)
+    const io = { getIssue: () => row }
+    // Advance far enough that only the route gate is under test: a
+    // non-structural route still refuses at the gate itself.
+    assert.throws(() => completeOutcome({ issue: 41, evidenceRef: 'x', actor: 't' }, { ...io, parseScope: parseQueueScope, issueComments: () => [], readOutcomeEvidence: () => { throw new OutcomeError('unreached') } }), /not production_applied|outcome history is invalid|unreadable|unreached/)
+  }
+  // A non-structural scope is still refused at the gate, by name. parseScope
+  // is stubbed so the gate itself is what is under test, not the fence parser.
+  assert.throws(() => completeOutcome({ issue: 41, evidenceRef: 'x', actor: 't' }, { getIssue: () => issue('body'), parseScope: () => ({ workType: 'repo-maintenance', route: 'repo-maintenance' }), issueComments: () => [], readOutcomeEvidence: () => '' }), /only an admitted structural outcome can complete/)
+})
+
+
+test('combined fresh admission advances with a post-prerequisite timestamp (#3313)',()=>{
+  const comments=[],refs=new Map()
+  const io={enforceAdmission:true,getIssue:()=>issue(scopeBody()),issueComments:()=>comments,
+    makeOwnerCommit:()=> 'timestamp-owner',readRef:ref=>refs.get(ref)??null,
+    listRefs:prefix=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
+    createRef:(ref,sha)=>{if(refs.has(ref))return false;refs.set(ref,sha);return true},deleteRef:ref=>refs.delete(ref),
+    commentIssue:(_n,body)=>comments.push(ownerComment(body)),wait:()=>{}}
+  const log=console.log;console.log=()=>{}
+  try{assert.equal(managerMain(['--advance-outcome','dispatched','--admit-issue','41','--issue','41','--owner','o','--evidence','https://github.com/popcre/shared-db/issues/3313'],new Date('2026-01-01T00:00:00Z'),io),0)}finally{console.log=log}
+  const history=outcomeHistory(comments,41)
+  assert.equal(history.valid,true);assert.equal(history.state,'dispatched')
+  assert.deepEqual(history.events.map(e=>e.event_type),['entered','classified','dispatched'])
+  assert.ok(Date.parse(history.events[2].timestamp)>=Date.parse(history.events[1].timestamp))
+})
+
+test('configured timestamp incident is repaired append-only and can then advance normally (#3313)',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const record=JSON.parse(readFileSync(new URL('../../config/outcome-timestamp-recovery.json',import.meta.url),'utf8'))
+  const comments=structuredClone(record.comments),before=structuredClone(comments)
+  const io={issueComments:()=>comments,commentIssue:(_n,body)=>comments.push(ownerComment(body)),wait:()=>{}}
+  assert.equal(outcomeHistory(comments,2611).valid,false)
+  const result=repairOutcomeHistory({issue:2611,actor:'recovery',reason:'approved incident3313',evidenceUrls:[record.evidence_url]},io)
+  assert.deepEqual(result.supersedes,['716e9f6122866e84'])
+  assert.deepEqual(comments.slice(0,3),before)
+  assert.equal(outcomeHistory(comments,2611).state,'classified')
+  assert.equal(outcomeHistory(comments,2611).valid,true)
+  advanceOutcome({issue:2611,state:'dispatched',actor:'recovery',evidenceUrls:[record.evidence_url]},io)
+  assert.equal(outcomeHistory(comments,2611).valid,true)
+  assert.equal(outcomeHistory(comments,2611).state,'dispatched')
+})
+
+test('timestamp recovery refuses forged, missing, reordered, edited, foreign and extra history (#3313)',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const record=JSON.parse(readFileSync(new URL('../../config/outcome-timestamp-recovery.json',import.meta.url),'utf8'))
+  const mutations=[c=>c.pop(),c=>{c[0].id++},c=>{c[1].author='impostor'},c=>{c[2].updated_at='2026-09-20T15:17:00Z'},
+    c=>{c[2].created_at=c[0].created_at},c=>{c[2].body=c[2].body.replace('15:16:08.910','15:10:08.910')},
+    c=>{c[2].body=c[2].body.replace('5750669933','5750669934')},
+    c=>c.push(ownerComment(formatEventComment(outcomeEvent({issue:2611,state:'entered',actor:'other',timestamp:'2026-09-20T15:16:18Z'})))),
+    c=>{c[0].body=c[0].body.replace('2611','2612')}]
+  for(const mutate of mutations){
+    const comments=structuredClone(record.comments);mutate(comments);let writes=0
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'forged',evidenceUrls:[record.evidence_url]},{issueComments:()=>comments,commentIssue:()=>writes++,wait:()=>{}}),/configured timestamp incident|already valid|lifecycle violation/)
+    assert.equal(writes,0)
+  }
+  let writes=0
+  assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'test',reason:'missing authority',evidenceUrls:[]},{issueComments:()=>record.comments,commentIssue:()=>writes++}),/lifecycle violation/)
+  assert.equal(writes,0)
+})
+
+test('a repaired timestamp incident does not block later ordinary race repair (#3354)',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const record=JSON.parse(readFileSync(new URL('../../config/outcome-timestamp-recovery.json',import.meta.url),'utf8'))
+  for(const evidenceUrls of [[],[record.evidence_url]]){
+    const comments=structuredClone(record.comments)
+    const io={issueComments:()=>comments,commentIssue:(_n,body)=>comments.push(ownerComment(body)),wait:()=>{}}
+    repairOutcomeHistory({issue:2611,actor:'recovery',reason:'approved incident3313',evidenceUrls:[record.evidence_url]},io)
+    advanceOutcome({issue:2611,state:'dispatched',actor:'recovery',evidenceUrls:[record.evidence_url]},io)
+    const repost=outcomeEvent({issue:2611,state:'dispatched',actor:'raced-writer',timestamp:new Date(Date.now()+1000).toISOString()})
+    comments.push(ownerComment(formatEventComment(repost)))
+    assert.equal(outcomeHistory(comments,2611).valid,false)
+    const result=repairOutcomeHistory({issue:2611,actor:'recovery',reason:'ordinary dispatch repost',evidenceUrls},io)
+    assert.deepEqual(result.supersedes,[repost.event_id])
+    assert.equal(outcomeHistory(comments,2611).valid,true)
+    assert.equal(outcomeHistory(comments,2611).state,'dispatched')
+    assert.deepEqual(comments.slice(0,3),record.comments)
+    const backward=outcomeEvent({issue:2611,state:'entered',actor:'bad-writer',timestamp:new Date(Date.now()+2000).toISOString()})
+    comments.push(ownerComment(formatEventComment(backward)))
+    const before=comments.length
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'must not hide backward move',evidenceUrls},io),/lifecycle violation/)
+    assert.equal(comments.length,before)
+    comments[0].updated_at='2026-09-20T15:17:00Z'
+    assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'explicit tampered publication',evidenceUrls:[record.evidence_url]},io),/configured timestamp incident/)
+    assert.equal(comments.length,before)
+  }
 })

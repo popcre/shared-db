@@ -368,8 +368,7 @@
       "business_purpose": "DesignFlow Production Tracking persisted milestone schedule",
       "disposition": "not_applicable_no_source_property_vocabulary",
       "table_names": ["prod_order_milestone_schedule"],
-      "reason": "Application data (#3091): needed/estimated/actual dates per production order milestone written by designflow-tracking; not a licensor portal Property vocabulary.",
-      "absent_from_production_catalog": "The table is defined on current main but is not yet applied to production; keep the family so repository-derived coverage remains complete and fail if production later contains it while this declaration remains."
+      "reason": "Application data (#3091): needed/estimated/actual dates per production order milestone written by designflow-tracking; not a licensor portal Property vocabulary."
     }
   ]
 }

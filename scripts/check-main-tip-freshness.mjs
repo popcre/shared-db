@@ -51,7 +51,7 @@
 // permissive direction is worse than the bare `test` it replaces.
 
 import { execFileSync } from 'node:child_process'
-import { diffDigest } from './lib/pr-content-equivalence.mjs'
+import { diffDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 
 // Prose only. Deliberately short, deliberately not directory-based -- see above.
 // `.txt` was here and was REMOVED after external review (GLM, 2026-09-01):
@@ -91,7 +91,11 @@ export function isDocumentationPath(path) {
 // `.agent/` pair. The rule stays narrow and fail-closed: migrations, workflows,
 // config, SQL, and every non-test script still refuse. It applies only where a
 // caller passes `--production`; merge and preview lanes are unchanged.
-const PRODUCTION_INERT_EVIDENCE = /^\.agent\/[^/]+\.json$/
+// #2708 moved the pair to `.agent/work/<work_issue>/<generation>/`, so the
+// production-inert rule follows it down the tree. Both shapes stay inert for the
+// same unchanged reason -- no production step reads `.agent/` at all -- which
+// does not depend on how deep the path is.
+const PRODUCTION_INERT_EVIDENCE = /^\.agent\/(?:work\/[1-9]\d*\/[1-9]\d*\/)?[^/]+\.json$/
 const PRODUCTION_INERT_TEST_FILE = /^scripts\/(?:[^/]+\/)*(?:test_[^/]+\.py|[^/]+\.test\.mjs)$/
 
 export function isProductionInertPath(path) {
@@ -239,7 +243,6 @@ export function classifyMainTip({ mainSha, tipSha, cwd, gitRunner = git, product
 }
 
 const MIGRATION_PATH = /^supabase\/migrations\/(\d{14})_[^/]+\.sql$/
-const REGENERATED_EVIDENCE_PREFIX = '.agent/'
 
 function nulPaths(raw) {
   return [...new Set(String(raw).split('\0').filter((entry) => entry.length > 0))]
@@ -279,7 +282,13 @@ export function classifyBranchFreshness({ headSha, tipSha, cwd, gitRunner = git 
     tipMigrations = nulPaths(gitRunner(['ls-tree', '-r', '-z', '--name-only', tipSha, '--', 'supabase/migrations'], { cwd }))
   } catch { return refuse('the pull request change or the main migration list could not be read.') }
   const mainPaths = new Set(documentation.movedBy)
-  const overlap = prPaths.filter((path) => mainPaths.has(path) && !path.startsWith(REGENERATED_EVIDENCE_PREFIX)).sort()
+  let evidence
+  try {
+    const runner = (args) => gitRunner(args, { cwd })
+    const prEvidence = new Set(verifiedEvidencePaths(base, headSha, { gitRunner: runner }))
+    evidence = new Set(verifiedEvidencePaths(base, tipSha, { gitRunner: runner }).filter((path) => prEvidence.has(path)))
+  } catch { return refuse('the overlapping evidence records could not be verified.') }
+  const overlap = prPaths.filter((path) => mainPaths.has(path) && !evidence.has(path)).sort()
   if (overlap.length) return refuse(`main also changed ${overlap.slice(0, 10).join(', ')}${overlap.length > 10 ? `, and ${overlap.length - 10} more` : ''}.`)
   const collisions = []
   for (const path of prPaths) {

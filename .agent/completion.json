@@ -1,29 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 3146,
+  "work_issue": 3295,
   "outcome": "ready-for-merge",
-  "pr": 3178,
+  "pr": 3296,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3146/1",
-  "contract_sha256": "81bcc7864911a7e69f3808b283d8627f3a20571ea6655b11210a6cf361c4fba3",
-  "head_sha": "31619c959805bef6d79b095f13a50965c669ca1f",
+  "contract_ref": "refs/db-contracts/3295/5",
+  "contract_sha256": "d25cd9a0863ea900fe8bf0f90261e94a73dc4e4ad104fb77d2f773e813cc3e4e",
+  "base_sha": "1d2a0db59104514e31507f96fd401c3925995086",
+  "head_sha": "e4397fe612055d1cca7e19e0512f396ac6e3f21f",
   "files_changed": [
-    "scripts/check-exact-head-approval.mjs",
-    "scripts/check-exact-head-approval.test.mjs",
-    "scripts/lib/pr-content-equivalence.mjs",
-    "scripts/lib/pr-content-equivalence.test.mjs"
+    "tools/coldlion-landing-masters.test.mjs",
+    "tools/coldlion-landing/lib/load-masters.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "command": "node --test tools/coldlion-landing-masters.test.mjs",
       "exit_code": 0,
-      "evidence": "666 pass, 0 fail, 0 skipped. The new #3146 test fails on origin/main code (17 pass, 1 fail). Full author-lease workflow test set: 1430 pass, 0 fail, 0 skipped. Live replay: PR #3118 and #2872 refused against current main and carried from their approved heads against the merge commit first parent."
+      "evidence": "42 passed, 0 failed"
+    },
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
+      "exit_code": 0,
+      "evidence": "176 passed, 0 failed"
     }
   ],
   "assumptions_resolved": [
-    "Confirmed the qualifier runs post-merge: 01f73d19 is identical to merged head 72517a6f against origin/main but not against merge commit 4ba3732d^1"
+    "Both required suites passed after integrating current main: focused 42 and full 176 passed, 0 failed/skipped/cancelled.",
+    "Implementation SQL still preserves atomic transaction, target checks, timeout and prior-raw fallback; no timeout or database structure changed.",
+    "Original production investigation and cost comparison are historical evidence recorded by the prior worker, not a new live measurement by this recovery.",
+    "This completion reports offline repair validation only. A future scheduled-run result remains separate live proof."
   ],
   "stop_conditions_hit": []
 }

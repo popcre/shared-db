@@ -218,6 +218,11 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
             parse_allowlist("20260824150630")
 
+    def test_empty_allowlist_entries_require_the_exact_empty_refusal(self):
+        for raw in ("", " ", "20260907131728,", "20260907131728, ,20260907152838"):
+            with self.subTest(raw=raw), self.assertRaisesRegex(GuardError, "production allowlist is empty"):
+                parse_allowlist(raw)
+
     def test_issue_2509_historical_restoration_remains_production_eligible(self):
         self.assertEqual(parse_allowlist("20260907131728"), ["20260907131728"])
 
@@ -251,6 +256,11 @@ class GuardTests(unittest.TestCase):
             "20260726200000",
         ]
         for value in values:
+            with self.subTest(value=value), self.assertRaises(GuardError):
+                parse_allowlist(value)
+
+    def test_allowlist_rejects_whitespace_entries_and_non_version_text(self) -> None:
+        for value in (" ", "20260727010000, ", "not-a-version"):
             with self.subTest(value=value), self.assertRaises(GuardError):
                 parse_allowlist(value)
 
@@ -553,6 +563,22 @@ class GuardTests(unittest.TestCase):
                         parse_allowlist(",".join(subset))
                     self.assertIn("6.5", str(caught.exception))
 
+    def test_fr_ship_set_is_unassemblable_when_no_removal_version_exists(self) -> None:
+        held = sorted(FR_SHIP_SET_HOLD)[0]
+        with patch("production_migration_guard.FR_REMOVAL_VERSIONS", set()):
+            with self.assertRaises(GuardError) as caught:
+                parse_allowlist(held)
+        self.assertIn("No FR removal migration exists yet", str(caught.exception))
+
+    def test_local_migrations_rejects_a_non_version_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "not-a-version.sql").write_text("select 1;", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "invalid migration filename"):
+                local_migrations(repo)
+
     def test_the_real_fr_removal_version_is_registered_by_name(self) -> None:
         """Issue #1339: the hold releases by DATA, and this is that data.
 
@@ -612,6 +638,59 @@ class GuardTests(unittest.TestCase):
             validate_candidates(
                 migrations, ["20260727010000"], {"20260727010000"}
             )
+
+    def test_applied_refusal_names_the_ledger_it_read(self) -> None:
+        """Issue #3193: the preview job reads PREVIEW's ledger, so say so."""
+        migrations = {"20260727010000": Path("one.sql")}
+        with self.assertRaises(GuardError) as default:
+            validate_candidates(migrations, ["20260727010000"], {"20260727010000"})
+        self.assertIn("already applied on production: 20260727010000", str(default.exception))
+        self.assertNotIn("historical", str(default.exception))
+        with self.assertRaises(GuardError) as preview:
+            validate_candidates(
+                migrations, ["20260727010000"], {"20260727010000"}, None, "preview"
+            )
+        text = str(preview.exception)
+        self.assertIn("already applied on preview: 20260727010000", text)
+        self.assertNotIn("production", text)
+        self.assertIn("historical_preview_original_run_map", text)
+        with self.assertRaises(GuardError) as unknown:
+            validate_candidates(migrations, [], set(), None, "staging")
+        self.assertIn("unknown ledger name", str(unknown.exception))
+
+    def test_preflight_cli_passes_the_ledger_name_through(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = Path(directory) / "ledger.txt"
+            ledger.write_text(
+                "Local | Remote | Time\n20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+            migrations = {"20260727010000": Path("one.sql")}
+            for name, expected in ((None, "production"), ("preview", "preview")):
+                argv = ["guard", "preflight", "--repo", directory,
+                        "--allowlist", "20260727010000", "--remote-ledger", str(ledger)]
+                if name:
+                    argv += ["--ledger-name", name]
+                with patch.object(sys, "argv", argv), patch.object(
+                    production_migration_guard, "local_migrations", return_value=migrations
+                ), patch("sys.stderr") as stderr:
+                    self.assertEqual(production_migration_guard.main(), 1)
+                written = "".join(call.args[0] for call in stderr.write.call_args_list)
+                self.assertIn(f"already applied on {expected}: 20260727010000", written)
+
+    def test_preview_job_guard_calls_name_the_preview_ledger(self) -> None:
+        workflow = (REPO / ".github/workflows/shared-supabase-migrations.yml").read_text(encoding="utf-8")
+        calls = re.findall(
+            r"production_migration_guard\.py (?:preflight|prepare) \\\n(?:.*\\\n)*.*",
+            workflow,
+        )
+        preview = [call for call in calls if "preview-ledger-before.txt" in call]
+        production = [call for call in calls if "production-ledger-before.txt" in call]
+        self.assertEqual(len(preview), 2, calls)
+        for call in preview:
+            self.assertIn("--ledger-name preview", call)
+        for call in production:
+            self.assertNotIn("--ledger-name preview", call)
 
     def test_dry_run_requires_exact_list(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -815,6 +894,54 @@ class GuardTests(unittest.TestCase):
                     "20260727020000_approved.sql",
                 ],
             )
+
+    def test_prepare_refuses_an_existing_output_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "already-there"
+            output.mkdir()
+            ledger = root / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
+            with (
+                patch("production_migration_guard.parse_remote_versions", return_value=set()),
+                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
+                patch("production_migration_guard.local_migrations", return_value={"20260727020000": root / "migration.sql"}),
+                patch("production_migration_guard.validate_candidates"),
+                patch("production_migration_guard.preflight_batch"),
+                self.assertRaisesRegex(GuardError, "bounded checkout already exists"),
+            ):
+                prepare(root, output, "a" * 40, "20260727020000", ledger)
+
+    def test_prepare_refuses_a_pruned_checkout_with_the_wrong_file_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            output = root / "bounded"
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            for name in (
+                "20260727010000_applied.sql",
+                "20260727020000_approved.sql",
+                "20260727030000_unapproved.sql",
+            ):
+                (migrations / name).write_text("select 1;\n", encoding="utf-8")
+            ledger = root / "ledger.txt"
+            ledger.write_text(
+                "Local | Remote | Time\n"
+                "20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+
+            def fake_worktree(*_args, **_kwargs):
+                import shutil
+                shutil.copytree(repo, output)
+
+            with (
+                patch("production_migration_guard.subprocess.run", side_effect=fake_worktree),
+                patch.object(Path, "unlink", autospec=True),
+                self.assertRaisesRegex(GuardError, "does not match the approved file set"),
+            ):
+                prepare(repo, output, "a" * 40, "20260727020000", ledger)
 
 
 class AssertBoundedTests(unittest.TestCase):
@@ -1065,6 +1192,14 @@ class ContentManifestTests(unittest.TestCase):
             with self.assertRaises(GuardError) as caught:
                 assert_bounded(root, "20260727020000", ledger)
             self.assertIn("unreadable/corrupt", str(caught.exception))
+
+    def test_a_non_object_manifest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._prepared(root, ("20260727010000_applied.sql",))
+            manifest_path(root).write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "not a JSON object"):
+                assert_content_manifest(root)
 
     def test_compute_content_manifest_is_byte_precise(self) -> None:
         # A line-ending change is real byte drift and must register as one.
@@ -2843,6 +2978,14 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             ),
             {"core.character"},
         )
+
+    def test_f5_duplicate_restoration_declaration_is_rejected(self) -> None:
+        raw = (
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+        )
+        with self.assertRaisesRegex(GuardError, "duplicate retired-object restoration"):
+            retired_object_restorations(raw)
 
     def test_f5_restoration_declaration_requires_the_exact_prior_drop(self) -> None:
         raw = (

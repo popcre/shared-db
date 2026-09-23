@@ -1,5 +1,15 @@
 name: Guarded Merge
 
+# WHO MAY DISPATCH THIS WORKFLOW (issue #3199 §8, locked 2026-09-17): ANY
+# write-authenticated session — orchestrator, repo-maintenance, or an
+# application session that has taken the self-service additive lane — for a
+# pull request that already carries its exact-head approval and green required
+# checks. The workflow, not the caller's identity, is the gate: it re-proves
+# required checks, exact-head approval, lease and admission itself, under its
+# own lock. This comment grants nobody anything new; it writes down a capability
+# the plain workflow_dispatch trigger already had, so approved pull requests
+# stop aging while the orchestrator is busy.
+
 on:
   workflow_dispatch:
     inputs:
@@ -27,6 +37,9 @@ permissions:
   # `none`, so without this the read is a 403 and every merge dies at the pre-flight
   # -- a parseable workflow that still cannot merge.
   checks: read
+  # Scoped to this job only: lets the post-merge step below dispatch
+  # sync.yml (workflow_dispatch is allowed from GITHUB_TOKEN, unlike push).
+  actions: write
   # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
   # file unparseable, and because this workflow is the ONLY path to `main`, every
   # merge in the repository was refused at dispatch with HTTP 422. The pre-flight
@@ -71,6 +84,16 @@ jobs:
           # An assignment is not an approval, and an approval of an earlier head
           # is not an approval of these bytes (#1816).
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node scripts/check-exact-head-approval.mjs
+          # SELF-SERVICE ADDITIVE LANE BOUNDARY (#3199 Phase B3). Applies only
+          # when the pull request's linked work issue (resolved through the closing-
+          # issue linkage, never a claim) declares route self-service-additive; every
+          # other route — including repository maintenance — exits 0 "not applicable"
+          # and this step never judges it. Placed BEFORE the quota check and
+          # the merge lane so an out-of-boundary pull request is refused having
+          # taken no lock at all — the classifier is fail-closed: any parse
+          # doubt, any unrecognized statement, any object outside {crm,pim,dam}
+          # refuses.
+          node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
       # `github.token` cannot read branch protection (there is no `administration`
       # permission scope), so this falls back to the committed mirror. It reads that
       # mirror only from trusted `origin/main`; the checked-out pull request cannot
@@ -138,12 +161,32 @@ jobs:
           # which is indistinguishable from "not green yet", so a broken token spent a
           # full minute of the exclusive lock looking like eventual consistency (#1201).
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            observed="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$REQUESTED_SHA/status"               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+            observed="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
             [ "$observed" = 'success' ] && break
             echo "authorization not visible yet (attempt $attempt, observed='${observed:-none}'); waiting"
             sleep 6
           done
           test "$observed" = 'success'
+          # QUEUE-AWARE ADMISSION (#2530 Phase C Step 7). This lane stays the sole
+          # admission path in both modes; only the final merge verb changes. The
+          # live ruleset read decides:
+          #   active   — the exact approved one-PR queue ruleset is live. GitHub
+          #              becomes the sole merger: with checks green, `gh pr merge`
+          #              adds the PR to the queue (or arms auto-merge, as the CLI
+          #              documents). The administrator bypass flag is never used.
+          #   inactive — the pre-queue direct merge, unchanged.
+          #   unknown  — the read failed (this token has no administration scope,
+          #              so rulesets may be unreadable). Attempt the direct merge;
+          #              only a refusal that NAMES the merge queue switches the
+          #              attempt to queue admission, once. Any other refusal
+          #              behaves exactly as before.
+          queue_mode="$(node scripts/merge-queue-contract.mjs --queue-mode)" || queue_mode="unknown"
+          echo "merge queue mode: $queue_mode"
+          if [ "$queue_mode" = 'active' ]; then
+            gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+            echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+            exit 0
+          fi
           # Retry ONLY the eventual-consistency refusal this loop exists for. Any other
           # refusal is a policy or state fact no retry can change, and retrying it holds
           # the repository-wide merge lock for two more minutes before failing (#1201).
@@ -153,6 +196,17 @@ jobs:
               merged=1; break
             fi
             cat "$RUNNER_TEMP/merge-error.txt"
+            if grep -qi 'merge queue' "$RUNNER_TEMP/merge-error.txt"; then
+              # The queue ruleset went active while this run held the lock (or the
+              # ruleset read was impossible for this token). Direct merging is now
+              # refused by GitHub itself, so the same admission becomes queue
+              # admission — still exact-head pinned, still without the
+              # administrator bypass.
+              echo "GitHub requires the merge queue; switching this admission to queue mode"
+              gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+              echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+              exit 0
+            fi
             if ! grep -qi 'base branch policy prohibits the merge' "$RUNNER_TEMP/merge-error.txt"; then
               echo "guarded merge was refused for a reason no retry can resolve; releasing the merge lane now"
               break
@@ -164,6 +218,15 @@ jobs:
             sleep 10
           done
           test "$merged" = '1'
+      - name: Start the consumer sync for the merge that just landed
+        # The merge above pushed to main as github-actions; GitHub starts no
+        # `push` workflow for that token, so sync.yml never fires on its own
+        # (#3264). Dispatch it explicitly, only after a real merge, and fail
+        # the job loudly if the dispatch itself fails.
+        if: steps.guarded_merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" --ref main
       - name: Revoke authorization if the guarded merge did not complete
         id: revoke_authorization
         if: failure() && steps.merge_lock.outputs.owner_sha != ''

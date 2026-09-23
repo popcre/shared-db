@@ -2,7 +2,7 @@
 #
 # Why this workflow exists (added 2026-08-09, AGENTS.md §6.14).
 #
-# `u2giants/shared-db` is a public repository. On 2026-08-09 a sweep found personal data
+# `popcre/shared-db` is a public repository. On 2026-08-09 a sweep found personal data
 # committed on `main`: work email addresses in migrations and docs, a person's full name in
 # a migration header, and several hundred third-party vendor contact records inside a
 # committed verification baseline. The owner ruled: "Remove it going forward and accept the

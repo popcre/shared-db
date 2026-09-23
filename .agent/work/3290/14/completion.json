@@ -29,9 +29,7 @@
     "tools/product_type_reader/test_reader.py",
     "tools/product_type_reader/test_storage_rules.py",
     "tools/product_type_reader/test_treatment_rules.py",
-    "tools/product_type_reader/treatment_rules.py",
-    ".agent/work/3290/14/contract.json",
-    ".agent/work/3290/14/completion.json"
+    "tools/product_type_reader/treatment_rules.py"
   ],
   "db_reads": [],
   "db_writes": [],

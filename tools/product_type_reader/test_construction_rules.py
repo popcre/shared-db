@@ -520,3 +520,19 @@ def test_explicit_attachment_set_legs_and_leaner_physical_clauses():
     assert refine_construction("Faux book storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book"
     assert refine_construction("MDF prch lners hngng sign 8x12", "Sign", "Hanging") == "Hanging; Leaner"
     assert refine_construction("MDF sign_prch lners hngng artwork", "Sign", "Hanging") == "Hanging"
+
+
+def test_source_stated_shape_finish_and_kit_boundaries():
+    assert refine_construction("Three-image slit slat art 7x11", "Slat Art") == "Slatted"
+    assert refine_construction("Slat art_slit poster artwork", "Slat Art") == ""
+    assert refine_construction("Silver sequin flip art 8x10", "Sequin Art") == "Flip"
+    assert refine_construction("Sequin art_flip character artwork", "Sequin Art") == ""
+    assert refine_construction("DIY set w 9 paint pots and brsh", "Painting Kit", "Set") == ""
+    assert refine_construction("Painting kit_set with paint illustration", "Painting Kit", "Set") == "Set"
+    assert refine_construction("DIY cncrte stppng stne w paint 6x6", "Stepping Stone") == "DIY"
+    assert refine_construction("Stepping stone_DIY floral illustration", "Stepping Stone") == ""
+    assert refine_construction("Felt ovl hmpr 11x9", "Storage Hamper") == "Oval"
+    assert refine_construction("Flt ovl hmpr 11x9", "Storage Hamper") == "Oval"
+    assert refine_construction("Storage hamper_oval character artwork", "Storage Hamper") == ""
+    assert refine_construction("Linen-weave wall scroll 9x13", "Wall Scroll") == "Linen-Weave"
+    assert refine_construction("Wall scroll_linen-weave landscape artwork", "Wall Scroll") == ""

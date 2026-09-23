@@ -28,6 +28,7 @@ def normalize(value: object) -> str:
     text = re.sub(r"\bnon[\s-]+woven\b", "nonwoven", text)
     text = re.sub(r"\b(distressed|licenses|r)(?=canvas\b)", r"\1 ", text)
     text = re.sub(r"\b(canvas)(?=(?:w\b|\d{2}\b|\d{2}\s*x\s*\d{2}\b))", r"\1 ", text)
+    text = re.sub(r"\bcanva(?=\s+(?:w|with)\b)", "canvas", text)
     replacements = {"shadow box": "shadowbox", "shadow bx": "shadowbox", "shdwbx": "shadowbox",
         "bird house": "birdhouse", "pin board": "pinboard",
         "shdbx": "shadowbox", "die-cut": "die cut", "diecut": "die cut", "doublelayer": "double layer",
@@ -96,6 +97,10 @@ _FIXES = (
     ("Wall Basket", r"\bwall baskets?\b"),
     ("Faux Book", r"\bfaux boox storage\b"),
     ("Painting Kit", r"\bdiy set (?:w|with) \d+ paint pots? (?:and )?brsh\b"),
+    ("Shape", r"\bmdf shapes?\b"),
+    ("Tabletop Art", r"\btabletop art\b"),
+    ("Shelf with Hooks", r"(?<!wall )\bshelf (?:w|with) hooks?\b"),
+    ("Decorative Object", r"\bdimensional (?:\w+ )?objects?\b"),
     ("Plaque", r"\bchalkboard plaques?\b|\bplque\b"),
     ("Tabletop Clock", r"\btabletop clocks?\b"),
     ("Magnet Board", r"\bmagnet boards?\b"),
@@ -136,12 +141,14 @@ _FIXES = (
     ("Framed Print", r"\bsetback frame (?:w|with) printed linen paper\b"),
     ("Framed Art", r"\b(?:portrait|landscape) in (?:\w+ )?frame\b|\bmolded frame art\b|\bpressed leaves under glass in (?:\w+ )?frame\b"),
     ("Framed Art", r"\bframed (?:pu mounted|puzzle) art\b|\bsetback framed mounted art\b"),
+    ("Framed Art", r"\bframed foil art under glass\b"),
     ("Embroidery Art", r"\bcross stitch embroidery art\b"),
     ("Framed Art", r"\bsetback frame (?:w|with) raised (?:icons?|blocks?)\b|\bpuzzle art (?:w|with) (?:\w+ )?frame\b|\bwrapped linen in (?:a )?floating frame\b"),
     ("Framed Art", r"\bframed rattan (?:w|with) raised resin icon\b"),
     ("Framed Art", r"\b(?:2|two|double) layer framed die cut greyboard\b|\bsetback framed metallic pu\b|\bsetback framed (?:w|with) metallic pu\b"),
     ("Framed Canvas", r"\bframed (?:(?:embossed|paper|high gloss) )+canvas\b|\b(?:floating|floater|float) frame embroidered canvas\b"),
     ("Wall Art", r"\bwool fabric embroidered hanging wall art\b"),
+    ("Wall Art", r"\bframe wall art\b"),
     ("Banner", r"\b(?:canvas )?hanging (?:fishtail )?banners?\b"),
     ("Banner", r"\bframed banner (?:under|undr) glass\b"),
     ("Pennant", r"\bpennants?\b"),
@@ -169,6 +176,7 @@ _FIXES = (
     ("Letterboard", r"\bletterboards?\b"),
     ("Easel", r"\bdry erase easels?\b"),
     ("Framed Canvas", r"\bframed (?:printed )?canvas\b|\bcanvas framed\b|\bcanvas (?:print )?(?:(?:w|with|in) (?:a )?(?:(?:acrylic|metallic|plastic|wood|mdf) )?)?(?:floating|floater|float) frame\b|\bcanvas (?:print )?(?:w|with) acrylic frame\b|\b(?:floating|floater|float) frame(?:d)? ?(?:(?:w|with) )?(?:embossed |high gloss |metallic |printed )*canvas\b"),
+    ("Framed Canvas", r"\bcanvas (?:\w+ ){0,2}in (?:an? )?ornate frame\b|\bfloating (?:\w+ ){0,2}frame canvas\b"),
     ("Framed Canvas", r"\bframed (?:cotton )?canvas flag\b|\bframed float(?:ed|ing)? canvas\b|\bcanvas floater framed\b"),
     ("Framed Glass Art", r"\bframed stained glass art\b|\bstained glass (?:w|with) (?:\w+ )?frame\b|\bprinted glass (?:w|with) (?:\w+ )?frame\b"),
     ("Framed Glass Art", r"\bframed printed glass\b|\bprinted glass (?:w|with) (?:\w+ ){0,6}frame\b"),
@@ -225,7 +233,7 @@ _FIXES = (
     ("MDF Box", r"\bmdf (?:reverse )?box(?:es)?\b"),
     ("Framed Mirror", r"\bframed mirrors?\b"),
     ("Storage Chest", r"\bstorage chests?\b"),
-    ("Storage Suitcase", r"\bsuitcs\b|\bsuitcases? (?:greyboard )?storage\b"),
+    ("Storage Suitcase", r"\bsuitcs\b|\bsuitcases? (?:(?:greyboard|mdf) )?storage\b"),
     ("Storage Tower", r"\bstorage towers?\b"),
     ("Hang Tab", r"\bhang tabs?\b"),
     ("Art", r"\b(?:high gloss|mdf|die cut|diecut|pieced|metal|double layer|hexagon|leather|suede|satin|pu leather|molded) art\b"
@@ -278,7 +286,7 @@ _FIXES = (
     ("Lap Desk", r"\blap desks\b"),
     ("Framed Canvas", r"\b(?:floater|floating|float) frame(?:d)? canvas\b|\bcanvas (?:(?:with|in) )?(?:metallic )?(?:floater|floating|float) frame\b"),
     ("Paint-Your-Own Canvas Set", r"\b(?:diy|paint your own|paint by numbers?) canvas\b"),
-    ("Paint-Your-Own Canvas Set", r"\bcanvas (?:set )?(?:(?:with|w) )?(?:\d+ )?(?:paint pots?|brush(?:es)?)\b|\b(?:pbn|diy) (?:printed )?canvas\b"),
+    ("Paint-Your-Own Canvas Set", r"\bcanvas (?:set )?(?:(?:with|w) )?(?:\d+ )?(?:(?:paint|pnt) pots?|brush(?:es)?)\b|\b(?:pbn|diy) (?:printed )?canvas\b|\bcanvas set (?:w|with) \d+ paint pts\b"),
     ("Paint-Your-Own Canvas Set", r"\bcanvas set (?:\w+ ){0,3}paint tubes? (?:and )?brushes? (?:and )?palette\b"
      r"|\bcyo canvas kit\b.{0,40}\b(?:paint|pnt) pots?\b"),
     ("Perpetual Calendar", r"\b(?:mdf block |block mdf )?perpetual calendars?\b"),
@@ -433,6 +441,10 @@ def _mixed_distinct_forms(title: str) -> bool:
             form = "cube"
         elif re.search(r"\bblocks?\b", clause):
             form = "block"
+        elif re.search(r"\b(?:mdf )?shapes?\b", clause):
+            form = "shape"
+        elif re.search(r"\bsuitcases?\b", clause):
+            form = "suitcase"
         elif re.search(r"\bshadowbox(?:es)?\b", clause):
             form = "shadowbox"
         elif re.search(r"\b(?:paper|ppr|pper) prints?\b", clause) and not re.search(r"\bcanvas\b", clause):
@@ -442,7 +454,8 @@ def _mixed_distinct_forms(title: str) -> bool:
         elif re.search(r"\bfoam art\b", clause):
             form = "foam art"
         elif re.search(r"\bcanvas\b", clause):
-            if re.search(r"\b(?:diy|cyo|pyo)\b|\b(?:paint|pnt) pots?\b|\bpaint tubes?\b", clause):
+            if re.search(r"\b(?:diy|cyo|pyo)\b|\b(?:paint|pnt) pots?\b|\bpaint tubes?\b|"
+                         r"\bcanvas set (?:w|with) \d+ paint pts\b", clause):
                 form = "paint-your-own canvas set"
             else:
                 form = "framed canvas" if re.search(r"\b(?:(?:floating|float|floater) frame|ff)\b", clause) else "canvas"
@@ -563,6 +576,10 @@ def read_product_type(description: object) -> dict[str, str]:
     chest_block_pattern = bool(re.search(r"\bstorage chests?\b", text)
                                and re.search(r"\bblocks? patterns?\b", text))
     mixed_title = re.sub(r"\bblocks? patterns?\b", "artwork", parts[0], flags=re.I) if chest_block_pattern else parts[0]
+    # Color blocks described as part of one canvas are visual content, not
+    # a second supplied block product.
+    if re.search(r"\bcanvas\b", text):
+        mixed_title = re.sub(r"\bwith\s+color\s+blocks?\b", "with artwork", mixed_title, flags=re.I)
     if _mixed_distinct_forms(mixed_title) and not integrated_glass_shadowbox:
         return result
     if re.search(r"\b(?:toy\s+chest|toy\s+chst)\b.{0,55}(?:,|\+|&)\s*(?:\w+\s+){0,3}(?:hamper|hmpr|bin)\b", parts[0], re.I):
@@ -848,6 +865,8 @@ def read_product_type(description: object) -> dict[str, str]:
     # These are explicit assembly words in the title; short intervening
     # artwork names and dimensions must not erase them from the product.
     if re.search(r"\bframed\b", evidence) and "Framed" not in constructions:
+        constructions.append("Framed")
+    if product == "Wall Art" and re.search(r"\bframe wall art\b", evidence):
         constructions.append("Framed")
     if re.search(r"\b(?:floating|floater|float) frame\b", evidence) and "Floating Frame" not in constructions:
         constructions.append("Floating Frame")

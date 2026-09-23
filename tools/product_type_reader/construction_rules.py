@@ -540,4 +540,16 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Framed")
     if product_type == "Magnet Board" and stated(r"\bdie cut magnets?\b"):
         parts.discard("Die-Cut")
+    if product_type == "Slat Art" and stated(r"\bslit slat art\b"):
+        parts.add("Slatted")
+    if product_type == "Sequin Art" and stated(r"\bsequin flip art\b"):
+        parts.add("Flip")
+    if product_type == "Painting Kit" and stated(r"\bdiy set w/?\s*\d+ paint pots? and (?:a )?br(?:u)?sh\b"):
+        parts.discard("Set")
+    if product_type == "Stepping Stone" and stated(r"\bdiy cncrte stppng stne\b"):
+        parts.add("DIY")
+    if product_type == "Storage Hamper" and stated(r"\b(?:felt|flt) ovl hmpr\b"):
+        parts.add("Oval")
+    if product_type == "Wall Scroll" and stated(r"\blinen[- ]weave wall scroll\b"):
+        parts.add("Linen-Weave")
     return "; ".join(sorted(parts))

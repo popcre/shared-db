@@ -681,3 +681,35 @@ def test_glass_artwork_stays_out_of_frame_material():
                     product_type="Frame") == ""
     assert material("stained with glass blue frame", "frame", evidence="frame",
                     product_type="Canvas") == ""
+
+
+def test_explicit_glass_over_slat_art():
+    assert material("slat art under glass", "slat art", evidence="slat art",
+                    product_type="Slat Art") == "Glass"
+    assert material("slat art", "slat art", evidence="slat art",
+                    product_type="Slat Art", description="Slat Art_Glass effect artwork") == ""
+
+
+def test_joined_rubber_mat_is_explicit_material():
+    assert material("embossed rubbermat", "rubbermat", evidence="rubbermat",
+                    product_type="Mat") == "Rubber"
+    assert material("rubbermat look mat", "look mat", evidence="mat",
+                    product_type="Mat") == ""
+
+
+def test_abbreviated_concrete_stone_names_substrate():
+    assert material("cncrte stppng stne", "stne", evidence="stne",
+                    product_type="Stepping Stone") == "Concrete"
+    assert material("cncrte stppng stone", "stone", evidence="stone",
+                    product_type="Stepping Stone") == "Concrete"
+    assert material("stepping stone", "stone", evidence="stone",
+                    product_type="Stepping Stone", description="Stepping Stone_Concrete artwork") == ""
+
+
+def test_mdf_magnets_do_not_make_board_mdf():
+    assert material("magnet board with mdf die cut magnets", "magnet board",
+                    evidence="magnet board", product_type="Magnet Board",
+                    base_materials="MDF") == ""
+    assert material("mdf magnet board with mdf die cut magnets", "magnet board",
+                    evidence="magnet board", product_type="Magnet Board",
+                    base_materials="MDF") == "MDF"

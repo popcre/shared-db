@@ -128,6 +128,10 @@ _STAINED_GLASS_FRAME = re.compile(
     r"(?!\s+(?:artwork|design|look|effect|pattern|image|graphic)\b)"
     r".{0,30}\bframe\b"
 )
+_SLAT_ART_UNDER_GLASS = re.compile(r"\bslat art (?:undr|under) glass\b")
+_RUBBER_MAT_JOINED = re.compile(r"\brubbermat\b")
+_CONCRETE_STONE_ABBREVIATED = re.compile(r"\bcncrte (?:stppng (?:stne|stone)|stepping stone)\b")
+_MDF_MAGNET_ACCESSORY = re.compile(r"\bmagnet board with mdf die cut magnets\b")
 _UNDERSCORE_PHYSICAL = re.compile(r"^\s*(?:led|foil|glitter)\s+(?:and|&)\s+mdf\b(?=\s*$|\s+\d)", re.I)
 _CANVAS_CHENILLE = re.compile(r"\bcanvas (?:w|with) chenille\b(?! patch\b)")
 _METAL_PLATE_CANVAS = re.compile(r"\bmetal plate (?:emb|embossed) canvas\b")
@@ -435,6 +439,13 @@ def extract_materials(
         phrase += " mdf"
     if _STAINED_GLASS_FRAME.search(text) and product_type == "Frame":
         phrase += " glass"
+    if _SLAT_ART_UNDER_GLASS.search(text) and product_type == "Slat Art":
+        phrase += " glass"
+    if (_RUBBER_MAT_JOINED.search(text) and product_type == "Mat"
+            and not re.search(r"\brubbermat\s+(?:look|effect|texture|pattern|print|design)\b", text)):
+        phrase += " rubber"
+    if _CONCRETE_STONE_ABBREVIATED.search(text) and product_type == "Stepping Stone":
+        phrase += " concrete"
     for pattern, family, physical_material in _CLOSED_MATERIAL_RESIDUALS:
         if product_type == family and pattern.search(text):
             phrase += " " + physical_material
@@ -541,6 +552,9 @@ def extract_materials(
         materials.discard("Rope")
     if _ROPE_WRAPPED_CANVAS.search(text) and product_type == "Canvas":
         materials.add("Rope")
+    if (_MDF_MAGNET_ACCESSORY.search(text) and product_type == "Magnet Board"
+            and len(re.findall(r"\bmdf\b", text)) == 1):
+        materials.discard("MDF")
     # Only the PP directly naming a clock substrate is expanded; licensor and
     # artwork initials elsewhere in the description are not material evidence.
     if _PHYSICAL_PP_CLOCK.search(text) and product_type in {"Wall Clock", "Clock"}:

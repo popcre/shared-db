@@ -343,7 +343,8 @@ def test_printed_mdf_in_deep_frame_is_framed_print():
 
 def test_material_at_start_survives_artwork_between_it_and_product():
     result = read_product_type('MDF Yellow friends frame wall art')
-    assert result['product_type'] == 'Framed Art'
+    assert result['product_type'] == 'Wall Art'
+    assert result['product_construction'] == 'Framed'
     assert result['product_material'] == 'MDF'
 
 
@@ -1740,6 +1741,9 @@ def test_new_physical_nouns_do_not_swallow_a_separate_canvas(other):
 
 def test_repeated_canvas_kits_are_one_form_but_a_plain_canvas_is_distinct():
     assert read_product_type('Canvas set with paint pots and brush, DIY canvas with paint pots and brush')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('Canvas set w 12 pnt pots and brsh, DIY canvas w 12 pnt pots and brsh')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('DIY canvas w 8 paint pts, canvas set w 8 paint pts')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('Canvas set with 12 paint finishes')['product_type'] == 'Canvas'
     assert read_product_type('Canvas set with paint pots and brush, plain canvas')['product_type_status'] == 'unreadable'
 
 
@@ -1794,3 +1798,31 @@ def test_aliases_do_not_turn_material_or_separate_products_into_one_form(descrip
 ])
 def test_aliases_in_artwork_do_not_override_physical_canvas(description):
     assert read_product_type(description)['product_type'] == 'Canvas'
+
+
+def test_canvas_with_color_blocks_or_bounded_typo_remains_one_canvas():
+    assert read_product_type('Canvas with color blocks')['product_type'] == 'Canvas'
+    assert read_product_type('Canva w foil')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and decorative blocks')['product_type_status'] == 'unreadable'
+
+
+def test_explicit_frame_assembly_preserves_its_named_product_head():
+    wall_art = read_product_type('Wood Frame Wall Art')
+    assert wall_art['product_type'] == 'Wall Art'
+    assert wall_art['product_construction'] == 'Framed'
+    assert read_product_type('Framed Foil Art Under Glass')['product_type'] == 'Framed Art'
+    assert read_product_type('Canvas in Ornate Frame')['product_type'] == 'Framed Canvas'
+    assert read_product_type('Canvas Scenic Collage in Ornate Frame')['product_type'] == 'Framed Canvas'
+    assert read_product_type('Floating Blue 12 Frame Canvas')['product_type'] == 'Framed Canvas'
+    assert read_product_type('Unframed Wall Art')['product_construction'] == ''
+
+
+def test_explicit_shape_art_object_and_suitcase_heads_are_readable():
+    assert read_product_type('MDF Shape')['product_type'] == 'Shape'
+    assert read_product_type('LED Acrylic Tabletop Art')['product_type'] == 'Tabletop Art'
+    assert read_product_type('Dimensional Wood Object')['product_type'] == 'Decorative Object'
+    assert read_product_type('Suitcase MDF Storage')['product_type'] == 'Storage Suitcase'
+    assert read_product_type('Shelf w Hooks')['product_type'] == 'Shelf with Hooks'
+    assert read_product_type('Canvas depicting an MDF shape')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Shelf w Hooks')['product_type_status'] == 'unreadable'
+    assert read_product_type('MDF shapes and suitcase')['product_type_status'] == 'unreadable'

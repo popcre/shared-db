@@ -460,6 +460,8 @@ def test_nonwoven_separator_variants_are_explicit_fabric(prefix):
     ("plush keychain", "keychain", "Keychain", "Fabric", "Plush"),
     ("printed glass retro 15x20 shadowbox frame", "shadowbox", "Framed Glass Shadowbox", "", "Glass"),
     ("frmd art undr glss", "art", "Framed Art", "", "Glass"),
+    ("framed art undr glass", "art", "Framed Art", "", "Glass"),
+    ("framed mdf print on watercolor paper under glass", "print", "Framed Print", "MDF; Paper", "Glass; MDF; Paper"),
 ])
 def test_latest_reviewed_material_phrases(title,noun,product_type,base,expected):
     assert material(title,noun,evidence=noun,product_type=product_type,
@@ -471,3 +473,173 @@ def test_barrel_artwork_and_plush_name_do_not_create_other_materials():
                     product_type="Pencil Cup", base_materials="Ceramic; Wood") == "Ceramic; Wood"
     assert material("wall art", "art", evidence="art", product_type="Wall Art",
                     description="Wall Art_Plush character artwork") == ""
+    assert material("mdf framed print on mirror", "print", evidence="print",
+                    product_type="Framed Print", base_materials="MDF") == "MDF"
+
+
+@pytest.mark.parametrize("title,noun,product_type,base,expected", [
+    ("polyresin figural planter", "planter", "Planter", "", "Polyresin"),
+    ("molded polyresin mask", "mask", "Mask", "", "Polyresin"),
+    ("polyresin votive holder", "holder", "Votive Holder", "", "Polyresin"),
+    ("framed frayed burlap under glass", "framed", "Framed Fabric Art", "Fabric; Glass", "Burlap; Glass"),
+    ("faux pu and oxford hamper", "hamper", "Storage Hamper", "Fabric", "Fabric; PU"),
+    ("faux pu oxford hamper", "hamper", "Storage Hamper", "Fabric", "Fabric; PU"),
+    ("cotton kitchen runner rug", "rug", "Rug", "", "Cotton"),
+    ("canvas tapestry with wood bar", "tapestry", "Canvas Tapestry", "Canvas", "Canvas; Wood"),
+    ("tapestry with decorative wood bar", "tapestry", "Canvas Tapestry", "Canvas", "Canvas; Wood"),
+    ("rope wrapped round canvas", "canvas", "Canvas", "Canvas", "Canvas; Rope"),
+    ("fur rug", "rug", "Rug", "", "Fur"),
+    ("crumb rubber outdoor mat cotton headed", "mat", "Outdoor Mat", "Cotton; Crumb Rubber", "Crumb Rubber"),
+    ("wire word on mdf black happy on velvet", "word", "Decorative Word", "MDF; Wire", "MDF; Velvet; Wire"),
+    ("mdf plaque w rope", "plaque", "Plaque", "MDF; Rope", "MDF"),
+    ("die cut mdf sign with rope", "sign", "Sign", "MDF; Rope", "MDF"),
+])
+def test_fifth_reviewed_material_phrases(title,noun,product_type,base,expected):
+    assert material(title,noun,evidence=noun,product_type=product_type,
+                    base_materials=base) == expected
+
+
+@pytest.mark.parametrize("first,product_type", [
+    ("Black Rattan", "Decorative Bow"),
+    ("Colored Rattan", "Wall Shelf"),
+    ("Natural Rattan", "Wall Shelf"),
+])
+def test_rattan_material_in_first_physical_clause(first,product_type):
+    assert material("wall shelf w bow", "shelf", evidence="shelf", product_type=product_type,
+                    description=f"{first}_Wall Shelf w Bow") == "Rattan"
+
+
+def test_rattan_look_is_not_material():
+    assert material("wall shelf w bow", "shelf", evidence="shelf", product_type="Wall Shelf",
+                    description="Rattan look_Wall Shelf w Bow") == ""
+
+
+@pytest.mark.parametrize("title", ["pp molded wall clock", "pp mld wall clocks", "pp wall clock"])
+def test_physical_pp_clock_is_polypropylene(title):
+    noun = "wall clock"
+    assert material(title,noun,evidence=noun,product_type="Wall Clock",
+                    base_materials="PP") == "Polypropylene"
+
+
+def test_pp_identity_or_artwork_initials_do_not_supply_material():
+    assert material("wall clock", "wall clock", evidence="wall clock",
+                    product_type="Wall Clock", description="Wall Clock_PP identity artwork") == ""
+    assert material("pp character wall clock", "wall clock", evidence="wall clock",
+                    product_type="Wall Clock") == ""
+    assert material("pp felt organizer", "organizer", evidence="organizer",
+                    product_type="Organizer", base_materials="Felt; PP") == "Felt; PP"
+
+
+@pytest.mark.parametrize("title,noun,product_type,base,expected", [
+    ("pvc frame", "frame", "Photo Frame", "", "PVC"),
+    ("mdf photo frame with plaster print", "frame", "Photo Frame", "MDF", "MDF; Plaster"),
+    ("textured faux leather in floater frame", "frame", "Frame", "", "Faux Leather"),
+    ("cotton rope basket with applique", "basket", "Storage Basket", "Cotton; Rope", "Cotton"),
+    ("mdf framed steel wire wall art", "art", "Wall Art", "MDF; Steel; Wire", "MDF; Steel"),
+    ("mdf textured frame with boucle and faux leather", "frame", "Frame", "MDF", "Boucle; Faux Leather; MDF"),
+    ("poly linen storage chest", "chest", "Storage Chest", "Linen; Poly-Linen", "Poly-Linen"),
+    ("mirror with eva foam", "mirror", "Mirror", "EVA; EVA Foam; Foam", "EVA Foam"),
+    ("pp molded wall clocks", "clocks", "Clock", "PP", "Polypropylene"),
+])
+def test_exact_type_reviewed_material_residuals(title,noun,product_type,base,expected):
+    assert material(title,noun,evidence=noun,product_type=product_type,
+                    base_materials=base) == expected
+
+
+def test_paper_rope_first_clause_wall_shelf():
+    assert material("wall shelf w bow", "shelf", evidence="shelf", product_type="Wall Shelf",
+                    description="Colored Paper Rope_Wall Shelf w Bow") == "Paper Rope"
+    assert material("wall shelf w bow", "shelf", evidence="shelf", product_type="Wall Shelf",
+                    description="Paper Rope look_Wall Shelf w Bow") == ""
+
+
+def test_steel_wire_stays_two_materials_outside_one_composite():
+    assert material("steel wire basket", "basket", evidence="basket", product_type="Storage Basket",
+                    base_materials="Steel; Wire") == "Steel; Wire"
+
+
+@pytest.mark.parametrize("title,noun,product_type,base,expected", [
+    ("long tin street sign", "sign", "Sign", "", "Metal"),
+    ("plastic cube alarm clock", "clock", "Alarm Clock", "", "Plastic"),
+    ("backlit led acrlyic plaque", "plaque", "Plaque", "", "Acrylic"),
+    ("mdf plaque with wood veneer and metal tag", "plaque", "Plaque", "MDF; Wood", "MDF; Metal; Wood"),
+    ("figural resin pencil cup wooden barrel", "cup", "Pencil Cup", "Resin; Wood", "Resin"),
+    ("die cut iron thermometer", "thermometer", "Garden Thermometer", "Iron; Metal", "Iron"),
+    ("wool fabric hanging wall art", "art", "Wall Art", "Fabric; Wool", "Wool"),
+])
+def test_explicit_residual_material_and_single_fiber(title,noun,product_type,base,expected):
+    assert material(title,noun,evidence=noun,product_type=product_type,
+                    base_materials=base) == expected
+
+
+def test_separately_stated_iron_and_metal_remain_both():
+    assert material("iron and metal thermometer", "thermometer", evidence="thermometer",
+                    product_type="Garden Thermometer", base_materials="Iron; Metal") == "Iron; Metal"
+
+
+@pytest.mark.parametrize("title,noun,product_type,base,expected", [
+    ("cotton rope bin with felt", "bin", "Storage Bin", "Cotton; Felt; Rope", "Cotton Rope; Felt"),
+    ("cotton rope basket with plush", "basket", "Storage Basket", "Cotton; Fabric; Rope", "Cotton; Plush"),
+    ("panamacoir mat", "mat", "Mat", "", "Coir"),
+    ("floater frame suede with screenprint", "frame", "Frame", "", "Suede"),
+    ("faux suede hanging fishtail banner", "banner", "Banner", "", "Faux Suede"),
+    ("pu pebble leather hanging fishtail banner", "banner", "Banner", "Leather", "PU Leather"),
+    ("lap desk with sponge", "desk", "Lap Desk", "", "Sponge"),
+    ("crumb rubber assorted mats", "mats", "Mat", "", "Crumb Rubber"),
+    ("framed mdf print in wooden frame", "print", "Framed Print", "MDF", "MDF; Wood"),
+    ("pressed leaves under glass in distressed wooden frame", "frame", "Frame", "Wood", "Glass; Wood"),
+    ("framed art with chenile", "art", "Framed Art", "", "Chenille"),
+    ("framed art with dark wood frame", "art", "Framed Art", "", "Wood"),
+    ("mdf sign with wood grain", "sign", "Sign", "MDF; Wood", "MDF"),
+    ("mdf bank with ps plastic cover", "bank", "Bank", "MDF", "MDF; Plastic"),
+])
+def test_singleton_explicit_material_evidence(title,noun,product_type,base,expected):
+    assert material(title,noun,evidence=noun,product_type=product_type,
+                    base_materials=base) == expected
+
+
+def test_style_and_artwork_do_not_trigger_singleton_materials():
+    assert material("mdf sign with wood frame", "sign", evidence="sign", product_type="Sign",
+                    base_materials="MDF; Wood") == "MDF; Wood"
+    assert material("frame", "frame", evidence="frame", product_type="Frame",
+                    description="Frame_Suede jacket artwork") == ""
+    assert material("banner", "banner", evidence="banner", product_type="Banner",
+                    description="Banner_Faux suede look") == ""
+
+
+@pytest.mark.parametrize("title,base,expected", [
+    ("canvas with wood grain print", "Canvas; Wood", "Canvas"),
+    ("canvas with printed glass design", "Canvas; Glass", "Canvas"),
+    ("canvas with metal graphic", "Canvas; Metal", "Canvas"),
+    ("canvas with mdf design", "Canvas; MDF", "Canvas"),
+    ("canvas with wood grain veneer", "Canvas; Wood", "Canvas; Wood"),
+    ("canvas with wood frame and wood grain print", "Canvas; Wood", "Canvas; Wood"),
+])
+def test_visual_material_word_is_not_substrate(title,base,expected):
+    assert material(title,"canvas",evidence="canvas",product_type="Canvas",
+                    base_materials=base) == expected
+
+
+def test_printed_glass_object_still_has_glass():
+    assert material("printed glass shadowbox", "shadowbox", evidence="shadowbox",
+                    product_type="Framed Glass Shadowbox", base_materials="Glass") == "Glass"
+
+
+def test_material_silhouette_can_be_a_physical_cutout():
+    assert material("foam silhouette canvas", "canvas", evidence="canvas",
+                    product_type="Canvas", base_materials="Canvas; Foam") == "Canvas; Foam"
+    assert material("mdf silhouette lightup", "lightup", evidence="lightup",
+                    product_type="Light-Up Silhouette", base_materials="MDF") == "MDF"
+
+
+@pytest.mark.parametrize("second", ["Natural Wood", "Stained Wood"])
+def test_guitar_hook_second_clause_names_physical_wood(second):
+    assert material("functional guitar hook", "hook", evidence="hook",
+                    product_type="Guitar Hook",
+                    description=f"Functional Guitar Hook_{second}") == "Wood"
+
+
+def test_guitar_hook_artwork_wood_word_stays_out():
+    assert material("functional guitar hook", "hook", evidence="hook",
+                    product_type="Guitar Hook",
+                    description="Functional Guitar Hook_Wood grain artwork") == ""

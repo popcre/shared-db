@@ -24,6 +24,7 @@ _MATERIALS = (
     ("Faux Leather", r"faux leather"),
     ("Faux Suede", r"faux suede"),
     ("Faux Fur", r"faux fur"),
+    ("Fur", r"fur"),
     ("EVA Foam", r"eva foam"),
     ("Poly-Linen", r"poly linen"),
     ("Poly-Cotton", r"poly cotton"),
@@ -165,7 +166,47 @@ _CERAMIC_BARREL_CUP = re.compile(r"\bfigural ceramic pencil cup wooden barrel\b"
 _PLUSH_WALL_ART = re.compile(r"\bplush wall art\b")
 _PLUSH_KEYCHAIN = re.compile(r"\bplush keychain\b")
 _GLASS_SHADOWBOX_AFTER_SIZE = re.compile(r"\bprinted glass\b.{0,60}\bshadowbox frame\b")
-_FRMD_ART_GLSS = re.compile(r"\bfrmd art undr glss\b")
+_FRMD_ART_GLSS = re.compile(r"\b(?:framed art undr glass|frmd art undr glss)\b")
+_FRAMED_MDF_PRINT_UNDER_GLASS = re.compile(r"\bframed mdf print\b.{0,80}\bunder glass\b")
+_RATTAN_FIRST_CLAUSE = re.compile(r"\s*(?:black|colored|natural) rattan\s*", re.I)
+_POLYRESIN_PRODUCT = re.compile(r"\b(?:polyresin figural planter|molded polyresin mask|polyresin votive holder)\b")
+_FRAYED_BURLAP_GLASS = re.compile(r"\bframed frayed burlap under glass\b")
+_FAUX_PU_OXFORD_HAMPER = re.compile(r"\bfaux pu (?:and )?oxford hamper\b")
+_COTTON_RUNNER_RUG = re.compile(r"\bcotton kitchen runner rug\b")
+_WOOD_BAR_TAPESTRY = re.compile(r"\btapestry (?:w|with) (?:decorative )?wood bar\b")
+_ROPE_WRAPPED_CANVAS = re.compile(r"\brope wrapped round canvas\b")
+_FUR_RUG = re.compile(r"\bfur rug\b")
+_COTTON_HEADED_ART = re.compile(r"\bcrumb rubber outdoor mat cotton headed\b")
+_VELVET_WORD = re.compile(r"\bwire word on mdf\b.{0,60}\bon velvet\b")
+_ROPE_MDF_SIGN = re.compile(r"\b(?:mdf plaque (?:w|with) rope|die cut mdf sign with rope)\b")
+_PHYSICAL_PP_CLOCK = re.compile(r"\bpp (?:molded |mld )?wall clocks?\b")
+_TEXTURED_FAUX_LEATHER_FRAME = re.compile(r"\btextured faux leather in floater frame\b")
+_PAPER_ROPE_FIRST = re.compile(r"\s*(?:colored )?paper rope\s*", re.I)
+_COTTON_ROPE_APPLIQUE_BASKET = re.compile(r"\bcotton rope basket (?:w|with) applique\b")
+_STEEL_WIRE_WALL_ART = re.compile(r"\bsteel wire wall art\b")
+_BOUCLE_LEATHER_FRAME = re.compile(r"\bmdf textured frame with boucle and faux leather\b")
+_GUITAR_HOOK_WOOD_CLAUSE = re.compile(r"\s*(?:natural|stained) wood\s*", re.I)
+_COTTON_ROPE_FELT_BIN = re.compile(r"\bcotton rope bin (?:w|with) felt\b")
+_COTTON_PLUSH_BASKET = re.compile(r"\bcotton rope basket (?:w|with) plush\b")
+_PU_PEBBLE_BANNER = re.compile(r"\bpu pebble leather hanging fishtail banner\b")
+_FAUX_SUEDE_BANNER = re.compile(r"\bfaux suede hanging fishtail banner\b")
+_WOOD_GRAIN_MDF_SIGN = re.compile(r"\bmdf sign (?:w|with) wood grain\b")
+_CLOSED_MATERIAL_RESIDUALS = (
+    (re.compile(r"\bpanamacoir mat\b"), "Mat", "coir"),
+    (re.compile(r"\bfloater frame suede (?:w|with) screenprint\b"), "Frame", "suede"),
+    (re.compile(r"\blap desk with sponge\b"), "Lap Desk", "sponge"),
+    (re.compile(r"\bcrumb rubber\b.{0,25}\bmats?\b"), "Mat", "crumb rubber"),
+    (re.compile(r"\bframed mdf print\b.{0,85}\bwooden frame\b"), "Framed Print", "wood"),
+    (re.compile(r"\bpressed leaves under glass in distressed wooden frame\b"), "Frame", "glass"),
+    (re.compile(r"\bframed art (?:w|with) chenile\b"), "Framed Art", "chenille"),
+    (re.compile(r"\bframed art (?:w|with) dark wood frame\b"), "Framed Art", "wood"),
+    (re.compile(r"\bmdf bank with ps plastic cover\b"), "Bank", "plastic"),
+)
+_TIN_STREET_SIGN = re.compile(r"\blong tin street sign\b")
+_PLASTIC_CUBE_CLOCK = re.compile(r"\bplastic cube alarm clock\b")
+_ACRYLIC_BACKLIT_PLAQUE = re.compile(r"\bbacklit led acrlyic plaque\b")
+_MDF_METAL_TAG = re.compile(r"\bmdf plaque with wood veneer and metal tag\b")
+_RESIN_BARREL_CUP = re.compile(r"\bfigural resin pencil cup wooden barrel\b")
 
 
 def _listed_materials(evidence: str) -> set[str]:
@@ -203,17 +244,23 @@ def _listed_materials(evidence: str) -> set[str]:
 
 def _appearance_only(material: str, title: str) -> bool:
     """Reject even a supplied base material when every mention is visual style."""
-    if material == "PU" and _PU_PRODUCT.search(title):
+    if material == "PU" and (_PU_PRODUCT.search(title) or _FAUX_PU_OXFORD_HAMPER.search(title)):
         return False
     patterns = [pattern for name, pattern in _COMPILED if name == material]
     matches = [match for pattern in patterns for match in pattern.finditer(title)]
     if not matches:
         return False
-    return all(
-        re.search(r"\b(?:faux|fake|imitation)\s+$", title[:match.start()])
-        or re.match(r"\s+(?:texture|look|effect|pattern)\b", title[match.end():])
-        for match in matches
-    )
+    for match in matches:
+        left, right = title[:match.start()], title[match.end():]
+        if re.search(r"\b(?:faux|fake|imitation)\s+$", left):
+            continue
+        if re.match(r"\s+grain\s+veneer\b", right):
+            return False
+        if re.match(r"\s+(?:texture|look|effect|pattern|design|image|graphic|"
+                    r"illustration|motif|grain)\b", right):
+            continue
+        return False
+    return True
 
 
 def extract_materials(
@@ -319,7 +366,7 @@ def extract_materials(
     if (description and re.fullmatch(r"\s*ceramic\s*", description.split("_")[0], re.I)
             and product_type in {"Decorative Knot", "Decorative Chain"}):
         phrase += " ceramic"
-    if _PLASTER_FRAME.search(bounded_title) and product_type == "Photo Frame":
+    if _PLASTER_FRAME.search(text) and product_type == "Photo Frame":
         phrase += " plaster"
     if _CANVAS_EVA_BIN.search(bounded_title) and product_type == "Storage Bin":
         phrase += " canvas"
@@ -331,7 +378,7 @@ def extract_materials(
     # normalized title still ends before the artwork underscore.
     if _WOOD_VENEER_WORD.search(text) and product_type == "Decorative Word":
         phrase += " wood"
-    if _PVC_PRODUCT.search(bounded_title) and product_type in {"Photo Frame", "Mat"}:
+    if _PVC_PRODUCT.search(text) and product_type in {"Photo Frame", "Mat"}:
         phrase += " pvc"
     if _POLYESTER_PRODUCT.search(bounded_title) and product_type in {"Storage Hamper", "Rug"}:
         phrase += " polyester"
@@ -361,6 +408,50 @@ def extract_materials(
         phrase += " glass"
     if _FRMD_ART_GLSS.search(text) and product_type == "Framed Art":
         phrase += " glass"
+    if _FRAMED_MDF_PRINT_UNDER_GLASS.search(text) and product_type == "Framed Print":
+        phrase += " glass"
+    if _TEXTURED_FAUX_LEATHER_FRAME.search(text) and product_type == "Frame":
+        phrase += " faux leather"
+    if description and _PAPER_ROPE_FIRST.fullmatch(description.split("_")[0]) \
+            and product_type == "Wall Shelf":
+        phrase += " paper rope"
+    if (description and product_type == "Guitar Hook"
+            and re.fullmatch(r"\s*functional guitar hook\s*", description.split("_")[0], re.I)
+            and len(description.split("_")) > 1
+            and _GUITAR_HOOK_WOOD_CLAUSE.fullmatch(description.split("_")[1])):
+        phrase += " wood"
+    if _BOUCLE_LEATHER_FRAME.search(text) and product_type == "Frame":
+        phrase += " boucle faux leather"
+    for pattern, family, physical_material in _CLOSED_MATERIAL_RESIDUALS:
+        if product_type == family and pattern.search(text):
+            phrase += " " + physical_material
+    if _TIN_STREET_SIGN.search(text) and product_type == "Sign":
+        phrase += " tin"
+    if _PLASTIC_CUBE_CLOCK.search(text) and product_type == "Alarm Clock":
+        phrase += " plastic"
+    if _ACRYLIC_BACKLIT_PLAQUE.search(text) and product_type == "Plaque":
+        phrase += " acrylic"
+    if _MDF_METAL_TAG.search(text) and product_type == "Plaque":
+        phrase += " metal"
+    if description and _RATTAN_FIRST_CLAUSE.fullmatch(description.split("_")[0]) \
+            and product_type in {"Decorative Bow", "Wall Shelf"}:
+        phrase += " rattan"
+    if _POLYRESIN_PRODUCT.search(text) and product_type in {"Planter", "Mask", "Votive Holder"}:
+        phrase += " polyresin"
+    if _FRAYED_BURLAP_GLASS.search(text) and product_type == "Framed Fabric Art":
+        phrase += " burlap"
+    if _FAUX_PU_OXFORD_HAMPER.search(text) and product_type == "Storage Hamper":
+        phrase += " pu"
+    if _COTTON_RUNNER_RUG.search(text) and product_type == "Rug":
+        phrase += " cotton"
+    if _WOOD_BAR_TAPESTRY.search(text) and product_type in {"Canvas Tapestry", "Tapestry"}:
+        phrase += " wood"
+    if _ROPE_WRAPPED_CANVAS.search(text) and product_type == "Canvas":
+        phrase += " rope"
+    if _FUR_RUG.search(text) and product_type == "Rug":
+        phrase += " fur"
+    if _VELVET_WORD.search(text) and product_type == "Decorative Word":
+        phrase += " velvet"
     if _METAL_PLATE_CANVAS.search(bounded_title) or _METAL_LOGO_CANVAS.search(bounded_title):
         phrase += " metal"
     faux_clause = _CANVAS_FAUX_LEATHER.search(bounded_title)
@@ -425,6 +516,50 @@ def extract_materials(
     if _PLUSH_KEYCHAIN.search(text) and product_type == "Keychain":
         materials.discard("Fabric")
         materials.add("Plush")
+    if _FRAYED_BURLAP_GLASS.search(text) and product_type == "Framed Fabric Art":
+        materials.discard("Fabric")
+        materials.add("Burlap")
+    if _COTTON_HEADED_ART.search(text) and product_type == "Outdoor Mat":
+        materials.discard("Cotton")
+    if _ROPE_MDF_SIGN.search(text) and product_type in {"Plaque", "Sign"}:
+        materials.discard("Rope")
+    if _ROPE_WRAPPED_CANVAS.search(text) and product_type == "Canvas":
+        materials.add("Rope")
+    # Only the PP directly naming a clock substrate is expanded; licensor and
+    # artwork initials elsewhere in the description are not material evidence.
+    if _PHYSICAL_PP_CLOCK.search(text) and product_type in {"Wall Clock", "Clock"}:
+        materials.discard("PP")
+        materials.add("Polypropylene")
+    if _COTTON_ROPE_APPLIQUE_BASKET.search(text) and product_type == "Storage Basket":
+        materials.discard("Rope")
+    if _STEEL_WIRE_WALL_ART.search(text) and product_type == "Wall Art" and "Steel" in materials:
+        materials.discard("Wire")
+    if _RESIN_BARREL_CUP.search(text) and product_type == "Pencil Cup":
+        materials.discard("Wood")
+    if "Iron" in materials and "Metal" in materials and not re.search(r"\bmetal\b", text):
+        materials.discard("Metal")
+    if "Wool" in materials and re.search(r"\bwool fabric\b", text):
+        materials.discard("Fabric")
+    if "Poly-Linen" in materials:
+        materials.discard("Linen")
+    if "EVA Foam" in materials:
+        materials.discard("EVA")
+        materials.discard("Foam")
+    if _COTTON_ROPE_FELT_BIN.search(text) and product_type == "Storage Bin":
+        materials.discard("Cotton")
+        materials.discard("Rope")
+        materials.add("Cotton Rope")
+    if _COTTON_PLUSH_BASKET.search(text) and product_type == "Storage Basket":
+        materials.discard("Fabric")
+        materials.discard("Rope")
+        materials.add("Plush")
+    if _PU_PEBBLE_BANNER.search(text) and product_type == "Banner":
+        materials.discard("Leather")
+        materials.add("PU Leather")
+    if _FAUX_SUEDE_BANNER.search(text) and product_type == "Banner":
+        materials.add("Faux Suede")
+    if _WOOD_GRAIN_MDF_SIGN.search(text) and product_type == "Sign":
+        materials.discard("Wood")
     materials = {name for name in materials if not _appearance_only(name, bounded_title)}
     if _SATIN_CANVAS.search(text) and product_type in {"Canvas", "Framed Canvas"}:
         materials.discard("Satin")

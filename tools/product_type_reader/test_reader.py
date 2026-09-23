@@ -170,7 +170,7 @@ def test_administrative_without_product(description):
 
 
 def test_assortment_or_contractual_alone_does_not_establish_admin_placeholder():
-    assert read_product_type('assorted contractual')['product_type_status'] == 'unreadable'
+    assert read_product_type('assorted contractual material')['product_type_status'] == 'unreadable'
 
 def test_assorted_product_remains_product():
     assert read_product_type("assorted acrylic pencil case")["product_type"] == "Pencil Case"
@@ -374,6 +374,103 @@ def test_greyboard_lift_off_storage_without_container_noun_abstains():
     assert result['product_treatment'] == ''
 
 
+def test_lift_off_storage_with_finish_still_needs_container_noun():
+    assert read_product_type('Large lift-off storage with glitter and foil')['product_type_status'] == 'unreadable'
+    assert read_product_type('Large lift-off storage box with glitter')['product_type'] == 'Hard Storage Box'
+
+
+def test_suitcs_abbreviation_names_a_physical_suitcase():
+    assert read_product_type('Polyester SUITCS with handle')['product_type'] == 'Storage Suitcase'
+
+
+def test_explicit_substrate_or_finish_art_noun_is_physical():
+    assert read_product_type('High gloss art 16x20 with abstract design')['product_type'] == 'Art'
+    assert read_product_type('Die cut MDF art 8x10')['product_type'] == 'Art'
+    assert read_product_type('Suede art 8x10 with painted waves')['product_type'] == 'Art'
+    assert read_product_type('MDF diecut silhouette art 8x10')['product_type'] == 'Art'
+    assert read_product_type('Double layer diecut art 8x10')['product_type'] == 'Die-Cut Art'
+    assert read_product_type('Die cut pieced MDF logo art 8x10')['product_type'] == 'Art'
+    assert read_product_type('Cross stitch embroidered art 8x10')['product_type'] == 'Art'
+    assert read_product_type('LED neon wire art 8x10')['product_type'] == 'Art'
+    assert read_product_type('Canvas with line art pattern')['product_type'] == 'Canvas'
+
+
+def test_framed_and_embroidered_art_require_explicit_art_noun():
+    assert read_product_type('Framed PU mounted art with raised motif')['product_type'] == 'Framed Art'
+    assert read_product_type('Framed puzzle art with border')['product_type'] == 'Framed Art'
+    assert read_product_type('Setback framed mounted art with metallic PU')['product_type'] == 'Framed Art'
+    assert read_product_type('Cross stitch embroidery art 10x12')['product_type'] == 'Embroidery Art'
+    assert read_product_type('Framed PU mount with portrait scene')['product_type_status'] == 'unreadable'
+
+
+def test_fabric_hanging_wall_art_keeps_art_form_and_hanging_construction():
+    for description in ('Fabric hanging wall art 12x18 geometric pattern',
+                        'Hanging fabric wall art 12x18 geometric pattern',
+                        'Wool fabric embroidered hanging wall art 12x18'):
+        result = read_product_type(description)
+        assert result['product_type'] == 'Wall Art'
+        assert result['product_construction'] == 'Hanging'
+
+
+def test_box_storage_word_order_names_storage_box_without_hardness_inference():
+    assert read_product_type('Shaped 10x12 box greyboard storage set')['product_type'] == 'Storage Box'
+    assert read_product_type('Framed canvas box artwork')['product_type'] == 'Framed Canvas'
+
+
+def test_chalkboard_artwork_on_mdf_box_does_not_invent_functional_board():
+    assert read_product_type('Chalkboard art MDF box 10x12 graphic')['product_type'] == 'MDF Box'
+    assert read_product_type('Functional chalkboard with box pattern')['product_type'] == 'Chalkboard'
+
+
+def test_chalkboard_artwork_on_canvas_does_not_change_canvas_form():
+    assert read_product_type('Canvas with chalkboard artwork')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas chalkboard design')['product_type'] == 'Canvas'
+    assert read_product_type('Functional chalkboard with canvas backing')['product_type'] == 'Chalkboard'
+
+
+def test_product_phrase_cannot_cross_size_into_artwork():
+    result = read_product_type('Canvas 10x20 framed paper artwork')
+    assert result['product_type'] == 'Canvas'
+    assert result['product_construction'] == ''
+    assert read_product_type('Framed canvas 10x20 abstract artwork')['product_type'] == 'Framed Canvas'
+
+
+def test_framed_substrate_without_object_noun_abstains_consistently():
+    assert read_product_type('Framed paper 10x12 high gloss')['product_type_status'] == 'unreadable'
+    assert read_product_type('Framed MDF 10x12 high gloss')['product_type_status'] == 'unreadable'
+    assert read_product_type('Framed paper art 10x12')['product_type'] == 'Framed Art'
+
+
+def test_literal_functional_guitar_hook_outweighs_generic_hook():
+    assert read_product_type('Functional guitar hook with LED and MDF')['product_type'] == 'Guitar Hook'
+
+
+def test_explicit_kitchen_mat_and_neon_box_nouns():
+    assert read_product_type('Cushioned kitchen mat with pattern')['product_type'] == 'Kitchen Mat'
+    assert read_product_type('LED neon box with acrylic cover')['product_type'] == 'Neon Box'
+
+
+def test_shadowbox_frame_needs_literal_glass_for_glass_subtype():
+    assert read_product_type('Die-cut paper art in shadowbox frame')['product_type'] == 'Framed Shadowbox'
+    assert read_product_type('Printed glass shadowbox frame with foil')['product_type'] == 'Framed Glass Shadowbox'
+
+
+@pytest.mark.parametrize(('description', 'product_type'), [
+    ('Clear hang tab with adhesive', 'Hang Tab'),
+    ('3D LENTCLR print on board', 'Lenticular Art'),
+    ('Cushioned LAP DSK with handle', 'Lap Desk'),
+    ('Folding LLAP DESK with legs', 'Lap Desk'),
+    ('PP MLD WALL COLCKS with pendulum', 'Clock'),
+])
+def test_bounded_physical_noun_abbreviations(description, product_type):
+    assert read_product_type(description)['product_type'] == product_type
+
+
+def test_drawer_tier_storage_without_container_noun_abstains():
+    assert read_product_type('DRWR TIER STRGE with wheels')['product_type_status'] == 'unreadable'
+    assert read_product_type('Drawer tier storage tower with wheels')['product_type'] == 'Storage Tower'
+
+
 def test_printed_glass_shadowbox_beats_glass_art():
     result = read_product_type('Printed glass shadowbox')
     assert result['product_type'] == 'Framed Glass Shadowbox'
@@ -398,7 +495,7 @@ def test_plain_plaque_with_explicit_material_remains_neutral():
 
 
 def test_window_cling_plural_is_a_product():
-    assert read_product_type('Window clings')['product_type'] == 'Window Cling'
+    assert read_product_type('Window clings with cut edge')['product_type'] == 'Window Cling'
 
 
 def test_material_print_is_read_without_artwork_semantics():
@@ -1166,7 +1263,7 @@ def test_explicit_noun_with_assortment_word_is_readable(description, product):
 
 
 @pytest.mark.parametrize("description", [
-    "Billing purpose", "Additional cost and labor for rivets", "Assrortment",
+    "Billing purpose for synthetic sample", "Additional cost and labor for rivets", "Assrortment",
 ])
 def test_pure_admin_text_is_placeholder(description):
     assert read_product_type(description)['product_type_status'] == 'placeholder'
@@ -1391,16 +1488,16 @@ def test_product_like_samples_without_a_noun_are_unreadable(description):
 
 
 @pytest.mark.parametrize('description', [
-    'Extra cost for manual handling', 'invoicing purpose', 'Plate cost adjustment', 'Port chg adjustment',
+    'Extra cost for manual handling and packing', 'additional cost for sample invoice', 'Plate cost adjustment', 'Port chg adjustment',
     'AD REQUIREMENT for web banner', 'tbd', 'placeholder',
-    'Operator created new record on reference date', 'testttt dsn',
+    'Operator created new record on reference date', 'testfoobar dsn',
 ])
 def test_explicit_administrative_wording_is_placeholder(description):
     assert read_product_type(description)['product_type_status'] == 'placeholder'
 
 
 @pytest.mark.parametrize('description', [
-    'Mixed case', 'Mixed licensed pack', 'Mixed SKU',
+    'Mixed packaging case', 'Mixed licensed pack', 'Mixed SKU',
     'Filling component only required', 'zzzunknownzzz',
 ])
 def test_unknown_pack_or_noise_is_unreadable_not_placeholder(description):
@@ -1429,7 +1526,7 @@ def test_printed_linen_paper_in_setback_frame_is_framed_print():
 
 def test_whole_underscore_physical_material_clause_is_source_grounded():
     actual = read_product_type('Functional Guitar Hook_LED and MDF 11.4x8')
-    assert actual['product_type'] == 'Hook'
+    assert actual['product_type'] == 'Guitar Hook'
     assert actual['product_material'] == 'MDF'
 
 

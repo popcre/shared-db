@@ -1,0 +1,52 @@
+name: Shared DB 2870 Catalog Observation
+
+# Owned by shared-db maintenance. Retire after backend #2870 acceptance archives.
+# Observes catalog metadata only; never claims application acceptance.
+on:
+  workflow_dispatch:
+    inputs:
+      application_commit_sha:
+        description: Exact approved DesignFlow backend develop commit
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/shared-db-2870-observation.yml'
+      - 'scripts/proofs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: node --test scripts/proofs/shared-db-2870-observation.test.mjs
+
+  observe:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'popcre/shared-db'
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Bind checkout to the main workflow run
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Observe the fixed catalog contract read-only
+        env:
+          APPLICATION_COMMIT_SHA: ${{ inputs.application_commit_sha }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/proofs/shared-db-2870-observation.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shared-db-2870-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-db-2870-observation/observation.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 90

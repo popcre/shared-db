@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "work_issue": 3421,
+  "outcome": "ready-for-merge",
+  "pr": 3420,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3421/1",
+  "contract_sha256": "9902365ad6736d6eff2f771a8b8f92256972b4d70c051862321c8e3c28be119b",
+  "head_sha": "ba90a7f98bb55afde4ce077cca78cb20cab18327",
+  "files_changed": [
+    ".agent/work/3421/1/completion.json",
+    ".agent/work/3421/1/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/verification/throughput-dispositions/scripts~merge-queue-contract.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 14 pass 14 fail 0 including the derived status-reader coverage test"
+    },
+    {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 37 pass 37 fail 0 including order-trap and --authorization-row wire-read"
+    },
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 13 pass 13 fail 0 with paginated /statuses mocks"
+    },
+    {
+      "command": "node --test scripts/check-workflow-automatic-promotion-source.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 10 pass 10 fail 0 after naming the shared gate in the dispatch comment"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 16 pass 16 fail 0 after adding scripts~merge-queue-contract.mjs.json"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 685 pass 685 fail 0 at ba90a7f98"
+    }
+  ],
+  "assumptions_resolved": [
+    "Governed Muse APPROVE at ba90a7f98bb55afde4ce077cca78cb20cab18327 (durable verdict refs/db-review-verdicts/3421-3420-ba90a7f98bb55afde4ce077cca78cb20cab18327) after three class-wide REVISE answers on status-reader order trust.",
+    "Queue activation remains out of scope; direct guarded merge stays available."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "work_issue": 3290,
+  "outcome": "ready-for-merge",
+  "pr": 3446,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3290/13",
+  "contract_sha256": "d14308c276e638193fdb4f9b34468d0b43bca9eb680f4f7ebdc71277ce82df4c",
+  "head_sha": "31c82d84bb8ee29e259b18b4eb4adea038a41c1e",
+  "files_changed": [
+    "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
+    "docs/verification/product-type-reader/baseline-2026-09-23.md",
+    "docs/verification/product-type-reader/final-2026-09-23.md",
+    "plan_product_type_reader.md",
+    "tools/product_type_reader/README.md",
+    "tools/product_type_reader/__init__.py",
+    "tools/product_type_reader/baseline.py",
+    "tools/product_type_reader/construction_rules.py",
+    "tools/product_type_reader/evaluate.py",
+    "tools/product_type_reader/gold/coverage.py",
+    "tools/product_type_reader/gold/labels.csv",
+    "tools/product_type_reader/legacy.py",
+    "tools/product_type_reader/material_rules.py",
+    "tools/product_type_reader/reader.py",
+    "tools/product_type_reader/storage_rules.py",
+    "tools/product_type_reader/test_catalog_fixture.py",
+    "tools/product_type_reader/test_construction_rules.py",
+    "tools/product_type_reader/test_evaluate.py",
+    "tools/product_type_reader/test_material_rules.py",
+    "tools/product_type_reader/test_reader.py",
+    "tools/product_type_reader/test_storage_rules.py",
+    "tools/product_type_reader/test_treatment_rules.py",
+    "tools/product_type_reader/tests/fixtures/descriptions.csv",
+    "tools/product_type_reader/treatment_rules.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python -m pytest tools/product_type_reader -q",
+      "exit_code": 0,
+      "evidence": "1296 passed, 4 subtests passed at 31c82d84"
+    }
+  ],
+  "assumptions_resolved": [
+    "Strict evaluation passed: 18985 correct, 0 wrong, 0 uncovered, 0 errors; live fingerprint equals snapshot.",
+    "Generation 13 is the single evidence pair on this branch."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "3a46121f865137ccef79ac3bc0463e993ebad495"
+}

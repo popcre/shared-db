@@ -395,6 +395,11 @@ def test_explicit_substrate_or_finish_art_noun_is_physical():
     assert read_product_type('Canvas with line art pattern')['product_type'] == 'Canvas'
 
 
+def test_boxed_art_noun_is_distinct_from_boxed_artwork_caption():
+    assert read_product_type('Boxed art with raised paper layers')['product_type'] == 'Boxed Art'
+    assert read_product_type('Boxed artwork caption only')['product_type_status'] == 'unreadable'
+
+
 def test_framed_and_embroidered_art_require_explicit_art_noun():
     assert read_product_type('Framed PU mounted art with raised motif')['product_type'] == 'Framed Art'
     assert read_product_type('Framed puzzle art with border')['product_type'] == 'Framed Art'
@@ -445,6 +450,65 @@ def test_literal_functional_guitar_hook_outweighs_generic_hook():
     assert read_product_type('Functional guitar hook with LED and MDF')['product_type'] == 'Guitar Hook'
 
 
+def test_lenticular_effect_on_mdf_box_does_not_change_box_form():
+    assert read_product_type('MDF box with lenticular image')['product_type'] == 'MDF Box'
+    assert read_product_type('Lenticular art on MDF backing')['product_type'] == 'Lenticular Art'
+
+
+def test_explicit_garden_tool_set_is_one_named_set_product():
+    assert read_product_type('Garden tool set with steel handles')['product_type'] == 'Garden Tool Set'
+    assert read_product_type('Garden tool with steel handle')['product_type'] == 'Garden Tool'
+
+
+def test_physical_wall_clock_and_perpetual_calendar_abbreviation():
+    assert read_product_type('Molded wall clock with pendulum')['product_type'] == 'Wall Clock'
+    assert read_product_type('MDF block perpetual CLNDR with month tabs')['product_type'] == 'Perpetual Calendar'
+    assert read_product_type('Canvas 10x12 artwork wall clock scene')['product_type'] == 'Canvas'
+
+
+@pytest.mark.parametrize(('description', 'product_type'), [
+    ('PRCH LNR with LED border', 'Porch Leaner'),
+    ('STPPING STNE with handprint mold', 'Stepping Stone'),
+    ('Molded wall figures with ribbon', 'Wall Figure'),
+    ('Fabric wall mask with hanging loop', 'Wall Mask'),
+    ('Glass votive holder with metal base', 'Votive Holder'),
+    ('Garden flags with stakes', 'Garden Flag'),
+])
+def test_literal_physical_forms_and_bounded_abbreviations(description, product_type):
+    assert read_product_type(description)['product_type'] == product_type
+
+
+def test_led_light_artwork_does_not_change_canvas_form():
+    assert read_product_type('Canvas with LED light artwork 10x12')['product_type'] == 'Canvas'
+
+
+@pytest.mark.parametrize(('description', 'product_type'), [
+    ('Wood birdhouse with hanging cord', 'Birdhouse'),
+    ('Wood bird house with hanging cord', 'Birdhouse'),
+    ('Cork pinboard with calendar grid', 'Pinboard'),
+    ('Cork pin board with calendar grid', 'Pinboard'),
+    ('Fabric pin board with magnetic strip', 'Pinboard'),
+    ('Lawn sign with ground stakes', 'Lawn Sign'),
+    ('Kitchen organizer with drawer', 'Kitchen Organizer'),
+    ('Hanging 4 shelf organizer with zipper', 'Hanging Organizer'),
+    ('6 shelf hanging organizer with zipper', 'Hanging Organizer'),
+    ('MDF wall plaque with hanging cord', 'Wall Plaque'),
+    ('Ceramic wall tile with glaze', 'Wall Tile'),
+])
+def test_explicit_physical_subtype_nouns(description, product_type):
+    assert read_product_type(description)['product_type'] == product_type
+
+
+def test_bird_feeder_and_canvas_pinboard_artwork_keep_their_forms():
+    assert read_product_type('Wood bird feeder with hanging cord')['product_type'] == 'Bird Feeder'
+    assert read_product_type('Canvas 10x12 artwork pinboard scene')['product_type'] == 'Canvas'
+
+
+def test_canvas_in_tray_box_names_canvas_not_packaging():
+    assert read_product_type('Set of 2 printed canvas in a tray box')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and tray box')['product_type_status'] == 'unreadable'
+
+
 def test_explicit_kitchen_mat_and_neon_box_nouns():
     assert read_product_type('Cushioned kitchen mat with pattern')['product_type'] == 'Kitchen Mat'
     assert read_product_type('LED neon box with acrylic cover')['product_type'] == 'Neon Box'
@@ -455,12 +519,29 @@ def test_shadowbox_frame_needs_literal_glass_for_glass_subtype():
     assert read_product_type('Printed glass shadowbox frame with foil')['product_type'] == 'Framed Glass Shadowbox'
 
 
+@pytest.mark.parametrize('description', [
+    'Framed linen under glass with deckled edge print 12x16',
+    'Metal bow frame MDF print with foil',
+    'Framed glitter print 12x16',
+    'Framed layered MDF print with LED',
+    'FRMD HIGH GLSS PRNT 12x16',
+    'Framed prints with mat',
+    'MDF print with thin black frame 12x16',
+])
+def test_explicit_physical_frame_print_assemblies(description):
+    assert read_product_type(description)['product_type'] == 'Framed Print'
+
+
+def test_frame_only_in_print_artwork_does_not_frame_product():
+    assert read_product_type('Paper print 12x16 artwork with arched frame pattern')['product_type'] == 'Print'
+
+
 @pytest.mark.parametrize(('description', 'product_type'), [
     ('Clear hang tab with adhesive', 'Hang Tab'),
     ('3D LENTCLR print on board', 'Lenticular Art'),
     ('Cushioned LAP DSK with handle', 'Lap Desk'),
     ('Folding LLAP DESK with legs', 'Lap Desk'),
-    ('PP MLD WALL COLCKS with pendulum', 'Clock'),
+    ('PP MLD WALL COLCKS with pendulum', 'Wall Clock'),
 ])
 def test_bounded_physical_noun_abbreviations(description, product_type):
     assert read_product_type(description)['product_type'] == product_type
@@ -1263,7 +1344,7 @@ def test_explicit_noun_with_assortment_word_is_readable(description, product):
 
 
 @pytest.mark.parametrize("description", [
-    "Billing purpose for synthetic sample", "Additional cost and labor for rivets", "Assrortment",
+    "Billing purpose for synthetic sample", "Additional cost and labor for rivets", "testquokka dsn",
 ])
 def test_pure_admin_text_is_placeholder(description):
     assert read_product_type(description)['product_type_status'] == 'placeholder'
@@ -1341,7 +1422,7 @@ def test_separately_named_forms_or_material_only_lenticular_abstain(description)
 
 @pytest.mark.parametrize('description,product', [
     ('MDF textured frame chalkboard with chalk', 'Chalkboard'),
-    ('Metal bow frame MDF print', 'Print'),
+    ('Metal bow frame MDF print', 'Framed Print'),
     ('MDF framed canv print', 'Framed Canvas'),
     ('MDF DIY pcture frme die-cut attachment', 'Photo Frame'),
     ('Framed MDF print with artwork', 'Framed Print'),
@@ -1489,7 +1570,7 @@ def test_product_like_samples_without_a_noun_are_unreadable(description):
 
 @pytest.mark.parametrize('description', [
     'Extra cost for manual handling and packing', 'additional cost for sample invoice', 'Plate cost adjustment', 'Port chg adjustment',
-    'AD REQUIREMENT for web banner', 'tbd', 'placeholder',
+    'AD REQUIREMENT for web banner', 'tbd', 'Pending.',
     'Operator created new record on reference date', 'testfoobar dsn',
 ])
 def test_explicit_administrative_wording_is_placeholder(description):
@@ -1534,3 +1615,83 @@ def test_generic_storage_and_specific_bin_are_one_product_across_artwork_ampersa
     assert read_product_type('Tapered storage comic b&w panel bin')['product_type'] == 'Storage Bin'
     assert read_product_type('Storage bin & hamper')['product_type_status'] == 'unreadable'
     assert read_product_type('Lift-off storage w glitter, box storage w foil')['product_type_status'] == 'unreadable'
+
+
+def test_canvas_growth_needs_a_chart_noun():
+    assert read_product_type('Canvas Growth')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas Growth Chart')['product_type'] == 'Growth Chart'
+
+
+def test_shelf_and_storage_cube_are_distinct_physical_forms():
+    assert read_product_type('Wall Shelf alongside Storage Cube and Hooks')['product_type_status'] == 'unreadable'
+    assert read_product_type('Wall Shelf with Hooks')['product_type'] == 'Wall Shelf'
+    assert read_product_type('Storage Cube with Hooks')['product_type'] == 'Storage Cube'
+
+
+def test_explicit_suitcase_storage_is_a_suitcase_not_an_inferred_box():
+    assert read_product_type('Suitcase Greyboard Storage')['product_type'] == 'Storage Suitcase'
+    assert read_product_type('Greyboard Storage Box')['product_type'] != 'Storage Suitcase'
+
+
+def test_plural_stationery_organizers_keep_the_explicit_function():
+    assert read_product_type('Stationary Organizers')['product_type'] == 'Stationery Organizer'
+    assert read_product_type('Assorted Organizers')['product_type'] == 'Organizer'
+
+
+@pytest.mark.parametrize('description', [
+    'High Gloss Small Art 11x14',
+    'Double Layer Cut Paper Art',
+    'Framed Deckle Edge Art',
+    'Glitter UV Lacquer Art',
+    'Molded Resin Art',
+    'LED Infinity Wire Layered Dimensional Art',
+])
+def test_explicit_qualified_art_is_physical_art_without_guessed_form(description):
+    assert read_product_type(description)['product_type'] == 'Art'
+
+
+def test_artwork_tail_does_not_create_a_second_art_product():
+    assert read_product_type('Canvas 10x20 artwork landscape art scene')['product_type'] == 'Canvas'
+
+
+@pytest.mark.parametrize(('description', 'expected'), [
+    ('Molded Foam Art', 'Foam Art'),
+    ('Molded Shadowbox Art', 'Framed Shadowbox'),
+    ('Molded Frame Art', 'Framed Art'),
+])
+def test_named_molded_object_outranks_generic_art(description, expected):
+    assert read_product_type(description)['product_type'] == expected
+
+
+def test_molded_foam_art_and_canvas_are_two_products_in_either_order():
+    assert read_product_type('Molded Foam Art and Canvas')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas and Molded Foam Art')['product_type_status'] == 'unreadable'
+    assert read_product_type('Molded Foam Art')['product_type'] == 'Foam Art'
+
+
+def test_molded_foam_in_canvas_artwork_does_not_supply_product_attributes():
+    for description in ('Canvas with molded foam artwork', 'Canvas depicting molded foam art'):
+        result = read_product_type(description)
+        assert result['product_type'] == 'Canvas'
+        assert result['product_material'] == 'Canvas'
+        assert result['product_construction'] == ''
+
+
+def test_shadowbox_bank_noun_outranks_shell_modifiers():
+    for description in ('Shadowbox Bank', 'Molded Shadowbox Bank', 'Printed Glass Shadowbox Bank'):
+        assert read_product_type(description)['product_type'] == 'Shadowbox Bank'
+
+
+def test_source_named_collage_and_embossed_canvas_outrank_generic_frame_or_print():
+    assert read_product_type('Paper Collage Framed')['product_type'] == 'Framed Collage'
+    assert read_product_type('Floating Frame Embossed Print Canvas')['product_type'] == 'Framed Canvas'
+    assert read_product_type('Framed Art artwork collage framed scene')['product_type'] == 'Framed Art'
+
+
+def test_literal_tray_relief_wall_art_and_printed_glass_nouns():
+    assert read_product_type('MDF Tray')['product_type'] == 'Tray'
+    assert read_product_type('Polyresin Tray')['product_type'] == 'Tray'
+    assert read_product_type('Wood Relief Wall Art')['product_type'] == 'Relief Wall Art'
+    assert read_product_type('Print on Glass')['product_type'] == 'Glass Art'
+    assert read_product_type('Printed Glass')['product_type'] == 'Glass Art'
+    assert read_product_type('Canvas in Tray Box')['product_type'] == 'Canvas'

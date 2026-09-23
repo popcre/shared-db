@@ -643,3 +643,25 @@ def test_guitar_hook_artwork_wood_word_stays_out():
     assert material("functional guitar hook", "hook", evidence="hook",
                     product_type="Guitar Hook",
                     description="Functional Guitar Hook_Wood grain artwork") == ""
+
+
+def test_lawn_sign_explicit_stakes_and_terminal_pp_are_both_physical():
+    assert material("lawn sign with metal stakes symbol pp", "lawn sign",
+                    evidence="lawn sign", product_type="Lawn Sign") == "Metal; PP"
+    assert material("lawn sign with metal stakes pp logo", "lawn sign",
+                    evidence="lawn sign", product_type="Lawn Sign") == ""
+
+
+def test_high_glss_is_finish_not_glass_substrate():
+    assert material("framed high glass print", "print", evidence="print",
+                    product_type="Framed Print", base_materials="Glass") == ""
+    assert material("framed high glass print under glass", "print", evidence="print",
+                    product_type="Framed Print", base_materials="Glass") == "Glass"
+
+
+def test_porch_leaner_explicit_mdf_sign_clause():
+    assert material("porch leaner with led tall mdf sgn", "porch leaner",
+                    evidence="porch leaner", product_type="Porch Leaner") == "MDF"
+    assert material("porch leaner with led", "porch leaner",
+                    evidence="porch leaner", product_type="Porch Leaner",
+                    description="Porch Leaner with LED_MDF sign artwork") == ""

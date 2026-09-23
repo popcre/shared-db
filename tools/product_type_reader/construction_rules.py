@@ -136,7 +136,7 @@ def refine_construction(description: object, product_type: str, current: str = "
             re.fullmatch(r"(?:floating|floater|float) framed", clause) for clause in clauses):
         parts.add("Floating Frame")
     if product_type != "Tablet Stand" and stated(r"\bdie cut\b") \
-            and not stated(r"\bdie cut (?:icon|attachment)\b"):
+            and not stated(r"\bdie cut (?:icon|attachment|magnets?)\b"):
         parts.add("Die-Cut")
     if stated(r"\brevers(?:e|ible)\b") and product_type in {
         "Tall Sign", "Door Hanger", "Door Sign"
@@ -219,6 +219,8 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Runner")
     if product_type == "Desktop Organizer" and stated(r"\bspinning desktop organizer\b"):
         parts.add("Spinning")
+    if product_type == "Desktop Organizer" and stated(r"\b(?:4|four)[- ]compartment desktop org(?:anizer)?\b"):
+        parts.add("Four-Compartment")
     if product_type == "Storage Container" and stated(r"\brounded corner lift off greyboard storage\b"):
         parts.add("Rounded Corner")
     if product_type == "Pencil Cup" and stated(r"\bpencil cup with clock\b"):
@@ -461,4 +463,73 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.discard("Panel")
     if product_type == "Plaque" and re.search(r"\b\d+\s*piece set\b.{0,35}\bplaque\b", after_size):
         parts.discard("Set")
+    if product_type == "Glass Art" and stated(r"\b(?:printed )?glass\s+\d+\s*layer\b"):
+        parts.add("Layered")
+    if product_type == "Glass Art" and stated(r"\b(?:printed )?glass floating layer\b"):
+        parts.add("Floating")
+    if product_type == "Storage Hamper" and stated(r"\brectgl storage hamper\b"):
+        parts.add("Rectangular")
+    if product_type == "Storage Chest" and stated(r"\bfltdmd greyboard storage chest\b"):
+        parts.add("Flat-Domed")
+    if product_type == "Storage Chest" and stated(r"\bgrbrd flt tp strge chest\b"):
+        parts.add("Flat-Top")
+    if product_type == "Tile" and stated(r"\bhex tiles\b"):
+        parts.add("Hexagonal")
+    if product_type == "Memo Board" and stated(r"\bmagnetic memo board\b"):
+        parts.add("Magnetic")
+    if product_type == "Framed Glass Art" and stated(r"\bframed round painted glass\b"):
+        parts.add("Round")
+    if product_type == "Framed Glass Art" and stated(r"\bframe wreath\b"):
+        parts.discard("Framed")
+    if product_type == "Photo Frame" and stated(r"\bdie cut house shaped\b"):
+        parts.add("Shaped")
+    if product_type == "Frame" and stated(r"\bdie cut mdf shped frme\b"):
+        parts.add("Shaped")
+    if product_type == "Storage Bin" and stated(r"\btapered storage\b.{0,45}\bbin\b"):
+        parts.add("Tapered")
+    if product_type == "Planter" and stated(r"\bpyo ceramic mini planter\b"):
+        parts.add("DIY")
+    if product_type == "Alarm Clock" and stated(r"\b(?:plastic )?cube alarm clock\b"):
+        parts.add("Cube")
+    if product_type == "Corkboard" and stated(r"\braised cork layer\b"):
+        parts.add("Layered")
+    if product_type == "Framed Print" and stated(r"\bfloat frm embossd ppr prnt\b"):
+        parts.discard("Framed")
+    if product_type == "Block" and stated(r"\bdie cut mdf block w rotating attachment\b"):
+        parts.add("Rotating")
+    if product_type == "MDF Box" and re.search(r"\blenticular on mdf box\b", after_size):
+        parts.add("Lenticular")
+    if product_type == "MDF Box" and stated(r"\blenticular on mdf box\b"):
+        parts.add("Lenticular")
+    if product_type == "Perpetual Calendar" and stated(r"\bmdf blck perpetual clndr\b"):
+        parts.add("Block")
+    if product_type == "Decorative Word" and stated(r"\bwrapped words\b"):
+        parts.add("Wrapped")
+    if product_type == "Plaque" and stated(r"\blaser[- ]cut mdf\b.{0,30}\bplaque\b"):
+        parts.add("Laser-Cut")
+    if product_type == "Jewelry Box" and stated(r"\bjewelry box with snap closure\b"):
+        parts.add("Snap Closure")
+    if product_type == "Photo Frame" and stated(r"\bscalloped photo frame\b"):
+        parts.add("Scalloped")
+    if product_type == "Art" and stated(r"\bround cross[- ]stitch embroidered art\b"):
+        parts.add("Round")
+    if product_type == "Storage Cube" and stated(r"\bcllpsible nonwvn fbric strge cube\b"):
+        parts.add("Collapsible")
+    if product_type == "Framed Art" and stated(r"\bframe w mat\b"):
+        parts.add("Matted")
+    if product_type == "Frame" and stated(r"\bin \d+(?:\.\d+)?\s*[\"']? frame\b"):
+        parts.add("Framed")
+    if product_type == "Photo Frame" and any(
+            re.fullmatch(r"die cut \w+ attachment", clause) for clause in clauses):
+        parts.add("Die-Cut Attachment")
+    if product_type == "Lawn Sign" and stated(r"\bcorrugated sheet lawn sign\b"):
+        parts.add("Corrugated")
+    if product_type == "Framed Glass Shadowbox" and stated(r"\bframed glass shadowbox with raised icon inside\b"):
+        parts.add("Raised")
+    if product_type == "Framed Shadowbox" and stated(r"\bshadow\s?box w/?\s*3[- ]d laser cut\b"):
+        parts.add("Laser-Cut")
+    if product_type == "Frame" and re.search(r"(?:^|\bin )\d+(?:\.\d+)?\s*[\"'] frame\b(?!\s+width\b)", after_size):
+        parts.add("Framed")
+    if product_type == "Magnet Board" and stated(r"\bdie cut magnets?\b"):
+        parts.discard("Die-Cut")
     return "; ".join(sorted(parts))

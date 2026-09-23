@@ -177,21 +177,25 @@ Open (implementer decides, with criteria):
 
 2. **Gold set from the full catalog.** Read-only: export every distinct `item_desc` from
    `coldlion.item_header` (join to `plm.item` on item number) to the scratchpad — **not** into this public
-   repo (descriptions may be committed only as the approved small fixture below). Group by the reader's
-   matched wording; for every distinct product wording, record the correct product type in
+   repo (descriptions may be committed only as the approved small fixture below). Group by a
+   source-neutral projection of the reader's matched wording, retaining the exact source-to-group
+   links privately. For every distinct product wording, record the correct product type in
    `tools/product_type_reader/gold/labels.csv` (wording → expected product, material, treatment, status),
-   plus ≥3 real example descriptions per label and every item in categories found wrong in §6. An LLM
+   plus up to three real example descriptions per label in the private evidence package (all available
+   examples where a wording occurs fewer than three times) and every item in categories found wrong in §6. An LLM
    may propose labels; each label must be confirmed by the implementer against the description, and
    ambiguous ones listed for owner review (step 5). Gate: every distinct matched wording and every
    `needs_review` cluster has a label row; script `gold/coverage.py` prints `uncovered: 0`.
 
 3. **Baseline.** `tools/product_type_reader/evaluate.py` runs the reader over all live descriptions and
-   the gold labels, writes `docs/verification/product-type-reader/baseline-<date>.md` (counts only +
-   up to 50 example misses). Gate: report exists, shows correct / wrong / unreadable counts.
+   the gold labels, writes `docs/verification/product-type-reader/baseline-<date>.md` (aggregate counts
+   only; source-bearing example misses stay in the private evidence package). Gate: report exists,
+   shows correct / wrong / unreadable counts.
 
 4. **Fix rules.** For each miss cluster add or correct patterns, ordering, abbreviations; remove
-   fallbacks that invent product or material. Each fix gets a unit test with the real description
-   (fixture `tests/fixtures/descriptions.csv`, owner approved publishing descriptions 2026-08-15).
+   fallbacks that invent product or material. Each fix gets a synthetic unit test preserving the
+   relevant wording and a source-pinned private catalog check; the 2026-08-15 approval for small
+   description fixtures does not require publishing licensed source wording.
    Iterate until evaluate shows **wrong = 0** and every unreadable row is genuinely unreadable (listed
    in the report for review). Gate: `evaluate.py --strict` exits 0; report committed.
 

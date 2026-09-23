@@ -18,6 +18,9 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Crystal Gravel", r"crystal gravel"),
     ("Diamond Dust", r"diamond dust"),
     ("Dried Flowers", r"dried flowers?"),
+    ("Pressed Leaves", r"pressed leaves"),
+    ("Beaded Garland", r"beaded garland"),
+    ("Galvanized", r"galvanized"),
     ("Veneer", r"(?:wood )?veneer"),
     ("Invisible Ink", r"invisible ink"),
     ("UV Light", r"uv lights?"),
@@ -28,18 +31,21 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Decal", r"decals?"),
     ("Beading", r"beading"),
     ("Faux Leather Patch", r"faux leather patch"),
+    ("Faux Grass", r"faux grass"),
     ("Glue Embellishment", r"glue embellish(?:ment|ed)|glue coat(?: texture)?"),
     ("Glow in the Dark", r"glow in (?:the )?dark"),
-    ("Gold Leaf", r"gold leaf"),
+    ("Gold Leaf", r"gold leafs?"),
     ("High Gloss", r"(?:high|hi) gloss"),
-    ("Metallic Leaf", r"metallic leaf"),
+    ("Metallic Leaf", r"metallic leafs?"),
     ("Puff Paint", r"puff(?:y)? paint"),
-    ("Silver Leaf", r"silver leaf"),
+    ("Silver Leaf", r"silver leafs?"),
+    ("Paint Effect", r"paint effect"),
     ("Plaster Word", r"plaster words?"),
     ("Beaded", r"beaded accents?"),
     ("Spot Gloss", r"spot gloss"),
     ("Spot Varnish", r"spot varnish"),
     ("Stained Glass", r"stained glass"),
+    ("Stained", r"stained (?:wood|wooden)"),
     ("Applique", r"applique"),
     ("Attachment", r"(?:with|w) (?:fabric|felt) bows?|bows? attachments?|attached bows?|attachments?|metal grommets(?: and shoelace)?|floating foam(?: silhouette)?|(?:metal plate|wire) emb(?:ellished)?|metal logo|layered fabric|(?:with|w) (?:sherpa fabric|faux fur)"),
     ("Debossed", r"deboss(?:ed|ing)?"),
@@ -48,6 +54,7 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Distressed", r"distress(?:ed|ing)? (?:finish|canvas|wooden frame)"),
     ("Dry-Erase", r"dry erase"),
     ("Embossed", r"emboss(?:ed|ing)?"),
+    ("Engraved", r"engrav(?:ed|ing)?"),
     ("Embroidery", r"embroider(?:ed|y)?|cross stitch"),
     ("Etched", r"etch(?:ed|ing)?"),
     ("Flocking", r"flock(?:ed|ing)?"),
@@ -64,7 +71,7 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Scratch-Off", r"scratch off"),
     ("Sequins", r"sequins?"),
     ("Soft Touch", r"soft touch"),
-    ("Textured", r"textur(?:ed|ing)? (?:finish|frame|background)"),
+    ("Textured", r"textur(?:ed|ing)? (?:finish|frame|background)|textured linen print"),
     ("Varnish", r"varnish"),
     ("Embellished", r"embellish(?:ed|ments?)"),
     ("Adhesive", r"(?:reusable )?adhesive"),
@@ -72,7 +79,7 @@ _LEXICON: tuple[tuple[str, str], ...] = (
 
 _COMPILED = tuple((name, re.compile(r"\b(?:" + pattern + r")\b")) for name, pattern in _LEXICON)
 _TERM = "|".join("(?:" + pattern + ")" for _, pattern in _LEXICON)
-_QUALIFIER = r"(?:all ?over|black|white|gold|silver|copper|iridescent|static|moving|rough|holo spot|sugar|flat|3d|printed|multiple)"
+_QUALIFIER = r"(?:all ?over|black|white|gold|silver|copper|iridescent|static|moving|rough|holo spot|sugar|flat|3d|printed|multiple|clear|heavy)"
 _START_MODIFIER = re.compile(r"^(?:(?:" + _QUALIFIER + r")\s+)*(?:" + _TERM + r")\b")
 _END_MODIFIER = re.compile(r"\b(?:" + _TERM + r")\s*$")
 _WHOLE_CLAUSE = re.compile(
@@ -98,11 +105,12 @@ _APPEARANCE_ONLY = re.compile(
 )
 _PHYSICAL_BOW = re.compile(r"^(?:with|w) bows?\b")
 _CONNECTED_FINISH = re.compile(
+    r"\b(?:with|w)\s+mat\s+(?:and\s+)?gold\s+leaf\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}(?:holo)?foil\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}glitter\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}leds?\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}metallic\b|"
-    r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}(?:gel(?: coat)?|chenille patch|applique|embroidery|embroidered|(?:silk ?screen|screen) ?print(?:ed|ing)?|spot gloss|spot varnish|(?:high|hi) gloss|embellish(?:ed|ments?)|beaded accent|beading|plaster word|dried flowers|decals?|decoupag(?:e|ed)|textured background|(?:wood )?veneer|sequins?|invisible ink|uv lights?|gloss)\b"
+    r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}(?:gel(?: coat)?|chenille patch|applique|embroidery|embroidered|(?:silk ?screen|screen) ?print(?:ed|ing)?|spot gloss|spot varnish|(?:high|hi) gloss|embellish(?:ed|ments?)|beaded accent|beading|plaster word|dried flowers|pressed leaves|beaded garland|faux leather patch|faux grass|diamond dust|decals?|decoupag(?:e|ed)|textured background|textured linen print|(?:wood )?veneer|sequins?|invisible ink|uv lights?|gloss|gravel|rhinestones?|pearls?|hand ?paint(?:ed)?)\b"
 )
 
 
@@ -124,10 +132,23 @@ def _normalize(value: str) -> str:
     text = re.sub(r"\bdrppng\b", "dripping", text)
     text = re.sub(r"\bmlti\b", "multi", text)
     text = re.sub(r"\b(?:highgloss|hghglss|hgh glss|hgh glass|high glss|high glass|hg)\b", "high gloss", text)
+    text = re.sub(r"\bprntd\b", "printed", text)
+    text = re.sub(r"\bglss\b", "glass", text)
+    text = re.sub(r"\bfrmd\b", "framed", text)
+    text = re.sub(r"\bundr\b", "under", text)
     text = re.sub(r"\bchenile\b", "chenille", text)
     text = re.sub(r"\bembelishment\b", "embellishment", text)
     text = re.sub(r"\bsport varnish\b", "spot varnish", text)
     text = re.sub(r"\bhanpaint\b", "handpaint", text)
+    text = re.sub(r"\bhndpnt\b", "handpaint", text)
+    text = re.sub(r"\bhanpainted\b", "handpainted", text)
+    text = re.sub(r"\bembssd\b", "embossed", text)
+    text = re.sub(r"\bpper\b", "paper", text)
+    text = re.sub(r"\bprnt\b", "print", text)
+    text = re.sub(r"\bdiamnd\b", "diamond", text)
+    text = re.sub(r"\bwih gel\b", "with gel", text)
+    text = re.sub(r"\bpuffpaint\b", "puff paint", text)
+    text = re.sub(r"\brhinestonel\b", "rhinestone", text)
     text = re.sub(r"\bholiofoil\b", "holofoil", text)
     text = re.sub(r"\bgoldfoil\b", "gold foil", text)
     text = re.sub(r"\b(foil|glitter|led)(?=\d)", r"\1 ", text)
@@ -219,6 +240,12 @@ def extract_treatments(
             names.add("Metallic")
         if re.search(r"\b(?:with|w) decoupaged paper$", before):
             names.add("Decoupage")
+        if re.search(r"\bgalvanized (?:steel|metal)$", before):
+            names.add("Galvanized")
+        if re.search(r"\bembossed paper$", before) and normalized_title[start:end].strip() == "print":
+            names.add("Embossed")
+        if re.search(r"\b(?:w|with) screen$", before) and normalized_title[start:end].strip() == "print":
+            names.add("Screenprint")
         if (re.search(r"\bmdf box\b", normalized_title[start:end])
                 and (re.search(r"\bled wire art on$", before)
                      or re.search(r"\bled lit(?:\s+\w+){0,4}$", before))):
@@ -258,8 +285,18 @@ def extract_treatments(
             names.add("Beading")
         if re.match(r"^scratch off\b", after):
             names.add("Scratch-Off")
+        if re.match(r"^engraved\b", after):
+            names.add("Engraved")
+        if re.match(r"^(?:with|w) metallic puff paint\b", after):
+            names.add("Puff Paint")
         if re.search(r"\b(?:with|w) invisible ink (?:and )?uv light\b", after):
             names.update(("Invisible Ink", "UV Light"))
+        if re.match(r"^high gloss\b", after) and "canvas" in normalized_title[start:end]:
+            names.add("High Gloss")
+        if re.fullmatch(r"one word embroidery", after):
+            names.add("Embroidery")
+        if re.match(r"^s\s*2\s+glitter\s+embellishment\b", after):
+            names.add("Glitter")
 
     # "LED <property> canvas" still explicitly states LED even though the
     # identity words are irrelevant.  The LED token must precede the noun in
@@ -288,6 +325,8 @@ def extract_treatments(
             whole_clause_names.update(("Glitter", "Foil"))
         if re.fullmatch(r"(?:[a-z]+ )?glitter insert", clause):
             whole_clause_names.add("Glitter")
+        if clause == "led and mdf":
+            whole_clause_names.add("LED")
     names.update(whole_clause_names)
 
     # Foil and glitter are especially common in artwork captions.  If they
@@ -406,6 +445,9 @@ def extract_treatments(
                              normalized_raw)
         if contrast:
             names.difference_update(_named_terms(contrast.group()))
+        if re.search(r"\bmdf plaque (?:and|or) mdf (?:holo)?foil plaque\b|"
+                     r"\bmdf (?:holo)?foil plaque (?:and|or) mdf plaque\b", normalized_raw):
+            names.discard("Foil")
         if noun.endswith("kit") and re.search(r"\bembroidery\s+kit\b", normalized_raw):
             names.discard("Embroidery")
         # A catalog assortment explicitly includes untreated versions when it
@@ -422,7 +464,8 @@ def extract_treatments(
         # A multi-piece title can state one finish per comma-separated item
         # without repeating the noun.  Retain only finishes shared by each
         # explicit variant; an unresolved split stays blank.
-        if re.search(r"\b(?:\d+\s*pc|multi\s*p(?:ac|c)?k|assorted|asst)\b", normalized_raw):
+        if (re.search(r"\b(?:\d+\s*pc|multi\s*p(?:ac|c)?k|assorted|asst)\b", normalized_raw)
+                and not re.search(r"\basst licenses\b", normalized_raw)):
             variants = [part for part in re.split(r"\s*,\s*|\s*;\s*", raw_title) if part.strip()]
             finish_sets = [_named_terms(_normalize(part)) for part in variants]
             nonempty = [group for group in finish_sets if group]

@@ -180,7 +180,7 @@ Open (implementer decides, with criteria):
    repo (descriptions may be committed only as the approved small fixture below). Group by a
    source-neutral projection of the reader's matched wording, retaining the exact source-to-group
    links privately. For every distinct product wording, record the correct product type in
-   `tools/product_type_reader/gold/labels.csv` (wording → expected product, material, treatment, status),
+   the private-package `labels.csv` (never in this public repo; the venue guard forbids it) (wording → expected product, material, treatment, status),
    plus up to three real example descriptions per label in the private evidence package (all available
    examples where a wording occurs fewer than three times) and every item in categories found wrong in §6. An LLM
    may propose labels; each label must be confirmed by the implementer against the description, and

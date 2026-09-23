@@ -16,14 +16,17 @@ historical API for comparison against the same independent gold evidence.
 The complete catalog, exact-description assignments, review notes and unreadable
 list are private evidence in `u2giants/licensor-source-data`, under
 `product-type-reader/2026-09-20/`. They must never be copied into this repository.
-The public `gold/labels.csv` contains generic product facts and review metadata.
+The gold labels (`labels.csv`) and the reviewed real-description fixture
+(`reviewed-description-fixture.csv`) are private too: both carry catalog wording,
+and the public-data venue guard forbids tabular data in this repository.
 
 Run from the repository root with Python, pandas and pytest installed:
 
 ```sh
 python -m pytest -q docs/verification/item-mg-reclassification-20260814 tools/product_type_reader
-python tools/product_type_reader/gold/coverage.py --corpus PRIVATE/catalog.json --labels tools/product_type_reader/gold/labels.csv --assignments PRIVATE/assignments.csv
-python tools/product_type_reader/evaluate.py --corpus PRIVATE/catalog.json --manifest PRIVATE/manifest.json --labels tools/product_type_reader/gold/labels.csv --assignments PRIVATE/assignments.csv --strict
+PRODUCT_TYPE_READER_PRIVATE_FIXTURE=PRIVATE/reviewed-description-fixture.csv python -m pytest -q tools/product_type_reader/test_catalog_fixture.py
+python tools/product_type_reader/gold/coverage.py --corpus PRIVATE/catalog.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv
+python tools/product_type_reader/evaluate.py --corpus PRIVATE/catalog.json --manifest PRIVATE/manifest.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv --strict
 ```
 
 Add `--reader legacy` for the baseline and `--report REPORT.md` for an aggregate

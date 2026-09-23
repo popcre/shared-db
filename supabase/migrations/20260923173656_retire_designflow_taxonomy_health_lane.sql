@@ -861,4 +861,3 @@ $$;
 
 comment on function plm.record_taxonomy_parallel_observation(date, jsonb) is
   'Phase 6 daily comparison; retired DesignFlow runtime evidence is informational, never required. APPEND-ONLY insert (uuid PK). Expected baseline read from plm.taxonomy_baseline_pin, and only when a baseline is ACTIVE on this database -- otherwise it refuses without writing an observation row, so no auto-trip fires on a configuration state. force_fail inserts is_drill=true without overwriting non-drill evidence. Live hashes only.';
-

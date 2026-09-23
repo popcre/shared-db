@@ -59,8 +59,9 @@
     "CI identified sibling retired-set expectation and self-referential files_changed mistake; both corrected under prospective generation11. Earlier approval does not authorize updated head.",
     "Merged current main 7d1687c83dce4fcf94b1152cebc23f27fbd89adb into implementation head ccda6d8546de28c304cf955d8ac7660286ab0a24; content-equivalence returned ok=true, digest e64ed5c88ecb3ae8c775742f9774fe4f5d51a990de15bd4daad0b9bd7b10df50; no reviewed implementation file changed.",
     "Both immutable contract and completion files are carried after implementation head 663b3c598068529b6700c3c465704ad7d003ddff so the CI evidence boundary can verify their exact custody.",
-    "Merged current main d0f49c9652378dc07f88d82a13beab66a997f026 after PR3414 into implementation head 1fad037b97f04dc70bc7e7e073673d717f150066 with own evidence removed; content-equivalence returned ok=true on digest e64ed5c88ecb3ae8c775742f9774fe4f5d51a990de15bd4daad0b9bd7b10df50; migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 unchanged."
+    "Merged current main d0f49c9652378dc07f88d82a13beab66a997f026 after PR3414 into implementation head 1fad037b97f04dc70bc7e7e073673d717f150066 with own evidence removed; content-equivalence returned ok=true on digest e64ed5c88ecb3ae8c775742f9774fe4f5d51a990de15bd4daad0b9bd7b10df50; migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 unchanged.",
+    "Merged current main 1d2a0db59104514e31507f96fd401c3925995086 at 3439f21b71ddbc79fb798965b5f1c07fafa103f1; the seven-file pull-request diff and migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 are unchanged."
   ],
   "stop_conditions_hit": [],
-  "base_sha": "d0f49c9652378dc07f88d82a13beab66a997f026"
+  "base_sha": "1d2a0db59104514e31507f96fd401c3925995086"
 }

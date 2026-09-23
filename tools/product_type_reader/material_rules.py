@@ -123,6 +123,11 @@ _SATIN_BANNER = re.compile(r"\bsatin (?:paper )?(?:hanging )?banner\b")
 _HGH_GLSS = re.compile(r"\b(?:hgh|high) (?:glss|glass)\b")
 _LAWN_SIGN_METAL_PP = re.compile(r"\blawn sign\b.{0,55}\bmetal (?:garden )?stakes\b.{0,110}\bpp\s*$")
 _PORCH_LEANER_MDF = re.compile(r"\bporch leaner\b.{0,60}\btall mdf (?:sgn|sign)\b")
+_STAINED_GLASS_FRAME = re.compile(
+    r"\bstained (?:w|with) glass\b"
+    r"(?!\s+(?:artwork|design|look|effect|pattern|image|graphic)\b)"
+    r".{0,30}\bframe\b"
+)
 _UNDERSCORE_PHYSICAL = re.compile(r"^\s*(?:led|foil|glitter)\s+(?:and|&)\s+mdf\b(?=\s*$|\s+\d)", re.I)
 _CANVAS_CHENILLE = re.compile(r"\bcanvas (?:w|with) chenille\b(?! patch\b)")
 _METAL_PLATE_CANVAS = re.compile(r"\bmetal plate (?:emb|embossed) canvas\b")
@@ -428,6 +433,8 @@ def extract_materials(
         phrase += " metal pp"
     if _PORCH_LEANER_MDF.search(text) and product_type == "Porch Leaner":
         phrase += " mdf"
+    if _STAINED_GLASS_FRAME.search(text) and product_type == "Frame":
+        phrase += " glass"
     for pattern, family, physical_material in _CLOSED_MATERIAL_RESIDUALS:
         if product_type == family and pattern.search(text):
             phrase += " " + physical_material

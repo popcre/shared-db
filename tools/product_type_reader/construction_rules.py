@@ -244,7 +244,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Non-Collapsible")
     if product_type in {"Framed Glass Shadowbox", "Framed Fabric Art"} and stated(r"\bfrayed\b"):
         parts.add("Frayed")
-    if product_type == "Writing Desk" and stated(r"\b(?:with|w) legs\b"):
+    if product_type == "Writing Desk" and stated(r"\b(?:with|w\.?)\s+legs\b"):
         parts.add("With Legs")
     if product_type == "Storage Suitcase" and stated(r"\bsuitcs grybrd strg\b"):
         parts.add("Suitcase")
@@ -454,17 +454,23 @@ def refine_construction(description: object, product_type: str, current: str = "
     if product_type == "Frame" and stated(r"\blasercut mdf layered frame\b"):
         parts.add("Laser-Cut")
     if product_type == "Hard Storage Box" and stated(r"\b2[- ]piece faux book\b.{0,30}\bstorage set\b"):
-        parts.discard("Set")
+        parts.add("Set")
     if product_type == "MDF Box" and stated(r"\bmdf box\b.{0,35}\bfloating character\b"):
         parts.add("Floating")
     if product_type == "Photo Frame" and (
             stated(r"\bdie cut attachment\b")
             or any(re.search(r"\bdie cut\b.{0,20}\battachment\b", clause) for clause in clauses)):
         parts.discard("Die-Cut")
+    if product_type == "Photo Frame" and stated(r"\bphoto frame with die cut attachment\b"):
+        parts.add("Die-Cut Attachment")
     if product_type == "Framed Art" and stated(r"\b\d+[- ]panel portrait\b"):
         parts.discard("Panel")
     if product_type == "Plaque" and re.search(r"\b\d+\s*piece set\b.{0,35}\bplaque\b", after_size):
-        parts.discard("Set")
+        parts.add("Set")
+    if product_type == "Plaque" and stated(r"\b(?:2|two)[- ]piece set\b.{0,35}\bplaque\b"):
+        parts.add("Set")
+    if product_type == "Sign" and stated(r"\bprch lners hngng sign\b"):
+        parts.add("Leaner")
     if product_type == "Glass Art" and stated(r"\b(?:printed )?glass\s+\d+\s*layer\b"):
         parts.add("Layered")
     if product_type == "Glass Art" and stated(r"\b(?:printed )?glass floating layer\b"):

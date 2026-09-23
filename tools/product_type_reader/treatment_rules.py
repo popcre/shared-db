@@ -17,6 +17,7 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Chenille Patch", r"chenille patch"),
     ("Crystal Gravel", r"crystal gravel"),
     ("Diamond Dust", r"diamond dust"),
+    ("Dust", r"dust"),
     ("Dried Flowers", r"dried flowers?"),
     ("Pressed Leaves", r"pressed leaves"),
     ("Beaded Garland", r"beaded garland"),
@@ -111,7 +112,7 @@ _CONNECTED_FINISH = re.compile(
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}glitter\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}leds?\b|"
     r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}metallic\b|"
-    r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}(?:gel(?: coat)?|chenille patch|applique|embroidery|embroidered|(?:silk ?screen|screen) ?print(?:ed|ing)?|spot gloss|spot varnish|(?:high|hi) gloss|embellish(?:ed|ments?)|beaded accent|beading|plaster word|dried flowers|pressed leaves|beaded garland|faux leather patch|faux grass|diamond dust|decals?|decoupag(?:e|ed)|textured background|textured linen print|(?:wood )?veneer|sequins?|invisible ink|uv lights?|gloss|gravel|rhinestones?|pearls?|hand ?paint(?:ed)?)\b"
+    r"\b(?:with|w|and|in|on)\s+(?:[a-z]+\s+){0,2}(?:gel(?: coat)?|chenille patch|applique|embroidery|embroidered|(?:silk ?screen|screen) ?print(?:ed|ing)?|spot gloss|spot varnish|(?:high|hi) gloss|embellish(?:ed|ments?)|beaded accent|beading|plaster word|dried flowers|pressed leaves|beaded garland|faux leather patch|faux grass|diamond dust|dust|decals?|decoupag(?:e|ed)|textured background|textured linen print|(?:wood )?veneer|sequins?|invisible ink|uv lights?|gloss|gravel|rhinestones?|pearls?|hand ?paint(?:ed)?)\b"
 )
 
 
@@ -166,6 +167,8 @@ def _named_terms(phrase: str) -> set[str]:
             names.add(leaf)
     if "Crystal Gravel" in names:
         names.discard("Gravel")
+    if "Diamond Dust" in names:
+        names.discard("Dust")
     if "Metallic Leaf" in names:
         names.discard("Metallic")
         if "Gold Leaf" in names or "Silver Leaf" in names:

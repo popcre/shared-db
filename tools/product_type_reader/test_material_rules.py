@@ -665,3 +665,19 @@ def test_porch_leaner_explicit_mdf_sign_clause():
     assert material("porch leaner with led", "porch leaner",
                     evidence="porch leaner", product_type="Porch Leaner",
                     description="Porch Leaner with LED_MDF sign artwork") == ""
+
+
+def test_stained_frame_explicit_glass_is_physical():
+    assert material("stained with glass blue frame", "frame", evidence="frame",
+                    product_type="Frame") == "Glass"
+    assert material("stained w glass frame", "frame", evidence="frame",
+                    product_type="Frame") == "Glass"
+
+
+def test_glass_artwork_stays_out_of_frame_material():
+    assert material("stained with glass design frame", "frame", evidence="frame",
+                    product_type="Frame") == ""
+    assert material("stained with glass artwork frame", "frame", evidence="frame",
+                    product_type="Frame") == ""
+    assert material("stained with glass blue frame", "frame", evidence="frame",
+                    product_type="Canvas") == ""

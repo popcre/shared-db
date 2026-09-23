@@ -1692,6 +1692,57 @@ def test_stated_print_canvas_kit_and_die_cut_art_heads_survive_later_captions():
     assert read_product_type('Canvas artwork paint tubes and brushes')['product_type'] == 'Canvas'
 
 
+def test_recipe_box_clock_and_combined_board_keep_explicit_head_nouns():
+    assert read_product_type('Wood Recipe Box')['product_type'] == 'Recipe Box'
+    assert read_product_type('Recipe Grey Board Box with Cards')['product_type'] == 'Recipe Box'
+    assert read_product_type('MDF Plaque Wall Clock')['product_type'] == 'Wall Clock'
+    assert read_product_type('MDF Plaque and Wall Clock')['product_type_status'] == 'unreadable'
+    assert read_product_type('Framed Dry Erase and Fabric Pinboard')['product_type'] == 'Dry-Erase and Pin Board'
+    assert read_product_type('Fabric Pinboard')['product_type'] == 'Pinboard'
+
+
+def test_explicit_led_light_banner_and_framed_print_assemblies():
+    assert read_product_type('LED Lightbulb')['product_type'] == 'Light'
+    assert read_product_type('LED Back Light')['product_type'] == 'Light'
+    assert read_product_type('Lightbulb Frame')['product_type'] == 'Frame'
+    assert read_product_type('Framed Banner undr Glass')['product_type'] == 'Banner'
+    assert read_product_type('Framed MDF with Paper Print')['product_type'] == 'Framed Print'
+    assert read_product_type('Framed MDF Arched Print')['product_type'] == 'Framed Print'
+    assert read_product_type('Framed MDF with Paper Artwork')['product_type_status'] == 'unreadable'
+
+
+def test_literal_small_product_nouns_and_abbreviations_outrank_broad_families():
+    expected = {
+        'Sequin Art': 'Sequin Art',
+        'Rubbermat': 'Mat',
+        'Chalkboard Plaque': 'Plaque',
+        'MDF PLQUE': 'Plaque',
+        'Tabletop Clock': 'Tabletop Clock',
+        'Magnet Board': 'Magnet Board',
+        'Felt Oval HMPR': 'Storage Hamper',
+        'Wall Scroll': 'Wall Scroll',
+        '6 SHLF HANGING CLST ORG': 'Hanging Closet Organizer',
+        'Frame with Paper Print': 'Framed Print',
+    }
+    for description, product in expected.items():
+        assert read_product_type(description)['product_type'] == product
+
+
+def test_abbreviated_storage_material_without_hamper_noun_stays_unreadable():
+    assert read_product_type('Felt Oval Storage')['product_type_status'] == 'unreadable'
+
+
+@pytest.mark.parametrize('other', ['Magnet Board', 'Wall Scroll', 'Sequin Art', 'Rubbermat',
+                                   'Tabletop Clock', 'Felt Oval HMPR'])
+def test_new_physical_nouns_do_not_swallow_a_separate_canvas(other):
+    assert read_product_type(f'Canvas and {other}')['product_type_status'] == 'unreadable'
+
+
+def test_repeated_canvas_kits_are_one_form_but_a_plain_canvas_is_distinct():
+    assert read_product_type('Canvas set with paint pots and brush, DIY canvas with paint pots and brush')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('Canvas set with paint pots and brush, plain canvas')['product_type_status'] == 'unreadable'
+
+
 def test_source_named_collage_and_embossed_canvas_outrank_generic_frame_or_print():
     assert read_product_type('Paper Collage Framed')['product_type'] == 'Framed Collage'
     assert read_product_type('Floating Frame Embossed Print Canvas')['product_type'] == 'Framed Canvas'
@@ -1705,3 +1756,41 @@ def test_literal_tray_relief_wall_art_and_printed_glass_nouns():
     assert read_product_type('Print on Glass')['product_type'] == 'Glass Art'
     assert read_product_type('Printed Glass')['product_type'] == 'Glass Art'
     assert read_product_type('Canvas in Tray Box')['product_type'] == 'Canvas'
+
+
+@pytest.mark.parametrize(('description', 'expected'), [
+    ('Generic calandar', 'Calendar'),
+    ('Generic multipack mugs', 'Mug'),
+    ('DIY CNCRTE STPPNG STNE', 'Stepping Stone'),
+    ('DIY CRMIC MIN PLNTR', 'Planter'),
+    ('Generic slit slat art under glass', 'Slat Art'),
+    ('Generic sequin flip art', 'Sequin Art'),
+    ('Generic molded polyresin mask', 'Mask'),
+    ('Generic outdoor garden bag', 'Garden Bag'),
+    ('Generic photo string with holders', 'Photo Display String'),
+    ('Generic wall basket', 'Wall Basket'),
+    ('Generic faux boox storage', 'Faux Book'),
+    ('DIY SET W 8 PAINT POTS AND BRSH', 'Painting Kit'),
+    ('PE Rattan_Dimensional Bow_12x14', 'Dimensional Decor'),
+])
+def test_source_neutral_explicit_product_aliases(description, expected):
+    assert read_product_type(description)['product_type'] == expected
+
+
+@pytest.mark.parametrize('description', [
+    'Assorted rubber material', 'DIY concrete material', 'Ceramic mini material',
+    'Polyresin material', 'Felt Oval Storage', 'Nonwoven hanging storage with pocket',
+    'PE Rattan_Bow artwork', 'Faux wood storage', 'PAINT POTS AND BRSH',
+    'Canvas and garden bag', 'Canvas and molded polyresin mask',
+])
+def test_aliases_do_not_turn_material_or_separate_products_into_one_form(description):
+    assert read_product_type(description)['product_type_status'] == 'unreadable'
+
+
+@pytest.mark.parametrize('description', [
+    'Calendar-themed canvas', 'Canvas depicting mugs', 'Canvas depicting slit slat art',
+    'Canvas depicting sequin flip art', 'Canvas depicting a wall basket',
+    'Photo artwork on canvas',
+])
+def test_aliases_in_artwork_do_not_override_physical_canvas(description):
+    assert read_product_type(description)['product_type'] == 'Canvas'

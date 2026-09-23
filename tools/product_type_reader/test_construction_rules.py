@@ -397,7 +397,7 @@ def test_same_type_physical_specs_do_not_promote_art_or_quantity():
     assert refine_construction("MDF box with photo insert", "MDF Box") == "Photo Insert"
     assert refine_construction('8x11 Floating Character in MDF Box', "MDF Box") == "Floating"
     assert refine_construction("Dome chests", "Storage Chest", "Dome") == "Domed"
-    assert refine_construction("2 piece set 3D lenticular plaque", "Plaque", "Set") == ""
+    assert refine_construction("2 piece set 3D lenticular plaque", "Plaque", "Set") == "Set"
     assert refine_construction("3-piece die-cut MDF sign", "Sign", "Die-Cut; Set") == "Die-Cut"
     assert refine_construction("5-Pc set cotton rope storage bins", "Storage Bin", "Set") == ""
     assert refine_construction("Four-pack canvas panel", "Canvas", "Panel") == ""
@@ -433,13 +433,13 @@ def test_exact_type_subassemblies_do_not_become_artwork_construction():
     assert refine_construction("Canvas_hexagon flower artwork", "Canvas") == ""
     assert refine_construction("Framed art w deckle foil edge paper", "Framed Art") == "Deckled Edge; Framed"
     assert refine_construction("Lasercut MDF layered frame", "Frame") == "Laser-Cut"
-    assert refine_construction("2-piece faux book desktop storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book"
+    assert refine_construction("2-piece faux book desktop storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book; Set"
     assert refine_construction("MDF box with floating character", "MDF Box") == "Floating"
     assert refine_construction("MDF box_floating character artwork", "MDF Box") == ""
     assert refine_construction("MDF photo frame_die cut attachment", "Photo Frame", "Die-Cut") == ""
     assert refine_construction("Die-cut MDF photo frame", "Photo Frame", "Die-Cut") == "Die-Cut"
     assert refine_construction("Framed art with 4-panel portrait", "Framed Art", "Framed; Panel") == "Framed"
-    assert refine_construction('13x19 2 piece set lenticular plaque', "Plaque", "Set") == ""
+    assert refine_construction('13x19 2 piece set lenticular plaque', "Plaque", "Set") == "Set"
 
 
 def test_complete_physical_shape_and_layer_phrases_are_family_bounded():
@@ -506,3 +506,17 @@ def test_source_stated_suitcase_preserves_artwork_boundary():
     assert refine_construction("Suitcs grybrd strg w foil 7x9", "Storage Suitcase") == "Suitcase"
     assert refine_construction("Greyboard storage_suitcase skyline artwork", "Storage Suitcase") == ""
     assert refine_construction("Suitcase shaped greyboard storage", "Storage Suitcase") == ""
+
+
+def test_explicit_attachment_set_legs_and_leaner_physical_clauses():
+    assert refine_construction("Oak writing desks w. legs 11x13", "Writing Desk") == "With Legs"
+    assert refine_construction("Writing desk_legs in sketch", "Writing Desk") == ""
+    assert refine_construction("Pine photo frame with die cut attachment 5x7", "Photo Frame") == "Die-Cut Attachment"
+    assert refine_construction("Die-cut pine photo frame 5x7", "Photo Frame") == "Die-Cut"
+    assert refine_construction("Photo frame_die cut attachment in portrait", "Photo Frame") == ""
+    assert refine_construction("10x14 2 piece set abstract plaque", "Plaque") == "Set"
+    assert refine_construction("Plaque 10x14 2 piece set sketch", "Plaque") == ""
+    assert refine_construction("2-piece faux book storage set", "Hard Storage Box", "Faux Book") == "Faux Book; Set"
+    assert refine_construction("Faux book storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book"
+    assert refine_construction("MDF prch lners hngng sign 8x12", "Sign", "Hanging") == "Hanging; Leaner"
+    assert refine_construction("MDF sign_prch lners hngng artwork", "Sign", "Hanging") == "Hanging"

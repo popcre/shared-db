@@ -82,12 +82,35 @@ _FIXES = (
     ("Suncatcher", r"\bsuncatchers?\b"),
     ("Block", r"\bblocks?\s+(?:with|w)\s+prints?\b"),
     ("Storage Caddy", r"\bstorage cadd(?:y|ies)\b"),
+    ("Sequin Art", r"\bsequin art\b"),
+    ("Sequin Art", r"\bsequin flip art\b"),
+    ("Mat", r"\brubbermat\b"),
+    ("Calendar", r"\bcalandar\b"),
+    ("Mug", r"\bmugs\b"),
+    ("Stepping Stone", r"\b(?:cncrte|concrete) stppng (?:stne|stone)\b"),
+    ("Planter", r"\bcrmic min plntr\b"),
+    ("Slat Art", r"\bslit slat art\b"),
+    ("Mask", r"\bmolded polyresin masks?\b"),
+    ("Garden Bag", r"\bgarden bags?\b"),
+    ("Photo Display String", r"\bphoto string (?:w|with) holders?\b"),
+    ("Wall Basket", r"\bwall baskets?\b"),
+    ("Faux Book", r"\bfaux boox storage\b"),
+    ("Painting Kit", r"\bdiy set (?:w|with) \d+ paint pots? (?:and )?brsh\b"),
+    ("Plaque", r"\bchalkboard plaques?\b|\bplque\b"),
+    ("Tabletop Clock", r"\btabletop clocks?\b"),
+    ("Magnet Board", r"\bmagnet boards?\b"),
+    ("Storage Hamper", r"\b(?:oval|ovl) hmpr\b"),
+    ("Wall Scroll", r"\bwall scrolls?\b"),
+    ("Hanging Closet Organizer", r"\b(?:\d+ )?shlf hanging (?:clst|closet) org\b"),
     ("Tray", r"\b(?:(?:ceramic|polyresin|acrylic|glass|wood) )?trays?\b"),
     ("Desktop Organizer", r"\bdesktop storage cubb(?:y|ies)\b"),
     ("Stationery Organizer", r"\b(?:stationery|stationary) organi[sz]ers?\b"),
+    ("Recipe Box", r"\brecipe box(?:es)?\b|\brecipe grey ?board box\b"),
+    ("Dry-Erase and Pin Board", r"\bdry erase and (?:\w+ )?pin ?boards?\b"),
     ("Print", r"\bmdf spot varnish prints?\b"),
     ("Planter with Photo Frame", r"\bplanter (?:w|with) (?:a )?photo frame\b"),
     ("String Lights", r"\bstring(?:ed)? lights?\b"),
+    ("Light", r"\bled lightbulbs?\b|\bled back lights?\b"),
     ("Frame", r"\bmultiframes?\b"),
     ("Ring Dish", r"\bring dish(?:es)?\b"),
     ("Sticker", r"\bstickers?\b"),
@@ -107,6 +130,8 @@ _FIXES = (
      r"|\bmetal bow frame mdf prints?\b|\bframed glitter prints?\b"
      r"|\bframed layered mdf prints?\b|\bframed (?:high|hgh) (?:gloss|glass) prints?\b"
      r"|\bframed prints?\b|\bmdf prints? with thin black frame\b"),
+    ("Framed Print", r"\bframed mdf with paper prints?\b|\bframed mdf arched prints?\b"),
+    ("Framed Print", r"\bframe (?:w|with) paper prints?\b"),
     ("Framed Print", r"\bminimalist print in mdf frame\b|\bmdf high gloss print in setback frame\b|\bframed newspaper under glass\b|\b(?:floating|float) (?:frame|framed) (?:embossed|emboss) paper print\b"),
     ("Framed Print", r"\bsetback frame (?:w|with) printed linen paper\b"),
     ("Framed Art", r"\b(?:portrait|landscape) in (?:\w+ )?frame\b|\bmolded frame art\b|\bpressed leaves under glass in (?:\w+ )?frame\b"),
@@ -118,7 +143,7 @@ _FIXES = (
     ("Framed Canvas", r"\bframed (?:(?:embossed|paper|high gloss) )+canvas\b|\b(?:floating|floater|float) frame embroidered canvas\b"),
     ("Wall Art", r"\bwool fabric embroidered hanging wall art\b"),
     ("Banner", r"\b(?:canvas )?hanging (?:fishtail )?banners?\b"),
-    ("Banner", r"\bframed banner under glass\b"),
+    ("Banner", r"\bframed banner (?:under|undr) glass\b"),
     ("Pennant", r"\bpennants?\b"),
     ("Hanging Poster", r"\bhanging posters?\b"),
     ("Bird Feeder", r"\bbird feeders?\b"),
@@ -417,7 +442,10 @@ def _mixed_distinct_forms(title: str) -> bool:
         elif re.search(r"\bfoam art\b", clause):
             form = "foam art"
         elif re.search(r"\bcanvas\b", clause):
-            form = "framed canvas" if re.search(r"\b(?:(?:floating|float|floater) frame|ff)\b", clause) else "canvas"
+            if re.search(r"\b(?:diy|cyo|pyo)\b|\b(?:paint|pnt) pots?\b|\bpaint tubes?\b", clause):
+                form = "paint-your-own canvas set"
+            else:
+                form = "framed canvas" if re.search(r"\b(?:(?:floating|float|floater) frame|ff)\b", clause) else "canvas"
         elif re.search(r"\b(?:fl|floating) comic\b", clause):
             form = "comic"
         elif re.fullmatch(r"(?:printed )?glass", clause):
@@ -474,7 +502,7 @@ def read_product_type(description: object) -> dict[str, str]:
             title = parts[1]
         elif re.fullmatch(r"(?:clay knot|three chain links)(?: tabletop decor)?", next_clause):
             title = parts[1]
-        elif re.fullmatch(r"(?:natural )?(?:rattan|seagrass|paper rope)", normalize(title)) \
+        elif re.fullmatch(r"(?:(?:natural|pe) )?(?:rattan|seagrass|paper rope)", normalize(title)) \
                 and re.fullmatch(r"dimensional (?:bow|deer head)", next_clause):
             title += " " + parts[1]
     artwork_marker = re.search(r"\b(?:artwork|illustration|graphic|image|scene|depicting)\b", title, re.I)
@@ -501,6 +529,8 @@ def read_product_type(description: object) -> dict[str, str]:
     if re.search(r"\bcanvas (?:and |with )?(?:paper print|mdf plaque)\b|\bperpetual calendars? and (?:mdf )?blocks?\b", text):
         return result
     if re.search(r"\b(?:canvas|cnvs|cvs)\s*(?:&|\+|and)\s*(?:paper\s+)?(?:print|prnt)\b", parts[0], re.I):
+        return result
+    if re.search(r"\bplaques?\s*(?:and|plus|\+|&)\s*(?:wall\s+)?clocks?\b", parts[0], re.I):
         return result
     # A substrate followed by "growth" is not a chart unless the physical
     # chart noun is actually stated.  Named chart peers cannot supply it.
@@ -603,6 +633,8 @@ def read_product_type(description: object) -> dict[str, str]:
         matches = [entry for entry in matches if entry[3] not in {
             "Shadowbox", "Framed Shadowbox", "Framed Glass Shadowbox", "Glass Art", "Framed Glass Art"
         }]
+    if any(entry[3] == "Wall Clock" for entry in matches):
+        matches = [entry for entry in matches if entry[3] not in {"Plaque", "Wall Plaque"}]
     if any(entry[3] == "Block" for entry in matches):
         # A print stated on a block is an attribute of that block.
         matches = [entry for entry in matches if entry[3] != "Print"]
@@ -626,8 +658,13 @@ def read_product_type(description: object) -> dict[str, str]:
                 artwork_stickers.add(entry)
         matches = [entry for entry in matches if entry not in artwork_stickers]
         for _, _, _, _, canvas in canvas_matches:
+            canvas_is_kit = any(entry[3] == "Paint-Your-Own Canvas Set"
+                                and entry[0] <= canvas.start() and entry[4].end() >= canvas.end()
+                                for entry in matches)
             for _, _, _, other, found in matches:
                 if other == "Canvas" or found.start() < canvas.end():
+                    continue
+                if canvas_is_kit and other == "Paint-Your-Own Canvas Set":
                     continue
                 between = text[canvas.end():found.start()]
                 if re.search(r"\b(?:and|plus)\b", between) or re.search(r"\b(?:assorted|assortment|mixed)\b", text):

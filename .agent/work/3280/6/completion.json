@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "work_issue": 3280,
+  "outcome": "ready-for-merge",
+  "pr": 3279,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3280/6",
+  "contract_sha256": "b55d17b96053a0a6c63a57b054f1e1b034a523f190031b41b984df8b6ef4588a",
+  "head_sha": "6c7a7d501b074fc65facae43e29aca09e67fc680",
+  "files_changed": [
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/cancelled-work-guard.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/domain-ownership.yml",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/handoff-contract-guard.yml",
+    ".github/workflows/intake-pointer-guard.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/orchestrator-marker-guard.yml",
+    ".github/workflows/pr-object-collision.yml",
+    ".github/workflows/queue-sensitive-aggregate.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/throughput-dispositions/.github~workflows~tools-offline-tests.yml.json",
+    "docs/verification/throughput-dispositions/scripts~lib~resolve-base-ref.mjs.json",
+    "scripts/check-applied-migration-edit.mjs",
+    "scripts/check-cancelled-work.mjs",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/check-handoff-contract.mjs",
+    "scripts/check-live-proof-probe.mjs",
+    "scripts/check-live-proof-probe.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-production-verification-sidecars.mjs",
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/resolve-base-ref.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "scripts/throughput-guard/check-production-verification-sidecars.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 13 pass 13 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 15 pass 15 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 13 pass 13 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 58 pass 58 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-production-verification-sidecars.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 6 pass 6 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 11 pass 11 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-applied-migration-edit.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 35 pass 35 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-cancelled-work.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 22 pass 22 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-handoff-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 16 pass 16 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 59 pass 59 fail 0 at 6c7a7d50 (post-merge with origin/main d2c79ca1)"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "309 files scanned at 6c7a7d50, every GitHub call goes through scripts/lib/github-transport.mjs"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "every remaining literal slug allowlisted with an exact count at 6c7a7d50"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK at 6c7a7d50: call_sites=313 sources=70; new per-source catalogues for tools-offline-tests.yml (8th site, third occurrence of the identical presence-check line) and the new scripts/lib/resolve-base-ref.mjs (one design comment) reviewed and excluded"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 5's rebuilt implementation was reviewed to APPROVE by muse-spark-1.3-contributor (verdict bound to head aed88a7f) and grok-4.6 (verdict bound to head 304d5f0a); generation 6 changes no implementation logic — it merges main d2c79ca1, unions resolve-base-ref with the #2708 generation-keyed evidence paths in check-live-proof-probe.mjs, and re-keys this pair to .agent/work/3280/6/. Those verdicts bind to superseded heads; the generation-6 head takes a fresh governed review.",
+    "The historical throughput audit JSON is superseded on main (status historical, #2832 partition cutover); the branch took main version verbatim, dropping it from the write set.",
+    "Six base-ref-by-name consumers resolve through one shared resolver; the sweep test derives its list from that import rather than hand-listing it.",
+    "The throughput truth audit was rebound for the call sites the shared resolver and this merge introduce (313 sites, including the eighth tools-offline-tests.yml presence-check occurrence and the resolver's one design comment)."
+  ],
+  "stop_conditions_hit": []
+}

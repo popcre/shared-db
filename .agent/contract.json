@@ -1,51 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 3175,
-  "work_type": "structural",
-  "route": "shared-db-orchestrator",
-  "goal": "Retire only the DesignFlow runtime freshness/status leg in both taxonomy detectors while preserving ColdLion checks, historical source-reference invariants, live-hash refusal, append-only evidence and ACLs.",
-  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
-  "dispatcher": "Codex orchestrator 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
-  "worker": "codex-01a0bf00-3175",
-  "branch": "codex/3175-retired-taxonomy-916",
-  "worktree": "D:/repos/shared-db-3175-retired-taxonomy-916",
+  "generation": 5,
+  "work_issue": 3295,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Validate recovered ColdLion timeout repair against current main, preserving source repair, with fresh tests and truthful evidence. Prior production investigation remains historical evidence.",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Codex non-orchestrator repository-maintenance session for issue #3295",
+  "worker": "Codex chat 01a0bf3f-596f-7e20-be04-2d2d8eb12320 on 916-ALIEN (coldlion_recovery subagent)",
+  "branch": "codex/3295-recovery-01a0bf00",
+  "worktree": "D:\\repos\\shared-db-coldlion-recovery-01a0bf00",
   "allowed_paths": [
-    ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260920151128_retire_designflow_taxonomy_health_lane.sql",
-    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
-    ".github/live-proofs/3175.sql"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "file_writes": [
-    ".agent/contract.json",
     ".agent/completion.json",
-    "supabase/migrations/20260920151128_retire_designflow_taxonomy_health_lane.sql",
-    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
-    ".github/live-proofs/3175.sql"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
-  "db_reads": [
-    "table ingest.sync_run"
-  ],
-  "db_writes": [
-    "function plm.check_taxonomy_sync_health",
-    "function plm.record_taxonomy_parallel_observation"
-  ],
+  "db_reads": [],
+  "db_writes": [],
   "prohibited_actions": [
-    "No direct database apply, promotion, merge, issue closure, or changed columns.",
-    "No weakened ColdLion, live-hash, baseline, history, or execution restrictions."
+    "Do not change any migration, database object, timeout, workflow schedule, or live database row.",
+    "Do not weaken or remove change-log audit payloads, target proof, transaction atomicity, or failure reporting.",
+    "Do not touch issue #3179, issue #3180, or the prepack loader."
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh",
-    "node scripts/check-migration-pr-lease.mjs",
-    "focused rollback SQL regression contracts"
+    "node --test tools/coldlion-landing-masters.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
   ],
   "assumptions": [
-    "Claim #3307 reserves version 20260920151128 and exactly two function objects.",
-    "DesignFlow sync removal #2794 is production complete. Compatibility designflow_ok true must explicitly identify retired/not-required semantics."
+    "Production keeps its existing 120-second statement timeout.",
+    "The latest prior new_raw row remains the preferred previous_raw audit payload, falling back to the current table projection when no prior change exists."
   ],
   "stop_conditions": [
-    "Unexpected live definition divergence or claim collision.",
-    "Any required change outside admitted function objects or allowed paths."
-  ],
-  "generation": 4
+    "Stop if preserving audit semantics requires a database-structure change.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
+  ]
 }

@@ -1223,7 +1223,7 @@ def test_isolated_second_clause_can_name_canvas_product():
 
 
 def test_shadowbox_spelling_variation_still_names_product():
-    assert read_product_type("Assorted shawowbox")['product_type'] == 'Framed Shadowbox'
+    assert read_product_type("Assorted shawowbox")['product_type'] == 'Shadowbox'
 
 
 def test_domed_chest_is_explicit_storage_form():
@@ -1998,3 +1998,105 @@ def test_explicit_canvas_eva_bin_refines_material_to_named_container():
 def test_literal_bunting_is_not_retyped_by_later_wall_art_words():
     assert read_product_type('Felted Bunting with Wall Art Graphic')['product_type'] == 'Bunting'
     assert read_product_type('Canvas with bunting graphic')['product_type'] == 'Canvas'
+
+
+def test_source_spelled_canvas_tapestry_with_wood_bar_is_one_object():
+    actual = read_product_type('Canvas Tapsetry with Wood Bar')
+    assert actual['product_type'] == 'Canvas Tapestry'
+    assert actual['product_material'] == 'Canvas; Wood'
+    assert read_product_type('Canvas with tapsetry artwork')['product_type'] == 'Canvas'
+
+
+def test_canvas_frame_is_a_named_frame_without_invented_material():
+    actual = read_product_type('Canvas Frame')
+    assert actual['product_type'] == 'Canvas Frame'
+    assert actual['product_material'] == ''
+    assert actual['product_construction'] == ''
+    assert read_product_type('Canvas with frame artwork')['product_type'] == 'Canvas'
+
+
+def test_literal_framed_three_dimensional_wall_art_keeps_both_constructions():
+    actual = read_product_type('Framed 3-D Wall Art')
+    assert actual['product_type'] == 'Framed Art'
+    assert actual['product_construction'] == '3D; Framed'
+    assert read_product_type('Canvas with framed 3-D wall art graphic')['product_type'] == 'Canvas'
+
+
+def test_sign_head_survives_wool_hanging_wall_art_qualifiers():
+    actual = read_product_type('Sign Wool Fabric Embroidered Hanging Wall Art')
+    assert actual['product_type'] == 'Sign'
+    assert actual['product_construction'] == 'Hanging'
+    assert actual['product_material'] == 'Wool'
+    assert actual['product_treatment'] == 'Embroidery'
+    assert read_product_type('Canvas with sign wall art graphic')['product_type'] == 'Canvas'
+
+
+def test_baby_frame_does_not_invent_a_photo_function():
+    assert read_product_type('Assorted Baby Frames')['product_type'] == 'Frame'
+    assert read_product_type('Assorted Baby Photo Frames')['product_type'] == 'Photo Frame'
+
+
+def test_toy_bin_is_a_bin_and_toy_chest_is_a_chest():
+    assert read_product_type('Fabric Toy Bin')['product_type'] == 'Storage Bin'
+    assert read_product_type('Fabric Toy Chest')['product_type'] == 'Storage Toy Chest'
+    assert read_product_type('Toy Bin and Toy Chest')['product_type_status'] == 'unreadable'
+
+
+def test_misspelled_shadowbox_does_not_invent_a_frame():
+    assert read_product_type('SHAWOWBOX')['product_type'] == 'Shadowbox'
+    assert read_product_type('Framed SHAWOWBOX')['product_type'] == 'Framed Shadowbox'
+
+
+def test_explicit_tabletop_mdf_block_keeps_placement():
+    actual = read_product_type('MDF Tabletop Bobble Head Block')
+    assert actual['product_type'] == 'Tabletop Block'
+    assert actual['product_material'] == 'MDF'
+    assert read_product_type('MDF Block depicting tabletop scene')['product_type'] == 'Block'
+
+
+def test_abbreviated_trinket_tray_keeps_its_explicit_kit_and_material():
+    actual = read_product_type('DIY CRMIC TRNKT TRAY with Paint Pots')
+    assert actual['product_type'] == 'Trinket Tray'
+    assert actual['product_construction'] == 'DIY'
+    assert actual['product_material'] == 'Ceramic'
+    assert read_product_type('Canvas depicting a trinket tray')['product_type'] == 'Canvas'
+
+
+def test_canvas_and_sign_without_a_physical_relation_abstains():
+    assert read_product_type('Canvas Blue Destination Sign')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas with destination sign artwork')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Sign')['product_type_status'] == 'unreadable'
+
+
+def test_action_object_hook_does_not_become_canvas_hardware():
+    assert read_product_type('Canvas figure shooting a hook')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas with hooks')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Hook')['product_type_status'] == 'unreadable'
+
+
+def test_spinner_alone_does_not_name_a_display_rack():
+    assert read_product_type('Canvas with spinner caption')['product_type'] == 'Canvas'
+    assert read_product_type('Spinner')['product_type_status'] == 'unreadable'
+    assert read_product_type('Desktop Display Rack')['product_type'] == 'Display Rack'
+
+
+def test_hanging_closet_storage_has_an_organizer_head_not_a_shelf_head():
+    assert read_product_type('Fabric Storage 6 Shelf Hanging Closet')['product_type'] == 'Storage Organizer'
+    assert read_product_type('Fabric Storage 3 Shelf Hanging Closet Org with Hamper')['product_type'] == 'Hanging Closet Organizer'
+    assert read_product_type('Fabric Storage Shelf')['product_type'] != 'Storage Organizer'
+
+
+def test_faux_book_organizer_preserves_form_and_faux_book_construction():
+    actual = read_product_type('MDF Faux Book Organizer with Foil')
+    assert actual['product_type'] == 'Organizer'
+    assert actual['product_construction'] == 'Faux Book'
+    assert actual['product_material'] == 'MDF'
+    assert actual['product_treatment'] == 'Foil'
+    assert read_product_type('MDF Faux Book')['product_type'] == 'Faux Book'
+
+
+def test_misspelled_storage_chest_outweighs_printed_artwork():
+    actual = read_product_type('Flat Top Greyboard STRAGE CHEST with Floral Print')
+    assert actual['product_type'] == 'Storage Chest'
+    assert actual['product_construction'] == 'Flat-Top'
+    assert actual['product_material'] == 'Greyboard'

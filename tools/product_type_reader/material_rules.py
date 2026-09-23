@@ -103,6 +103,11 @@ _PHYSICAL_COMPONENT = re.compile(r"\b(?:frame|backing|board|bar|panel|legs|sides
 _ARTWORK_FOLLOWER = re.compile(r"^\s*(?:artwork|texture|look|effect|pattern|design|graphic|image)\b")
 _CANVAS_JOINED = re.compile(r"\b(?:diycanvas(?:es)?|canvasboard)\b|\bcanvas(?:es)?(?=\d)")
 _CANVAS_FRAME = re.compile(r"\bcanvas frame\b")
+_CANVAS_FRAME_COMPONENT = re.compile(
+    r"\bcanvas (?:panel|insert|sheet|fabric|backing|material|substrate)\b"
+    r"|\b(?:with|w|including|includes|plus) canvas\b"
+    r"(?!\s+(?:artwork|design|print|look|effect|texture|pattern|graphic)\b)"
+)
 _MDF_BAR = re.compile(r"\b(?:with|w) (?:decorative )?mdf bar\b")
 _MDF_FRAME_COMPONENT = re.compile(r"\b(?:in|with|w) (?:\d+ )?mdf frame\b")
 _BOXED_MDF = re.compile(r"\bboxed mdf\b")
@@ -152,7 +157,7 @@ _CANVAS_FAUX_LEATHER_ROPE = re.compile(r"\bcanvas\b.{0,80}\b(?:w|with) faux leat
 _CERAMIC_PRODUCT = re.compile(
     r"\b(?:ceramic|cermaic|crmic)\s+(?:mini planter|planter with photo frame|"
     r"figure block|(?:three chain links?\s+)?tabletop|piggy bank|"
-    r"trnkt tray|min plntr)\b"
+    r"trnkt tray|trinket tray|min plntr)\b"
 )
 _PLASTER_FRAME = re.compile(r"\bmdf photo frame with plaster print\b")
 _CANVAS_EVA_BIN = re.compile(r"\bcanvas (?:w|with) eva bin\b")
@@ -536,6 +541,16 @@ def extract_materials(
         if candidate in {"Rope", "Faux Suede", "Faux Fur"} and candidate not in materials:
             continue
         materials.add(candidate)
+    if product_type == "Canvas Frame":
+        # The canvas frame is a product name, not evidence of its substrate.
+        # Only a separately named physical component in this product's clause
+        # can supply Canvas; a second size begins a different clause.
+        physical_clause = text[last_size:end]
+        noun_start = product_start - last_size
+        noun_end = product_end - last_size
+        outside_noun = physical_clause[:noun_start] + " " + physical_clause[noun_end:]
+        if not _CANVAS_FRAME_COMPONENT.search(outside_noun):
+            materials.discard("Canvas")
     # Product and component wording disambiguates material names from surface
     # styles and hanging hardware. These source phrases are closed and reviewed.
     if _PLUSH_CUBE_ART.search(text) and product_type == "Plush Cube Art":

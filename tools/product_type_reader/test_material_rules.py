@@ -745,3 +745,44 @@ def test_mdf_magnets_do_not_make_board_mdf():
     assert material("mdf magnet board with mdf die cut magnets", "magnet board",
                     evidence="magnet board", product_type="Magnet Board",
                     base_materials="MDF") == "MDF"
+
+
+def test_canvas_frame_product_name_is_not_material_evidence():
+    assert material("5pk 11x14 canvas frame", "canvas frame", evidence="canvas frame",
+                    boundaries=(4,), product_type="Canvas Frame",
+                    base_materials="Canvas") == ""
+    assert material("canvas frame with canvas artwork", "canvas frame",
+                    evidence="canvas frame", product_type="Canvas Frame",
+                    base_materials="Canvas") == ""
+
+
+def test_canvas_frame_keeps_separately_stated_physical_canvas():
+    assert material("canvas frame with canvas insert", "canvas frame",
+                    evidence="canvas frame", product_type="Canvas Frame",
+                    base_materials="Canvas") == "Canvas"
+    assert material("canvas panel with canvas frame", "canvas frame",
+                    evidence="canvas frame", product_type="Canvas Frame",
+                    base_materials="Canvas") == "Canvas"
+    assert material("canvas frame 11x14 with canvas insert", "canvas frame",
+                    evidence="canvas frame", boundaries=(13,),
+                    product_type="Canvas Frame", base_materials="Canvas") == ""
+    assert material("blank artist canvas", "canvas", product_type="Canvas",
+                    base_materials="Canvas") == "Canvas"
+
+
+def test_abbreviated_ceramic_names_trinket_tray_substrate():
+    assert material("diy crmic trinket tray with paint pots", "trinket tray",
+                    evidence="trinket tray", product_type="Trinket Tray") == "Ceramic"
+    assert material("diy crmic trnkt tray", "trnkt tray",
+                    evidence="trnkt tray", product_type="Trinket Tray") == "Ceramic"
+    assert material("diy crmic min plntr", "plntr", product_type="Planter") == "Ceramic"
+
+
+def test_abbreviated_ceramic_in_identity_or_artwork_is_not_substrate():
+    assert material("crmic design trinket tray", "trinket tray",
+                    evidence="trinket tray", product_type="Trinket Tray") == ""
+    assert material("crmic world trinket tray", "trinket tray",
+                    evidence="trinket tray", product_type="Trinket Tray") == ""
+    assert material("trinket tray 5x5 crmic trinket tray artwork", "trinket tray",
+                    evidence="trinket tray", boundaries=(13,),
+                    product_type="Trinket Tray") == ""

@@ -48,11 +48,12 @@ def normalize(value: object) -> str:
         "fx book": "faux book", "embossd": "embossed", "embss": "embossed", "embsd": "embossed", "floatingframe": "floating frame",
         "clck": "clock", "canv": "canvas", "pcture": "picture", "vrnish": "varnish",
         "clndr": "calendar",
+        "trnkt": "trinket",
         "cntdwn": "countdown", "calndr": "calendar",
         "stbck": "setback", "mntd": "mounted",
         "mlded": "molded", "mld": "molded", "wll": "wall", "lanscape": "landscape",
         "hngng": "hanging", "rbbn": "ribbon", "glltr": "glitter",
-        "fltng": "floating", "embssd": "embossed", "metllc": "metallic", "stoarge": "storage",
+        "fltng": "floating", "embssd": "embossed", "metllc": "metallic", "stoarge": "storage", "strage": "storage",
         "mettalic": "metallic", "shawdowbox": "shadowbox", "shadowbow": "shadowbox",
         "shawowbox": "shadowbox", "shadwoboxes": "shadowboxes", "shdwbox": "shadowbox", "shwbx": "shadowbox",
         "assrortment": "assortment", "asstd": "assorted", "assted": "assorted",
@@ -81,6 +82,7 @@ def normalize(value: object) -> str:
 # Specific physical nouns take precedence over the legacy generic Canvas rule.
 _FIXES = (
     ("Storage Bin", r"\b(?:storage )?bins?\b"),
+    ("Storage Bin", r"\btoy bins?\b"),
     ("Storage Box", r"\bgreyboard lift off lid box\b"),
     ("Decorative Bow", r"\bdimensional bow\b"),
     ("Jewelry Box", r"\bjewelry box(?:es)?\b"),
@@ -95,6 +97,8 @@ _FIXES = (
     ("Suncatcher", r"\bsuncatchers?\b"),
     ("Block", r"\bblocks?\s+(?:with|w)\s+prints?\b"),
     ("Storage Caddy", r"\bstorage cadd(?:y|ies)\b"),
+    ("Hanging Closet Organizer", r"\bstorage \d+ shelf hanging closet org\b"),
+    ("Storage Organizer", r"\bstorage \d+ shelf hanging closet\b"),
     ("Sequin Art", r"\bsequin art\b"),
     ("Sequin Art", r"\bsequin flip art\b"),
     ("Mat", r"\brubbermat\b"),
@@ -105,9 +109,13 @@ _FIXES = (
     ("Slat Art", r"\bslit slat art\b"),
     ("Mask", r"\bmolded polyresin masks?\b"),
     ("Garden Bag", r"\bgarden bags?\b"),
+    ("Display Rack", r"\bdisplay racks?\b"),
     ("Photo Display String", r"\bphoto string (?:w|with) holders?\b"),
     ("Wall Basket", r"\bwall baskets?\b"),
     ("Bunting", r"\bbunting\b"),
+    ("Canvas Tapestry", r"\bcanvas tapsetry\b"),
+    ("Canvas Frame", r"\bcanvas frames?\b"),
+    ("Frame", r"\bbaby frames?\b"),
     ("Faux Book", r"\bfaux boox storage\b"),
     ("Painting Kit", r"\bdiy set (?:w|with) \d+ paint pots? (?:and )?brsh\b"),
     ("Shape", r"\bmdf shapes?\b"),
@@ -121,8 +129,10 @@ _FIXES = (
     ("Tall Sign", r"\btall (?:\w+ ){0,3}(?:mdf )?sign\b"),
     ("Perpetual Calendar with Pencil Cup", r"\bperpetual calendar (?:w|with) (?:\w+ )?pencil cup\b"),
     ("Framed Art", r"\bframed deckle(?:d)? edge art\b"),
+    ("Framed Art", r"\bframed 3 d wall art\b"),
     ("Plaque", r"\bchalkboard plaques?\b|\bplque\b"),
     ("Tabletop Clock", r"\btabletop clocks?\b"),
+    ("Tabletop Block", r"\bmdf tabletop bobble head block\b"),
     ("Magnet Board", r"\bmagnet boards?\b"),
     ("Storage Hamper", r"\b(?:oval|ovl) hmpr\b"),
     ("Wall Scroll", r"\bwall scrolls?\b"),
@@ -131,6 +141,7 @@ _FIXES = (
     ("Desktop Organizer", r"\bdesktop storage cubb(?:y|ies)\b"),
     ("Stationery Organizer", r"\b(?:stationery|stationary) organi[sz]ers?\b"),
     ("Mail Organizer", r"\bmail organi[sz]ers?\b"),
+    ("Organizer", r"\bfaux book organi[sz]ers?\b"),
     ("Recipe Box", r"\brecipe box(?:es)?\b|\brecipe grey ?board box\b"),
     ("Dry-Erase and Pin Board", r"\bdry erase and (?:\w+ )?pin ?boards?\b"),
     ("Print", r"\bmdf spot varnish prints?\b"),
@@ -173,6 +184,7 @@ _FIXES = (
     ("Framed Canvas", r"\bframed (?:(?:embossed|paper|high gloss) )+canvas\b|\b(?:floating|floater|float) frame embroidered canvas\b"),
     ("Framed Canvas", r"\bframed art (?:w|with) (?:handpainted|painted) canvas\b"),
     ("Wall Art", r"\bwool fabric embroidered hanging wall art\b"),
+    ("Sign", r"\bsign wool fabric embroidered hanging wall art\b"),
     ("Wall Art", r"\bwall deco\b"),
     ("Wall Art", r"\bframe wall art\b"),
     ("Banner", r"\b(?:canvas )?hanging (?:fishtail )?banners?\b"),
@@ -482,6 +494,10 @@ def _mixed_distinct_forms(title: str) -> bool:
             form = "foam art"
         elif re.search(r"\beasels?\b", clause):
             form = "easel"
+        elif re.search(r"\bsigns?\b", clause):
+            form = "sign"
+        elif re.search(r"\bhooks?\b", clause):
+            form = "hook"
         elif re.search(r"\bcanvas\b", clause):
             if re.search(r"\b(?:diy|cyo|pyo)\b|\b(?:paint|pnt) pots?\b|\bpaint tubes?\b|"
                          r"\bcanvas set (?:w|with) \d+ paint pts\b", clause):
@@ -552,7 +568,7 @@ def read_product_type(description: object) -> dict[str, str]:
     # object. The entire depicted clause, including product-like words before
     # the marker, is outside physical evidence for type and attributes.
     depicted_clause = re.search(
-        r"\b(?:with|w|of|featuring|depicting)\s+(?:[a-z-]+\s+){1,7}"
+        r"\b(?:with|w|of|featuring|depicting)\s+(?:[a-z0-9-]+\s+){1,7}"
         r"(?:artwork|graphic|design|image|pattern|scene)\b", title, re.I)
     if depicted_clause:
         physical_bin = re.search(r"\bcanvas (?:w|with) eva bins?\b", title, re.I)
@@ -598,6 +614,10 @@ def read_product_type(description: object) -> dict[str, str]:
                 or re.search(r"\b(?:prints?|posters?)\b", physical_prefix)):
             title = title[:artwork_start]
     text = _product_text(DIMENSION.sub(" ", title))
+    if re.search(r"\bcanvas(?: \w+){0,3} destination sign\b", text):
+        # Juxtaposed canvas and sign nouns without a depiction or assembly
+        # relation do not establish which physical form is supplied.
+        return result
     # Keep size delimiters as evidence boundaries even though product matching
     # ignores their numeric values. Artwork after a size cannot supply material.
     boundaries = [len(_product_text(DIMENSION.sub(" ", parts[0][:m.start()]))) for m in DIMENSION.finditer(parts[0])]
@@ -670,6 +690,9 @@ def read_product_type(description: object) -> dict[str, str]:
     matches = [entry for entry in matches if not (
         entry[3] == "Storage Tower" and entry[4].group() == "drawer tier storage"
     )]
+    matches = [entry for entry in matches if not (
+        entry[3] == "Display Rack" and entry[4].group() == "spinner"
+    )]
     if boundaries:
         before_size = [entry for entry in matches if entry[0] < boundaries[0]]
         if before_size:
@@ -690,6 +713,14 @@ def read_product_type(description: object) -> dict[str, str]:
     if any(entry[3] == "Canvas" for entry in matches) and re.search(
             r"\bart\s+on(?:\s+\w+){0,3}\s+shapes?\b", text):
         matches = [entry for entry in matches if entry[3] != "Shape"]
+    if any(entry[3] == "Canvas" for entry in matches) and re.search(
+            r"\bshooting (?:\w+ )?hooks?\b", text):
+        # Hook is the object of a depicted action, not mounting hardware.
+        matches = [entry for entry in matches if entry[3] not in {"Hook", "Wall Hook"}]
+    if any(entry[3] == "Canvas" for entry in matches) and re.search(
+            r"\bcanvas (?:w|with) hooks?\b", text):
+        # Attached hanging hardware does not replace the canvas head noun.
+        matches = [entry for entry in matches if entry[3] not in {"Hook", "Wall Hook"}]
     if any(entry[3] == "Canvas" for entry in matches) and re.search(
             r"\bcanvas in (?:a )?tray box\b", text):
         matches = [entry for entry in matches if entry[3] not in {"Tray or Dish", "Tray", "Box"}]
@@ -844,6 +875,9 @@ def read_product_type(description: object) -> dict[str, str]:
             r"\bshadowbox(?:es)?\b", text[:boundaries[0]] if boundaries else text):
         # Shadowbox is the named physical object; glass is one of its parts.
         product = "Framed Glass Shadowbox"
+    if product == "Framed Shadowbox" and re.search(r"\bshawowbox\b", parts[0], re.I) \
+            and not re.search(r"\b(?:framed|frame)\b", text):
+        product = "Shadowbox"
     if product in {"Box", "MDF Box"} and any(
             re.search(r"\b(?:w|with) functional chalkboard\b", normalize(part))
             for part in parts[:2]):
@@ -954,6 +988,12 @@ def read_product_type(description: object) -> dict[str, str]:
     constructions = [name for name, pattern in _CONSTRUCTIONS if re.search(r"\b(?:"+pattern+r")\b", evidence)]
     if product == "Decorative Bow" and re.search(r"\bdimensional bow\b", evidence):
         constructions.append("Dimensional")
+    if product == "Framed Art" and re.search(r"\bframed 3 d wall art\b", evidence):
+        constructions.append("3D")
+    if product == "Trinket Tray" and re.search(r"\bdiy crmic trinket tray\b", text):
+        constructions.append("DIY")
+    if product == "Organizer" and re.search(r"\bfaux book organi[sz]er\b", evidence):
+        constructions.append("Faux Book")
     if mixed_shadowbox:
         constructions = [name for name in constructions if name != "Molded"]
     # These are explicit assembly words in the title; short intervening

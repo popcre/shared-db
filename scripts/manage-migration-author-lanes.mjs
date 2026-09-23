@@ -5300,16 +5300,27 @@ function abandonedLeaseReason(row,states){
 }
 // Issue #3449. A legacy one-slot ref (refs/db-review-active/<reviewer>) is never
 // recomputed under concurrent leases, so a finished one is never overwritten and
-// no release path accepts it (its verdict forbids release). It is reaped only in
-// its terminal state: pull request MERGED and a durable verdict recorded for the
-// exact leased head. Anything else, including an unreadable verdict, is kept.
+// no release path accepts it. It is reaped only in a terminal state: pull request
+// MERGED and a durable verdict recorded either for the exact leased head, or, when
+// the lease head was superseded before merge, for the merged head itself.
+// Anything else, including an unreadable verdict, is kept or refused.
 // Retiring the ref only removes the stale lease record; the verdict refs stay.
 function isTerminalLegacyLease(row,states,io){
   if(row.ref!==reviewActiveRef(row.assignment.reviewer))return false
   const pr=states?.get(`${row.assignment.issue}:${row.assignment.pr}`)?.pr
   if(!pr||pr.state==='open'||pr.merged!==true)return false
-  try{return Boolean(hasVerdictForHead(row.assignment.issue,row.assignment.pr,row.assignment.headSha,io,leaseVerdictOptions(row.assignment)))}
-  catch{throw new LaneError(`legacy reviewer lease ${row.ref} verdict is unreadable; nothing was reaped`)}
+  const mergedHead=pr.head?.sha
+  const heads=[row.assignment.headSha]
+  if(typeof mergedHead==='string'&&/^[0-9a-f]{40}$/.test(mergedHead)&&mergedHead!==row.assignment.headSha)heads.push(mergedHead)
+  for(const head of heads){
+    let verdict
+    try{verdict=hasVerdictForHead(row.assignment.issue,row.assignment.pr,head,io,leaseVerdictOptions(row.assignment))}catch(error){
+      if(isReviewRefListingRefusal(error))throw new LaneError(`durable reviewer verdict namespace cannot be listed: ${error.message}. Preview with --archive-old-review-verdicts, then archive with --archive-old-review-verdicts --apply-recovery (#2987)`)
+      throw new LaneError(`legacy reviewer lease ${row.ref} verdict is unreadable; nothing was reaped`)
+    }
+    if(verdict)return true
+  }
+  return false
 }
 function abandonedLeases(io){
   const busy=findBusyReviewers(io)
@@ -6763,7 +6774,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&(concurrentLeases||!preflightBusy.has(name))&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name)))
       const releaseCommand=failedReviewerReleaseCommand(request,{failureCode,failingCheck})
       const compatiblePrefix=request.slot===1?'no other reviewer is available':'no other independent reviewer is available for slot '+request.slot
-      throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)
+      throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${concurrentLeases?'':`${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); `}${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)
     }
     const replacementSha=io.makeOwnerCommit(releasedFailureSha
       ?`db-coordination reviewer-replacement sequence=${sequence} reviewer=${reviewer.name} issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=${request.slot}${reviewerAllowlistSuffix(effectiveAllowlist)} failed-sequence=${request.failedSequence} prior-sequence=${cursor.sequence} failure-ref=${releasedFailureSha}`

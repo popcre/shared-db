@@ -8668,13 +8668,14 @@ test('reap skips a lease that became live again before the mutex was held (#2711
 // Issue #3449: a legacy v1 lease whose PR merged with a recorded verdict is terminal.
 function legacyLeaseIo(){
   const base=abandonedLeaseIo(),{io,prs}=base
+  io.requiresExactReviewHeadSha=true
   io.readActiveReviewLeases=()=>new Map([...io.refs].filter(([ref])=>ref.startsWith('refs/db-review-active')).map(([ref,sha])=>[ref,{sha,commit:io.getCommit(sha)}]))
-  const legacy=(index,{issue,pr,headSha,state='closed',merged=true,verdict=true})=>{
+  const legacy=(index,{issue,pr,headSha,state='closed',merged=true,verdict=true,mergedHead=headSha,verdictHead=headSha})=>{
     const reviewer=ACTIVE_REVIEWERS[index%ACTIVE_REVIEWERS.length].name
     const sha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=${index+1} reviewer=${reviewer} issue=${issue} pr=${pr} head=${headSha}`)
     const ref=reviewActiveRef(reviewer)
-    io.refs.set(ref,sha);prs.set(pr,{number:pr,state,merged,head:{sha:headSha}})
-    if(verdict)giveVerdict(io,{issue,pr,headSha})
+    io.refs.set(ref,sha);prs.set(pr,{number:pr,state,merged,head:{sha:mergedHead}})
+    if(verdict)giveVerdict(io,{issue,pr,headSha:verdictHead})
     return ref
   }
   return {...base,legacy}
@@ -8702,6 +8703,40 @@ test('reap refuses when a legacy lease verdict is unreadable (#3449)',()=>{
   if(paged)io.listReviewRefsPaged=(prefix,...rest)=>{fail(prefix);return paged(prefix,...rest)}
   assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io))
   assert.deepEqual(io.refs,before)
+})
+test('reap retires a superseded legacy lease once its PR merged with a verdict at the merged head (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  const superseded=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40),mergedHead:'f'.repeat(40),verdictHead:'f'.repeat(40)})
+  const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
+  assert.equal(applied.reaped.length,1);assert.equal(io.refs.has(superseded),false)
+})
+
+test('reap keeps a legacy lease that is live or whose verdict is for an unrelated head (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  const live=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40),state:'open',merged:false,verdict:false})
+  const elsewhere=legacy(1,{issue:2,pr:22,headSha:'b'.repeat(40),verdictHead:'9'.repeat(40)})
+  const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
+  assert.equal(applied.reaped.length,0);assert.ok(io.refs.has(live));assert.ok(io.refs.has(elsewhere))
+})
+
+test('reap retires legacy and v2 leases together (#3449)',()=>{
+  const {io,legacy,lease}=legacyLeaseIo()
+  const old=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const closed=lease(1,{issue:2,pr:22,headSha:'b'.repeat(40),state:'closed'})
+  const live=lease(2,{issue:3,pr:23,headSha:'c'.repeat(40)})
+  const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
+  assert.equal(applied.reaped.length,2);assert.equal(io.refs.has(old),false);assert.equal(io.refs.has(closed),false);assert.ok(io.refs.has(live))
+})
+
+test('under concurrent leases the replacement refusal never blames live leases (#3449)',()=>{
+  const io=failedReviewIo()
+  io.requiresExactReviewHeadSha=true
+  let failedSequence=replacementRequest.failedSequence
+  for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1)failedSequence=replaceFailedReviewer({...replacementRequest,failedSequence},io).sequence
+  let refusal=null
+  try{replaceFailedReviewer({...replacementRequest,failedSequence},io)}catch(error){refusal=error}
+  assert.match(refusal?.message??'',/no other reviewer is available/)
+  assert.doesNotMatch(refusal.message,/hold other live leases/)
 })
 test('an over-long lease snapshot is a determinate refusal, not transient unreadability (#2711)',()=>{
   assert.equal(isCommandSizeFailure(new LaneError('GitHub command failed: spawnSync gh E2BIG')),true)

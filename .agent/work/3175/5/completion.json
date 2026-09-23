@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3175,
+  "outcome": "ready-for-merge",
+  "pr": 3309,
+  "migration_versions": [
+    "20260923173656"
+  ],
+  "contract_ref": "refs/db-contracts/3175/5",
+  "contract_sha256": "4cddb8b97420d1569f871eac8e8180b835252628e51faca9711bf0e4cd9385d7",
+  "head_sha": "9ad79ca1a72651c5cf82b3efd70913047a4d29ec",
+  "files_changed": [
+    ".github/live-proofs/3175.sql",
+    "supabase/migrations/20260923173656_retire_designflow_taxonomy_health_lane.sql",
+    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql"
+  ],
+  "db_reads": [
+    "table ingest.sync_run"
+  ],
+  "db_writes": [
+    "function plm.check_taxonomy_sync_health",
+    "function plm.record_taxonomy_parallel_observation"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static checks passed on 9ad79ca1a72651c5cf82b3efd70913047a4d29ec (backdated-version and diff --check guards clear after re-reservation to 20260923173656)."
+    },
+    {
+      "exit_code": 0,
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "evidence": "PR_NUMBER=3309: Migration claim verified: #3307, version 20260923173656."
+    },
+    {
+      "exit_code": 0,
+      "command": "focused rollback SQL regression contracts",
+      "evidence": "https://github.com/popcre/shared-db/actions/runs/35519211279 succeeded on 9d815cfcca2e9b65905656f33087e2f6d5e257c8; taxonomy_retired_designflow_lane_contracts.sql passed. Full suite: 190 passed, 0 unquarantined failures, 13 pre-existing quarantines (1 passing,12 failing). SQL bytes unchanged except version rename and trailing blank line removal; current-head CI remains required before merge."
+    },
+    {
+      "exit_code": 0,
+      "command": "node --test tools/check-coldlion-designflow-sync-health.test.mjs tools/compare-coldlion-designflow-daily.test.mjs tools/evaluate-coldlion-licensor-property-cutover-readiness.test.mjs",
+      "evidence": "19 passed, 0 failed, 0 skipped."
+    }
+  ],
+  "assumptions_resolved": [
+    "Production read-only target qsllyeztdwjgirsysgai: both current function bodies exactly matched repository source20260905043023 before authoring.",
+    "Claim3307 protects exactly the two changed functions; no columns/public wrapper signatures/ACLs changed.",
+    "Historical failed observations remain untouched and can still block overall readiness until legitimate successful comparison evidence exists.",
+    "Current main 5653b760e445ff27264b82e42596c84afc101ee5 integrated; version superseded 20260920151128 -> 20260923173656 via --supersede-active-claim-version; only a trailing blank line removed from SQL."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "5653b760e445ff27264b82e42596c84afc101ee5"
+}

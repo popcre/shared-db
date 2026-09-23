@@ -3279,6 +3279,80 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
   )
 })
 
+test('#2758 merge lane accepts independently moved main only through classifyBranchFreshness', () => {
+  const io=memoryIo()
+  io.getPrFiles=()=>[{path:'docs/operations.md',status:'modified'}]
+  // Matching tip keeps the original exact-equality path: no git classification.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})
+  io.mainSha=()=> 'main'
+  const lock=acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io)
+  assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+  releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+  // Unequal tip with unclassifiable SHAs stays a refusal, never a silent pass.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'older-main'}})
+  io.mainSha=()=> 'newer-main'
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+  // An unreadable tip is a refusal, not an independence grant.
+  io.mainSha=()=> null
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+})
+
+test('#2758 merge lane grants a real independent-main lock and refuses an overlapping move', () => {
+  const repo=mkdtempSync(path.join(tmpdir(),'db-lane-2758-'))
+  const previous=process.cwd()
+  const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()
+  const put=(name,contents)=>{const file=path.join(repo,name);mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,contents)}
+  const commit=(message)=>{git('add','--all');git('commit','-q','-m',message);return git('rev-parse','HEAD')}
+  try{
+    git('init','-q','-b','main')
+    git('config','user.name','Test')
+    git('config','user.email','test@example.invalid')
+    git('config','commit.gpgsign','false')
+    put('docs/shared.md','base\n')
+    const base=commit('base')
+    git('switch','-q','-c','pr')
+    put('docs/pr.md','PR work\n')
+    const head=commit('PR work')
+    git('switch','-q','main')
+    put('scripts/unrelated.mjs','export const unrelated = true\n')
+    const tip=commit('independent main move')
+    const io=memoryIo()
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'}]
+    io.getPr=()=>({number:7,head:{sha:head,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>tip
+    process.chdir(repo)
+    const lock=acquireExclusive('merge',{owner:'independent',pr:7,headSha:head},io)
+    assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+    releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+
+    git('switch','-q','pr')
+    put('docs/shared.md','PR edit\n')
+    const overlappingHead=commit('PR edits shared file')
+    git('switch','-q','main')
+    put('docs/shared.md','main edit\n')
+    put('scripts/another.mjs','export const another = true\n')
+    const overlappingTip=commit('main edits shared file')
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'},{path:'docs/shared.md',status:'modified'}]
+    io.getPr=()=>({number:7,head:{sha:overlappingHead,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>overlappingTip
+    assert.throws(
+      ()=>acquireExclusive('merge',{owner:'overlap',pr:7,headSha:overlappingHead},io),
+      /not based on the current main tip/,
+    )
+    assert.equal(io.readRef(EXCLUSIVE_REFS.merge),null)
+  } finally {
+    process.chdir(previous)
+    assert.ok(path.resolve(repo).startsWith(`${path.resolve(tmpdir())}${path.sep}`))
+    rmSync(repo,{recursive:true,force:true})
+  }
+})
+
 test('issue 1688 permits success only after the appropriate merge lock is acquired', () => {
   const leaseWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/migration-author-lease.yml',import.meta.url)),'utf8')
   const mergeWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml',import.meta.url)),'utf8')
@@ -9564,4 +9638,90 @@ test('#2824 --set-scope-status is reachable from the CLI and reports the transit
   assert.equal(code, 0)
   assert.match(text, /status: blocked -> ready/)
   assert.equal(parseQueueScope(io.currentBody()).status, 'ready')
+})
+
+// #3411: a merged pull request's prior-head APPROVE is compared against the
+// first parent of its guarded merge commit, never the current main tip.
+test('resolveLaneApprovalBase judges a merged PR against its merge commit first parent', async () => {
+  const { resolveLaneApprovalBase } = await import('./manage-migration-author-lanes.mjs')
+  const head = 'd'.repeat(40), merge = 'e'.repeat(40), tip = 'f'.repeat(40)
+  const io = (pr, inMain = true) => ({ mainSha: () => tip, getPr: () => pr, mergeCommitInMain: () => inMain })
+  assert.deepEqual(resolveLaneApprovalBase(null, head, io(null)), { ok: true, fetch: tip })
+  assert.deepEqual(resolveLaneApprovalBase(1, head, io({ number:1, merged: false, head: { sha: head } })), { ok: true, fetch: tip })
+  const merged = { number:1, merged: true, merge_commit_sha: merge, head: { sha: head } }
+  assert.deepEqual(resolveLaneApprovalBase(1, head, io(merged)), { ok: true, fetch: merge, firstParentOf: merge, currentMain: tip })
+  assert.equal(resolveLaneApprovalBase(1, head, io(merged, false)).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, 'a'.repeat(40), io(merged)).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, head, io({ number:1, merged: true, head: { sha: head } })).ok, false)
+  assert.equal(resolveLaneApprovalBase(1, head, io(null)).ok, false)
+  assert.match(resolveLaneApprovalBase(1,head,io({...merged,number:2})).reason,/exact pull request/)
+  assert.match(resolveLaneApprovalBase(1,head,io({...merged,merged:false,merged_at:'2026-09-22T00:00:00Z'})).reason,/inconsistent merged state/)
+  assert.equal(resolveLaneApprovalBase(1,head,{...io(merged),mergeCommitInMain:undefined}).ok,false)
+  assert.equal(resolveLaneApprovalBase(1,head,{...io(merged),mainSha:()=>null}).ok,false)
+})
+
+test('assertDurableReviewApproval passes the PR and operation-local comparison context', () => {
+  const fixture=durableApprovalFixture(),refreshed='c'.repeat(40),calls=[]
+  assertDurableReviewApproval(fixture.issue,fixture.pr,refreshed,{...fixture.io,contentPreservingRefresh:(approved,head,pr,context)=>{
+    calls.push({approved,head,pr,context});return{ok:true,implementation_digest:'e'.repeat(64)}
+  }})
+  assert.equal(calls.length,1)
+  assert.equal(calls[0].pr,fixture.pr)
+  assert.equal(calls[0].approved,fixture.headSha)
+  assert.equal(calls[0].head,refreshed)
+  assert.deepEqual(calls[0].context,{})
+})
+
+test('#3411 real Git: production refresh carries only unchanged approval after a two-parent merge and later main movement', async () => {
+  const { mergedReviewComparisonBase } = await import('./manage-migration-author-lanes.mjs')
+  const repo = mkdtempSync(path.join(tmpdir(), 'shared-db-3411-'))
+  const git = (args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  const commit = (message) => { git(['add', '.']); git(['commit', '-q', '-m', message]); return git(['rev-parse', 'HEAD']) }
+  try {
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'user.email', 'test@example.invalid'])
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'commit.gpgsign', 'false'])
+    writeFileSync(path.join(repo, 'base.txt'), 'base\n'); commit('base')
+    git(['switch', '-q', '-c', 'pr'])
+    writeFileSync(path.join(repo, 'feature.txt'), 'reviewed\n'); const stale = commit('implementation before fix')
+    writeFileSync(path.join(repo, 'feature.txt'), 'fixed\n'); const approved = commit('approved implementation')
+    mkdirSync(path.join(repo, '.agent'))
+    writeFileSync(path.join(repo, '.agent', 'contract.json'), '{}\n'); const head = commit('evidence only')
+    git(['switch', '-q', 'main'])
+    writeFileSync(path.join(repo, 'main.txt'), 'unrelated\n'); commit('main movement')
+    git(['merge', '-q', '--no-ff', '--no-edit', 'pr'])
+    const merge = git(['rev-parse', 'HEAD'])
+    writeFileSync(path.join(repo, 'after-merge.txt'), 'later main movement\n'); const tip=commit('later main movement')
+    git(['remote','add','origin',repo])
+    const base = mergedReviewComparisonBase({ mergeCommitSha: merge, head, main: tip, gitRunner: git })
+    assert.equal(base, git(['rev-parse', `${merge}^1`]))
+    const reads={pr:0,main:0,ancestry:0}
+    const io={
+      getPr:()=>{reads.pr++;return{number:1,merged:true,merge_commit_sha:merge,head:{sha:head}}},
+      mainSha:()=>{reads.main++;return tip},
+      mergeCommitInMain:()=>{reads.ancestry++;return true}
+    }
+    const context={}
+    const compare=(prior)=>githubIo.contentPreservingRefresh.call(io,prior,head,1,context,git)
+    assert.equal(compare(approved).ok,true,'the production method carries unchanged implementation')
+    assert.equal(compare(stale).ok,false,'changed implementation refuses')
+    assert.deepEqual(reads,{pr:1,main:1,ancestry:1},'authoritative PR and ancestry facts are read once for all prior heads')
+    assert.equal(githubIo.contentPreservingRefresh.call(io,approved,head,2,context,git).ok,false,'a comparison context cannot cross PRs')
+    const wrongHeadIo={...io,getPr:()=>({number:1,merged:true,merge_commit_sha:merge,head:{sha:stale}})}
+    assert.match(githubIo.contentPreservingRefresh.call(wrongHeadIo,approved,stale,1,{},git).reason,/second parent/)
+    let failedReads=0
+    const unreadableIo={...io,getPr:()=>{failedReads++;throw new Error('PR read failed')}}
+    const failedContext={}
+    assert.match(githubIo.contentPreservingRefresh.call(unreadableIo,approved,head,1,failedContext,git).reason,/resolve pull request comparison base: PR read failed/)
+    assert.match(githubIo.contentPreservingRefresh.call(unreadableIo,stale,head,1,failedContext,git).reason,/resolve pull request comparison base: PR read failed/)
+    assert.equal(failedReads,1,'an unreadable authority is not repeatedly queried for each prior head')
+    const fetchFailure=()=>{throw new Error('fetch failed')}
+    assert.match(githubIo.contentPreservingRefresh.call(io,approved,head,1,{},fetchFailure).reason,/could not fetch the heads to compare: fetch failed/)
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha: merge, head: stale, main: tip, gitRunner: git }), /second parent/)
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha: merge, head, main: stale, gitRunner: git }), /not proven in current main/)
+    git(['switch','-q','-c','squash',`${merge}^1`])
+    git(['merge','-q','--squash','pr']); const squash=commit('squashed PR')
+    assert.throws(() => mergedReviewComparisonBase({mergeCommitSha:squash,head,main:squash,gitRunner:git}),/second parent/,'a squash has no reviewed second parent')
+  } finally { rmSync(repo, { recursive: true, force: true }) }
 })

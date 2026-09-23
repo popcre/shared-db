@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3290,
+  "outcome": "ready-for-merge",
+  "pr": 3446,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3290/16",
+  "contract_sha256": "e35e7f82e55df772e40ca007c67db3ed13565b08bef14831eef5661938bb9181",
+  "head_sha": "b1d0810e121158b59bc0e8acb3f0762e95931ca4",
+  "files_changed": [
+    ".gitignore",
+    "docs/verification/product-type-reader/baseline-2026-09-23.md",
+    "docs/verification/product-type-reader/final-2026-09-23.md",
+    "plan_product_type_reader.md",
+    "tools/product_type_reader/README.md",
+    "tools/product_type_reader/__init__.py",
+    "tools/product_type_reader/baseline.py",
+    "tools/product_type_reader/construction_rules.py",
+    "tools/product_type_reader/evaluate.py",
+    "tools/product_type_reader/gold/coverage.py",
+    "tools/product_type_reader/legacy.py",
+    "tools/product_type_reader/material_rules.py",
+    "tools/product_type_reader/reader.py",
+    "tools/product_type_reader/storage_rules.py",
+    "tools/product_type_reader/test_catalog_fixture.py",
+    "tools/product_type_reader/test_construction_rules.py",
+    "tools/product_type_reader/test_evaluate.py",
+    "tools/product_type_reader/test_material_rules.py",
+    "tools/product_type_reader/test_reader.py",
+    "tools/product_type_reader/test_storage_rules.py",
+    "tools/product_type_reader/test_treatment_rules.py",
+    "tools/product_type_reader/treatment_rules.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python -m pytest -q docs/verification/item-mg-reclassification-20260814 tools/product_type_reader",
+      "exit_code": 0,
+      "evidence": "1304 passed, 1 skipped (private fixture) at b1d0810e; private fixture 37 passed"
+    }
+  ],
+  "assumptions_resolved": [
+    "Strict evaluation passed at b1d0810e: 18985 correct, 0 wrong, 0 errors.",
+    "Generation 16 is the single evidence pair on this branch; its implementation head differs from the PR head only by this pair."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "3a46121f865137ccef79ac3bc0463e993ebad495"
+}

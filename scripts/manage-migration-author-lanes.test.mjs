@@ -8664,6 +8664,45 @@ test('reap skips a lease that became live again before the mutex was held (#2711
   assert.equal(result.reaped.length,0);assert.equal(result.skippedChanged,1);assert.ok(io.refs.has(moved))
 })
 
+
+// Issue #3449: a legacy v1 lease whose PR merged with a recorded verdict is terminal.
+function legacyLeaseIo(){
+  const base=abandonedLeaseIo(),{io,prs}=base
+  io.readActiveReviewLeases=()=>new Map([...io.refs].filter(([ref])=>ref.startsWith('refs/db-review-active')).map(([ref,sha])=>[ref,{sha,commit:io.getCommit(sha)}]))
+  const legacy=(index,{issue,pr,headSha,state='closed',merged=true,verdict=true})=>{
+    const reviewer=ACTIVE_REVIEWERS[index%ACTIVE_REVIEWERS.length].name
+    const sha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=${index+1} reviewer=${reviewer} issue=${issue} pr=${pr} head=${headSha}`)
+    const ref=reviewActiveRef(reviewer)
+    io.refs.set(ref,sha);prs.set(pr,{number:pr,state,merged,head:{sha:headSha}})
+    if(verdict)giveVerdict(io,{issue,pr,headSha})
+    return ref
+  }
+  return {...base,legacy}
+}
+
+test('reap retires a legacy v1 lease only when its PR merged with a verdict (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  const done=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const unmerged=legacy(1,{issue:2,pr:22,headSha:'b'.repeat(40),merged:false})
+  const noVerdict=legacy(2,{issue:3,pr:23,headSha:'c'.repeat(40),verdict:false})
+  const preview=reapAbandonedReviewLeases({},new Date(),io)
+  assert.deepEqual(preview.leases.map((row)=>[row.ref,row.reason]),[[done,'legacy-merged-verdict-recorded']])
+  const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
+  assert.equal(applied.reaped.length,1);assert.equal(io.refs.has(done),false)
+  assert.ok(io.refs.has(unmerged));assert.ok(io.refs.has(noVerdict))
+})
+
+test('reap refuses when a legacy lease verdict is unreadable (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const before=new Map(io.refs)
+  const list=io.listRefs?.bind(io),paged=io.listReviewRefsPaged?.bind(io)
+  const fail=(prefix)=>{if(String(prefix).includes('verdict'))throw new Error('HTTP 502')}
+  io.listRefs=(prefix,...rest)=>{fail(prefix);return list(prefix,...rest)}
+  if(paged)io.listReviewRefsPaged=(prefix,...rest)=>{fail(prefix);return paged(prefix,...rest)}
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io))
+  assert.deepEqual(io.refs,before)
+})
 test('an over-long lease snapshot is a determinate refusal, not transient unreadability (#2711)',()=>{
   assert.equal(isCommandSizeFailure(new LaneError('GitHub command failed: spawnSync gh E2BIG')),true)
   assert.equal(isCommandSizeFailure(Object.assign(new Error('spawn'),{code:'ENAMETOOLONG'})),true)

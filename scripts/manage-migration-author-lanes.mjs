@@ -5298,10 +5298,22 @@ function abandonedLeaseReason(row,states){
   if(pr&&pr.head?.sha!==row.assignment.headSha)return 'head-moved'
   return 'verdict-recorded'
 }
+// Issue #3449. A legacy one-slot ref (refs/db-review-active/<reviewer>) is never
+// recomputed under concurrent leases, so a finished one is never overwritten and
+// no release path accepts it (its verdict forbids release). It is reaped only in
+// its terminal state: pull request MERGED and a durable verdict recorded for the
+// exact leased head. Anything else, including an unreadable verdict, is kept.
+function isTerminalLegacyLease(row,states,io){
+  if(row.ref!==reviewActiveRef(row.assignment.reviewer))return false
+  const pr=states?.get(`${row.assignment.issue}:${row.assignment.pr}`)?.pr
+  if(!pr||pr.state==='open'||pr.merged!==true)return false
+  try{return Boolean(hasVerdictForHead(row.assignment.issue,row.assignment.pr,row.assignment.headSha,io,leaseVerdictOptions(row.assignment)))}
+  catch{throw new LaneError(`legacy reviewer lease ${row.ref} verdict is unreadable; nothing was reaped`)}
+}
 function abandonedLeases(io){
   const busy=findBusyReviewers(io)
   if(!busy)throw new LaneError('active reviewer leases are unreadable; nothing was reaped')
-  return busy.stale.filter((row)=>row.ref.startsWith(`${REVIEW_ACTIVE_PARALLEL_REF_PREFIX}/`)).map((row)=>({ref:row.ref,sha:row.sha,reviewer:row.assignment.reviewer,issue:row.assignment.issue,pr:row.assignment.pr,headSha:row.assignment.headSha,reason:abandonedLeaseReason(row,busy.states)}))
+  return busy.stale.filter((row)=>row.ref.startsWith(`${REVIEW_ACTIVE_PARALLEL_REF_PREFIX}/`)||isTerminalLegacyLease(row,busy.states,io)).map((row)=>({ref:row.ref,sha:row.sha,reviewer:row.assignment.reviewer,issue:row.assignment.issue,pr:row.assignment.pr,headSha:row.assignment.headSha,reason:row.ref.startsWith(`${REVIEW_ACTIVE_PARALLEL_REF_PREFIX}/`)?abandonedLeaseReason(row,busy.states):'legacy-merged-verdict-recorded'}))
 }
 function reapAbandonedReviewLeasesOperation(options,now,io){
   io=reviewOperationIo(io)
@@ -6744,8 +6756,10 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     }
     if(!reviewer){
       const failedList=[...failedNames].filter((name)=>ACTIVE_REVIEWERS.some((row)=>row.name===name))
-      const busyList=[...preflightBusy].filter((name)=>!failedNames.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
-      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&!preflightBusy.has(name)&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name)))
+      // #3449: under concurrent leases a live lease never blocks a draw, so it is
+      // never reported as the cause; such a reviewer is counted as ineligible.
+      const busyList=[...preflightBusy].filter((name)=>!concurrentLeases&&!failedNames.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
+      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&(concurrentLeases||!preflightBusy.has(name))&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name)))
       const releaseCommand=failedReviewerReleaseCommand(request,{failureCode,failingCheck})
       const compatiblePrefix=request.slot===1?'no other reviewer is available':'no other independent reviewer is available for slot '+request.slot
       throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)

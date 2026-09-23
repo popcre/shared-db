@@ -88,8 +88,9 @@ def refine_construction(description: object, product_type: str, current: str = "
     # physical construction.  These narrow cases correct upstream extras.
     if product_type == "Paint-Your-Own Canvas Set" and stated(r"\bcanvas panel\b"):
         parts.discard("Panel")
-    if product_type == "Hard Storage Box" and stated(r"\bfaux book storage set\b"):
-        parts.discard("Set")
+    # A faux book is one object; a stated set or piece count is its construction.
+    if product_type == "Faux Book" and stated(r"\bset\b|\b(?:two|three|\d+)[- ]?(?:piece|pc)s?\b"):
+        parts.add("Set")
     if product_type == "Box Shelf" and re.search(r"\bnested mdf box shelf set\b", title + " " + after_size):
         parts.discard("Set")
     if product_type == "Storage Cube":
@@ -457,8 +458,6 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Deckled Edge")
     if product_type == "Frame" and stated(r"\blasercut mdf layered frame\b"):
         parts.add("Laser-Cut")
-    if product_type == "Hard Storage Box" and stated(r"\b2[- ]piece faux book\b.{0,30}\bstorage set\b"):
-        parts.add("Set")
     if product_type == "MDF Box" and stated(r"\bmdf box\b.{0,35}\bfloating character\b"):
         parts.add("Floating")
     if product_type == "Photo Frame" and (

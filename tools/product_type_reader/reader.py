@@ -267,7 +267,7 @@ _FIXES = (
     ("Hanging Shoe Organizer", r"\bhanging shoe organi[sz]er\b"),
     ("Jewelry Box", r"\bjewelry box\b"),
     ("Desktop Organizer", r"\b(?:desk|desktop) (?:set )?(?:org|organizer|cubby)\b"),
-    ("Hard Storage Box", r"\bfaux books? desktop storage\b|\bfaux books? storage\b"),
+    ("Faux Book", r"\bfaux books? desktop storage\b|\bfaux books? storage\b"),
     ("Faux Book", r"\bfaux books?\b"),
     ("Desktop Organizer", r"\bfaux books? desk organizer\b"),
     ("MDF Box", r"\bmdf (?:reverse )?box(?:es)?\b"),
@@ -602,6 +602,18 @@ def read_product_type(description: object) -> dict[str, str]:
                 or re.search(r"\b(?:paper |mdf |glass )?prints?\b", physical_prefix)):
             title = title[:depicted_clause.start()].rstrip()
             source_for_helpers = title
+    # "<product> with <words> artwork" describes what is pictured: those words
+    # (wooden bowl, glitter bird) are never the product's material or finish.
+    # Remove only that caption so a later physical clause ("and foil finish")
+    # still reaches the product.
+    with_caption = re.search(
+        r"\s+(?:with|w)\s+(?:(?!(?:paper|holofoil|foil|mdf|canvas|vinyl|stickers?)\b)[^\s,_&+\d]+\s+){1,5}?artwork\b",
+        title, re.I)
+    if with_caption and any(pattern.search(_product_text(DIMENSION.sub(" ", title[:with_caption.start()])))
+                            for _, pattern in PRODUCT_PATTERNS):
+        caption = with_caption.group()
+        title = (title[:with_caption.start()] + " " + title[with_caption.end():]).strip()
+        source_for_helpers = source_for_helpers.replace(caption, " ", 1)
     artwork_marker = re.search(r"\b(?:artwork|illustration|graphic|image|scene|depicting)\b", title, re.I)
     if artwork_marker:
         abstract_heads = {"Lenticular Art", "Framed Lenticular Art", "Art", "Print", "Art Print"}

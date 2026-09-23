@@ -304,7 +304,7 @@ def test_complete_file_organizer_phrase_after_leading_size():
 def test_product_nouns_and_quantity_sets_do_not_become_construction():
     assert refine_construction("DIY canvas panel 2pc set with brush", "Paint-Your-Own Canvas Set", "Panel") == ""
     assert refine_construction("Canvas panel", "Canvas", "Panel") == ""
-    assert refine_construction("Greyboard faux book storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book"
+    assert refine_construction("Greyboard faux book storage set", "Faux Book", "") == "Set"
     assert refine_construction('10x10 nested MDF box shelf set of 2', "Box Shelf", "Nested; Set") == "Nested"
     assert refine_construction("Three-piece storage cubes", "Storage Cube", "Set") == ""
     assert refine_construction("Porch leaner with LED", "Porch Leaner", "Leaner") == ""
@@ -433,7 +433,7 @@ def test_exact_type_subassemblies_do_not_become_artwork_construction():
     assert refine_construction("Canvas_hexagon flower artwork", "Canvas") == ""
     assert refine_construction("Framed art w deckle foil edge paper", "Framed Art") == "Deckled Edge; Framed"
     assert refine_construction("Lasercut MDF layered frame", "Frame") == "Laser-Cut"
-    assert refine_construction("2-piece faux book desktop storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book; Set"
+    assert refine_construction("2-piece faux book desktop storage set", "Faux Book", "") == "Set"
     assert refine_construction("MDF box with floating character", "MDF Box") == "Floating"
     assert refine_construction("MDF box_floating character artwork", "MDF Box") == ""
     assert refine_construction("MDF photo frame_die cut attachment", "Photo Frame", "Die-Cut") == ""
@@ -516,8 +516,8 @@ def test_explicit_attachment_set_legs_and_leaner_physical_clauses():
     assert refine_construction("Photo frame_die cut attachment in portrait", "Photo Frame") == ""
     assert refine_construction("10x14 2 piece set abstract plaque", "Plaque") == "Set"
     assert refine_construction("Plaque 10x14 2 piece set sketch", "Plaque") == ""
-    assert refine_construction("2-piece faux book storage set", "Hard Storage Box", "Faux Book") == "Faux Book; Set"
-    assert refine_construction("Faux book storage set", "Hard Storage Box", "Faux Book; Set") == "Faux Book"
+    assert refine_construction("2-piece faux book storage", "Faux Book", "") == "Set"
+    assert refine_construction("Faux book storage", "Faux Book", "") == ""
     assert refine_construction("MDF prch lners hngng sign 8x12", "Sign", "Hanging") == "Hanging; Leaner"
     assert refine_construction("MDF sign_prch lners hngng artwork", "Sign", "Hanging") == "Hanging"
 

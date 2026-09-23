@@ -284,7 +284,8 @@ def test_specific_physical_products(description, product):
     assert read_product_type(description)["product_type"] == product
 
 def test_faux_book_storage_construction():
-    assert read_product_type("Faux Book Storage")["product_construction"] == "Faux Book"
+    actual = read_product_type("Faux Book Storage")
+    assert (actual["product_type"], actual["product_construction"]) == ("Faux Book", "")
 
 def test_dry_erase_treatment():
     assert read_product_type("dry erase memo board")["product_treatment"] == "Dry-Erase"
@@ -694,7 +695,7 @@ def test_desktop_org_abbreviation_keeps_neutral_type():
 
 
 def test_faux_book_desktop_storage_is_specific_box_form():
-    assert read_product_type('Faux book desktop storage')['product_type'] == 'Hard Storage Box'
+    assert read_product_type('Faux book desktop storage')['product_type'] == 'Faux Book'
 
 
 def test_framed_poster_is_framed_print():
@@ -2125,3 +2126,30 @@ def test_canvasboard_is_a_canvas_panel_even_when_a_painting_set_is_named():
     assert read_product_type('Canvasboard artwork depicting painting set')['product_type'] == 'Canvas'
     assert read_product_type('Canvasboard and MDF Box')['product_type_status'] == 'unreadable'
     assert read_product_type('DIY Canvas with paint pots and brush')['product_type'] == 'Paint-Your-Own Canvas Set'
+
+
+def test_faux_book_storage_is_a_faux_book_and_only_a_stated_set_is_a_set():
+    single = read_product_type('Studio Alpha faux book storage')
+    assert (single['product_type'], single['product_construction']) == ('Faux Book', '')
+    stated = read_product_type('Studio Alpha 2-piece faux book storage set')
+    assert (stated['product_type'], stated['product_construction']) == ('Faux Book', 'Set')
+
+
+@pytest.mark.parametrize("description", ["Storage Hamper", "Studio Alpha storage hampers"])
+def test_storage_hamper_singular_and_plural(description):
+    actual = read_product_type(description)
+    assert actual['product_type_status'] == 'accepted'
+    assert actual['product_type'] == 'Storage Hamper'
+
+
+@pytest.mark.parametrize("description,product,material,treatment", [
+    ("Plastic tray with wooden bowl artwork", "Tray", "Plastic", ""),
+    ("Canvas with small wooden bird artwork", "Canvas", "Canvas", ""),
+    ("Canvas with glitter blue bird artwork", "Canvas", "Canvas", ""),
+    ("Canvas with glitter bird artwork and foil finish", "Canvas", "Canvas", "Foil"),
+])
+def test_words_describing_pictured_artwork_are_not_product_attributes(description, product, material, treatment):
+    actual = read_product_type(description)
+    assert actual['product_type'] == product
+    assert actual['product_material'] == material
+    assert actual['product_treatment'] == treatment

@@ -162,7 +162,7 @@ PRODUCT_PATTERNS: tuple[tuple[str, str, str], ...] = (
     ("Desktop Clock", "Alarm", r"\b(?:metal )?(?:alarm|desktop) clock\b"),
     ("Storage Hamper", "Mesh", r"\bmesh pop up hamper\b|\bpolymesh hamper\b"),
     ("Storage Hamper", "Felt", r"\bfelt (?:oval |half moon |tapered )?hamper\b"),
-    ("Storage Hamper", "Fabric", r"\b(?:fabric |oxford |greyboard |faux leather |nonwoven |rectangle |rectangular |storage )+hamper\b|\bhamper\b"),
+    ("Storage Hamper", "Fabric", r"\b(?:fabric |oxford |greyboard |faux leather |nonwoven |rectangle |rectangular |storage )+hampers?\b|\bhampers?\b"),
     ("Storage Toy Chest", "Fabric", r"\b(?:nonwoven |fabric |oxford |collapsible |storage )*toy chest\b|\btoy bin\b"),
     ("Storage Chest", "Greyboard", r"\b(?:flat top |domed |greyboard |storage )+storage chest\b|\bgreyboard (?:toy )?chest\b"),
     ("Storage Chest", "Plastic", r"\bplastic storage chest\b"),

@@ -214,6 +214,59 @@ export function queueMode({ repo, read = ghJson } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Queue authorization interlock (issue #2530; workflow-refactor closeout §5)
+// ---------------------------------------------------------------------------
+
+// WHY THIS EXISTS. Queue admission releases the merge lock, then GitHub builds
+// a synthetic group commit and the merge-group gate may wait up to 25 minutes
+// for preview rehearsal. Authorization read once at the start of that wait is
+// a stale claim: a production freeze can revoke the PR-head status, and the
+// production lane lock can start, while the gate is still waiting. Posting
+// group-SHA success from that stale read would let GitHub merge under a freeze.
+//
+// Asynchronous merge therefore requires ownership through the actual mutation.
+// The authorize path re-reads the PR-head authorization and asserts the
+// production interlock IMMEDIATELY before posting group-SHA success, while
+// holding the exclusive merge lane (which production acquisition already
+// refuses to overlap). The merge-lane hold is kept until GitHub lands the
+// merge, so a freeze cannot slip between status posting and the mutation.
+
+// A live production lane freezes every merge. This is the same mutual
+// exclusion `--acquire-merge` enforces, restated as a readable assertion so
+// the queue authorize step can name the freeze instead of only failing to
+// acquire.
+export function assertProductionInterlock({ productionHeld = false } = {}) {
+  if (productionHeld) {
+    throw new MergeQueueError('production promotion is active; queue authorization is frozen until the production lane is released')
+  }
+  return true
+}
+
+// The PR-head `Migration guarded merge authorization` status is the durable
+// admission evidence the guarded merge lane posted under its lock. Production
+// freeze revokes it on every open PR head. A queue group may only carry that
+// authorization forward when the live read is STILL success — never a cached
+// value from before a wait.
+export function assertQueueAuthorizationCurrent(headState) {
+  if (headState !== 'success') {
+    throw new MergeQueueError(
+      `exact PR head carries no live successful guarded merge authorization (state: ${headState ?? 'none'}); ` +
+      'a production freeze or prior refusal revoked it — re-run guarded-migration-merge.yml after the freeze lifts',
+    )
+  }
+  return true
+}
+
+// Combined re-check under the merge lock at the actual mutation point.
+// `headState` is a FRESH read of the PR-head authorization status;
+// `productionHeld` is a FRESH read of the production exclusive lane.
+export function recheckQueueInterlock({ headState, productionHeld } = {}) {
+  assertProductionInterlock({ productionHeld })
+  assertQueueAuthorizationCurrent(headState)
+  return { authorized: true, headState, productionHeld: Boolean(productionHeld) }
+}
+
+// ---------------------------------------------------------------------------
 // Shared-preview hold
 // ---------------------------------------------------------------------------
 
@@ -260,6 +313,9 @@ export const USAGE = `Usage:
   node scripts/merge-queue-contract.mjs --queue-mode          Print active|inactive; exit 3 when undecidable
   node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha <main-sha>
                                                               Wait (bounded) for the exact-SHA rehearsal status
+  node scripts/merge-queue-contract.mjs --recheck-interlock --head-sha <pr-head>
+                                                              Re-read PR-head authorization and production
+                                                              interlock under the merge lock at the mutation
 
 Options:
   --repo <owner/name>   Default: GITHUB_REPOSITORY, else this checkout's verified GitHub origin
@@ -313,6 +369,37 @@ export async function main(argv, env = process.env, deps = {}) {
       now: deps.now ?? Date.now,
     })
     console.log(`${PREVIEW_REHEARSAL_CONTEXT}: success on ${sha}`)
+    return 0
+  }
+
+  if (argv.includes('--recheck-interlock')) {
+    const headSha = flagValue(argv, '--head-sha')
+    if (!/^[0-9a-f]{40}$/i.test(String(headSha ?? ''))) throw new MergeQueueError('--recheck-interlock requires a 40-character PR head SHA')
+    // FRESH reads at the mutation point. The production lane is a create-only
+    // coordination ref: presence means a freeze is active. The PR-head status
+    // is re-read here so a revocation during a preview wait cannot be carried
+    // forward as a cached success.
+    const statusRow = read(['api', `repos/${repo}/commits/${headSha}/status`])
+    const headState = (statusRow?.statuses ?? [])
+      .filter((row) => row?.context === GUARDED_AUTHORIZATION_CONTEXT)
+      .map((row) => String(row.state ?? ''))
+      .at(-1) ?? null
+    // Production lane presence: 404 is the normal free-lane answer. ANY other
+    // read failure is fail-closed uncertainty — never "free".
+    let productionHeld = false
+    try {
+      const refRow = read(['api', `repos/${repo}/git/ref/heads/db-coordination/production`])
+      productionHeld = Boolean(refRow?.object?.sha)
+    } catch (error) {
+      const detail = String(error?.message ?? error)
+      if (!/\b404\b/.test(detail)) {
+        throw new MergeQueueError(`production interlock is unreadable (${detail}); refusing to judge the lane free`)
+      }
+      productionHeld = false
+    }
+    // Re-check under the (already held) merge lock.
+    const result = recheckQueueInterlock({ headState, productionHeld })
+    console.log(JSON.stringify(result))
     return 0
   }
 

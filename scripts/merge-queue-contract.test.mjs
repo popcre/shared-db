@@ -7,6 +7,8 @@ import {
   QUEUE_RULE,
   RULESET_NAME,
   assertOldestMigration,
+  assertProductionInterlock,
+  assertQueueAuthorizationCurrent,
   awaitPreviewRehearsal,
   baseNeedsPreview,
   checkQueueOrder,
@@ -16,6 +18,7 @@ import {
   queueRulesetMatches,
   readOpenPullRequests,
   readPullRequestFiles,
+  recheckQueueInterlock,
   rehearsalState,
   verifyQueuePullRequest,
 } from './merge-queue-contract.mjs'
@@ -212,4 +215,67 @@ test('the hold releases on success, waits on pending, and refuses failure', asyn
     awaitPreviewRehearsal({ sha: 'not-a-sha', budgetMs: 10, readStatuses: async () => [], sleep: noSleep }),
     MergeQueueError,
   )
+})
+
+// ---------------------------------------------------------------------------
+// Queue authorization interlock (workflow-refactor closeout §5)
+// ---------------------------------------------------------------------------
+//
+// THE RACE THESE TESTS PIN. Admission under the merge lock releases that lock
+// after queue admission. The merge-group path may then wait up to 25 minutes
+// for preview rehearsal. A production freeze in that window revokes the PR-head
+// authorization and takes the production lane. Carrying the pre-wait success
+// forward would post group-SHA success and let GitHub merge under the freeze.
+// The interlock re-check must refuse, and the authorize path must hold the
+// merge lane through the actual mutation.
+
+test('a production freeze refuses queue authorization at the mutation point', () => {
+  assert.equal(assertProductionInterlock({ productionHeld: false }), true)
+  assert.throws(
+    () => assertProductionInterlock({ productionHeld: true }),
+    /production promotion is active; queue authorization is frozen/,
+  )
+})
+
+test('a revoked PR-head authorization refuses queue authorization at the mutation point', () => {
+  assert.equal(assertQueueAuthorizationCurrent('success'), true)
+  // Production freeze posts state=failure on every open PR head.
+  assert.throws(() => assertQueueAuthorizationCurrent('failure'), /no live successful guarded merge authorization/)
+  assert.throws(() => assertQueueAuthorizationCurrent('pending'), /no live successful guarded merge authorization/)
+  assert.throws(() => assertQueueAuthorizationCurrent('error'), /no live successful guarded merge authorization/)
+  assert.throws(() => assertQueueAuthorizationCurrent(null), /no live successful guarded merge authorization/)
+  assert.throws(() => assertQueueAuthorizationCurrent(undefined), /no live successful guarded merge authorization/)
+})
+
+test('admission -> production freeze/revocation -> queue authorization refuses (the named interleaving)', () => {
+  // T0: guarded merge posted success on the PR head and admitted to the queue.
+  const atAdmission = { headState: 'success', productionHeld: false }
+  assert.equal(recheckQueueInterlock(atAdmission).authorized, true)
+
+  // T1: production freeze revoked the PR-head status during the preview wait.
+  assert.throws(
+    () => recheckQueueInterlock({ headState: 'failure', productionHeld: false }),
+    /no live successful guarded merge authorization/,
+  )
+
+  // T1b: production freeze holds the production lane (revocation may lag).
+  assert.throws(
+    () => recheckQueueInterlock({ headState: 'success', productionHeld: true }),
+    /production promotion is active/,
+  )
+
+  // T1c: both — the production interlock is judged first and names the freeze.
+  assert.throws(
+    () => recheckQueueInterlock({ headState: 'failure', productionHeld: true }),
+    /production promotion is active/,
+  )
+
+  // T2: freeze lifted and guarded merge re-authorized — the mutation may proceed.
+  assert.equal(recheckQueueInterlock({ headState: 'success', productionHeld: false }).authorized, true)
+})
+
+test('the interlock never treats an unreadable authorization as green', () => {
+  for (const headState of ['', 'SUCCESS', 'Success', 'success ', ' none', 0, false, {}]) {
+    assert.throws(() => assertQueueAuthorizationCurrent(headState), MergeQueueError, `headState=${JSON.stringify(headState)} must refuse`)
+  }
 })

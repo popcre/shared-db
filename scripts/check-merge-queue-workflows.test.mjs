@@ -119,6 +119,57 @@ test('the queue gate: one-PR identity, ancestry proof, authorization, preview ho
   assert.match(text, /^ {2}cancel-in-progress: false$/m)
 })
 
+// QUEUE INTERLOCK (workflow-refactor closeout §5). The authorize path must own
+// the ASYNCHRONOUS MUTATION: acquire the merge lane, re-check authorization and
+// the production interlock under that lane, post group-SHA success, and HOLD the
+// lane until GitHub lands the merge. Posting success from a pre-wait read and
+// releasing the lane is the race this structure exists to close.
+test('the authorize job owns the mutation: merge lane before status, re-check under the lane, hold through the merge', () => {
+  const text = readWorkflow('merge-queue-gate.yml')
+  const authorizeIdx = text.indexOf('\n  authorize:')
+  assert.ok(authorizeIdx > -1, 'the queue gate has no authorize job for the asynchronous mutation')
+  const authorizeBlock = text.slice(authorizeIdx)
+
+  // The authorize job is intentionally NOT a required check-run. Its name must
+  // not collide with the required `Merge queue gate` context; a required
+  // check-run still running would keep the group pending while it waits for
+  // the merge it is itself blocking.
+  assert.match(authorizeBlock, /^ {4}name: Queue interlock$/m, 'the authorize job must be named Queue interlock (not a required context)')
+  assert.ok(!/^ {4}name: Merge queue gate$/m.test(authorizeBlock), 'the authorize job must not emit the required Merge queue gate check-run')
+
+  const acquireIdx = authorizeBlock.indexOf('--acquire-merge')
+  const recheckIdx = authorizeBlock.indexOf('--recheck-interlock')
+  const publishIdx = authorizeBlock.indexOf("statuses/$MERGE_GROUP_SHA")
+  const holdIdx = authorizeBlock.indexOf('Hold the merge lane through the actual merge')
+  const releaseIdx = authorizeBlock.indexOf('--release-merge')
+
+  assert.ok(acquireIdx > -1, 'the authorize job never acquires the exclusive merge lane')
+  assert.ok(recheckIdx > acquireIdx, 'the interlock re-check must run AFTER the merge lane is acquired')
+  assert.ok(publishIdx > recheckIdx, 'group-SHA authorization must be published AFTER the interlock re-check')
+  assert.ok(holdIdx > publishIdx, 'the authorize job must hold the lane through the actual merge after posting success')
+  assert.ok(releaseIdx > holdIdx, 'the merge lane must be released only after the hold-through-merge step')
+
+  // Ownership is the lane hold, not the status write: the hold step must poll
+  // for the live PR state and refuse a non-merge terminal state.
+  assert.ok(authorizeBlock.includes("state = 'MERGED'") || authorizeBlock.includes('MERGED'), 'the hold step must observe the actual merge')
+  assert.ok(authorizeBlock.includes('Refusing') || authorizeBlock.includes('REFUSED') || authorizeBlock.includes('revok'),
+    'the hold path must fail closed and revoke when the mutation does not land')
+
+  // The re-check must cover BOTH halves of the interlock: PR-head authorization
+  // freshness and the production lane.
+  assert.ok(text.includes('--recheck-interlock'), 'no --recheck-interlock call exists anywhere in the queue gate')
+  assert.match(text, /recheck-interlock --head-sha/, 'the re-check must pin the exact PR head SHA')
+})
+
+test('the verify job does not post group-SHA success before the interlock re-check', () => {
+  const text = readWorkflow('merge-queue-gate.yml')
+  const verifyBlock = text.slice(text.indexOf('\n  verify:'), text.indexOf('\n  authorize:'))
+  // Success publishing lives only in authorize. verify may post fail-closed
+  // failure, never success, so a stale pre-wait read cannot authorize the merge.
+  assert.ok(!/state=success/.test(verifyBlock), 'verify must not post success authorization; that is the authorize job under the merge lock')
+  assert.ok(verifyBlock.includes('state=failure'), 'verify keeps its fail-closed failure publisher')
+})
+
 test('the guarded merge lane is dual-mode and never uses --admin', () => {
   const text = readWorkflow('guarded-migration-merge.yml')
   assert.ok(text.includes('--queue-mode'), 'the guarded lane does not read live queue state')

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 3418,
+  "outcome": "ready-for-merge",
+  "pr": 3426,
+  "migration_versions": [
+    "20260923040630"
+  ],
+  "contract_ref": "refs/db-contracts/3418/6",
+  "contract_sha256": "4a3369f1aba7efd07ab8cd0324950815623eea4a15828e0010bc3d3b156a3838",
+  "head_sha": "f590350e46a1b3b91dec07f795f4688799706ce1",
+  "base_sha": "1d2a0db59104514e31507f96fd401c3925995086",
+  "files_changed": [
+    "supabase/migrations/20260923040630_popdam_definitive_rejection_lease_reset.sql",
+    "supabase/tests/popdam_bulk_operation_definitive_rejection_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.admin_config"
+  ],
+  "db_writes": [
+    "function public.reset_bulk_operation_submission_lease"
+  ],
+  "checks": [
+    {
+      "command": "Local PostgreSQL current-writer and new-migration contract rollback test",
+      "exit_code": 0,
+      "evidence": "Disposable PostgreSQL with the current writer and repaired migration passed the transactional rollback suite: every 4xx except 400/422 refused using nonempty synthetic provider-shaped JSON evidence, including explicit 411/412/417/419/420/427/430/449 cases; positive 400/422 resets and all existing receipt, revision, owner, lease, pointer, ambiguity, privilege and field-stripping guards passed. Local server stopped."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed against origin/main; Guard B accepted version 20260923040630 after base newest 20260920202755. Live-ledger B2 lacked a local source and remains a CI/preview gate."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main...f590350e46a1b3b91dec07f795f4688799706ce1 returned no whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "The consumer owns authenticated provider-response parsing; SQL refuses unparsed, empty, timeout, disconnect and non-definitive status inputs but cannot authenticate an external response",
+    "The existing writer remains byte-identical and is the sole path that can mint a new receipt after the reset's revision bump"
+  ],
+  "stop_conditions_hit": []
+}

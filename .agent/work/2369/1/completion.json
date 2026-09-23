@@ -21,7 +21,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Only the two named surviving mutants needed new tests; the other 16 were already killed on main."
+    "Only the two named surviving mutants needed new tests; the other 16 were already killed on main.",
+    "Owner restricted reviewers for this sweep to Muse and Grok; review is drawn with that allowlist."
   ],
   "stop_conditions_hit": [],
   "base_sha": "5653b760e445ff27264b82e42596c84afc101ee5"

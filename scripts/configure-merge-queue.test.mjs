@@ -83,7 +83,7 @@ test('main tip preview gate: migration tips need the exact-SHA success first', (
   assert.deepEqual(assertMainTipPreview(docsTip), { held: false })
   const migrationTip = { tipSha: SHA_A, tipPaths: ['supabase/migrations/20260918120000_x.sql'], statuses: [] }
   assert.throws(() => assertMainTipPreview(migrationTip), /Dispatch the bounded post-merge rehearsal/)
-  const rehearsed = { ...migrationTip, statuses: [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success' }] }
+  const rehearsed = { ...migrationTip, statuses: [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-09-18T01:00:00Z', id: 1 }] }
   assert.equal(assertMainTipPreview(rehearsed).held, true)
   assert.throws(() => assertMainTipPreview({ tipSha: 'bad', tipPaths: [], statuses: [] }), /unreadable/)
 })
@@ -93,7 +93,7 @@ test('readMainTip refuses a truncated commit file list', () => {
     const target = args.at(-1)
     if (target.endsWith('/branches/main')) return { commit: { sha: SHA_A } }
     if (target.endsWith(`/commits/${SHA_A}`)) return { files: Array.from({ length: 300 }, (_, i) => ({ filename: `f${i}` })) }
-    if (target.endsWith('/status')) return { statuses: [] }
+    if (target.includes('/statuses')) return [[]]
     throw new Error(`unexpected ${target}`)
   }
   assert.throws(() => readMainTip('acme/widgets', { read }), /truncated/)
@@ -152,7 +152,7 @@ function fakeLive({ withRuleset = false } = {}) {
     if (target.includes('/git/ref/')) throw new Error('HTTP 404: Not Found')
     if (target.endsWith('/branches/main')) return { commit: { sha: SHA_B } }
     if (/commits\/[0-9a-f]{40}$/.test(target)) return { files: [{ filename: 'docs/x.md' }] }
-    if (target.endsWith('/status')) return { statuses: [] }
+    if (target.includes('/statuses')) return [[]]
     throw new Error(`unexpected read ${args.join(' ')}`)
   }
   const treeReader = { pathsAtRef: () => [`.github/workflows/${MERGE_QUEUE_WORKFLOW}`, '.github/workflows/sync.yml', 'AGENTS.md'] }

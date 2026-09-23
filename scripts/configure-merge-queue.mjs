@@ -31,7 +31,7 @@ import { pathToFileURL } from 'node:url'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity, RepositoryIdentityError } from './lib/repository-identity.mjs'
-import { PREVIEW_REHEARSAL_CONTEXT, QUEUE_RULE, RULESET_NAME, baseNeedsPreview, migrationVersions, rehearsalState } from './merge-queue-contract.mjs'
+import { PREVIEW_REHEARSAL_CONTEXT, QUEUE_RULE, RULESET_NAME, baseNeedsPreview, migrationVersions, readAuthorizationStatuses, rehearsalState } from './merge-queue-contract.mjs'
 
 export class ConfigureQueueError extends Error {}
 
@@ -150,8 +150,10 @@ export function readMainTip(repo, { read = ghJson } = {}) {
   if (commit.files_truncated === true || files.length >= 300) {
     throw new ConfigureQueueError(`main tip ${tipSha} changed ${files.length}+ files and GitHub truncated the list; refusing rather than judging a partial diff`)
   }
-  const status = read(['api', `repos/${repo}/commits/${tipSha}/status`])
-  return { tipSha, tipPaths: files.map((f) => f?.filename).filter(Boolean), statuses: status?.statuses ?? null }
+  // PAGINATED `/statuses`, not the combined `/status` page (a collapsed
+  // listing can omit a freeze failure and let a stale success win).
+  const statuses = readAuthorizationStatuses(tipSha, { repo, read })
+  return { tipSha, tipPaths: files.map((f) => f?.filename).filter(Boolean), statuses }
 }
 
 // ---------------------------------------------------------------------------

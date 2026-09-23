@@ -170,6 +170,31 @@ test('the verify job does not post group-SHA success before the interlock re-che
   assert.ok(verifyBlock.includes('state=failure'), 'verify keeps its fail-closed failure publisher')
 })
 
+// ORDER-TRUST CLASS (governed REVISE). Authorization history must be read from
+// the PAGINATED `/statuses` collection via the shared helper, never the
+// combined `/status` page with `| first |` or `.at(-1)`. Combined `/status`
+// collapses and can omit a freeze failure, so a stale success would win.
+test('every authorization status reader uses the shared paginated helper, not combined /status or jq first', () => {
+  const workflows = ['merge-queue-gate.yml', 'guarded-migration-merge.yml', 'shared-supabase-migrations.yml']
+  for (const name of workflows) {
+    const text = readWorkflow(name)
+    assert.ok(!/\| first \|/.test(text), `${name} still uses jq first on a status list`)
+    assert.ok(!/commits\/\$\{[^}]+\}\/status['"]/.test(text) && !/commits\/\$[A-Z_]+\/status['"]/.test(text),
+      `${name} still reads the combined /status page`)
+  }
+  const gate = readWorkflow('merge-queue-gate.yml')
+  assert.ok(gate.includes('--authorization-state'), 'the queue gate must use --authorization-state')
+  assert.ok(gate.includes('--recheck-interlock'), 'the queue gate must use --recheck-interlock')
+  const guarded = readWorkflow('guarded-migration-merge.yml')
+  assert.ok(guarded.includes('--authorization-state'), 'the guarded lane readback must use --authorization-state')
+  const migrations = readWorkflow('shared-supabase-migrations.yml')
+  assert.ok(migrations.includes('--authorization-state'), 'production dispatch must use --authorization-state')
+  assert.ok(migrations.includes('--authorization-row'), 'freeze-lift clearing must use --authorization-row')
+  const contract = readFileSync(new URL('../scripts/merge-queue-contract.mjs', import.meta.url), 'utf8')
+  assert.ok(contract.includes('/statuses?per_page=100'), 'the shared reader must use the paginated /statuses collection')
+  assert.ok(contract.includes('--paginate') && contract.includes('--slurp'), 'the shared reader must paginate')
+})
+
 test('the guarded merge lane is dual-mode and never uses --admin', () => {
   const text = readWorkflow('guarded-migration-merge.yml')
   assert.ok(text.includes('--queue-mode'), 'the guarded lane does not read live queue state')

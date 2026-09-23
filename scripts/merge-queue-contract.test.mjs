@@ -190,23 +190,28 @@ const SHA = 'b'.repeat(40)
 test('rehearsal state is the LATEST status for the exact context', () => {
   assert.equal(rehearsalState([]), null)
   assert.equal(rehearsalState([
-    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure', updated_at: '2026-09-18T00:00:00Z' },
-    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', updated_at: '2026-09-18T01:00:00Z' },
-    { context: 'unrelated', state: 'failure', updated_at: '2026-09-18T02:00:00Z' },
+    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure', created_at: '2026-09-18T00:00:00Z', id: 1 },
+    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-09-18T01:00:00Z', id: 2 },
+    { context: 'unrelated', state: 'failure', created_at: '2026-09-18T02:00:00Z', id: 3 },
   ]), 'success')
+  // Array order must not win: newer failure listed first still wins.
+  assert.equal(rehearsalState([
+    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure', created_at: '2026-09-18T02:00:00Z', id: 2 },
+    { context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-09-18T01:00:00Z', id: 1 },
+  ]), 'failure')
 })
 
 test('the hold releases on success, waits on pending, and refuses failure', async () => {
   const noSleep = async () => {}
-  assert.equal((await awaitPreviewRehearsal({ sha: SHA, budgetMs: 1000, readStatuses: async () => [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success' }], sleep: noSleep })).state, 'success')
+  assert.equal((await awaitPreviewRehearsal({ sha: SHA, budgetMs: 1000, readStatuses: async () => [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-09-18T01:00:00Z', id: 1 }], sleep: noSleep })).state, 'success')
 
   let polls = 0
-  const pendingThenSuccess = async () => (++polls === 3 ? [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success' }] : [])
+  const pendingThenSuccess = async () => (++polls === 3 ? [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-09-18T01:00:00Z', id: 3 }] : [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'pending', created_at: '2026-09-18T00:00:00Z', id: polls }])
   assert.equal((await awaitPreviewRehearsal({ sha: SHA, budgetMs: 100000, intervalMs: 1, readStatuses: pendingThenSuccess, sleep: noSleep })).state, 'success')
   assert.equal(polls, 3)
 
   await assert.rejects(
-    awaitPreviewRehearsal({ sha: SHA, budgetMs: 1000, readStatuses: async () => [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure' }], sleep: noSleep }),
+    awaitPreviewRehearsal({ sha: SHA, budgetMs: 1000, readStatuses: async () => [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure', created_at: '2026-09-18T01:00:00Z', id: 1 }], sleep: noSleep }),
     /is failure; recover preview/,
   )
   await assert.rejects(
@@ -313,8 +318,14 @@ test('latestContextState picks newest by timestamp/id, never array order', () =>
 test('latestContextState refuses malformed or duplicate status histories', () => {
   const ctx = 'Migration guarded merge authorization'
   assert.throws(() => latestContextState(null, ctx), /unreadable/)
+  // created_at is REQUIRED (selectNewestCommitStatus contract): missing or
+  // unparsable refuse — never collapse to epoch 0 and keep array order.
   assert.throws(() => latestContextState([{ context: ctx, state: 'success', created_at: 'nope', id: 1 }], ctx), /malformed ordering metadata/)
-  assert.throws(() => latestContextState([{ context: ctx, state: 'green', created_at: '2026-09-23T01:00:00Z', id: 1 }], ctx), /unrecognized state/)
+  assert.throws(() => latestContextState([{ context: ctx, state: 'success', id: 1 }], ctx), /malformed ordering metadata/)
+  // id is REQUIRED as a positive safe integer.
+  assert.throws(() => latestContextState([{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z' }], ctx), /malformed ordering metadata/)
+  assert.throws(() => latestContextState([{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 0 }], ctx), /malformed ordering metadata/)
+  assert.throws(() => latestContextState([{ context: ctx, state: 'green', created_at: '2026-09-23T01:00:00Z', id: 1 }], ctx), /malformed ordering metadata/)
   assert.throws(() => latestContextState([
     { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
     { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 1 },
@@ -329,13 +340,15 @@ test('--recheck-interlock CLI uses newest status and fail-closed production 404 
   console.log = (msg) => logs.push(String(msg))
   try {
     // Newest row is failure even though success is listed last: must refuse.
+    // Read path is the PAGINATED /statuses collection (`--paginate --slurp`).
     const readOrderTrap = (args) => {
       const url = String(args.at(-1) ?? '')
-      if (url.includes('/status')) {
-        return { statuses: [
+      if (url.includes('/statuses')) {
+        assert.ok(args.includes('--paginate') && args.includes('--slurp'), 'status history must be read paginated')
+        return [[
           { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 2 },
           { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
-        ] }
+        ]]
       }
       throw new Error('HTTP 404 Not Found')
     }
@@ -347,8 +360,8 @@ test('--recheck-interlock CLI uses newest status and fail-closed production 404 
     // Newest success + production 404-shaped free lane: authorizes.
     const readFree = (args) => {
       const url = String(args.at(-1) ?? '')
-      if (url.includes('/status')) {
-        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
+      if (url.includes('/statuses')) {
+        return [[{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1, description: 'ok' }]]
       }
       throw new Error('Not Found')
     }
@@ -357,21 +370,14 @@ test('--recheck-interlock CLI uses newest status and fail-closed production 404 
     assert.match(logs.at(-1) ?? '', /"authorized":true/)
 
     // Bare "Not Found" without 404 digits is still free (aligned with configure-merge-queue).
-    const readBareNotFound = (args) => {
-      const url = String(args.at(-1) ?? '')
-      if (url.includes('/status')) {
-        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
-      }
-      throw new Error('Not Found')
-    }
     logs.length = 0
-    assert.equal(await contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readBareNotFound }), 0)
+    assert.equal(await contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readFree }), 0)
 
     // A non-404 production-ref read failure is fail-closed, never "free".
     const readBlowup = (args) => {
       const url = String(args.at(-1) ?? '')
-      if (url.includes('/status')) {
-        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
+      if (url.includes('/statuses')) {
+        return [[{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }]]
       }
       throw new Error('HTTP 500 upstream')
     }
@@ -384,6 +390,33 @@ test('--recheck-interlock CLI uses newest status and fail-closed production 404 
     logs.length = 0
     assert.equal(await contractMain(['--authorization-state', '--head-sha', headSha], {}, { read: readOrderTrap }), 0)
     assert.equal(logs.at(-1), 'failure')
+
+    // --authorization-row prints newest state|description for freeze-lift matching.
+    logs.length = 0
+    assert.equal(await contractMain(['--authorization-row', '--head-sha', headSha], {}, {
+      read: (args) => {
+        const url = String(args.at(-1) ?? '')
+        if (url.includes('/statuses')) {
+          return [[
+            { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 2, description: 'Revoked by production freeze run 9; re-run guarded-migration-merge.yml' },
+            { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1, description: 'ok' },
+          ]]
+        }
+        throw new Error('Not Found')
+      },
+    }), 0)
+    assert.equal(logs.at(-1), 'failure|Revoked by production freeze run 9; re-run guarded-migration-merge.yml')
+
+    // No rows: none| with empty description.
+    logs.length = 0
+    assert.equal(await contractMain(['--authorization-row', '--head-sha', headSha], {}, {
+      read: (args) => {
+        const url = String(args.at(-1) ?? '')
+        if (url.includes('/statuses')) return [[]]
+        throw new Error('Not Found')
+      },
+    }), 0)
+    assert.equal(logs.at(-1), 'none|')
   } finally {
     console.log = originalLog
   }

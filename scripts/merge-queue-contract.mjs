@@ -266,33 +266,48 @@ export function recheckQueueInterlock({ headState, productionHeld } = {}) {
   return { authorized: true, headState, productionHeld: Boolean(productionHeld) }
 }
 
-// Newest status for one context, decided by timestamp/id — NEVER by response
-// array order. A production freeze revocation is exactly what creates a second
-// row for `Migration guarded merge authorization` (admission success, then
-// freeze failure). Picking `.at(-1)` or `first` trusts whichever row GitHub
-// happened to list and can re-authorize a merge whose live head is already
-// revoked. Same contract as `selectNewestCommitStatus` in the lane manager and
-// `rehearsalState` below: malformed or duplicate identities refuse.
+// PAGINATED status collection, not the combined `/status` page. Combined
+// `/status` collapses and can omit older rows (issue #2274); a freeze failure
+// missing from that page would lose to a stale success. Flatten `--slurp`
+// pages exactly like readPullRequestFiles.
+export function readAuthorizationStatuses(headSha, { repo, read = ghJson } = {}) {
+  if (!repo) throw new MergeQueueError('repository identity is required for a status read')
+  if (!/^[0-9a-f]{40}$/i.test(String(headSha ?? ''))) throw new MergeQueueError('a 40-character commit SHA is required for a status read')
+  const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/commits/${headSha}/statuses?per_page=100`])
+  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) throw new MergeQueueError('commit status pagination is unreadable')
+  return pages.flat()
+}
+
+export function readAuthorizationRow(headSha, { repo, read = ghJson } = {}) {
+  return latestContextRow(readAuthorizationStatuses(headSha, { repo, read }), GUARDED_AUTHORIZATION_CONTEXT)
+}
+
+export function readAuthorizationState(headSha, { repo, read = ghJson } = {}) {
+  return readAuthorizationRow(headSha, { repo, read })?.state ?? null
+}
 export function latestContextState(rows, context) {
   return latestContextRow(rows, context)?.state ?? null
 }
 
-// Newest row for one context (state and description), decided by timestamp/id.
+// Newest row for one context (state and description). Contract is the same as
+// `selectNewestCommitStatus` in the lane manager: created_at and a positive
+// safe-integer id are REQUIRED, duplicate identities refuse, unrecognized
+// states refuse, and ordering is timestamp then id — never response array
+// order. The caller must feed the PAGINATED `/statuses` collection
+// (`.../commits/:sha/statuses?per_page=100`), not the combined `/status`
+// page: a freeze failure missing from a collapsed listing would lose to a
+// stale success on that page.
 export function latestContextRow(rows, context) {
   if (!Array.isArray(rows)) throw new MergeQueueError('commit status history is unreadable')
   const matching = rows.filter((row) => row?.context === context).map((row) => {
-    const rawAt = row.updated_at ?? row.created_at
-    const at = rawAt == null || rawAt === 0 ? 0 : Date.parse(rawAt)
+    const createdAt = new Date(row.created_at).getTime()
     const id = Number(row.id)
-    if (!Number.isFinite(at) || (row.id != null && (!Number.isSafeInteger(id) || id <= 0))) {
+    if (!Number.isFinite(createdAt) || !Number.isSafeInteger(id) || id <= 0 || !['success', 'failure', 'pending', 'error'].includes(row.state)) {
       throw new MergeQueueError('commit status history has malformed ordering metadata')
     }
-    if (!['success', 'failure', 'pending', 'error'].includes(String(row.state ?? ''))) {
-      throw new MergeQueueError('commit status history has an unrecognized state')
-    }
-    return { at, id: Number.isSafeInteger(id) && id > 0 ? id : 0, state: String(row.state), description: String(row.description ?? '') }
+    return { at: createdAt, id, state: String(row.state), description: String(row.description ?? '') }
   })
-  if (matching.some((row) => row.id > 0) && new Set(matching.filter((r) => r.id > 0).map((row) => row.id)).size !== matching.filter((r) => r.id > 0).length) {
+  if (new Set(matching.map((row) => row.id)).size !== matching.length) {
     throw new MergeQueueError('commit status history has duplicate identities')
   }
   matching.sort((a, b) => b.at - a.at || b.id - a.id)
@@ -397,7 +412,7 @@ export async function main(argv, env = process.env, deps = {}) {
       sha,
       budgetMs,
       intervalMs,
-      readStatuses: deps.readStatuses ?? (async (commit) => ghJson(['api', `repos/${repo}/commits/${commit}/status`]).statuses),
+      readStatuses: deps.readStatuses ?? (async (commit) => readAuthorizationStatuses(commit, { repo, read })),
       sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
       now: deps.now ?? Date.now,
     })
@@ -412,10 +427,8 @@ export async function main(argv, env = process.env, deps = {}) {
     // coordination ref: presence means a freeze is active. The PR-head status
     // is re-read here so a revocation during a preview wait cannot be carried
     // forward as a cached success.
-    const statusRow = read(['api', `repos/${repo}/commits/${headSha}/status`])
-    // Newest-by-timestamp, never array order: a freeze revocation is a second
-    // row on the same context and must win over the earlier admission success.
-    const headRow = latestContextRow(statusRow?.statuses ?? [], GUARDED_AUTHORIZATION_CONTEXT)
+    // PAGINATED `/statuses` collection, not the combined `/status` page.
+    const headRow = readAuthorizationRow(headSha, { repo, read })
     const headState = headRow?.state ?? null
     if (argv.includes('--authorization-state')) {
       console.log(headState ?? 'none')

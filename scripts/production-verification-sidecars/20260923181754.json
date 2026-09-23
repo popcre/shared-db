@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "migration_version": "20260923181754",
+  "migration_sha256": "90178ace55446d35f400310d5d4202a51c4490fd51043882de9e6281b08c016a",
+  "checks": [
+    {
+      "id": "absent_art_piece",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.art_piece",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_artists",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.artists",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_comments",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.comments",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_customers",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.customers",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_product_category",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.product_category",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_art_piece_id_seq",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.art_piece_id_seq",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_artists_id_seq",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.artists_id_seq",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_comments_id_seq",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.comments_id_seq",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_customers_customers_id_seq",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.customers_customers_id_seq",
+      "expected_count": 1
+    },
+    {
+      "id": "absent_product_category_id_seq",
+      "kind": "catalog_absence",
+      "object": "designflow_frozen_20260710.product_category_id_seq",
+      "expected_count": 1
+    }
+  ]
+}

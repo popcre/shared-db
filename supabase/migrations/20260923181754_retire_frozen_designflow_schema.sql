@@ -8,9 +8,9 @@ SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
 
 -- Freeze both child sets, the proposed parents and every retiring table while
--- checking identity. SHARE blocks parent writes without changing parent data.
+-- checking identity. SHARE ROW EXCLUSIVE blocks parent writes without changing parent data.
 LOCK TABLE app."RolePermissions", plm.art_piece_attachment IN ACCESS EXCLUSIVE MODE;
-LOCK TABLE dflow."Roles", dflow.art_piece IN SHARE MODE;
+LOCK TABLE dflow."Roles", dflow.art_piece IN SHARE ROW EXCLUSIVE MODE;
 LOCK TABLE designflow_frozen_20260710."Factory",
   designflow_frozen_20260710."Roles", designflow_frozen_20260710.art_piece,
   designflow_frozen_20260710.artists, designflow_frozen_20260710.comments,

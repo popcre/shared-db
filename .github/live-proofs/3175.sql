@@ -8,7 +8,7 @@ with expected(signature, body_md5) as (values
   from expected e left join pg_proc p on p.oid=to_regprocedure(e.signature)
 )
 select (
-  exists(select 1 from supabase_migrations.schema_migrations where version='20260920151128')
+  exists(select 1 from supabase_migrations.schema_migrations where version='20260923173656')
   and count(*)=2
   and bool_and(oid is not null and md5(prosrc)=body_md5 and prosecdef
       and not has_function_privilege('anon',oid,'EXECUTE')

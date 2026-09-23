@@ -266,6 +266,34 @@ export function recheckQueueInterlock({ headState, productionHeld } = {}) {
   return { authorized: true, headState, productionHeld: Boolean(productionHeld) }
 }
 
+// Newest status for one context, decided by timestamp/id — NEVER by response
+// array order. A production freeze revocation is exactly what creates a second
+// row for `Migration guarded merge authorization` (admission success, then
+// freeze failure). Picking `.at(-1)` or `first` trusts whichever row GitHub
+// happened to list and can re-authorize a merge whose live head is already
+// revoked. Same contract as `selectNewestCommitStatus` in the lane manager and
+// `rehearsalState` below: malformed or duplicate identities refuse.
+export function latestContextState(rows, context) {
+  if (!Array.isArray(rows)) throw new MergeQueueError('commit status history is unreadable')
+  const matching = rows.filter((row) => row?.context === context).map((row) => {
+    const rawAt = row.updated_at ?? row.created_at
+    const at = rawAt == null || rawAt === 0 ? 0 : Date.parse(rawAt)
+    const id = Number(row.id)
+    if (!Number.isFinite(at) || (row.id != null && (!Number.isSafeInteger(id) || id <= 0))) {
+      throw new MergeQueueError('commit status history has malformed ordering metadata')
+    }
+    if (!['success', 'failure', 'pending', 'error'].includes(String(row.state ?? ''))) {
+      throw new MergeQueueError('commit status history has an unrecognized state')
+    }
+    return { at, id: Number.isSafeInteger(id) && id > 0 ? id : 0, state: String(row.state) }
+  })
+  if (matching.some((row) => row.id > 0) && new Set(matching.filter((r) => r.id > 0).map((row) => row.id)).size !== matching.filter((r) => r.id > 0).length) {
+    throw new MergeQueueError('commit status history has duplicate identities')
+  }
+  matching.sort((a, b) => b.at - a.at || b.id - a.id)
+  return matching[0]?.state ?? null
+}
+
 // ---------------------------------------------------------------------------
 // Shared-preview hold
 // ---------------------------------------------------------------------------
@@ -313,6 +341,8 @@ export const USAGE = `Usage:
   node scripts/merge-queue-contract.mjs --queue-mode          Print active|inactive; exit 3 when undecidable
   node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha <main-sha>
                                                               Wait (bounded) for the exact-SHA rehearsal status
+  node scripts/merge-queue-contract.mjs --authorization-state --head-sha <pr-head>
+                                                              Print the NEWEST PR-head authorization state
   node scripts/merge-queue-contract.mjs --recheck-interlock --head-sha <pr-head>
                                                               Re-read PR-head authorization and production
                                                               interlock under the merge lock at the mutation
@@ -372,18 +402,21 @@ export async function main(argv, env = process.env, deps = {}) {
     return 0
   }
 
-  if (argv.includes('--recheck-interlock')) {
+  if (argv.includes('--authorization-state') || argv.includes('--recheck-interlock')) {
     const headSha = flagValue(argv, '--head-sha')
-    if (!/^[0-9a-f]{40}$/i.test(String(headSha ?? ''))) throw new MergeQueueError('--recheck-interlock requires a 40-character PR head SHA')
+    if (!/^[0-9a-f]{40}$/i.test(String(headSha ?? ''))) throw new MergeQueueError('--authorization-state/--recheck-interlock requires a 40-character PR head SHA')
     // FRESH reads at the mutation point. The production lane is a create-only
     // coordination ref: presence means a freeze is active. The PR-head status
     // is re-read here so a revocation during a preview wait cannot be carried
     // forward as a cached success.
     const statusRow = read(['api', `repos/${repo}/commits/${headSha}/status`])
-    const headState = (statusRow?.statuses ?? [])
-      .filter((row) => row?.context === GUARDED_AUTHORIZATION_CONTEXT)
-      .map((row) => String(row.state ?? ''))
-      .at(-1) ?? null
+    // Newest-by-timestamp, never array order: a freeze revocation is a second
+    // row on the same context and must win over the earlier admission success.
+    const headState = latestContextState(statusRow?.statuses ?? [], GUARDED_AUTHORIZATION_CONTEXT)
+    if (argv.includes('--authorization-state')) {
+      console.log(headState ?? 'none')
+      return 0
+    }
     // Production lane presence: 404 is the normal free-lane answer. ANY other
     // read failure is fail-closed uncertainty — never "free".
     let productionHeld = false
@@ -392,7 +425,10 @@ export async function main(argv, env = process.env, deps = {}) {
       productionHeld = Boolean(refRow?.object?.sha)
     } catch (error) {
       const detail = String(error?.message ?? error)
-      if (!/\b404\b/.test(detail)) {
+      // Same classifier as configure-merge-queue.mjs readHeldLanes: only a
+      // genuine "not found" answer means the lane is free. Anything else is
+      // unreadable state and must refuse.
+      if (!/HTTP 404|Not Found/i.test(detail)) {
         throw new MergeQueueError(`production interlock is unreadable (${detail}); refusing to judge the lane free`)
       }
       productionHeld = false

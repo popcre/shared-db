@@ -12,6 +12,8 @@ import {
   awaitPreviewRehearsal,
   baseNeedsPreview,
   checkQueueOrder,
+  latestContextState,
+  main as contractMain,
   migrationVersions,
   pullRequestFromQueueRef,
   queueMode,
@@ -277,5 +279,112 @@ test('admission -> production freeze/revocation -> queue authorization refuses (
 test('the interlock never treats an unreadable authorization as green', () => {
   for (const headState of ['', 'SUCCESS', 'Success', 'success ', ' none', 0, false, {}]) {
     assert.throws(() => assertQueueAuthorizationCurrent(headState), MergeQueueError, `headState=${JSON.stringify(headState)} must refuse`)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Newest-by-timestamp status selection (REVISE finding: order-trust is fail-open)
+// ---------------------------------------------------------------------------
+
+test('latestContextState picks newest by timestamp/id, never array order', () => {
+  const ctx = 'Migration guarded merge authorization'
+  // Admission success listed AFTER freeze failure: the newer failure must win.
+  assert.equal(latestContextState([
+    { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 2 },
+    { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
+  ], ctx), 'failure')
+  // Same, opposite listing order.
+  assert.equal(latestContextState([
+    { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
+    { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 2 },
+  ], ctx), 'failure')
+  // Tie on timestamp: higher id wins.
+  assert.equal(latestContextState([
+    { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
+    { context: ctx, state: 'failure', created_at: '2026-09-23T01:00:00Z', id: 2 },
+  ], ctx), 'failure')
+  // Unrelated contexts ignored; empty means none (hold, not pass).
+  assert.equal(latestContextState([
+    { context: 'other', state: 'success', created_at: '2026-09-23T03:00:00Z', id: 9 },
+  ], ctx), null)
+  assert.equal(latestContextState([], ctx), null)
+})
+
+test('latestContextState refuses malformed or duplicate status histories', () => {
+  const ctx = 'Migration guarded merge authorization'
+  assert.throws(() => latestContextState(null, ctx), /unreadable/)
+  assert.throws(() => latestContextState([{ context: ctx, state: 'success', created_at: 'nope', id: 1 }], ctx), /malformed ordering metadata/)
+  assert.throws(() => latestContextState([{ context: ctx, state: 'green', created_at: '2026-09-23T01:00:00Z', id: 1 }], ctx), /unrecognized state/)
+  assert.throws(() => latestContextState([
+    { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
+    { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 1 },
+  ], ctx), /duplicate identities/)
+})
+
+test('--recheck-interlock CLI uses newest status and fail-closed production 404 matching', async () => {
+  const headSha = 'a'.repeat(40)
+  const ctx = 'Migration guarded merge authorization'
+  const logs = []
+  const originalLog = console.log
+  console.log = (msg) => logs.push(String(msg))
+  try {
+    // Newest row is failure even though success is listed last: must refuse.
+    const readOrderTrap = (args) => {
+      const url = String(args.at(-1) ?? '')
+      if (url.includes('/status')) {
+        return { statuses: [
+          { context: ctx, state: 'failure', created_at: '2026-09-23T02:00:00Z', id: 2 },
+          { context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 },
+        ] }
+      }
+      throw new Error('HTTP 404 Not Found')
+    }
+    await assert.rejects(
+      contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readOrderTrap }),
+      /no live successful guarded merge authorization \(state: failure\)/,
+    )
+
+    // Newest success + production 404-shaped free lane: authorizes.
+    const readFree = (args) => {
+      const url = String(args.at(-1) ?? '')
+      if (url.includes('/status')) {
+        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
+      }
+      throw new Error('Not Found')
+    }
+    logs.length = 0
+    assert.equal(await contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readFree }), 0)
+    assert.match(logs.at(-1) ?? '', /"authorized":true/)
+
+    // Bare "Not Found" without 404 digits is still free (aligned with configure-merge-queue).
+    const readBareNotFound = (args) => {
+      const url = String(args.at(-1) ?? '')
+      if (url.includes('/status')) {
+        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
+      }
+      throw new Error('Not Found')
+    }
+    logs.length = 0
+    assert.equal(await contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readBareNotFound }), 0)
+
+    // A non-404 production-ref read failure is fail-closed, never "free".
+    const readBlowup = (args) => {
+      const url = String(args.at(-1) ?? '')
+      if (url.includes('/status')) {
+        return { statuses: [{ context: ctx, state: 'success', created_at: '2026-09-23T01:00:00Z', id: 1 }] }
+      }
+      throw new Error('HTTP 500 upstream')
+    }
+    await assert.rejects(
+      contractMain(['--recheck-interlock', '--head-sha', headSha], {}, { read: readBlowup }),
+      /production interlock is unreadable/,
+    )
+
+    // --authorization-state prints the newest state only.
+    logs.length = 0
+    assert.equal(await contractMain(['--authorization-state', '--head-sha', headSha], {}, { read: readOrderTrap }), 0)
+    assert.equal(logs.at(-1), 'failure')
+  } finally {
+    console.log = originalLog
   }
 })

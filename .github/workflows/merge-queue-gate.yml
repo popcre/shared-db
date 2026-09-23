@@ -133,9 +133,12 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin main
-          authorization="$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/commits/$REQUESTED_SHA/status" --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+          # Newest-by-timestamp, never array order: a freeze revocation is a
+          # second row on the same context and must win over the earlier
+          # admission success. Shared helper keeps both readers aligned.
+          authorization="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
           test "$authorization" = 'success' || {
-            echo "REFUSED: exact PR head $REQUESTED_SHA carries no successful guarded merge authorization." >&2
+            echo "REFUSED: exact PR head $REQUESTED_SHA carries no successful guarded merge authorization (newest state: ${authorization:-none})." >&2
             exit 1
           }
           bash scripts/check-sql.sh

@@ -47,6 +47,8 @@ def normalize(value: object) -> str:
         "fx book": "faux book", "embossd": "embossed", "embss": "embossed", "embsd": "embossed", "floatingframe": "floating frame",
         "clck": "clock", "canv": "canvas", "pcture": "picture", "vrnish": "varnish",
         "clndr": "calendar",
+        "cntdwn": "countdown", "calndr": "calendar",
+        "stbck": "setback", "mntd": "mounted",
         "mlded": "molded", "mld": "molded", "wll": "wall", "lanscape": "landscape",
         "hngng": "hanging", "rbbn": "ribbon", "glltr": "glitter",
         "fltng": "floating", "embssd": "embossed", "metllc": "metallic", "stoarge": "storage",
@@ -59,6 +61,7 @@ def normalize(value: object) -> str:
         text = re.sub(r"\b" + re.escape(old) + r"\b", new, text)
     text = re.sub(r"\bfloating frm\b", "floating frame", text)
     text = re.sub(r"\bpicture frm\b", "picture frame", text)
+    text = re.sub(r"\bphot frame\b", "photo frame", text)
     text = re.sub(r"\bfrm\b", "framed", text)
     text = re.sub(r"\bframe(?=embossed\b)", "frame ", text)
     text = re.sub(r"\bblock(?=\d)", "block ", text)
@@ -66,6 +69,7 @@ def normalize(value: object) -> str:
     # These catalog abbreviations identify a product only beside its substrate.
     text = re.sub(r"\bcoir\s+mart\b", "coir mat", text)
     text = re.sub(r"\b(mdf|greyboard|plastic|wood|metal)\s+bx\b", r"\1 box", text)
+    text = re.sub(r"\bgreyboard\s+lift[-\s]+off\s+lid\s+bx\b", "greyboard lift off lid box", text)
     text = re.sub(r"\b(?:cnvs|cnv|cvs)(?=\d)", "canvas ", text)
     text = re.sub(r"\bfasux\b", "faux", text)
     text = re.sub(r"\bsrtorage\b", "storage", text)
@@ -76,6 +80,12 @@ def normalize(value: object) -> str:
 # Specific physical nouns take precedence over the legacy generic Canvas rule.
 _FIXES = (
     ("Storage Bin", r"\b(?:storage )?bins?\b"),
+    ("Storage Box", r"\bgreyboard lift off lid box\b"),
+    ("Decorative Bow", r"\bdimensional bow\b"),
+    ("Jewelry Box", r"\bjewelry box(?:es)?\b"),
+    ("Countdown Calendar", r"\b(?:mdf )?block countdown calendar\b"),
+    ("Advent Calendar", r"\badvent calendars?\b"),
+    ("Neon LED Light", r"\bneon led lights?\b"),
     ("Decorative Shape", r"\b(?:die cut )?decorative shapes?\b"),
     ("Hanging Organizer", r"\bhanging organizers?\b"),
     ("Shadowbox", r"\b(?:shadwbx|shadwbox|shbx)\b"),
@@ -131,6 +141,8 @@ _FIXES = (
     ("Framed Glass Shadowbox", r"\bprinted glass shadowbox frame\b|\bprinted glass shadowbox\b"),
     ("Framed Shadowbox", r"\bshadowbox frame\b"),
     ("Framed Glass Art", r"\bframed (?:hexagonal |round )?(?:painted )?glass\b"),
+    ("Framed Glass Art", r"\betched glass in (?:an? )?led frame\b"),
+    ("Glass Shadowbox", r"\bprint glass shadowbox\b|\bshadowbox under glass\b"),
     ("Glass Art", r"\b(?:print on|print) glass\b"),
     ("Framed Collage", r"\bcollage framed\b"),
     ("Framed Canvas", r"\bfloating frame (?:embossed|emboss) print canvas\b"),
@@ -154,6 +166,7 @@ _FIXES = (
     ("Framed Art", r"\b(?:2|two|double) layer framed die cut greyboard\b|\bsetback framed metallic pu\b|\bsetback framed (?:w|with) metallic pu\b"),
     ("Framed Canvas", r"\bframed (?:(?:embossed|paper|high gloss) )+canvas\b|\b(?:floating|floater|float) frame embroidered canvas\b"),
     ("Wall Art", r"\bwool fabric embroidered hanging wall art\b"),
+    ("Wall Art", r"\bwall deco\b"),
     ("Wall Art", r"\bframe wall art\b"),
     ("Banner", r"\b(?:canvas )?hanging (?:fishtail )?banners?\b"),
     ("Banner", r"\bframed banner (?:under|undr) glass\b"),
@@ -887,6 +900,8 @@ def read_product_type(description: object) -> dict[str, str]:
     if common_treatments is not None:
         treatments = [name for name in treatments if name in common_treatments]
     constructions = [name for name, pattern in _CONSTRUCTIONS if re.search(r"\b(?:"+pattern+r")\b", evidence)]
+    if product == "Decorative Bow" and re.search(r"\bdimensional bow\b", evidence):
+        constructions.append("Dimensional")
     if mixed_shadowbox:
         constructions = [name for name in constructions if name != "Molded"]
     # These are explicit assembly words in the title; short intervening

@@ -271,3 +271,11 @@ def test_empty_description_gives_no_treatment():
 def test_same_form_variants_keep_only_common_finish(description, expected):
     noun = "printed glass" if description.lower().startswith("printed glass") else "canvas"
     assert read(description, noun, noun) == expected
+
+
+@pytest.mark.parametrize("description,expected", [
+    ("Orchard greyboard lift-off lid bx, greyboard lift-off lid box w foil 18x20", ()),
+    ("Orchard greyboard lift-off lid bx w foil, greyboard lift-off lid box w foil 18x20", ("Foil",)),
+])
+def test_repeated_lift_off_box_variants_share_only_common_finish(description, expected):
+    assert read(description, "greyboard lift off lid box", "greyboard lift off lid box") == expected

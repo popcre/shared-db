@@ -124,6 +124,7 @@ def _normalize(value: str) -> str:
     text = re.sub(r"\bplque\b", "plaque", text)
     text = re.sub(r"\bdistressedcanvas\b", "distressed canvas", text)
     text = re.sub(r"\bstrge\b", "storage", text)
+    text = re.sub(r"\blift[- ]off lid bx\b", "lift off lid box", text)
     text = re.sub(r"\bchst\b", "chest", text)
     text = re.sub(r"\bgrybrd\b", "greyboard", text)
     text = re.sub(r"\bdomd\b", "domed", text)
@@ -365,6 +366,8 @@ def extract_treatments(
             noun = "canvas"
         elif len(re.findall(r"\bprinted glass\b", normalized_raw)) >= 2:
             noun = "printed glass"
+        elif len(re.findall(r"\blift off lid box\b", normalized_raw)) >= 2:
+            noun = "lift off lid box"
         noun_pattern = re.compile(r"\b" + re.escape(noun) + r"\b")
         raw_noun = noun_pattern.search(normalized_raw)
         if raw_noun:

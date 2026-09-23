@@ -1278,7 +1278,7 @@ def test_explicit_tapestry_beats_generic_hanging_wall_art():
     ("MDF reversible door sign", "Door Sign"),
     ("LED lit silhouette", "Light-Up Silhouette"),
     ("TPR gel sticker", "Gel Sticker"),
-    ("Natural rattan dimensional bow", "Dimensional Decor"),
+    ("Natural rattan dimensional bow", "Decorative Bow"),
     ("Magazine holder with drawer desktop org", "Magazine Holder"),
 ])
 def test_explicit_special_product_noun_stays_specific(description, product):
@@ -1298,7 +1298,7 @@ def test_block_tabletop_placement_after_noun_is_specific():
 @pytest.mark.parametrize("description,product", [
     ("10x48 horror leaner with LED", "Leaner Sign"),
     ("Framed MDF lenticular", "Framed Lenticular Art"),
-    ("Natural Rattan_Dimensional Bow_13x15", "Dimensional Decor"),
+    ("Natural Rattan_Dimensional Bow_13x15", "Decorative Bow"),
     ("MDF wall pegs", "Wall Pegs"),
     ("Nonwoven storage cubes", "Storage Cube"),
     ("Die cut decorative shape", "Decorative Shape"),
@@ -1778,7 +1778,7 @@ def test_literal_tray_relief_wall_art_and_printed_glass_nouns():
     ('Generic wall basket', 'Wall Basket'),
     ('Generic faux boox storage', 'Faux Book'),
     ('DIY SET W 8 PAINT POTS AND BRSH', 'Painting Kit'),
-    ('PE Rattan_Dimensional Bow_12x14', 'Dimensional Decor'),
+    ('PE Rattan_Dimensional Bow_12x14', 'Decorative Bow'),
 ])
 def test_source_neutral_explicit_product_aliases(description, expected):
     assert read_product_type(description)['product_type'] == expected
@@ -1865,3 +1865,49 @@ def test_depicted_product_words_do_not_supply_type_or_attributes(description, pr
     assert actual['product_material'] == material
     assert actual['product_construction'] == ''
     assert actual['product_treatment'] == ''
+
+
+def test_abbreviated_physical_art_and_box_nouns_do_not_need_artwork_identity():
+    assert read_product_type('Printed EVA Wall Deco')['product_type'] == 'Wall Art'
+    framed = read_product_type('STBCK FRMD MNTD ART W PU')
+    assert framed['product_type'] == 'Framed Art'
+    assert framed['product_construction'] == 'Framed; Setback'
+    assert read_product_type('Canvas artwork STBCK FRMD MNTD ART')['product_type'] == 'Canvas'
+    box = read_product_type('Greyboard Lift-Off Lid BX')
+    assert box['product_type'] == 'Storage Box'
+    assert box['product_material'] == 'Greyboard'
+
+
+def test_glass_frame_and_shadowbox_compounds_keep_explicit_object_head():
+    framed = read_product_type('Etched Glass in LED Frame')
+    assert framed['product_type'] == 'Framed Glass Art'
+    assert framed['product_material'] == 'Glass'
+    assert read_product_type('Print Glass Shadowbox')['product_type'] == 'Glass Shadowbox'
+    shadowbox = read_product_type('Paper Shadowbox under Glass')
+    assert shadowbox['product_type'] == 'Glass Shadowbox'
+    assert shadowbox['product_material'] == 'Glass; Paper'
+    assert read_product_type('Canvas artwork etched glass in LED frame')['product_type'] == 'Canvas'
+
+
+def test_specific_box_calendar_frame_and_light_nouns_stay_physical():
+    expected = {
+        'Wood Jewelry Boxes': 'Jewelry Box',
+        'MDF Block CNTDWN CALNDR': 'Countdown Calendar',
+        'Advent Calendar': 'Advent Calendar',
+        'MDF Phot Frame': 'Photo Frame',
+        'Neon LED Light with Cable': 'Neon LED Light',
+    }
+    for description, product_type in expected.items():
+        assert read_product_type(description)['product_type'] == product_type
+    assert read_product_type('Canvas with jewelry box artwork')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas depicting Advent calendar')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Jewelry Box')['product_type_status'] == 'unreadable'
+
+
+def test_dimensional_bow_names_a_bow_only_in_physical_clause():
+    for description in ('PE Rattan_Dimensional Bow_12x14', 'Natural Rattan_Dimensional Bow_12x14'):
+        actual = read_product_type(description)
+        assert actual['product_type'] == 'Decorative Bow'
+        assert actual['product_construction'] == 'Dimensional'
+    assert read_product_type('PE Rattan_Bow artwork')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas with dimensional bow graphic')['product_type'] == 'Canvas'

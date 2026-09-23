@@ -1,9 +1,7 @@
 {
   "allowed_paths": [
-    ".agent/work/3280/6/completion.json",
-    ".agent/work/3280/6/contract.json",
-    ".agent/work/3421/1/completion.json",
-    ".agent/work/3421/1/contract.json",
+    ".agent/work/3421/2/completion.json",
+    ".agent/work/3421/2/contract.json",
     ".github/workflows/agent-work-contract.yml",
     ".github/workflows/cancelled-work-guard.yml",
     ".github/workflows/coldlion-promotion-contract-tests.yml",
@@ -43,7 +41,7 @@
   ],
   "assumptions": [
     "Generation 1 under issue #3421 is the authorized takeover of PR #3279 (Albert: \"spin up a subagent to takeover PR 3279.\") plus the queue-interlock race fix and three governed REVISE class-wide answers.",
-    "PR #3279's generation-6 pair under .agent/work/3280/6/ is inherited historical evidence and is not rewritten."
+    "PR #3279's generation-6 pair under .agent/work/3280/6/ is removed from this pull request so exactly one evidence pair remains (#2708); the takeover's pair is this one."
   ],
   "base_sha": "d7b3cad4c63e3c612a679ee0a60559b588b46dec",
   "branch": "claude/3279-takeover-queue-interlock",
@@ -51,10 +49,8 @@
   "db_writes": [],
   "dispatcher": "Albert Hazan authorized this takeover in his chat message: \"spin up a subagent to takeover PR 3279.\"",
   "file_writes": [
-    ".agent/work/3280/6/completion.json",
-    ".agent/work/3280/6/contract.json",
-    ".agent/work/3421/1/completion.json",
-    ".agent/work/3421/1/contract.json",
+    ".agent/work/3421/2/completion.json",
+    ".agent/work/3421/2/contract.json",
     ".github/workflows/agent-work-contract.yml",
     ".github/workflows/cancelled-work-guard.yml",
     ".github/workflows/coldlion-promotion-contract-tests.yml",
@@ -92,8 +88,8 @@
     "scripts/merge-queue-contract.test.mjs",
     "scripts/throughput-guard/check-production-verification-sidecars.test.mjs"
   ],
-  "generation": 1,
-  "goal": "Take over PR #3279 and close the queue interlock race: authorization re-checked under the merge lock at the actual mutation, ownership held through the merge, and every order-trusted status reader replaced by the paginated newest-by-timestamp helper after three governed REVISE class-wide answers.",
+  "generation": 2,
+  "goal": "Take over PR #3279 and close the queue interlock race: authorization re-checked under the merge lock at the actual mutation, ownership held through the merge, and every order-trusted status reader replaced by the paginated newest-by-timestamp helper after three governed REVISE class-wide answers. Generation 2 removes the inherited 3280/6 pair so exactly one evidence pair remains.",
   "prohibited_actions": [
     "No database write, migration, schema, function, view, role, grant, index, or timeout change.",
     "Do not activate the live merge queue; this contract lands the implementation only.",

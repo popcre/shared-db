@@ -4,12 +4,12 @@
   "outcome": "ready-for-merge",
   "pr": 3420,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3421/1",
-  "contract_sha256": "9902365ad6736d6eff2f771a8b8f92256972b4d70c051862321c8e3c28be119b",
-  "head_sha": "ba90a7f98bb55afde4ce077cca78cb20cab18327",
+  "contract_ref": "refs/db-contracts/3421/2",
+  "contract_sha256": "6f5423922c872737fb96504b1c7128cfa91f74dc6ef12d87e675874550701307",
+  "head_sha": "cd8249c24acf4c2fea650840acc17bb9fdde2c42",
   "files_changed": [
-    ".agent/work/3421/1/completion.json",
-    ".agent/work/3421/1/contract.json",
+    ".agent/work/3421/2/completion.json",
+    ".agent/work/3421/2/contract.json",
     ".github/workflows/merge-queue-gate.yml",
     ".github/workflows/guarded-migration-merge.yml",
     ".github/workflows/shared-supabase-migrations.yml",
@@ -55,8 +55,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Governed Muse APPROVE at ba90a7f98bb55afde4ce077cca78cb20cab18327 (durable verdict refs/db-review-verdicts/3421-3420-ba90a7f98bb55afde4ce077cca78cb20cab18327) after three class-wide REVISE answers on status-reader order trust.",
-    "Queue activation remains out of scope; direct guarded merge stays available."
+    "Governed Muse APPROVE at cd8249c24acf4c2fea650840acc17bb9fdde2c42 after three class-wide REVISE answers on status-reader order trust.",
+    "Exactly one evidence pair remains after removing the inherited 3280/6 pair (#2708)."
   ],
   "stop_conditions_hit": []
 }

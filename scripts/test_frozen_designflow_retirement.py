@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql'
+MIGRATION = ROOT / 'supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql'
 PROOF = ROOT / '.github/live-proofs/2110.sql'
 
 

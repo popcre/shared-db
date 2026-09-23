@@ -11,7 +11,7 @@
   "branch": "codex/2110-retirement-admission-0920",
   "worktree": "D:/repos/wt-2110-retirement-admission-0920",
   "allowed_paths": [
-    "supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql",
+    "supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql",
     ".github/live-proofs/2110.sql",
     "scripts/test_frozen_designflow_retirement.py",
     "docs/verification/2110-frozen-designflow-retirement.md",
@@ -20,7 +20,7 @@
     "types/database.types.ts"
   ],
   "file_writes": [
-    "supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql",
+    "supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql",
     ".github/live-proofs/2110.sql",
     "scripts/test_frozen_designflow_retirement.py",
     "docs/verification/2110-frozen-designflow-retirement.md",

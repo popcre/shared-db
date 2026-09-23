@@ -4,7 +4,7 @@
   "outcome": "ready-for-merge",
   "pr": 3391,
   "migration_versions": [
-    "20260920203316"
+    "20260923181754"
   ],
   "contract_ref": "refs/db-contracts/2110/2",
   "contract_sha256": "aa143cd7905d64c293003b8092de6306c604b3b0bc1d6cdf983e58bae91da8bf",
@@ -16,7 +16,7 @@
     ".github/live-proofs/2110.sql",
     "docs/verification/2110-frozen-designflow-retirement.md",
     "scripts/test_frozen_designflow_retirement.py",
-    "supabase/migrations/20260920203316_retire_frozen_designflow_schema.sql"
+    "supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql"
   ],
   "db_reads": [
     "table dflow.Roles",

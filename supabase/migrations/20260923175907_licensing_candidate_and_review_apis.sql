@@ -8,46 +8,48 @@ set local statement_timeout = '60s';
 
 -- PL/pgSQL is intentional: unlike an inline SQL subquery, the protected query is
 -- planned only after caller privilege checks. No definer identity or RLS bypass.
-create function plm.licensing_opa_observation_count(
-  p_source_system text, p_entity_kind text, p_source_id text
-) returns table(evidence_readable boolean, observation_count bigint)
-language plpgsql stable security invoker set search_path = '' as $function$
+-- Set-returning and called ONCE per view query (materialized CTE below), never per
+-- candidate row: it picks the latest complete capture once, then aggregates that one
+-- capture by property. The capture scan is served by the capture_id-leading unique key
+-- of plm.opa_property_character_capture, so cost is bounded by one capture's size and
+-- does not grow with the number of candidates (#2357 review M2/M4). The small
+-- plm.opa_capture root table is read once per query. Its tie-break deliberately mirrors
+-- plm.begin_opa_capture; a change there must be mirrored here (review L10).
+-- Result: one sentinel row (licensed_property_id NULL) carrying readability, plus one
+-- row per observed property when readable.
+create function plm.licensing_opa_observation_count()
+returns table(evidence_readable boolean, licensed_property_id bigint, observation_count bigint)
+language plpgsql stable parallel safe security invoker set search_path = '' as $function$
 declare
-  v_property_id bigint;
   v_capture_id uuid;
 begin
-  if p_source_system is distinct from 'disney_opa'
-     or p_entity_kind is distinct from 'property'
-     or not has_table_privilege(current_user, 'plm.opa_capture', 'SELECT')
+  if not has_table_privilege(current_user, 'plm.opa_capture', 'SELECT')
      or not has_table_privilege(current_user, 'plm.opa_property_character_capture', 'SELECT')
      -- A filtered slice cannot prove a complete capture count. Do not turn RLS
      -- invisibility into a false zero, even if a future grant permits SELECT.
      or row_security_active('plm.opa_capture'::regclass)
-     or row_security_active('plm.opa_property_character_capture'::regclass)
-     or p_source_id is null or p_source_id !~ '^-?[0-9]+$' then
-    return query select false, null::bigint;
+     or row_security_active('plm.opa_property_character_capture'::regclass) then
+    return query select false, null::bigint, null::bigint;
     return;
   end if;
-  begin
-    v_property_id := p_source_id::bigint;
-  exception when numeric_value_out_of_range then
-    return query select false, null::bigint;
-    return;
-  end;
   select c.id into v_capture_id from plm.opa_capture c
     where c.status = 'complete'
     order by c.source_captured_at desc, c.load_completed_at desc, c.id desc limit 1;
   if v_capture_id is null then
-    return query select false, null::bigint;
+    return query select false, null::bigint, null::bigint;
     return;
   end if;
-  return query select true, count(*)
-    from plm.opa_property_character_capture o
-    where o.capture_id = v_capture_id and o.licensed_property_id = v_property_id;
+  return query
+    select true, null::bigint, null::bigint
+    union all
+    select true, o.licensed_property_id, count(*)
+      from plm.opa_property_character_capture o
+      where o.capture_id = v_capture_id
+      group by o.licensed_property_id;
 end
 $function$;
-revoke all on function plm.licensing_opa_observation_count(text,text,text) from public, anon;
-grant execute on function plm.licensing_opa_observation_count(text,text,text) to authenticated, service_role;
+revoke all on function plm.licensing_opa_observation_count() from public, anon;
+grant execute on function plm.licensing_opa_observation_count() to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 1. Entity candidates -- one row per source entity decision, with the scope
@@ -56,34 +58,52 @@ grant execute on function plm.licensing_opa_observation_count(text,text,text) to
 
 create view api.licensing_entity_candidates
 with (security_invoker = true) as
+with opa as materialized (
+  select * from plm.licensing_opa_observation_count()
+), opa_state as (
+  select coalesce(bool_or(o.evidence_readable) filter (where o.licensed_property_id is null), false) as readable
+  from opa o
+), candidate as (
+  select sr.*,
+    -- 18 digits always fit bigint; longer or malformed ids abstain instead of erroring.
+    case when sr.source_system = 'disney_opa' and sr.entity_kind = 'property'
+              and sr.source_id ~ '^-?[0-9]{1,18}$'
+         then sr.source_id::bigint end as opa_property_id
+  from plm.source_resolution sr
+)
 select
-  sr.source_system,
-  sr.entity_kind,
-  sr.source_id,
-  sr.resolution_status,
-  (sr.resolution_reason is not null) as has_resolution_reason,
+  c.source_system,
+  c.entity_kind,
+  c.source_id,
+  c.resolution_status,
+  (c.resolution_reason is not null) as has_resolution_reason,
   -- Which canonical target the decision points at, if any. Exactly one is non-null for a
   -- matched row (enforced by source_resolution_matched_target_chk); all are null otherwise.
-  sr.core_property_id,
-  sr.core_character_id,
-  sr.core_style_guide_id,
-  sr.core_licensor_id,
-  sr.core_franchise_id,
-  sr.dam_asset_id,
-  (sr.resolution_status in ('unresolved', 'ambiguous')) as needs_decision,
-  (sr.resolution_status = 'ambiguous')                  as is_ambiguous,
+  c.core_property_id,
+  c.core_character_id,
+  c.core_style_guide_id,
+  c.core_licensor_id,
+  c.core_franchise_id,
+  c.dam_asset_id,
+  (c.resolution_status in ('unresolved', 'ambiguous')) as needs_decision,
+  (c.resolution_status = 'ambiguous')                  as is_ambiguous,
   -- Scope configuration remains explicitly licensor-qualified. It does not
   -- establish which licensor owns this unresolved entity.
   scope.source_scope_by_licensor,
-  -- OPA corroboration. Readable only by a caller with rights on the capture tables; a
-  -- browser role sees false/NULL rather than a misleading zero. See the header note.
-  opa.evidence_readable as opa_evidence_readable,
-  opa.observation_count as opa_observation_count,
-  sr.resolved_at,
-  sr.resolved_by,
-  sr.created_at,
-  sr.updated_at
-from plm.source_resolution sr
+  -- OPA corroboration. Readable only by a caller with unfiltered rights on the capture
+  -- tables; a browser role sees false/NULL rather than a misleading zero.
+  (c.opa_property_id is not null and s.readable) as opa_evidence_readable,
+  case when c.opa_property_id is not null and s.readable
+       then coalesce(o.observation_count, 0) end as opa_observation_count,
+  c.resolved_at,
+  -- resolved_by is the audit actor already exposed to authenticated by
+  -- api.source_resolution; it is deliberately kept (review L9). created_by is not exposed.
+  c.resolved_by,
+  c.created_at,
+  c.updated_at
+from candidate c
+cross join opa_state s
+left join opa o on o.licensed_property_id = c.opa_property_id
 left join lateral (
   -- A source resolution has no owning-licensor field for most entity kinds.
   -- Report configuration per licensor, never a cross-licensor permission boolean.
@@ -93,12 +113,9 @@ left join lateral (
     'authorized', lss.authorized_at is not null and lss.authorized_by is not null
   ) order by lss.licensor_id, lss.source_purpose), '[]'::jsonb) as source_scope_by_licensor
   from plm.licensing_source_scope lss
-  where lss.source_system = sr.source_system and lss.scope_axis = 'entity'
-    and lss.permitted_kind = sr.entity_kind
-) scope on true
-left join lateral plm.licensing_opa_observation_count(
-  sr.source_system, sr.entity_kind, sr.source_id
-) opa on true;
+  where lss.source_system = c.source_system and lss.scope_axis = 'entity'
+    and lss.permitted_kind = c.entity_kind
+) scope on true;
 
 comment on view api.licensing_entity_candidates is
   'Browser-safe entity resolution candidates: one row per plm.source_resolution decision with '
@@ -142,7 +159,7 @@ select
   -- tells a reviewer why an otherwise-complete row is not eligible to be matched.
   (lrr.evidence_kind = 'direct_source_assertion'
     and coalesce(scope.relationship_evidence_permitted, false)) as eligible_for_match,
-  scope.authority_count,
+  scope.scope_row_count,
   scope.relationship_evidence_permitted,
   scope.source_purposes,
   lrr.resolved_at,
@@ -152,7 +169,9 @@ select
 from plm.licensing_relationship_resolution lrr
 left join lateral (
   select
-    count(*)                                              as authority_count,
+    -- Every configured scope row for this kind, authority or not (renamed from
+    -- authority_count, review L6); relationship_evidence_permitted is the authority test.
+    count(*)                                              as scope_row_count,
     coalesce(bool_or(lss.source_purpose = 'relationship_evidence' and lss.authorized_at is not null and lss.authorized_by is not null), false) as relationship_evidence_permitted,
     coalesce(array_agg(distinct lss.source_purpose order by lss.source_purpose), '{}'::text[]) as source_purposes
   from plm.licensing_source_scope lss
@@ -190,6 +209,8 @@ with entity_queue as (
     min(sr.created_at)    as oldest_created_at,
     max(sr.updated_at)    as latest_updated_at
   from plm.source_resolution sr
+  -- Open-status predicate is unindexed (review L1): a full scan of the resolution
+  -- table, bounded by its size; add a partial index under its own claim if it grows.
   where sr.resolution_status in ('unresolved', 'ambiguous', 'deferred')
   group by 1, 2, 3, 4, 5
 ),
@@ -244,19 +265,75 @@ do $verify$
 declare
   v_view text;
   v_exposed text;
+  v_missing text;
 begin
   if not exists (
     select 1 from pg_proc p join pg_language l on l.oid=p.prolang
-    where p.oid=to_regprocedure('plm.licensing_opa_observation_count(text,text,text)')
-      and not p.prosecdef and p.provolatile='s' and l.lanname='plpgsql'
-      and 'search_path=""'=any(p.proconfig)
-      and pg_get_function_result(p.oid)='TABLE(evidence_readable boolean, observation_count bigint)'
+    where p.oid=to_regprocedure('plm.licensing_opa_observation_count()')
+      and not p.prosecdef and p.provolatile='s' and p.proparallel='s' and p.proretset
+      and l.lanname='plpgsql'
+      and 'search_path=""'=any(coalesce(p.proconfig,'{}'))
+      and pg_get_function_result(p.oid)='TABLE(evidence_readable boolean, licensed_property_id bigint, observation_count bigint)'
       and has_function_privilege('authenticated',p.oid,'EXECUTE')
       and has_function_privilege('service_role',p.oid,'EXECUTE')
       and not has_function_privilege('anon',p.oid,'EXECUTE')
   ) then
-    raise exception '#2357 VERIFY FAILED: helper must be non-inlined stable SECURITY INVOKER';
+    raise exception '#2357 VERIFY FAILED: helper must be non-inlined stable parallel-safe SECURITY INVOKER';
   end if;
+
+  -- Required columns, positively (review M3): a missing gating column is a failure.
+  select string_agg(format('%s.%s', r.view_name, r.col), ', ')
+    into v_missing
+  from (values
+    ('licensing_entity_candidates','source_system'),('licensing_entity_candidates','entity_kind'),
+    ('licensing_entity_candidates','source_id'),('licensing_entity_candidates','resolution_status'),
+    ('licensing_entity_candidates','has_resolution_reason'),('licensing_entity_candidates','needs_decision'),
+    ('licensing_entity_candidates','is_ambiguous'),('licensing_entity_candidates','source_scope_by_licensor'),
+    ('licensing_entity_candidates','opa_evidence_readable'),('licensing_entity_candidates','opa_observation_count'),
+    ('licensing_entity_candidates','core_property_id'),('licensing_entity_candidates','core_licensor_id'),
+    ('licensing_relationship_candidates','licensor_id'),('licensing_relationship_candidates','source_system'),
+    ('licensing_relationship_candidates','relationship_kind'),('licensing_relationship_candidates','source_left_id'),
+    ('licensing_relationship_candidates','source_right_id'),('licensing_relationship_candidates','resolution_status'),
+    ('licensing_relationship_candidates','evidence_kind'),('licensing_relationship_candidates','has_source_evidence'),
+    ('licensing_relationship_candidates','needs_decision'),('licensing_relationship_candidates','is_ambiguous'),
+    ('licensing_relationship_candidates','eligible_for_match'),('licensing_relationship_candidates','scope_row_count'),
+    ('licensing_relationship_candidates','relationship_evidence_permitted'),('licensing_relationship_candidates','source_purposes'),
+    ('licensing_resolution_queue','scope_axis'),('licensing_resolution_queue','licensor_id'),
+    ('licensing_resolution_queue','source_system'),('licensing_resolution_queue','item_kind'),
+    ('licensing_resolution_queue','resolution_status'),('licensing_resolution_queue','item_count'),
+    ('licensing_resolution_queue','is_ambiguous'),('licensing_resolution_queue','oldest_created_at')
+  ) r(view_name, col)
+  where not exists (
+    select 1 from pg_attribute a
+    where a.attrelid = to_regclass('api.' || r.view_name) and a.attname = r.col
+      and a.attnum > 0 and not a.attisdropped
+  );
+  if v_missing is not null then
+    raise exception '#2357 VERIFY FAILED: required column missing: %', v_missing;
+  end if;
+
+  -- Catalog dependency proof (review L4): each view's rewrite rule depends on the base
+  -- tables it claims to read under invoker security.
+  select string_agg(format('%s->%s', d.view_name, d.base), ', ')
+    into v_missing
+  from (values
+    ('api.licensing_entity_candidates','plm.source_resolution'),
+    ('api.licensing_entity_candidates','plm.licensing_source_scope'),
+    ('api.licensing_relationship_candidates','plm.licensing_relationship_resolution'),
+    ('api.licensing_relationship_candidates','plm.licensing_source_scope'),
+    ('api.licensing_resolution_queue','plm.source_resolution'),
+    ('api.licensing_resolution_queue','plm.licensing_relationship_resolution')
+  ) d(view_name, base)
+  where not exists (
+    select 1 from pg_rewrite rw join pg_depend dep
+      on dep.classid='pg_rewrite'::regclass and dep.objid=rw.oid
+    where rw.ev_class = to_regclass(d.view_name)
+      and dep.refclassid='pg_class'::regclass and dep.refobjid = to_regclass(d.base)
+  );
+  if v_missing is not null then
+    raise exception '#2357 VERIFY FAILED: view dependency missing: %', v_missing;
+  end if;
+
   foreach v_view in array array[
     'api.licensing_entity_candidates',
     'api.licensing_relationship_candidates',
@@ -280,6 +357,9 @@ begin
     -- POSITIVE control: the browser role must be able to read it.
     if not has_table_privilege('authenticated', v_view, 'SELECT') then
       raise exception '#2357 VERIFY FAILED: browser role authenticated cannot read %', v_view;
+    end if;
+    if not has_table_privilege('service_role', v_view, 'SELECT') then
+      raise exception '#2357 VERIFY FAILED: service_role cannot read %', v_view;
     end if;
 
     -- NEGATIVE control: the unauthenticated role must NOT. If this never fires, the grant

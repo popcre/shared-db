@@ -14,6 +14,11 @@ begin
   insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_reason)
     values ('disney_opa','property','923570001','ZZ PRIVATE TEXT 2357'),
            ('paramount','property','923570001','ZZ PRIVATE TEXT 2357');
+  -- Abstention fixtures: kind guard (disney_opa + non-property kind), overflow, negatives.
+  insert into plm.source_resolution(source_system,entity_kind,source_id)
+    values ('disney_opa','character','923570001'),('disney_opa','property',repeat('9',100)),
+           ('disney_opa','property','923579999'),('disney_opa','property','-923579999'),
+           ('disney_opa','property','-'||repeat('9',100));
   insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_status,core_licensor_id)
     select 'warner:zz_fixture2357_queue','licensor',s,s,case when s='matched' then a end
     from unnest(array['unresolved','ambiguous','deferred','matched','no_match','rejected']) s;
@@ -25,13 +30,25 @@ begin
     (licensor_id,source_system,relationship_kind,source_left_id,source_right_id,evidence_kind,source_evidence,resolution_reason)
     values (a,'disney_opa','property_character','ZZ2357-left','ZZ2357-right','direct_source_assertion','ZZ PRIVATE TEXT 2357','ZZ PRIVATE TEXT 2357'),
            (b,'disney_opa','property_character','ZZ2357-left','ZZ2357-right','direct_source_assertion','ZZ PRIVATE TEXT 2357','ZZ PRIVATE TEXT 2357');
+  insert into plm.licensing_relationship_resolution
+    (licensor_id,source_system,relationship_kind,source_left_id,source_right_id,evidence_kind,resolution_status)
+    values (a,'disney_opa','property_character','ZZ2357-closed','ZZ2357-no-match','direct_source_assertion','no_match'),
+           (a,'disney_opa','property_character','ZZ2357-closed','ZZ2357-rejected','direct_source_assertion','rejected');
 
   -- Actual browser reads, not just grants. Original CASE subquery fails here.
   set local role authenticated;
-  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='923570001';
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and entity_kind='property' and source_id='923570001';
   if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 browser evidence must be unreadable/NULL'; end if;
   if jsonb_array_length(r.source_scope_by_licensor) <> 2 then raise exception '2357 licensor scopes collapsed'; end if;
   if to_jsonb(r)::text like '%ZZ PRIVATE TEXT%' then raise exception '2357 entity free text leaked'; end if;
+  if not r.needs_decision or r.is_ambiguous or not r.has_resolution_reason or r.core_property_id is not null
+    then raise exception '2357 entity decision flags wrong'; end if;
+  select * into strict r from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and licensor_id=a;
+  if r.scope_row_count<>0 or r.source_purposes<>'{}'::text[] or r.relationship_evidence_permitted
+     or not r.has_source_evidence or not r.needs_decision or r.is_ambiguous or not r.has_resolution_reason
+    then raise exception '2357 relationship scope/decision columns wrong'; end if;
+  if exists(select 1 from api.licensing_resolution_queue where scope_axis='relationship' and licensor_id=a
+    and resolution_status in ('matched','no_match','rejected')) then raise exception '2357 relationship queue includes closed decisions'; end if;
   select count(*) into n from api.licensing_relationship_candidates where source_left_id='ZZ2357-left';
   if n<>2 then raise exception '2357 cross-licensor candidates collapsed'; end if;
   if exists(select 1 from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and eligible_for_match) then raise exception '2357 unapproved relationship scope claimed authority'; end if;
@@ -55,6 +72,9 @@ begin
   set local role authenticated;
   select count(*) into n from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and eligible_for_match;
   if n<>1 then raise exception '2357 one licensors permission leaked to the other'; end if;
+  select * into strict r from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and licensor_id=a;
+  if r.scope_row_count<>1 or r.source_purposes<>array['relationship_evidence'] or not r.relationship_evidence_permitted
+    then raise exception '2357 relationship scope aggregation wrong'; end if;
   if exists(select 1 from api.licensing_relationship_candidates where source_left_id='ZZ2357-nondirect'
     and eligible_for_match) then raise exception '2357 indirect evidence is eligible despite the direct-evidence rule'; end if;
   reset role;
@@ -67,7 +87,7 @@ begin
     end;
   end loop;
   begin
-    perform * from plm.licensing_opa_observation_count('disney_opa','property','923570001');
+    perform * from plm.licensing_opa_observation_count();
     raise exception '2357 anonymous helper unexpectedly succeeded';
   exception when insufficient_privilege then null;
   end;
@@ -90,18 +110,20 @@ begin
       from generate_series(1,i) j;
   end loop;
   set local role service_role;
-  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='923570001';
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and entity_kind='property' and source_id='923570001';
   if not r.opa_evidence_readable or r.opa_observation_count<>2 then raise exception '2357 latest complete root expected 2, got %',r.opa_observation_count; end if;
   select * into strict r from api.licensing_entity_candidates where source_system='paramount' and source_id='923570001';
   if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 non-OPA evidence must be NULL'; end if;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property',repeat('9',100));
-  if r.evidence_readable or r.observation_count is not null then raise exception '2357 overflowing source ID must abstain'; end if;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','923579999');
-  if not r.evidence_readable or r.observation_count<>0 then raise exception '2357 valid readable absence must be zero'; end if;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','-923579999');
-  if not r.evidence_readable or r.observation_count<>0 then raise exception '2357 valid negative source ID must be readable'; end if;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','-'||repeat('9',100));
-  if r.evidence_readable or r.observation_count is not null then raise exception '2357 negative overflow must abstain'; end if;
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and entity_kind='character' and source_id='923570001';
+  if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 non-property OPA kind must abstain'; end if;
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id=repeat('9',100);
+  if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 overflowing source ID must abstain'; end if;
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='923579999';
+  if not r.opa_evidence_readable or r.opa_observation_count<>0 then raise exception '2357 valid readable absence must be zero'; end if;
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='-923579999';
+  if not r.opa_evidence_readable or r.opa_observation_count<>0 then raise exception '2357 valid negative source ID must be readable'; end if;
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='-'||repeat('9',100);
+  if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 negative overflow must abstain'; end if;
   perform count(*) from api.licensing_relationship_candidates;
   perform count(*) from api.licensing_resolution_queue;
   reset role;
@@ -117,7 +139,7 @@ begin
   if n<>0 then raise exception '2357 entity view bypassed caller RLS'; end if;
   select coalesce(sum(item_count),0) into n from api.licensing_resolution_queue
     where scope_axis='entity' and source_system in ('disney_opa','paramount');
-  if n<>entity_queue_before-2 then raise exception '2357 entity queue bypassed caller RLS'; end if;
+  if n<>entity_queue_before-3 then raise exception '2357 entity queue bypassed caller RLS'; end if;
   reset role;
   drop policy issue2357_fixture_restrict on plm.source_resolution;
 
@@ -132,13 +154,13 @@ begin
   -- Grant alone is not data visibility: actual underlying RLS still governs helper.
   grant select on plm.opa_capture,plm.opa_property_character_capture to authenticated;
   set local role authenticated;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','923570001');
-  if r.evidence_readable or r.observation_count is not null then raise exception '2357 helper bypassed root RLS'; end if;
+  select count(*), bool_or(evidence_readable) into n, v from plm.licensing_opa_observation_count();
+  if n<>1 or v::boolean then raise exception '2357 helper bypassed root RLS'; end if;
   reset role;
   create policy issue2357_fixture_root on plm.opa_capture for select to authenticated using(true);
   set local role authenticated;
-  select * into strict r from plm.licensing_opa_observation_count('disney_opa','property','923570001');
-  if r.evidence_readable or r.observation_count is not null then raise exception '2357 filtered evidence misreported a complete zero'; end if;
+  select count(*), bool_or(evidence_readable) into n, v from plm.licensing_opa_observation_count();
+  if n<>1 or v::boolean then raise exception '2357 filtered evidence misreported a complete zero'; end if;
   reset role;
   drop policy issue2357_fixture_root on plm.opa_capture;
   revoke select on plm.opa_capture,plm.opa_property_character_capture from authenticated;

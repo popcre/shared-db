@@ -246,6 +246,8 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Frayed")
     if product_type == "Writing Desk" and stated(r"\b(?:with|w) legs\b"):
         parts.add("With Legs")
+    if product_type == "Storage Suitcase" and stated(r"\bsuitcs grybrd strg\b"):
+        parts.add("Suitcase")
     diy_noun = {"Planter": "planter", "Trinket Tray": "trinket tray", "Stepping Stone": "stepping stone"}.get(product_type)
     if diy_noun and stated(r"\bdiy\b(?:\s+\w+){0,5}\s+" + diy_noun + r"\b"):
         parts.add("DIY")

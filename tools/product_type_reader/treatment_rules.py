@@ -24,6 +24,7 @@ _LEXICON: tuple[tuple[str, str], ...] = (
     ("Veneer", r"(?:wood )?veneer"),
     ("Invisible Ink", r"invisible ink"),
     ("UV Light", r"uv lights?"),
+    ("UV Lacquer", r"uv lacquer"),
     ("Holographic", r"holographic"),
     ("Painted", r"painted glass"),
     ("Gloss", r"gloss"),

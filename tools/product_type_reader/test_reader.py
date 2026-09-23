@@ -1682,6 +1682,16 @@ def test_shadowbox_bank_noun_outranks_shell_modifiers():
         assert read_product_type(description)['product_type'] == 'Shadowbox Bank'
 
 
+def test_stated_print_canvas_kit_and_die_cut_art_heads_survive_later_captions():
+    assert read_product_type('MDF Spot Varnish Print artwork travel poster')['product_type'] == 'Print'
+    assert read_product_type('Canvas Set with Paint Tubes Brushes Palette')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('CYO Canvas Kit with Paint Pots')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('CYO Canvas Kit with PNT Pots')['product_type'] == 'Paint-Your-Own Canvas Set'
+    assert read_product_type('Double Layer Die Cut Geometric Paper Art')['product_type'] == 'Die-Cut Art'
+    assert read_product_type('Double Layer Art')['product_type'] == 'Art'
+    assert read_product_type('Canvas artwork paint tubes and brushes')['product_type'] == 'Canvas'
+
+
 def test_source_named_collage_and_embossed_canvas_outrank_generic_frame_or_print():
     assert read_product_type('Paper Collage Framed')['product_type'] == 'Framed Collage'
     assert read_product_type('Floating Frame Embossed Print Canvas')['product_type'] == 'Framed Canvas'

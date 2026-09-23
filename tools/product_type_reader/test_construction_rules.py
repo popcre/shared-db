@@ -500,3 +500,9 @@ def test_complete_physical_construction_phrases_stay_bounded():
     assert refine_construction('Model 8x10 in 2" frame', "Frame") == "Framed"
     assert refine_construction('Model 8x10 blue frame artwork', "Frame") == ""
     assert refine_construction('MDF photo frame 8x10 1" frame width', "Frame") == ""
+
+
+def test_source_stated_suitcase_preserves_artwork_boundary():
+    assert refine_construction("Suitcs grybrd strg w foil 7x9", "Storage Suitcase") == "Suitcase"
+    assert refine_construction("Greyboard storage_suitcase skyline artwork", "Storage Suitcase") == ""
+    assert refine_construction("Suitcase shaped greyboard storage", "Storage Suitcase") == ""

@@ -85,6 +85,7 @@ _FIXES = (
     ("Tray", r"\b(?:(?:ceramic|polyresin|acrylic|glass|wood) )?trays?\b"),
     ("Desktop Organizer", r"\bdesktop storage cubb(?:y|ies)\b"),
     ("Stationery Organizer", r"\b(?:stationery|stationary) organi[sz]ers?\b"),
+    ("Print", r"\bmdf spot varnish prints?\b"),
     ("Planter with Photo Frame", r"\bplanter (?:w|with) (?:a )?photo frame\b"),
     ("String Lights", r"\bstring(?:ed)? lights?\b"),
     ("Frame", r"\bmultiframes?\b"),
@@ -208,6 +209,7 @@ _FIXES = (
     ("Art", r"\bhigh gloss small art\b|\bdouble layer (?!die(?:\s|-)?cut\b)(?:\w+ ){0,2}art\b"
      r"|\bframed deckle(?:d)? edge art\b|\bglitter uv lacquer art\b"
      r"|\bmolded (?!(?:foam|shadowbox|frame)\b)\w+ art\b|\bled infinity (?:\w+ ){1,3}art\b"),
+    ("Die-Cut Art", r"\bdouble layer die cut (?:\w+ ){1,2}art\b"),
     ("Boxed Art", r"\bboxed art\b"),
     ("Storage Chest", r"\bdomed chests?\b"),
     ("Growth Chart", r"\bsize chart(?: long)? canvas\b"),
@@ -252,6 +254,8 @@ _FIXES = (
     ("Framed Canvas", r"\b(?:floater|floating|float) frame(?:d)? canvas\b|\bcanvas (?:(?:with|in) )?(?:metallic )?(?:floater|floating|float) frame\b"),
     ("Paint-Your-Own Canvas Set", r"\b(?:diy|paint your own|paint by numbers?) canvas\b"),
     ("Paint-Your-Own Canvas Set", r"\bcanvas (?:set )?(?:(?:with|w) )?(?:\d+ )?(?:paint pots?|brush(?:es)?)\b|\b(?:pbn|diy) (?:printed )?canvas\b"),
+    ("Paint-Your-Own Canvas Set", r"\bcanvas set (?:\w+ ){0,3}paint tubes? (?:and )?brushes? (?:and )?palette\b"
+     r"|\bcyo canvas kit\b.{0,40}\b(?:paint|pnt) pots?\b"),
     ("Perpetual Calendar", r"\b(?:mdf block |block mdf )?perpetual calendars?\b"),
     ("Countdown Calendar", r"\b(?:mdf block )?countdown calendar\b"),
     ("Outdoor Mat", r"\b(?:crumb rubber )?outdoor mats?\b"),

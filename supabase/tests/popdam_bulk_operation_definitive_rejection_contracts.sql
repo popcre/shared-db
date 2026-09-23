@@ -96,8 +96,10 @@ begin
   -- Invalid or unparsed provider outcomes can never turn an uncertain POST
   -- into another chance to submit. Unknown, proxy, conflict, timeout,
   -- dependency/early-retry and rate-limit 4xx are not final rejections.
-  foreach v_status in array array[200, 407, 408, 409, 418, 421,
-                                  423, 424, 425, 426, 429, 499, 500] loop
+  foreach v_status in array array[200, 401, 402, 403, 404, 405, 406,
+                                  407, 408, 409, 410, 413, 414, 415, 416,
+                                  418, 421, 423, 424, 425, 426, 428, 429,
+                                  431, 451, 499, 500] loop
     perform pg_temp.expect_lease_reset_refusal(
       1, 'worker-A', v_token, 'provider_definitive_rejection',
       v_status, v_error, '22023');

@@ -37,15 +37,15 @@ begin
 
   -- This is caller-supplied evidence, not a claim that SQL can authenticate an
   -- external HTTP response. PopDAM must call only after it parsed a definitive
-  -- provider 4xx. Keep a positive set of final rejection statuses: unknown
-  -- future 4xx codes, proxy responses, timeouts, conflict, misrouting,
-  -- lock/dependency/early retry, rate limit and client disconnect must stay on
-  -- the existing ambiguous-submission path. They do not prove a stable rejection.
+  -- provider-origin validation rejection. SQL cannot distinguish a provider
+  -- response from a proxy response based on status and body alone; PopDAM must
+  -- establish that origin before calling. The positive status set accepts
+  -- only the currently justified validation-rejection codes. Every other
+  -- status stays on the existing ambiguous-submission path until its exact
+  -- provider contract is proven.
   if p_reason is distinct from 'provider_definitive_rejection'
      or p_http_status is null
-     or p_http_status <> all(array[400, 401, 402, 403, 404, 405, 406,
-                                    410, 413, 414, 415, 416, 422, 428,
-                                    431, 451])
+     or p_http_status <> all(array[400, 422])
      or jsonb_typeof(p_provider_error) is distinct from 'object'
      or p_provider_error = '{}'::jsonb then
     raise exception 'reset_bulk_operation_submission_lease: parsed definitive 4xx rejection evidence is required'
@@ -117,7 +117,7 @@ end;
 $function$;
 
 comment on function public.reset_bulk_operation_submission_lease(text, bigint, text, text, text, integer, jsonb) is
-  'For popcre/shared-db#3418. Consumes only the current, unexpired submission receipt on an unbound running operation after PopDAM presents parsed definitive provider 4xx rejection evidence. The caller must authenticate the provider response; SQL cannot. Only the enumerated final-rejection HTTP statuses are accepted; timeout, disconnect, retryable or ambiguous 4xx, 5xx, expired or ambiguous lease, stale revision, wrong holder or receipt, and bound provider job cannot reset. The function never returns or remints a receipt.';
+  'For popcre/shared-db#3418. Consumes only the current, unexpired submission receipt on an unbound running operation after PopDAM presents parsed provider-origin definitive validation rejection evidence. The caller must authenticate the provider response; SQL cannot distinguish provider from proxy origin. Only HTTP 400 and 422 are accepted until another exact provider contract is proven; timeout, disconnect, all other 4xx, 5xx, expired or ambiguous lease, stale revision, wrong holder or receipt, and bound provider job cannot reset. The function never returns or remints a receipt.';
 
 revoke execute on function public.reset_bulk_operation_submission_lease(text, bigint, text, text, text, integer, jsonb)
   from public, anon;

@@ -122,10 +122,42 @@ def test_named_paper_stock_and_accessory_clause(title, noun, expected):
     assert material(title, noun, product_type="Framed Print") == expected
 
 
-def test_craft_paper_accessory_after_size_is_explicit_component():
+def test_bare_craft_paper_after_size_is_a_new_clause():
     title = "canvas easel craft paper"
     assert material(title, "easel", boundaries=(13,), product_type="Easel",
+                    base_materials="Canvas") == "Canvas"
+
+
+def test_pre_size_and_directly_connected_craft_paper_still_count():
+    title = "canvas easel with craft paper"
+    assert material(title, "easel", boundaries=(len(title),), product_type="Easel",
                     base_materials="Canvas") == "Canvas; Paper"
+    assert material(title, "easel", boundaries=(len("canvas easel"),), product_type="Easel",
+                    base_materials="Canvas") == "Canvas; Paper"
+    assert material("easel craft paper", "easel", boundaries=(0,),
+                    product_type="Easel") == "Paper"
+
+
+def test_post_size_artwork_craft_paper_does_not_change_material():
+    title = "canvas easel craft paper artwork"
+    assert material(title, "easel", boundaries=(len("canvas easel"),),
+                    product_type="Easel", base_materials="Canvas") == "Canvas"
+
+
+def test_felted_bunting_names_physical_felt():
+    assert material("felted bunting", "bunting", evidence="bunting",
+                    product_type="Bunting") == "Felt"
+    assert material("felted bunting", "bunting", evidence="bunting",
+                    product_type="Bunting", boundaries=(0,)) == "Felt"
+
+
+def test_felted_artwork_or_appearance_is_not_bunting_material():
+    assert material("bunting", "bunting", evidence="bunting",
+                    product_type="Bunting", description="Bunting_Felted artwork") == ""
+    assert material("bunting with felted artwork", "bunting", evidence="bunting",
+                    product_type="Bunting") == ""
+    assert material("felted bunting look wall art", "wall art", evidence="wall art",
+                    product_type="Wall Art") == ""
 
 
 def test_watercolor_paper_artwork_does_not_change_canvas_material():

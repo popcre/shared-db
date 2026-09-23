@@ -1905,9 +1905,96 @@ def test_specific_box_calendar_frame_and_light_nouns_stay_physical():
 
 
 def test_dimensional_bow_names_a_bow_only_in_physical_clause():
-    for description in ('PE Rattan_Dimensional Bow_12x14', 'Natural Rattan_Dimensional Bow_12x14'):
+    for description in ('PE Rattan_Dimensional Bow_12x14', 'Natural Rattan_Dimensional Bow_12x14',
+                        'Sample Rattan_Dimensional Bow_12x14'):
         actual = read_product_type(description)
         assert actual['product_type'] == 'Decorative Bow'
         assert actual['product_construction'] == 'Dimensional'
     assert read_product_type('PE Rattan_Bow artwork')['product_type_status'] == 'unreadable'
     assert read_product_type('Canvas with dimensional bow graphic')['product_type'] == 'Canvas'
+
+
+def test_mirror_effect_is_an_appearance_not_a_second_mirror():
+    assert read_product_type('Canvas with mirror effect')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Mirror')['product_type_status'] == 'unreadable'
+    assert read_product_type('Framed Mirror')['product_type'] == 'Framed Mirror'
+
+
+def test_dry_erase_canvas_is_the_stated_material_of_an_easel():
+    actual = read_product_type('Dry Erase Canvas Folding Easel')
+    assert actual['product_type'] == 'Easel'
+    assert actual['product_material'] == 'Canvas'
+    assert read_product_type('Canvas depicting an easel')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas and Easel')['product_type_status'] == 'unreadable'
+
+
+def test_functional_chalkboard_on_box_is_a_subtype_not_an_artwork_caption():
+    assert read_product_type('MDF Box_With functional chalkboard_10x12')['product_type'] == 'Chalkboard Box'
+    assert read_product_type('MDF Box with chalkboard artwork')['product_type'] == 'MDF Box'
+    assert read_product_type('Canvas with functional chalkboard graphic')['product_type'] == 'Canvas'
+
+
+def test_handpainted_canvas_is_the_content_of_framed_art_assembly():
+    actual = read_product_type('Framed Art with Handpainted Canvas')
+    assert actual['product_type'] == 'Framed Canvas'
+    assert actual['product_material'] == 'Canvas'
+    assert read_product_type('Framed Art with handpainted canvas artwork')['product_type'] == 'Framed Art'
+    assert read_product_type('Canvas depicting framed art')['product_type'] == 'Canvas'
+
+
+def test_photo_frame_head_survives_wall_art_descriptor():
+    actual = read_product_type('MDF Frame Wall Photo Frame Wall Art')
+    assert actual['product_type'] == 'Photo Frame'
+    assert actual['product_construction'] == ''
+    assert actual['product_material'] == 'MDF'
+
+
+def test_whole_shadowbox_frame_specification_after_artwork_names_its_object():
+    actual = read_product_type('Printed Glass with Motif_Illustration_12x14_Shadowbox Oval MDF Frame')
+    assert actual['product_type'] == 'Framed Glass Shadowbox'
+    assert actual['product_construction'] == 'Framed'
+    assert actual['product_material'] == 'Glass'
+    assert read_product_type('Printed Glass_Illustration_Shadowbox artwork frame')['product_type'] == 'Glass Art'
+
+
+def test_wall_art_placement_is_preserved_when_illumination_is_named():
+    assert read_product_type('LED Infinity Wall Art')['product_type'] == 'Wall Art'
+    assert read_product_type('Canvas artwork LED Infinity Wall Art')['product_type'] == 'Canvas'
+
+
+def test_printed_glass_poster_inside_a_frame_is_decorated_glass():
+    actual = read_product_type('Printed Glass Illustrated Poster in Frame')
+    assert actual['product_type'] == 'Framed Glass Art'
+    assert actual['product_construction'] == 'Framed'
+    assert actual['product_material'] == 'Glass'
+    assert read_product_type('Printed Glass Artwork Poster in Frame')['product_type'] != 'Framed Glass Art'
+
+
+def test_mail_organizer_noun_is_more_specific_than_stationery_use():
+    actual = read_product_type('MDF Mail Organizer with Hooks')
+    assert actual['product_type'] == 'Mail Organizer'
+    assert actual['product_material'] == 'MDF'
+    assert read_product_type('Canvas with mail organizer artwork')['product_type'] == 'Canvas'
+
+
+def test_framed_print_with_shadowbox_enclosure_keeps_print_head():
+    actual = read_product_type('Framed Print Glass Shadow Box')
+    assert actual['product_type'] == 'Framed Print'
+    assert actual['product_construction'] == 'Framed'
+    assert actual['product_material'] == 'Glass'
+    assert read_product_type('Framed Print and Glass Shadow Box')['product_type_status'] == 'unreadable'
+
+
+def test_explicit_canvas_eva_bin_refines_material_to_named_container():
+    actual = read_product_type('Canvas w EVA Bin with handle')
+    assert actual['product_type'] == 'Storage Bin'
+    assert actual['product_material'] == 'Canvas; EVA'
+    assert read_product_type('Canvas and EVA Bin')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas w EVA Bin floral pattern')['product_type'] == 'Storage Bin'
+    assert read_product_type('Canvas with EVA Bin graphic')['product_type_status'] == 'unreadable'
+    assert read_product_type('Canvas with graphic of an EVA Bin')['product_type'] == 'Canvas'
+
+
+def test_literal_bunting_is_not_retyped_by_later_wall_art_words():
+    assert read_product_type('Felted Bunting with Wall Art Graphic')['product_type'] == 'Bunting'
+    assert read_product_type('Canvas with bunting graphic')['product_type'] == 'Canvas'

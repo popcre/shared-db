@@ -159,6 +159,7 @@ _CANVAS_EVA_BIN = re.compile(r"\bcanvas (?:w|with) eva bin\b")
 _WIRE_CANVAS = re.compile(r"\bwire emb canvas\b")
 _PU_PRODUCT = re.compile(r"\b(?:stretched pu|faux pu hamper|framed metallic pu|frmd w mtallic pu)\b")
 _FELT_PLUSH_BASKET = re.compile(r"\bplush basket with felt embroidery\b")
+_FELTED_BUNTING = re.compile(r"\bfelted bunting\b(?!\s+(?:look|effect|texture|pattern|design)\b)")
 _WOOD_VENEER_WORD = re.compile(r"\bwood veneer\b")
 _PVC_PRODUCT = re.compile(r"\bpvc (?:household mat|frame)\b")
 _POLYESTER_PRODUCT = re.compile(r"\bpolyester (?:mesh (?:pop up )?(?:\w+ )?hamper|throw rug)\b")
@@ -346,6 +347,8 @@ def extract_materials(
         phrase += " greyboard"
     if _FABRIC_COMPONENT.search(text):
         phrase += " fabric"
+    if _FELTED_BUNTING.search(text[last_size:end]) and product_type == "Bunting":
+        phrase += " felt"
     if (re.search(r"(?:print|plaque|shadowbox|frame|banner|easel|painting|\bart\b)", product_type.lower())
             and _PAPER_STOCK.search(bounded_title) and not re.search(
                 r"\b(?:specialty|speciality|watercolou?r) paper\s+(?:look|texture|effect|artwork)\b",
@@ -353,8 +356,17 @@ def extract_materials(
         phrase += " paper"
     if _PAPER_ACCESSORY.search(bounded_title):
         phrase += " paper"
-    if (product_type in {"Easel", "Paint-Your-Own Canvas Set"} or re.search(r"\beasel\b", text)) and _CRAFT_PAPER_ACCESSORY.search(text):
-        phrase += " paper"
+    if product_type in {"Easel", "Paint-Your-Own Canvas Set"} or re.search(r"\beasel\b", text):
+        first_size = min(size_boundaries, default=len(text))
+        for craft in _CRAFT_PAPER_ACCESSORY.finditer(text):
+            # Bare material words beyond a size are a new source clause, not
+            # evidence for the earlier product. A direct connector still binds
+            # an explicitly included paper accessory to that product.
+            before_craft = text[first_size:craft.start()]
+            if (craft.end() <= first_size or product_start >= first_size
+                    or re.search(r"\b(?:w|with|including|includes)\s+$", before_craft)):
+                phrase += " paper"
+                break
     if _PAPER_COMPONENT.search(text):
         phrase += " paper"
     if _PAPER_PRINT_COMPONENT.search(text):

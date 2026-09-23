@@ -13,6 +13,7 @@ from .legacy import PRODUCT_PATTERNS as LEGACY_PATTERNS
 from .construction_rules import refine_construction
 from .material_rules import extract_materials
 from .treatment_rules import extract_treatments
+from .storage_rules import refine_storage_type
 
 RULES_VERSION = "product-type-reader/1"
 DIMENSION = re.compile(
@@ -86,6 +87,7 @@ _FIXES = (
     ("Countdown Calendar", r"\b(?:mdf )?block countdown calendar\b"),
     ("Advent Calendar", r"\badvent calendars?\b"),
     ("Neon LED Light", r"\bneon led lights?\b"),
+    ("Easel", r"\bdry erase canvas (?:\w+ ){0,3}easels?\b"),
     ("Decorative Shape", r"\b(?:die cut )?decorative shapes?\b"),
     ("Hanging Organizer", r"\bhanging organizers?\b"),
     ("Shadowbox", r"\b(?:shadwbx|shadwbox|shbx)\b"),
@@ -105,6 +107,7 @@ _FIXES = (
     ("Garden Bag", r"\bgarden bags?\b"),
     ("Photo Display String", r"\bphoto string (?:w|with) holders?\b"),
     ("Wall Basket", r"\bwall baskets?\b"),
+    ("Bunting", r"\bbunting\b"),
     ("Faux Book", r"\bfaux boox storage\b"),
     ("Painting Kit", r"\bdiy set (?:w|with) \d+ paint pots? (?:and )?brsh\b"),
     ("Shape", r"\bmdf shapes?\b"),
@@ -113,6 +116,7 @@ _FIXES = (
     ("Decorative Object", r"\bdimensional (?:\w+ )?objects?\b"),
     ("Framed Puzzle Art", r"\bframed puzzle art\b"),
     ("LED Infinity Art", r"\binfinity led art\b|\bled infinity art\b"),
+    ("Wall Art", r"\bled infinity wall art\b"),
     ("Countdown Clock", r"\bcountdown clocks?\b"),
     ("Tall Sign", r"\btall (?:\w+ ){0,3}(?:mdf )?sign\b"),
     ("Perpetual Calendar with Pencil Cup", r"\bperpetual calendar (?:w|with) (?:\w+ )?pencil cup\b"),
@@ -126,6 +130,7 @@ _FIXES = (
     ("Tray", r"\b(?:(?:ceramic|polyresin|acrylic|glass|wood) )?trays?\b"),
     ("Desktop Organizer", r"\bdesktop storage cubb(?:y|ies)\b"),
     ("Stationery Organizer", r"\b(?:stationery|stationary) organi[sz]ers?\b"),
+    ("Mail Organizer", r"\bmail organi[sz]ers?\b"),
     ("Recipe Box", r"\brecipe box(?:es)?\b|\brecipe grey ?board box\b"),
     ("Dry-Erase and Pin Board", r"\bdry erase and (?:\w+ )?pin ?boards?\b"),
     ("Print", r"\bmdf spot varnish prints?\b"),
@@ -142,6 +147,7 @@ _FIXES = (
     ("Framed Shadowbox", r"\bshadowbox frame\b"),
     ("Framed Glass Art", r"\bframed (?:hexagonal |round )?(?:painted )?glass\b"),
     ("Framed Glass Art", r"\betched glass in (?:an? )?led frame\b"),
+    ("Framed Glass Art", r"\bprinted glass (?:(?!artwork|graphic|design|image|scene)\w+ ){0,5}poster in frame\b"),
     ("Glass Shadowbox", r"\bprint glass shadowbox\b|\bshadowbox under glass\b"),
     ("Glass Art", r"\b(?:print on|print) glass\b"),
     ("Framed Collage", r"\bcollage framed\b"),
@@ -165,6 +171,7 @@ _FIXES = (
     ("Framed Art", r"\bframed rattan (?:w|with) raised resin icon\b"),
     ("Framed Art", r"\b(?:2|two|double) layer framed die cut greyboard\b|\bsetback framed metallic pu\b|\bsetback framed (?:w|with) metallic pu\b"),
     ("Framed Canvas", r"\bframed (?:(?:embossed|paper|high gloss) )+canvas\b|\b(?:floating|floater|float) frame embroidered canvas\b"),
+    ("Framed Canvas", r"\bframed art (?:w|with) (?:handpainted|painted) canvas\b"),
     ("Wall Art", r"\bwool fabric embroidered hanging wall art\b"),
     ("Wall Art", r"\bwall deco\b"),
     ("Wall Art", r"\bframe wall art\b"),
@@ -473,6 +480,8 @@ def _mixed_distinct_forms(title: str) -> bool:
             form = "glass art"
         elif re.search(r"\bfoam art\b", clause):
             form = "foam art"
+        elif re.search(r"\beasels?\b", clause):
+            form = "easel"
         elif re.search(r"\bcanvas\b", clause):
             if re.search(r"\b(?:diy|cyo|pyo)\b|\b(?:paint|pnt) pots?\b|\bpaint tubes?\b|"
                          r"\bcanvas set (?:w|with) \d+ paint pts\b", clause):
@@ -535,7 +544,7 @@ def read_product_type(description: object) -> dict[str, str]:
             title = parts[1]
         elif re.fullmatch(r"(?:clay knot|three chain links)(?: tabletop decor)?", next_clause):
             title = parts[1]
-        elif re.fullmatch(r"(?:(?:natural|pe) )?(?:rattan|seagrass|paper rope)", normalize(title)) \
+        elif re.fullmatch(r"(?:[a-z]+ )?(?:(?:natural|pe) )?(?:rattan|seagrass|paper rope)", normalized_title) \
                 and re.fullmatch(r"dimensional (?:bow|deer head)", next_clause):
             title += " " + parts[1]
     source_for_helpers = str(description)
@@ -545,6 +554,22 @@ def read_product_type(description: object) -> dict[str, str]:
     depicted_clause = re.search(
         r"\b(?:with|w|of|featuring|depicting)\s+(?:[a-z-]+\s+){1,7}"
         r"(?:artwork|graphic|design|image|pattern|scene)\b", title, re.I)
+    if depicted_clause:
+        physical_bin = re.search(r"\bcanvas (?:w|with) eva bins?\b", title, re.I)
+        if physical_bin:
+            remainder = title[physical_bin.end():depicted_clause.end()]
+            marker = re.search(r"\b(?:artwork|graphic|design|image|pattern|scene)\b", remainder, re.I)
+            between = normalize(remainder[:marker.start()]).split() if marker else []
+            if marker and not between:
+                # A bin immediately followed by a visual-content noun leaves
+                # its physical scope unresolved.
+                return result
+            if marker and marker.group().lower() == "pattern" and 1 <= len(between) <= 4:
+                # The complete contiguous material-and-bin phrase precedes a
+                # later pattern caption; keep only that physical phrase.
+                title = title[:physical_bin.end()]
+                source_for_helpers = title
+                depicted_clause = None
     if depicted_clause:
         physical_prefix = _product_text(DIMENSION.sub(" ", title[:depicted_clause.start()]))
         depicted_words = _product_text(title[depicted_clause.start():depicted_clause.end()])
@@ -728,6 +753,10 @@ def read_product_type(description: object) -> dict[str, str]:
                     return result
         matches = [entry for entry in matches if not (entry[3] in {"Book", "Mug"} and entry[0] > canvas_start)]
     if any(product != "Canvas" for _, _, _, product, _ in matches):
+        if any(entry[3] == "Canvas" for entry in matches) and re.search(r"\bmirror effect\b", text):
+            # A reflected appearance printed on a canvas is not a mirror.
+            matches = [entry for entry in matches if entry[3] != "Mirror"]
+    if any(product != "Canvas" for _, _, _, product, _ in matches):
         matches = [entry for entry in matches if entry[3] != "Canvas"]
     # A broad noun is still a truthful physical type when that is all the
     # source states. It never competes with an earlier, more specific product.
@@ -776,6 +805,16 @@ def read_product_type(description: object) -> dict[str, str]:
         return result
     for _, _, order, other, found in matches:
         if found.start() < match.end() and match.start() < found.end():
+            if product == "Photo Frame" and other in {"Wall Art", "Framed Art"} and re.search(
+                    r"\bwall photo frames? wall art\b", text):
+                # A trailing wall-art descriptor does not erase the stated
+                # frame object or make framing an added construction.
+                continue
+            if product == "Framed Print" and other == "Glass Shadowbox" and re.search(
+                    r"\bframed prints? glass shadow ?box\b", text):
+                # A contiguous frame/print/shadowbox assembly has one print
+                # head; the shadowbox wording specifies its enclosure.
+                continue
             if order < len(_FIXES) and ((found.end()-found.start()) > (match.end()-match.start()) or
                     ((found.end()-found.start()) == (match.end()-match.start()) and order < selected_order)):
                 product, match, selected_order = other, found, order
@@ -805,6 +844,12 @@ def read_product_type(description: object) -> dict[str, str]:
             r"\bshadowbox(?:es)?\b", text[:boundaries[0]] if boundaries else text):
         # Shadowbox is the named physical object; glass is one of its parts.
         product = "Framed Glass Shadowbox"
+    if product in {"Box", "MDF Box"} and any(
+            re.search(r"\b(?:w|with) functional chalkboard\b", normalize(part))
+            for part in parts[:2]):
+        # An explicitly usable chalkboard on the named box is a physical
+        # function; chalkboard artwork alone is not.
+        product = "Chalkboard Box"
     # Only a short contiguous modifier prefix belongs to the product, never
     # artwork text after its noun. Unknown words terminate that prefix.
     prefix = text[:match.start()].rstrip()
@@ -822,6 +867,13 @@ def read_product_type(description: object) -> dict[str, str]:
     if product == "Framed Glass Shadowbox" and re.match(r"^printed glass\b", text) \
             and "glass" not in evidence:
         evidence = "glass " + evidence
+    if product == "Glass Art" and re.match(r"^printed glass\b", text) and any(
+            re.fullmatch(r"shadowbox(?: (?!artwork|graphic|design|image|pattern|scene)\w+){0,3} frame",
+                         normalize(part)) for part in parts[1:]):
+        # A later whole physical specification can name the enclosure even
+        # when intervening underscore segments contain only artwork identity.
+        product = "Framed Glass Shadowbox"
+        evidence += " shadowbox frame"
     # Physical materials must bind to the noun through the recognized prefix.
     # A leading material-like word separated by artwork (Wood Duck, Metal Gear,
     # Glass Slipper) cannot be taken as a substrate claim.
@@ -952,6 +1004,7 @@ def read_product_type(description: object) -> dict[str, str]:
         product = "Block"
     if product == "Box" and re.search(r"^mdf(?: \w+){0,4} box\b", text):
         product = "MDF Box"
+    product = refine_storage_type(text, product)
     # The bounded source parser also recognizes when a finish belongs only to
     # artwork or to one variant, so its abstention must override legacy terms.
     treatments = sorted(set(extract_treatments(

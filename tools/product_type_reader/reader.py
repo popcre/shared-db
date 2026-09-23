@@ -442,6 +442,41 @@ _PHYSICAL = "|".join(f"(?:{pattern})" for _, pattern in (*_TREATMENTS, *_CONSTRU
 _QUALIFIER = r"printed|landscape|portrait|custom|small|medium|large|xlarge|rough|textured?|all over|allover|static|moving|black|white|gold|silver|copper|iridescent|holo spot|sugar|flat|pe rattan|3d"
 _PREFIX = re.compile(r"(?:(?:" + _PHYSICAL + "|" + _QUALIFIER + r")(?:\s+|$))+")
 
+
+# Broad nouns: a truthful type only when nothing more specific is stated.
+BROAD_PRODUCT_PATTERNS = tuple((product, re.compile(pattern)) for product, pattern in (
+    ("Wall Art", r"\bwall art\b"),
+    ("Glass Art", r"\b(?:printed|stained) glass\b|\bglass art\b"),
+    ("Wall Art", r"\bwall decor(?:ation)?\b"),
+    ("Organizer", r"\borgani[sz]ers?\b"),
+    ("Window Cling", r"\bwindow clings?\b"),
+    ("Mat", r"\bmats?\b"),
+    ("Calendar", r"\bcalendars?\b"),
+    ("Tile", r"\btiles?\b"),
+    ("Poster", r"\bposters?\b"),
+    ("Painting", r"\bpaintings?\b"),
+    ("Sign", r"\bsigns?\b"),
+    ("Box", r"\bbox(?:es)?\b"),
+    ("Frame", r"\bframes?\b"),
+    ("Print", r"\bprints?\b"),
+    ("Decorative Letter", r"\bletters?\b"),
+    ("Block", r"\bblocks?\b"),
+    ("Clock", r"\bclocks?\b"),
+    ("Art", r"^art$")))
+
+
+def _states_product(text, exclude=frozenset()):
+    """True when text names a physical product, broad nouns included.
+
+    Every caption guard uses this one predicate, so a caption after
+    "wall art" or "sign" is removed exactly as one after "mug" is.
+    "Printed glass" names a material before a later product noun, so the
+    broad Glass Art reading never makes a prefix a finished product.
+    """
+    return (any(product not in exclude and pattern.search(text) for product, pattern in PRODUCT_PATTERNS)
+            or any(product not in exclude and product not in {"Art", "Glass Art"} and pattern.search(text)
+                   for product, pattern in BROAD_PRODUCT_PATTERNS))
+
 def _product_text(value: str) -> str:
     """Normalize wording without treating named identities as product evidence."""
     return " ".join(normalize(value).split())
@@ -598,7 +633,7 @@ def read_product_type(description: object) -> dict[str, str]:
         depicts_another_product = any(
             product not in {"Art", "Art Print", "Canvas", "Print"} and pattern.search(depicted_words)
             for product, pattern in PRODUCT_PATTERNS)
-        if depicts_another_product and (any(pattern.search(physical_prefix) for _, pattern in PRODUCT_PATTERNS)
+        if depicts_another_product and (_states_product(physical_prefix)
                 or re.search(r"\b(?:paper |mdf |glass )?prints?\b", physical_prefix)):
             title = title[:depicted_clause.start()].rstrip()
             source_for_helpers = title
@@ -609,8 +644,7 @@ def read_product_type(description: object) -> dict[str, str]:
     with_caption = re.search(
         r"\s+(?:with|w)\s+(?:(?!(?:paper|holofoil|foil|mdf|canvas|vinyl|stickers?)\b)[^\s,_&+\d]+\s+){1,5}?artwork\b",
         title, re.I)
-    if with_caption and any(pattern.search(_product_text(DIMENSION.sub(" ", title[:with_caption.start()])))
-                            for _, pattern in PRODUCT_PATTERNS):
+    if with_caption and _states_product(_product_text(DIMENSION.sub(" ", title[:with_caption.start()]))):
         caption = with_caption.group()
         title = (title[:with_caption.start()] + " " + title[with_caption.end():]).strip()
         source_for_helpers = source_for_helpers.replace(caption, " ", 1)
@@ -622,13 +656,11 @@ def read_product_type(description: object) -> dict[str, str]:
             r"\b(?:canvas|mdf|wood|glass|paper|fabric|(?:molded\s+)?foam|foil|glitter|metallic|"
             r"suncatchers?|stickers?|mugs?|books?|pencil cases?)\s*$",
             title[:artwork_start], re.I)
-        if caption_medium and any(product not in abstract_heads and
-                                  pattern.search(_product_text(DIMENSION.sub(" ", title[:caption_medium.start()])))
-                                  for product, pattern in PRODUCT_PATTERNS):
+        if caption_medium and _states_product(
+                _product_text(DIMENSION.sub(" ", title[:caption_medium.start()])), abstract_heads):
             artwork_start = caption_medium.start()
         physical_prefix = _product_text(DIMENSION.sub(" ", title[:artwork_start]))
-        if (any(product not in abstract_heads and pattern.search(physical_prefix)
-                for product, pattern in PRODUCT_PATTERNS)
+        if (_states_product(physical_prefix, abstract_heads)
                 or re.search(r"\b(?:prints?|posters?)\b", physical_prefix)):
             title = title[:artwork_start]
     text = _product_text(DIMENSION.sub(" ", title))
@@ -810,25 +842,8 @@ def read_product_type(description: object) -> dict[str, str]:
     # A broad noun is still a truthful physical type when that is all the
     # source states. It never competes with an earlier, more specific product.
     if not matches:
-        for product, pattern in (("Wall Art", r"\bwall art\b"),
-                                 ("Glass Art", r"\b(?:printed|stained) glass\b|\bglass art\b"),
-                                 ("Wall Art", r"\bwall decor(?:ation)?\b"),
-                                 ("Organizer", r"\borgani[sz]ers?\b"),
-                                 ("Window Cling", r"\bwindow clings?\b"),
-                                 ("Mat", r"\bmats?\b"),
-                                 ("Calendar", r"\bcalendars?\b"),
-                                 ("Tile", r"\btiles?\b"),
-                                 ("Poster", r"\bposters?\b"),
-                                 ("Painting", r"\bpaintings?\b"),
-                                 ("Sign", r"\bsigns?\b"),
-                                 ("Box", r"\bbox(?:es)?\b"),
-                                 ("Frame", r"\bframes?\b"),
-                                 ("Print", r"\bprints?\b"),
-                                 ("Decorative Letter", r"\bletters?\b"),
-                                 ("Block", r"\bblocks?\b"),
-                                 ("Clock", r"\bclocks?\b"),
-                                 ("Art", r"^art$")):
-            broad = re.search(pattern, text)
+        for product, broad_pattern in BROAD_PRODUCT_PATTERNS:
+            broad = broad_pattern.search(text)
             if broad:
                 matches = [(broad.start(), -(broad.end()-broad.start()), len(PRODUCT_PATTERNS), product, broad)]
                 break

@@ -41,7 +41,13 @@ def description_sha256(description):
 
 def csv_rows(path):
     with Path(path).open(encoding='utf-8-sig', newline='') as stream:
-        reader = csv.DictReader(stream)
+        return csv_text_rows(stream.read())
+
+
+def csv_text_rows(text):
+    import io
+    if True:
+        reader = csv.DictReader(io.StringIO(text, newline=''))
         headers = reader.fieldnames
         if not headers or any(not field or not field.strip() for field in headers) or len(headers) != len(set(headers)):
             raise ValueError('CSV requires unique nonempty headers')
@@ -51,9 +57,15 @@ def csv_rows(path):
         return rows
 
 
-def load_corpus(path):
+def load_corpus(path, data=None):
+    """Parse the corpus; pass ``data`` so the parsed bytes are the hashed bytes."""
     path = Path(path)
-    rows = json.loads(path.read_text(encoding='utf-8-sig')) if path.suffix == '.json' else csv_rows(path)
+    if path.suffix == '.json':
+        rows = json.loads((path.read_bytes() if data is None else data).decode('utf-8-sig'))
+    elif data is None:
+        rows = csv_rows(path)
+    else:
+        rows = csv_text_rows(data.decode('utf-8-sig'))
     if not isinstance(rows, list) or not rows:
         raise ValueError('Corpus must be a nonempty list')
     result = []
@@ -62,7 +74,10 @@ def load_corpus(path):
         if 'description' not in row or 'item_count' not in row:
             raise ValueError('Corpus requires description and item_count')
         description = row['description']
-        if row.get('description_is_null') == 'true':
+        marker = row.get('description_is_null')
+        if marker not in (None, '', 'true'):
+            raise ValueError('description_is_null must be true or blank')
+        if marker == 'true':
             if description not in ('', None):
                 raise ValueError('NULL marker contradicts description')
             description = None
@@ -112,9 +127,12 @@ def load_gold(labels_path, assignments_path):
 
 
 def evaluate(corpus_path, manifest_path, labels_path, assignments_path, reader):
-    corpus = load_corpus(corpus_path)
+    corpus_bytes = Path(corpus_path).read_bytes()
+    corpus = load_corpus(corpus_path, corpus_bytes)
     manifest = json.loads(Path(manifest_path).read_text(encoding='utf-8-sig'))
-    digest = hashlib.sha256(Path(corpus_path).read_bytes()).hexdigest()
+    if not isinstance(manifest, dict):
+        raise ValueError('Manifest must be a JSON object')
+    digest = hashlib.sha256(corpus_bytes).hexdigest()
     total = sum(row[2] for row in corpus)
     if manifest.get('sha256') != digest or type(manifest.get('source_row_count')) is not int or manifest['source_row_count'] != total:
         raise ValueError('Corpus SHA or source row count does not match manifest')
@@ -134,7 +152,7 @@ def evaluate(corpus_path, manifest_path, labels_path, assignments_path, reader):
     counts = dict(source_rows=total, distinct_descriptions=len(corpus), null_rows=0,
                   correct=0, wrong=0, unreadable=0, placeholder=0, uncovered=0, errors=0,
                   reviewed_rows=0)
-    census = dict(accepted=0, unreadable=0, placeholder=0, invalid=0, errors=0)
+    census = dict(accepted=0, unreadable=0, placeholder=0, errors=0)
     versions = set()
     details = []
     for key, description, count in corpus:
@@ -183,13 +201,23 @@ def evaluate(corpus_path, manifest_path, labels_path, assignments_path, reader):
             details.append(dict(description=description, item_count=count, result='error', error_type=type(error).__name__))
     counts['passed'] = not any(counts[k] for k in ('wrong', 'uncovered', 'errors'))
     module_path = inspect.getsourcefile(reader)
-    reader_digest = hashlib.sha256(Path(module_path).read_bytes()).hexdigest() if module_path else None
+    if not module_path:
+        raise ValueError('Reader module source cannot be fingerprinted')
+    reader_digest = hashlib.sha256(Path(module_path).read_bytes()).hexdigest()
     return dict(counts=counts, prediction_census=census, rules_versions=sorted(versions),
                 reader_module_sha256=reader_digest,
                 metric_note='correct/wrong/unreadable/placeholder count independently reviewed rows only; prediction_census includes all rows and is not verified accuracy',
                 corpus_sha256=digest, captured_at=manifest['captured_at'],
                 labels_sha256=hashlib.sha256(Path(labels_path).read_bytes()).hexdigest(),
                 assignments_sha256=hashlib.sha256(Path(assignments_path).read_bytes()).hexdigest()), details
+
+
+def implementation_fingerprints():
+    """Fingerprint every non-test module in the package, so no rule file escapes."""
+    root = Path(__file__).parent
+    return {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob('*.py'))
+            if not path.name.startswith('test_') and '__pycache__' not in path.parts}
 
 
 def main(argv=None):
@@ -228,14 +256,7 @@ def main(argv=None):
             read_product_type = read_legacy_product_type
         result, details = evaluate(args.corpus, args.manifest, args.labels, args.assignments, read_product_type)
         result['reader'] = args.reader
-        result['implementation_sha256'] = {
-            name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
-            for name in (
-                '__init__.py', 'reader.py', 'construction_rules.py',
-                'material_rules.py', 'treatment_rules.py', 'legacy.py',
-                'baseline.py', 'evaluate.py',
-            )
-        }
+        result['implementation_sha256'] = implementation_fingerprints()
         print(json.dumps(result, sort_keys=True))
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -246,7 +267,7 @@ def main(argv=None):
             args.private_details.parent.mkdir(parents=True, exist_ok=True)
             args.private_details.write_text(json.dumps(details, ensure_ascii=False, indent=2), encoding='utf-8')
         return 1 if args.strict and not result['counts']['passed'] else 0
-    except (ValueError, OSError, csv.Error) as error:
+    except Exception as error:  # any failure is exit 2, never a pass or a traceback
         print('Evaluation failed: ' + type(error).__name__)
         return 2
 

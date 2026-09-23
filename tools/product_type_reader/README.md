@@ -33,7 +33,7 @@ Add `--reader legacy` for the baseline and `--report REPORT.md` for an aggregate
 report. `--private-details PRIVATE/details.json` writes source-bearing exceptions
 only outside public shared-db checkouts. Reports bind the source bytes, gold,
 assignments and implementation hashes. The manifest records the source row count,
-capture time and production project. Null and empty descriptions remain distinct.
+capture time (with timezone) and source table; the evaluator checks exactly these, not the project. Null and empty descriptions remain distinct.
 
 Expected answers are independently reviewed source facts, never reader output.
 Private assignments bind each exact source-description hash to a public label.

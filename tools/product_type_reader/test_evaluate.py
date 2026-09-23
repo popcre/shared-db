@@ -65,9 +65,13 @@ def test_report_fingerprints_all_runtime_rule_modules(inputs, capsys):
             for value in ('--' + name, str(path))]
     assert main(args) == 0
     fingerprints = json.loads(capsys.readouterr().out)['implementation_sha256']
-    for module in ('reader.py', 'construction_rules.py', 'material_rules.py', 'treatment_rules.py'):
-        assert fingerprints[module] == hashlib.sha256(
-            (Path(__file__).parent / module).read_bytes()).hexdigest()
+    root = Path(__file__).parent
+    modules = [p for p in root.rglob('*.py')
+               if not p.name.startswith('test_') and '__pycache__' not in p.parts]
+    assert 'storage_rules.py' in fingerprints and 'gold/coverage.py' in fingerprints
+    for path in modules:
+        key = path.relative_to(root).as_posix()
+        assert fingerprints[key] == hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_abstention_on_readable_is_wrong(inputs):
@@ -141,7 +145,7 @@ def test_census_includes_uncovered_without_accuracy_claim(inputs):
     result, _ = evaluate(*inputs, correct_reader)
     assert result['counts']['correct'] == 2
     assert result['counts']['reviewed_rows'] == 2
-    assert result['prediction_census'] == dict(accepted=7, unreadable=2, placeholder=0, invalid=0, errors=0)
+    assert result['prediction_census'] == dict(accepted=7, unreadable=2, placeholder=0, errors=0)
     assert not result['counts']['passed']
 
 

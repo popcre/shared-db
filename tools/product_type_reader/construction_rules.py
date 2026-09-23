@@ -58,10 +58,15 @@ def _shadowbox_frame(clause: str, *, before_size: bool = False) -> bool:
 
 
 _VISUAL_CONTENT = re.compile(
-    r"\b(?:with|w|featuring)\s+(?!(?:pendulums?|cushion(?:ed|s)?|frames?|stands?|lids?|hooks?|drawers?|mirrors?|lights?|leds?)\b)(?:[^\s,_]+\s+){0,5}?"
+    r"\b(?:with|w|featuring)\s+(?!(?:pendulums?|cushion(?:ed|s)?|frames?|stands?|lids?|hooks?|drawers?|mirrors?|lights?|leds?|weighted|bottoms?|bases?)\b)(?:[^\s,_]+\s+){0,5}?"
     r"(?:artwork|illustrations?|graphics?|images?|scenes?|designs?|patterns?|motifs?)\b"
     r"|\b(?:artwork|illustrations?|depicting)\b",
     re.I)
+
+
+def _before_visual(text: str) -> str:
+    visual = _VISUAL_CONTENT.search(text)
+    return text[:visual.start()].strip() if visual else text
 
 
 def refine_construction(description: object, product_type: str, current: str = "") -> str:
@@ -87,13 +92,26 @@ def refine_construction(description: object, product_type: str, current: str = "
     # built ("with tea set graphic" is not a set).  Stop at the first marker.
     visual = _VISUAL_CONTENT.search(title_source)
     physical_title = _words(title_source[:visual.start()] if visual else title_source)
-    title = _words(title_source)
+    # Every rule reads only text before the first depicted-content marker, so
+    # no construction can be inferred from what a caption pictures.
+    # _shadowbox_frame alone keeps the whole title: it requires the frame to
+    # close the clause, which a trailing caption noun already defeats.
+    whole_title = _words(title_source)
+    title = physical_title
+    whole_after_size = after_size
+    after_size = _before_visual(after_size)
     # A whole underscore clause may independently name this one assembly.
     # Searching the complete description would also read artwork clauses.
-    clauses = [_words(clause) for clause in description.split("_")[1:]]
+    clauses = [_words(clause) for clause in description.split("_")[1:]
+               if not _VISUAL_CONTENT.search(clause)]
 
     def stated(pattern: str) -> bool:
         return re.search(pattern, title) is not None
+
+    def whole_stated(pattern: str) -> bool:
+        # Only removals read past a caption marker: removing an extra value
+        # can never invent a construction from what is pictured.
+        return re.search(pattern, whole_title) is not None
 
     def physically_stated(pattern: str) -> bool:
         # Family-wide or count-like words must precede any depicted content.
@@ -101,35 +119,35 @@ def refine_construction(description: object, product_type: str, current: str = "
 
     # A quantity set or a noun already carried by the product type is not a
     # physical construction.  These narrow cases correct upstream extras.
-    if product_type == "Paint-Your-Own Canvas Set" and stated(r"\bcanvas panel\b"):
+    if product_type == "Paint-Your-Own Canvas Set" and whole_stated(r"\bcanvas panel\b"):
         parts.discard("Panel")
     # A faux book is one object; a stated set or piece count is its construction.
     if product_type == "Faux Book" and physically_stated(r"\bset\b|\b(?:two|three|\d+)[- ]?(?:piece|pc)s?\b"):
         parts.add("Set")
-    if product_type == "Box Shelf" and re.search(r"\bnested mdf box shelf set\b", title + " " + after_size):
+    if product_type == "Box Shelf" and re.search(r"\bnested mdf box shelf set\b", whole_title + " " + whole_after_size):
         parts.discard("Set")
     if product_type == "Storage Cube":
         parts.discard("Set")
     if product_type in {"Porch Leaner", "Leaner Sign"}:
         parts.discard("Leaner")
-    if product_type == "Framed Canvas" and stated(r"\b(?:floater framed|matted framed floated) canvas\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\b(?:floater framed|matted framed floated) canvas\b"):
         parts.discard("Framed")
-    if product_type == "Framed Canvas" and stated(r"\bfloater framed high gloss canvas\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bfloater framed high gloss canvas\b"):
         parts.discard("Framed")
-    if product_type == "Plaque" and stated(r"\bmolded mdf plaque\b"):
+    if product_type == "Plaque" and whole_stated(r"\bmolded mdf plaque\b"):
         parts.discard("Molded")
-    if product_type == "Lap Desk" and stated(r"\brectangle\b.{0,35}\blap\b"):
+    if product_type == "Lap Desk" and whole_stated(r"\brectangle\b.{0,35}\blap\b"):
         parts.discard("Rectangular")
     if product_type in {"Storage Trunk", "Storage Toy Chest", "Hard Storage Box"} \
-            and stated(r"\b7\s*pc\b.{0,30}\bset\b"):
+            and whole_stated(r"\b7\s*pc\b.{0,30}\bset\b"):
         parts.discard("Set")
-    if product_type == "Storage Bin" and stated(r"\b(?:2|two)\s*(?:piece|pc) set\b"):
+    if product_type == "Storage Bin" and whole_stated(r"\b(?:2|two)\s*(?:piece|pc) set\b"):
         parts.discard("Set")
     if product_type == "Framed Art" and any(re.search(r"\b(?:2|two)\s*piece set\b", clause) for clause in clauses):
         parts.discard("Set")
-    if product_type == "Door Mat" and stated(r"\braised embossed\b.{0,30}\bpattern\b"):
+    if product_type == "Door Mat" and whole_stated(r"\braised embossed\b.{0,30}\bpattern\b"):
         parts.discard("Raised")
-    if product_type == "Door Mat" and stated(r"\bset coir door mat\b"):
+    if product_type == "Door Mat" and whole_stated(r"\bset coir door mat\b"):
         parts.discard("Set")
 
     if stated(r"\bframed\b") and product_type in {
@@ -140,7 +158,7 @@ def refine_construction(description: object, product_type: str, current: str = "
             and stated(r"\bdie cut paper\b.{0,35}\bin shadowbox frame\b"):
         parts.add("Framed")
     if product_type in {"Framed Shadowbox", "Framed Glass Shadowbox"} \
-            and (_shadowbox_frame(title, before_size=True) or _shadowbox_frame(after_size)):
+            and (_shadowbox_frame(whole_title, before_size=True) or _shadowbox_frame(after_size)):
         parts.add("Framed")
     if product_type == "Framed Shadowbox" and re.search(r"\bframe width\b", after_size):
         parts.add("Framed")
@@ -181,7 +199,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Deckled Edge")
     if product_type == "Plaque" and stated(r"\blayered\s+mdf\b"):
         parts.add("Layered")
-    if product_type == "Plaque" and stated(r"\b(?:2|two)[- ]layer\s+mdf\b"):
+    if product_type == "Plaque" and whole_stated(r"\b(?:2|two)[- ]layer\s+mdf\b"):
         parts.discard("Double-Layer")
         parts.add("Layered")
     if product_type == "Plaque" and stated(r"\bplaque\s+(?:with|w/)\s*\d*\s*hooks?\b"):
@@ -199,7 +217,7 @@ def refine_construction(description: object, product_type: str, current: str = "
             r"\b(?:domed\s+(?:grey[- ]?board\s+)?storage chest|dmd\s+(?:grybrd|grey[- ]?board)\s+strg chst)\b") \
             and not stated(r"\bflat[- ]domed\b"):
         parts.add("Domed")
-    if product_type == "Tabletop Block" and stated(r"\bdome block tabletop\b"):
+    if product_type == "Tabletop Block" and whole_stated(r"\bdome block tabletop\b"):
         parts.discard("Dome")
         parts.add("Domed")
     if product_type == "Lap Desk" and stated(r"\blap\s+(?:(?:writing|dry erase)\s+)?desk\b.{0,25}\b(?:with|w/?)\s+cushion\b"):
@@ -245,7 +263,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Rope-Wrapped")
     if product_type == "Storage Box" and stated(r"\bshaped small box\b"):
         parts.add("Shaped")
-    if product_type == "Photo Frame" and stated(r"\bdiy p(?:i)?cture frm die cut attachment\b"):
+    if product_type == "Photo Frame" and whole_stated(r"\bdiy p(?:i)?cture frm die cut attachment\b"):
         parts.discard("Die-Cut")
         parts.add("Die-Cut Attachment")
         parts.add("DIY")
@@ -255,7 +273,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Step Movement")
     if product_type == "Shelf" and stated(r"\bfolding\b"):
         parts.add("Folding")
-    if product_type == "Storage Ottoman" and stated(r"\b(?:non[- ]?|not )collapsible\b"):
+    if product_type == "Storage Ottoman" and whole_stated(r"\b(?:non[- ]?|not )collapsible\b"):
         parts.discard("Collapsible")
         parts.add("Non-Collapsible")
     if product_type in {"Framed Glass Shadowbox", "Framed Fabric Art"} and stated(r"\bfrayed\b"):
@@ -362,7 +380,7 @@ def refine_construction(description: object, product_type: str, current: str = "
             and stated(r"\b(?:block mdf|mdf block) perpetual calendar\b") \
             and not stated(r"\bpencil\s+cup\b"):
         parts.add("Block")
-    if product_type == "Framed Canvas" and stated(r"\bfloater framed printed canvas\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bfloater framed printed canvas\b"):
         parts.discard("Framed")
     if product_type == "Plaque" and stated(r"\bdouble[- ]sided[- ]print\b.{0,20}\bmdf plaque\b"):
         parts.add("Reversible")
@@ -407,7 +425,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Framed")
     if product_type == "Lap Desk" and stated(r"\blap desk\b.{0,75}\bwith\s+\w+\s+cushion\b"):
         parts.add("Cushioned")
-    if product_type == "Framed Canvas" and stated(r"\bcanvas floater framed\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bcanvas floater framed\b"):
         parts.discard("Framed")
     if product_type == "Clock" and stated(r"\bmld wall colcks\b"):
         parts.add("Molded")
@@ -421,21 +439,21 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Photo Insert")
     if product_type == "MDF Box" and re.search(r"\bfloating character in mdf box\b", after_size):
         parts.add("Floating")
-    if product_type == "Storage Chest" and stated(r"\bdome chests\b"):
+    if product_type == "Storage Chest" and whole_stated(r"\bdome chests\b"):
         parts.discard("Dome")
         parts.add("Domed")
     if product_type in {"Plaque", "Sign", "Storage Bin"} and stated(
             r"\b\d+[- ]?(?:piece|pc)\s+(?:die cut\s+)?(?:mdf\s+)?(?:sign|plaque|set)\b"):
         parts.discard("Set")
-    if product_type == "Canvas" and stated(r"\bcanvas panel\b"):
+    if product_type == "Canvas" and whole_stated(r"\bcanvas panel\b"):
         parts.discard("Panel")
-    if product_type == "Pencil Cup" and stated(r"\bshaped mdf pencil cup\b"):
+    if product_type == "Pencil Cup" and whole_stated(r"\bshaped mdf pencil cup\b"):
         parts.discard("Shaped")
     if product_type == "Frame" and stated(r"\bsetback frame with raised lasercut icon\b"):
         parts.add("Laser-Cut")
     if product_type == "Lap Desk" and stated(r"\blap desk with cusion\b"):
         parts.add("Cushioned")
-    if product_type == "Lap Desk" and stated(r"\boval\b.{0,35}\blap\b"):
+    if product_type == "Lap Desk" and whole_stated(r"\boval\b.{0,35}\blap\b"):
         parts.discard("Oval")
     if product_type == "Wall Shelf" and stated(r"\b2 tier wall shelf\b"):
         parts.add("Two-Tier")
@@ -445,20 +463,20 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("USB Ports")
     if product_type == "Wall Monogram" and stated(r"\bwall monogram\b.{0,35}\bweighted bottom\b"):
         parts.add("Weighted Bottom")
-    if product_type == "Perpetual Calendar" and stated(r"\bperpetual calendar w dome\b"):
+    if product_type == "Perpetual Calendar" and whole_stated(r"\bperpetual calendar w dome\b"):
         parts.discard("Dome")
         parts.add("Domed")
     if product_type == "Block" and stated(r"\bdie cut mdf block w moving needle\b"):
         parts.add("Moving Needle")
-    if product_type == "Storage Box" and stated(r"\bfaux vhs box storage set\b"):
+    if product_type == "Storage Box" and whole_stated(r"\bfaux vhs box storage set\b"):
         parts.discard("Set")
         parts.add("Faux VHS")
-    if product_type == "Framed Canvas" and stated(r"\bfltr frm cnvs\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bfltr frm cnvs\b"):
         parts.discard("Framed")
         parts.add("Floating Frame")
-    if product_type == "Framed Canvas" and stated(r"\bfloatr frm cnvs\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bfloatr frm cnvs\b"):
         parts.discard("Framed")
-    if product_type == "Framed Canvas" and stated(r"\bframed floated canvas w mat\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bframed floated canvas w mat\b"):
         parts.discard("Framed")
     if product_type == "Framed Glass Shadowbox" and stated(r"\bframed glass fringed paper shadowbox\b"):
         parts.add("Framed")
@@ -481,7 +499,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.discard("Die-Cut")
     if product_type == "Photo Frame" and stated(r"\bphoto frame with die cut attachment\b"):
         parts.add("Die-Cut Attachment")
-    if product_type == "Framed Art" and stated(r"\b\d+[- ]panel portrait\b"):
+    if product_type == "Framed Art" and whole_stated(r"\b\d+[- ]panel portrait\b"):
         parts.discard("Panel")
     if product_type == "Plaque" and re.search(r"\b\d+\s*piece set\b.{0,35}\bplaque\b", after_size):
         parts.add("Set")
@@ -510,13 +528,14 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Magnetic")
     if product_type == "Framed Glass Art" and stated(r"\bframed round painted glass\b"):
         parts.add("Round")
-    if product_type == "Framed Glass Art" and stated(r"\bframe wreath\b"):
+    if product_type == "Framed Glass Art" and whole_stated(r"\bframe wreath\b"):
         parts.discard("Framed")
     if product_type == "Photo Frame" and stated(r"\bdie cut house shaped\b"):
         parts.add("Shaped")
     if product_type == "Frame" and stated(r"\bdie cut mdf shped frme\b"):
         parts.add("Shaped")
-    if product_type == "Storage Bin" and stated(r"\btapered storage\b.{0,45}\bbin\b"):
+    if product_type == "Storage Bin" and physically_stated(r"\btapered storage\b") \
+            and whole_stated(r"\btapered storage\b.{0,45}\bbin\b"):
         parts.add("Tapered")
     if product_type == "Planter" and stated(r"\bpyo ceramic mini planter\b"):
         parts.add("DIY")
@@ -524,7 +543,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Cube")
     if product_type == "Corkboard" and stated(r"\braised cork layer\b"):
         parts.add("Layered")
-    if product_type == "Framed Print" and stated(r"\bfloat frm embossd ppr prnt\b"):
+    if product_type == "Framed Print" and whole_stated(r"\bfloat frm embossd ppr prnt\b"):
         parts.discard("Framed")
     if product_type == "Block" and stated(r"\bdie cut mdf block w rotating attachment\b"):
         parts.add("Rotating")
@@ -567,13 +586,13 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Laser-Cut")
     if product_type == "Frame" and re.search(r"(?:^|\bin )\d+(?:\.\d+)?\s*[\"'] frame\b(?!\s+width\b)", after_size):
         parts.add("Framed")
-    if product_type == "Magnet Board" and stated(r"\bdie cut magnets?\b"):
+    if product_type == "Magnet Board" and whole_stated(r"\bdie cut magnets?\b"):
         parts.discard("Die-Cut")
     if product_type == "Slat Art" and stated(r"\bslit slat art\b"):
         parts.add("Slatted")
     if product_type == "Sequin Art" and stated(r"\bsequin flip art\b"):
         parts.add("Flip")
-    if product_type == "Painting Kit" and stated(r"\bdiy set w/?\s*\d+ paint pots? and (?:a )?br(?:u)?sh\b"):
+    if product_type == "Painting Kit" and whole_stated(r"\bdiy set w/?\s*\d+ paint pots? and (?:a )?br(?:u)?sh\b"):
         parts.discard("Set")
     if product_type == "Stepping Stone" and stated(r"\bdiy cncrte stppng stne\b"):
         parts.add("DIY")
@@ -583,15 +602,15 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Linen-Weave")
     if product_type == "Decorative Object" and stated(r"\bdimensional woven object\b"):
         parts.add("Dimensional")
-    if product_type == "Shape" and stated(r"\blasercut mdf shape\b"):
+    if product_type == "Shape" and whole_stated(r"\blasercut mdf shape\b"):
         parts.discard("Shaped")
         parts.add("Laser-Cut")
-    if product_type == "Wall Art" and stated(r"\bno frame wall art\b"):
+    if product_type == "Wall Art" and whole_stated(r"\bno frame wall art\b"):
         parts.discard("Framed")
-    if product_type == "Framed Canvas" and stated(r"\bfloating\b.{0,30}\bframe canvas\b"):
+    if product_type == "Framed Canvas" and whole_stated(r"\bfloating\b.{0,30}\bframe canvas\b"):
         parts.discard("Framed")
         parts.add("Floating Frame")
-        if stated(r"\bframe canvas squiggle\b"):
+        if whole_stated(r"\bframe canvas squiggle\b"):
             parts.discard("Squiggle")
     if product_type == "Canvas" and stated(r"\bcanvasboard\b"):
         parts.add("Panel")

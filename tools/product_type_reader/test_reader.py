@@ -343,7 +343,7 @@ def test_printed_mdf_in_deep_frame_is_framed_print():
 
 
 def test_material_at_start_survives_artwork_between_it_and_product():
-    result = read_product_type('MDF Yellow friends frame wall art')
+    result = read_product_type('MDF Yellow pals frame wall art')
     assert result['product_type'] == 'Wall Art'
     assert result['product_construction'] == 'Framed'
     assert result['product_material'] == 'MDF'
@@ -1244,7 +1244,7 @@ def test_explicit_merchant_product_phrase_beats_generic_family(description, prod
 
 
 def test_bare_framed_mdf_with_only_identity_has_no_product_noun():
-    assert read_product_type("FRM MDF SpiderMan")['product_type_status'] == 'unreadable'
+    assert read_product_type("FRM MDF Zorblax")['product_type_status'] == 'unreadable'
 
 
 def test_framed_mdf_print_plus_canvas_is_mixed_products():
@@ -2153,3 +2153,19 @@ def test_words_describing_pictured_artwork_are_not_product_attributes(descriptio
     assert actual['product_type'] == product
     assert actual['product_material'] == material
     assert actual['product_treatment'] == treatment
+
+
+def test_broad_noun_prefix_keeps_caption_out_of_type():
+    # Invented phrases: a broad-noun product captioned with another product's name.
+    assert read_product_type("Wall art with mug graphic")["product_type"] == "Wall Art"
+    assert read_product_type("Wall art with plush bunny graphic")["product_type"] == "Wall Art"
+    assert read_product_type("Sign with zorblax mug artwork")["product_type"] == "Sign"
+
+
+def test_inline_caption_does_not_supply_construction():
+    # Invented phrases: construction words inside a caption are not physical facts.
+    for description, product in (("Wall art with raised zorblax artwork", "Wall Art"),
+                                 ("Wall sign, graphic of raised zorblax", "Wall Sign")):
+        result = read_product_type(description)
+        assert result["product_type"] == product
+        assert "raised" not in (result["product_construction"] or "").lower()

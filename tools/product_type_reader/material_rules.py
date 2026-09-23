@@ -312,7 +312,7 @@ def extract_materials(
     prefix = text[:product_start]
     if match := _LEADING_PHYSICAL.match(prefix):
         # A material-looking first word can be a property or pictured object:
-        # Metal Gear, Wood Duck, Glass Slipper, Paper Mario, etc. It is usable
+        # Metal Gear, Wood Duck, Glass Slipper, Paper Hero, etc. It is usable
         # only when the words through the product noun form a physical clause.
         remainder = prefix[match.end():]
         if (_SAFE_PREFIX_REMAINDER.fullmatch(remainder)

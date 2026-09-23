@@ -201,7 +201,7 @@ def test_sponge_bob_artwork_is_not_sponge_material():
     "metal gear solid canvas",
     "wood duck canvas",
     "glass slipper canvas",
-    "paper mario canvas",
+    "paper zorblax canvas",
     "cotton candy canvas",
     "plastic man canvas",
 ])
@@ -233,7 +233,7 @@ def test_material_looking_suffix_artwork_does_not_change_substrate(title):
     ("nonwoven storage 24 pocket hanging shoe organizer", "organizer", "Fabric"),
     ("non woven storage bin", "bin", "Fabric"),
     ("non-woven storage bin", "bin", "Fabric"),
-    ("sega classic sonic die cut wood piggy bank", "bank", "Wood"),
+    ("zorblax classic hero die cut wood piggy bank", "bank", "Wood"),
     ("die cut wood piggy bank", "bank", "Wood"),
 ])
 def test_bounded_textile_and_bank_physical_phrases(title, noun, expected):
@@ -274,7 +274,7 @@ def test_named_physical_components(title, noun, product_type, expected):
 
 
 @pytest.mark.parametrize("title,noun,product_type,expected", [
-    ("mdf yellow friends frame wall art", "art", "Wall Art", "MDF"),
+    ("mdf yellow pals frame wall art", "art", "Wall Art", "MDF"),
     ("mdf spot varnish print", "print", "Print", "MDF"),
     ("chalkboard art mdf box", "art", "Chalkboard Box", "MDF"),
     ("nonwoven fabric desktop storage cubby", "cubby", "Desktop Organizer", "Fabric"),

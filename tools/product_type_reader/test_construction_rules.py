@@ -382,7 +382,7 @@ def test_framed_wall_assembly_requires_the_wall_art_or_shadowbox_phrase():
     assert refine_construction('12x15 MDF framed character artwork on wall art', "Wall Art") == ""
     assert refine_construction("Dual color frame artwork shadowbox", "Framed Shadowbox") == ""
     assert refine_construction("MDF Photo Frame_Diecut Lion Attachment", "Photo Frame") == "Die-Cut Attachment"
-    assert refine_construction("Wall Pegs 13x18 Spider-Man Die-Cut", "Wall Pegs") == ""
+    assert refine_construction("Wall Pegs 13x18 Zorblax Die-Cut", "Wall Pegs") == ""
 
 
 def test_same_type_physical_specs_do_not_promote_art_or_quantity():
@@ -581,4 +581,5 @@ def test_artwork_caption_never_supplies_physical_construction():
     assert 'Set' not in construction('Faux Book Storage with Tea Set Graphic')
     assert 'Set' in construction('Faux book 3 piece set')
     assert 'Pendulum' not in construction('Wall Clock with Pendulum Clock Illustration')
-    assert 'Pendulum' in construction('Clock with pendulum artwork')
+    # A broad-noun product is a finished product; its artwork caption is not construction.
+    assert 'Pendulum' not in construction('Clock with pendulum artwork')

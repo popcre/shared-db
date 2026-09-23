@@ -5303,6 +5303,7 @@ function abandonedLeaseReason(row,states){
 // no release path accepts it (its verdict forbids release). It is reaped only in
 // its terminal state: pull request MERGED and a durable verdict recorded for the
 // exact leased head. Anything else, including an unreadable verdict, is kept.
+// Retiring the ref only removes the stale lease record; the verdict refs stay.
 function isTerminalLegacyLease(row,states,io){
   if(row.ref!==reviewActiveRef(row.assignment.reviewer))return false
   const pr=states?.get(`${row.assignment.issue}:${row.assignment.pr}`)?.pr

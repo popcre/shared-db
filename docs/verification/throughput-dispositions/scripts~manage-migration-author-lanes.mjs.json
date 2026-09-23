@@ -265,6 +265,22 @@
       "disposition": "enriched",
       "reason": "The queue explicitly excludes an issue missing the required admission fields, so it cannot advertise work that the claim gate must refuse.",
       "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:fc5dbd3411165633fff781b72e2e50b072c8134f5ea05a3a39f2ae78125cbc07:1"
+    },
+    {
+      "source": "scripts/manage-migration-author-lanes.mjs",
+      "site": "scripts/manage-migration-author-lanes.mjs:5625",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:14e03f439297e93956633573e69f4ec650cbbde1ab02de3677ccbe41412000a5:1",
+      "line_sha256": "14e03f439297e93956633573e69f4ec650cbbde1ab02de3677ccbe41412000a5",
+      "disposition": "excluded",
+      "reason": "Comment documenting that an absent slot-2 assignment ref cannot have a live replacement; it makes no database presence or applied-migration claim."
+    },
+    {
+      "site": "scripts/manage-migration-author-lanes.mjs:6229",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7:1",
+      "line_sha256": "1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7",
+      "disposition": "excluded",
+      "reason": "Comment explaining that a cutover record with no commit message must refuse rather than be skipped; documentation of fail-closed behaviour, not a guard call site.",
+      "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7:1"
     }
   ]
 }

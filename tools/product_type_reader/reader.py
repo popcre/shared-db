@@ -101,6 +101,12 @@ _FIXES = (
     ("Tabletop Art", r"\btabletop art\b"),
     ("Shelf with Hooks", r"(?<!wall )\bshelf (?:w|with) hooks?\b"),
     ("Decorative Object", r"\bdimensional (?:\w+ )?objects?\b"),
+    ("Framed Puzzle Art", r"\bframed puzzle art\b"),
+    ("LED Infinity Art", r"\binfinity led art\b|\bled infinity art\b"),
+    ("Countdown Clock", r"\bcountdown clocks?\b"),
+    ("Tall Sign", r"\btall (?:\w+ ){0,3}(?:mdf )?sign\b"),
+    ("Perpetual Calendar with Pencil Cup", r"\bperpetual calendar (?:w|with) (?:\w+ )?pencil cup\b"),
+    ("Framed Art", r"\bframed deckle(?:d)? edge art\b"),
     ("Plaque", r"\bchalkboard plaques?\b|\bplque\b"),
     ("Tabletop Clock", r"\btabletop clocks?\b"),
     ("Magnet Board", r"\bmagnet boards?\b"),
@@ -441,7 +447,8 @@ def _mixed_distinct_forms(title: str) -> bool:
             form = "cube"
         elif re.search(r"\bblocks?\b", clause):
             form = "block"
-        elif re.search(r"\b(?:mdf )?shapes?\b", clause):
+        elif re.search(r"\b(?:mdf )?shapes?\b", clause) and not re.search(
+                r"\bart\s+on(?:\s+\w+){0,3}\s+shapes?\b", clause):
             form = "shape"
         elif re.search(r"\bsuitcases?\b", clause):
             form = "suitcase"
@@ -518,6 +525,23 @@ def read_product_type(description: object) -> dict[str, str]:
         elif re.fullmatch(r"(?:(?:natural|pe) )?(?:rattan|seagrass|paper rope)", normalize(title)) \
                 and re.fullmatch(r"dimensional (?:bow|deer head)", next_clause):
             title += " " + parts[1]
+    source_for_helpers = str(description)
+    # A named object followed by "with ... artwork/graphic" is still that
+    # object. The entire depicted clause, including product-like words before
+    # the marker, is outside physical evidence for type and attributes.
+    depicted_clause = re.search(
+        r"\b(?:with|w|of|featuring|depicting)\s+(?:[a-z-]+\s+){1,7}"
+        r"(?:artwork|graphic|design|image|pattern|scene)\b", title, re.I)
+    if depicted_clause:
+        physical_prefix = _product_text(DIMENSION.sub(" ", title[:depicted_clause.start()]))
+        depicted_words = _product_text(title[depicted_clause.start():depicted_clause.end()])
+        depicts_another_product = any(
+            product not in {"Art", "Art Print", "Canvas", "Print"} and pattern.search(depicted_words)
+            for product, pattern in PRODUCT_PATTERNS)
+        if depicts_another_product and (any(pattern.search(physical_prefix) for _, pattern in PRODUCT_PATTERNS)
+                or re.search(r"\b(?:paper |mdf |glass )?prints?\b", physical_prefix)):
+            title = title[:depicted_clause.start()].rstrip()
+            source_for_helpers = title
     artwork_marker = re.search(r"\b(?:artwork|illustration|graphic|image|scene|depicting)\b", title, re.I)
     if artwork_marker:
         abstract_heads = {"Lenticular Art", "Framed Lenticular Art", "Art", "Print", "Art Print"}
@@ -625,6 +649,9 @@ def read_product_type(description: object) -> dict[str, str]:
     if any(entry[3] == "Canvas" for entry in matches) and re.search(
             r"\bsuncatcher (?:artwork|design|graphic|illustration|image)\b", text):
         matches = [entry for entry in matches if entry[3] != "Suncatcher"]
+    if any(entry[3] == "Canvas" for entry in matches) and re.search(
+            r"\bart\s+on(?:\s+\w+){0,3}\s+shapes?\b", text):
+        matches = [entry for entry in matches if entry[3] != "Shape"]
     if any(entry[3] == "Canvas" for entry in matches) and re.search(
             r"\bcanvas in (?:a )?tray box\b", text):
         matches = [entry for entry in matches if entry[3] not in {"Tray or Dish", "Tray", "Box"}]
@@ -913,17 +940,17 @@ def read_product_type(description: object) -> dict[str, str]:
     # The bounded source parser also recognizes when a finish belongs only to
     # artwork or to one variant, so its abstention must override legacy terms.
     treatments = sorted(set(extract_treatments(
-        description, normalized_title=text, product_span=match.span(), physical_evidence=evidence)))
+        source_for_helpers, normalized_title=text, product_span=match.span(), physical_evidence=evidence)))
     if product == "Embroidery Kit":
         treatments = [name for name in treatments if name != "Embroidery"]
     if common_treatments is not None:
         treatments = [name for name in treatments if name in common_treatments]
     result.update(product_type=product,
-                  product_construction=refine_construction(description, product, "; ".join(sorted(set(constructions)))),
+                  product_construction=refine_construction(source_for_helpers, product, "; ".join(sorted(set(constructions)))),
                   product_material="" if mixed_shadowbox else extract_materials(text=text, evidence=material_evidence,
                       product_start=match.start(), product_end=match.end(),
                       size_boundaries=boundaries, product_type=product,
-                      base_materials="; ".join(sorted(set(materials))), description=description),
+                      base_materials="; ".join(sorted(set(materials))), description=source_for_helpers),
                   product_treatment="; ".join(sorted(set(treatments))),
                   product_type_status="accepted", matched_wording=evidence)
     return result

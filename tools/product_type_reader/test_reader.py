@@ -403,7 +403,7 @@ def test_boxed_art_noun_is_distinct_from_boxed_artwork_caption():
 
 def test_framed_and_embroidered_art_require_explicit_art_noun():
     assert read_product_type('Framed PU mounted art with raised motif')['product_type'] == 'Framed Art'
-    assert read_product_type('Framed puzzle art with border')['product_type'] == 'Framed Art'
+    assert read_product_type('Framed puzzle art with border')['product_type'] == 'Framed Puzzle Art'
     assert read_product_type('Setback framed mounted art with metallic PU')['product_type'] == 'Framed Art'
     assert read_product_type('Cross stitch embroidery art 10x12')['product_type'] == 'Embroidery Art'
     assert read_product_type('Framed PU mount with portrait scene')['product_type_status'] == 'unreadable'
@@ -1642,13 +1642,16 @@ def test_plural_stationery_organizers_keep_the_explicit_function():
 @pytest.mark.parametrize('description', [
     'High Gloss Small Art 11x14',
     'Double Layer Cut Paper Art',
-    'Framed Deckle Edge Art',
     'Glitter UV Lacquer Art',
     'Molded Resin Art',
     'LED Infinity Wire Layered Dimensional Art',
 ])
 def test_explicit_qualified_art_is_physical_art_without_guessed_form(description):
     assert read_product_type(description)['product_type'] == 'Art'
+
+
+def test_explicit_framed_deckle_edge_art_keeps_framed_type():
+    assert read_product_type('Framed Deckle Edge Art')['product_type'] == 'Framed Art'
 
 
 def test_artwork_tail_does_not_create_a_second_art_product():
@@ -1824,5 +1827,41 @@ def test_explicit_shape_art_object_and_suitcase_heads_are_readable():
     assert read_product_type('Suitcase MDF Storage')['product_type'] == 'Storage Suitcase'
     assert read_product_type('Shelf w Hooks')['product_type'] == 'Shelf with Hooks'
     assert read_product_type('Canvas depicting an MDF shape')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas, group art on floral shape')['product_type'] == 'Canvas'
     assert read_product_type('Canvas and Shelf w Hooks')['product_type_status'] == 'unreadable'
     assert read_product_type('MDF shapes and suitcase')['product_type_status'] == 'unreadable'
+
+
+@pytest.mark.parametrize(('description', 'expected'), [
+    ('Framed Puzzle Art', 'Framed Puzzle Art'),
+    ('Infinity LED Art in Frame', 'LED Infinity Art'),
+    ('MDF Countdown Clock', 'Countdown Clock'),
+    ('Tall Wooden MDF Sign', 'Tall Sign'),
+    ('Perpetual Calendar with Metal Pencil Cup', 'Perpetual Calendar with Pencil Cup'),
+    ('Framed Deckled Edge Art', 'Framed Art'),
+])
+def test_specific_stated_product_heads_beat_broad_nouns(description, expected):
+    assert read_product_type(description)['product_type'] == expected
+
+
+def test_specific_art_names_in_canvas_artwork_do_not_retype_the_canvas():
+    assert read_product_type('Canvas artwork framed puzzle art')['product_type'] == 'Canvas'
+    assert read_product_type('Canvas artwork infinity LED art')['product_type'] == 'Canvas'
+
+
+@pytest.mark.parametrize(('description', 'product', 'material'), [
+    ('Canvas with tabletop art graphic', 'Canvas', 'Canvas'),
+    ('Canvas with dimensional bow object graphic', 'Canvas', 'Canvas'),
+    ('Canvas with MDF shapes artwork', 'Canvas', 'Canvas'),
+    ('Canvas with suitcase greyboard storage artwork', 'Canvas', 'Canvas'),
+    ('Canvas with frame wall art graphic', 'Canvas', 'Canvas'),
+    ('Canvas with sequin flip art artwork', 'Canvas', 'Canvas'),
+    ('Canvas with framed foil art under glass graphic', 'Canvas', 'Canvas'),
+    ('Paper print with sequin flip art graphic', 'Print', 'Paper'),
+])
+def test_depicted_product_words_do_not_supply_type_or_attributes(description, product, material):
+    actual = read_product_type(description)
+    assert actual['product_type'] == product
+    assert actual['product_material'] == material
+    assert actual['product_construction'] == ''
+    assert actual['product_treatment'] == ''

@@ -23,6 +23,8 @@ name: Cancelled Work Guard
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +32,9 @@ permissions:
 
 concurrency:
   group: cancelled-work-guard-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: GitHub re-requests checks for the same
+  # group, and cancelling the older run could starve it (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:

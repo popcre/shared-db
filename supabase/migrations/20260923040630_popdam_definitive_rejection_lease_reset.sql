@@ -3,6 +3,50 @@
 -- A provider's parsed definitive rejection is the one safe exit from an
 -- unbound, still-live submission lease. This does not change the existing
 -- update_bulk_operation writer or its ambiguity and pointer guards.
+do $prerequisites$
+declare
+  v_table_oid oid := to_regclass('public.admin_config');
+  v_key_attnum smallint;
+begin
+  if v_table_oid is null or not exists (
+    select 1 from pg_class where oid = v_table_oid and relkind = 'r'
+  ) then
+    raise exception 'lease reset requires public.admin_config to be an ordinary table';
+  end if;
+  select attnum into v_key_attnum from pg_attribute
+  where attrelid = v_table_oid and attname = 'key' and not attisdropped;
+  if v_key_attnum is null
+     or not exists (
+       select 1 from pg_attribute
+       where attrelid = v_table_oid and attname = 'key'
+         and atttypid = 'pg_catalog.text'::regtype and not attisdropped
+     )
+     or not exists (
+       select 1 from pg_attribute
+       where attrelid = v_table_oid and attname = 'value'
+         and atttypid = 'pg_catalog.jsonb'::regtype and not attisdropped
+     )
+     or not exists (
+       select 1 from pg_attribute
+       where attrelid = v_table_oid and attname = 'updated_at'
+         and atttypid = 'pg_catalog.timestamptz'::regtype and not attisdropped
+     ) then
+    raise exception 'lease reset requires exact admin_config key/value/updated_at types';
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = v_table_oid and conname = 'admin_config_pkey'
+      and contype = 'p' and conkey = array[v_key_attnum]::smallint[]
+  ) then
+    raise exception 'lease reset requires admin_config_pkey on key';
+  end if;
+  if to_regprocedure('public.update_bulk_operation(text,jsonb,text,bigint,text,integer)') is null
+     or to_regprocedure('public.update_bulk_operations_batch(jsonb)') is null then
+    raise exception 'lease reset requires the exact guarded writer signatures';
+  end if;
+end;
+$prerequisites$;
+
 create or replace function public.reset_bulk_operation_submission_lease(
   p_op_key text,
   p_expected_revision bigint,
@@ -123,3 +167,18 @@ revoke execute on function public.reset_bulk_operation_submission_lease(text, bi
   from public, anon;
 grant execute on function public.reset_bulk_operation_submission_lease(text, bigint, text, text, text, integer, jsonb)
   to authenticated, service_role, postgres;
+
+do $postapply$
+declare
+  v_proc oid := to_regprocedure(
+    'public.reset_bulk_operation_submission_lease(text,bigint,text,text,text,integer,jsonb)');
+begin
+  if v_proc is null or not exists (
+    select 1 from pg_proc
+    where oid = v_proc and prosecdef and provolatile = 'v'
+      and 'search_path=public, pg_temp' = any(proconfig)
+  ) then
+    raise exception 'lease reset RPC signature or security/volatility contract is wrong';
+  end if;
+end;
+$postapply$;

@@ -9,13 +9,58 @@ create table if not exists public.admin_config (
 );
 do $bootstrap$
 begin
-  if not exists (
+  if exists (
+    select 1 from pg_class
+    where oid = to_regclass('public.admin_config') and relkind = 'r'
+  ) and not exists (
     select 1 from pg_constraint
     where conrelid = 'public.admin_config'::regclass and contype = 'p'
   ) then
     alter table public.admin_config add primary key (key);
   end if;
 end $bootstrap$;
+
+-- A same-named view, altered column or different primary key must fail before
+-- the behavioral fixture can give a misleading pass.
+do $exact_objects$
+declare
+  v_table_oid oid := to_regclass('public.admin_config');
+  v_key_attnum smallint;
+  v_reset_proc oid := to_regprocedure(
+    'public.reset_bulk_operation_submission_lease(text,bigint,text,text,text,integer,jsonb)');
+begin
+  if v_table_oid is null or not exists (
+    select 1 from pg_class where oid = v_table_oid and relkind = 'r'
+  ) then
+    raise exception 'admin_config is not the exact table required by the reset';
+  end if;
+  select attnum into v_key_attnum from pg_attribute
+  where attrelid = v_table_oid and attname = 'key' and not attisdropped;
+  if v_key_attnum is null
+     or not exists (select 1 from pg_attribute where attrelid = v_table_oid
+       and attname = 'key' and atttypid = 'pg_catalog.text'::regtype and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = v_table_oid
+       and attname = 'value' and atttypid = 'pg_catalog.jsonb'::regtype and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = v_table_oid
+       and attname = 'updated_at' and atttypid = 'pg_catalog.timestamptz'::regtype
+       and not attisdropped)
+     or not exists (select 1 from pg_constraint where conrelid = v_table_oid
+       and conname = 'admin_config_pkey' and contype = 'p'
+       and conkey = array[v_key_attnum]::smallint[]) then
+    raise exception 'admin_config columns or exact key primary key drifted';
+  end if;
+  if to_regprocedure('public.update_bulk_operation(text,jsonb,text,bigint,text,integer)') is null
+     or to_regprocedure('public.update_bulk_operations_batch(jsonb)') is null then
+    raise exception 'required guarded writer signature is missing';
+  end if;
+  if v_reset_proc is null or not exists (
+    select 1 from pg_proc where oid = v_reset_proc and prosecdef
+      and provolatile = 'v' and 'search_path=public, pg_temp' = any(proconfig)
+  ) then
+    raise exception 'reset signature, security definer, search_path or volatility drifted';
+  end if;
+end;
+$exact_objects$;
 
 -- The helper refuses a false success and verifies failed calls never mutate the
 -- BULK_OPERATIONS value. It exists only within this rolled-back test transaction.
@@ -58,6 +103,42 @@ begin
   end if;
 end;
 $helper$;
+
+create or replace function pg_temp.expect_unproven_writer_refusal(
+  p_payload jsonb,
+  p_batch boolean
+)
+returns void
+language plpgsql
+as $writer_refusal$
+declare
+  v_before jsonb;
+  v_after jsonb;
+  v_refused boolean := false;
+begin
+  select value into v_before from public.admin_config where key = 'BULK_OPERATIONS';
+  begin
+    if p_batch then
+      perform public.update_bulk_operations_batch(jsonb_build_object(
+        'bulk-sibling', jsonb_build_object('status', 'queued'),
+        'bulk-tag', p_payload));
+    else
+      perform public.update_bulk_operation('bulk-tag', p_payload, null::text);
+    end if;
+  exception when others then
+    v_refused := true;
+  end;
+  if not v_refused then
+    raise exception 'unproven % writer changed a reset submission',
+      case when p_batch then 'batch' else 'legacy' end;
+  end if;
+  select value into v_after from public.admin_config where key = 'BULK_OPERATIONS';
+  if v_after is distinct from v_before or v_after ? 'bulk-sibling' then
+    raise exception 'refused % writer partially applied',
+      case when p_batch then 'batch' else 'legacy' end;
+  end if;
+end;
+$writer_refusal$;
 
 do $test$
 declare
@@ -212,6 +293,21 @@ begin
     raise exception 'definitive rejection reset did not consume the lease safely';
   end if;
 
+  -- The reset's prepared phase has no receipt. Neither unproven writer may
+  -- advance it to submitting, plant a receipt digest or bind a provider ID.
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,phase}', '"submitting"'::jsonb), false);
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,lease_proof}', '"forged-digest"'::jsonb), false);
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,provider_batch_id}', '"forged-job"'::jsonb), false);
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,phase}', '"submitting"'::jsonb), true);
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,lease_proof}', '"forged-digest"'::jsonb), true);
+  perform pg_temp.expect_unproven_writer_refusal(
+    jsonb_set(v_reset -> 'operation', '{external_job,provider_batch_id}', '"forged-job"'::jsonb), true);
+
   -- A stale process cannot reset or claim the old revision. The ordinary
   -- guarded claim, not the reset, issues the next receipt to one claimant.
   perform pg_temp.expect_lease_reset_refusal(
@@ -269,5 +365,89 @@ begin
   end if;
 end;
 $test$;
+
+-- Exercise the actual RPC as each granted/denied API role. A catalog grant
+-- alone cannot prove that a role can reach the SECURITY DEFINER body.
+do $role_fixtures$
+declare
+  v_claim jsonb;
+begin
+  update public.admin_config
+  set value = value || jsonb_build_object(
+    'auth-reset', jsonb_build_object('status', 'running', 'state_revision', 0,
+      'external_job', jsonb_build_object('phase', 'prepared')),
+    'service-reset', jsonb_build_object('status', 'running', 'state_revision', 0,
+      'external_job', jsonb_build_object('phase', 'prepared')))
+  where key = 'BULK_OPERATIONS';
+  v_claim := public.update_bulk_operation(
+    'auth-reset', '{"status":"running","external_job":{"phase":"submitting"}}'::jsonb,
+    'running', 0, 'authenticated-worker', 120);
+  if v_claim ->> 'lease_receipt_issued' is distinct from 'true' then
+    raise exception 'authenticated role fixture did not obtain a real receipt';
+  end if;
+  perform set_config('test.auth_reset_receipt', v_claim ->> 'lease_token', true);
+  v_claim := public.update_bulk_operation(
+    'service-reset', '{"status":"running","external_job":{"phase":"submitting"}}'::jsonb,
+    'running', 0, 'service-worker', 120);
+  if v_claim ->> 'lease_receipt_issued' is distinct from 'true' then
+    raise exception 'service role fixture did not obtain a real receipt';
+  end if;
+  perform set_config('test.service_reset_receipt', v_claim ->> 'lease_token', true);
+end;
+$role_fixtures$;
+
+set local role anon;
+do $anon_denied$
+declare
+  v_denied boolean := false;
+begin
+  if current_user <> 'anon' then raise exception 'anon role was not set'; end if;
+  begin
+    perform public.reset_bulk_operation_submission_lease(
+      'auth-reset', 1, 'authenticated-worker', current_setting('test.auth_reset_receipt'),
+      'provider_definitive_rejection', 400, '{"error":{"message":"synthetic"}}'::jsonb);
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then raise exception 'anon executed the reset RPC'; end if;
+end;
+$anon_denied$;
+reset role;
+
+set local role authenticated;
+do $authenticated_allowed$
+declare
+  v_reset jsonb;
+begin
+  if current_user <> 'authenticated' then raise exception 'authenticated role was not set'; end if;
+  v_reset := public.reset_bulk_operation_submission_lease(
+    'auth-reset', 1, 'authenticated-worker', current_setting('test.auth_reset_receipt'),
+    'provider_definitive_rejection', 400, '{"error":{"message":"synthetic"}}'::jsonb);
+  if v_reset ->> 'ok' is distinct from 'true'
+     or (v_reset ->> 'state_revision')::bigint is distinct from 2
+     or v_reset ->> 'lease_receipt_issued' is distinct from 'false' then
+    raise exception 'authenticated role could not safely reset its exact receipt';
+  end if;
+end;
+$authenticated_allowed$;
+reset role;
+
+set local role service_role;
+do $service_allowed$
+declare
+  v_reset jsonb;
+begin
+  if current_user <> 'service_role' then raise exception 'service role was not set'; end if;
+  v_reset := public.reset_bulk_operation_submission_lease(
+    'service-reset', 1, 'service-worker', current_setting('test.service_reset_receipt'),
+    'provider_definitive_rejection', 422, '{"error":{"message":"synthetic"}}'::jsonb);
+  if v_reset ->> 'ok' is distinct from 'true'
+     or (v_reset ->> 'state_revision')::bigint is distinct from 2
+     or v_reset ->> 'lease_receipt_issued' is distinct from 'false' then
+    raise exception 'service role could not safely reset its exact receipt';
+  end if;
+end;
+$service_allowed$;
+reset role;
 
 rollback;

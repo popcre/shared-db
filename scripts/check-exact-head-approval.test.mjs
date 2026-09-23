@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
+import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, main as approvalMain, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
 import { isValidatedVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 
 const OLD = 'b494401028464ef8b2e67fe0b5b1836839b2be36'
@@ -435,19 +435,20 @@ test('#2758: a merge-only refresh keeps the APPROVE recorded at the prior head',
 const MERGED_AT = '2026-09-20T22:32:17Z'
 const BEFORE_MERGE = '2026-09-20T22:31:35Z'
 const AFTER_MERGE = '2026-09-20T22:48:40Z'
-function mergedRefreshGithub({ authorizationAt = BEFORE_MERGE, creator = 'github-actions[bot]' } = {}) {
+function mergedRefreshGithub({ authorizationAt = BEFORE_MERGE, creator = 'github-actions[bot]', description = 'Exclusive merge lock held and exact head revalidated', extra = [], pr = null } = {}) {
   const base = refreshedGithub()
   return {
     ...base,
     json: (args) => {
       const endpoint = args[args.length - 1]
-      if (/\/pulls\/\d+$/.test(endpoint)) return { state: 'closed', merged: true, merged_at: MERGED_AT, merge_commit_sha: '9'.repeat(40), head: { sha: REFRESHED_HEAD } }
+      if (/\/pulls\/\d+$/.test(endpoint)) return pr ?? { state: 'closed', merged: true, merged_at: MERGED_AT, merge_commit_sha: '9'.repeat(40), head: { sha: REFRESHED_HEAD } }
       return base.json(args)
     },
     pages: (endpoint) => endpoint.includes(`/commits/${REFRESHED_HEAD}/statuses`)
       ? [
           { id: 41, context: 'Migration guarded merge authorization', state: 'failure', description: 'Exclusive merge lock held and exact head revalidated', creator: { login: 'github-actions[bot]' }, created_at: AFTER_MERGE },
-          { id: 40, context: 'Migration guarded merge authorization', state: 'success', description: 'Exclusive merge lock held and exact head revalidated', creator: { login: creator }, created_at: authorizationAt },
+          { id: 40, context: 'Migration guarded merge authorization', state: 'success', description, creator: { login: creator }, created_at: authorizationAt },
+          ...extra,
         ]
       : base.pages(endpoint),
   }
@@ -455,7 +456,7 @@ function mergedRefreshGithub({ authorizationAt = BEFORE_MERGE, creator = 'github
 
 test('#2839: a merged PR audit uses the successful guarded-merge status that existed at merge time', () => {
   const input = gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub())
-  assert.deepEqual(input.mergeAudit, { mergedAt: MERGED_AT, mergeCommitSha: '9'.repeat(40), authorizedAt: BEFORE_MERGE, statusId: 40 })
+  assert.deepEqual(input.mergeAudit, { mergedAt: MERGED_AT, mergeCommitSha: '9'.repeat(40), headSha: REFRESHED_HEAD.toLowerCase(), authorizedAt: BEFORE_MERGE, statusId: 40 })
 })
 
 test('#2839: authorization recorded at the merge boundary is part of the audit', () => {
@@ -468,11 +469,11 @@ test('#2839: a merged PR audit refuses a guarded status with no trustworthy time
 })
 
 test('#2839: a successful authorization written only after merge cannot authorize the audit', () => {
-  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ authorizationAt: AFTER_MERGE })), /no successful guarded-merge authorization status at or before its merge time/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ authorizationAt: AFTER_MERGE })), /no guarded-merge authorization status at or before its merge time/)
 })
 
 test('#2839: a lookalike success from anyone except GitHub Actions cannot authorize the audit', () => {
-  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ creator: 'u2giants' })), /no successful guarded-merge authorization status at or before its merge time/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ creator: 'u2giants' })), /is not a lawful authorization/)
 })
 
 test('#2839: a merged audit refuses a requested SHA other than the actual merged PR head', () => {
@@ -494,6 +495,56 @@ test('#2839: an open PR stays on the live gate with no historical cutoff', () =>
     : base.json(args) }
   const input = gatherApprovalInput({ PR_NUMBER: '1809' }, io)
   assert.equal(input.mergeAudit, null)
+})
+
+const GMA = 'Migration guarded merge authorization'
+const bot = { login: 'github-actions[bot]' }
+test('#2839 P1: a success followed by a pre-merge failure refuses the audit', () => {
+  const extra = [{ id: 42, context: GMA, state: 'failure', description: 'Exclusive merge lock held and exact head revalidated', creator: bot, created_at: '2026-09-20T22:32:00Z' }]
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra })), /is not a lawful authorization/)
+})
+test('#2839 P1: a newer pre-merge freeze or revoke with a different description refuses', () => {
+  const extra = [{ id: 43, context: GMA, state: 'failure', description: 'Production freeze revoked authorization', creator: bot, created_at: '2026-09-20T22:31:59Z' }]
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra })), /is not a lawful authorization/)
+})
+test('#2839 P1: a lookalike success with the wrong description refuses', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ description: 'looks fine' })), /is not a lawful authorization/)
+})
+test('#2839 P3: equal timestamps are ordered by id, newest id wins', () => {
+  const older = [{ id: 39, context: GMA, state: 'failure', description: 'x', creator: bot, created_at: BEFORE_MERGE }]
+  assert.equal(gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: older })).mergeAudit.statusId, 40)
+  const newer = [{ id: 44, context: GMA, state: 'failure', description: 'x', creator: bot, created_at: BEFORE_MERGE }]
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: newer })), /is not a lawful authorization/)
+})
+test('#2839 P3: duplicate, non-positive or NaN ids and unknown states refuse', () => {
+  const row = (o) => ({ context: GMA, state: 'success', description: 'x', creator: bot, created_at: BEFORE_MERGE, ...o })
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: [row({ id: 40 })] })), /appears more than once/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: [row({ id: 0 })] })), /invalid id/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: [row({ id: NaN })] })), /invalid id/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra: [row({ id: 45, state: 'weird' })] })), /unknown state/)
+})
+test('#2839 P3: a row with an unparseable timestamp refuses rather than being guessed', () => {
+  const extra = [{ id: 46, context: GMA, state: 'failure', description: 'x', creator: bot, created_at: 'garbage' }]
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra })), /no readable server timestamp/)
+})
+test('#2839 P2: open-and-merged, unreadable merged_at, and missing merge commit each refuse', () => {
+  const pr = (o) => ({ state: 'closed', merged: true, merged_at: MERGED_AT, merge_commit_sha: '9'.repeat(40), head: { sha: REFRESHED_HEAD }, ...o })
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ pr: pr({ state: 'open' }) })), /inconsistent open-and-merged/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ pr: pr({ merged_at: 'nope' }) })), /no readable merge timestamp/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ pr: pr({ merge_commit_sha: null }) })), /no exact merge commit/)
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ pr: pr({ merge_commit_sha: 'xyz' }) })), /no exact merge commit/)
+})
+test('#2839 P2: main() returns 0 on a merge audit without running live evaluation', () => {
+  let evaluated = false
+  const code = approvalMain({}, { gather: () => ({ pr: 1931, headSha: REFRESHED_HEAD, mergeAudit: { mergedAt: MERGED_AT, mergeCommitSha: '9'.repeat(40), authorizedAt: BEFORE_MERGE, statusId: 40 } }), evaluate: () => { evaluated = true } })
+  assert.equal(code, 0)
+  assert.equal(evaluated, false)
+})
+test('#2839 P2: an open PR still collects assignments and verdicts', () => {
+  const base = githubLike({ refs: [] })
+  const io = { ...base, json: (args) => /\/pulls\/\d+$/.test(args[args.length - 1]) ? { state: 'open', merged: false, merged_at: null, head: { sha: NEW } } : base.json(args) }
+  const input = gatherApprovalInput({ PR_NUMBER: '1809' }, io)
+  assert.ok(Array.isArray(input.assignments) && Array.isArray(input.verdicts))
 })
 
 test('POSITIVE CONTROL #2758: a refresh that changed the PR diff (e.g. a migration edit) needs a new review', () => {

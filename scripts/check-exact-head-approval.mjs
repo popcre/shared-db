@@ -56,6 +56,7 @@ import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, isVal
 import { changedPathsFromPullRequestFiles, classifyChangedPaths } from './lib/documents-only-change.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 import { resolveBaseRef, gitProbe } from './lib/resolve-base-ref.mjs'
+import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 export class ApprovalCheckError extends Error {}
 
@@ -319,6 +320,35 @@ export { parseAssignmentRef }
 // where the same class of defect has now hidden twice repo-wide: a conversion layer
 // whose test-time shape diverges from the one production produces. Nothing is
 // stubbed in production; the defaults are the real readers.
+const MERGE_AUTHORIZED_DESCRIPTION = 'Exclusive merge lock held and exact head revalidated'
+const KNOWN_STATUS_STATES = new Set(['success', 'failure', 'error', 'pending'])
+// #2839 audit: the verdict at merge time is the NEWEST guarded-merge status on
+// the exact head at or before merged_at, ordered by (created_at, id). A success
+// followed by any later pre-merge failure, revoke or freeze refuses. Rows after
+// the merge are ignored (even if unreadable); malformed pre-merge rows refuse.
+export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt) {
+  const seen = new Set()
+  let newest = null
+  for (const row of Array.isArray(statuses) ? statuses : []) {
+    if (row?.context !== MERGE_SELF_CONTEXT) continue
+    const id = row?.id
+    if (!Number.isSafeInteger(id) || id <= 0) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status has an invalid id`)
+    if (seen.has(id)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status id ${id} appears more than once`)
+    seen.add(id)
+    const createdAtMs = Date.parse(String(row?.created_at ?? ''))
+    if (Number.isFinite(createdAtMs) && createdAtMs > mergeCutoffMs) continue
+    if (!Number.isFinite(createdAtMs)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status has no readable server timestamp`)
+    if (!KNOWN_STATUS_STATES.has(row?.state)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status ${id} has unknown state`)
+    if (!newest || createdAtMs > newest.ms || (createdAtMs === newest.ms && id > newest.row.id)) newest = { ms: createdAtMs, row }
+  }
+  if (!newest) throw new ApprovalCheckError(`pull request #${pr} has no guarded-merge authorization status at or before its merge time ${mergedAt}`)
+  const row = newest.row
+  if (row.state !== 'success' || row.description !== MERGE_AUTHORIZED_DESCRIPTION || row?.creator?.login !== 'github-actions[bot]') {
+    throw new ApprovalCheckError(`pull request #${pr} newest guarded-merge status at or before merge time ${mergedAt} is not a lawful authorization (state ${row.state})`)
+  }
+  return row
+}
+
 export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   const { json: readJson = json, pages: readPages = pages } = deps
   let event = {}; if (env.GITHUB_EVENT_PATH) event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
@@ -348,16 +378,8 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
     // evidence result actually used for the merge, so later reviewer records or
     // later changes to this checker cannot rewrite a lawful merge into a refusal.
     const statuses = readPages(`repos/${REPO}/commits/${headSha}/statuses?per_page=100`)
-    const authorizations = statuses.filter((row) => {
-      if (row?.context !== 'Migration guarded merge authorization' || row?.state !== 'success') return false
-      if (row?.description !== 'Exclusive merge lock held and exact head revalidated' || row?.creator?.login !== 'github-actions[bot]') return false
-      const createdAtMs = Date.parse(String(row?.created_at ?? ''))
-      if (!Number.isFinite(createdAtMs)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge authorization status has no readable server timestamp`)
-      return createdAtMs <= mergeCutoffMs
-    }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    if (!authorizations.length) throw new ApprovalCheckError(`pull request #${pr} has no successful guarded-merge authorization status at or before its merge time ${mergedAt}`)
-    const authorization = authorizations[0]
-    return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
+    const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt)
+    return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, headSha: headSha.toLowerCase(), authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
   }
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a
@@ -549,16 +571,17 @@ export function resolveApprovalMainRef(env = process.env, pr, readJson = json, r
   return `${merge}^1`
 }
 
-export function main(env = process.env) {
+export function main(env = process.env, deps = {}) {
+  const { gather = gatherApprovalInput, evaluate = evaluateApprovalWithRefresh } = deps
   try {
-    const input = gatherApprovalInput(env)
+    const input = gather(env)
     if (input.mergeAudit) {
-      console.log(`Merged pull request approval audit verified: PR #${input.pr} head ${input.headSha} carried successful guarded-merge authorization status ${input.mergeAudit.statusId} at ${input.mergeAudit.authorizedAt}, before merge ${input.mergeAudit.mergedAt}. Later reviewer activity and later gate-rule changes do not rewrite that merge-time decision.`)
+      console.log(`Merged pull request approval audit verified: PR #${input.pr} head ${input.headSha} carried successful guarded-merge authorization status ${input.mergeAudit.statusId} at ${input.mergeAudit.authorizedAt}, before merge ${input.mergeAudit.mergedAt} (merge commit ${input.mergeAudit.mergeCommitSha}). Later reviewer activity and later gate-rule changes do not rewrite that merge-time decision.`)
       return 0
     }
     requireDurableVerdictInput(input)
     const mainRef = resolveApprovalMainRef(env, input.pr)
-    const result = evaluateApprovalWithRefresh(input, { contentPreservingRefresh: (approvedHead, head) => isContentPreservingRefresh({ approvedHead, head, mainRef }) })
+    const result = evaluate(input, { contentPreservingRefresh: (approvedHead, head) => isContentPreservingRefresh({ approvedHead, head, mainRef }) })
     if (result.carried_from) console.log(`Exact-head approval carried forward: PR #${result.pr} head ${result.head_sha} has the same pull request diff as approved head ${result.carried_from}, so its evidence-only or merge-from-main refresh needs no new review; approved implementation digest ${result.implementation_digest} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s)).`)
     else if (result.documents_only) console.log(`Documents-only pull request: PR #${result.pr} head ${result.head_sha} draws no database reviewer (${result.reason}). Every other check and the guarded merge lane still apply (#2102).`)
     else console.log(`Exact-head approval verified: PR #${result.pr} head ${result.head_sha} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s), required slot(s) ${result.required_slots}).`)

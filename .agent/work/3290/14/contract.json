@@ -1,7 +1,5 @@
 {
   "allowed_paths": [
-    ".agent/work/3290/13/completion.json",
-    ".agent/work/3290/13/contract.json",
     "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",
     "docs/verification/product-type-reader/final-2026-09-23.md",
@@ -12,7 +10,6 @@
     "tools/product_type_reader/construction_rules.py",
     "tools/product_type_reader/evaluate.py",
     "tools/product_type_reader/gold/coverage.py",
-    "tools/product_type_reader/gold/labels.csv",
     "tools/product_type_reader/legacy.py",
     "tools/product_type_reader/material_rules.py",
     "tools/product_type_reader/reader.py",
@@ -24,8 +21,9 @@
     "tools/product_type_reader/test_reader.py",
     "tools/product_type_reader/test_storage_rules.py",
     "tools/product_type_reader/test_treatment_rules.py",
-    "tools/product_type_reader/tests/fixtures/descriptions.csv",
-    "tools/product_type_reader/treatment_rules.py"
+    "tools/product_type_reader/treatment_rules.py",
+    ".agent/work/3290/14/contract.json",
+    ".agent/work/3290/14/completion.json"
   ],
   "assumptions": [
     "Phase A of #3024 (landing issue #3290): Faux Book gold correction, artwork caption boundary and hamper plural in the offline product-type reader; supersedes #3332.",
@@ -38,8 +36,6 @@
   "db_writes": [],
   "dispatcher": "Coordinator session for #3024 Phase A (non-orchestrator repository work)",
   "file_writes": [
-    ".agent/work/3290/13/completion.json",
-    ".agent/work/3290/13/contract.json",
     "docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",
     "docs/verification/product-type-reader/final-2026-09-23.md",
@@ -50,7 +46,6 @@
     "tools/product_type_reader/construction_rules.py",
     "tools/product_type_reader/evaluate.py",
     "tools/product_type_reader/gold/coverage.py",
-    "tools/product_type_reader/gold/labels.csv",
     "tools/product_type_reader/legacy.py",
     "tools/product_type_reader/material_rules.py",
     "tools/product_type_reader/reader.py",
@@ -62,10 +57,11 @@
     "tools/product_type_reader/test_reader.py",
     "tools/product_type_reader/test_storage_rules.py",
     "tools/product_type_reader/test_treatment_rules.py",
-    "tools/product_type_reader/tests/fixtures/descriptions.csv",
-    "tools/product_type_reader/treatment_rules.py"
+    "tools/product_type_reader/treatment_rules.py",
+    ".agent/work/3290/14/contract.json",
+    ".agent/work/3290/14/completion.json"
   ],
-  "generation": 13,
+  "generation": 14,
   "goal": "Land the corrected product-type reader Phase A with zero wrong answers on the strict live-catalog evaluation, regenerated public artifacts, and gold labels corrected for Faux Book.",
   "prohibited_actions": [
     "No database write, migration, schema, function, view, role, grant or index change.",

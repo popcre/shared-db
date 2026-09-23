@@ -1,0 +1,191 @@
+"""Treatment evidence stays inside a stated physical-product clause."""
+
+import pytest
+
+from tools.product_type_reader.treatment_rules import _normalize, extract_treatments
+
+
+def read(description: str, noun: str, evidence: str | None = None) -> tuple[str, ...]:
+    title = _normalize(description.split("_")[0])
+    start = title.index(noun)
+    return extract_treatments(
+        description,
+        normalized_title=title,
+        product_span=(start, start + len(noun)),
+        physical_evidence=evidence if evidence is not None else noun,
+    )
+
+
+@pytest.mark.parametrize(
+    "description,noun,evidence,expected",
+    [
+        ("Foil canvas", "canvas", "foil canvas", ("Foil",)),
+        ("Static LED canvas", "canvas", "static led canvas", ("LED",)),
+        ("MDF metallic print", "print", "metallic print", ("Metallic",)),
+        ("High gloss canvas", "canvas", "high gloss canvas", ("High Gloss",)),
+        ("Canvas with moving LED", "canvas", "canvas moving led", ("LED",)),
+        ("Canvas with copper foil", "canvas", "canvas", ("Foil",)),
+        ("Canvas with metallic leaf", "canvas", "canvas", ("Metallic Leaf",)),
+        ("Silver metallic leaf on glass", "glass", "glass", ("Silver Leaf",)),
+        ("Gold metallic leaf on glass", "glass", "glass", ("Gold Leaf",)),
+        ("Canvas with spot varnish", "canvas", "canvas", ("Spot Varnish",)),
+        ("Printed Canvas Multipack set of 4 w/Spot Varnish", "canvas", "canvas", ("Spot Varnish",)),
+        ("Printed Canvas w Sport Varnish", "canvas", "canvas", ("Spot Varnish",)),
+        ("Canvas with spot gloss", "canvas", "canvas", ("Spot Gloss",)),
+        ("Embossed print", "print", "embossed print", ("Embossed",)),
+        ("Screenprinted canvas", "canvas", "screenprinted canvas", ("Screenprint",)),
+        ("Distressed finish canvas", "canvas", "distressed finish canvas", ("Distressed",)),
+        ("Canvas with applique", "canvas", "canvas applique", ("Applique",)),
+        ("Glass art with crystal gravel", "art", "glass art", ("Crystal Gravel",)),
+        ("Canvas with button embellishment", "canvas", "canvas", ("Button Embellishment",)),
+        ("Canvas with glue embellishment", "canvas", "canvas", ("Glue Embellishment",)),
+        ("Canvas with glitter and foil", "canvas", "canvas glitter and foil", ("Foil", "Glitter")),
+        ("Canvas w diamond dust glitter", "canvas", "canvas", ("Diamond Dust", "Glitter")),
+        ("MDF box with copper foil artwork panel", "box", "mdf box", ()),
+        ("MDF box with copper foil decorative panel", "box", "mdf box", ("Foil",)),
+        ("Storage chest and gold foil", "chest", "storage chest", ("Foil",)),
+        ("Canvas with silver glitter finish", "canvas", "canvas", ("Glitter",)),
+        ("LED franchise canvas", "canvas", "canvas", ("LED",)),
+        ("Canvas with moving LEDs", "canvas", "canvas", ("LED",)),
+        ("Canvas with goldfoil", "canvas", "canvas", ("Foil",)),
+        ("Canvas with foil15x14", "canvas", "canvas", ("Foil",)),
+        ("Canvas with gltr", "canvas", "canvas", ("Glitter",)),
+        ("Canvas with glitter 16x20 artwork garden", "canvas", "canvas glitter", ("Glitter",)),
+        ("11x14 high gloss canvas artwork garden", "canvas", "high gloss canvas", ("High Gloss",)),
+        ("Canvas 16x20_foil", "canvas", "canvas", ("Foil",)),
+        ("Canvas w dripping metallic paint 20x20", "canvas", "canvas", ("Metallic",)),
+        ("Canvas w metallic finish", "canvas", "canvas", ("Metallic",)),
+        ("Printed canvas w fabric bow", "canvas", "canvas", ("Attachment",)),
+        ("Metal plate emb canvas", "canvas", "canvas", ("Attachment",)),
+        ("Wire emb canvas", "canvas", "canvas", ("Attachment",)),
+        ("Canvas with metal logo", "canvas", "canvas", ("Attachment",)),
+        ("MTLC CNVS", "canvas", "canvas", ("Metallic",)),
+        ("MTLLIC Canvas", "canvas", "canvas", ("Metallic",)),
+        ("MTLLC CNVS", "canvas", "canvas", ("Metallic",)),
+        ("Printed Canvas w DRPPNG MTLLIC Paint", "canvas", "canvas", ("Metallic",)),
+        ("Metallic Print on MDF Box", "box", "box", ("Metallic",)),
+        ("Canvas with clear gel", "canvas", "canvas", ("Gel Coat",)),
+        ("Greyboard storage chest w spot gloss", "chest", "chest", ("Spot Gloss",)),
+        ("Canvas with chenile patch", "canvas", "canvas", ("Chenille Patch",)),
+        ("Button Art", "art", "button art", ("Button Embellishment",)),
+        ("HG CNVS", "canvas", "canvas", ("High Gloss",)),
+        ("HGH GLSS Canvas", "canvas", "canvas", ("High Gloss",)),
+        ("Canvas w gold embelishment", "canvas", "canvas", ("Embellished",)),
+        ("Canvas with chiffon applique and embroidery", "canvas", "canvas", ("Applique", "Embroidery")),
+        ("Ceramic block_Copper foil_4x4", "block", "ceramic block", ("Foil",)),
+        ("Sample set embellished 9x13 canvas two-pack", "canvas", "canvas", ("Embellished",)),
+        ("9x13 handpainted meadow canvas", "canvas", "canvas", ("Handpaint",)),
+        ("Canvas Blue Finch Hand Painted 21x29", "canvas", "canvas", ("Handpaint",)),
+        ("Canvas with glue coat texture", "canvas", "canvas", ("Glue Embellishment",)),
+        ("Float Frme w highgloss Blck n whte wman leaves", "frme", "frme", ("High Gloss",)),
+        ("Canvas w Sherpa Fabric", "canvas", "canvas", ("Attachment",)),
+        ("Canvas w Faux Fur", "canvas", "canvas", ("Attachment",)),
+        ("Canvas with bows", "canvas", "canvas", ("Attachment",)),
+        ("Canvas with bows and glitter", "canvas", "canvas", ("Attachment", "Glitter")),
+        ("12x16 Canvas with bows Jojo Siwa Dream Believe Achieve", "canvas", "canvas", ("Attachment",)),
+        ("Floater Framed Canvas w Hgh Glass", "canvas", "canvas", ("High Gloss",)),
+        ("MDF box frame with glitterDisney Princess", "box", "box", ("Glitter",)),
+        ("MDF Photo Frame_Pink Glitter Insert_4x6", "frame", "frame", ("Glitter",)),
+        ("Canvas with genuine glitter", "canvas", "canvas", ("Glitter",)),
+        ("Canvas with gold foil finish", "canvas", "canvas", ("Foil",)),
+        ("Floater Frame Faux Leather w Screenprint", "frame", "frame", ("Screenprint",)),
+        ("Mini Stained Glass with Bow Frame and Chain", "stained glass", "stained glass", ("Stained Glass",)),
+        ("Distressed Canvas_American Flag", "canvas", "canvas", ("Distressed",)),
+        ("Distressed canvas", "canvas", "distressed canvas", ("Distressed",)),
+        ("Fictional Hero DISTRESSEDCANVAS", "canvas", "canvas", ("Distressed",)),
+        ("Pressed Leaves under Glass in Distressed Wooden Frame", "frame", "frame", ("Distressed",)),
+        ("Peanuts MDF Textured Frame Snoopy in camp", "frame", "mdf textured frame", ("Textured",)),
+        ("Printed Glass with Textured Background_Salem Apothecary", "glass", "glass", ("Textured",)),
+        ("MDF Block w Beaded Accent_USA colors", "block", "block", ("Beaded",)),
+        ("Printed Canvas w Plaster Word_Eat Sleep Game Repeat", "canvas", "canvas", ("Plaster Word",)),
+        ("Framed Printed Glass with Dried Flowers_Be Grateful", "glass", "glass", ("Dried Flowers",)),
+        ("Floater Frame Canvas w Gold Leaf and Puffy Paint_Dark castle", "canvas", "canvas", ("Gold Leaf", "Puff Paint")),
+        ("Canvas in Floating Frame multiple embellishment_Abstract art", "canvas in floating frame", "canvas in floating frame", ("Embellished",)),
+        ("Floating character MDF box with metallic foil Hulk", "box", "box", ("Foil",)),
+    ],
+)
+def test_stated_physical_treatment(description, noun, evidence, expected):
+    assert read(description, noun, evidence) == expected
+
+
+@pytest.mark.parametrize(
+    "description,noun,evidence",
+    [
+        ("Canvas gold foil artwork", "canvas", "canvas"),
+        ("Canvas_foil hero artwork", "canvas", "canvas"),
+        ("Canvas_Winter foil scene", "canvas", "canvas"),
+        ("Canvas_Artwork with LED", "canvas", "canvas"),
+        ("Canvas 16x20 foil artwork", "canvas", "canvas"),
+        ("Canvas without foil", "canvas", "canvas without foil"),
+        ("Canvas no glitter", "canvas", "canvas no glitter"),
+        ("Metal bow frame", "frame", "metal bow frame"),
+        ("Canvas with foil artwork", "canvas", "canvas"),
+        ("Canvas fairy hero portrait foil", "canvas", "canvas foil"),
+        ("Canvas fairy hero portrait glitter", "canvas", "canvas glitter"),
+        ("Textured canvas", "canvas", "textured canvas"),
+        ("Canvas with lights", "canvas", "canvas"),
+        ("Lightup silhouette", "silhouette", "lightup silhouette"),
+        ("Canvas 16x20 artwork girl with glitter", "canvas", "canvas glitter"),
+        ("Canvas 16x20 girl with glitter", "canvas", "canvas glitter"),
+        ("Canvas 16in x20in girl with glitter", "canvas", "canvas glitter"),
+        ("Canvas 30cm x40cm artwork with foil", "canvas", "canvas foil"),
+        ("Canvas 12 inch artwork with glitter", "canvas", "canvas glitter"),
+        ("Canvas artwork girl with foil", "canvas", "canvas foil"),
+        ("Canvas graphic stars with LEDs", "canvas", "canvas led"),
+        ("Canvas with foil artwork hero", "canvas", "canvas foil"),
+        ("Canvas with bow iconic repeat graphic", "canvas", "canvas"),
+        ("Canvas 16x20 artwork with metallic", "canvas", "canvas"),
+        ("Canvas 16x20 artwork with spot gloss", "canvas", "canvas"),
+        ("Canvas 16x20 graphic button art", "canvas", "canvas"),
+        ("Assorted sketches 9x13 Canvas w and w/o embellishments", "canvas", "canvas embellished"),
+        ("Canvas with and without glitter", "canvas", "canvas glitter"),
+        ("DIY embroidery kit with hoop and needles", "kit", "embroidery kit"),
+        ("Fabric bow wall art with hearts and bows", "wall art", "wall art"),
+        ("Canvas with bows in printed graphic", "canvas", "canvas"),
+        ("Canvas with bow frame", "canvas", "canvas"),
+        ("PE Rattan Wall Shelf with Bow Princess Icons", "wall shelf", "wall shelf"),
+        ("Canvas with bows, Canvas plain", "canvas", "canvas"),
+        ("Canvas with fake glitter", "canvas", "canvas fake glitter"),
+        ("Canvas with simulated gold foil", "canvas", "canvas simulated gold foil"),
+        ("Canvas with foil effect", "canvas", "canvas foil effect"),
+        ("Canvas artwork with spot varnish", "canvas", "canvas spot varnish"),
+        ("Canvas with faux metallic foil", "canvas", "canvas faux metallic foil"),
+        ("Canvas with fake silver foil", "canvas", "canvas fake silver foil"),
+        ("Canvas without glitter and foil", "canvas", "canvas glitter and foil"),
+        ("Canvas without foil and glitter", "canvas", "canvas foil and glitter"),
+        ("Canvas artwork of hand painted forest", "canvas", "canvas"),
+        ("MDF print NASA logo with distressing", "print", "print"),
+        ("MDF print grunge distressed texture", "print", "print"),
+        ("Disny, SS domed grybrd strge chst w foil, domed grybrd strge chst w spt gloss 18x13", "domed greyboard storage chest", "domed greyboard storage chest w foil"),
+    ],
+)
+def test_artwork_size_and_negation_do_not_supply_treatment(description, noun, evidence):
+    assert read(description, noun, evidence) == ()
+
+
+def test_product_span_is_required_and_validated():
+    with pytest.raises(ValueError, match="product_span"):
+        extract_treatments("Canvas", normalized_title="canvas", product_span=(8, 13), physical_evidence="")
+
+
+def test_empty_description_gives_no_treatment():
+    assert extract_treatments(None, normalized_title="canvas", product_span=(0, 6), physical_evidence="") == ()
+
+
+@pytest.mark.parametrize("description,expected", [
+    ("Canvas with foil and Canvas with glitter", ()),
+    ("Canvas with foil, Canvas without foil", ()),
+    ("Canvas with foil and Canvas with foil", ("Foil",)),
+    ("Canvas with LEDs, Canvas without LEDs", ()),
+    ("Canvas with LEDs and Canvas with LEDs", ("LED",)),
+    ("Printed glass with foil and printed glass without foil", ()),
+    ("Brand A, Brand B cnvs, cnvs w foil 12x16", ()),
+    ("16X20 assorted canvas plain and foil", ()),
+    ("2pc multi-pck cnvs w glttr, w foil 22x14", ()),
+    ("Mlti-pck cnvs w glttr, foil, gel 22x14", ()),
+    ("Metallic and plain canvas", ()),
+    ("Printed cnvs, mtllc cnvs 16x16", ()),
+])
+def test_same_form_variants_keep_only_common_finish(description, expected):
+    noun = "printed glass" if description.lower().startswith("printed glass") else "canvas"
+    assert read(description, noun, noun) == expected

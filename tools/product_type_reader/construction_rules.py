@@ -57,6 +57,13 @@ def _shadowbox_frame(clause: str, *, before_size: bool = False) -> bool:
     return False
 
 
+_VISUAL_CONTENT = re.compile(
+    r"\b(?:with|w|featuring)\s+(?!(?:pendulums?|cushion(?:ed|s)?|frames?|stands?|lids?|hooks?|drawers?|mirrors?|lights?|leds?)\b)(?:[^\s,_]+\s+){0,5}?"
+    r"(?:artwork|illustrations?|graphics?|images?|scenes?|designs?|patterns?|motifs?)\b"
+    r"|\b(?:artwork|illustrations?|depicting)\b",
+    re.I)
+
+
 def refine_construction(description: object, product_type: str, current: str = "") -> str:
     """Add only explicit, family-bound physical construction evidence.
 
@@ -76,6 +83,10 @@ def refine_construction(description: object, product_type: str, current: str = "
     # A physical adjective after a size is not enough to modify the product.
     if dimension:
         title_source = title_source[:dimension.start()]
+    # Visual-content wording names what is pictured, never how the product is
+    # built ("with tea set graphic" is not a set).  Stop at the first marker.
+    visual = _VISUAL_CONTENT.search(title_source)
+    physical_title = _words(title_source[:visual.start()] if visual else title_source)
     title = _words(title_source)
     # A whole underscore clause may independently name this one assembly.
     # Searching the complete description would also read artwork clauses.
@@ -84,12 +95,16 @@ def refine_construction(description: object, product_type: str, current: str = "
     def stated(pattern: str) -> bool:
         return re.search(pattern, title) is not None
 
+    def physically_stated(pattern: str) -> bool:
+        # Family-wide or count-like words must precede any depicted content.
+        return re.search(pattern, physical_title) is not None
+
     # A quantity set or a noun already carried by the product type is not a
     # physical construction.  These narrow cases correct upstream extras.
     if product_type == "Paint-Your-Own Canvas Set" and stated(r"\bcanvas panel\b"):
         parts.discard("Panel")
     # A faux book is one object; a stated set or piece count is its construction.
-    if product_type == "Faux Book" and stated(r"\bset\b|\b(?:two|three|\d+)[- ]?(?:piece|pc)s?\b"):
+    if product_type == "Faux Book" and physically_stated(r"\bset\b|\b(?:two|three|\d+)[- ]?(?:piece|pc)s?\b"):
         parts.add("Set")
     if product_type == "Box Shelf" and re.search(r"\bnested mdf box shelf set\b", title + " " + after_size):
         parts.discard("Set")
@@ -133,10 +148,10 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Deep Frame")
     if stated(r"\bdeep frame\b") and product_type == "Framed Print":
         parts.add("Deep Frame")
-    if stated(r"\b(?:floating|floater|float) framed\b") or any(
+    if physically_stated(r"\b(?:floating|floater|float) framed\b") or any(
             re.fullmatch(r"(?:floating|floater|float) framed", clause) for clause in clauses):
         parts.add("Floating Frame")
-    if product_type != "Tablet Stand" and stated(r"\bdie cut\b") \
+    if product_type != "Tablet Stand" and physically_stated(r"\bdie cut\b") \
             and not stated(r"\bdie cut (?:icon|attachment|magnets?)\b"):
         parts.add("Die-Cut")
     if stated(r"\brevers(?:e|ible)\b") and product_type in {
@@ -158,7 +173,7 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Straight")
     if stated(r"\bchain\b") and product_type in {"Glass Art", "Framed Glass Art"}:
         parts.add("Chain")
-    if product_type == "Clock" and stated(r"\bpendulum\b"):
+    if product_type == "Clock" and physically_stated(r"\bpendulum\b"):
         parts.add("Pendulum")
     if product_type == "Framed Art" and stated(r"\bdeckled? edge\b"):
         parts.add("Deckled Edge")
@@ -253,7 +268,7 @@ def refine_construction(description: object, product_type: str, current: str = "
     if diy_noun and stated(r"\bdiy\b(?:\s+\w+){0,5}\s+" + diy_noun + r"\b"):
         parts.add("DIY")
     if product_type in {"Wall Clock", "Clock", "Photo Frame", "Framed Shadowbox", "Art"} \
-            and stated(r"\bmolded\b"):
+            and physically_stated(r"\bmolded\b"):
         parts.add("Molded")
     molded_noun = {
         "Foam Art": r"foam art",

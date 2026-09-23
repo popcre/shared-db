@@ -102,7 +102,10 @@ All in `docs/verification/item-mg-reclassification-20260814/` (analysis area, me
   (#1871). Do not copy them back. Use live `coldlion.item_header` / `plm.item` instead.
 - Method doc: `docs/item-description-mg-classification-process.md` (Step 1 defines the five fields).
 
-Nothing is committed for this plan yet except this file and its handoff.
+Superseded as a statement of current code (2026-09-23): the hardened reader now lives in
+`tools/product_type_reader/` (PR #3446) and replaces the analysis-area reader above for this plan.
+Its release gate is `python -m pytest -q docs/verification/item-mg-reclassification-20260814 tools/product_type_reader`
+plus the strict private evaluation (`evaluate.py --strict`, zero wrong rows); all gold data stays private.
 
 ### 6. Key findings
 

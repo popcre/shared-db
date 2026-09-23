@@ -18,7 +18,7 @@ list are private evidence in `u2giants/licensor-source-data`, under
 `product-type-reader/2026-09-20/`. They must never be copied into this repository.
 The gold labels (`labels.csv`) and the reviewed real-description fixture
 (`reviewed-description-fixture.csv`) are private too: both carry catalog wording,
-and the public-data venue guard forbids tabular data in this repository.
+and licensed catalog wording must never enter this public repository.
 
 Run from the repository root with Python, pandas and pytest installed:
 

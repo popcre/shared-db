@@ -210,21 +210,13 @@ def main(argv=None):
             repo = Path(__file__).resolve().parents[2]
             if args.private_details.resolve().is_relative_to(repo):
                 raise ValueError('Private details must be written outside the public repository')
-            # A second worktree or canonical checkout is equally public.
-            for ancestor in args.private_details.resolve().parents:
-                config = ancestor / '.git' / 'config'
-                marker = ancestor / '.git'
-                if marker.is_file():
-                    gitdir = marker.read_text(encoding='utf-8').strip().removeprefix('gitdir: ')
-                    gitpath = (ancestor / gitdir).resolve()
-                    common = gitpath / 'commondir'
-                    if common.is_file():
-                        config = (gitpath / common.read_text().strip()).resolve() / 'config'
-                if config.is_file():
-                    remotes = config.read_text(encoding='utf-8').lower().replace('\\', '/')
-                    if 'shared-db' in remotes:
-                        raise ValueError('Private details cannot be written into a shared-db checkout')
-                    break
+            # Fail closed: any git checkout (another worktree, the canonical
+            # checkout, or a repository whose remote cannot be judged) may be
+            # published, so private details go only to a plain directory.
+            target = args.private_details.resolve()
+            for ancestor in (target, *target.parents):
+                if (ancestor / '.git').exists():
+                    raise ValueError('Private details must be written outside every git checkout')
         try:
             from . import read_product_type
         except ImportError:

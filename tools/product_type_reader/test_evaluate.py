@@ -178,3 +178,35 @@ def test_whitespace_only_accepted_gold_type_rejected(inputs):
     path.write_text(path.read_text(encoding='utf-8').replace('Pencil Case', '   '), encoding='utf-8')
     with pytest.raises(ValueError, match='requires product type'):
         evaluate(*inputs, correct_reader)
+
+
+def _cli_args(inputs):
+    return [value for name, path in zip(('corpus', 'manifest', 'labels', 'assignments'), inputs)
+            for value in ('--' + name, str(path))]
+
+
+def test_strict_exit_code_fails_only_a_failing_gate(inputs):
+    corpus, manifest, labels, assignments = inputs
+    rows = list(csv.DictReader(labels.open(encoding='utf-8', newline='')))
+    rows[0]['product_type'] = 'Mat'
+    write_csv(labels, rows)
+    assert main(_cli_args(inputs)) == 0
+    assert main(_cli_args(inputs) + ['--strict']) == 1
+
+
+def test_private_details_refused_inside_any_git_checkout(inputs, tmp_path):
+    checkout = tmp_path / 'some-checkout'
+    (checkout / '.git').mkdir(parents=True)
+    target = checkout / 'nested' / 'details.json'
+    assert main(_cli_args(inputs) + ['--private-details', str(target)]) == 2
+    assert not target.exists()
+    worktree = tmp_path / 'linked-worktree'
+    worktree.mkdir()
+    (worktree / '.git').write_text('gitdir: elsewhere', encoding='utf-8')
+    assert main(_cli_args(inputs) + ['--private-details', str(worktree / 'd.json')]) == 2
+
+
+def test_private_details_written_to_plain_directory(inputs, tmp_path):
+    target = tmp_path / 'plain' / 'details.json'
+    assert main(_cli_args(inputs) + ['--private-details', str(target)]) == 0
+    assert target.is_file()

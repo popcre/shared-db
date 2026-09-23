@@ -11,11 +11,16 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-import pandas as pd
+import math
+
+
+def _isna(value):
+    """True for None and float NaN, the only missing values the legacy reader saw."""
+    return value is None or (isinstance(value, float) and math.isnan(value))
 
 
 def normalize(value: object) -> str:
-    text = unicodedata.normalize("NFKD", "" if pd.isna(value) else str(value))
+    text = unicodedata.normalize("NFKD", "" if _isna(value) else str(value))
     text = text.encode("ascii", "ignore").decode().lower()
     replacements = {
         "shadow box": "shadowbox", "shadow bx": "shadowbox", "shdwbx": "shadowbox",
@@ -34,7 +39,7 @@ def normalize(value: object) -> str:
 
 def candidate_wording(description: object) -> str:
     """Stable observed wording used as the exact dictionary lookup key."""
-    text = "" if pd.isna(description) else str(description)
+    text = "" if _isna(description) else str(description)
     return text.split("_", 1)[0].strip()[:240]
 
 
@@ -325,7 +330,7 @@ def subtype_for_product(product: str, construction: str) -> str:
 
 
 def classify_semantic_signature(value: object) -> SemanticSignature:
-    original = "" if pd.isna(value) else str(value)
+    original = "" if _isna(value) else str(value)
     reason = unusable_reason(original)
     if reason:
         return SemanticSignature(status="placeholder", decision=reason)

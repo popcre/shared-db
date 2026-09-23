@@ -11,14 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from tools.product_type_reader import read_product_type
-from tools.product_type_reader.evaluate import FIELDS, canonical_fields
 
 
 _FIXTURE_PATH = os.environ.get('PRODUCT_TYPE_READER_PRIVATE_FIXTURE', '')
 if not _FIXTURE_PATH:
     pytest.skip('private reviewed-description fixture not configured '
                 '(set PRODUCT_TYPE_READER_PRIVATE_FIXTURE)', allow_module_level=True)
+from tools.product_type_reader import read_product_type
+from tools.product_type_reader.evaluate import FIELDS, canonical_fields
 with Path(_FIXTURE_PATH).open(encoding='utf-8', newline='') as stream:
     CASES = list(csv.DictReader(stream))
 if not CASES:

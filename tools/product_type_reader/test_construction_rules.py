@@ -573,3 +573,12 @@ def test_physical_structure_beats_shape_noun_and_artwork_title():
     assert refine_construction("Canvasboard 7x9 fictional heroes painting set", "Canvas", "Set") == "Panel; Set"
     assert refine_construction("Canvasboard 7x9 sunset art", "Canvas") == "Panel"
     assert refine_construction("Canvas_artwork on canvasboard", "Canvas") == ""
+
+
+def test_artwork_caption_never_supplies_physical_construction():
+    from tools.product_type_reader import read_product_type
+    construction = lambda text: read_product_type(text).get('product_construction') or ''
+    assert 'Set' not in construction('Faux Book Storage with Tea Set Graphic')
+    assert 'Set' in construction('Faux book 3 piece set')
+    assert 'Pendulum' not in construction('Wall Clock with Pendulum Clock Illustration')
+    assert 'Pendulum' in construction('Clock with pendulum artwork')

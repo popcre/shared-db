@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "generation": 5,
+  "work_issue": 2110,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Retire the frozen DesignFlow archive with preserved child rows and validated live parent constraints",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
+  "dispatcher": "Codex orchestrator marker 3297; explicit authoring approval in current parent dispatch",
+  "worker": "codex-2110-retirement-admission-0920",
+  "branch": "codex/2110-retirement-admission-0920",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/a2110-author-aa47",
+  "allowed_paths": [
+    "supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql",
+    ".github/live-proofs/2110.sql",
+    "scripts/test_frozen_designflow_retirement.py",
+    "docs/verification/2110-frozen-designflow-retirement.md",
+    "scripts/production-verification-sidecars/20260923181754.json",
+    "config/production-verification-sidecar-registry.json",
+    ".agent/work/2110/5/contract.json",
+    ".agent/work/2110/5/completion.json",
+    "types/database.types.ts"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260923181754_retire_frozen_designflow_schema.sql",
+    ".github/live-proofs/2110.sql",
+    "scripts/test_frozen_designflow_retirement.py",
+    "docs/verification/2110-frozen-designflow-retirement.md",
+    "scripts/production-verification-sidecars/20260923181754.json",
+    "config/production-verification-sidecar-registry.json",
+    ".agent/work/2110/5/contract.json",
+    ".agent/work/2110/5/completion.json",
+    "types/database.types.ts"
+  ],
+  "db_reads": [
+    "table dflow.Roles",
+    "table dflow.art_piece",
+    "schema designflow_frozen_20260710",
+    "table app.RolePermissions",
+    "table plm.art_piece_attachment"
+  ],
+  "db_writes": [
+    "schema designflow_frozen_20260710",
+    "sequence designflow_frozen_20260710.\"Factory_id_seq\"",
+    "sequence designflow_frozen_20260710.\"Roles_Id_seq\"",
+    "sequence designflow_frozen_20260710.\"StandardizedVersionDetail_id_seq\"",
+    "sequence designflow_frozen_20260710.\"StandardizedVersion_id_seq\"",
+    "sequence designflow_frozen_20260710.art_piece_id_seq",
+    "sequence designflow_frozen_20260710.artists_id_seq",
+    "sequence designflow_frozen_20260710.comments_id_seq",
+    "sequence designflow_frozen_20260710.customers_customers_id_seq",
+    "sequence designflow_frozen_20260710.product_category_id_seq",
+    "table app.\"RolePermissions\"",
+    "table designflow_frozen_20260710.\"Factory\"",
+    "table designflow_frozen_20260710.\"Roles\"",
+    "table designflow_frozen_20260710.art_piece",
+    "table designflow_frozen_20260710.artists",
+    "table designflow_frozen_20260710.comments",
+    "table designflow_frozen_20260710.customers",
+    "table designflow_frozen_20260710.product_category",
+    "table plm.art_piece_attachment"
+  ],
+  "prohibited_actions": [
+    "No preview or production writes, merge, or production dispatch by this worker",
+    "No contact restoration, parent data overwrite, CASCADE, or cleanup of prior protected rehearsal"
+  ],
+  "required_checks": [
+    "python scripts/test_frozen_designflow_retirement.py",
+    "bash scripts/check-sql.sh",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Root authorized exact retirement scope before authoring; canonical contract is being published after the uncommitted migration, proof, recovery note and test were drafted and 9 synthetic tests passed. This is a truthful publication checkpoint, not a claim of prospective sealing.",
+    "Explicit September 6 owner retirement/repoint authority applies; historical metadata divergence and limited restore rehearsal must receive fresh independent review",
+    "Generated types path reserved for the authoritative preview artifact; no such artifact is claimed yet",
+    "Generation 2 corrects exact object naming after structural admission refused the coarse schema-level generation 1 scope. The immutable generation 1 ref remains preserved. Root approved explicit static ALTER statements with identical behavior. Local implementation already exists; this is not prospective authorization.",
+    "base_sha records the upstream merge base of this generation 2 checkpoint; the original authoring base fdb4c3a8ecc75e53253b280f77cb180261b2fc2f remains recorded in generation 1."
+  ],
+  "stop_conditions": [
+    "Unknown archive inventory, dependencies, parent identity changes or backup mismatch",
+    "Any preview or production write requires separate orchestrator stage authority",
+    "Guarded merge requires all currently applicable independent reviews and checks; merged-main preview rehearsal must pass before automatic production promotion; final outcome completion requires generated types and live proof. Worker may not preview, merge or promote."
+  ]
+}

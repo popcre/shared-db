@@ -3303,6 +3303,56 @@ test('#2758 merge lane accepts independently moved main only through classifyBra
   )
 })
 
+test('#2758 merge lane grants a real independent-main lock and refuses an overlapping move', () => {
+  const repo=mkdtempSync(path.join(tmpdir(),'db-lane-2758-'))
+  const previous=process.cwd()
+  const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()
+  const put=(name,contents)=>{const file=path.join(repo,name);mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,contents)}
+  const commit=(message)=>{git('add','--all');git('commit','-q','-m',message);return git('rev-parse','HEAD')}
+  try{
+    git('init','-q','-b','main')
+    git('config','user.name','Test')
+    git('config','user.email','test@example.invalid')
+    git('config','commit.gpgsign','false')
+    put('docs/shared.md','base\n')
+    const base=commit('base')
+    git('switch','-q','-c','pr')
+    put('docs/pr.md','PR work\n')
+    const head=commit('PR work')
+    git('switch','-q','main')
+    put('scripts/unrelated.mjs','export const unrelated = true\n')
+    const tip=commit('independent main move')
+    const io=memoryIo()
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'}]
+    io.getPr=()=>({number:7,head:{sha:head,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>tip
+    process.chdir(repo)
+    const lock=acquireExclusive('merge',{owner:'independent',pr:7,headSha:head},io)
+    assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+    releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+
+    git('switch','-q','pr')
+    put('docs/shared.md','PR edit\n')
+    const overlappingHead=commit('PR edits shared file')
+    git('switch','-q','main')
+    put('docs/shared.md','main edit\n')
+    put('scripts/another.mjs','export const another = true\n')
+    const overlappingTip=commit('main edits shared file')
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'},{path:'docs/shared.md',status:'modified'}]
+    io.getPr=()=>({number:7,head:{sha:overlappingHead,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>overlappingTip
+    assert.throws(
+      ()=>acquireExclusive('merge',{owner:'overlap',pr:7,headSha:overlappingHead},io),
+      /not based on the current main tip/,
+    )
+    assert.equal(io.readRef(EXCLUSIVE_REFS.merge),null)
+  } finally {
+    process.chdir(previous)
+    assert.ok(path.resolve(repo).startsWith(`${path.resolve(tmpdir())}${path.sep}`))
+    rmSync(repo,{recursive:true,force:true})
+  }
+})
+
 test('issue 1688 permits success only after the appropriate merge lock is acquired', () => {
   const leaseWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/migration-author-lease.yml',import.meta.url)),'utf8')
   const mergeWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml',import.meta.url)),'utf8')

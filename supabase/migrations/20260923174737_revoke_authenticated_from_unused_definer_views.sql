@@ -1,4 +1,4 @@
--- Issue #2662 bounded six-view subset; claim #3294, version 20260920005114.
+-- Issue #2662 bounded six-view subset; claim #3294, version 20260923174737.
 -- derived-from: none
 -- Remove only authenticated SELECT. No definitions, ownership, other grants,
 -- policies, or service-role capabilities change. Broader issue findings stay open.

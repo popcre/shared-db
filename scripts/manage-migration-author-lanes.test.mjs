@@ -3279,6 +3279,80 @@ test('issue 1688 routes non-migration pull requests through the guarded merge la
   )
 })
 
+test('#2758 merge lane accepts independently moved main only through classifyBranchFreshness', () => {
+  const io=memoryIo()
+  io.getPrFiles=()=>[{path:'docs/operations.md',status:'modified'}]
+  // Matching tip keeps the original exact-equality path: no git classification.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'main'}})
+  io.mainSha=()=> 'main'
+  const lock=acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io)
+  assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+  releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+  // Unequal tip with unclassifiable SHAs stays a refusal, never a silent pass.
+  io.getPr=()=>({number:7,head:{sha:'docs-head',ref:'codex/docs'},base:{sha:'older-main'}})
+  io.mainSha=()=> 'newer-main'
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+  // An unreadable tip is a refusal, not an independence grant.
+  io.mainSha=()=> null
+  assert.throws(
+    ()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:'docs-head'},io),
+    /not based on the current main tip/,
+  )
+})
+
+test('#2758 merge lane grants a real independent-main lock and refuses an overlapping move', () => {
+  const repo=mkdtempSync(path.join(tmpdir(),'db-lane-2758-'))
+  const previous=process.cwd()
+  const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()
+  const put=(name,contents)=>{const file=path.join(repo,name);mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,contents)}
+  const commit=(message)=>{git('add','--all');git('commit','-q','-m',message);return git('rev-parse','HEAD')}
+  try{
+    git('init','-q','-b','main')
+    git('config','user.name','Test')
+    git('config','user.email','test@example.invalid')
+    git('config','commit.gpgsign','false')
+    put('docs/shared.md','base\n')
+    const base=commit('base')
+    git('switch','-q','-c','pr')
+    put('docs/pr.md','PR work\n')
+    const head=commit('PR work')
+    git('switch','-q','main')
+    put('scripts/unrelated.mjs','export const unrelated = true\n')
+    const tip=commit('independent main move')
+    const io=memoryIo()
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'}]
+    io.getPr=()=>({number:7,head:{sha:head,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>tip
+    process.chdir(repo)
+    const lock=acquireExclusive('merge',{owner:'independent',pr:7,headSha:head},io)
+    assert.equal(lock.ref,EXCLUSIVE_REFS.merge)
+    releaseOwnedRef(EXCLUSIVE_REFS.merge,lock.ownerSha,io)
+
+    git('switch','-q','pr')
+    put('docs/shared.md','PR edit\n')
+    const overlappingHead=commit('PR edits shared file')
+    git('switch','-q','main')
+    put('docs/shared.md','main edit\n')
+    put('scripts/another.mjs','export const another = true\n')
+    const overlappingTip=commit('main edits shared file')
+    io.getPrFiles=()=>[{path:'docs/pr.md',status:'added'},{path:'docs/shared.md',status:'modified'}]
+    io.getPr=()=>({number:7,head:{sha:overlappingHead,ref:'codex/docs'},base:{sha:base}})
+    io.mainSha=()=>overlappingTip
+    assert.throws(
+      ()=>acquireExclusive('merge',{owner:'overlap',pr:7,headSha:overlappingHead},io),
+      /not based on the current main tip/,
+    )
+    assert.equal(io.readRef(EXCLUSIVE_REFS.merge),null)
+  } finally {
+    process.chdir(previous)
+    assert.ok(path.resolve(repo).startsWith(`${path.resolve(tmpdir())}${path.sep}`))
+    rmSync(repo,{recursive:true,force:true})
+  }
+})
+
 test('issue 1688 permits success only after the appropriate merge lock is acquired', () => {
   const leaseWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/migration-author-lease.yml',import.meta.url)),'utf8')
   const mergeWorkflow=readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml',import.meta.url)),'utf8')
@@ -9575,7 +9649,7 @@ test('resolveLaneApprovalBase judges a merged PR against its merge commit first 
   assert.deepEqual(resolveLaneApprovalBase(null, head, io(null)), { ok: true, fetch: tip })
   assert.deepEqual(resolveLaneApprovalBase(1, head, io({ merged: false, head: { sha: head } })), { ok: true, fetch: tip })
   const merged = { merged: true, merge_commit_sha: merge, head: { sha: head } }
-  assert.deepEqual(resolveLaneApprovalBase(1, head, io(merged)), { ok: true, fetch: merge, firstParentOf: merge })
+  assert.deepEqual(resolveLaneApprovalBase(1, head, io(merged)), { ok: true, fetch: merge, firstParentOf: merge, currentMain: tip })
   assert.equal(resolveLaneApprovalBase(1, head, io(merged, false)).ok, false)
   assert.equal(resolveLaneApprovalBase(1, 'a'.repeat(40), io(merged)).ok, false)
   assert.equal(resolveLaneApprovalBase(1, head, io({ merged: true, head: { sha: head } })).ok, false)
@@ -9585,4 +9659,35 @@ test('resolveLaneApprovalBase judges a merged PR against its merge commit first 
 test('assertDurableReviewApproval passes the pull request number to the refresh comparison', () => {
   const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'manage-migration-author-lanes.mjs'), 'utf8')
   assert.match(src, /io\.contentPreservingRefresh\(sha,head,Number\(pr\)\)/)
+})
+
+test('#3411 real Git: a merged head carries only unchanged prior approval with proven second parent and main ancestry', async () => {
+  const { mergedReviewComparisonBase } = await import('./manage-migration-author-lanes.mjs')
+  const { isContentPreservingRefresh } = await import('./lib/pr-content-equivalence.mjs')
+  const repo = mkdtempSync(path.join(tmpdir(), 'shared-db-3411-'))
+  const git = (args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  const commit = (message) => { git(['add', '.']); git(['commit', '-q', '-m', message]); return git(['rev-parse', 'HEAD']) }
+  try {
+    git(['init', '-q', '-b', 'main'])
+    git(['config', 'user.email', 'test@example.invalid'])
+    git(['config', 'user.name', 'Test'])
+    git(['config', 'commit.gpgsign', 'false'])
+    writeFileSync(path.join(repo, 'base.txt'), 'base\n'); commit('base')
+    git(['switch', '-q', '-c', 'pr'])
+    writeFileSync(path.join(repo, 'feature.txt'), 'reviewed\n'); const stale = commit('implementation before fix')
+    writeFileSync(path.join(repo, 'feature.txt'), 'fixed\n'); const approved = commit('approved implementation')
+    mkdirSync(path.join(repo, '.agent'))
+    writeFileSync(path.join(repo, '.agent', 'contract.json'), '{}\n'); const head = commit('evidence only')
+    git(['switch', '-q', 'main'])
+    writeFileSync(path.join(repo, 'main.txt'), 'unrelated\n'); commit('main movement')
+    git(['merge', '-q', '--no-ff', '--no-edit', 'pr'])
+    const merge = git(['rev-parse', 'HEAD'])
+    const base = mergedReviewComparisonBase({ mergeCommitSha: merge, head, main: merge, gitRunner: git })
+    assert.equal(base, git(['rev-parse', `${merge}^1`]))
+    const compare = (prior) => isContentPreservingRefresh({ approvedHead: prior, head, mainRef: base, gitRunner: git })
+    assert.equal(compare(approved).ok, true, 'unchanged implementation carries approval')
+    assert.equal(compare(stale).ok, false, 'changed implementation refuses')
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha: merge, head: stale, main: merge, gitRunner: git }), /second parent/)
+    assert.throws(() => mergedReviewComparisonBase({ mergeCommitSha: merge, head, main: stale, gitRunner: git }), /not proven in current main/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
 })

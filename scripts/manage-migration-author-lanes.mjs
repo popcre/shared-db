@@ -51,6 +51,7 @@ import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TY
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
+import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
 import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
 
 // Resolved from explicit/env/verified origin, never hard-coded (#2530).
@@ -2499,9 +2500,9 @@ export const githubIo = {
   contentPreservingRefresh(approvedHead,head,pr=null){
     try{
       const base=resolveLaneApprovalBase(pr,head,this);if(!base.ok)return base
-      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),base.fetch],{stdio:['ignore','pipe','pipe']})
+      execFileSync('git',['fetch','--no-tags','-q','origin',String(head),base.fetch,...(base.currentMain?[base.currentMain]:[])],{stdio:['ignore','pipe','pipe']})
       let mainRef=base.fetch
-      if(base.firstParentOf){mainRef=String(execFileSync('git',['rev-parse','--verify',`${base.firstParentOf}^1^{commit}`],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim().toLowerCase();if(!/^[0-9a-f]{40}$/.test(mainRef))return{ok:false,reason:`could not resolve the first parent of merge commit ${base.firstParentOf}`}}
+      if(base.firstParentOf)mainRef=mergedReviewComparisonBase({mergeCommitSha:base.firstParentOf,head,main:base.currentMain})
       return isContentPreservingRefresh({approvedHead,head,mainRef})
     }catch(error){return{ok:false,reason:`could not fetch the heads to compare: ${String(error?.message??error).split('\n')[0]}`}}
   },
@@ -4857,6 +4858,15 @@ export function headVerdictBlocksReplacement(issue,pr,headSha,io,options={}){
 // request: the current main tip. A merged one: the first parent of its merge
 // commit, and only when that merge commit is in main history and the pull
 // request's recorded head is the head being judged. Anything unreadable refuses.
+export function mergedReviewComparisonBase({mergeCommitSha,head,main,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8'})}){
+  const merge=String(mergeCommitSha??'').toLowerCase(),reviewed=String(head??'').toLowerCase(),tip=String(main??'').toLowerCase()
+  if(![merge,reviewed,tip].every((sha)=>/^[0-9a-f]{40}$/.test(sha)))throw new LaneError('merged review comparison requires exact merge, head and main SHAs')
+  const parents=String(gitRunner(['rev-list','--parents','-n','1',merge])).trim().toLowerCase().split(/\s+/)
+  if(parents.length!==3||parents[0]!==merge||parents[2]!==reviewed)throw new LaneError(`merge commit ${merge} does not have reviewed head ${reviewed} as its second parent`)
+  try{gitRunner(['merge-base','--is-ancestor',merge,tip])}catch{throw new LaneError(`merge commit ${merge} is not proven in current main ${tip}`)}
+  return parents[1]
+}
+
 export function resolveLaneApprovalBase(pr,head,io){
   const tip=()=>{const main=io.mainSha();return /^[0-9a-f]{40}$/.test(String(main))?{ok:true,fetch:main}:{ok:false,reason:'main tip unreadable'}}
   if(pr==null)return tip()
@@ -4867,7 +4877,9 @@ export function resolveLaneApprovalBase(pr,head,io){
   if(!/^[0-9a-f]{40}$/.test(merge))return{ok:false,reason:`pull request #${pr} is merged but has no exact merge commit to judge its diff against`}
   if(String(live.head?.sha??'').toLowerCase()!==String(head).toLowerCase())return{ok:false,reason:`pull request #${pr} merged head ${live.head?.sha??'unknown'} is not the head being judged ${head}`}
   if(io.mergeCommitInMain?.(merge)!==true)return{ok:false,reason:`pull request #${pr} merge commit ${merge} is not proven in main history`}
-  return{ok:true,fetch:merge,firstParentOf:merge}
+  const currentMain=io.mainSha()
+  if(!/^[0-9a-f]{40}$/.test(String(currentMain)))return{ok:false,reason:'main tip unreadable'}
+  return{ok:true,fetch:merge,firstParentOf:merge,currentMain}
 }
 
 export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo){
@@ -8603,7 +8615,18 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
         const changesMigration = files.some((file) => /^supabase\/migrations\/[^/]+\.sql$/.test(String(file?.path ?? file?.filename ?? '')))
         if (changesMigration) throw new LaneError(`exclusive merge lane requires exactly one live author claim for a pull request that changes migrations${claimsSeen()}`)
       }
-      if (kind === 'merge' && pr.base?.sha !== io.mainSha?.()) throw new LaneError('pull request is not based on the current main tip')
+      if (kind === 'merge' && pr.base?.sha !== io.mainSha?.()) {
+        // #2758 (orchestrator marker, 2026-09-11): main may move independently
+        // of this pull request. `check-main-tip-freshness.mjs --contains` is the
+        // authoritative judge and already ran in guarded-migration-merge before
+        // this acquisition. Re-ask the same question here so a direct
+        // --acquire-merge cannot skip it. Any classification failure stays a
+        // refusal: unreadable git, conflicting file overlap, or a changed
+        // pull-request diff all refuse exactly as before.
+        const tip = io.mainSha?.()
+        const verdict = tip ? classifyBranchFreshness({ headSha: metadata.headSha, tipSha: tip }) : null
+        if (!verdict?.ok) throw new LaneError('pull request is not based on the current main tip')
+      }
       if (kind === 'merge' && io.readRef(EXCLUSIVE_REFS.production)) throw new LaneError(`production promotion is active; merges are frozen; ${leaseHoldText('production',io)}`)
     }
     requireOwnedRef(MUTEX_REF,ownerSha,io)

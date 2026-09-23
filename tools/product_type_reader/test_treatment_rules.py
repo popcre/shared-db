@@ -279,3 +279,14 @@ def test_same_form_variants_keep_only_common_finish(description, expected):
 ])
 def test_repeated_lift_off_box_variants_share_only_common_finish(description, expected):
     assert read(description, "greyboard lift off lid box", "greyboard lift off lid box") == expected
+
+
+@pytest.mark.parametrize("description,expected", [
+    ("Tall MDF sign, tall MDF sign w LEDs 18x20", ()),
+    ("Tall MDF sign red, tall MDF sign blue w LEDs 18x20", ()),
+    ("Tall MDF sign w LEDs, tall MDF sign w LEDs 18x20", ("LED",)),
+    ("Tall MDF sign red w LEDs, tall MDF sign blue w LEDs 18x20", ("LED",)),
+    ("Tall MDF sign, tall MDF sign LED artwork 18x20", ()),
+])
+def test_repeated_tall_sign_variants_share_only_physical_finish(description, expected):
+    assert read(description, "tall mdf sign", "tall mdf sign") == expected

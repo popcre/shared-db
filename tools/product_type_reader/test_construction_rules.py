@@ -68,7 +68,7 @@ def test_box_and_frame_assembly_words_require_source_wording():
     assert refine_construction("Hard storage box", "Hard Storage Box") == ""
     assert refine_construction("Setback framed art", "Framed Art") == "Framed; Setback"
     assert refine_construction("Faux book desktop organizer", "Desktop Organizer") == "Faux Book"
-    assert refine_construction("MDF box with hooks", "MDF Box") == "Hooks"
+    assert refine_construction("MDF box with hooks", "MDF Box") == "With Hooks"
     assert refine_construction("Wall hook", "Wall Hook") == ""
 
 
@@ -536,3 +536,40 @@ def test_source_stated_shape_finish_and_kit_boundaries():
     assert refine_construction("Storage hamper_oval character artwork", "Storage Hamper") == ""
     assert refine_construction("Linen-weave wall scroll 9x13", "Wall Scroll") == "Linen-Weave"
     assert refine_construction("Wall scroll_linen-weave landscape artwork", "Wall Scroll") == ""
+
+
+def test_abbreviated_physical_calendar_chest_shadowbox_and_closure():
+    assert refine_construction("Grbrd flt tp grbd strage chest 8x12", "Storage Chest") == "Flat-Top"
+    assert refine_construction("Greyboard storage chest_flat top house artwork", "Storage Chest") == ""
+    assert refine_construction("MDF blck cntdwn calndr 8x12", "Countdown Calendar") == "Block"
+    assert refine_construction("Countdown calendar_block print artwork", "Countdown Calendar") == ""
+    assert refine_construction("Accordion paper shadowbox under glass 8x12", "Glass Shadowbox") == "Accordion"
+    assert refine_construction("Glass shadowbox_accordion fold illustration", "Glass Shadowbox") == ""
+    assert refine_construction("Jewelry box storage with zipper closure 8x12", "Jewelry Box") == "Zipper"
+    assert refine_construction("Jewelry box_zipper graphic", "Jewelry Box") == ""
+
+
+def test_magnetic_dry_erase_surface_belongs_to_combined_board():
+    assert refine_construction("Die-cut corkboard with magnetic dry-erase and pins", "Corkboard with Dry-Erase Board", "Die-Cut") == "Die-Cut; Magnetic"
+    assert refine_construction("Corkboard with magnetic pins", "Corkboard with Dry-Erase Board") == ""
+    assert refine_construction("Corkboard_magnetic dry-erase drawing", "Corkboard with Dry-Erase Board") == ""
+
+
+def test_hooks_belong_to_box_assembly_only():
+    assert refine_construction("MDF box art with elastics and hooks 7x9", "MDF Box", "Hooks") == "With Hooks"
+    assert refine_construction("MDF box art and hooks 7x9", "MDF Box", "Hooks") == ""
+    assert refine_construction("MDF box art_hooks in landscape artwork", "MDF Box", "With Hooks") == ""
+
+
+def test_physical_structure_beats_shape_noun_and_artwork_title():
+    assert refine_construction("Dimensional woven object 6x8", "Decorative Object", "Woven") == "Dimensional; Woven"
+    assert refine_construction("Woven object_dimensional artwork", "Decorative Object", "Woven") == "Woven"
+    assert refine_construction("Lasercut MDF shape 6x8", "Shape", "Shaped") == "Laser-Cut"
+    assert refine_construction("MDF shape_lasercut star graphic", "Shape", "Shaped") == "Shaped"
+    assert refine_construction("No frame wall art 6x8", "Wall Art", "Framed") == ""
+    assert refine_construction("Framed wall art 6x8", "Wall Art", "Framed") == "Framed"
+    assert refine_construction('Floating blue .5" frame canvas squiggle scene 7x9', "Framed Canvas", "Floating Frame; Framed; Squiggle") == "Floating Frame"
+    assert refine_construction("Squiggle-shaped frame canvas", "Framed Canvas", "Squiggle") == "Squiggle"
+    assert refine_construction("Canvasboard 7x9 fictional heroes painting set", "Canvas", "Set") == "Panel; Set"
+    assert refine_construction("Canvasboard 7x9 sunset art", "Canvas") == "Panel"
+    assert refine_construction("Canvas_artwork on canvasboard", "Canvas") == ""

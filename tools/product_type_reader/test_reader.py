@@ -2100,3 +2100,28 @@ def test_misspelled_storage_chest_outweighs_printed_artwork():
     assert actual['product_type'] == 'Storage Chest'
     assert actual['product_construction'] == 'Flat-Top'
     assert actual['product_material'] == 'Greyboard'
+
+
+def test_box_with_elastics_and_hooks_is_one_box_with_attached_hardware():
+    assert read_product_type('MDF box art with elastics and hooks 12x16')['product_type'] == 'MDF Box'
+    assert read_product_type('MDF box art and hooks 12x16')['product_type_status'] == 'unreadable'
+    assert read_product_type('MDF box art with elastics and hook plaque 12x16')['product_type_status'] == 'unreadable'
+
+
+def test_magnetic_dry_erase_corkboard_with_pins_is_one_combined_board():
+    actual = read_product_type('Die-cut corkboard with magnetic dry-erase and push pins 12x16')
+    assert actual['product_type'] == 'Corkboard with Dry-Erase Board'
+    assert actual['product_material'] == 'Cork'
+    assert actual['product_treatment'] == 'Dry-Erase'
+    assert read_product_type('Corkboard with magnetic pins 12x16')['product_type'] == 'Corkboard'
+    assert read_product_type('Canvas depicting a corkboard with magnetic dry-erase and pins graphic')['product_type'] == 'Canvas'
+
+
+def test_canvasboard_is_a_canvas_panel_even_when_a_painting_set_is_named():
+    actual = read_product_type('Canvasboard 8x10 floral painting set')
+    assert actual['product_type'] == 'Canvas'
+    assert actual['product_construction'] == 'Panel; Set'
+    assert actual['product_material'] == 'Canvas'
+    assert read_product_type('Canvasboard artwork depicting painting set')['product_type'] == 'Canvas'
+    assert read_product_type('Canvasboard and MDF Box')['product_type_status'] == 'unreadable'
+    assert read_product_type('DIY Canvas with paint pots and brush')['product_type'] == 'Paint-Your-Own Canvas Set'

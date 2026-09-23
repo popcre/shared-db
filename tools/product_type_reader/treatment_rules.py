@@ -368,6 +368,8 @@ def extract_treatments(
             noun = "printed glass"
         elif len(re.findall(r"\blift off lid box\b", normalized_raw)) >= 2:
             noun = "lift off lid box"
+        elif len(re.findall(r"\btall mdf sign\b", normalized_raw)) >= 2:
+            noun = "tall mdf sign"
         noun_pattern = re.compile(r"\b" + re.escape(noun) + r"\b")
         raw_noun = noun_pattern.search(normalized_raw)
         if raw_noun:

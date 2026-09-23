@@ -301,8 +301,12 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Setback")
     if stated(r"\bfaux book\b") and product_type in {"Desktop Organizer", "Storage Box"}:
         parts.add("Faux Book")
-    if stated(r"\bhooks?\b") and product_type == "MDF Box":
-        parts.add("Hooks")
+    if product_type == "MDF Box":
+        parts.discard("Hooks")
+        if stated(r"\bmdf box(?: art)? with (?:elastics and )?hooks\b"):
+            parts.add("With Hooks")
+        else:
+            parts.discard("With Hooks")
     # Only a complete physical product phrase can re-open the evidence after
     # a dimension.  A bare adjective there may describe the depicted artwork.
     if product_type == "Framed Art" and re.search(r"\bframed art\b", after_size):
@@ -481,9 +485,14 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Flat-Domed")
     if product_type == "Storage Chest" and stated(r"\bgrbrd flt tp strge chest\b"):
         parts.add("Flat-Top")
+    if product_type == "Storage Chest" and stated(r"\bgrbrd flt tp grbd strage chest\b"):
+        parts.add("Flat-Top")
     if product_type == "Tile" and stated(r"\bhex tiles\b"):
         parts.add("Hexagonal")
     if product_type == "Memo Board" and stated(r"\bmagnetic memo board\b"):
+        parts.add("Magnetic")
+    if product_type == "Corkboard with Dry-Erase Board" and stated(
+            r"\bcorkboard with magnetic dry[- ]erase\b"):
         parts.add("Magnetic")
     if product_type == "Framed Glass Art" and stated(r"\bframed round painted glass\b"):
         parts.add("Round")
@@ -511,12 +520,18 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Lenticular")
     if product_type == "Perpetual Calendar" and stated(r"\bmdf blck perpetual clndr\b"):
         parts.add("Block")
+    if product_type == "Countdown Calendar" and stated(r"\bmdf blck cntdwn calndr\b"):
+        parts.add("Block")
     if product_type == "Decorative Word" and stated(r"\bwrapped words\b"):
         parts.add("Wrapped")
     if product_type == "Plaque" and stated(r"\blaser[- ]cut mdf\b.{0,30}\bplaque\b"):
         parts.add("Laser-Cut")
     if product_type == "Jewelry Box" and stated(r"\bjewelry box with snap closure\b"):
         parts.add("Snap Closure")
+    if product_type == "Jewelry Box" and stated(r"\bjewelry box storage with zipper closure\b"):
+        parts.add("Zipper")
+    if product_type == "Glass Shadowbox" and stated(r"\baccordion paper shadowbox under glass\b"):
+        parts.add("Accordion")
     if product_type == "Photo Frame" and stated(r"\bscalloped photo frame\b"):
         parts.add("Scalloped")
     if product_type == "Art" and stated(r"\bround cross[- ]stitch embroidered art\b"):
@@ -552,4 +567,20 @@ def refine_construction(description: object, product_type: str, current: str = "
         parts.add("Oval")
     if product_type == "Wall Scroll" and stated(r"\blinen[- ]weave wall scroll\b"):
         parts.add("Linen-Weave")
+    if product_type == "Decorative Object" and stated(r"\bdimensional woven object\b"):
+        parts.add("Dimensional")
+    if product_type == "Shape" and stated(r"\blasercut mdf shape\b"):
+        parts.discard("Shaped")
+        parts.add("Laser-Cut")
+    if product_type == "Wall Art" and stated(r"\bno frame wall art\b"):
+        parts.discard("Framed")
+    if product_type == "Framed Canvas" and stated(r"\bfloating\b.{0,30}\bframe canvas\b"):
+        parts.discard("Framed")
+        parts.add("Floating Frame")
+        if stated(r"\bframe canvas squiggle\b"):
+            parts.discard("Squiggle")
+    if product_type == "Canvas" and stated(r"\bcanvasboard\b"):
+        parts.add("Panel")
+        if re.search(r"\bpainting set\b", after_size):
+            parts.add("Set")
     return "; ".join(sorted(parts))

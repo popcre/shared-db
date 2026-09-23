@@ -116,6 +116,7 @@ _MDF_PRODUCT_CLAUSE = re.compile(
     r"(?:frame|art|print|poster|box|plaque|hook|clock|organizer|board|sign|stands?|chest|bank|shelf)\b"
 )
 _MDF_PHYSICAL_COMPONENT = re.compile(r"\bmdf framed\b|\b(?:and|with|w) mdf\b(?=\s*$)|\b(?:die cut|diecut) pieced mdf logo art\b")
+_MDF_CALENDAR_CUP = re.compile(r"\bmdf block perpetual calendar with attached pencil cup\b")
 _GREYBOARD_BOX = re.compile(r"\bgreyboard lift off(?: lid)?\b.{0,42}\bbox\b")
 _GREYBOARD_COMPONENT = re.compile(r"\bgreyboard (?:faux vhs box|(?:flat|float) (?:top|tp))\b")
 _FABRIC_COMPONENT = re.compile(r"\b(?:non ?woven fabric desktop storage cubby|fabric covered magnetic memo board|layered fabric|wrapped in glitter fabric)\b")
@@ -151,6 +152,9 @@ _HALF_CANVAS_COTTON_BIN = re.compile(r"\bhalf canvas half cotton rope storage bi
 _COTTON_BIN_CANVAS_INSIDE = re.compile(r"\bcotton rope storage bins?\b.{0,30}\b(?:w|with) canvas inside\b")
 _COTTON_ROPE_STORAGE = re.compile(r"\bcotton rope storage\b")
 _PAPER_ROPE = re.compile(r"\bpaper rope\b")
+_PAPER_ROPE_PHYSICAL_BOW = re.compile(
+    r"\bpaper rope (?:dimensional|sculptural) (?:decorative )?bow\b"
+)
 _ROPE_HARDWARE = re.compile(r"\b(?:hanging rope|rope hanger)\b")
 _SATIN_CANVAS = re.compile(r"\bsatin canvas\b")
 _CANVAS_FAUX_LEATHER_ROPE = re.compile(r"\bcanvas\b.{0,80}\b(?:w|with) faux leather and rope\b")
@@ -199,6 +203,10 @@ _ROPE_MDF_SIGN = re.compile(r"\b(?:mdf plaque (?:w|with) rope|die cut mdf sign w
 _PHYSICAL_PP_CLOCK = re.compile(r"\bpp (?:molded |mld )?wall clocks?\b")
 _TEXTURED_FAUX_LEATHER_FRAME = re.compile(r"\btextured faux leather in floater frame\b")
 _PAPER_ROPE_FIRST = re.compile(r"\s*(?:colored )?paper rope\s*", re.I)
+_WOVEN_OBJECT_FIRST = re.compile(r"\s*(?:dimensional|sculptural) woven object\s*", re.I)
+_PAPER_ROPE_WOVEN_SHAPE = re.compile(
+    r"\s*paper rope (?:cactus|flower|tree|topiary|plant|heart|star|sphere)\s*", re.I
+)
 _COTTON_ROPE_APPLIQUE_BASKET = re.compile(r"\bcotton rope basket (?:w|with) applique\b")
 _STEEL_WIRE_WALL_ART = re.compile(r"\bsteel wire wall art\b")
 _BOUCLE_LEATHER_FRAME = re.compile(r"\bmdf textured frame with boucle and faux leather\b")
@@ -346,6 +354,9 @@ def extract_materials(
     if (_MDF_FRAME_COMPONENT.search(text) or _BOXED_MDF.search(text)
             or _MDF_PRODUCT_CLAUSE.search(text) or _MDF_PHYSICAL_COMPONENT.search(text)):
         phrase += " mdf"
+    if product_type == "Perpetual Calendar with Pencil Cup" \
+            and _MDF_CALENDAR_CUP.search(text[last_size:end]):
+        phrase += " mdf"
     if product_type in {"Hard Storage Box", "Storage Box", "Box"} and _GREYBOARD_BOX.search(bounded_title):
         phrase += " greyboard"
     if _GREYBOARD_COMPONENT.search(text):
@@ -442,6 +453,11 @@ def extract_materials(
         phrase += " faux leather"
     if description and _PAPER_ROPE_FIRST.fullmatch(description.split("_")[0]) \
             and product_type == "Wall Shelf":
+        phrase += " paper rope"
+    if (description and product_type == "Decorative Object"
+            and len(clauses := description.split("_")) > 1
+            and _WOVEN_OBJECT_FIRST.fullmatch(clauses[0])
+            and _PAPER_ROPE_WOVEN_SHAPE.fullmatch(clauses[1])):
         phrase += " paper rope"
     if (description and product_type == "Guitar Hook"
             and re.fullmatch(r"\s*functional guitar hook\s*", description.split("_")[0], re.I)
@@ -621,6 +637,12 @@ def extract_materials(
     if _SATIN_CANVAS.search(text) and product_type in {"Canvas", "Framed Canvas"}:
         materials.discard("Satin")
     if _PAPER_ROPE.search(text) and product_type in {"Storage Bin", "Dimensional Decor"}:
+        materials.discard("Rope")
+        materials.discard("Paper Rope")
+        materials.add("Paper")
+    if product_type == "Decorative Bow" and _PAPER_ROPE_PHYSICAL_BOW.search(text):
+        # Paper rope names paper's form here; it does not state a second
+        # constituent made of another rope material.
         materials.discard("Rope")
         materials.discard("Paper Rope")
         materials.add("Paper")

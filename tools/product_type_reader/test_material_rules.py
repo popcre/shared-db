@@ -786,3 +786,52 @@ def test_abbreviated_ceramic_in_identity_or_artwork_is_not_substrate():
     assert material("trinket tray 5x5 crmic trinket tray artwork", "trinket tray",
                     evidence="trinket tray", boundaries=(13,),
                     product_type="Trinket Tray") == ""
+
+
+def test_woven_object_second_physical_clause_names_paper_rope():
+    assert material("sculptural woven object", "woven object",
+                    product_type="Decorative Object",
+                    description="Sculptural Woven Object_Paper Rope Flower_9x12") == "Paper Rope"
+    assert material("sculptural woven object", "woven object",
+                    product_type="Decorative Object",
+                    description="Sculptural Woven Object_Paper Rope Print_9x12") == ""
+    assert material("sculptural woven object", "woven object",
+                    product_type="Decorative Object",
+                    description="Sculptural Woven Object_9x12_Paper Rope Flower") == ""
+    assert material("sculptural woven object", "woven object",
+                    product_type="Decorative Object",
+                    description="Sculptural Woven Object_Paper Rope Flower Artwork") == ""
+
+
+def test_calendar_cup_explicit_mdf_block_is_physical():
+    assert material("mdf block perpetual calendar with attached pencil cup", "calendar",
+                    evidence="calendar with attached pencil cup",
+                    product_type="Perpetual Calendar with Pencil Cup") == "MDF"
+    assert material("mdf picture perpetual calendar with attached pencil cup", "calendar",
+                    evidence="calendar with attached pencil cup",
+                    product_type="Perpetual Calendar with Pencil Cup") == ""
+
+
+def test_dimensional_paper_rope_bow_names_paper_only():
+    assert material("blue paper rope sculptural decorative bow", "bow",
+                    evidence="paper rope sculptural decorative bow",
+                    product_type="Decorative Bow", base_materials="Paper; Rope") == "Paper"
+    assert material("paper rope dimensional bow", "bow",
+                    evidence="paper rope dimensional bow",
+                    product_type="Decorative Bow", base_materials="Paper; Rope") == "Paper"
+    assert material("paper rope dimensional deer head", "deer head",
+                    evidence="paper rope dimensional deer head",
+                    product_type="Dimensional Decor", base_materials="Paper; Rope") == "Paper"
+
+
+def test_paper_rope_bow_artwork_identity_and_post_size_are_not_material():
+    assert material("paper rope artwork dimensional bow", "bow",
+                    evidence="bow", product_type="Decorative Bow") == ""
+    assert material("paper rope world dimensional bow", "bow",
+                    evidence="bow", product_type="Decorative Bow") == ""
+    assert material("dimensional bow 9x12 paper rope artwork", "bow",
+                    evidence="bow", boundaries=(16,),
+                    product_type="Decorative Bow") == ""
+    assert material("perpetual calendar with attached pencil cup 9x12 mdf block", "calendar",
+                    evidence="calendar with attached pencil cup", boundaries=(44,),
+                    product_type="Perpetual Calendar with Pencil Cup") == ""

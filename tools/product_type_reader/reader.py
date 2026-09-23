@@ -81,6 +81,8 @@ def normalize(value: object) -> str:
 
 # Specific physical nouns take precedence over the legacy generic Canvas rule.
 _FIXES = (
+    ("Corkboard with Dry-Erase Board", r"\bcorkboard with magnetic dry erase(?:\s+\w+){0,3}\s+pins?\b"),
+    ("Canvas", r"\bcanvasboard\b"),
     ("Storage Bin", r"\b(?:storage )?bins?\b"),
     ("Storage Bin", r"\btoy bins?\b"),
     ("Storage Box", r"\bgreyboard lift off lid box\b"),
@@ -466,6 +468,10 @@ def _mixed_distinct_forms(title: str) -> bool:
     forms: set[str] = set()
     named_clauses = 0
     title = re.sub(r"\bb\s*&\s*w\b", "black white", title, flags=re.I)
+    # Hooks joined to elastics on one box are hardware on that box.  A bare
+    # "box and hooks" still names potentially separate supplied products.
+    title = re.sub(r"\bbox art with elastics and hooks\b",
+                   lambda m: m.group().replace(" and ", " with "), title, flags=re.I)
     for raw_clause in re.split(r"\s*(?:,|\+|&|\band\b)\s*", title):
         clause = re.sub(r"\bwrtng\s+(?:dsk|desk)\b", "writing desk", normalize(DIMENSION.sub(" ", raw_clause)))
         form = ""

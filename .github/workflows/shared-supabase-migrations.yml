@@ -1179,6 +1179,8 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: source PR has no exact head. Nothing was dispatched." >&2
             exit 2
           fi
+          # Newest-by-timestamp Migration guarded merge authorization, via the
+          # shared paginated /statuses helper (never combined /status + first).
           GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
           if [ "$GUARDED_STATE" != success ]; then
             echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2

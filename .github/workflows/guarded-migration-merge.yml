@@ -161,7 +161,7 @@ jobs:
           # which is indistinguishable from "not green yet", so a broken token spent a
           # full minute of the exclusive lock looking like eventual consistency (#1201).
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            observed="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$REQUESTED_SHA/status"               --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+            observed="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
             [ "$observed" = 'success' ] && break
             echo "authorization not visible yet (attempt $attempt, observed='${observed:-none}'); waiting"
             sleep 6

@@ -1179,9 +1179,9 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: source PR has no exact head. Nothing was dispatched." >&2
             exit 2
           fi
-          GUARDED_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SOURCE_HEAD}/status" --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | .state')"
+          GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
           if [ "$GUARDED_STATE" != success ]; then
-            echo "::error::ENGINEER ACTION REQUIRED: the latest guarded-merge authorization is not successful at source head ${SOURCE_HEAD}. Nothing was dispatched." >&2
+            echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2
             exit 2
           fi
           PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
@@ -2193,8 +2193,7 @@ jobs:
             # swallowing the failure would print "left as-is" and exit 0 while a head
             # this run revoked stays red forever -- the exact outcome #2116 exists to
             # kill, with a misleading audit line on top. Fail the step and say why.
-            if ! current="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/${GITHUB_REPOSITORY}/commits/$head_sha/status" \
-              --jq '[.statuses[] | select(.context == "Migration guarded merge authorization")] | first | "\(.state)|\(.description)"')"; then
+            if ! current="$(node scripts/merge-queue-contract.mjs --authorization-row --head-sha "$head_sha")"; then
               echo "$head_sha: could not READ the authorization status, so this freeze's revocation may still stand. Re-run guarded-migration-merge.yml for this head." >&2
               exit 1
             fi

@@ -274,6 +274,11 @@ export function recheckQueueInterlock({ headState, productionHeld } = {}) {
 // revoked. Same contract as `selectNewestCommitStatus` in the lane manager and
 // `rehearsalState` below: malformed or duplicate identities refuse.
 export function latestContextState(rows, context) {
+  return latestContextRow(rows, context)?.state ?? null
+}
+
+// Newest row for one context (state and description), decided by timestamp/id.
+export function latestContextRow(rows, context) {
   if (!Array.isArray(rows)) throw new MergeQueueError('commit status history is unreadable')
   const matching = rows.filter((row) => row?.context === context).map((row) => {
     const rawAt = row.updated_at ?? row.created_at
@@ -285,13 +290,13 @@ export function latestContextState(rows, context) {
     if (!['success', 'failure', 'pending', 'error'].includes(String(row.state ?? ''))) {
       throw new MergeQueueError('commit status history has an unrecognized state')
     }
-    return { at, id: Number.isSafeInteger(id) && id > 0 ? id : 0, state: String(row.state) }
+    return { at, id: Number.isSafeInteger(id) && id > 0 ? id : 0, state: String(row.state), description: String(row.description ?? '') }
   })
   if (matching.some((row) => row.id > 0) && new Set(matching.filter((r) => r.id > 0).map((row) => row.id)).size !== matching.filter((r) => r.id > 0).length) {
     throw new MergeQueueError('commit status history has duplicate identities')
   }
   matching.sort((a, b) => b.at - a.at || b.id - a.id)
-  return matching[0]?.state ?? null
+  return matching[0] ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -300,14 +305,10 @@ export function latestContextState(rows, context) {
 
 // Latest state of the rehearsal context on a commit, from its combined-status
 // rows. Null means the status never reported; that is a hold, not a pass.
+// Shares latestContextState's contract: newest by timestamp/id, never array
+// order, malformed or duplicate identities refuse.
 export function rehearsalState(statuses, context = PREVIEW_REHEARSAL_CONTEXT) {
-  let latest = null
-  for (const row of statuses ?? []) {
-    if (row?.context !== context) continue
-    const at = Date.parse(row.updated_at ?? row.created_at ?? 0) || 0
-    if (!latest || at >= latest.at) latest = { at, state: String(row.state ?? '') }
-  }
-  return latest?.state ?? null
+  return latestContextState(statuses, context)
 }
 
 // Bounded wait for the exact-SHA rehearsal status. Every dependency is
@@ -343,6 +344,8 @@ export const USAGE = `Usage:
                                                               Wait (bounded) for the exact-SHA rehearsal status
   node scripts/merge-queue-contract.mjs --authorization-state --head-sha <pr-head>
                                                               Print the NEWEST PR-head authorization state
+  node scripts/merge-queue-contract.mjs --authorization-row --head-sha <pr-head>
+                                                              Print the NEWEST state|description pair
   node scripts/merge-queue-contract.mjs --recheck-interlock --head-sha <pr-head>
                                                               Re-read PR-head authorization and production
                                                               interlock under the merge lock at the mutation
@@ -402,7 +405,7 @@ export async function main(argv, env = process.env, deps = {}) {
     return 0
   }
 
-  if (argv.includes('--authorization-state') || argv.includes('--recheck-interlock')) {
+  if (argv.includes('--authorization-state') || argv.includes('--authorization-row') || argv.includes('--recheck-interlock')) {
     const headSha = flagValue(argv, '--head-sha')
     if (!/^[0-9a-f]{40}$/i.test(String(headSha ?? ''))) throw new MergeQueueError('--authorization-state/--recheck-interlock requires a 40-character PR head SHA')
     // FRESH reads at the mutation point. The production lane is a create-only
@@ -412,9 +415,14 @@ export async function main(argv, env = process.env, deps = {}) {
     const statusRow = read(['api', `repos/${repo}/commits/${headSha}/status`])
     // Newest-by-timestamp, never array order: a freeze revocation is a second
     // row on the same context and must win over the earlier admission success.
-    const headState = latestContextState(statusRow?.statuses ?? [], GUARDED_AUTHORIZATION_CONTEXT)
+    const headRow = latestContextRow(statusRow?.statuses ?? [], GUARDED_AUTHORIZATION_CONTEXT)
+    const headState = headRow?.state ?? null
     if (argv.includes('--authorization-state')) {
       console.log(headState ?? 'none')
+      return 0
+    }
+    if (argv.includes('--authorization-row')) {
+      console.log(headRow ? `${headRow.state}|${headRow.description}` : 'none|')
       return 0
     }
     // Production lane presence: 404 is the normal free-lane answer. ANY other

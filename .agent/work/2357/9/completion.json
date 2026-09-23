@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "work_issue": 2357,
+  "outcome": "ready-for-merge",
+  "pr": 2835,
+  "migration_versions": [
+    "20260920151046"
+  ],
+  "contract_ref": "refs/db-contracts/2357/9",
+  "contract_sha256": "3f31d02336e43bf0d5f52d82785eff45afc5639bd3ba9851548f4394664935a9",
+  "head_sha": "7aa688060cfb8cf0c54365a2108b8f9d7296add2",
+  "files_changed": [
+    ".github/live-proofs/2357.sql",
+    "supabase/migrations/20260920151046_licensing_candidate_and_review_apis.sql",
+    "supabase/tests/licensing_candidate_and_review_apis.sql"
+  ],
+  "db_reads": [
+    "table plm.source_resolution",
+    "table plm.licensing_relationship_resolution",
+    "table plm.licensing_source_scope",
+    "table plm.opa_capture",
+    "table plm.opa_property_character_capture"
+  ],
+  "db_writes": [
+    "view api.licensing_entity_candidates",
+    "view api.licensing_relationship_candidates",
+    "view api.licensing_resolution_queue",
+    "table api.licensing_entity_candidates",
+    "table api.licensing_relationship_candidates",
+    "function plm.licensing_opa_observation_count"
+  ],
+  "checks": [
+    {
+      "evidence": "PostgreSQL18 localhost55457 passed: real browser/anon/service reads; latest-complete; all three views behavioral RLS; direct vs inferred/co-occurrence eligibility; open/closed entity queue statuses and licensor grain; signed numeric IDs, positive/negative overflow, zero; exact helper shape/grants and full forbidden-column catalog proof. Current source constraints copied from canonical migration into local scaffold. Previous head full-history CI passed; revised head requires CI replay. Canonical source vocabulary CHECK from 20260905104420 installed in local baseline; corrected warner: fixture passes.",
+      "command": "Focused SQL contracts in isolated local PostgreSQL",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Full static SQL guard passed after guarded supersession to20260920151046; expected-count, verify-cost, EOL guards passed. Live-ledgerB2 expressly not run without credentials.",
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Live-proof probe present .github/live-proofs/2357.sql; SQL returns passed=true on local throwaway database.",
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Expected-count guard passed.",
+      "command": "node scripts/check-expected-count-patterns.mjs",
+      "exit_code": 0
+    },
+    {
+      "evidence": "Verify-cost guard passed.",
+      "command": "node scripts/check-migration-verify-cost.mjs",
+      "exit_code": 0
+    },
+    {
+      "exit_code": 0,
+      "command": "node scripts/agent-work-contract-git-evidence.mjs",
+      "evidence": "Evidence pair rebound to current main; git facts derived from current implementation and verified after evidence-only commit."
+    }
+  ],
+  "assumptions_resolved": [
+    "Preview and production target-verified ledgers lack both old versions; production lacks all3 views/helper.",
+    "No old scalar Style Guide inference assertion remains in current OPA test; existing file untouched.",
+    "No shared database write or credential disclosure occurred.",
+    "Parent guarded supersession24f4e51119ca3329a7f8e0bef4f71edb4fc2a0a0 resolved timestamp blocker; old reservation retained.",
+    "Current outcome gate requires generated types at application verification, not structural merge. Parent owns serialized merge and promotion."
+  ],
+  "stop_conditions_hit": [],
+  "reason": "Implementation ready for governed exact-head review and merge gates. No shared database writes performed. Genuine generated types and final application verification remain after merged-main preview under the normal automatic workflow.",
+  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f"
+}

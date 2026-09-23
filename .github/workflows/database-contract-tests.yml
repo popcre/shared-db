@@ -62,6 +62,8 @@ name: Database Contract Tests
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -71,7 +73,8 @@ permissions:
 
 concurrency:
   group: database-contract-tests-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   contract-tests:
@@ -187,7 +190,13 @@ jobs:
       # each failure and CONTINUING. One run then answers both questions at once: which
       # migrations cannot replay from empty, and which contract tests hold on whatever
       # schema that produces. Neither answer is hidden behind the other.
+      # Pull the Supabase images from the public.ecr.aws mirror, not ghcr.io. On
+      # 2026-09-23 ghcr.io refused every pull of supabase/postgres with
+      # "toomanyrequests ... allowed: 44000/minute", anonymous and authenticated
+      # alike (issue #3451). The CLI publishes the same pinned tags to both.
       - name: Start an empty ephemeral database
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/migrations"

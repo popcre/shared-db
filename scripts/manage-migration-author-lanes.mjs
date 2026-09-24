@@ -5290,8 +5290,8 @@ export function reclaimSilentReviewer(options,now=new Date(),io=githubIo){return
 // issue #3449, a legacy one-slot ref only in the stricter terminal state that
 // `legacyLeaseTerminalReason` proves (PR merged with a durable verdict). It re-proves
 // each one under the review mutex, and deletes them with a compare-and-swap on
-// both the mutex and every lease SHA. It never draws a replacement, never posts
-// a verdict, and never touches a lease that is still live or unreadable.
+// both the mutex and every lease SHA. It never draws a replacement and never
+// posts a verdict; a legacy lease that is live or unreadable is kept or refused.
 // Without --apply-recovery it is a read-only preview.
 export const REVIEW_REAP_REQUEST_LIMIT = 64, REVIEW_REAP_BATCH = 40
 function abandonedLeaseReason(row,states){
@@ -5305,22 +5305,27 @@ function abandonedLeaseReason(row,states){
 // no release path accepts it. It is reaped only in a terminal state: pull request
 // MERGED and a durable verdict recorded either for the exact leased head, or, when
 // the lease head was superseded before merge, for the merged head itself.
-// Anything else, including an unreadable verdict, is kept or refused.
+// Anything else is kept; an unreadable PR or verdict listing is refused.
+// The merged-head proof is by verdict ref NAME only and is not attributed to the
+// lease holder, hence its distinct reason. A pre-#2077 lease that records no
+// slot can match no verdict ref and is therefore always kept (never retired).
 // Retiring the ref only removes the stale lease record; the verdict refs stay.
 // Performs verdict reads and may throw; returns the retirement reason or null.
 function legacyLeaseTerminalReason(row,states,io){
   if(row.ref!==reviewActiveRef(row.assignment.reviewer))return null
   const key=`${row.assignment.issue}:${row.assignment.pr}`
   let pr=states?.get(key)?.pr
-  if(!pr){try{pr=io.getPr(row.assignment.pr)}catch{throw new LaneError(`legacy reviewer lease ${row.ref} pull request is unreadable; nothing was reaped`)}}
-  if(!pr||pr.state==='open'||pr.merged!==true)return null
-  const hex40=/^[0-9a-f]{40}$/,leased=row.assignment.headSha,mergedHead=pr.head?.sha
+  const unreadable=()=>new LaneError(`legacy reviewer lease ${row.ref} pull request is unreadable; nothing was reaped`)
+  if(!pr){try{pr=io.getPr(row.assignment.pr)}catch{throw unreadable()}
+    if(!pr||Number(pr.number)!==Number(row.assignment.pr))throw unreadable()}
+  if(pr.state==='open'||!(pr.merged===true||Boolean(pr.merged_at)))return null
+  const hex40=/^[0-9a-f]{40}$/,leased=String(row.assignment.headSha??'').toLowerCase(),mergedHead=String(pr.head?.sha??'').toLowerCase()
   const heads=[]
-  if(typeof leased==='string'&&hex40.test(leased))heads.push([leased,'legacy-merged-verdict-recorded'])
-  if(typeof mergedHead==='string'&&hex40.test(mergedHead)&&mergedHead!==leased)heads.push([mergedHead,'legacy-merged-superseded-head-verdict-recorded'])
+  if(hex40.test(leased))heads.push([leased,'legacy-merged-verdict-recorded'])
+  if(hex40.test(mergedHead)&&mergedHead!==leased)heads.push([mergedHead,'legacy-merged-superseded-head-verdict-recorded'])
   for(const [head,reason] of heads){
     let verdict
-    try{verdict=hasVerdictForHead(row.assignment.issue,row.assignment.pr,head,io,leaseVerdictOptions(row.assignment))}catch(error){
+    try{verdict=hasVerdictForHead(row.assignment.issue,row.assignment.pr,head,io,leaseVerdictOptions(row.assignment,{fresh:true}))}catch(error){
       if(isReviewRefListingRefusal(error))throw new LaneError(`durable reviewer verdict namespace cannot be listed: ${error.message}. Preview with --archive-old-review-verdicts, then archive with --archive-old-review-verdicts --apply-recovery (#2987)`)
       throw new LaneError(`legacy reviewer lease ${row.ref} verdict is unreadable; nothing was reaped`)
     }

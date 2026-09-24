@@ -8701,8 +8701,44 @@ test('reap refuses when a legacy lease verdict is unreadable (#3449)',()=>{
   const fail=(prefix)=>{if(String(prefix).includes('verdict'))throw new Error('HTTP 502')}
   io.listRefs=(prefix,...rest)=>{fail(prefix);return list(prefix,...rest)}
   if(paged)io.listReviewRefsPaged=(prefix,...rest)=>{fail(prefix);return paged(prefix,...rest)}
-  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io))
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/verdict is unreadable; nothing was reaped/)
   assert.deepEqual(io.refs,before)
+})
+
+test('reap names the #2987 remedy when the verdict listing is refused (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const before=new Map(io.refs)
+  const list=io.listRefs?.bind(io),paged=io.listReviewRefsPaged?.bind(io)
+  const fail=(prefix)=>{if(String(prefix).includes('verdict'))throw markReviewRefListingRefusal(new Error('too many refs'),'row limit')}
+  io.listRefs=(prefix,...rest)=>{fail(prefix);return list(prefix,...rest)}
+  if(paged)io.listReviewRefsPaged=(prefix,...rest)=>{fail(prefix);return paged(prefix,...rest)}
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/cannot be listed.*#2987/)
+  assert.deepEqual(io.refs,before)
+})
+
+test('reap refuses a legacy lease whose PR state is unreadable, and accepts REST merged_at (#3449)',()=>{
+  const {io,legacy,prs}=legacyLeaseIo()
+  legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const readStates=io.readReviewStates
+  const getPr=io.getPr
+  io.readReviewStates=(rows)=>{const m=readStates(rows);for(const v of m.values())delete v.pr;return m}
+  io.getPr=()=>{throw new Error('HTTP 502')}
+  const before=new Map(io.refs)
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable; nothing was reaped/)
+  assert.deepEqual(io.refs,before)
+  io.readReviewStates=readStates;io.getPr=getPr
+  prs.set(21,{number:21,state:'closed',merged_at:'2026-09-01T00:00:00Z',head:{sha:'a'.repeat(40)}})
+  assert.deepEqual(reapAbandonedReviewLeases({},new Date(),io).leases.map((row)=>row.reason),['legacy-merged-verdict-recorded'])
+})
+
+test('reap skips a legacy lease whose PR reopened before the mutex was held (#3449)',()=>{
+  const {io,legacy,prs}=legacyLeaseIo()
+  const ref=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40)})
+  const create=io.createRef.bind(io)
+  io.createRef=(r,sha)=>{if(r===MUTEX_REF)prs.set(21,{number:21,state:'open',merged:false,head:{sha:'a'.repeat(40)}});return create(r,sha)}
+  const result=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
+  assert.equal(result.reaped.length,0);assert.ok(io.refs.has(ref))
 })
 test('reap retires a superseded legacy lease once its PR merged with a verdict at the merged head (#3449)',()=>{
   const {io,legacy}=legacyLeaseIo()

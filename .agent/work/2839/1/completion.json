@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2839/1",
   "contract_sha256": "c823a546cd4880394e1310330d37ee16687b9abdbec56b7edcf0e768b0cfa7d2",
-  "head_sha": "bc01347dfdfb6ec5152717cf0265dfd832922b55",
+  "head_sha": "8c6d13ea6587da566599110886639af3174c6133",
   "files_changed": [
     "scripts/check-exact-head-approval.mjs",
     "scripts/check-exact-head-approval.test.mjs"
@@ -17,22 +17,22 @@
     {
       "command": "node --test scripts/check-exact-head-approval.test.mjs",
       "exit_code": 0,
-      "evidence": "77 of 77 tests passed, 0 failed, 0 skipped at 95d1d378"
+      "evidence": "84 of 84 tests passed, 0 failed, 0 skipped at 8c6d13ea"
     },
     {
       "command": "node --check scripts/check-exact-head-approval.mjs",
       "exit_code": 0,
-      "evidence": "syntax ok at 95d1d378"
+      "evidence": "syntax ok at 8c6d13ea"
     },
     {
       "command": "PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
       "exit_code": 0,
-      "evidence": "PR #2746 carried guarded-merge authorization status 54025196895 at 2026-09-11T22:32:13Z, before merge 2026-09-11T22:32:17Z (re-run at 95d1d378)"
+      "evidence": "PR #2746 carried guarded-merge authorization status 54025196895 at 2026-09-11T22:32:13Z, before merge 2026-09-11T22:32:17Z (re-run at 8c6d13ea)"
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "no whitespace errors between base 5d68eeb5 and 95d1d378"
+      "evidence": "no whitespace errors between base 5d68eeb5 and 8c6d13ea"
     }
   ],
   "assumptions_resolved": [

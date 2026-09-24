@@ -5,7 +5,7 @@
   "pr": 3485,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3481/1",
-  "contract_sha256": "9ce41d371e4c05c8880f035461f6d11fd289a1ce04d44fdd900281653c7b3e58",
+  "contract_sha256": "78b879665501b36942194fb8a9ea4f1608bc52e2bb125ec62177d3133c23f985",
   "base_sha": "6288c639735c4fe2bc431ace69e4596327d10611",
   "head_sha": "a213f5a5f8f758c7412e00546e348229cb0da535",
   "files_changed": ["AGENTS.md", "docs/agents/active-contracts-and-plans.md", "docs/agents/anti-collision-summary.md", "docs/agents/in-flight-check.md", "docs/agents/merge-protocol.md", "docs/agents/orchestrator.md", "docs/agents/owner-rulings.md", "docs/agents/references-and-runbooks.md", "docs/agents/standing-facts.md", "docs/agents/worktrees-and-handoffs.md", "scripts/check-lane-route-sync.test.mjs", "scripts/test_production_migration_guard.py"],

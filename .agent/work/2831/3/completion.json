@@ -7,8 +7,6 @@
   "head_sha": "3756c6b1a4472cd0356bb809c60ad56df9109c77",
   "base_sha": "cb517b3054263a9a1668df6dbed4487b8a6448dc",
   "files_changed": [
-    ".agent/work/2831/3/completion.json",
-    ".agent/work/2831/3/contract.json",
     "scripts/lib/reviewer-capabilities.mjs",
     "scripts/lib/reviewer-capabilities.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",

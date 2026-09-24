@@ -720,6 +720,38 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
       if(!head.startsWith(named))throw new Error(`the review prompt names head ${named} in a VERDICT line, but the live pull request head is ${head}. No reviewer was started. Remove the head from the prompt (the runner injects the live head) or update it.`)
     }
   }
+  // ISSUE #3479 -- ai-deepseek-agent takes its brief as the POSITIONAL message after
+  // `send` (or after `reply <session-id>`) and has no --prompt / --prompt-file flag. Its
+  // parser folds any unknown token into the message, so a forwarded `--prompt-file x`
+  // would send the literal path text, never the brief. For this wrapper the brief is
+  // therefore moved into the positional message (reading --prompt-file here) and the
+  // same checklist + head-bound VERDICT instruction is appended to it. The stale-head
+  // check applies exactly as for the flag forms.
+  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'){
+    const valued=new Set(['--file','--model','--system','--base','--assert-head','--governed-verdict'])
+    const out=[],texts=[]
+    for(let i=0;i<list.length;i++){
+      const arg=list[i]
+      if(arg==='--prompt-file'&&i+1<list.length){texts.push(readFile(list[++i]));continue}
+      if(/^--prompt-file=/.test(arg)){texts.push(readFile(arg.slice('--prompt-file='.length)));continue}
+      if(arg==='--prompt'&&i+1<list.length){texts.push(list[++i]);continue}
+      if(/^--prompt=/.test(arg)){texts.push(arg.slice('--prompt='.length));continue}
+      out.push(arg)
+    }
+    const start=out[0]==='reply'?2:out[0]==='send'?1:out.length
+    let at=-1
+    for(let i=start;i<out.length;i++){
+      if(valued.has(out[i])){i++;continue}
+      if(/^--/.test(out[i]))continue
+      at=i;break
+    }
+    if(at>=0){texts.unshift(out[at]);out.splice(at,1)}
+    if(texts.length&&(out[0]==='send'||(out[0]==='reply'&&out.length>=2))){
+      const text=texts.join('\n\n');stale(text)
+      out.splice(start,0,`${text}${instruction}`)
+      return out
+    }
+  }
   // Both spellings of each flag are handled. The governed review of PR #3338 found the
   // equals form unrecognised: `--prompt=x` fell through the exact-token match, so the
   // brief silently carried no checklist and no verdict contract. That is the same

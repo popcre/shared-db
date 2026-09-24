@@ -1001,3 +1001,30 @@ test('out of credit: raw provider billing text alone is recognized without echoi
     assert.equal(error.startDecision.reason,'insufficient_quota')
   }
 })
+
+test('#3479: a governed DeepSeek send carries the brief as its positional message with the verdict instruction',async()=>{
+  const { promptHeadContract: contract } = await import('./run-governed-review.mjs')
+  const live='c'.repeat(40),W='C:/bin/ai-deepseek-agent'
+  // Positional form: the runner used to refuse it outright.
+  const positional=contract(['send','Review PR 1.','--review'],live,undefined,W)
+  assert.equal(positional[0],'send')
+  assert.ok(positional[1].startsWith('Review PR 1.'))
+  assert.match(positional[1],/volatilit/i)
+  assert.ok(positional[1].trimEnd().endsWith(`VERDICT: REJECT ${live}`))
+  assert.deepEqual(positional.slice(2),['--review'])
+  // --prompt-file form: the wrapper has no such flag and would have sent the literal
+  // path text. The file's contents become the positional message instead.
+  const fromFile=contract(['send','--prompt-file','brief.md','--review'],live,{readFile:()=>'Brief body.'},W)
+  assert.equal(fromFile.length,3)
+  assert.ok(fromFile[1].startsWith('Brief body.'))
+  assert.ok(!fromFile.some((a)=>/--prompt/.test(a)))
+  assert.ok(fromFile[1].trimEnd().endsWith(`VERDICT: REJECT ${live}`))
+  // reply keeps the session id before the message; value flags are not mistaken for it.
+  const reply=contract(['reply','sess-1','--file','d.diff','Again.','--review'],live,undefined,W)
+  assert.deepEqual([reply[0],reply[1]],['reply','sess-1'])
+  assert.ok(reply[2].startsWith('Again.'))
+  assert.deepEqual(reply.slice(3),['--file','d.diff','--review'])
+  // The stale-head guard still applies, and a missing message is still refused.
+  assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,undefined,W),/names head bbbbbbbb/)
+  assert.throws(()=>contract(['send','--review'],live,undefined,W),/carries no terminal VERDICT instruction/)
+})

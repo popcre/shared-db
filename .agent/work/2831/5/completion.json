@@ -9,6 +9,8 @@
   "head_sha": "36e96195c65278c2863df506091ec2f9b8cd61e5",
   "base_sha": "cb517b3054263a9a1668df6dbed4487b8a6448dc",
   "files_changed": [
+    ".agent/work/2831/5/completion.json",
+    ".agent/work/2831/5/contract.json",
     "config/orchestrator-global-invalidators-v1.json",
     "scripts/lib/reviewer-capabilities.mjs",
     "scripts/lib/reviewer-capabilities.test.mjs",

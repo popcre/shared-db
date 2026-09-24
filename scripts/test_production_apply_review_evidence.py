@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,8 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import production_apply_review_evidence as gate  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
 
 SHA = "0f42555c9dca23574a23fc6fe992cd0a716c5991"
 ALLOWLIST = "20260812020000"
@@ -24,6 +27,22 @@ B9_ALLOWLIST = (
 )
 RUN_ID = 123456789
 ACTOR = "reviewer-login"
+SOURCE_PR = 2716
+SOURCE_HEAD = "1" * 40
+WORK_ISSUE = 2493
+PREVIEW_DIGEST = "sha256:" + "b" * 64
+
+
+class ImportCompatibilityTests(unittest.TestCase):
+    def test_repository_root_package_import_matches_workflow_context(self):
+        result = subprocess.run(
+            [sys.executable, "-c", "from scripts.production_apply_review_evidence import automatic_evidence"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 def evidence(**changes):
@@ -49,6 +68,24 @@ def zip_bytes(data=None, filename=gate.EVIDENCE_FILE):
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(filename, gate.canonical_json(data or evidence()))
     return buffer.getvalue()
+
+
+def governed_evidence(**changes):
+    data = gate.automatic_evidence(
+        run_id=RUN_ID,
+        run_attempt=1,
+        sha=SHA,
+        allowlist=[ALLOWLIST],
+        actor=ACTOR,
+        source_pr=SOURCE_PR,
+        source_pr_head=SOURCE_HEAD,
+        work_issue=WORK_ISSUE,
+        preview_run_id=RUN_ID,
+        preview_artifact_digest=PREVIEW_DIGEST,
+        created_at="2026-09-11T05:30:00Z",
+    )
+    data.update(changes)
+    return data
 
 
 class EvidenceTests(unittest.TestCase):
@@ -122,12 +159,70 @@ class EvidenceTests(unittest.TestCase):
             "repository": {"full_name": gate.REPOSITORY}, "actor": {"login": ACTOR},
         }
         run["run_attempt"] = 1
-        self.assertEqual(gate.validate_run(run, RUN_ID, SHA), (ACTOR, 1))
+        self.assertEqual(gate.validate_run(run, RUN_ID, SHA), (ACTOR, 1, gate.WORKFLOW_PATH))
         for field, value in (("conclusion", "failure"), ("head_sha", "1" * 40), ("path", "wrong.yml")):
             changed = copy.deepcopy(run); changed[field] = value
             with self.assertRaises(gate.EvidenceError): gate.validate_run(changed, RUN_ID, SHA)
         with self.assertRaises(gate.EvidenceError): gate.select_artifact({"artifacts": []}, RUN_ID)
         with self.assertRaises(gate.EvidenceError): gate.select_artifact({"artifacts": [{"name": gate.ARTIFACT_NAME, "id": 1, "expired": True}]}, RUN_ID)
+
+    def test_run_metadata_rejects_every_malformed_identity_field(self):
+        valid = {
+            "id": RUN_ID, "status": "completed", "conclusion": "success",
+            "event": "workflow_dispatch", "head_sha": SHA, "path": gate.WORKFLOW_PATH,
+            "repository": {"full_name": gate.REPOSITORY}, "actor": {"login": ACTOR},
+            "run_attempt": 1,
+        }
+        bad_runs = (
+            [],
+            {**valid, "repository": []},
+            {**valid, "repository": {"full_name": "other/repository"}},
+            {**valid, "actor": []},
+            {**valid, "actor": {}},
+            {**valid, "actor": {"login": "   "}},
+            {**valid, "run_attempt": True},
+            {**valid, "run_attempt": 0},
+        )
+        for run in bad_runs:
+            with self.subTest(run=run), self.assertRaises(gate.EvidenceError):
+                gate.validate_run(run, RUN_ID, SHA)
+
+    def test_artifact_selection_rejects_each_malformed_binding(self):
+        valid = {
+            "name": gate.ARTIFACT_NAME, "id": 77, "expired": False,
+            "workflow_run": {"id": RUN_ID},
+        }
+        bad_payloads = (
+            {"artifacts": {}},
+            {"artifacts": [{**valid, "expired": None}]},
+            {"artifacts": [{**valid, "id": "77"}]},
+            {"artifacts": [{**valid, "workflow_run": []}]},
+            {"artifacts": [{**valid, "workflow_run": {"id": RUN_ID + 1}}]},
+        )
+        for payload in bad_payloads:
+            with self.subTest(payload=payload), self.assertRaises(gate.EvidenceError):
+                gate.select_artifact(payload, RUN_ID)
+
+    def test_non_list_artifacts_require_the_exact_malformed_refusal(self):
+        for payload in ({"artifacts": {}}, {"artifacts": None}, {"artifacts": "x"}, {}, None, []):
+            with self.subTest(payload=payload), self.assertRaisesRegex(
+                gate.EvidenceError, "GitHub artifacts response is malformed"
+            ):
+                gate.select_artifact(payload, RUN_ID)
+
+    def test_duplicate_keys_and_non_object_json_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            duplicate = Path(temp, "duplicate.zip")
+            with zipfile.ZipFile(duplicate, "w") as archive:
+                archive.writestr(gate.EVIDENCE_FILE, '{"verdict":"APPROVE","verdict":"DENY"}')
+            with self.assertRaisesRegex(gate.EvidenceError, "duplicate JSON key 'verdict'"):
+                gate.read_evidence(duplicate)
+
+            non_object = Path(temp, "list.zip")
+            with zipfile.ZipFile(non_object, "w") as archive:
+                archive.writestr(gate.EVIDENCE_FILE, "[]\n")
+            with self.assertRaises(gate.EvidenceError):
+                gate.read_evidence(non_object)
 
     def test_end_to_end_verifies_digest_and_writes_canonical_json(self):
         blob = zip_bytes()
@@ -152,6 +247,14 @@ class EvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, self.assertRaises(gate.EvidenceError):
             gate.verify(run_id_text=str(RUN_ID), expected_digest=digest, sha=SHA, allowlist_raw=ALLOWLIST, api=api, downloader=lambda _id, path: path.write_bytes(b"wrong"), output_dir=Path(temp))
 
+    def test_api_artifact_digest_mismatch_fails_before_download(self):
+        blob = zip_bytes()
+        digest = "sha256:" + hashlib.sha256(blob).hexdigest()
+        run = {"id": RUN_ID, "status": "completed", "conclusion": "success", "event": "workflow_dispatch", "head_sha": SHA, "path": gate.WORKFLOW_PATH, "repository": {"full_name": gate.REPOSITORY}, "actor": {"login": ACTOR}, "run_attempt": 1}
+        def api(endpoint): return {"artifacts": [{"name": gate.ARTIFACT_NAME, "id": 77, "expired": False, "digest": "sha256:" + "0" * 64, "workflow_run": {"id": RUN_ID}}]} if "artifacts" in endpoint else run
+        with tempfile.TemporaryDirectory() as temp, self.assertRaises(gate.EvidenceError):
+            gate.verify(run_id_text=str(RUN_ID), expected_digest=digest, sha=SHA, allowlist_raw=ALLOWLIST, api=api, downloader=lambda _id, path: self.fail("download must not start"), output_dir=Path(temp))
+
     def test_noncanonical_json_and_extra_artifact_file_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             pretty = Path(temp, "pretty.zip")
@@ -165,6 +268,59 @@ class EvidenceTests(unittest.TestCase):
                 archive.writestr("extra.txt", "no")
             with self.assertRaises(gate.EvidenceError):
                 gate.read_evidence(extra)
+
+    def test_automatic_evidence_is_strict_and_bound_to_preview(self):
+        gate.validate_automatic_evidence(
+            governed_evidence(), run_id=RUN_ID, run_attempt=1, sha=SHA,
+            allowlist=[ALLOWLIST], workflow_actor=ACTOR,
+        )
+        for changes in (
+            {"source_pr": 0},
+            {"work_issue": 0},
+            {"source_pr_head": "short"},
+            {"preview_run_id": RUN_ID + 1},
+            {"preview_artifact_digest": "not-a-digest"},
+            {"evidence_kind": "caller-asserted"},
+            {"extra": "forged"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(gate.EvidenceError):
+                gate.validate_automatic_evidence(
+                    governed_evidence(**changes), run_id=RUN_ID, run_attempt=1,
+                    sha=SHA, allowlist=[ALLOWLIST], workflow_actor=ACTOR,
+                )
+
+    def test_automatic_run_uses_its_exact_artifact_and_schema(self):
+        blob = zip_bytes(
+            governed_evidence(), filename=gate.AUTOMATIC_EVIDENCE_FILE
+        )
+        digest = "sha256:" + hashlib.sha256(blob).hexdigest()
+        run = {
+            "id": RUN_ID, "status": "completed", "conclusion": "success",
+            "event": "workflow_dispatch", "head_sha": SHA,
+            "path": gate.AUTOMATIC_WORKFLOW_PATH,
+            "repository": {"full_name": gate.REPOSITORY},
+            "actor": {"login": ACTOR}, "run_attempt": 1,
+        }
+        def api(endpoint):
+            if "artifacts" in endpoint:
+                return {"artifacts": [{
+                    "name": gate.AUTOMATIC_ARTIFACT_NAME, "id": 88,
+                    "expired": False, "digest": digest,
+                    "workflow_run": {"id": RUN_ID},
+                }]}
+            return run
+        with tempfile.TemporaryDirectory() as temp:
+            output = gate.verify(
+                run_id_text=str(RUN_ID), expected_digest=digest, sha=SHA,
+                allowlist_raw=ALLOWLIST, api=api,
+                downloader=lambda _id, path: path.write_bytes(blob),
+                output_dir=Path(temp),
+            )
+            self.assertEqual(output.name, gate.AUTOMATIC_EVIDENCE_FILE)
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                gate.canonical_json(governed_evidence()),
+            )
 
 
 class WorkflowWiringTests(unittest.TestCase):
@@ -197,6 +353,21 @@ class WorkflowWiringTests(unittest.TestCase):
     def test_production_lane_keeps_ledger_aware_guard(self):
         self.assertIn("production_migration_guard.py preflight", self.apply)
         self.assertIn("--remote-ledger", self.apply)
+
+    def test_automatic_path_dispatches_only_after_governed_preview_evidence(self):
+        self.assertIn("automatic-production-promotion:", self.apply)
+        self.assertIn("needs: [validate, preview]", self.apply)
+        self.assertIn("check-exact-head-approval.mjs", self.apply)
+        self.assertIn("Migration guarded merge authorization", self.apply)
+        self.assertIn("steps.preview_evidence.outputs.digest", self.apply)
+        self.assertIn("automatic-production-apply-review-evidence", self.apply)
+        self.assertIn("--resolve-admitted-issue-for-pr", self.apply)
+        self.assertIn("work_issue:$work_issue", self.apply)
+        self.assertIn('--admit-issue "$ADMITTED_ISSUE" --pr "$SOURCE_PR"', self.apply)
+        self.assertIn('confirmation:("APPLY " + $sha)', self.apply)
+        self.assertIn("ENGINEER ACTION REQUIRED", self.apply)
+        self.assertIn("HISTORICAL_SOURCE_MAP", self.apply.split("automatic-production-promotion:", 1)[1].split("production-dry-run:", 1)[0])
+        self.assertNotIn("--include-all", self.apply.split("automatic-production-promotion:", 1)[1].split("production-dry-run:", 1)[0])
 
 
 if __name__ == "__main__":

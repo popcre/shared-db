@@ -1,44 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 2596,
+  "work_issue": 3295,
   "outcome": "ready-for-merge",
-  "pr": 2607,
+  "pr": 3296,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2596/7",
-  "contract_sha256": "cd1d5f4e8ef6eff1066af82529e6557be4cf89d5aa0d10bd1af960b39fa9014a",
-  "head_sha": "e98c8757eadd72633d67bedd5b14ad88a79c8307",
+  "contract_ref": "refs/db-contracts/3295/5",
+  "contract_sha256": "d25cd9a0863ea900fe8bf0f90261e94a73dc4e4ad104fb77d2f773e813cc3e4e",
+  "base_sha": "1d2a0db59104514e31507f96fd401c3925995086",
+  "head_sha": "e4397fe612055d1cca7e19e0512f396ac6e3f21f",
   "files_changed": [
-    ".agent/completion.json",
-    ".agent/contract.json",
-    ".github/workflows/agent-work-contract.yml",
-    ".github/workflows/database-contract-tests.yml",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/migration-author-lease.yml",
-    "AGENTS.md",
-    "HANDOFF.d/2026-09-08T1924Z-edge-dev-codex-handover-latency-plan.md",
-    "plan_bounded_session_handover.md",
-    "scripts/check-closeout-readiness.mjs",
-    "scripts/check-closeout-readiness.test.mjs"
+    "tools/coldlion-landing-masters.test.mjs",
+    "tools/coldlion-landing/lib/load-masters.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-closeout-readiness.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/lib/documents-only-change.test.mjs scripts/database-contract-authorization.test.mjs",
+      "command": "node --test tools/coldlion-landing-masters.test.mjs",
       "exit_code": 0,
-      "evidence": "40 focused offline tests passed."
+      "evidence": "42 passed, 0 failed"
     },
     {
-      "command": "git diff --check",
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "No whitespace errors."
+      "evidence": "176 passed, 0 failed"
     }
   ],
   "assumptions_resolved": [
-    "A trusted base checkout can classify the complete GitHub file list without executing pull-request policy.",
-    "Prose-only classification skips only the disposable database contract test; handoff validation, required contexts, reviewer refusal handling, and guarded merge remain in force.",
-    "A failed trusted classification now fails the database-contract job, and every documents-only exemption is decided from protected policy.",
-    "Push and manual workflow runs retain the complete database contract test."
+    "Both required suites passed after integrating current main: focused 42 and full 176 passed, 0 failed/skipped/cancelled.",
+    "Implementation SQL still preserves atomic transaction, target checks, timeout and prior-raw fallback; no timeout or database structure changed.",
+    "Original production investigation and cost comparison are historical evidence recorded by the prior worker, not a new live measurement by this recovery.",
+    "This completion reports offline repair validation only. A future scheduled-run result remains separate live proof."
   ],
   "stop_conditions_hit": []
 }

@@ -2,7 +2,7 @@
 
 **Status:** Settled
 
-**Controlling owner rulings:** Albert Hazan, 2026-08-16, 2026-08-19, 2026-08-23, 2026-08-25, and 2026-09-06. The 2026-09-06 ruling records that Paramount, Viacom Multi and Nickelodeon are one Licensor. The 2026-08-23 ruling establishes signed-contract authority for Warner Bros. licensing membership. The 2026-08-25 ruling records the Marvel portal-authority split effective December 2025.
+**Controlling owner rulings:** Albert Hazan, 2026-08-16, 2026-08-19, 2026-08-23, 2026-08-25, 2026-09-06, and 2026-09-14. The 2026-09-14 ruling records that Disney, Marvel, and Lucasfilm / Star Wars are three separate Licensors. The 2026-09-06 ruling records that Paramount, Viacom Multi and Nickelodeon are one Licensor. The 2026-08-23 ruling establishes signed-contract authority for Warner Bros. licensing membership. The 2026-08-25 ruling records the Marvel portal-authority split effective December 2025.
 
 ## Official business objects
 
@@ -20,6 +20,16 @@ Licensing Master Data consists of Licensors, Properties, Characters, Style Guide
 - Property codes are unique only with their owning Licensor. Never resolve a Property from its code alone.
 - Item or Property letters do not identify a Licensor without the accompanying description. `CC`, for example, can refer to Disney's Coco or Coca-Cola depending on the description.
 - `DY` and `DS` both describe the same Disney company for licensing identity. They must not create two Disney Licensors.
+
+### Disney, Marvel, and Lucasfilm / Star Wars are three separate Licensors
+
+**Status: Settled. Authority: Albert Hazan, 2026-09-14.**
+
+- Disney, Marvel, and Lucasfilm / Star Wars are three separate Licensors, even though they share a corporate parent and a submissions portal.
+- Their Minimum Guarantees are not cross-collateralized with each other. Each Licensor's Minimum Guarantee is tracked and recouped on its own.
+- Royalties must be reported separately for each of the three Licensors.
+- Never combine them into one Licensor, or treat one as a sub-Licensor of another, in data, presentation, royalty reporting, or Minimum Guarantee tracking.
+- This does not change "OPA cannot separate Marvel from Disney" below. OPA filing Marvel submissions under its Disney branch is a portal limitation, not Licensor identity.
 - `FR` was not a real Licensor in the ColdLion source. Do not promote it to one from an old code alone.
 
 ## Licensor naming aliases
@@ -82,6 +92,20 @@ No refresh hard-deletes licensing Master Data.
 
 ### OPA submissions presence is authority for entitlement
 
+**Current-rights refinement (owner issue #2703, 2026-09-10):** OPA's paired
+`Show Compliant Only` and `Show All` observations distinguish current selection
+rights for the exact Property, route and authenticated account scope. Only the
+newest approved complete explicit `compliant` observation permits new styles or
+new introduction into ColdLion. An explicit `non_compliant` observation blocks
+those new uses, while retaining historical styles, existing ColdLion identities
+and source records. OPA does not distinguish formerly-held from never-held rights.
+Legacy observations without two-view evidence are `unknown`, not current-rights
+proof. A later explicit compliant observation may reactivate selection; omission
+from a newer Show All never deletes or deactivates a Property. Evidence review
+approval and compliance are separate facts. Studio placement and historical
+Creative/Submissions mapping remain governed by their independent authority rules.
+See [the structural and private-loader contract](../app-migration-notes/opa-route-compliance-loader-contract.md).
+
 **Status: Settled. Authority: Albert Hazan, 2026-09-05.**
 
 - Ruling: "If they appear in the OPA submissions system we have rights, regardless of the contract and we'll go by the submissions system." A Disney-family Property present in the captured OPA submissions system is licensed to POP, whether or not a signed contract clause names it.
@@ -106,6 +130,12 @@ Source-internal labels do not create Licensors. Sega is one Licensor with two
 source-purpose sections. Peanuts' source field named `property` means Art
 Program, not a POP licensing Property.
 
+Disney, Marvel, and Lucasfilm / Star Wars are three separate Licensors (Settled,
+Albert Hazan, 2026-09-14). Each shows exactly two sections of its own,
+Submissions and Creative (style guide); they are never merged into one Disney
+Licensor group. Marvel's Submissions section still draws on OPA's Disney branch,
+split by the contract schedule, because that is a portal limitation only.
+
 Creative-to-Submissions equivalence requires authoritative direct evidence or
 an explicit reviewed decision. Similar names are not a mapping. Every
 unresolved Creative Property stays visible and is highlighted red in DB Data
@@ -115,6 +145,14 @@ chains explicitly rather than inferring missing terms.
 ## Talent likeness and royalty
 
 Marvel charges two additional royalty percentage points when artwork contains talent likeness. Marvel is the only Licensor with this confirmed rule. The likeness flag belongs to the specific Style Guide Asset file, never to the Character or Property.
+
+## `source_licensor_id` is attribution provenance, never current ownership
+
+`core.taxonomy_source_ref.source_licensor_id` records **who attributed a row**: which Licensor's source data first supplied the name. It never records who owns the entity now. When a Character is re-licensed, the Character moves to the new Licensor and the provenance row's stamp deliberately stays at the old one. That behaviour is intentional and is enforced by contract D7d in [`supabase/tests/character_alias_and_source_provenance_contracts.sql`](../../supabase/tests/character_alias_and_source_provenance_contracts.sql): a freshness-only update must never re-derive `source_licensor_id` from the re-licensed target.
+
+Any consumer that needs **current** ownership must read the live Licensor linkage on the entity itself — the Character's or Property's owning Licensor — never the source-ref stamp. This binds royalty and revenue reporting above all: attributing a royalty on the strength of `source_licensor_id` pays the Licensor that originally supplied the name instead of the Licensor that now owns the Character, and the failure would be silent, with no error and no test on the read side. Reading this column as current ownership is a defect even when nothing fails, because the D7d contract guards the write, not every downstream read.
+
+This reading was flagged as a policy judgement — not a mechanical fact — by an independent reviewer during the #2426 adjudication, and is recorded here as the stated companywide contract (issue #2827). The column's behaviour is correct as designed and is not changed by this rule; only its interpretation is settled.
 
 ## Refresh cadence and conflict handling
 

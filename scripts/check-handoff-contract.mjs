@@ -52,10 +52,12 @@
  */
 
 import { execSync } from "node:child_process";
+import { resolveBaseRef, gitProbe } from "./lib/resolve-base-ref.mjs";
 import { runGitHubCommand } from "./lib/github-transport.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveRepositoryIdentity } from './lib/repository-identity.mjs';
 
 export const HANDOFF_DIR = "HANDOFF.d";
 
@@ -242,8 +244,13 @@ function readIssueStates(repo, numbers) {
 }
 
 function main() {
-  const repo = process.env.HANDOFF_REPO || "u2giants/shared-db";
-  const base = process.env.HANDOFF_BASE || "origin/main";
+  const repo = resolveRepositoryIdentity({ explicit: process.env.HANDOFF_REPO });
+  // Issue #3280 governed review round 2: a merge_group checkout has no
+  // origin/<base> ref. Resolve it -- fetching the branch when absent -- and let
+  // the existing catch below refuse when it genuinely cannot be resolved.
+  const base = resolveBaseRef(process.env.HANDOFF_BASE || "origin/main", {
+    git: gitProbe((args) => execSync(`git ${args.join(" ")}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })),
+  });
 
   // Files this pull request adds, modifies or deletes under HANDOFF.d/.
   let diff = "";

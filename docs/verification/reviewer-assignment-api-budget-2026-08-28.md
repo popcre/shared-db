@@ -2,6 +2,30 @@
 
 Issue: #1767. Scope: repository coordination only; no database, preview, production, or application data changes.
 
+> **The admission gate is not reviewer work, 2026-09-11 (issue #2802).** The
+> 25-request ceiling below is UNCHANGED and the mutex-release reserve is
+> untouched. What changed is what the ceiling is charged for. Everything
+> measured in this document was measured for a draw with NO structural-admission
+> step; that gate (`scripts/orchestrator-flow/admission.mjs`) landed later, in
+> e7bec2fe on 2026-09-11, and its GitHub reads — the pull request, the linked
+> work issue, the complete file list, file contents at the exact head, the
+> closing-issue link and the outcome history — were being billed against this
+> ceiling. Charged against it, a structural draw exhausted the budget at request
+> 24 (2 held back as the mutex-release reserve). That refusal fired from INSIDE
+> the held mutex section — it was not a cheap fail-fast before the mutex was
+> taken. The mutex-release reserve is only subtracted once `acquireReviewMutex`
+> has marked the budget locked, and the admission step runs after that, so the
+> lane had already acquired the reviewer mutex and made admission's reads under
+> it before the refusal, and then had to unwind and release. Every migration
+> author lane in the fleet was blocked.
+> Admission now runs outside the reviewer operation's request accounting
+> (`withoutReviewRequestBudget`), which is how it is already accounted for at
+> every other call site — `acquireAuthorLane`, the guarded merge gate and
+> preview preparation all invoke it with no reviewer budget installed. It still
+> runs, still refuses identically, and still runs under the same held mutex
+> before the draw proceeds. Nothing below is re-derived, because nothing below
+> changed: the reviewer half of the operation costs exactly what it did.
+
 > **Queue and capacity budgets, 2026-09-04 (issue #2345).** The 25-request
 > ceiling still governs the assignment transaction itself. When FIFO admission
 > is enabled, the complete public command has one honest 75-request ceiling
@@ -26,6 +50,17 @@ Issue: #1767. Scope: repository coordination only; no database, preview, product
 > Immutable-evidence, exact-head, verdict,
 > independence, fresh mutex recheck, atomic transition and cleanup refusals are
 > unchanged.
+
+> **Silent-reclaim budget, 2026-09-10 (issue #2697).** The 25-request ceiling
+> here is unchanged and still governs assignment and replacement. It never
+> governed `--reclaim-silent-reviewer`, which was added later and whose request
+> count was never derived; charged against 25 it refused at request 24 every
+> time, so a dead reviewer lease could not be released. That path is now
+> initially measured at 28 on the current-key path (14 pre-mutex plus a
+> 14-request mutex-held section), with one duplicate fresh PR read removed;
+> the later legacy fallback measurement is 30 (15 plus 15) and controls the ceiling
+> rather than paid for, in
+> `docs/verification/reviewer-silent-reclaim-api-budget-2026-09-10.md`.
 
 > **Superseded ceiling, 2026-08-29 (issue #1812, PR #1813).** Everything below
 > was verified against a **19**-request ceiling, which was correct for a single
@@ -100,3 +135,5 @@ Measured, by the wire-attempt fixtures in `scripts/manage-migration-author-lanes
 | Idempotent replacement retry, pre-mutex | 9 | 10 (reduced back to 9 by #2550 batching) |
 
 The mutex entry gate still refuses to acquire the mutex unless the whole mutex-held section fits, and the behavioural test that adds one extra counted pre-mutex call and requires a refusal BEFORE the mutex exists is unchanged and still passes.
+
+Successor verification (2026-09-11, #2697): the current lease-key path remains 28 requests; legacy fallback under parallel mode costs 30 (15 pre-mutex plus 15 held). The silent-reclaim ceiling is derived as 30, with mutex reserve 15. See the successor section of `reviewer-silent-reclaim-api-budget-2026-09-10.md`; the shared ceiling remains 25.

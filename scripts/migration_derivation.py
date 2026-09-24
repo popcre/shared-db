@@ -78,6 +78,13 @@ DECLARATION_MANDATE_FROM = "20260827000000"
 # header prose it was transcribed from. A version here is treated exactly as if
 # its file carried the line.
 LEGACY_DECLARATIONS: dict[str, tuple[frozenset[str], str]] = {
+    "20260915015414": (
+        frozenset({"20260905104802"}),
+        "Retired preview-only PopSG reconcile rewrite (#2792). Preview applied "
+        "these exact bytes in run 34920902290 before the derived-from header was "
+        "added, so the historical file must stay byte-identical; its functions "
+        "were re-derived from 20260905104802, as reissue 20260915023506 declares.",
+    ),
     "20260824135515": (
         frozenset({"20260814223552"}),
         "Its own header: 'This is a full re-derivation of the CURRENT function "
@@ -127,6 +134,27 @@ LEGACY_DECLARATIONS: dict[str, tuple[frozenset[str], str]] = {
         "The promotable forward repair of the Paramount loader, authored on top "
         "of the vocabulary DDL replacement 20260825124200 and applied directly "
         "after it in the same window.",
+    ),
+}
+
+# A merged migration must never be edited merely to repair its metadata: its
+# bytes are part of preview/production evidence. This one historical migration
+# used the reserved ``derived-from:`` label for explanatory prose about a
+# pre-adoption CI baseline, which is not a migration-ledger version. Its source
+# is deliberately pinned byte-for-byte below. The exception returns an empty
+# migration-base set while retaining the baseline provenance in this source
+# text; any change to the historical declaration fails closed.
+IMMUTABLE_NON_LEDGER_DERIVATIONS: dict[str, tuple[str, str]] = {
+    "20260909005945": (
+        "-- derived-from: the baseline body of queue_nightly_rebuild_style_groups() carried in\n"
+        "-- supabase/ci-bootstrap/010_pre_adoption_baseline.sql. That function has no prior file\n"
+        "-- under supabase/migrations/; the baseline copy was its only source in this repository,\n"
+        "-- and the body below is re-derived from it line by line, not merged into. This migration\n"
+        "-- takes ownership of the function and removes that baseline copy -- see \"THE CI BASELINE\n"
+        "-- COPY IS REMOVED BY THIS CHANGE\" below.\n",
+        "Issue #2440's merged migration takes ownership from the pre-adoption CI baseline, "
+        "not from a migration ledger version. The exact malformed declaration/source is pinned "
+        "so future prose under the reserved label remains refused.",
     ),
 }
 
@@ -185,6 +213,27 @@ def parse_declaration(raw: str, version: str = "<unknown>") -> frozenset[str] | 
     return frozenset(bases)
 
 
+def immutable_non_ledger_derivation(version: str, raw: str) -> frozenset[str] | None:
+    """Resolve the one byte-pinned historical non-ledger source, else nothing.
+
+    This is intentionally checked before normal parsing: the pinned historical
+    text is malformed by the normal declaration grammar. Any other version,
+    altered source, or added declaration stays subject to that grammar.
+    """
+    record = IMMUTABLE_NON_LEDGER_DERIVATIONS.get(version)
+    if record is None:
+        return None
+    expected_source, _why = record
+    expected_declaration = expected_source.splitlines()[0].removeprefix("-- derived-from: ")
+    matches = DECLARATION_RE.findall(raw)
+    if expected_source not in raw or matches != [expected_declaration]:
+        raise DerivationError(
+            f"{version}: the immutable historical non-ledger derivation source changed or "
+            "is missing; refusing to substitute metadata for different migration bytes."
+        )
+    return frozenset()
+
+
 def declared_bases(
     version: str, path: Path | None = None, raw: str | None = None
 ) -> frozenset[str] | None:
@@ -192,6 +241,9 @@ def declared_bases(
     if raw is None and path is not None:
         raw = path.read_text(encoding="utf-8")
     if raw is not None:
+        immutable = immutable_non_ledger_derivation(version, raw)
+        if immutable is not None:
+            return immutable
         parsed = parse_declaration(raw, version)
         if parsed is not None:
             return parsed

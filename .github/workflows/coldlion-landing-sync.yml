@@ -1,0 +1,125 @@
+# Scheduled ColdLion masters, history, prepack and production-detail sync.
+#
+# Re-reads the most recent grid windows every run. A window already proven loaded
+# is skipped; a window that is not is completed. Trailing more than one window is
+# deliberate — an order edited days after it was written falls in an older window,
+# and a sync that only ever looked at the current week would never see it.
+#
+# Since issue #3179 the same run also refreshes coldlion.prepack_detail: it
+# re-harvests the prepackCode population from the tables landed above and re-asks
+# every code, so recipe edits and removals are observed. The initial bounded
+# backfill lives in coldlion-prepack-backfill.yml, manual dispatch only.
+#
+# Since issue #3180 the same run also refreshes coldlion.prod_detail, AFTER the
+# history step of this same job, so the orders landed moments ago are immediately
+# eligible for /proddetails: it fetches every order with no SUCCEEDED run yet,
+# then re-reads recently-observed ones — the same trailing-window philosophy as
+# the history re-read above it. The initial bounded backfill lives in
+# coldlion-prod-detail-backfill.yml, manual dispatch only.
+#
+# This workflow WRITES to the shared database. Two rules follow from that:
+#   1. It is never triggered by a pull request or a push. Schedule and manual
+#      dispatch only, so a branch cannot make it run.
+#   2. The offline contract tests run first, in the same job, immediately before
+#      the write. If they are red nothing is fetched and nothing is written.
+
+name: ColdLion Landing Sync
+
+on:
+  schedule:
+    # 05:20 UTC daily — after the vendor's own overnight processing, and off the
+    # hour so it does not contend with everything else scheduled on the hour.
+    - cron: '20 5 * * *'
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: 'How many recent 7-day windows to re-read'
+        required: false
+        default: '3'
+      prod_detail_limit:
+        description: 'Maximum production orders for the /proddetails refresh'
+        required: false
+        default: '2000'
+      dry_run:
+        description: 'Validate masters live; report history work; write nothing'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Never let two runs load the same window at once. A second run would be refused
+# by the ledger rather than corrupt anything, but a queued run is the honest
+# outcome, so cancel-in-progress stays off.
+concurrency:
+  group: coldlion-landing-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync masters and recent history windows
+    runs-on: ubuntu-latest
+    # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
+    # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
+    # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
+    # (2,577 codes at 1s), prod-detail refresh ~1.9s/key over up to 2,000 recent
+    # orders ~63 min — ~116 min worst case. 150 keeps a real stall-killing ceiling
+    # (#1266) with margin; the job stays serialized by the concurrency group.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Sync
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          WINDOWS: ${{ github.event.inputs.windows || '3' }}
+          PROD_DETAIL_LIMIT: ${{ github.event.inputs.prod_detail_limit || '2000' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=(--windows "$WINDOWS")
+          MASTER_ARGS=()
+          PREPACK_ARGS=()
+          PROD_DETAIL_ARGS=(--mode refresh --limit "$PROD_DETAIL_LIMIT")
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); PROD_DETAIL_ARGS+=(--dry-run); fi
+          node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
+          node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
+          # The prepack refresh re-asks every harvested code daily (2,577 on
+          # 2026-09-17). The loader's 3s default pace was sized for the heavy
+          # paged history pulls; at that pace this one-at-a-time keyed lookup
+          # feed would need ~2h13m and overrun the job's 90-minute budget. 1s
+          # keeps the vendor agreement (serialized requests) and lands the
+          # whole refresh in ~45 minutes beside history+masters' ~8.
+          PREPACK_ARGS+=(--pause-ms 1000)
+          node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"
+          # Same budget arithmetic for the production-detail refresh (#3180): the
+          # limit is 2000 orders, and at the loader's 3s default that alone is
+          # ~100 minutes inside a 90-minute job. 1s keeps the requests serialized
+          # (the vendor agreement) and bounds this step at ~33 minutes.
+          PROD_DETAIL_ARGS+=(--pause-ms 1000)
+          node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"

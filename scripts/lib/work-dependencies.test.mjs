@@ -5,6 +5,12 @@ import {
   validateCompletionRecord, isSuccessful, parseCompletionComment, findCompletionRecord,
   findDependencyCycles, validateDependencyDeclaration, classifyDependency, classifyDependencies, COMPLETION_RECORD_REQUIRED_FROM,
 } from './work-dependencies.mjs'
+import { expectedOperatorAssociation } from './repository-identity.mjs'
+
+// The trusted association follows the resolved repository owner (#3255): OWNER
+// under a personal account, MEMBER under the popcre organization.
+const TRUSTED_ASSOCIATION = expectedOperatorAssociation()
+const OTHER_ASSOCIATION = TRUSTED_ASSOCIATION === 'OWNER' ? 'MEMBER' : 'OWNER'
 
 const merged = (over = {}) => ({
   schema_version: COMPLETION_SCHEMA_VERSION, work_issue: 10, outcome: 'merged',
@@ -14,7 +20,7 @@ const ruling = (over = {}) => ({
   schema_version: COMPLETION_SCHEMA_VERSION, work_issue: 10, outcome: 'owner-ruling-recorded',
   ruling_url: 'https://github.com/u2giants/shared-db/issues/1', resolved_by: 'https://github.com/u2giants/shared-db/commit/abc1234', ...over,
 })
-const comment = (record) => ({ body: '```db-work-completion\n' + JSON.stringify(record) + '\n```' })
+const comment = (record,over={}) => ({ body: '```db-work-completion\n' + JSON.stringify(record) + '\n```',author_association:TRUSTED_ASSOCIATION,author:'u2giants',...over })
 
 // --- ONE SCHEMA, CONDITIONAL FIELDS ----------------------------------------
 
@@ -51,8 +57,8 @@ test('the envelope itself is validated', () => {
   assert.throws(() => validateCompletionRecord(merged({ outcome: 'done' })), /outcome must be one of/)
 })
 
-test('only merged and owner-ruling-recorded count as success', () => {
-  assert.deepEqual([...SUCCESS_OUTCOMES], ['merged', 'owner-ruling-recorded'])
+test('merged, live-verified, and owner-ruling-recorded count as success', () => {
+  assert.deepEqual([...SUCCESS_OUTCOMES], ['merged', 'live_verified', 'owner-ruling-recorded'])
   for (const outcome of SUCCESS_OUTCOMES) assert.equal(isSuccessful({ outcome }), true)
   for (const outcome of UNSUCCESSFUL_OUTCOMES) assert.equal(isSuccessful({ outcome }), false)
   assert.equal(isSuccessful(null), false)
@@ -87,6 +93,11 @@ test('two completion records on one issue is an error, not latest-wins', () => {
   assert.throws(() => findCompletionRecord([comment(merged()), comment(merged({ pr: 100 }))]), /completion is immutable/)
   assert.equal(findCompletionRecord([{ body: 'chatter' }]), null)
   assert.deepEqual(findCompletionRecord([{ body: 'chatter' }, comment(merged())]), merged())
+})
+
+test('only an explicitly identified repository owner can publish dependency completion',()=>{
+  for(const over of [{author_association:'NONE'},{author_association:undefined},{author:'attacker'},{author:undefined},{author_association:OTHER_ASSOCIATION},{author_association:'COLLABORATOR'}])assert.throws(()=>findCompletionRecord([comment(merged(),over)],{requireTrustedAuthor:true}),new RegExp(`operator u2giants with the ${TRUSTED_ASSOCIATION} association`))
+  assert.deepEqual(findCompletionRecord([comment(merged())],{requireTrustedAuthor:true}),merged())
 })
 
 // --- DECLARATION AND CYCLES ------------------------------------------------
@@ -234,7 +245,7 @@ test('the cutoff never rescues an unsuccessful outcome', () => {
   const cancelled = { schema_version: 1, work_issue: 10, outcome: 'cancelled', reason: 'dropped' }
   const result = classifyDependency(10, {
     exists: true, open: false, closedAt: '2026-08-01T00:00:00Z',
-    comments: [{ body: '```db-work-completion\n' + JSON.stringify(cancelled) + '\n```' }],
+    comments: [comment(cancelled)],
   })
   assert.equal(result.satisfied, false)
   assert.equal(result.status, 'completed-unsuccessfully')

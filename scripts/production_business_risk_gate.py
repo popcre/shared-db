@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import functools
 import json
 import re
 import subprocess
+import sys
+try:  # run as scripts/<name>.py or imported as scripts.<name>
+    from repository_identity import current_repository
+except ImportError:  # pragma: no cover
+    from scripts.repository_identity import current_repository
 import tempfile
 import time
 import zipfile
@@ -24,10 +30,11 @@ from production_apply_review_evidence import verify as verify_review
 from production_migration_guard import parse_remote_versions
 from production_review_allowlist import normalize_review_allowlist
 from historical_preview_recovery import verify as verify_historical_preview
+from historical_preview_recovery import prove_pr_authored
 from preview_instance_binding import verify as verify_preview_instance_binding
 from production_owner_decision_evidence import TRANSIENT_GITHUB_ERRORS, verify_artifact as verify_owner_decision
 
-REPOSITORY = "u2giants/shared-db"
+REPOSITORY = current_repository()  # never hard-coded (#2530)
 # The production database's identity. It is deliberately a constant and NOT
 # configurable: this value exists so the gate can refuse evidence that claims a
 # PRODUCTION write was a preview rehearsal. The PREVIEW ref is the opposite --
@@ -74,12 +81,97 @@ GOVERNED_ORIGINAL_RECONCILIATION = {
     "preview_artifact_digest": "sha256:2a466d1a0163a276a937e28f9af5eff710096e62ec9e7ddf7dda38fac41ef49a",
     "project_ref": "mvpkijzfmfcxhnzqogzs",
 }
+
+PREVIEW_FAILURE_JOB_CONCLUSIONS = {
+    "SQL migration guards": "success",
+    "preview": "success",
+    "Automatic production qualification and dispatch": "failure",
+    "Production apply review (immutable evidence + hard guards)": "skipped",
+    "Production apply (automatic evidence gates)": "skipped",
+    "production-dry-run": "skipped",
+}
+
+
+def preview_run_has_immutable_apply(run: Any, jobs: Any = None) -> bool:
+    """Accept success, or the exact graph where only downstream promotion failed."""
+    if not isinstance(run, dict) or run.get("status") != "completed":
+        return False
+    if run.get("conclusion") == "success":
+        return True
+    if run.get("conclusion") != "failure" or not isinstance(jobs, dict):
+        return False
+    rows = jobs.get("jobs")
+    if jobs.get("total_count") != 6 or not isinstance(rows, list) or len(rows) != 6:
+        return False
+    return all(
+        sum(
+            1 for job in rows
+            if isinstance(job, dict) and job.get("name") == name
+            and job.get("status") == "completed" and job.get("conclusion") == conclusion
+        ) == 1
+        for name, conclusion in PREVIEW_FAILURE_JOB_CONCLUSIONS.items()
+    )
 RISK_TEXT = {
     "permanent_data_rewrite_or_loss": "existing production data may be lost or permanently altered",
     "expected_downtime": "users may be interrupted",
     "material_access_change": "access or permissions materially change",
     "recovery_unproven": "recovery is uncertain",
     "unresolved_material_objection": "the reviewers have an unresolved material disagreement",
+}
+
+
+# Column types whose ADD COLUMN (nullable, no default) is catalog-only. A type
+# outside this list may be a domain carrying a DEFAULT or NOT NULL, or a
+# serial pseudo-type that implies NOT NULL DEFAULT nextval(), which rewrites or
+# scans the table, so it is refused (#2771).
+_BUILTIN_COLUMN_TYPE = (
+    r"(?:text|citext|uuid|jsonb?|bytea|boolean|bool|date|interval|inet|cidr|macaddr|money|xml|tsvector"
+    r"|smallint|integer|int|int2|int4|int8|bigint|real|float4|float8|double precision"
+    r"|(?:numeric|decimal)(?: ?\( ?\d+ ?(?:, ?\d+ ?)?\))?"
+    r"|(?:varchar|character varying|char|character|bit|bit varying|varbit)(?: ?\( ?\d+ ?\))?"
+    r"|(?:timestamp|time)(?: ?\( ?\d ?\))?(?: with(?:out)? time zone)?|timestamptz|timetz)"
+    r"(?: ?\[ ?\])*"
+)
+
+
+# The ONLY statements that report no business risk (#2969, PR #2970). The design
+# is allowlist-only: every top-level statement must fullmatch one entry, with no
+# trailing clause, or the migration reports all three risks. Anything else --
+# WITH, EXPLAIN, DO, SELECT, INSERT, SET, BEGIN, GRANT, an unparsed file -- is
+# never modelled and never excused. Patterns run on sql_top_level_statements
+# output: comments removed, whitespace folded, unquoted text lower-cased, every
+# string literal emptied to '' and every dollar-quoted body emptied to $$ $$.
+_ALLOW_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_]*)'
+_ALLOW_QUALIFIED = rf"{_ALLOW_IDENT}\.{_ALLOW_IDENT}"  # schema-qualified only
+_ALLOW_ARGS = r"\((?![^)]*\bdefault\b)(?:[a-z0-9_ ,\[\]]*)\)"  # argument types only: no DEFAULT
+_ALLOW_ROUTINE_OPTION = r"(?:language (?:sql|plpgsql)|immutable|stable|volatile|strict|security invoker)"
+ALLOWLIST = {
+    # Defines a routine; its body is not executed by CREATE. Only SQL and
+    # PL/pgSQL, only a quoted body, no SECURITY DEFINER, SET, or argument default.
+    "create_function": re.compile(
+        rf"create (?:or replace )?function {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS} "
+        rf"returns (?:setof )?(?:trigger|{_BUILTIN_COLUMN_TYPE}|void) "
+        rf"(?:{_ALLOW_ROUTINE_OPTION} )*as (?:\$\$ \$\$|'')(?: {_ALLOW_ROUTINE_OPTION})*"),
+    # Without CASCADE, Postgres refuses the drop while anything depends on it.
+    "drop_function_if_exists": re.compile(
+        rf"drop function if exists {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+        rf"(?: ?, ?{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS})*"),
+    # One nullable column of a built-in type, no default, constraint, reference,
+    # collation, or generated/identity clause: a catalog-only change.
+    "add_nullable_column": re.compile(
+        rf"alter table (?:only )?{_ALLOW_QUALIFIED} add column (?:if not exists )?"
+        rf"{_ALLOW_IDENT} {_BUILTIN_COLUMN_TYPE}(?: null)?"),
+    # A brand-new table: no IF NOT EXISTS, AS SELECT/EXECUTE/VALUES, LIKE, OF,
+    # INHERITS, PARTITION, WITH, TABLESPACE, or REFERENCES (a foreign key locks
+    # the referenced existing table).
+    "create_table": re.compile(
+        rf"create table ({_ALLOW_QUALIFIED}) ?\("
+        r"(?!.*\b(?:references|like|of|inherits|partition|with|tablespace|using|select|execute|values)\b)"
+        r"[^;]*\)"),
+    # An index on a table created by an EARLIER statement of this migration.
+    "create_index_on_new_table": re.compile(
+        rf"create (?:unique )?index (?:(?!concurrently )(?!if )(?!on ){_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
+    "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
 }
 
 
@@ -91,7 +183,56 @@ class PreviewProducerMismatch(RiskGateError):
     """Two readable, proved commits carry different preview-producer bytes."""
 
 
-def gh_json(endpoint: str, *, runner=subprocess.run, sleep=time.sleep, attempts=4) -> Any:
+RATE_LIMIT_WAIT_CAP_SECONDS = 15 * 60
+
+
+def rate_limit_exhausted(error: str) -> bool:
+    """A PRIMARY quota exhaustion: "rate limit exceeded" with HTTP 403 or 429.
+
+    A secondary (abuse) limit, "Resource not accessible", or any other 403 is not
+    this, and is never waited on.
+    """
+    lowered = error.lower()
+    return "rate limit exceeded" in lowered and "secondary rate limit" not in lowered and bool(
+        re.search(r"http (?:403|429)\b", lowered)
+    )
+
+
+def rate_limit_reset_seconds(runner, now: float) -> float | None:
+    """Seconds until the REST quota resets, from the free `rate_limit` endpoint.
+
+    None when the answer cannot be read: an unknown reset is never guessed.
+    """
+    probe = runner(
+        ["gh", "api", "rate_limit"], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8",
+    )
+    if probe.returncode != 0:
+        return None
+    try:
+        core = json.loads(probe.stdout)["resources"]["core"]
+        remaining, reset = core["remaining"], core["reset"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+    if not isinstance(remaining, int) or not isinstance(reset, (int, float)):
+        return None
+    return 0.0 if remaining > 0 else max(0.0, reset - now)
+
+
+def gh_json(
+    endpoint: str, *, runner=subprocess.run, sleep=time.sleep, attempts=4,
+    rate_limit_wait_seconds: float = 0, clock=time.time,
+) -> Any:
+    # RATE LIMIT (bounded, opt-in). With `rate_limit_wait_seconds` > 0 a primary
+    # quota exhaustion ("rate limit exceeded", HTTP 403/429) waits ONCE for the
+    # stated reset when that reset is within the budget (capped at 15 minutes),
+    # then re-reads. A reset further away, an unreadable reset, a second
+    # exhaustion, or any other 403 fails closed exactly as before. Only the
+    # pre-lane invocation passes a budget; the invocation that already holds the
+    # production lane keeps the default 0 and fails fast. The wait never changes
+    # what is read or how it is judged.
+    budget = max(0.0, min(float(rate_limit_wait_seconds or 0), RATE_LIMIT_WAIT_CAP_SECONDS))
+    rate_limit_waited = False
     # The live owner-comment read and the recursive tree read receive transport
     # retries. The tree read carries the producer pin for a whole promotion
     # (issue #2191), so one spurious 500/504 there would stop production for a
@@ -101,7 +242,8 @@ def gh_json(endpoint: str, *, runner=subprocess.run, sleep=time.sleep, attempts=
     # governed evidence reads preserve their existing single-attempt behavior.
     retry_transport = "/issues/comments/" in endpoint or "/git/trees/" in endpoint
     effective_attempts = attempts if retry_transport else 1
-    for attempt in range(effective_attempts):
+    attempt = 0
+    while True:
         result = runner(
             ["gh", "api", endpoint], text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8",
@@ -110,10 +252,18 @@ def gh_json(endpoint: str, *, runner=subprocess.run, sleep=time.sleep, attempts=
             try: return json.loads(result.stdout)
             except json.JSONDecodeError as exc: raise RiskGateError("GitHub returned invalid JSON") from exc
         error = (result.stderr or "GitHub API request failed").strip()
+        if budget > 0 and not rate_limit_waited and rate_limit_exhausted(error):
+            delay = rate_limit_reset_seconds(runner, clock())
+            if delay is not None and delay <= budget:
+                rate_limit_waited = True
+                print(f"GitHub API quota exhausted; waiting {int(delay) + 1}s for its reset, then re-reading once.", file=sys.stderr)
+                sleep(delay + 1)
+                continue  # the wait does not spend a transport attempt
         transient = any(marker in error.lower() for marker in TRANSIENT_GITHUB_ERRORS)
-        if not transient or attempt == effective_attempts - 1:
+        if not transient or attempt >= effective_attempts - 1:
             raise RiskGateError(f"GitHub API request failed: {error}")
         sleep(2 ** attempt)
+        attempt += 1
 
 
 def api_object(api: Callable[[str], Any], endpoint: str) -> dict[str, Any]:
@@ -477,21 +627,6 @@ PREVIEW_PRODUCER_PATHS = (
     # Hash-bound verification declarations are read by the catalog verifier in
     # preview. Contents API directory responses are arrays, so pin each reviewed
     # file explicitly rather than pretending a directory has a blob SHA.
-    "scripts/production-verification-sidecars/20260621151155.json",
-    "scripts/production-verification-sidecars/20260701154948.json",
-    "scripts/production-verification-sidecars/20260710135600.json",
-    "scripts/production-verification-sidecars/20260710135700.json",
-    "scripts/production-verification-sidecars/20260710135900.json",
-    "scripts/production-verification-sidecars/20260710135950.json",
-    "scripts/production-verification-sidecars/20260727154500.json",
-    "scripts/production-verification-sidecars/20260807030000.json",
-    "scripts/production-verification-sidecars/20260823233716.json",
-    "scripts/production-verification-sidecars/20260825031841.json",
-    "scripts/production-verification-sidecars/20260825050407.json",
-    "scripts/production-verification-sidecars/20260825082910.json",
-    "scripts/production-verification-sidecars/20260828021051.json",
-    "scripts/production-verification-sidecars/20260830195655.json",
-    "scripts/production-verification-sidecars/20260830204711.json",
     # Local import of the guard, and the only thing that reads a migration's
     # `-- derived-from:` declaration (issue #1608). An unpinned copy could
     # declare every base satisfied and the guard would believe it, which is the
@@ -506,6 +641,15 @@ PREVIEW_PRODUCER_PATHS = (
     # rehearsal to proceed at all. Unpinned, a doctored copy could accept ANY
     # tip -- which is the whole gate.
     "scripts/check-main-tip-freshness.mjs",
+    # Static import of both the manager and the freshness check (#2758). It
+    # decides tip acceptance and whether two heads carry the same pull request
+    # diff, so an unpinned copy could wave any tip or any refresh through.
+    "scripts/lib/pr-content-equivalence.mjs",
+    # Repository identity helpers (#2530). Imported by the manager and by the
+    # preview-job Python entry points; they decide which repository every API
+    # call reads, so an unpinned copy could point evidence reads elsewhere.
+    "scripts/lib/repository-identity.mjs",
+    "scripts/repository_identity.py",
     # Invoked by the manager before preview preparation to prove the live sole
     # orchestrator identity. Its result gates whether preparation may proceed.
     "scripts/check-orchestrator-marker.mjs",
@@ -519,6 +663,9 @@ PREVIEW_PRODUCER_PATHS = (
     # Static import of check-dispatch-collision.mjs. Its module body evaluates
     # before the entry point runs, so hop three is as executable as hop one.
     "scripts/check-pr-object-collisions.mjs",
+    # Static import of check-pr-object-collisions.mjs: supplies the open pull
+    # request file lists that check judges, so it is as executable as its importer.
+    "scripts/lib/open-pr-files.mjs",
     # Executes in preview-recovery mode. Safe today only because that path
     # separately demands run head == exact main; pinned so that coupling cannot
     # silently loosen later.
@@ -547,10 +694,17 @@ PREVIEW_PRODUCER_PATHS = (
     # reused, so preview proof must bind their exact bytes.
     "config/orchestrator-evidence-schema-v1.json",
     "config/orchestrator-global-invalidators-v1.json",
+    # Issue #2728. Read from main by the pinned pr-content-equivalence.mjs to
+    # decide which stored script-hash re-pins may carry an approval forward, so
+    # its bytes change whether a prior review is reused for preview.
+    "config/review-carry-forward-stored-hashes-v1.json",
     # Governed preview-ledger reconciliation reads this reviewed manifest to
     # select the exact issue/claim/source/orphan/replacement tuple. Bind those
     # bytes to the same exact-main producer proof as the workflow and tool.
     "config/preview-ledger-orphan-reconciliations.json",
+    # Loaded by the outcome lifecycle imported by the lane manager. Bind the
+    # exact incident authorization to the same producer identity as its reader.
+    "config/outcome-timestamp-recovery.json",
     # READ, NOT EXECUTED -- and therefore invisible to the executed-closure
     # walk, which follows invocations and imports. The Supabase CLI reads this
     # file on every `link`, `migration list` and `db push` the preview job runs,
@@ -655,6 +809,27 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "and by this gate itself, both of which check out exact main and prove "
         "HEAD == origin/main before executing; prove_activation additionally "
         "re-reads it against main. Pinning it here would assert nothing new."
+    ),
+    "config/production-owner-identity.json": (
+        "Never read by the preview job. Its only reader is "
+        "scripts/production_owner_decision_evidence.py, run by the production "
+        "owner-decision evidence workflow and the production-apply risk gate, "
+        "both of which check out exact main. It binds the owner's decision "
+        "comment to an exact login and numeric user id (#3443); no migration, "
+        "apply helper or catalog verifier reads it, so it cannot shape preview "
+        "evidence."
+    ),
+    "config/db-data-admin-property-source-coverage.json": (
+        "Never read by the preview job. Its only reader is "
+        "scripts/check-db-data-admin-property-source-coverage.mjs, run by the "
+        "validate job of shared-supabase-migrations.yml, which is a pull-request "
+        "check, not the preview rehearsal. No migration, apply helper, catalog "
+        "verifier or sidecar reads it, so its bytes cannot shape preview "
+        "evidence. It was pinned by #2579; that pin refused #2870's production "
+        "promotion (run 35176603519) and #2866's (run 35178225764) only "
+        "because unrelated PR #3110 edited the "
+        "manifest after the preview ran. If a preview-job tool ever reads it, the "
+        "phrase check on this reason fails and it must be pinned again."
     ),
     "config/agent-work-contract.schema.json": (
         "Never read by the preview job, and in fact read by no job at all - not "
@@ -783,9 +958,188 @@ def authored_merge(merge_sha: str) -> ProvedTarget:
     return ProvedTarget("authored-merge", merge_sha)
 
 
+SIDECAR_PATH = re.compile(r"^scripts/production-verification-sidecars/(\d{14})\.json$")
+# Each part is a quoted identifier (any characters, "" escaping a quote) or a
+# bare one. Quoted names are case-folded with the rest of the text, which can
+# only merge two names into one overlap, never hide one.
+_IDENT = r'(?:"((?:[^"]|"")+)"|([a-z_][a-z0-9_$]*))'
+_QUALIFIED_OBJECT = re.compile(_IDENT + r'\s*\.\s*' + _IDENT)
+_SYSTEM_SCHEMAS = {"pg_catalog", "information_schema"}
+
+
+def migration_objects(sql: str) -> set[str]:
+    """Schema-qualified names a migration mentions, comments removed.
+
+    Deliberately over-inclusive: any shared name counts as an overlap, so the
+    only error it can make is a refusal, never a pass.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
+    text = re.sub(r"--[^\n]*", " ", text).lower()
+    names = set()
+    for quoted_schema, bare_schema, quoted_name, bare_name in _QUALIFIED_OBJECT.findall(text):
+        schema = quoted_schema.replace('""', '"') if quoted_schema else bare_schema
+        name = quoted_name.replace('""', '"') if quoted_name else bare_name
+        if schema not in _SYSTEM_SCHEMAS:
+            names.add(f"{schema}.{name}")
+    return names
+
+
+def independent_sidecar_paths(
+    promoted_versions: list[str] | None, repo_root: Path | None
+) -> frozenset:
+    """Sidecars of OTHER versions whose migrations share no object with this promotion.
+
+    Such a sidecar may be added or changed on main after the preview ran without
+    making the preview proof stale (#2758). A sidecar of a promoted version, one
+    whose migration cannot be read exactly once, or one whose migration names
+    any object a promoted migration names, is not independent and stays pinned
+    byte for byte. With no promotion context nothing is independent.
+    """
+    if not promoted_versions or repo_root is None:
+        return frozenset()
+    promoted = set(promoted_versions)
+    promoted_objects: set[str] = set()
+    for version in promoted:
+        matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
+        if len(matches) != 1:
+            return frozenset()
+        promoted_objects |= migration_objects(matches[0].read_text(encoding="utf-8"))
+    if not promoted_objects:
+        return frozenset()
+    independent = set()
+    for path in PREVIEW_PRODUCER_PATHS:
+        match = SIDECAR_PATH.fullmatch(path)
+        if not match or match.group(1) in promoted:
+            continue
+        matches = list(repo_root.glob(f"supabase/migrations/{match.group(1)}_*.sql"))
+        if len(matches) != 1:
+            continue
+        if migration_objects(matches[0].read_text(encoding="utf-8")) & promoted_objects:
+            continue
+        independent.add(path)
+    return frozenset(independent)
+
+
+# CUSTODY-ONLY PRODUCERS (#3168). These files run in the preview job BEFORE or
+# AROUND the apply -- lane acquisition, tip freshness, orchestrator identity,
+# collision and capacity bookkeeping, evidence-reuse policy -- but none of them
+# executes, derives or writes the migration SQL, the ledgers, the content
+# manifest or the instance binding. They are pinned so a FORGED ref cannot run a
+# doctored copy. A preview dispatched at a commit that exact main CONTAINS ran
+# reviewed main-line copies of them, so a later main commit changing one of them
+# does not change what the rehearsal proved. #2870 and #2866 were refused for
+# exactly that: both previews ran at main-line 426cca7c, and main later changed
+# the freshness check, the lane manager and the repository identity helpers.
+# The tolerance applies ONLY to an exact-main target and ONLY after the ref is
+# proved an ancestor of exact main. Everything that shapes the apply --
+# guard, derivation, atomic apply, instance binding, allowlist, supabase
+# config, orphan reconciliations, every sidecar of an overlapping version --
+# stays compared byte for byte, and a tolerated path is never counted as a
+# comparison, so the zero-comparison refusal still holds.
+PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/check-main-tip-freshness.mjs",
+    "scripts/lib/pr-content-equivalence.mjs",
+    "scripts/lib/repository-identity.mjs",
+    "scripts/repository_identity.py",
+    "scripts/check-orchestrator-marker.mjs",
+    "scripts/db-coordination-events.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/lib/open-pr-files.mjs",
+    "config/orchestrator-evidence-schema-v1.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "config/review-carry-forward-stored-hashes-v1.json",
+))
+
+# Executes in the preview job's historical-recovery mode, so it is NOT
+# custody-only. Tolerated only when the two versions are identical after the
+# repository identity move (#2530): the resolver import lines and the one REPO
+# assignment, spelled as the resolved slug or through the resolver.
+HISTORICAL_RECOVERY_PRODUCER = "scripts/historical_preview_recovery.py"
+_RECOVERY_IDENTITY_DROPPED_LINES = frozenset((
+    "try:  # run as scripts/<name>.py or imported as scripts.<name>",
+    "from repository_identity import current_repository",
+    "except ImportError:  # pragma: no cover",
+    "from scripts.repository_identity import current_repository",
+))
+
+
+def _recovery_identity_normal_form(text: str) -> list[str]:
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line in _RECOVERY_IDENTITY_DROPPED_LINES:
+            continue
+        if line in {f'REPO = "{REPOSITORY}"', "REPO = current_repository()  # never hard-coded (#2530)"}:
+            line = "REPO = <repository>"
+        lines.append(line)
+    return lines
+
+# The workflow decides which steps exist, so it is NOT custody-only as a whole.
+# It is tolerated only when the two versions are identical after these exact,
+# custody-only rewrites; any other changed line -- a step, a condition, an
+# apply command, an environment value -- still refuses.
+_WORKFLOW_CUSTODY_REWRITES = (
+    # Same repository, spelled literally (the resolved identity) or through the
+    # runner variable.
+    (re.compile(r"""['"]?repos/(?:""" + re.escape(REPOSITORY)
+                + r"""|\$\{GITHUB_REPOSITORY\})/([^'"\s]*)['"]?"""),
+     r"repos/<repository>/\1"),
+    # The freshness rule is the freshness script's own business.
+    (re.compile(r"(scripts/check-main-tip-freshness\.mjs) --production\b"), r"\1"),
+)
+_WORKFLOW_CUSTODY_DROPPED_LINES = frozenset((
+    # The production job's exact-tip equality, replaced by the freshness rule.
+    'test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"',
+))
+
+
+def _workflow_custody_normal_form(text: str) -> list[str]:
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line in _WORKFLOW_CUSTODY_DROPPED_LINES:
+            continue
+        for pattern, replacement in _WORKFLOW_CUSTODY_REWRITES:
+            line = pattern.sub(replacement, line)
+        lines.append(line)
+    return lines
+
+
+def _blob_text(sha: str, api: Callable[[str], Any]) -> str:
+    try:
+        blob = api(f"repos/{REPOSITORY}/git/blobs/{sha}")
+    except Exception as exc:  # noqa: BLE001 - unreadable content must fail closed
+        raise RiskGateError(f"preview producer blob {sha} is unreadable") from exc
+    if not isinstance(blob, dict) or blob.get("encoding") != "base64" \
+            or not isinstance(blob.get("content"), str):
+        raise RiskGateError(f"preview producer blob {sha} is unreadable")
+    import base64
+    try:
+        return base64.b64decode(blob["content"]).decode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        raise RiskGateError(f"preview producer blob {sha} is unreadable") from exc
+
+
+def _custody_only_difference(
+    path: str, ref_blob: str, target_blob: str, api: Callable[[str], Any]
+) -> bool:
+    if path in PREVIEW_CUSTODY_ONLY_PATHS:
+        return True
+    if path == PREVIEW_WORKFLOW:
+        return _workflow_custody_normal_form(_blob_text(ref_blob, api)) \
+            == _workflow_custody_normal_form(_blob_text(target_blob, api))
+    if path == HISTORICAL_RECOVERY_PRODUCER:
+        return _recovery_identity_normal_form(_blob_text(ref_blob, api)) \
+            == _recovery_identity_normal_form(_blob_text(target_blob, api))
+    return False
+
+
 def prove_preview_producer_matches_main(
     ref: str, target: ProvedTarget, main_sha: str, api: Callable[[str], Any], *,
     what: str = "preview run", against: str = "exact main",
+    promoted_versions: list[str] | None = None, repo_root: Path | None = None,
 ) -> None:
     """Refuse a rehearsal produced by code that exact main does not carry.
 
@@ -857,27 +1211,69 @@ def prove_preview_producer_matches_main(
         prove_applied_commit_is_main_line(target.sha, main_sha, api)
     if ref == target.sha:
         return
+    independent = independent_sidecar_paths(promoted_versions, repo_root)
     entries_at_ref = tracked_tree_at(ref, api)
     entries_at_target = tracked_tree_at(target.sha, api)
     present_at_ref, present_at_target = entries_at_ref.keys(), entries_at_target.keys()
     compared = 0
+    main_line_proved = False
     for path in PREVIEW_PRODUCER_PATHS:
         at_ref, at_target = path in present_at_ref, path in present_at_target
         if not at_ref and not at_target:
             continue
+        if path in independent and (
+            at_ref != at_target
+            or blob_sha_from_tree(path, ref, entries_at_ref)
+            != blob_sha_from_tree(path, target.sha, entries_at_target)
+        ):
+            # A LATER MAIN COMMIT ADDED OR CHANGED ANOTHER VERSION'S SIDECAR
+            # (#2758). #2703 was refused twice because #2748 merged its own
+            # sidecar between the preview and the promotion. That sidecar
+            # verifies a different migration touching different objects, so the
+            # preview proof is still valid. Not counted as a comparison.
+            continue
         if at_ref != at_target:
-            raise PreviewProducerMismatch(
+            mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with {path} "
                 f"{'present' if at_ref else 'absent'} where {against} has it "
                 f"{'present' if at_target else 'absent'}"
             )
-        if (
-            blob_sha_from_tree(path, ref, entries_at_ref)
-            != blob_sha_from_tree(path, target.sha, entries_at_target)
-        ):
-            raise PreviewProducerMismatch(
+            # A custody-only helper added or removed on main after a main-line
+            # preview (#3168: repository identity helpers arrived after 426cca7c).
+            if target.kind != "exact-main" or path not in PREVIEW_CUSTODY_ONLY_PATHS:
+                raise mismatch
+            if not main_line_proved:
+                try:
+                    prove_applied_commit_is_main_line(ref, main_sha, api)
+                except RiskGateError as exc:
+                    raise mismatch from exc
+                main_line_proved = True
+            continue
+        ref_blob = blob_sha_from_tree(path, ref, entries_at_ref)
+        target_blob = blob_sha_from_tree(path, target.sha, entries_at_target)
+        if ref_blob != target_blob:
+            mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with a different {path} than {against}"
             )
+            if target.kind != "exact-main" or (
+                path not in PREVIEW_CUSTODY_ONLY_PATHS
+                and path not in {PREVIEW_WORKFLOW, HISTORICAL_RECOVERY_PRODUCER}
+            ):
+                raise mismatch
+            # Custody-only drift is tolerated only for a main-line ref (#3168).
+            if not main_line_proved:
+                try:
+                    prove_applied_commit_is_main_line(ref, main_sha, api)
+                except RiskGateError as exc:
+                    raise mismatch from exc
+                main_line_proved = True
+            try:
+                tolerated = _custody_only_difference(path, ref_blob, target_blob, api)
+            except RiskGateError as exc:
+                raise mismatch from exc
+            if not tolerated:
+                raise mismatch
+            continue
         compared += 1
     # A PIN THAT COMPARED NOTHING IS NOT A PIN. The skip above is the only rule
     # in this function that can silently do nothing, and anything that makes both
@@ -1287,8 +1683,7 @@ def prove_historical_original_apply_runs(
             "historical preview recovery does not name the original apply run for each "
             "version; a recovery is never accepted without a byte binding"
         )
-    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END -- SAID OUT LOUD SO NOBODY
-    # SCORES IT AS TESTED. This guard and the two below it (the run-id shape and
+    # DEFENCE IN DEPTH, AND UNREACHABLE END TO END. This guard and the two below it (the run-id shape and
     # the source-pull-request shape) restate rules `parse_original_run_map` and
     # `parse_source_map` in scripts/historical_preview_recovery.py already
     # enforce, and re-derivation runs those parsers BEFORE this function is
@@ -1297,9 +1692,11 @@ def prove_historical_original_apply_runs(
     # `prove_preview`.
     #
     # They stay, because this function is also importable and callable on its
-    # own and must not assume its caller validated anything. But "the suite goes
-    # red if I delete it" is FALSE for all three, and #1213 round 9 is precisely
-    # about not calling such a line tested. The rules themselves ARE tested,
+    # own and must not assume its caller validated anything. Because they cannot
+    # be reached through `prove_preview`, they are driven by calling this function
+    # directly in `DirectRecordShapeGuardTests` in
+    # scripts/test_production_business_risk_gate_historical_original_runs_mutations.py
+    # (#2367), which goes red if any of them is removed. The rules are also tested,
     # per condition, in `PerConditionParserTests` in
     # scripts/test_historical_preview_recovery.py -- which is where the five
     # refusal paths of `parse_original_run_map` got their first negative tests of
@@ -1338,13 +1735,18 @@ def prove_historical_original_apply_runs(
             repo_root=repo_root, main_sha=main_sha, api=api, downloader=downloader,
         ):
             continue
-        expected = {
-            "status": "completed", "conclusion": "success", "event": "workflow_dispatch",
-            "path": PREVIEW_WORKFLOW,
-        }
+        jobs = None
+        if isinstance(run, dict) and run.get("conclusion") == "failure":
+            try:
+                jobs = api(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100")
+            except Exception as exc:  # noqa: BLE001 - unreadable job proof fails closed
+                raise RiskGateError(f"original apply run {run_id} jobs are unreadable") from exc
+        expected = {"status": "completed", "event": "workflow_dispatch", "path": PREVIEW_WORKFLOW}
         for key, value in expected.items():
             if not isinstance(run, dict) or run.get(key) != value:
                 raise RiskGateError(f"original apply run {run_id} for {version} has wrong {key}")
+        if not preview_run_has_immutable_apply(run, jobs):
+            raise RiskGateError(f"original apply run {run_id} for {version} has wrong conclusion")
         artifact, original_commit = preview_applied_commit(
             api(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?per_page=100"), run_id
         )
@@ -1497,10 +1899,13 @@ def prove_preview(
     downloader: Callable[[int, Path], None], repo_root: Path,
 ) -> None:
     run = api(f"repos/{REPOSITORY}/actions/runs/{run_id}")
-    expected = {
-        "status": "completed", "conclusion": "success", "event": "workflow_dispatch",
-        "path": PREVIEW_WORKFLOW,
-    }
+    jobs = None
+    if isinstance(run, dict) and run.get("conclusion") == "failure":
+        try:
+            jobs = api(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100")
+        except Exception as exc:  # noqa: BLE001 - unreadable job proof fails closed
+            raise RiskGateError("preview run jobs are unreadable") from exc
+    expected = {"status": "completed", "event": "workflow_dispatch", "path": PREVIEW_WORKFLOW}
     for key, value in expected.items():
         # `isinstance` FIRST, as the twin loop in
         # `prove_historical_original_apply_runs` already does. Without it a
@@ -1512,6 +1917,8 @@ def prove_preview(
         # (#1213 round 9, author's per-condition hunt.)
         if not isinstance(run, dict) or run.get(key) != value:
             raise RiskGateError(f"preview run has wrong {key}")
+    if not preview_run_has_immutable_apply(run, jobs):
+        raise RiskGateError("preview run has wrong conclusion")
     # THE COMMIT THAT ACTUALLY RAN, not the ref the workflow file was read from.
     # `run["head_sha"]` is the latter, and on a post-merge rehearsal dispatched
     # against main the two are different commits. Pinning provenance and the
@@ -1547,6 +1954,7 @@ def prove_preview(
     prove_preview_producer_matches_main(
         applied_commit, exact_main(main_sha), main_sha, api,
         what="preview run checked out at " + applied_commit,
+        promoted_versions=allowlist, repo_root=repo_root,
     )
     # THE WORKFLOW THAT EXECUTED. The artifact name is what the job CHOSE to
     # advertise as its checkout; the dispatch ref is what GitHub read the
@@ -1561,6 +1969,7 @@ def prove_preview(
     prove_preview_producer_matches_main(
         run_head, exact_main(main_sha), main_sha, api,
         what="preview run dispatched at " + run_head,
+        promoted_versions=allowlist, repo_root=repo_root,
     )
     if artifact.get("digest") != digest:
         raise RiskGateError("preview artifact digest does not match the pinned digest")
@@ -1669,6 +2078,49 @@ def is_pinned_historical_disney_source(
     )
 
 
+def select_newest_check_runs(checks: list[Any]) -> dict[str, dict[str, Any]]:
+    """The newest row per check name, independent of the API's row order (issue #2730).
+
+    One head can carry several same-name check runs -- a cancelled run beside its
+    re-run. The dict comprehension this replaces kept whichever row the API
+    happened to list last, so an older cancelled run listed after the newer
+    successful one was silently selected and refused a healthy promotion (PR
+    #2527: run 34563999011 succeeded, 34563998795 was cancelled, the gate chose
+    the cancellation). The newest row is the one with the greatest check-run id:
+    ids are unique and assigned at creation, so every re-run gets a larger one.
+    A name with one row needs no ordering; two or more rows must each carry a
+    unique integer id, or the newest cannot be known and the gate refuses rather
+    than guess -- which also keeps a NEWER failure or pending run refusing over
+    an OLDER success, never the reverse.
+    """
+    rows_by_name: dict[str, list[dict[str, Any]]] = {}
+    for row in checks:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str) or not row["name"]:
+            raise RiskGateError(f"check-run row {row!r} is malformed: no check name")
+        rows_by_name.setdefault(row["name"], []).append(row)
+    newest: dict[str, dict[str, Any]] = {}
+    for name, rows in rows_by_name.items():
+        if len(rows) == 1:
+            newest[name] = rows[0]
+            continue
+        by_id: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            check_run_id = row.get("id")
+            if type(check_run_id) is not int or isinstance(check_run_id, bool) or check_run_id <= 0:
+                raise RiskGateError(
+                    f"check '{name}' has {len(rows)} rows but row {row!r} carries no "
+                    "positive integer id, so the newest cannot be selected"
+                )
+            seen = by_id.get(check_run_id)
+            if seen is not None and seen.get("conclusion") != row.get("conclusion"):
+                raise RiskGateError(
+                    f"check '{name}' repeats id {check_run_id} with different conclusions"
+                )
+            by_id[check_run_id] = row
+        newest[name] = by_id[max(by_id)]
+    return newest
+
+
 def prove_pr_and_checks(
     pr_number: int, main_sha: str, allowlist: list[str], api: Callable[[str], Any], repo_root: Path
 ) -> tuple[str, str]:
@@ -1687,7 +2139,9 @@ def prove_pr_and_checks(
     )
     checks_endpoint = f"repos/{REPOSITORY}/commits/{head}/check-runs?per_page=100"
     checks = api_sublist(api_object(api, checks_endpoint), "check_runs", checks_endpoint)
-    conclusions = {c.get("name"): c.get("conclusion") for c in checks if isinstance(c, dict)}
+    conclusions = {
+        name: row.get("conclusion") for name, row in select_newest_check_runs(checks).items()
+    }
     missing = sorted(name for name in REQUIRED_CHECKS if conclusions.get(name) != "success")
     historical_source = is_pinned_historical_disney_source(
         pr_number, head, merge_commit_sha, allowlist
@@ -1699,7 +2153,99 @@ def prove_pr_and_checks(
         missing = [name for name in missing if name != "Migration author lease"]
     if missing:
         raise RiskGateError(f"required exact-head checks are not successful: {', '.join(missing)}")
+    status_endpoint = f"repos/{REPOSITORY}/commits/{head}/status"
+    statuses = api_sublist(api_object(api, status_endpoint), "statuses", status_endpoint)
+    guarded = next(
+        (
+            row for row in statuses
+            if isinstance(row, dict)
+            and row.get("context") == "Migration guarded merge authorization"
+        ),
+        None,
+    )
+    if not isinstance(guarded, dict) or guarded.get("state") != "success":
+        raise RiskGateError(
+            "the latest Migration guarded merge authorization is not successful at the exact PR head"
+        )
     return head, str(merge_commit_sha)
+
+
+TRAIN_VERSION_RE = re.compile(r"\d{14}")
+TRAIN_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+TRAIN_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+
+def load_migration_train_record(path: Path) -> dict[str, Any]:
+    """The dispatched train record, as the workflow re-read it from its immutable ref."""
+    try:
+        record = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RiskGateError(f"migration train record is unreadable: {exc}") from exc
+    if not isinstance(record, dict) or not isinstance(record.get("entries"), list) or not record["entries"]:
+        raise RiskGateError("migration train record has no exact entry list")
+    return record
+
+
+def prove_migration_train(
+    record: dict[str, Any], *, main_sha: str, allowlist: list[str],
+    api: Callable[[str], Any], repo_root: Path,
+) -> dict[int, tuple[str, str]]:
+    """Issue #3027 Step 6: prove EVERY train entry against its OWN authoring PR.
+
+    Each entry gets the full single-PR proof it would get alone: merged, merge
+    commit an ancestor of exact main, required checks green at that PR's exact
+    head, the latest guarded-merge authorization successful there, the merge
+    commit equal to the one the train recorded, the PR ADDED that exact migration
+    file, and the file on exact main hashing to the train's recorded sha256.
+    Returns {source_pr: (head, merge_commit)} for the preview and review bindings.
+    """
+    if record.get("state") != "dispatched":
+        raise RiskGateError(f"migration train {record.get('train_id')} is {record.get('state')}, not dispatched")
+    if record.get("target") != "production":
+        raise RiskGateError(f"migration train targets {record.get('target')}, not production")
+    if str(record.get("base_main_sha", "")).lower() != main_sha.lower():
+        raise RiskGateError("migration train was built on a different main commit than the promoted exact main")
+    entries = record["entries"]
+    versions = [str(entry.get("version")) if isinstance(entry, dict) else "" for entry in entries]
+    if versions != allowlist:
+        raise RiskGateError(
+            f"migration train versions {','.join(versions)} are not exactly the allowlist {','.join(allowlist)}"
+        )
+    proven: dict[int, tuple[str, str]] = {}
+    for entry in entries:
+        version = entry["version"]
+        source_pr, merge_sha, file_sha = entry.get("source_pr"), entry.get("merge_sha"), entry.get("file_sha256")
+        if (
+            not TRAIN_VERSION_RE.fullmatch(version)
+            or type(source_pr) is not int or source_pr < 1
+            or not TRAIN_SHA_RE.fullmatch(str(merge_sha))
+            or not TRAIN_DIGEST_RE.fullmatch(str(file_sha))
+        ):
+            raise RiskGateError(f"train entry {version}: missing exact source PR, merge commit or file hash")
+        try:
+            head, merge_commit = prove_pr_and_checks(source_pr, main_sha, [version], api, repo_root)
+        except RiskGateError as exc:
+            raise RiskGateError(f"train entry {version}: source PR {source_pr}: {exc}") from exc
+        if merge_commit != merge_sha:
+            raise RiskGateError(
+                f"train entry {version}: source PR {source_pr} merged as {merge_commit}, not the train's {merge_sha}"
+            )
+        try:
+            authored_merge = prove_pr_authored(source_pr, main_sha, [version], repo_root, api)
+        except ValueError as exc:
+            raise RiskGateError(f"train entry {version}: {exc}") from exc
+        if authored_merge != merge_sha:
+            raise RiskGateError(f"train entry {version}: source PR {source_pr} authorship names another merge commit")
+        matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
+        if len(matches) != 1:
+            raise RiskGateError(f"train entry {version}: exact main has {len(matches)} migration files, not 1")
+        actual = sha256_file(matches[0])
+        if actual != file_sha:
+            raise RiskGateError(f"train entry {version}: file hashes to {actual}, not the train's {file_sha}")
+        if source_pr in proven and proven[source_pr] != (head, merge_commit):
+            raise RiskGateError(f"train entry {version}: source PR {source_pr} changed identity mid-proof")
+        proven[source_pr] = (head, merge_commit)
+    return proven
 
 
 def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
@@ -1708,16 +2254,182 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
-        sql = migration_statements(matches[0].read_text(encoding="utf-8"))
-        if re.search(r"\b(truncate|delete\s+from|update\s+)\b", sql) or re.search(
-                r"\bdrop\s+(?!trigger\s+if\s+exists|policy\s+if\s+exists)", sql):
-            reasons.add(RISK_TEXT["permanent_data_rewrite_or_loss"])
-        if re.search(r"\b(lock\s+table|alter\s+table)\b", sql) or re.search(
-                r"\bcreate\s+(?:unique\s+)?index\s+(?!concurrently|if\s+not\s+exists)", sql):
-            reasons.add(RISK_TEXT["expected_downtime"])
-        if re.search(r"\b(grant|revoke|create\s+policy|alter\s+policy|drop\s+policy|row\s+level\s+security)\b", sql):
-            reasons.add(RISK_TEXT["material_access_change"])
+        raw = matches[0].read_text(encoding="utf-8")
+        reasons.update(_classify_statements(
+            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version, raw)))
     return sorted(reasons)
+
+
+# ROUTINE FUNCTION RE-ESTABLISHMENT AND NARROWING REVOKES (#3159). #3104 (PR
+# #3131) and #2866 were forced onto the manual route because every CREATE OR
+# REPLACE FUNCTION outside the narrow create_function shape, and every GRANT or
+# REVOKE, reported all three risks. Two shapes are now recognised, and both stay
+# fail-closed on anything that could widen access or lose data:
+#
+#   1. REVOKE on named functions or tables. Removing a privilege can only
+#      narrow access; it never rewrites data or holds a long lock.
+#   2. A function RE-ESTABLISHED exactly as the latest earlier migration that
+#      touched it left it. Every statement of this migration naming the function
+#      must be a CREATE OR REPLACE FUNCTION, COMMENT, GRANT or REVOKE on it, and the whole
+#      ordered list must equal, byte for byte after normalisation, the list of
+#      statements naming it in the most recent earlier migration. Bodies are
+#      emptied by the tokeniser, so the comparison covers the full header
+#      (arguments, defaults, return type, SECURITY DEFINER, SET search_path) with
+#      every string literal compared exactly, and every grant, but never the body; the body is what the required
+#      independent review reads. Because the latest earlier migration is the one
+#      compared, any later migration that changed the function's privileges
+#      breaks the match, and any schema-wide grant or revoke, default-privilege
+#      change, rename or ownership move since then (or now) excuses nothing. A new function, a changed header, a new role, or a
+#      different grant order all still report every risk.
+_ROLE_LIST = rf"{_ALLOW_IDENT}(?: ?, ?{_ALLOW_IDENT})*"
+_FUNCTION_REF = rf"{_ALLOW_QUALIFIED} ?{_ALLOW_ARGS}"
+NARROWING_REVOKE = re.compile(
+    rf"revoke (?:grant option for )?[a-z ,]+ on (?:function {_FUNCTION_REF}(?: ?, ?{_FUNCTION_REF})*"
+    rf"|(?:table )?{_ALLOW_QUALIFIED}(?: ?, ?{_ALLOW_QUALIFIED})*) from {_ROLE_LIST}(?: (?:cascade|restrict))?")
+_REPLACE_FUNCTION = re.compile(rf"create or replace function ({_ALLOW_QUALIFIED}) ?\(.*")
+_FUNCTION_PRIVILEGE = re.compile(
+    rf"(?:grant|revoke) [a-z ,]+ on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} (?:to|from) {_ROLE_LIST}")
+
+_FUNCTION_COMMENT = re.compile(rf"comment on function ({_ALLOW_QUALIFIED}) ?{_ALLOW_ARGS} is (?:''|null)")
+
+
+def _names_object(statement: str, name: str) -> bool:
+    return re.search(rf'(?<![a-z0-9_$."]){re.escape(name)}(?![a-z0-9_$"])', statement) is not None
+
+
+# A statement that can change a function's privileges or identity WITHOUT
+# naming it (#3159 review): schema-wide grants/revokes, default privileges,
+# renames and ownership moves. Seen between the latest named match and now, the
+# earlier state can no longer be trusted, so nothing is excused.
+_UNNAMED_FUNCTION_ACL_OR_IDENTITY = re.compile(
+    r"\bin schema\b|\balter default privileges\b|\brename to\b|\bowner to\b"
+    r"|\bset schema\b|\bon schema\b|\bdrop (?:schema|owned|role)\b")
+
+
+def _comparison_form(neutral: str, exact: str) -> str:
+    """Exact literals everywhere except a COMMENT's text, which grants nothing."""
+    return neutral if _FUNCTION_COMMENT.fullmatch(neutral) else exact
+
+
+class _PriorMigrations:
+    """Statements of every migration on this tree older than ``version``, newest first."""
+
+    def __init__(self, repo_root: Path, version: str, current_raw: str | None = None):
+        self.current_exact = (None if current_raw is None
+                              else sql_top_level_statements(current_raw, keep_literals=True))
+        self.files = sorted(
+            (path for path in (Path(repo_root) / "supabase/migrations").glob("*.sql")
+             if re.fullmatch(r"\d{14}", path.name[:14]) and path.name[:14] < version),
+            key=lambda path: path.name, reverse=True)
+        self._cache: dict[Path, tuple[list[str], list[str]] | None] = {}
+
+    def latest_touching(self, name: str) -> list[str] | None:
+        """The ordered statements naming ``name`` in the newest earlier migration that names it.
+
+        None when no earlier migration names it, or when a newer one cannot be
+        parsed (it might name it, so nothing older can be trusted).
+        """
+        for path in self.files:
+            if path not in self._cache:
+                text = path.read_text(encoding="utf-8")
+                neutral = sql_top_level_statements(text)
+                exact = sql_top_level_statements(text, keep_literals=True)
+                self._cache[path] = (None if neutral is None or exact is None
+                                     or len(neutral) != len(exact) else (neutral, exact))
+            parsed = self._cache[path]
+            if parsed is None:
+                return None
+            neutral, exact = parsed
+            if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in neutral):
+                return None
+            touching = [_comparison_form(s, exact[i]) for i, s in enumerate(neutral) if _names_object(s, name)]
+            if touching:
+                return touching
+        return None
+
+
+def _reestablished_functions(statements: list[str], prior: "_PriorMigrations | None") -> set[int]:
+    """Indexes of statements that re-establish a function exactly as before (#3159)."""
+    if prior is None or prior.current_exact is None or len(prior.current_exact) != len(statements):
+        return set()
+    if any(_UNNAMED_FUNCTION_ACL_OR_IDENTITY.search(s) for s in statements):
+        return set()
+    exact = prior.current_exact
+    excused: set[int] = set()
+    names = {m.group(1) for s in statements if (m := _REPLACE_FUNCTION.fullmatch(s))}
+    for name in names:
+        touching = [(i, s) for i, s in enumerate(statements) if _names_object(s, name)]
+        if not all(
+            (m := _REPLACE_FUNCTION.fullmatch(s) or _FUNCTION_PRIVILEGE.fullmatch(s)
+             or _FUNCTION_COMMENT.fullmatch(s)) and m.group(1) == name
+            for _, s in touching
+        ):
+            continue
+        if prior.latest_touching(name) == [_comparison_form(s, exact[i]) for i, s in touching]:
+            excused.update(i for i, _ in touching)
+    return excused
+
+
+def allowlist_entry(statement: str, new_tables: set[str]) -> str | None:
+    """The ALLOWLIST entry this statement fullmatches, or None."""
+    for name, pattern in ALLOWLIST.items():
+        m = pattern.fullmatch(statement)
+        if m and (name != "create_index_on_new_table" or m.group(1) in new_tables):
+            return name
+    return None
+
+
+# ADD COLUMN ... CHECK on the column being added (#3119, run 35163423338). The
+# new column is NULL in every existing row and a CHECK passes on NULL, so no
+# data can be lost and no grant changes. It is NOT catalog-only: Postgres scans
+# the whole table under ACCESS EXCLUSIVE to validate the constraint, so this
+# shape still reports expected downtime. The CHECK body may only compare the
+# added column itself against literal values; anything else is unrecognised.
+_NEW_COLUMN_ACTION = re.compile(
+    rf"add column (?:if not exists )?({_ALLOW_IDENT}) {_BUILTIN_COLUMN_TYPE}(?: null)?"
+    rf"(?: (?:constraint {_ALLOW_IDENT} )?check ?\( ?({_ALLOW_IDENT}) (?:not )?in ?\( ?''(?: ?, ?'')* ?\) ?\))?")
+NEW_COLUMN_CHECK_RISKS = frozenset({RISK_TEXT["expected_downtime"]})
+
+
+def new_column_check_risks(statement: str) -> frozenset | None:
+    """Risks of an ADD COLUMN list whose CHECKs bind only their own new column, or None."""
+    m = re.fullmatch(rf"alter table (?:only )?{_ALLOW_QUALIFIED} (.+)", statement)
+    if not m:
+        return None
+    checked = False
+    for action in _split_top_level_commas(m.group(1)):
+        column = _NEW_COLUMN_ACTION.fullmatch(action)
+        if not column:
+            return None
+        if column.group(2) is not None:
+            if column.group(2) != column.group(1):
+                return None
+            checked = True
+    return NEW_COLUMN_CHECK_RISKS if checked else None
+
+
+def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None) -> set[str]:
+    """All three risks unless EVERY statement is recognised. Unparsed is all."""
+    every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
+             RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
+    if statements is None:
+        return every
+    new_tables: set[str] = set()
+    reasons: set[str] = set()
+    reestablished = _reestablished_functions(statements, prior)
+    for index, s in enumerate(statements):
+        if index in reestablished or NARROWING_REVOKE.fullmatch(s):
+            continue
+        entry = allowlist_entry(s, new_tables)
+        if entry is None:
+            partial = new_column_check_risks(s)
+            if partial is None:
+                return every
+            reasons.update(partial)
+            continue
+        if entry == "create_table":
+            new_tables.add(ALLOWLIST["create_table"].fullmatch(s).group(1))
+    return reasons
 
 
 def diagnose_risk_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:
@@ -1775,12 +2487,482 @@ def decide_business_risk(
     return {"automaticPromotionAllowed": not ordered, "ownerDecisionReasons": ordered}
 
 
+# ---------------------------------------------------------------------------
+# PRODUCTION WITHOUT A SHARED-PREVIEW APPLY (orchestrator marker #2758).
+#
+# OWNER REQUEST: a merged migration may go to production without a preview
+# rehearsal when the exact merged SQL already passed the ephemeral database CI
+# run on the source PR head -- a throwaway Postgres that applies every
+# migration and then runs the contract tests. Preview stays MANDATORY for SQL
+# that is high-risk to live data: table rewrites, long locks on existing
+# tables, destructive drops, and data backfills.
+#
+# The classifier below is an ALLOWLIST, not a denylist. A statement skips
+# preview only if it matches a shape known to be metadata-only or confined to a
+# table created in the same migration. Anything unrecognised, unparseable, or
+# ambiguous requires preview. A false "high-risk" costs one preview rehearsal;
+# a false "low-risk" costs production data, so every doubt resolves to preview.
+#
+# NOTHING ELSE IS RELAXED ON THIS ROUTE: exact-main pinning, the merged PR and
+# its required exact-head checks, immutable independent review evidence, the
+# production project-ref proof, the production lane lock and post-apply
+# verification are all unchanged -- they live outside this function.
+# ---------------------------------------------------------------------------
+EPHEMERAL_CHECK_NAME = "supabase/tests against an ephemeral database"
+EPHEMERAL_WORKFLOW = ".github/workflows/database-contract-tests.yml"
+EPHEMERAL_ARTIFACT = "supabase-contract-test-logs"
+EPHEMERAL_APPLIED_RECORD = "applied-migrations.txt"
+EPHEMERAL_FAILED_RECORD = "failed-migrations-pass2.txt"
+# The machinery that writes the applied/failed records. A pull_request run
+# executes the SOURCE PR's copy of these, so a PR could keep the job title and
+# write every basename by hand; each must be byte-identical to exact main.
+EPHEMERAL_PRODUCER_PATHS = (
+    EPHEMERAL_WORKFLOW,
+    "scripts/check_pass2_routine_supersession.py",
+)
+
+_IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_$]*)'
+_NAME = rf"{_IDENT}(?:\.{_IDENT})?"
+
+
+def sql_top_level_statements(raw: str, keep_literals: bool = False, spans: list | None = None, keep_dollar_quoted: bool = False) -> list[str] | None:
+    """Split SQL into top-level statements with literal CONTENTS neutralised.
+
+    Comments are removed, string literals become '', and dollar-quoted bodies
+    become $$ $$, so a keyword or semicolon inside a function body or a string
+    can neither hide a statement nor invent one. Returns None when the text
+    cannot be tokenised (an unterminated quote or comment): the caller treats
+    that as high-risk rather than guessing.
+
+    Two additional output modes for the self-service additive lane (#3199),
+    neither of which changes the tokenisation itself:
+
+    * ``spans``: when a list is passed, the RAW character offsets of every
+      RETURNED statement are appended to it (aligned with the return value, so
+      empty statements dropped by the final filter drop their spans too). A
+      caller can then slice the original text for the exact statement it just
+      matched, without a second tokenizer.
+    * ``keep_dollar_quoted``: dollar-quoted bodies are kept VERBATIM instead of
+      being emptied to ``$$ $$`` (comments and '...' literals are still
+      neutralised). This is the reference-scanning view: the lane classifier
+      must see every schema-qualified name a function or view body mentions,
+      while the ALLOWLIST shapes keep consuming the default ``$$ $$`` view so
+      they cannot be fooled by body content.
+    """
+    out: list[str] = []
+    raw_spans: list[tuple[int, int]] = []
+    start = 0
+    current: list[str] = []
+    literals: list[str] = []  # keep_literals: exact literal text, restored after folding
+    i, n = 0, len(raw)
+    while i < n:
+        ch = raw[i]
+        if raw.startswith("--", i):
+            end = raw.find("\n", i)
+            i = n if end == -1 else end
+            current.append(" ")
+            continue
+        if raw.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if raw.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif raw.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            if depth:
+                return None
+            i = j
+            current.append(" ")
+            continue
+        if ch == "'":
+            escape = i > 0 and raw[i - 1] in "eE" and (i < 2 or not (raw[i - 2].isalnum() or raw[i - 2] in "_$" or ord(raw[i - 2]) >= 0x80))
+            j = i + 1
+            while True:
+                if j >= n:
+                    return None
+                if escape and raw[j] == "\\":
+                    j += 2
+                    continue
+                if raw[j] == "'":
+                    if j + 1 < n and raw[j + 1] == "'":
+                        j += 2
+                        continue
+                    break
+                j += 1
+            if keep_literals:
+                literals.append(raw[i:j + 1])
+                current.append(f"'#{len(literals) - 1}'")
+            else:
+                current.append("''")
+            i = j + 1
+            continue
+        if ch == '"':
+            end = raw.find('"', i + 1)
+            if end == -1:
+                return None
+            current.append(raw[i:end + 1])
+            i = end + 1
+            continue
+        if ch == "$":
+            tag = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", raw[i:])
+            # PostgreSQL ident_cont is [A-Za-z\200-\377_0-9$]: a "$" glued to an
+            # identifier (including after another "$", as in a$$$) never opens a quote.
+            prev = raw[i - 1] if i > 0 else ""
+            if tag and not (prev and (prev.isalnum() or prev in "_$" or ord(prev) >= 0x80)):
+                end = raw.find(tag.group(0), i + len(tag.group(0)))
+                if end == -1:
+                    return None
+                if keep_dollar_quoted:
+                    current.append(raw[i:end + len(tag.group(0))])
+                else:
+                    current.append(" $$ $$ ")
+                i = end + len(tag.group(0))
+                continue
+        if ch == ";":
+            out.append("".join(current))
+            raw_spans.append((start, i))
+            current = []
+            start = i + 1
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    out.append("".join(current))
+    raw_spans.append((start, n))
+    normalised = [_normalise_outside_identifiers(s) for s in out]
+    if keep_literals:
+        normalised = [re.sub(r"'#(\d+)'", lambda m: literals[int(m.group(1))], s) for s in normalised]
+    kept = [(s, raw_spans[index]) for index, s in enumerate(normalised) if s]
+    if spans is not None:
+        spans.extend(span for _, span in kept)
+    return [s for s, _ in kept]
+
+
+def _normalise_outside_identifiers(statement: str) -> str:
+    """Lower-case and collapse whitespace, leaving "quoted identifiers" byte-exact.
+
+    PostgreSQL folds unquoted names to lower case but keeps a quoted name's
+    case (and any dot inside it) as part of the name, so "Item" and item are
+    different tables; lower-casing the quoted form would merge them (#2771).
+    """
+    parts = re.split(r'("[^"]*")', statement)
+    folded = "".join(part if index % 2 else re.sub(r"\s+", " ", part.lower())
+                     for index, part in enumerate(parts))
+    return folded.strip()
+
+
+def _canonical_name(name: str) -> tuple[str, ...]:
+    """PostgreSQL identity of a (possibly schema-qualified) name.
+
+    Unquoted parts are already folded to lower case; quoted parts keep their
+    exact text, so "core.item" is ONE part and never equals core.item.
+    """
+    return tuple(m.group(1) if m.group(1) is not None else m.group(2)
+                 for m in re.finditer(r'"([^"]*)"|([^."]+)', name))
+
+
+def _binds_on(statement: str, pattern: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    m = re.match(pattern, statement)
+    return (_canonical_name(m.group(1)), _canonical_name(m.group(2))) if m else None
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    parts, depth, start = [], 0, 0
+    for index, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(text[start:index].strip())
+            start = index + 1
+    parts.append(text[start:].strip())
+    return parts
+
+
+def _alter_table_action_is_low_risk(action: str, types_trusted: bool = True) -> bool:
+    """One ALTER TABLE action on an EXISTING table, metadata-only or refused.
+
+    ``types_trusted`` is False after a search_path change: ``set search_path =
+    public, pg_catalog`` lets a user domain named ``text`` shadow the built-in,
+    so an unqualified type spelling no longer proves there is no hidden default.
+    """
+    if re.fullmatch(r"(?:enable|force) row level security", action):
+        return True
+    if re.fullmatch(rf"owner to {_IDENT}", action):
+        return True
+    if re.fullmatch(rf"alter (?:column )?{_IDENT} (?:set default .+|drop default)", action):
+        return True
+    if action.startswith("add constraint "):
+        # NOT VALID skips the scan of existing rows; anything else validates
+        # (a long lock) or builds an index (unique / primary key / exclude).
+        return action.endswith(" not valid") and not re.search(
+            r"\b(?:unique|primary key|exclude)\b", action)
+    column = re.fullmatch(rf"add (?:column )?(?:if not exists )?{_IDENT} (.+)", action)
+    if column and not action.startswith("add constraint"):
+        # Only a nullable column of a built-in type with no default is a
+        # catalog-only change. A default, NOT NULL, generated/identity, inline
+        # constraint, serial pseudo-type, or domain/user type (which can carry
+        # a hidden default or NOT NULL) can rewrite or scan the table.
+        return types_trusted and bool(re.fullmatch(
+            rf"{_BUILTIN_COLUMN_TYPE}(?: collate {_NAME})?(?: null)?", column.group(1)))
+    return False
+
+
+LOW_RISK_STATEMENT = re.compile(
+    r"^(?:"
+    r"create (?:or replace )?(?:function|procedure|view|trigger|constraint trigger|type|domain"
+    r"|schema|sequence|policy|aggregate|cast|operator)\b"
+    r"|comment on\b|grant\b|revoke\b|alter default privileges\b"
+    rf"|alter (?:function|procedure|policy|view|sequence|schema) "
+    rf"|alter type {_NAME} (?:add value|owner to|rename value)\b"
+    r"|set\b|reset\b|begin\b|start transaction\b|commit\b|notify\b"
+    r")"
+)
+
+
+def preview_required_reasons(repo_root: Path, allowlist: list[str]) -> list[str]:
+    """Why preview CANNOT be skipped for this allowlist. Empty means it can.
+
+    Each reason names the migration version, the risk class, and the statement
+    prefix that triggered it, so a refusal is actionable without reading SQL.
+    """
+    reasons: list[str] = []
+    for version in allowlist:
+        matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
+        if len(matches) != 1:
+            raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
+        statements = sql_top_level_statements(matches[0].read_text(encoding="utf-8"))
+        if statements is None:
+            reasons.append(f"{version}: unparseable SQL (unterminated quote or comment)")
+            continue
+        if not statements:
+            reasons.append(f"{version}: empty migration")
+            continue
+        # A search_path change makes an unqualified name resolve differently
+        # from one statement to the next, so only qualified names are excused.
+        path_changes = any(re.match(r"^(?:set|reset)\b", s) and "search_path" in s
+                           or "set_config" in s for s in statements)
+        new_tables = {
+            name for s in statements
+            if (m := re.match(rf"^create (?:unlogged )?table ({_NAME}) ?\(", s))
+            and (len(name := _canonical_name(m.group(1))) == 2 or not path_changes)
+        }
+        # Recreate drops are excused only for the SAME (name, table) pair.
+        created_triggers = {
+            pair for s in statements
+            if (pair := _binds_on(s, rf"^create (?:or replace )?(?:constraint )?trigger ({_IDENT}) .*? on ({_NAME})(?: |$)"))
+        }
+        created_policies = {
+            pair for s in statements
+            if (pair := _binds_on(s, rf"^create policy ({_IDENT}) on ({_NAME})(?: |$)"))
+        }
+        for statement in statements:
+            risk = _statement_preview_risk(
+                statement, new_tables, created_triggers, created_policies, path_changes)
+            if risk:
+                reasons.append(f"{version}: {risk}: {statement[:80]}")
+    return reasons
+
+
+def _statement_preview_risk(
+    s: str, new_tables: set, created_triggers: set, created_policies: set,
+    path_changes: bool = False,
+) -> str | None:
+    if re.match(r"^(?:insert|update|delete|truncate|copy|merge|with)\b", s):
+        return "data backfill or rewrite"
+    if re.match(r"^drop\b", s):
+        recreate = re.fullmatch(rf"drop (trigger|policy) if exists ({_IDENT}) on ({_NAME})", s)
+        if recreate and (_canonical_name(recreate.group(2)), _canonical_name(recreate.group(3))) in (
+                created_triggers if recreate.group(1) == "trigger" else created_policies):
+            return None
+        return "destructive drop"
+    if re.match(r"^(?:lock|cluster|vacuum|reindex|refresh materialized view)\b", s):
+        return "table rewrite or long lock"
+    if re.match(r"^create materialized view\b", s) or re.match(
+            rf"^create (?:temp |temporary |unlogged )?table (?:if not exists )?{_NAME} as\b", s):
+        return "data backfill"
+    index = re.match(rf"^create (?:unique )?index (concurrently )?(?:if not exists )?(?:{_IDENT} )?on (?:only )?({_NAME})(?=[ (]|$)", s)
+    if index:
+        if index.group(1) or _canonical_name(index.group(2)) in new_tables:
+            return None
+        return "index build locks an existing table"
+    if re.match(r"^create (?:unique )?index\b", s):
+        return "index build locks an existing table"
+    if re.match(rf"^create (?:unlogged )?table (?:if not exists )?{_NAME} ?\(", s):
+        return None
+    alter = re.fullmatch(rf"alter table (?:if exists )?(?:only )?({_NAME}) (.+)", s)
+    if alter:
+        if _canonical_name(alter.group(1)) in new_tables:
+            return None
+        if all(_alter_table_action_is_low_risk(a, types_trusted=not path_changes)
+               for a in _split_top_level_commas(alter.group(2))):
+            return None
+        return "table rewrite or long lock on an existing table"
+    if re.match(r"^(?:do|select|call|perform|execute)\b", s):
+        return "code with an unclassifiable data effect"
+    if LOW_RISK_STATEMENT.match(s):
+        return None
+    return "statement not recognised as low-risk"
+
+
+def git_blob_sha(path: Path) -> str:
+    data = path.read_bytes()
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def prove_ephemeral_ci_evidence(
+    *, check_run_id_text: str, pr_head: str, allowlist: list[str],
+    api: Callable[[str], Any], downloader: Callable[[int, Path], None], repo_root: Path,
+) -> dict[str, Any]:
+    """Prove the exact bytes being promoted applied cleanly in ephemeral CI.
+
+    Binds, in order: the named check job is the successful ephemeral contract
+    job ON THE SOURCE PR HEAD; its run is the contract-test workflow's
+    pull_request run for that head and succeeded; that run's single unexpired
+    log artifact downloads to its recorded digest; every allowlisted migration
+    is POSITIVELY on the run's applied record and not on its still-failing
+    record (the job tolerates non-replaying migrations, so a green check alone
+    proves nothing about one file); and each migration's blob at the PR head
+    equals the blob being promoted from exact main.
+    """
+    if not re.fullmatch(r"[1-9][0-9]*", check_run_id_text or ""):
+        raise RiskGateError("ephemeral check run ID must be a positive decimal integer")
+    job_id = int(check_run_id_text)
+    job_endpoint = f"repos/{REPOSITORY}/actions/jobs/{job_id}"
+    job = api_object(api, job_endpoint)
+    expected_job = {"id": job_id, "name": EPHEMERAL_CHECK_NAME, "status": "completed",
+                    "conclusion": "success", "head_sha": pr_head}
+    for key, value in expected_job.items():
+        if job.get(key) != value:
+            raise RiskGateError(f"ephemeral CI job has wrong {key}: expected {value!r}")
+    run_id = job.get("run_id")
+    if type(run_id) is not int or run_id < 1:
+        raise RiskGateError("ephemeral CI job names no workflow run")
+    run = api_object(api, f"repos/{REPOSITORY}/actions/runs/{run_id}")
+    expected_run = {"id": run_id, "path": EPHEMERAL_WORKFLOW, "event": "pull_request",
+                    "status": "completed", "conclusion": "success", "head_sha": pr_head}
+    for key, value in expected_run.items():
+        if run.get(key) != value:
+            raise RiskGateError(f"ephemeral CI run has wrong {key}: expected {value!r}")
+    repository = run.get("repository")
+    if not isinstance(repository, dict) or repository.get("full_name") != REPOSITORY:
+        raise RiskGateError("ephemeral CI run belongs to the wrong repository")
+    artifacts_endpoint = f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?per_page=100"
+    artifacts = api_sublist(api_object(api, artifacts_endpoint), "artifacts", artifacts_endpoint)
+    named = [a for a in artifacts if isinstance(a, dict) and a.get("name") == EPHEMERAL_ARTIFACT]
+    if len(named) != 1:
+        raise RiskGateError(f"expected exactly one {EPHEMERAL_ARTIFACT} artifact, found {len(named)}")
+    artifact = named[0]
+    digest = artifact.get("digest")
+    if (artifact.get("expired") is not False or not isinstance(artifact.get("id"), int)
+            or not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+            or not isinstance(artifact.get("workflow_run"), dict)
+            or artifact["workflow_run"].get("id") != run_id):
+        raise RiskGateError("ephemeral CI artifact is expired, unpinned, or belongs to another run")
+    with tempfile.TemporaryDirectory(prefix="production-risk-ephemeral-") as temp:
+        zip_path = Path(temp, "ephemeral.zip")
+        downloader(artifact["id"], zip_path)
+        if "sha256:" + sha256_file(zip_path) != digest:
+            raise RiskGateError("downloaded ephemeral CI artifact bytes do not match its digest")
+        with zipfile.ZipFile(zip_path) as archive:
+            names = set(archive.namelist())
+            if EPHEMERAL_APPLIED_RECORD not in names:
+                raise RiskGateError(
+                    f"ephemeral CI artifact has no {EPHEMERAL_APPLIED_RECORD}; this run predates "
+                    "the positive applied record, so preview is still required")
+            applied = set(archive.read(EPHEMERAL_APPLIED_RECORD).decode("utf-8").split())
+            failed = (set(archive.read(EPHEMERAL_FAILED_RECORD).decode("utf-8").split())
+                      if EPHEMERAL_FAILED_RECORD in names else None)
+    if failed is None:
+        raise RiskGateError(f"ephemeral CI artifact has no {EPHEMERAL_FAILED_RECORD}")
+    head_tree = tracked_tree_at(pr_head, api)
+    # PIN THE PRODUCER. repo_root is the exact-main checkout; the tested head
+    # must carry the same bytes for every file that writes the records above,
+    # or the records prove only what a doctored workflow chose to write.
+    for path in EPHEMERAL_PRODUCER_PATHS:
+        on_main = repo_root / path
+        entry = head_tree.get(path)
+        if not on_main.is_file() or not isinstance(entry, dict) or entry.get("type") != "blob":
+            raise RiskGateError(
+                f"ephemeral CI producer {path} is absent from exact main or the source PR head {pr_head}")
+        if entry.get("sha") != git_blob_sha(on_main):
+            raise RiskGateError(
+                f"ephemeral CI producer {path} at {pr_head} differs from exact main, so its "
+                "applied record is not evidence")
+    bound: dict[str, str] = {}
+    for version in allowlist:
+        matches = list(repo_root.glob(f"supabase/migrations/{version}_*.sql"))
+        if len(matches) != 1:
+            raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
+        base = matches[0].name
+        if base not in applied or base in failed:
+            raise RiskGateError(f"ephemeral CI did not prove {base} applied cleanly")
+        path = f"supabase/migrations/{base}"
+        entry = head_tree.get(path)
+        if not isinstance(entry, dict) or entry.get("type") != "blob":
+            raise RiskGateError(f"{path} is absent from the source PR head {pr_head}")
+        main_blob = git_blob_sha(matches[0])
+        if entry.get("sha") != main_blob:
+            raise RiskGateError(
+                f"{path} at exact main differs from the bytes ephemeral CI tested at {pr_head}")
+        bound[version] = main_blob
+    return {"checkRunId": job_id, "runId": run_id, "artifactId": artifact["id"],
+            "artifactDigest": digest, "migrationBlobs": bound}
+
+
+def optional_text(value: Any) -> str | None:
+    """GitHub Actions passes an omitted optional input as an empty string."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def enforce_automatic_risk_decision(review: dict[str, Any], decision: dict[str, Any]) -> None:
+    """An automatic v2 verdict may proceed only when every risk class is clear."""
+    if (
+        review.get("schema_version") == "shared-db-production-apply-review/v2"
+        and decision.get("automaticPromotionAllowed") is not True
+    ):
+        reasons = decision.get("ownerDecisionReasons") or ["business-risk decision is not clear"]
+        raise RiskGateError(
+            "ENGINEER ACTION REQUIRED: automatic production promotion is not fully "
+            f"machine-qualified: {'; '.join(str(reason) for reason in reasons)}"
+        )
+
+
 def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifact) -> dict[str, Any]:
     repo_root = args.repo.resolve()
     allowlist = normalize_review_allowlist(args.allowlist)
+    preview_run_text = optional_text(getattr(args, "preview_run_id", None))
+    preview_digest = optional_text(getattr(args, "preview_digest", None))
+    ephemeral_text = optional_text(getattr(args, "ephemeral_check_run_id", None))
+    if ephemeral_text and (preview_run_text or preview_digest):
+        raise RiskGateError("choose ONE promotion route: preview evidence or ephemeral CI evidence, not both")
+    if not ephemeral_text and not (preview_run_text and preview_digest):
+        raise RiskGateError("promotion needs preview run + digest, or an ephemeral CI check run ID")
     activation = load_activation(args.activation)
     prove_activation(activation, main_sha=args.main_sha, api=api, repo_root=repo_root)
-    pr_head, pr_merge_commit = prove_pr_and_checks(args.pr, args.main_sha, allowlist, api, repo_root)
+    train_path = getattr(args, "migration_train_record", None)
+    train = load_migration_train_record(train_path) if train_path else None
+    train_prs: dict[int, tuple[str, str]] = {}
+    if train is None:
+        pr_head, pr_merge_commit = prove_pr_and_checks(args.pr, args.main_sha, allowlist, api, repo_root)
+    else:
+        if ephemeral_text:
+            raise RiskGateError(
+                "a migration train promotes only on preview evidence; one ephemeral CI check "
+                "cannot prove several authoring pull request heads"
+            )
+        train_prs = prove_migration_train(
+            train, main_sha=args.main_sha, allowlist=allowlist, api=api, repo_root=repo_root,
+        )
+        if args.pr not in train_prs:
+            raise RiskGateError(f"source PR {args.pr} authored no entry of the migration train")
+        pr_head, pr_merge_commit = train_prs[args.pr]
     with tempfile.TemporaryDirectory(prefix="production-risk-review-") as temp:
         review_path = verify_review(
             run_id_text=str(args.review_run_id), expected_digest=args.review_digest,
@@ -1790,17 +2972,73 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
         review = json.loads(review_path.read_text(encoding="utf-8"))
     if review.get("verdict") != "APPROVE":
         return {"automaticPromotionAllowed": False, "ownerDecisionReasons": [RISK_TEXT["unresolved_material_objection"]]}
-    prove_preview(
-        run_id=args.preview_run_id, digest=args.preview_digest, pr_head=pr_head,
-        main_sha=args.main_sha, source_pr=args.pr, allowlist=allowlist,
-        preview_project_ref=args.preview_project_ref, merge_commit_sha=pr_merge_commit,
-        api=api, downloader=downloader, repo_root=repo_root,
-    )
+    if review.get("schema_version") == "shared-db-production-apply-review/v2":
+        if train is None:
+            if review.get("source_pr") != args.pr or review.get("source_pr_head") != pr_head:
+                raise RiskGateError(
+                    "automatic review evidence is not bound to the promoted source PR and exact head"
+                )
+        else:
+            reviewed = review.get("source_pr")
+            if (
+                type(reviewed) is not int or reviewed not in train_prs
+                or review.get("source_pr_head") != train_prs[reviewed][0]
+            ):
+                raise RiskGateError(
+                    "automatic review evidence is not bound to an authoring PR of the migration "
+                    "train and its exact head"
+                )
+        if review.get("work_issue") != args.work_issue:
+            raise RiskGateError("automatic review evidence names a different admitted structural work issue")
+        if not ephemeral_text:
+            if review.get("preview_run_id") != int(preview_run_text):
+                raise RiskGateError("automatic review evidence names a different preview run")
+            if review.get("preview_artifact_digest") != preview_digest:
+                raise RiskGateError("automatic review evidence names a different preview artifact digest")
+    ephemeral_evidence = None
+    if ephemeral_text:
+        high_risk = preview_required_reasons(repo_root, allowlist)
+        if high_risk:
+            raise RiskGateError(
+                "preview required: this migration is high-risk to live data, so the ephemeral CI "
+                "route cannot promote it -- " + "; ".join(high_risk))
+        ephemeral_evidence = prove_ephemeral_ci_evidence(
+            check_run_id_text=ephemeral_text, pr_head=pr_head, allowlist=allowlist,
+            api=api, downloader=downloader, repo_root=repo_root,
+        )
+    else:
+        if not optional_text(getattr(args, "preview_project_ref", None)):
+            raise RiskGateError("the preview route needs --preview-project-ref")
+        if train is None:
+            prove_preview(
+                run_id=int(preview_run_text), digest=preview_digest, pr_head=pr_head,
+                main_sha=args.main_sha, source_pr=args.pr, allowlist=allowlist,
+                preview_project_ref=args.preview_project_ref, merge_commit_sha=pr_merge_commit,
+                api=api, downloader=downloader, repo_root=repo_root,
+            )
+        else:
+            # ONE PROOF PER AUTHORING PR against the one rehearsal of the whole
+            # train. A merged_preview_source_pr_map rehearsal files
+            # preview-instance-<pr>.json naming each PR and its own merge commit
+            # over the complete allowlist (#2140); each is checked strictly.
+            for train_pr, (train_head, train_merge) in train_prs.items():
+                try:
+                    prove_preview(
+                        run_id=int(preview_run_text), digest=preview_digest, pr_head=train_head,
+                        main_sha=args.main_sha, source_pr=train_pr, allowlist=allowlist,
+                        preview_project_ref=args.preview_project_ref, merge_commit_sha=train_merge,
+                        api=api, downloader=downloader, repo_root=repo_root,
+                    )
+                except (RiskGateError, ValueError) as exc:
+                    raise RiskGateError(f"migration train preview proof for source PR {train_pr}: {exc}") from exc
     decision = decide_business_risk(classify_sql(repo_root, allowlist), recovery_proven=True, review_approved=True)
-    # OWNER RULING 2026-08-18: the machine-readable owner-decision block is RETIRED
-    # as a blocking requirement. It is still verified when supplied, and the
+    enforce_automatic_risk_decision(review, decision)
+    # OWNER RULING 2026-08-18: the machine-readable owner-decision block remains
+    # retired as a mandatory technical rubber stamp. The five independently
     # derived risks are still recorded in the evidence below, but a missing block
-    # no longer stops a promotion.
+    # no longer stops the legacy/manual recovery path. The automatic v2 path has no
+    # human dispatch boundary, so it instead fails to an engineer whenever any
+    # one of the five derived risk conclusions is not clear.
     #
     # WHY, in the owner's own terms: he is not a programmer, cannot evaluate the
     # SQL a risk flag refers to, and was being asked to paste a JSON block whose
@@ -1820,9 +3058,8 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     # project proof immediately before every write, single-writer locks, and
     # post-apply verification. Those are checks a machine can actually perform.
     #
-    # WHAT IS GENUINELY GIVEN UP: there is no longer a human stop between a green
-    # evidence chain and a production write. Recorded here, and in the incident
-    # ledger, so nobody later mistakes this for an oversight.
+    # #2716 therefore removes transcription, not judgement: only an exact v2
+    # evidence chain whose machine-derived risk decision is fully clear can pass.
     owner_evidence = None
     if decision["ownerDecisionReasons"] and args.owner_decision_run_id and args.owner_decision_digest:
         owner_evidence = verify_owner_decision(
@@ -1832,21 +3069,35 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
         expected_risks = sorted(key for key, text in RISK_TEXT.items() if text in decision["ownerDecisionReasons"])
         if sorted(owner_evidence["accepted_risks"]) != expected_risks:
             raise RiskGateError("owner decision does not accept exactly the risks derived from governed evidence")
-    return {
+    result = {
         **decision,
-        # Derived risks are DISCLOSED in this evidence, not used to block. See the
-        # owner ruling above. Everything that can be machine-verified has already
-        # been verified by the time this line is reached.
+        # Legacy/manual evidence preserves the earlier disclosure path. Automatic
+        # v2 evidence reached this line only after every derived risk class cleared.
         "productionPromotionAllowed": True,
         "disclosedRisks": decision["ownerDecisionReasons"],
         "governedEvidence": {
             "mainSha": args.main_sha, "sourcePr": args.pr, "sourcePrHead": pr_head,
-            "reviewRun": args.review_run_id, "previewRun": args.preview_run_id,
-            "previewProjectRef": args.preview_project_ref,
+            "workIssue": args.work_issue,
+            "reviewRun": args.review_run_id,
+            "promotionRoute": "ephemeral-ci" if ephemeral_evidence else "preview",
+            "previewRun": None if ephemeral_evidence else int(preview_run_text),
+            "previewProjectRef": None if ephemeral_evidence else args.preview_project_ref,
+            "ephemeralCi": ephemeral_evidence,
             "allowlist": allowlist,
             "ownerDecision": owner_evidence,
         },
     }
+    if train is not None:
+        result["governedEvidence"]["migrationTrain"] = {
+            "trainId": train.get("train_id"), "generation": train.get("generation"),
+            "entries": [
+                {"version": e["version"], "sourcePr": e["source_pr"],
+                 "sourcePrHead": train_prs[e["source_pr"]][0], "mergeSha": e["merge_sha"],
+                 "fileSha256": e["file_sha256"]}
+                for e in train["entries"]
+            ],
+        }
+    return result
 
 
 def main() -> int:
@@ -1856,23 +3107,37 @@ def main() -> int:
     parser.add_argument("--main-sha", required=True)
     parser.add_argument("--allowlist", required=True)
     parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--work-issue", type=int, required=True)
     parser.add_argument("--review-run-id", type=int, required=True)
     parser.add_argument("--review-digest", required=True)
-    parser.add_argument("--preview-run-id", type=int, required=True)
-    parser.add_argument("--preview-digest", required=True)
+    # EXACTLY ONE ROUTE (#2758): preview evidence (--preview-run-id, --preview-digest,
+    # --preview-project-ref) OR --ephemeral-check-run-id, the Actions job ID of the
+    # required "supabase/tests against an ephemeral database" check on the source
+    # PR head. The ephemeral route is refused for any high-risk migration.
+    parser.add_argument("--preview-run-id")
+    parser.add_argument("--preview-digest")
+    parser.add_argument("--ephemeral-check-run-id")
     # NOT DEFAULTED, EVER. Preview is rebuilt from time to time and its project
     # ref changes when it is; a literal in this file is what stranded the lane on
     # 2026-08-18. The workflow passes the repository variable PREVIEW_PROJECT_REF,
     # which is the same value the preview job writes to.
-    parser.add_argument("--preview-project-ref", required=True)
+    parser.add_argument("--preview-project-ref")
     # GitHub Actions supplies an omitted optional workflow input as an empty
     # string.  Keep it as text so the established no-risk automatic path can
     # reach assess(); a material-risk path still rejects the missing value.
     parser.add_argument("--owner-decision-run-id")
     parser.add_argument("--owner-decision-digest")
+    # Default 0: fail fast on a GitHub quota exhaustion. Only the pre-lane
+    # invocation passes a budget (capped at 900s inside gh_json); the invocation
+    # that holds the production lane must never sit on it waiting.
+    parser.add_argument("--rate-limit-wait-seconds", type=float, default=0)
+    # #3027 Step 6: the dispatched migration-train record, re-read from its
+    # immutable ref by the workflow. Absent, the single source-PR rule is unchanged.
+    parser.add_argument("--migration-train-record", type=Path)
     args = parser.parse_args()
+    api = functools.partial(gh_json, rate_limit_wait_seconds=args.rate_limit_wait_seconds) if args.rate_limit_wait_seconds > 0 else gh_json
     try:
-        result = assess(args)
+        result = assess(args, api=api)
     except (RiskGateError, OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile) as exc:
         print(f"::error::Production business-risk gate rejected evidence: {exc}")
         return 2
@@ -1897,40 +3162,160 @@ def main() -> int:
     return 0 if result.get("productionPromotionAllowed", result["automaticPromotionAllowed"]) else 3
 
 PREVIEW_PRODUCER_PATHS += (
-    "scripts/production-verification-sidecars/20260830013942.json",
-    "scripts/production-verification-sidecars/20260830130345.json",
-    "scripts/production-verification-sidecars/20260830172356.json",
-    "scripts/production-verification-sidecars/20260830191719.json",
-    "scripts/production-verification-sidecars/20260830202243.json",
-    "scripts/production-verification-sidecars/20260830212955.json",
-    "scripts/production-verification-sidecars/20260902024541.json",
-    "scripts/production-verification-sidecars/20260830220646.json",
-    "scripts/production-verification-sidecars/20260830230246.json",
-    "scripts/production-verification-sidecars/20260830235651.json",
-    "scripts/production-verification-sidecars/20260831002935.json",
-    "scripts/production-verification-sidecars/20260831012326.json",
-    "scripts/production-verification-sidecars/20260831021656.json",
-    "scripts/production-verification-sidecars/20260831104325.json",
-    "scripts/production-verification-sidecars/20260831145707.json",
-    "scripts/production-verification-sidecars/20260902035909.json",
-    "scripts/production-verification-sidecars/20260831173841.json",
-    "scripts/production-verification-sidecars/20260831184547.json",
-    "scripts/production-verification-sidecars/20260831212757.json",
-    "scripts/production-verification-sidecars/20260831221607.json",
-    "scripts/production-verification-sidecars/20260901142825.json",
-    "scripts/production-verification-sidecars/20260905105038.json",
-    "scripts/production-verification-sidecars/20260903083204.json",
-    "scripts/production-verification-sidecars/20260905063701.json",
-    "scripts/production-verification-sidecars/20260905142150.json",
-    "scripts/production-verification-sidecars/20260907200221.json",
-    "scripts/production-verification-sidecars/20260907030418.json",
-    "scripts/production-verification-sidecars/20260907051735.json",
+    # config/db-data-admin-property-source-coverage.json was pinned here by
+    # #2579 and is now EXEMPTED instead (see PREVIEW_RUNTIME_DATA_EXEMPTIONS):
+    # no step of the preview job reads it, so pinning it refused #2870's
+    # promotion when unrelated PR #3110 edited it after the preview ran.
     # Invoked by check-sql.sh during preview; pin the reviewed parser so the
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",
     "scripts/check-migration-verify-cost.mjs",
 )
 
+# THE SINGLE SIDECAR DECLARATION REGISTRY (#3028, popcre/ai-devops#401 Step 5).
+#
+# Hash-bound verification sidecars are read by the catalog verifier in preview,
+# so each one is a producer file and must be pinned byte for byte. Contents API
+# directory responses are arrays, so each reviewed file is pinned explicitly
+# rather than pretending a directory has a blob SHA. They used to be hand-listed
+# in the tuples above, and a sidecar merged without its line (#2627) needed a
+# second repair PR. Now the ONLY declaration is one entry in
+# SIDECAR_REGISTRY_PATH. This is not discovery: a sidecar file that is not
+# declared is refused by check_production_verification_sidecars.py in CI before
+# review and by the test suite, and a declaration without its file is refused
+# the same way, so trust never widens silently. The registry itself is pinned.
+SIDECAR_REGISTRY_PATH = "config/production-verification-sidecar-registry.json"
+SIDECAR_DIR = "scripts/production-verification-sidecars"
+
+
+def load_sidecar_registry(repo_root: Path | None = None) -> tuple[str, ...]:
+    """Return the declared sidecar versions, refusing any malformed registry."""
+    root = repo_root or Path(__file__).resolve().parents[1]
+    try:
+        data = json.loads((root / SIDECAR_REGISTRY_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} is unreadable: {exc}") from exc
+    if not isinstance(data, dict) or set(data) != {"schema_version", "sidecars"} or data["schema_version"] != 1:
+        raise RiskGateError(f"sidecar registry {SIDECAR_REGISTRY_PATH} must be schema_version 1 with exactly schema_version and sidecars")
+    entries = data["sidecars"]
+    if not isinstance(entries, list):
+        raise RiskGateError("sidecar registry must declare a sidecars list")
+    versions = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"version", "issue"}:
+            raise RiskGateError(f"sidecar registry entry {entry!r} must contain exactly version and issue")
+        version, issue = entry["version"], entry["issue"]
+        if not isinstance(version, str) or not re.fullmatch(r"\d{14}", version):
+            raise RiskGateError(f"sidecar registry version {version!r} is not a 14-digit migration version")
+        if issue is not None and (not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0):
+            raise RiskGateError(f"sidecar registry issue for {version} must be a positive integer or null")
+        versions.append(version)
+    if len(set(versions)) != len(versions):
+        raise RiskGateError("sidecar registry declares a version more than once")
+    return tuple(versions)
+
+
+def sidecar_registry_paths(repo_root: Path | None = None) -> tuple[str, ...]:
+    return tuple(f"{SIDECAR_DIR}/{version}.json" for version in load_sidecar_registry(repo_root))
+
+
+PREVIEW_PRODUCER_PATHS += (SIDECAR_REGISTRY_PATH,) + sidecar_registry_paths()
+
+
+
+def successful_ephemeral_job_id(pr_head: str, api: Callable[[str], Any]) -> int:
+    """The one successful ephemeral-database check on the source PR head."""
+    endpoint = f"repos/{REPOSITORY}/commits/{pr_head}/check-runs?per_page=100"
+    checks = api_sublist(api_object(api, endpoint), "check_runs", endpoint)
+    ids = sorted({
+        c.get("id") for c in checks
+        if isinstance(c, dict) and c.get("name") == EPHEMERAL_CHECK_NAME
+        and c.get("status") == "completed" and c.get("conclusion") == "success"
+        and type(c.get("id")) is int and c.get("id") > 0
+    })
+    if len(ids) != 1:
+        raise RiskGateError(
+            f"expected exactly one successful '{EPHEMERAL_CHECK_NAME}' check on source PR "
+            f"head {pr_head}, found {len(ids)}"
+        )
+    return ids[0]
+
+
+def qualify_automatic_route(
+    *, main_sha: str, allowlist: list[str], source_pr: int, recovery_record: dict | None,
+    repo_root: Path, api: Callable[[str], Any], downloader: Callable[[int, Path], None],
+) -> dict[str, Any]:
+    """Choose, BEFORE dispatch, the evidence route the production gate will accept (#3039).
+
+    Automatic qualification used to dispatch every historical rebind on its preview
+    evidence without asking the gate's question. When the rebind names an ORIGINAL
+    apply run made on an older commit, `prove_historical_original_apply_runs` pins
+    that run's commits to the authoring merge commit and refuses the drift -- so the
+    dispatch was doomed (runs 35052182196, 35061726161). Qualification now runs that
+    SAME proof, unchanged. On refusal it never dispatches the stale evidence: a
+    migration that is not high-risk to live data takes the gate's own ephemeral-CI
+    route, bound to the exact source PR head and proved here with the gate's own
+    `prove_ephemeral_ci_evidence`; a high-risk migration refuses outright.
+    """
+    pr_endpoint = f"repos/{REPOSITORY}/pulls/{source_pr}"
+    pr = api_object(api, pr_endpoint)
+    head_obj = pr.get("head")
+    pr_head = head_obj.get("sha") if isinstance(head_obj, dict) else None
+    if pr.get("merged") is not True or not re.fullmatch(r"[0-9a-f]{40}", str(pr_head)):
+        raise RiskGateError("source PR is not merged or has no exact head")
+    if recovery_record is None:
+        return {"route": "preview"}
+    try:
+        prove_historical_original_apply_runs(
+            record=recovery_record, allowlist=allowlist, repo_root=repo_root,
+            main_sha=main_sha, api=api, downloader=downloader,
+        )
+        return {"route": "preview"}
+    except RiskGateError as preview_refusal:
+        high_risk = preview_required_reasons(repo_root, allowlist)
+        if high_risk:
+            raise RiskGateError(
+                f"the production gate would refuse this preview evidence ({preview_refusal}), "
+                "and the migration is high-risk to live data so the ephemeral CI route cannot "
+                "substitute -- " + "; ".join(high_risk)
+            ) from preview_refusal
+        job_id = successful_ephemeral_job_id(pr_head, api)
+        prove_ephemeral_ci_evidence(
+            check_run_id_text=str(job_id), pr_head=pr_head, allowlist=allowlist,
+            api=api, downloader=downloader, repo_root=repo_root,
+        )
+        return {"route": "ephemeral", "ephemeral_check_run_id": job_id,
+                "preview_refusal": str(preview_refusal)}
+
+
+def qualify_route_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="production_business_risk_gate.py qualify-route")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--main-sha", required=True)
+    parser.add_argument("--allowlist", required=True)
+    parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--recovery-record", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        record = None
+        if args.recovery_record is not None:
+            record = json.loads(args.recovery_record.read_text(encoding="utf-8"))
+            if not isinstance(record, dict):
+                raise RiskGateError("historical recovery record is unreadable")
+        result = qualify_automatic_route(
+            main_sha=args.main_sha, allowlist=normalize_review_allowlist(args.allowlist),
+            source_pr=args.pr, recovery_record=record, repo_root=args.repo.resolve(),
+            api=gh_json, downloader=download_artifact,
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure refuses dispatch
+        print(f"::error::ENGINEER ACTION REQUIRED: automatic qualification found no evidence route "
+              f"the production gate accepts: {type(exc).__name__}: {exc}. Nothing was dispatched.", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "qualify-route":
+        raise SystemExit(qualify_route_main(sys.argv[2:]))
     raise SystemExit(main())

@@ -1,60 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 2596,
+  "generation": 5,
+  "work_issue": 3295,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Make a prose-only handoff avoid the inapplicable disposable database contract test while preserving every other merge safeguard.",
-  "base_sha": "5caf1b309de6f975ed4ed9a1920ddafde5087078",
-  "dispatcher": "Albert Hazan direct request",
-  "worker": "Codex",
-  "branch": "codex/issue-2596-bounded-handover",
-  "worktree": "C:/repos/shared-db-worktrees/issue-2596-bounded-handover",
+  "goal": "Validate recovered ColdLion timeout repair against current main, preserving source repair, with fresh tests and truthful evidence. Prior production investigation remains historical evidence.",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Codex non-orchestrator repository-maintenance session for issue #3295",
+  "worker": "Codex chat 01a0bf3f-596f-7e20-be04-2d2d8eb12320 on 916-ALIEN (coldlion_recovery subagent)",
+  "branch": "codex/3295-recovery-01a0bf00",
+  "worktree": "D:\\repos\\shared-db-coldlion-recovery-01a0bf00",
   "allowed_paths": [
-    "AGENTS.md",
-    ".agent/contract.json",
     ".agent/completion.json",
-    ".github/workflows/agent-work-contract.yml",
-    ".github/workflows/database-contract-tests.yml",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/migration-author-lease.yml",
-    "HANDOFF.d/2026-09-08T1924Z-edge-dev-codex-handover-latency-plan.md",
-    "plan_bounded_session_handover.md",
-    "scripts/check-closeout-readiness.mjs",
-    "scripts/check-closeout-readiness.test.mjs"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "file_writes": [
-    "AGENTS.md",
-    ".agent/contract.json",
     ".agent/completion.json",
-    ".github/workflows/agent-work-contract.yml",
-    ".github/workflows/database-contract-tests.yml",
-    ".github/workflows/guarded-migration-merge.yml",
-    ".github/workflows/migration-author-lease.yml",
-    "HANDOFF.d/2026-09-08T1924Z-edge-dev-codex-handover-latency-plan.md",
-    "plan_bounded_session_handover.md",
-    "scripts/check-closeout-readiness.mjs",
-    "scripts/check-closeout-readiness.test.mjs"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database, preview, production, repository-setting, or orchestrator-marker mutation.",
-    "No reviewer bypass, required-context removal, or merge-path replacement.",
-    "Do not change paths outside this contract."
+    "Do not change any migration, database object, timeout, workflow schedule, or live database row.",
+    "Do not weaken or remove change-log audit payloads, target proof, transaction atomicity, or failure reporting.",
+    "Do not touch issue #3179, issue #3180, or the prepack loader."
   ],
   "required_checks": [
-    "node --test scripts/check-closeout-readiness.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/lib/documents-only-change.test.mjs scripts/database-contract-authorization.test.mjs",
-    "git diff --check"
+    "node --test tools/coldlion-landing-masters.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
   ],
   "assumptions": [
-    "PR #2592 remains the source of the documents-only contract exemption and is not rebuilt.",
-    "The protected base revision is the only executable policy allowed to make the inapplicability decision.",
-    "Automatic guarded dispatch and ownership fencing remain later milestones."
+    "Production keeps its existing 120-second statement timeout.",
+    "The latest prior new_raw row remains the preferred previous_raw audit payload, falling back to the current table projection when no prior change exists."
   ],
   "stop_conditions": [
-    "A required check fails or the trusted classifier cannot read the complete pull-request file list.",
-    "Main movement invalidates the branch evidence.",
-    "The change would require a database, production, security-setting, or live-orchestrator action."
-  ],
-  "generation": 7
+    "Stop if preserving audit semantics requires a database-structure change.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
+  ]
 }

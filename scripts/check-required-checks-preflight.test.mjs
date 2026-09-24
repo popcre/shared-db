@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { collectPages, evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, isPermissionRefusal, observedStates, readRequiredChecksMirror, requireWholePage, sanitize, PreflightError, REQUIRED_CHECKS_MIRROR, SELF_CONTEXT, SELF_CHECK_RUN, PINNED_REQUIRED_CONTEXTS, MIRROR_BOOTSTRAP_MAIN_SHA } from './check-required-checks-preflight.mjs'
+import { collectPages, evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, isPermissionRefusal, observedStates, readRequiredChecksMirror, requireWholePage, sanitize, PreflightError, REQUIRED_CHECKS_MIRROR, SELF_CONTEXT, SELF_CHECK_RUN, PINNED_REQUIRED_CONTEXTS, MIRROR_BOOTSTRAP_MAIN_SHA, PREFLIGHT_SOURCE_PATH, parsePinnedFloor, readPinnedFloor } from './check-required-checks-preflight.mjs'
 
 const ok = (name) => ({ name, status: 'completed', conclusion: 'success', completed_at: '2026-09-03T00:00:00Z' })
 
@@ -220,12 +220,30 @@ test('the mirror does not have to name the workflow own context', () => {
 })
 
 // The mirror reader is given a fake `git show`; only origin/main may be read.
+// The pinned floor now comes from origin/main's own copy of the pre-flight source, so
+// the stub has to answer two different paths. Unless a test says otherwise, main pins
+// exactly what this head pins, which is the steady state between growth merges.
+const pinSource = (...names) => [
+  'export const PINNED_REQUIRED_CONTEXTS = Object.freeze([',
+  "  // a comment naming 'Some retired guard' must not be read as a pinned context",
+  ...names.map((name) => `  '${name}',`),
+  '])',
+].join('\n')
+
 const mirrorRun = (byRef) => (bin, args) => {
   if (args[0] === 'rev-parse') {
     if (!('origin/main@sha' in byRef)) throw new Error('origin/main is unreadable')
     return byRef['origin/main@sha']
   }
-  const ref = String(args[1]).split(':')[0]
+  const [ref, path] = String(args[1]).split(':')
+  if (path === PREFLIGHT_SOURCE_PATH) {
+    const key = `${ref}@pin`
+    if (key in byRef) {
+      if (byRef[key] === null) throw new Error(`fatal: path does not exist in '${ref}'`)
+      return byRef[key]
+    }
+    return pinSource(...PINNED_REQUIRED_CONTEXTS)
+  }
   if (!(ref in byRef)) throw new Error(`fatal: path does not exist in '${ref}'`)
   return byRef[ref]
 }
@@ -265,6 +283,21 @@ test('optional skipped jobs and the running merge job cannot deadlock the prefli
   assert.equal(result.mode, 'committed-mirror')
 })
 
+test('the documents-only routing diagnostic failing on a code PR does not block the guarded merge (#2759)', () => {
+  const result = evaluateWithoutRequiredList({
+    reason: REASON, mirrorContexts: MIRROR,
+    statuses: [{ context: 'Documents-only merge authorization', state: 'failure' }],
+    checkRuns: [ok('SQL migration guards'), ok('Tools offline tests'),
+      { name: 'Documents-only merge authorization', status: 'completed', conclusion: 'failure' }],
+  })
+  assert.equal(result.mode, 'committed-mirror')
+  assert.throws(() => evaluateWithoutRequiredList({
+    reason: REASON, mirrorContexts: MIRROR, statuses: [],
+    checkRuns: [ok('SQL migration guards'), ok('Tools offline tests'),
+      { name: 'Some other guard', status: 'completed', conclusion: 'failure' }],
+  }), /Some other guard/)
+})
+
 test('the head cannot inject a context into the trusted list', () => {
   const contexts = readRequiredChecksMirror('/x', mirrorRun({
     'origin/main': doc(...PINNED_REQUIRED_CONTEXTS),
@@ -301,6 +334,43 @@ test('the committed mirror is exactly the list main requires today', () => {
   assert.deepEqual([...onDisk.contexts].sort(), [...PINNED_REQUIRED_CONTEXTS].sort())
   assert.equal(onDisk.strict, false, 'strict must stay false — owner ruling, issue #1286')
   assert.ok(onDisk.contexts.includes(SELF_CONTEXT))
+})
+
+// The regression this pair exists for: the first governed review of PR #2613 found that
+// growing the pin made the guarded merge unsatisfiable, because the pin came from the
+// checked-out head while the mirror came from origin/main. The head that ADDS a context
+// must still be mergeable; only main's own two records are compared with each other.
+test('a head that grows the pin is still mergeable against main\'s older mirror', () => {
+  const older = PINNED_REQUIRED_CONTEXTS.filter((c) => c !== 'Agent work contract')
+  const contexts = readRequiredChecksMirror('/x', mirrorRun({
+    'origin/main': doc(...older),
+    'origin/main@pin': pinSource(...older),
+  }))
+  assert.deepEqual(contexts, older)
+})
+
+test('main\'s mirror is still judged against main\'s own pin, so a real shrink is refused', () => {
+  assert.throws(() => readRequiredChecksMirror('/x', mirrorRun({
+    'origin/main': doc(...PINNED_REQUIRED_CONTEXTS.filter((c) => c !== 'Domain ownership')),
+  })), /stale subset; missing pinned contexts: Domain ownership/)
+})
+
+test('a head may not drop a context origin/main still pins', () => {
+  assert.throws(() => readPinnedFloor('/x', mirrorRun({
+    'origin/main': doc(...PINNED_REQUIRED_CONTEXTS),
+    'origin/main@pin': pinSource(...PINNED_REQUIRED_CONTEXTS, 'Retired-only-on-this-head'),
+  })), /may only grow/)
+})
+
+test('an unreadable origin/main pre-flight source is a refusal, never an empty floor', () => {
+  assert.throws(() => readPinnedFloor('/x', mirrorRun({ 'origin/main@pin': null })), /pinned floor is unknown/)
+  assert.throws(() => parsePinnedFloor('export const SOMETHING_ELSE = []', 'origin/main'), /no readable PINNED_REQUIRED_CONTEXTS/)
+  assert.throws(() => parsePinnedFloor('export const PINNED_REQUIRED_CONTEXTS = Object.freeze([])', 'origin/main'), /is empty/)
+})
+
+test('a context named only inside a comment is not read as pinned', () => {
+  const floor = parsePinnedFloor(pinSource('SQL migration guards'), 'origin/main')
+  assert.deepEqual(floor, ['SQL migration guards'])
 })
 
 test('a stale-subset HEAD mirror cannot hide a required main context', () => {
@@ -384,7 +454,7 @@ test('a readable required list still takes precedence over the fallback', () => 
 // test still passed, because nothing exercised `gatherPreflightInput` -> `evaluatePreflight`.
 const SHA = 'e'.repeat(40)
 const ENV = { REQUESTED_SHA: SHA }
-const MIRROR_DEP = { root: '/x', run: () => doc(...PINNED_REQUIRED_CONTEXTS) }
+const MIRROR_DEP = { root: '/x', run: mirrorRun({ 'origin/main': doc(...PINNED_REQUIRED_CONTEXTS) }) }
 // The URL is the LAST argument, never a fixed slot: since #2282 the paginated reads
 // put `--paginate --slurp` ahead of it, and a mock that reads `args[1]` would match
 // the flag instead of the path, silently answer every read with the check-run shape,
@@ -485,4 +555,25 @@ test('the fallback refuses a head missing a check that reported on an earlier at
     statuses: [], reason: 'x', mirrorContexts: ['SQL migration guards'],
     checkRuns: [ok('some unrelated job'), { name: 'SQL migration guards', status: 'queued', started_at: '2026-09-03T00:00:00Z' }],
   }), PreflightError)
+})
+
+
+import { waitForPreflight, isWaitableRefusal } from './check-required-checks-preflight.mjs'
+test('#507(a) running or unregistered checks are waited on; failing checks refuse at once; budget still refuses', async () => {
+  assert.equal(isWaitableRefusal('x — still running: supabase/tests. No retry'), true)
+  assert.equal(isWaitableRefusal('x — never reported: a. No retry'), true)
+  assert.equal(isWaitableRefusal('x — failing: a (failure); still running: b'), false)
+  let clock = 0, calls = 0, slept = 0
+  const deps = (results) => ({ gather: () => ({}), evaluate: () => { const r = results[Math.min(calls++, results.length - 1)]; if (r instanceof Error) throw r; return r }, sleep: async (ms) => { slept++; clock += ms }, now: () => clock, log: () => {} })
+  const running = new PreflightError('required status checks are not satisfied on the reviewed head — still running: supabase/tests. No retry can clear this, so the merge lane was not taken.')
+  const ok = { required: 13, mode: 'required-contexts' }
+  assert.deepEqual(await waitForPreflight({ PREFLIGHT_POLL_SECONDS: 30 }, deps([running, running, ok])), ok)
+  assert.equal(slept, 2)
+  calls = 0; slept = 0; clock = 0
+  await assert.rejects(waitForPreflight({}, deps([new PreflightError('— failing: a (failure). No retry')])), /failing: a/)
+  assert.equal(slept, 0)
+  calls = 0; clock = 0
+  await assert.rejects(waitForPreflight({ PREFLIGHT_WAIT_SECONDS: 90, PREFLIGHT_POLL_SECONDS: 30 }, deps([running])), /still running: supabase\/tests.*Waited 90s/)
+  calls = 0; clock = 0
+  await assert.rejects(waitForPreflight({}, deps([new Error('GitHub read failed')])), /GitHub read failed/)
 })

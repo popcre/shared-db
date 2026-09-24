@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { evaluateExactHeadApproval as evaluateRaw, gatherApprovalInput, parseAssignmentRef, requireDurableVerdictInput, ApprovalCheckError } from './check-exact-head-approval.mjs'
+import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
 import { isValidatedVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 
 const OLD = 'b494401028464ef8b2e67fe0b5b1836839b2be36'
@@ -333,7 +333,7 @@ test('issue 2075: the merge gate refuses input that carries no durable verdict l
 // Driven through the ADAPTER with the ref, commit and comment shapes GitHub
 // actually returns, because the gap was in what the adapter never read.
 const RETURN_HEAD = 'a'.repeat(40)
-function returnedSlotGithub({ redrawSequence = null } = {}) {
+function returnedSlotGithub({ redrawSequence = null, redrawReviewer = 'glm-5.3' } = {}) {
   const issue = 1824, pr = 1931
   const assignment1 = '1'.repeat(40), assignment2 = '2'.repeat(40), redraw = '7'.repeat(40)
   const findingsBody = 'review findings', findingsRef = `https://github.com/u2giants/shared-db/pull/${pr}#issuecomment-1`
@@ -357,9 +357,9 @@ function returnedSlotGithub({ redrawSequence = null } = {}) {
   // A re-drawn slot 2, with its own APPROVE. `redrawSequence` is what decides
   // whether it answers the return or is a record the return already superseded.
   if (redrawSequence !== null) {
-    cursor(redraw, redrawSequence, 2, 'kimi-k3')
+    cursor(redraw, redrawSequence, 2, redrawReviewer)
     assignmentRefs.push({ ref: `refs/db-review-assignments/${issue}-${pr}-${RETURN_HEAD}-slot2`, object: { sha: redraw } })
-    approve('5'.repeat(40), 2, redraw, 'kimi-k3')
+    approve('5'.repeat(40), 2, redraw, redrawReviewer)
   }
   return {
     json: (args) => {
@@ -394,6 +394,77 @@ test('the merge gate refuses a head whose slot was durably returned and never re
 test('a returned slot is answered only by an assignment drawn after the returned one', () => {
   assert.equal(evaluateExactHeadApproval(gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9 }))).approved, true)
   assert.throws(() => evaluateExactHeadApproval(gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 1 }))), /review slot 2 was durably returned/)
+})
+
+test('two durable approvals from the same reviewer never satisfy independent slots', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
+  assert.throws(() => evaluateExactHeadApproval(input), /review slots at exact head .* share reviewer kimi-k3/)
+})
+
+// APPROVAL CARRY-FORWARD (#2758). Head A was approved; the PR then merged main and
+// its head is B. The byte-level equivalence proof is tested against real git in
+// lib/pr-content-equivalence.test.mjs; here the gate's use of it is exercised.
+const REFRESHED_HEAD = 'b'.repeat(40)
+function refreshedGithub() {
+  const base = returnedSlotGithub({ redrawSequence: 9 })
+  return { ...base, json: (args) => /\/pulls\/\d+$/.test(args[args.length - 1]) ? { head: { sha: REFRESHED_HEAD } } : base.json(args) }
+}
+function refreshedInput() {
+  return gatherApprovalInput({ PR_NUMBER: '1931' }, refreshedGithub())
+}
+
+test('#2758: a merge-only refresh keeps the APPROVE recorded at the prior head', () => {
+  const input = refreshedInput()
+  assert.equal(input.headSha, REFRESHED_HEAD)
+  assert.throws(() => evaluateRaw(input), ApprovalCheckError)
+  const calls = []
+  const result = evaluateApprovalWithRefresh(input, { contentPreservingRefresh: (a, b) => { calls.push([a, b]); return { ok: true, implementation_digest: 'e'.repeat(64) } } })
+  assert.equal(result.approved, true)
+  assert.equal(result.head_sha, REFRESHED_HEAD)
+  assert.equal(result.carried_from, RETURN_HEAD)
+  assert.equal(result.implementation_digest, 'e'.repeat(64))
+  assert.deepEqual(calls, [[RETURN_HEAD, REFRESHED_HEAD]])
+})
+
+test('POSITIVE CONTROL #2758: a refresh that changed the PR diff (e.g. a migration edit) needs a new review', () => {
+  assert.throws(() => evaluateApprovalWithRefresh(refreshedInput(), { contentPreservingRefresh: () => ({ ok: false, reason: 'diff changed' }) }), ApprovalCheckError)
+})
+
+test('POSITIVE CONTROL #2758: no equivalence proof means no carry-forward', () => {
+  assert.throws(() => evaluateApprovalWithRefresh(refreshedInput(), {}), ApprovalCheckError)
+})
+
+test('POSITIVE CONTROL #2758: a refusal at an equivalent prior head is never carried past', () => {
+  const input = refreshedInput()
+  // In place: a spread copy would drop the non-enumerable validated marker.
+  input.priorHeads[0].verdicts[0].verdict = 'REVISE'
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /carries a durable reviewer refusal/)
+})
+
+test('POSITIVE CONTROL #2758: a prior head known only by its verdict is discovered, and an unreadable one refuses the carry', () => {
+  const ORPHAN = 'd'.repeat(40)
+  const base = refreshedGithub()
+  const io = { ...base, json: (args) => {
+    const endpoint = args[args.length - 1]
+    if (endpoint.includes('/git/matching-refs/db-review-verdicts/')) return [...(base.json(args) ?? []), { ref: `refs/db-review-verdicts/1824-1931-${ORPHAN}`, object: { sha: '5'.repeat(40) } }]
+    return base.json(args)
+  } }
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, io)
+  const orphan = input.priorHeads.find((prior) => prior.headSha === ORPHAN)
+  assert.ok(orphan?.unreadable, 'the verdict-only head must be discovered and marked unreadable')
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /could not be read/)
+})
+
+test('POSITIVE CONTROL #2758: a head with an assignment of its own is never carried past', () => {
+  const input = refreshedInput()
+  input.assignments.push({ ...input.assignments[0], headSha: REFRESHED_HEAD, ref: `${input.assignments[0].ref}-new` })
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /reviewer records of its own/)
+})
+
+test('POSITIVE CONTROL #2758: a head with a return of its own is never carried past', () => {
+  const input = refreshedInput()
+  input.returns = [{ ...input.priorHeads[0].returns[0], headSha: REFRESHED_HEAD }]
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /reviewer records of its own/)
 })
 
 // The ref name only SELECTS the record; the commit is what is trusted, and it is
@@ -496,7 +567,7 @@ test('a reviewer that does read the repository still authorizes and still blocks
 test('a documents-only pull request authorizes with no reviewer assignment at all', () => {
   const result = evaluateExactHeadApproval({
     pr: 2102, headSha: NEW, assignments: [], verdicts: [],
-    changedFiles: ['HANDOFF.d/2026-09-02T0000Z-note.md', 'docs/verification/run.md'],
+    changedFiles: ['HANDOFF.d/2026-09-02T0000Z-note.md', 'docs/verification/run.md', 'plan_reviewer_lease_capacity_truth.md'],
   })
   assert.equal(result.approved, true)
   assert.equal(result.documents_only, true)
@@ -505,7 +576,7 @@ test('a documents-only pull request authorizes with no reviewer assignment at al
 
 // The exclusions are the safety of the whole rule. Each of these keeps the full
 // treatment, so with no assignment the gate must still refuse.
-for (const path of ['AGENTS.md', '.claude/skills/shared-db-change/SKILL.md', 'skills/claude/shared-db-orchestrator/SKILL.md', 'plan_reviewer_lease_capacity_truth.md']) {
+for (const path of ['AGENTS.md', '.claude/skills/shared-db-change/SKILL.md', 'skills/claude/shared-db-orchestrator/SKILL.md']) {
   test(`a rulebook file is not a document and still needs a reviewer: ${path}`, () => {
     assert.throws(() => evaluateExactHeadApproval({
       pr: 2102, headSha: NEW, assignments: [], verdicts: [], changedFiles: ['docs/notes.md', path],
@@ -525,6 +596,65 @@ test('an absent or unreadable changed-file list never grants the exemption', () 
   assert.throws(() => evaluateExactHeadApproval({ pr: 2102, headSha: NEW, assignments: [], verdicts: [] }), /no reviewer was ever assigned head/)
   assert.throws(() => evaluateExactHeadApproval({ pr: 2102, headSha: NEW, assignments: [], verdicts: [], changedFiles: [] }), /no reviewer was ever assigned head/)
   assert.throws(() => evaluateExactHeadApproval({ pr: 2102, headSha: NEW, assignments: [], verdicts: [], changedFiles: null }), /no reviewer was ever assigned head/)
+})
+
+// THE MINIMUM SLOT COUNT (issue #2837). PR #2746 (issue #2478) merged
+// production-bound bytes with exactly one approval because slot 2 was never
+// drawn across any of its nine heads: the loop over visible slots passed, since
+// a never-drawn slot is a slot the gate cannot see. A migration change must now
+// require two slots, judged from the pull request's own changed files, and the
+// refusal must name the missing slot number.
+test('a migration change refuses on a single slot: slot 2 was never drawn', () => {
+  assert.throws(() => evaluateExactHeadApproval({
+    pr: 2746, headSha: NEW,
+    assignments: [{ issue: 2478, pr: 2746, headSha: NEW, slot: 1 }],
+    evidence: [{ body: `APPROVE ${NEW}` }],
+    changedFiles: ['supabase/migrations/20260911212849_shared_style_group_sku_key.sql'],
+  }), (error) => error instanceof ApprovalCheckError && /owes required review slot\(s\) 2/.test(error.message) && /requires 2 independent review slot/.test(error.message))
+})
+
+test('a migration rename still requires two slots: the previous name counts', () => {
+  // The flattened form `changedPathsFromPullRequestFiles` produces for a rename
+  // row -- both the new name and the previous one reach the classifier.
+  assert.throws(() => evaluateExactHeadApproval({
+    pr: 2746, headSha: NEW,
+    assignments: [{ issue: 2478, pr: 2746, headSha: NEW, slot: 1 }],
+    evidence: [{ body: `APPROVE ${NEW}` }],
+    changedFiles: ['docs/moved.md', 'supabase/migrations/20260902120000_add_thing.sql'],
+  }), /owes required review slot\(s\) 2/)
+})
+
+test('a migration change with both slots approved passes and reports the required count', () => {
+  const result = evaluateExactHeadApproval({
+    pr: 2746, headSha: NEW,
+    assignments: [{ issue: 2478, pr: 2746, headSha: NEW, slot: 1 }, { issue: 2478, pr: 2746, headSha: NEW, slot: 2 }],
+    evidence: [{ body: `APPROVE ${NEW}` }],
+    changedFiles: ['supabase/migrations/20260911212849_shared_style_group_sku_key.sql'],
+  })
+  assert.equal(result.approved, true)
+  assert.equal(result.required_slots, 2)
+  assert.equal(result.assignments, 2)
+})
+
+test('a scripts-only change keeps the one-slot floor and passes with a single review', () => {
+  const result = evaluateExactHeadApproval({
+    pr: 2837, headSha: NEW,
+    assignments: [{ issue: 2837, pr: 2837, headSha: NEW, slot: 1 }],
+    evidence: [{ body: `APPROVE ${NEW}` }],
+    changedFiles: ['scripts/check-exact-head-approval.mjs', 'scripts/check-exact-head-approval.test.mjs'],
+  })
+  assert.equal(result.approved, true)
+  assert.equal(result.required_slots, 1)
+})
+
+test('with no changed-file list the one-slot floor is unchanged for legacy callers', () => {
+  const result = evaluateExactHeadApproval({
+    pr: 1809, headSha: NEW,
+    assignments: [{ issue: 1769, pr: 1809, headSha: NEW }],
+    evidence: [{ body: `APPROVE ${NEW}` }],
+  })
+  assert.equal(result.approved, true)
+  assert.equal(result.required_slots, 1)
 })
 
 // THE DOCUMENTS-ONLY LANE THROUGH THE ADAPTER, NOT ONLY THROUGH THE CORE (#2102).
@@ -634,4 +764,32 @@ test('an unvalidated verdict object cannot cross the documents-only boundary (#2
     pr: DOC_PR, headSha: DOC_HEAD, assignments: [], changedFiles: ['docs/notes.md'],
     verdicts: [{ pr: DOC_PR, head_sha: DOC_HEAD, verdict: 'REVISE', ref: 'fake', reviewer: 'grok-4.6', validated: true }],
   }), /without artifact validation/)
+})
+
+test('POSITIVE CONTROL #2728: an equivalence proof without implementation_digest carries nothing', () => {
+  const input = refreshedInput()
+  const calls = []
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: (a, b) => { calls.push([a, b]); return { ok: true } } }), ApprovalCheckError)
+  assert.ok(calls.length > 0, 'the proof must have been consulted')
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'not-a-digest' }) }), ApprovalCheckError)
+})
+
+// #3146: after the merge, current main contains the head, so the qualifier must
+// judge a merged pull request's diff against main as it was before the merge.
+test('a merged pull request is judged against its merge commit first parent', () => {
+  const merge = 'a'.repeat(40)
+  assert.equal(resolveApprovalMainRef({}, 7, () => ({ merged: true, merge_commit_sha: merge })), `${merge}^1`)
+  // Issue #3280: the unmerged branch resolves its base ref, so the git runner is
+  // injected -- this test must not depend on whether the CI checkout happens to
+  // carry an origin/main ref. `present` is the ordinary case; `absent` is the
+  // merge_group checkout, where the branch is fetched and FETCH_HEAD is used;
+  // `offline` is the fail-closed case.
+  const present = () => ''
+  const absent = (args) => { if (args[0] === 'rev-parse' && !args.includes('FETCH_HEAD')) throw new Error('absent'); return '' }
+  const offline = (args) => { if (args[0] === 'rev-parse' || args[0] === 'fetch') throw new Error('absent'); return '' }
+  assert.equal(resolveApprovalMainRef({}, 7, () => ({ merged: false }), present), 'origin/main')
+  assert.equal(resolveApprovalMainRef({}, 7, () => ({ merged: false }), absent), 'FETCH_HEAD')
+  assert.throws(() => resolveApprovalMainRef({}, 7, () => ({ merged: false }), offline), /could not resolve base ref/)
+  assert.equal(resolveApprovalMainRef({ APPROVAL_MAIN_REF: 'x' }, 7, () => { throw new Error('unread') }), 'x')
+  assert.throws(() => resolveApprovalMainRef({}, 7, () => ({ merged: true, merge_commit_sha: null })), ApprovalCheckError)
 })

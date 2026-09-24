@@ -101,6 +101,7 @@
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
+import { loadOpenPullFiles, OpenPullFilesError } from './lib/open-pr-files.mjs'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -126,13 +127,61 @@ function pathPrefix(env = process.env) {
  * Note the deliberate absence of a `$` anchor in the line-comment regex.
  */
 export function normalizeSql(sql) {
-  return String(sql)
-    .replace(/\r\n?/g, '\n') // CRLF -> LF first (backlog item B1)
-    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
-    .split('\n')
-    .map((line) => line.replace(/--.*/, '')) // line comments, unanchored
-    .join('\n')
+  return stripSqlComments(String(sql).replace(/\r\n?/g, '\n')) // CRLF -> LF first (backlog item B1)
     .replace(/\s+/g, ' ')
+}
+
+/**
+ * Remove `--` and block comments, but never inside a single-quoted literal
+ * (issue #3183). Stripping `--` blindly cut the closing quote off
+ * `comment on view ... is '... Aggregate only -- it exposes ...'`, which
+ * unbalanced quote pairing and hid the grants that followed. Inside a
+ * dollar-quoted body comments are still stripped (an apostrophe in a body
+ * comment must not unbalance quotes either) and quotes are not tracked.
+ */
+function stripSqlComments(sql) {
+  let out = ''
+  let i = 0
+  let dollarTag = null
+  while (i < sql.length) {
+    const ch = sql[i]
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i)
+      i = nl === -1 ? sql.length : nl
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      out += ' '
+      i = end === -1 ? sql.length : end + 2
+      continue
+    }
+    if (ch === '$') {
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64))
+      if (m && (dollarTag === null || m[0] === dollarTag)) {
+        dollarTag = dollarTag === null ? m[0] : null
+        out += m[0]
+        i += m[0].length
+        continue
+      }
+    }
+    if (ch === "'" && dollarTag === null) {
+      let j = i + 1
+      while (j < sql.length) {
+        if (sql[j] === "'") {
+          if (sql[j + 1] === "'") { j += 2; continue }
+          break
+        }
+        j++
+      }
+      out += sql.slice(i, j + 1)
+      i = j + 1
+      continue
+    }
+    out += ch
+    i++
+  }
+  return out
 }
 
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)`
@@ -405,10 +454,10 @@ const DISPATCH_PATTERNS = [
   {
     kinds: ['table'],
     re: new RegExp(
-      String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED})`,
+      String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED}(?:\s*,\s*${QUALIFIED})*)`,
       'gi',
     ),
-    map: (m) => [{ action: 'drop', kind: 'table', target: canonical(m[1]) }],
+    map: (m) => [...m[1].matchAll(new RegExp(QUALIFIED,'g'))].map((target) => ({ action:'drop', kind:'table', target:canonical(target[0]) })),
   },
   {
     // `alter table` in ALL its forms. Per plan D9 this is TABLE-level: every
@@ -501,7 +550,7 @@ const DISPATCH_PATTERNS = [
     // TABLE, so its absence means table -- but `on schema`, `on sequence`,
     // `on function` must keep their own kind or a grant on a schema would
     // collide with a table of the same name.
-    kinds: ['grant', 'table', 'sequence', 'schema', 'function', 'procedure', 'type'],
+    kinds: ['grant', 'table', 'view', 'sequence', 'schema', 'function', 'procedure', 'type'],
     re: new RegExp(
       // The two negative lookaheads are both real defects found by replaying
       // this parser over 400 merged pull requests:
@@ -529,8 +578,14 @@ const DISPATCH_PATTERNS = [
       const raw = (m[1] || 'table').toLowerCase()
       // `routine` is Postgres's umbrella for function+procedure; a grant
       // written either way must collide with the other.
-      const kinds = raw === 'routine' ? ['function', 'procedure'] : [raw === 'domain' ? 'type' : raw]
-      return kinds.map((kind) => ({ action: 'grant', kind, target }))
+      // With no keyword Postgres applies the grant to a table OR a view (issue
+      // #3183), so key it as both or it never collides with work on the view.
+      const kinds = raw === 'routine' ? ['function', 'procedure']
+        : !m[1] || raw === 'table' ? ['table', 'view']
+          : [raw === 'domain' ? 'type' : raw]
+      // `relationGuess` marks the table-or-view pair so extractOperations can
+      // drop the half the same migration's own CREATE rules out (see there).
+      return kinds.map((kind) => ({ action: 'grant', kind, target, ...(kinds.length === 2 && kind !== 'function' ? { relationGuess: true } : {}) }))
     },
   },
   {
@@ -701,9 +756,11 @@ export function extractOperations(sql) {
   while ((temporaryMatch = temporaryCreate.exec(text)) !== null) {
     temporaryEvents.push({ offset: temporaryMatch.index, action: 'create', target: canonical(temporaryMatch[1]) })
   }
-  const tableDrop = new RegExp(String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED})`, 'gi')
+  const tableDrop = new RegExp(String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED}(?:\s*,\s*${QUALIFIED})*)`, 'gi')
   while ((temporaryMatch = tableDrop.exec(text)) !== null) {
-    temporaryEvents.push({ offset: temporaryMatch.index, action: 'drop', target: canonical(temporaryMatch[1]) })
+    for(const target of temporaryMatch[1].matchAll(new RegExp(QUALIFIED,'g'))){
+      temporaryEvents.push({ offset:temporaryMatch.index, action:'drop', target:canonical(target[0]) })
+    }
   }
   temporaryEvents.sort((a,b)=>a.offset-b.offset)
   const liveTemporaryTables=new Set(),temporaryCleanupOffsets=new Set()
@@ -744,11 +801,60 @@ export function extractOperations(sql) {
     }
   }
 
+  const multiDrop = new RegExp(String.raw`\bdrop\s+(materialized\s+view|function|procedure|view|index|type|domain|schema|sequence)\s+(?:concurrently\s+)?(?:if\s+exists\s+)?([^;]+)`, 'gi')
+  const splitTargets = (value) => {
+    const targets=[];let start=0,depth=0,quoted=false
+    for(let index=0;index<value.length;index++){
+      const char=value[index]
+      if(char==='"')quoted=!quoted
+      else if(!quoted&&char==='(')depth++
+      else if(!quoted&&char===')')depth=Math.max(0,depth-1)
+      else if(!quoted&&depth===0&&char===','){targets.push(value.slice(start,index));start=index+1}
+    }
+    targets.push(value.slice(start));return targets
+  }
+  let multiMatch
+  while((multiMatch=multiDrop.exec(text))!==null){
+    const parts=splitTargets(multiMatch[2].replace(/\s+(?:cascade|restrict)\s*$/i,''))
+    if(parts.length<2)continue
+    const rawKind=multiMatch[1].toLowerCase().replace(/\s+/g,' '),kind=rawKind==='domain'?'type':rawKind
+    for(const part of parts){
+      const target=new RegExp(String.raw`^\s*(${QUALIFIED})`,'i').exec(part)
+      if(target)add({action:'drop',kind,target:canonical(target[1])},multiMatch.index)
+    }
+  }
+
   for (const { re, map } of DISPATCH_PATTERNS) {
     re.lastIndex = 0
     let m
     while ((m = re.exec(text)) !== null) for (const op of map(m)) add(op, m.index)
   }
+
+  // A keyword-less (or `on table`) grant is keyed as BOTH table and view
+  // (#3183) because the text alone cannot say which the name is. When this
+  // same migration CREATES the name, its kind is known: keep only that half,
+  // or a claim that correctly declares `table x` is refused for an undeclared
+  // `view x`. With no CREATE here (or a name created as both), keep both.
+  const createdKinds = new Map()
+  const noteCreated = (re, kind) => {
+    re.lastIndex = 0
+    let c
+    while ((c = re.exec(text)) !== null) {
+      const target = canonical(c[1])
+      if (!createdKinds.has(target)) createdKinds.set(target, new Set())
+      createdKinds.get(target).add(kind)
+    }
+  }
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:global\s+|local\s+|unlogged\s+)*table\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'table')
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:or\s+replace\s+)?(?:temp\s+|temporary\s+)?(?:recursive\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'view')
+  for (const op of [...seen.values()]) {
+    if (!op.relationGuess) continue
+    const kinds = createdKinds.get(op.target)
+    if (!kinds || kinds.size !== 1) continue
+    const other = kinds.has('table') ? 'view' : 'table'
+    seen.delete(`grant|${other}|${op.target}`)
+  }
+  for (const op of seen.values()) delete op.relationGuess
 
   return [...seen.values()].sort((a, b) =>
     `${a.kind} ${a.target} ${a.action}`.localeCompare(`${b.kind} ${b.target} ${b.action}`),
@@ -1111,21 +1217,23 @@ function isMigration(file) {
   )
 }
 
-function fetchFiles(repo, number, ref) {
-  const pr = ghJson(['api', `repos/${repo}/pulls/${number}`])
-  const allFiles = ghJson([
-    'api',
-    '--paginate',
-    `repos/${repo}/pulls/${number}/files?per_page=100`,
-  ])
-  if (!Number.isInteger(pr?.changed_files)) throw new Skip(`PR #${number} has no trustworthy changed_files count`)
-  if (pr.changed_files >= 3000) throw new Skip(`PR #${number} reaches GitHub's 3000-file limit`)
-  if (allFiles.length !== pr.changed_files) throw new Skip(`PR #${number} returned ${allFiles.length} of ${pr.changed_files} changed files`)
-  const files = allFiles.filter(isMigration)
-  return files.map((file) => ({
+// The file list comes from the shared open pull request snapshot, which proved
+// it complete against changed_files and refused the 3000-file cap when it was
+// gathered (scripts/lib/open-pr-files.mjs).
+function migrationFiles(repo, files, ref, readSql) {
+  return files.filter(isMigration).map((file) => ({
     path: file.filename,
-    sql: sqlAtRef(repo, file.filename, ref),
+    sql: readSql(repo, file.filename, ref),
   }))
+}
+
+function asSkip(fn) {
+  try {
+    return fn()
+  } catch (error) {
+    if (error instanceof OpenPullFilesError) throw new Skip(error.message)
+    throw error
+  }
 }
 
 /**
@@ -1169,7 +1277,10 @@ function baseBranchSource(repo, number, baseRef, headSha) {
   }
 }
 
-export function gatherSources(env = process.env) {
+export function gatherSources(
+  env = process.env,
+  { load = loadOpenPullFiles, readSql = sqlAtRef, baseSource = baseBranchSource, readPull = (repo, number) => ghJson(['api', `repos/${repo}/pulls/${number}`]) } = {},
+) {
   const repo = env.GITHUB_REPOSITORY
   if (!repo) throw new Skip('GITHUB_REPOSITORY is not set')
 
@@ -1193,32 +1304,29 @@ export function gatherSources(env = process.env) {
   if (!number) throw new Skip('not running on a pull request (no PR number)')
 
   if (!baseRef || !baseSha || !headSha) {
-    const pr = ghJson(['api', `repos/${repo}/pulls/${number}`])
+    const pr = readPull(repo, number)
     baseRef ??= pr.base?.ref
     baseSha ??= pr.base?.sha
     headSha ??= pr.head?.sha
   }
 
+  const snapshot = asSkip(() => load(repo, Number(number), { env }))
+
   const sources = [
-    { label: `PR #${number} (this PR)`, files: fetchFiles(repo, number, headSha) },
+    { label: `PR #${number} (this PR)`, files: migrationFiles(repo, snapshot.current.files, headSha, readSql) },
   ]
 
-  const open = ghJson([
-    'api',
-    '--paginate',
-    `repos/${repo}/pulls?state=open&per_page=100`,
-  ])
-  for (const pr of open) {
-    if (pr.number === Number(number)) continue
-    if (pr.draft) continue // a draft is not competing to merge yet
+  for (const pr of snapshot.others) {
+    if (Number(pr.number) === Number(number)) continue
+    if (pr.listed.draft) continue // a draft is not competing to merge yet
     sources.push({
-      label: `PR #${pr.number} "${pr.title}"`,
-      files: fetchFiles(repo, pr.number, pr.head?.sha ?? pr.head?.ref),
+      label: `PR #${pr.number} "${pr.listed.title}"`,
+      files: migrationFiles(repo, pr.files, pr.listed.headSha, readSql),
     })
   }
 
   if (baseRef && headSha) {
-    const base = baseBranchSource(repo, number, baseRef, headSha)
+    const base = baseSource(repo, number, baseRef, headSha)
     if (base) sources.push(base)
   }
 

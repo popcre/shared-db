@@ -13,7 +13,95 @@ import { join, dirname } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classifyMainTip, isDocumentationPath } from './check-main-tip-freshness.mjs'
+import { classifyBranchFreshness, classifyMainTip, isDocumentationPath, isProductionInertPath } from './check-main-tip-freshness.mjs'
+
+// #2758: a main that moved is not a refusal when the PR is independent of it.
+// Fixture: dispatched main D; PR branch off D adds a migration + .agent evidence.
+function branchFixture() {
+  const { repo, sha: dispatched } = makeRepo()
+  commitFiles(repo, { '.agent/contract.json': '{"h":"d"}\n', 'shared.mjs': 'export const a = 1\n' }, 'dispatched main')
+  git(repo, ['switch', '-q', '-c', 'pr'])
+  const head = commitFiles(repo, { 'supabase/migrations/20260911120000_pr.sql': 'create table pr_t (id int);\n', '.agent/contract.json': '{"h":"pr"}\n' }, 'pr')
+  git(repo, ['switch', '-q', 'main'])
+  return { repo, dispatched, head }
+}
+const branch = (repo, headSha, tipSha) => classifyBranchFreshness({ headSha, tipSha, gitRunner: (args) => git(repo, args) })
+
+test('arbitrary .agent code overlap refuses even when distant hunks merge cleanly', () => {
+  const { repo } = makeRepo()
+  try {
+    const lines = Array.from({ length: 40 }, (_, i) => `// line ${i}`)
+    commitFiles(repo, { '.agent/hook.mjs': lines.join('\n') }, 'shared agent code')
+    git(repo, ['switch', '-q', '-c', 'pr'])
+    const authored = [...lines]; authored[1] = '// PR change'
+    const head = commitFiles(repo, { '.agent/hook.mjs': authored.join('\n') }, 'PR changes agent code')
+    git(repo, ['switch', '-q', 'main'])
+    const main = [...lines]; main[38] = '// main change'
+    const tip = commitFiles(repo, { '.agent/hook.mjs': main.join('\n') }, 'main changes agent code')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, false); assert.match(result.reason, /main also changed \.agent\/hook.mjs/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('#2758: main moved by unrelated code, PR merges cleanly and touches none of it: accepted', () => {
+  const { repo, head } = branchFixture()
+  try {
+    const tip = commitFiles(repo, { 'scripts/other.mjs': 'export const x = 1\n', 'supabase/migrations/20260911110000_other.sql': 'select 2;\n' }, 'main moves')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, true, result.reason); assert.equal(result.independent, true)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('#2758: a branch that already merged main, with its own diff unchanged, is accepted', () => {
+  const { repo, head } = branchFixture()
+  try {
+    commitFiles(repo, { 'scripts/other.mjs': 'export const x = 1\n' }, 'main moves')
+    git(repo, ['switch', '-q', 'pr']); git(repo, ['merge', '-q', '--no-edit', 'main'])
+    const refreshed = git(repo, ['rev-parse', 'HEAD']).trim()
+    git(repo, ['switch', '-q', 'main'])
+    const tip = commitFiles(repo, { 'scripts/third.mjs': 'export const y = 1\n' }, 'main moves again')
+    const result = branch(repo, refreshed, tip)
+    assert.equal(result.ok, true, result.reason)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('#2758: an .agent-only overlap that merges cleanly is accepted', () => {
+  const { repo, head } = branchFixture()
+  try {
+    const tip = commitFiles(repo, { '.agent/completion.json': '{}\n', 'scripts/other.mjs': 'x\n' }, 'main moves with evidence')
+    assert.equal(branch(repo, head, tip).ok, true)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('POSITIVE CONTROL #2758: main changed a file the PR also changes: refused', () => {
+  const { repo } = branchFixture()
+  try {
+    git(repo, ['switch', '-q', 'pr'])
+    const head = commitFiles(repo, { 'shared.mjs': 'export const a = 2\n' }, 'pr edits shared')
+    git(repo, ['switch', '-q', 'main'])
+    const tip = commitFiles(repo, { 'shared.mjs': 'export const a = 1\nexport const b = 3\n' }, 'main edits shared')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, false); assert.match(result.reason, /REFUSED/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('POSITIVE CONTROL #2758: main took the same migration version: refused', () => {
+  const { repo, head } = branchFixture()
+  try {
+    const tip = commitFiles(repo, { 'supabase/migrations/20260911120000_other.sql': 'select 3;\n' }, 'main takes the version')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, false); assert.match(result.reason, /20260911120000/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+test('POSITIVE CONTROL #2758: an .agent overlap that conflicts is refused', () => {
+  const { repo, head } = branchFixture()
+  try {
+    const tip = commitFiles(repo, { '.agent/contract.json': '{"h":"main-later"}\n', 'scripts/other.mjs': 'x\n' }, 'main rewrites evidence')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, false); assert.match(result.reason, /conflict/i)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
 
 function git(repo, args) {
   return execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -296,5 +384,50 @@ test('POSITIVE CONTROL: a rename from code to documentation is still refused (#2
     assert.equal(sha.length, 40)
   } finally {
     rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+// #3153 / #3091 production run 35178463315: main moved from e460bd2c to 6be9fdac
+// by #3141, which changed only a test file and its .agent evidence pair.
+test('#3153: production tip moved only by a test file and .agent evidence is accepted in production mode', () => {
+  const { repo, sha } = makeRepo()
+  try {
+    const tip = commitFiles(repo, {
+      '.agent/completion.json': '{"x":1}\n',
+      '.agent/contract.json': '{"x":1}\n',
+      'scripts/test_production_business_risk_gate_source_identity_mutations.py': 'pass\n',
+    }, '#3141')
+    const refused = classify(repo, sha, tip)
+    assert.equal(refused.ok, false, 'the default (merge/preview) lane is unchanged')
+    const verdict = classifyMainTip({ mainSha: sha, tipSha: tip, gitRunner: (args) => git(repo, args), production: true })
+    assert.equal(verdict.ok, true, verdict.reason)
+    assert.match(verdict.reason, /production-inert/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('POSITIVE CONTROL #3153: production mode still refuses migrations, gate code, config and workflows', () => {
+  for (const path of [
+    'supabase/migrations/20260917013422_x.sql',
+    'scripts/production_business_risk_gate.py',
+    'scripts/check-main-tip-freshness.mjs',
+    'config/db-data-admin-property-source-coverage.json',
+    '.github/workflows/shared-supabase-migrations.yml',
+    'supabase/config.toml',
+    'scripts/production-verification-sidecars/20260917013422.json',
+    '.agent/nested/contract.json',
+    'test_top_level.py',
+  ]) {
+    assert.equal(isProductionInertPath(path), false, path)
+    const { repo, sha } = makeRepo()
+    try {
+      const tip = commitFiles(repo, { [path]: 'changed\n', 'scripts/foo.test.mjs': 'x\n' }, 'mixed')
+      const verdict = classifyMainTip({ mainSha: sha, tipSha: tip, gitRunner: (args) => git(repo, args), production: true })
+      assert.equal(verdict.ok, false, path)
+      assert.ok(verdict.reason.includes(path), verdict.reason)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
   }
 })

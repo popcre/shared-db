@@ -22,6 +22,12 @@ export class PreflightError extends Error {}
 export { SELF_CONTEXT }
 export const SELF_CHECK_RUN = 'merge'
 
+// Routing diagnostic from documents-only-merge-authorization.yml (#2715). It fails
+// on every code PR by design ("guarded code checks required"), so requiring it here
+// made every code PR unmergeable through the guarded lane (#2759). It is never a
+// required context; the mirrored required contexts are still enforced in full.
+export const ADVISORY_CONTEXTS = ['Documents-only merge authorization']
+
 // A skipped or neutral required check can still be refused by the merge API.
 // Accept only explicit success so that refusal happens before the merge lock.
 const REQUIRED_SUCCESS = new Set(['success'])
@@ -72,11 +78,47 @@ export function observedStates({ statuses = [], checkRuns = [] }) {
 export const REQUIRED_CHECKS_MIRROR = 'docs/verification/main-required-status-checks.json'
 export const MIRROR_BOOTSTRAP_MAIN_SHA = 'e0532e3c974a199f623f160f56416bdef4037461'
 export const PINNED_REQUIRED_CONTEXTS = Object.freeze([
+  // 'Agent work contract' joined the required list on 2026-09-08, the Switch 1
+  // action of issue #1403, one day after enforced mode was activated. The pin only
+  // ever defends against SHRINKING, so growth is recorded here deliberately.
+  'Agent work contract',
   'Cancelled work guard', 'Cross-PR object collision', 'Domain ownership',
   'Handoff contract', 'Intake pointer guard', 'Migration author lease',
   'Migration guarded merge authorization', 'Orchestrator marker guard',
   'Promotion contract tests (offline)', 'SQL migration guards', 'Tools offline tests',
 ])
+
+export const PREFLIGHT_SOURCE_PATH = 'scripts/check-required-checks-preflight.mjs'
+
+// The floor the origin/main mirror is judged against must come from origin/main too.
+// Reading it from the PROPOSED HEAD deadlocked the first time the pin grew: guarded
+// merge checks out the head, so the head's larger pin was compared against main's
+// not-yet-updated mirror and refused the one commit that would have updated it --
+// and that refusal lands on the only merge path there is. It was also the last place
+// a proposed head could influence the list used to judge itself, which the comment on
+// readRequiredChecksMirror already said must never happen. Reading main's own pin
+// fixes both. Growth stays one-directional: the head's pin must still contain every
+// name main's pin has, so a head cannot quietly drop a floor entry.
+export function parsePinnedFloor(source, where) {
+  const withoutComments = String(source).replace(/\/\/.*/g, '')
+  const block = /PINNED_REQUIRED_CONTEXTS\s*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/.exec(withoutComments)
+  if (!block) throw new PreflightError(`${PREFLIGHT_SOURCE_PATH} on ${where} carries no readable PINNED_REQUIRED_CONTEXTS, so the pinned floor is unknown`)
+  const names = [...block[1].matchAll(/'([^']*)'/g)].map((m) => m[1])
+  if (names.length === 0) throw new PreflightError(`PINNED_REQUIRED_CONTEXTS in ${PREFLIGHT_SOURCE_PATH} on ${where} is empty, which is not the same as "nothing is required"`)
+  return names
+}
+
+export function readPinnedFloor(root = process.cwd(), run = execFileSync) {
+  let raw
+  try { raw = run('git', ['show', `origin/main:${PREFLIGHT_SOURCE_PATH}`], { encoding: 'utf8', cwd: root, maxBuffer: 8 * 1024 * 1024 }) }
+  catch (e) {
+    throw new PreflightError(`the trusted origin/main copy of ${PREFLIGHT_SOURCE_PATH} is missing or unreadable (${sanitize(e.message)}), so the pinned floor is unknown`)
+  }
+  const floor = parsePinnedFloor(raw, 'origin/main')
+  const dropped = floor.filter((context) => !PINNED_REQUIRED_CONTEXTS.includes(context))
+  if (dropped.length) throw new PreflightError(`this head drops contexts origin/main still pins: ${dropped.join(', ')}. The pin may only grow.`)
+  return floor
+}
 
 export function parseMirror(raw, where) {
   let parsed
@@ -107,7 +149,7 @@ export function readRequiredChecksMirror(root = process.cwd(), run = execFileSyn
   if (contexts.filter((c) => c !== SELF_CONTEXT).length === 0) {
     throw new PreflightError(`${REQUIRED_CHECKS_MIRROR} names no context other than ${SELF_CONTEXT}, so the mirror would test nothing`)
   }
-  const missingPinned = PINNED_REQUIRED_CONTEXTS.filter((context) => !contexts.includes(context))
+  const missingPinned = readPinnedFloor(root, run).filter((context) => !contexts.includes(context))
   if (missingPinned.length) throw new PreflightError(`the trusted origin/main mirror is a stale subset; missing pinned contexts: ${missingPinned.join(', ')}`)
   return contexts
 }
@@ -119,7 +161,7 @@ export function evaluateWithoutRequiredList({ statuses, checkRuns, reason, mirro
   requireContexts(mirrorContexts.filter((c) => c !== SELF_CONTEXT), states, `main's required list is unreadable (${reason}), so the committed mirror ${REQUIRED_CHECKS_MIRROR} was used`)
   // Half two: everything else that reported must also be green, so a context added
   // live but not yet mirrored cannot slip through once it starts reporting.
-  const bad = [...states].filter(([name, state]) => ![SELF_CONTEXT, SELF_CHECK_RUN].includes(name) && !REPORTED_SUCCESS.has(state))
+  const bad = [...states].filter(([name, state]) => ![SELF_CONTEXT, SELF_CHECK_RUN, ...ADVISORY_CONTEXTS.filter((c) => !mirrorContexts.includes(c))].includes(name) && !REPORTED_SUCCESS.has(state))
   if (bad.length) throw new PreflightError(`${describe(bad)} on the reviewed head. The required list came from the committed mirror, so EVERY reported check must pass. No retry can clear this, so the merge lane was not taken.`)
   return { required: mirrorContexts.filter((c) => c !== SELF_CONTEXT).length, mode: 'committed-mirror' }
 }
@@ -281,13 +323,43 @@ export function gatherPreflightInput(env = process.env, deps = { json }) {
   }
 }
 
-export function main(env = process.env) {
+// popcre/ai-devops#507 (a): a head whose checks are only still running, or have not
+// registered yet, is waited on instead of refused. Nothing failing is ever waited on,
+// every pass is re-read from GitHub in full, and the same refusal is printed once the
+// budget is spent, so the gate is exactly as strict as before; it only stops turning
+// "not finished yet" into a lost dispatch.
+export function isWaitableRefusal(message) {
+  const text = String(message ?? '')
+  return /still running:|never reported:/.test(text) && !/failing:/.test(text)
+}
+export async function waitForPreflight(env = process.env, deps = {}) {
+  const gather = deps.gather ?? gatherPreflightInput
+  const evaluate = deps.evaluate ?? evaluatePreflight
+  const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
+  const now = deps.now ?? Date.now
+  const log = deps.log ?? ((line) => console.log(line))
+  const budgetMs = Math.max(0, Number(env.PREFLIGHT_WAIT_SECONDS ?? 900)) * 1000
+  const intervalMs = Math.max(1, Number(env.PREFLIGHT_POLL_SECONDS ?? 30)) * 1000
+  const started = now()
+  for (let attempt = 1; ; attempt++) {
+    try { return evaluate(gather(env)) }
+    catch (e) {
+      if (!(e instanceof PreflightError) || !isWaitableRefusal(e.message)) throw e
+      const waited = now() - started
+      if (waited + intervalMs > budgetMs) throw new PreflightError(`${e.message} Waited ${Math.round(waited / 1000)}s for the checks to finish.`)
+      log(`Waiting for checks to finish (attempt ${attempt}, ${Math.round(waited / 1000)}s so far): ${e.message.split(' No retry')[0]}`)
+      await sleep(intervalMs)
+    }
+  }
+}
+
+export async function main(env = process.env, deps = {}) {
   try {
-    const { required, mode } = evaluatePreflight(gatherPreflightInput(env))
+    const { required, mode } = await waitForPreflight(env, deps)
     console.log(mode === 'required-contexts'
       ? `Required status checks satisfied on the reviewed head (${required} contexts).`
       : `main's required list was unreadable from the API, so the committed mirror was used: all ${required} mirrored contexts and every other check reported on the reviewed head are passing.`)
     return 0
   } catch (e) { console.error(`REFUSED: ${e.message}`); return 2 }
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exitCode = main()
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exitCode = await main()

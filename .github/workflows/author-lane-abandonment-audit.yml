@@ -1,0 +1,107 @@
+# Guard: is an author lane expired, and is anything queued behind it? (issue #2301)
+#
+# WHY THIS WORKFLOW EXISTS
+# ------------------------
+# An author claim carries a lease. When the lease runs out, the claim stays
+# locked and the lane stays occupied, and NOTHING reports it. The queue behind it
+# is invisible until somebody tries to allocate and is refused, which can be days
+# later — and the refusal names the lock, not the fact that the lock's author
+# walked away. The one question nobody asks routinely is "which lanes are expired
+# right now, and how many tasks are waiting behind each one?"
+#
+#   AN EXPIRED LEASE IS NOT AN ABANDONED ONE.
+#
+# That distinction is the whole design (plan_author_lane_abandonment_lifecycle.md,
+# Step 4). Expiry is a clock; abandonment is a fact somebody wrote down in an
+# abandonment-audit issue. This job REPORTS expiry. It never transitions a claim,
+# and it cannot: it calls `--abandonment-audit`, which strips the reconciler's
+# write hooks before the reconciler ever sees them, so a mutation is a thrown
+# error rather than a silent write. Relinquishment stays a deliberate, guarded,
+# evidence-backed command an operator runs by hand.
+#
+# WHY A DEDICATED WORKFLOW
+# ------------------------
+#   * NOT the lane CLI's own callers — those run when somebody is already doing
+#     lane work. A lane that expired because its author stopped doing lane work
+#     is precisely the case nobody is there to trigger.
+#   * Hourly, because a lease is measured in hours and a queue that waits a whole
+#     day behind a dead lane has already cost the day.
+#   * workflow_dispatch, so a session can ask the live state on demand before
+#     concluding anything about who holds a lane.
+#
+# NO `push:` OR `pull_request:` TRIGGER, ON PURPOSE. Expiry is created by time
+# passing, not by anyone changing a file, so no commit-shaped trigger can catch
+# it and a `paths:` filter would be dishonest (AGENTS.md 5.2).
+#
+# NO ISSUES, NO COMMENTS, EVER. This job files nothing. An hourly monitor that
+# writes is an hourly monitor that produces duplicates — this repository has
+# already generated 25 of them once. The failing run and its job summary ARE the
+# report, and the token below cannot write even if a future step tried.
+#
+# THREE EXIT CODES, NOT TWO. 0 is a clean hour. 2 means a claim is expired and a
+# human must decide. 3 means the audit COULD NOT READ the state and must never be
+# mistaken for a clean hour. Both 2 and 3 fail the job; the summary says which.
+
+name: Author Lane Abandonment Audit
+
+on:
+  schedule:
+    # Hourly, off the top of the hour to stay out of the crowd.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+# READ ONLY, AND THAT IS LOAD-BEARING. The audit reads claims, work issues and
+# pull requests and writes nothing anywhere. Granting `issues: write` here would
+# make the "it never files an issue" promise a matter of what the steps happen to
+# do; withholding it makes the promise structural.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: author-lane-abandonment-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Author lane abandonment audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A guard whose own tests are not run is a guard nobody has proven fires.
+      # These specifically prove the audit cannot write, that expiry and
+      # unreadability are different exit codes, and that an unreadable queue
+      # depth reports UNKNOWN rather than zero.
+      - name: Prove the audit is read-only and fails closed
+        run: node --test scripts/orchestrator-flow/reconcile.test.mjs
+
+      - name: Report expired author lanes
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/manage-migration-author-lanes.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
+          CODE=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Author lane abandonment audit"
+            echo
+            echo '```json'
+            cat /tmp/abandonment-audit.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$CODE" in
+            0) echo "No expired author lanes." ;;
+            2) echo "::error::Expired author lane(s) detected. Each report names the claim, its owner and how many tasks are queued behind it. An expired lease is NOT abandonment — relinquish only with the guarded, evidence-backed command." ;;
+            *) echo "::error::The abandonment audit COULD NOT RUN (exit ${CODE}). Nothing was proven about any lane — do not read this as no expired lanes." ;;
+          esac
+          exit "$CODE"

@@ -38,6 +38,8 @@
  * turned into the other. That collapse is the exact defect B1 was built for.
  */
 
+import { AUTHORIZATION_FIELD } from './orchestrator-admission.mjs'
+
 /**
  * The fixed session identifier for the sole shared-db orchestrator.
  * Owner instruction, Albert Hazan, 2026-08-26.
@@ -60,6 +62,11 @@ export const ROUTING_BLOCK = 'orchestrator-routing'
  * could be sent to", never "proven reachable". Nothing here can prove the
  * session exists or is running. Narrowed 2026-08-26 after independent Codex
  * GPT-5.6 review found the word doing more work than the code supports.
+ *
+ * Which reviewer family an engine's orchestrator must never draw does NOT live
+ * here: it is reviewer-draw knowledge and lives in ENGINE_REVIEWER_EXCLUSION in
+ * manage-migration-author-lanes.mjs (issue #3232). The lane test suite asserts
+ * this vocabulary and that map agree key-for-key.
  */
 export const ENGINES = {
   codex: {
@@ -78,6 +85,20 @@ export const ENGINES = {
      */
     idPattern: /^(local|remote)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     idDescription: 'a Claude `sessionId` such as `local_<uuid>`, as reported by the session itself',
+  },
+  zcode: {
+    /**
+     * A ZCode session id as the harness reports it (`ZCODE_SESSION_ID`), e.g.
+     * `sess_<uuid>`. The `sess_` prefix is part of the id.
+     *
+     * ZCode runs on the GLM engine (GLM-5.3), which matters one hop away in
+     * manage-migration-author-lanes.mjs: the owner ruled on 2026-09-17 (issue
+     * #3232) that GLM must never review GLM code, so a zcode orchestrator must
+     * never draw the glm reviewers. ZCode is NOT a reviewer — adding it as one
+     * was rejected by the same ruling.
+     */
+    idPattern: /^sess_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    idDescription: 'a ZCode session id such as `sess_<uuid>`, as reported by the harness (`ZCODE_SESSION_ID`)',
   },
 }
 
@@ -282,7 +303,9 @@ function freeze(fields, engine, routeId) {
     howToReach:
       engine === 'codex'
         ? `Codex \`codex-reply\` with threadId ${routeId}`
-        : `Claude cross-session message to sessionId ${routeId}`,
+        : engine === 'zcode'
+          ? `ZCode \`zcode --resume\` with session id ${routeId} — the same headless resume ai-blocker-watch uses to wake a waiting zcode session`
+          : `Claude cross-session message to sessionId ${routeId}`,
   }
 }
 
@@ -292,5 +315,12 @@ function freeze(fields, engine, routeId) {
  */
 export function renderRoutingBlock(values) {
   const lines = REQUIRED_FIELDS.map((field) => `${field}: ${values[field] ?? ''}`)
+  // #2318. `authorization` is NOT in REQUIRED_FIELDS on purpose: adding it there
+  // would fail every marker opened before admission existed, including the live
+  // one, for a field nobody could have written. `validateAdmission` enforces it
+  // with its own dated cutoff. It is rendered here so a NEW marker is authored
+  // with the field present and blank rather than silently missing -- and blank
+  // is refused, which is the intended outcome for a session with no grounds.
+  lines.push(`${AUTHORIZATION_FIELD}: ${values[AUTHORIZATION_FIELD] ?? ''}`)
   return ['```' + ROUTING_BLOCK, ...lines, '```'].join('\n')
 }

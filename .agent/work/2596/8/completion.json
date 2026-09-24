@@ -6,8 +6,19 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2596/8",
   "contract_sha256": "27eec12a0e88586e5e193c4e51f3bbbf62bc219d99a5a6e2023383a3c5f5479f",
-  "head_sha": "0000000000000000000000000000000000000000",
-  "files_changed": [],
+  "head_sha": "b4473de7406716154c6c70e46b13fe9294c942d8",
+  "files_changed": [
+    ".agent/work/2596/8/completion.json",
+    ".agent/work/2596/8/contract.json",
+    ".github/workflows/agent-work-contract.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "AGENTS.md",
+    "plan_bounded_session_handover.md",
+    "scripts/check-closeout-readiness.mjs",
+    "scripts/check-closeout-readiness.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
@@ -24,5 +35,6 @@
   ],
   "assumptions_resolved": [
     "Refreshed from current main; merge conflicts in four files resolved by keeping both sides; evidence moved to keyed gen 8 path; paired handoff retired because this PR closes #2596."
-  ]
+  ],
+  "stop_conditions_hit": []
 }

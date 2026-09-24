@@ -21,19 +21,21 @@
 // An assignment is not an approval and an approval at an older head is not an
 // approval of these bytes. Both are required, both pinned to the same exact SHA.
 //
-// MERGED PULL REQUESTS (#2839): once GitHub reports the pull request merged, this
-// gate stops being the live reviewer check and becomes an AUDIT. It passes only
-// if the newest guarded-merge status on the exact head, at or before merged_at,
-// is the guarded lane's success. It does NOT re-read reviewer records, so a later
-// refusal or archived verdict does not rewrite a lawful merge. It proves that an
-// unrevoked authorization existed at merge time -- not that the guarded lane
-// itself performed the merge (a cancelled run can leave a success standing), and
-// not which pull request it was posted for when two share a head SHA. It also
-// accepts the documents-only lane's status for a prose-only PR (see
-// DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION). The live PR is now always read once,
-// even when REQUESTED_SHA is set; an unreadable PR refuses. A guarded-merge
-// re-run against an already-merged PR is satisfied by the earlier run's status
-// (self-referential, harmless: the merge step itself then fails).
+// MERGED-PR AUDIT (#2839): an OPT-IN read path, selected only by
+// APPROVAL_AUDIT=merged. Without it this gate is the live reviewer check for
+// every caller, merged or not -- the automatic-promotion re-proof runs it on a
+// merged source PR and must keep its durable exact-head verdict re-proof. In
+// audit mode it passes only if the newest merge-authorization status on the
+// exact head, at or before merged_at, is the guarded lane's success (or, for a
+// PR the documents-only lane's own classifier admits, that lane's success). It
+// does NOT re-read reviewer records, so a later refusal or archived verdict does
+// not rewrite a lawful merge. It proves an unrevoked authorization existed at
+// merge time -- not that the guarded lane itself performed the merge (a
+// cancelled run can leave a success standing), not which pull request it was
+// posted for when two share a head SHA, and it never observes a post-merge
+// revocation. merge_commit_sha is shape-checked and reported only; it is not
+// bound to the head. An unknown PR state or unreadable PR refuses.
+// Usage: APPROVAL_AUDIT=merged PR_NUMBER=<n> node scripts/check-exact-head-approval.mjs
 //
 // WHAT THIS GATE DOES NOT CHECK -- stated here so nobody reads more into a pass
 // than it carries. It enforces `an assignment exists at this head` AND `an approval
@@ -67,7 +69,7 @@ import { pathToFileURL } from 'node:url'
 import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository, selectNewestCommitStatus } from './manage-migration-author-lanes.mjs'
 import { approvalLine, evidenceTiedToHead, refusalLine, trustedVerdictEvidence, unambiguouslyTiedToHead } from './lib/review-verdict.mjs'
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, isValidatedVerdictArtifact, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact } from './lib/review-verdict-artifact.mjs'
-import { changedPathsFromPullRequestFiles, classifyChangedPaths } from './lib/documents-only-change.mjs'
+import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 import { resolveBaseRef, gitProbe } from './lib/resolve-base-ref.mjs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
@@ -379,39 +381,49 @@ export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mer
   return row
 }
 
+export const MERGED_AUDIT_MODE = 'merged'
+
+function gatherMergedAuditInput(env, pr, readJson, readPages) {
+  const livePr = readJson(['api', `repos/${REPO}/pulls/${pr}`])
+  const prState = String(livePr?.state ?? '').toLowerCase()
+  const merged = livePr?.merged === true || Boolean(livePr?.merged_at)
+  if (prState === 'open' && merged) throw new ApprovalCheckError(`pull request #${pr} reports an inconsistent open-and-merged state; approval timing cannot be audited safely`)
+  if (prState !== 'closed') throw new ApprovalCheckError(`merged audit requires a closed, merged pull request; #${pr} reports state '${prState || 'unreadable'}' -- use the live gate (unset APPROVAL_AUDIT) for an open pull request`)
+  if (!merged) throw new ApprovalCheckError(`pull request #${pr} is closed without merge; there is no merge authorization event to audit`)
+  const mergedAt = String(livePr?.merged_at ?? '')
+  const mergeCutoffMs = Date.parse(mergedAt)
+  const mergeCommitSha = String(livePr?.merge_commit_sha ?? '').toLowerCase()
+  if (!Number.isFinite(mergeCutoffMs)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no readable merge timestamp for its approval audit`)
+  if (!/^[0-9a-f]{40}$/.test(mergeCommitSha)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no exact merge commit for its approval audit`)
+  const liveHead = String(livePr?.head?.sha ?? '').toLowerCase()
+  const headSha = String(env.REQUESTED_SHA || liveHead).toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(headSha) || liveHead !== headSha) throw new ApprovalCheckError(`pull request #${pr} merge audit requires its exact merged head SHA`)
+  // The guarded merge writes this server-timestamped status only after it has
+  // re-proved the exact-head approval while holding the exclusive merge lock.
+  // Status history preserves the rule and evidence actually used for the merge.
+  const statuses = readPages(`repos/${REPO}/commits/${headSha}/statuses?per_page=100`)
+  // Bound to the producer's own classifier (documents-only-merge-authorization
+  // uses classifyLightweightMergePullRequestFiles), so a PR that lane lawfully
+  // authorized is never refused here by a stricter rule.
+  const isDocumentsOnly = () => classifyLightweightMergePullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`)).documentsOnly
+  const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly })
+  return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, headSha, authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
+}
+
 export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   const { json: readJson = json, pages: readPages = pages } = deps
   let event = {}; if (env.GITHUB_EVENT_PATH) event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
   const pr = Number(env.PR_NUMBER || event.pull_request?.number); if (!pr) throw new ApprovalCheckError('PR number is unavailable')
-  // #2839: the same predicate has two valid time horizons. While a pull request
-  // is open it is the live merge gate and must read every current reviewer
-  // record. Once GitHub says it merged, re-running it is an audit of the records
-  // that existed when the merge happened; later failed review attempts cannot
-  // rewrite history from PASS to REFUSED. A closed PR with no merge has no merge
-  // authorization event to audit, so it refuses instead of inventing a cutoff.
-  const livePr = readJson(['api', `repos/${REPO}/pulls/${pr}`])
-  const prState = String(livePr?.state ?? '').toLowerCase()
-  const merged = livePr?.merged === true || Boolean(livePr?.merged_at)
-  if (prState === 'closed' && !merged) throw new ApprovalCheckError(`pull request #${pr} is closed without merge; there is no merge authorization event to audit`)
-  if (prState === 'open' && merged) throw new ApprovalCheckError(`pull request #${pr} reports an inconsistent open-and-merged state; approval timing cannot be audited safely`)
-  const headSha = String(env.REQUESTED_SHA || livePr?.head?.sha || '')
-  if (merged) {
-    const mergedAt = String(livePr?.merged_at ?? '')
-    const mergeCutoffMs = Date.parse(mergedAt)
-    const mergeCommitSha = String(livePr?.merge_commit_sha ?? '').toLowerCase()
-    if (!Number.isFinite(mergeCutoffMs)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no readable merge timestamp for its approval audit`)
-    if (!/^[0-9a-f]{40}$/.test(mergeCommitSha)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no exact merge commit for its approval audit`)
-    if (!/^[0-9a-f]{40}$/i.test(headSha) || String(livePr?.head?.sha ?? '').toLowerCase() !== headSha.toLowerCase()) throw new ApprovalCheckError(`pull request #${pr} merge audit requires its exact merged head SHA`)
-    // The guarded merge writes this server-timestamped status only after it has
-    // re-proved the exact-head approval while holding the exclusive merge lock.
-    // Status history is the historical authority: it preserves the rule and
-    // evidence result actually used for the merge, so later reviewer records or
-    // later changes to this checker cannot rewrite a lawful merge into a refusal.
-    const statuses = readPages(`repos/${REPO}/commits/${headSha}/statuses?per_page=100`)
-    const isDocumentsOnly = () => classifyChangedPaths(changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))).documentsOnly
-    const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly })
-    return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, headSha: headSha.toLowerCase(), authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
-  }
+  // #2839: the same predicate has two valid time horizons. The DEFAULT path is
+  // always the live gate, merged or not: every existing caller (the guarded
+  // merge, the merge queue, and the automatic-promotion re-proof, whose source
+  // PR is merged by construction) keeps its live exact-head verdict re-proof.
+  // Only an explicit APPROVAL_AUDIT=merged opts in to the separate audit read
+  // path, which judges a merged PR by the records as they stood at merge time so
+  // later reviewer records cannot rewrite a lawful merge into a refusal.
+  if (env.APPROVAL_AUDIT !== undefined && env.APPROVAL_AUDIT !== '' && env.APPROVAL_AUDIT !== MERGED_AUDIT_MODE) throw new ApprovalCheckError(`APPROVAL_AUDIT must be '${MERGED_AUDIT_MODE}' or unset; got '${env.APPROVAL_AUDIT}'`)
+  if (env.APPROVAL_AUDIT === MERGED_AUDIT_MODE) return gatherMergedAuditInput(env, pr, readJson, readPages)
+  const headSha = String(env.REQUESTED_SHA || readJson(['api', `repos/${REPO}/pulls/${pr}`])?.head?.sha || '')
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a
   // failure keeps its own ref under the replacement namespace, pinned to the SAME

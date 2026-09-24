@@ -1417,7 +1417,8 @@ test('the active rotation is exactly the current models, in a stable order',()=>
   // weekly account-usage rotation; restoring it is a one-line deletion from
   // RETIRED_REVIEWERS and this assertion reverts with it.
   // kimi-k3 was paused again on 2026-09-22 (owner instruction): the account has
-  // been out of credit since 2026-09-17, and the live pool is exactly four.
+  // been out of credit since 2026-09-17. With deepseek-v4.1-flash added on
+  // 2026-09-23 (issue #3468) the live pool is exactly five.
   assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash'])
   assert.ok(RETIRED_REVIEWERS.includes('kimi-k3'),'kimi-k3 stays paused until its account has credit again')
   assert.equal(reviewerReadsRepository('kimi-k3'),true,'pausing the account must not invalidate the verdicts it already recorded')

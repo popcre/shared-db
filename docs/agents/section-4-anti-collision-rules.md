@@ -518,7 +518,9 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    code-review verdict from a reviewer whose wrapper cannot read the repository.
    Every drawable reviewer is given a real checkout: Grok via `--cwd`, GLM and
    Muse via an `ai-review-sandbox` clone, Gemini via a disposable sandbox copy of
-   the checkout under `--sandbox`, and Kimi via a read-only agent profile. The
+   the checkout under `--sandbox`, Kimi via a read-only agent profile, and
+   DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
    retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 

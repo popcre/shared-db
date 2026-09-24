@@ -503,8 +503,9 @@ export const REVIEWERS = Object.freeze([
 // PAUSED 2026-09-22 (owner instruction, issue #3423): 'kimi-k3'.
 // The Kimi account has been out of credit and suspended since 2026-09-17, so
 // every draw that landed on it failed and left the PR "waiting for a reviewer"
-// until a replacement round. The owner confirmed the live pool is exactly four:
-// Grok, Qwen, Muse and Gemini (GLM stays paused above). This is a PAUSE, not a
+// until a replacement round. The owner then confirmed the live pool as Grok,
+// Qwen, Muse and Gemini (GLM stays paused above); DeepSeek V4.1 Flash joined it
+// on 2026-09-23 (issue #3468), so the live pool is five. This is a PAUSE, not a
 // retirement: restoring Kimi is a one-line deletion from this list once the
 // account has credit AND `AI_KIMI_CALLER=claude ai-kimi doctor` passes. Its
 // REVIEWERS row stays so every durable verdict it recorded still authorizes.

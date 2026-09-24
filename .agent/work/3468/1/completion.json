@@ -9,6 +9,8 @@
   "head_sha": "9fa73e92886b56f0913dec95c180143a4ff3456e",
   "base_sha": "107d9066cb05e701418d9cde76ee988224f4ed2c",
   "files_changed": [
+    ".agent/work/3468/1/completion.json",
+    ".agent/work/3468/1/contract.json",
     "AGENTS.md",
     "docs/agents/section-4-anti-collision-rules.md",
     "scripts/manage-migration-author-lanes.mjs",

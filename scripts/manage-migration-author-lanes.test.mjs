@@ -8707,6 +8707,7 @@ test('reap refuses when a legacy lease verdict is unreadable (#3449)',()=>{
 test('reap retires a superseded legacy lease once its PR merged with a verdict at the merged head (#3449)',()=>{
   const {io,legacy}=legacyLeaseIo()
   const superseded=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40),mergedHead:'f'.repeat(40),verdictHead:'f'.repeat(40)})
+  assert.deepEqual(reapAbandonedReviewLeases({},new Date(),io).leases.map((row)=>row.reason),['legacy-merged-superseded-head-verdict-recorded'])
   const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
   assert.equal(applied.reaped.length,1);assert.equal(io.refs.has(superseded),false)
 })
@@ -8717,6 +8718,13 @@ test('reap keeps a legacy lease that is live or whose verdict is for an unrelate
   const elsewhere=legacy(1,{issue:2,pr:22,headSha:'b'.repeat(40),verdictHead:'9'.repeat(40)})
   const applied=reapAbandonedReviewLeases({applyRecovery:true},new Date(),io)
   assert.equal(applied.reaped.length,0);assert.ok(io.refs.has(live));assert.ok(io.refs.has(elsewhere))
+})
+
+test('reap keeps a legacy lease whose verdict is for another slot (#3449)',()=>{
+  const {io,legacy}=legacyLeaseIo()
+  const ref=legacy(0,{issue:1,pr:21,headSha:'a'.repeat(40),verdict:false})
+  giveVerdict(io,{issue:1,pr:21,headSha:'a'.repeat(40),slot:2})
+  assert.equal(reapAbandonedReviewLeases({applyRecovery:true},new Date(),io).reaped.length,0);assert.ok(io.refs.has(ref))
 })
 
 test('reap retires legacy and v2 leases together (#3449)',()=>{

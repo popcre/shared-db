@@ -52,6 +52,7 @@ import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TY
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
 import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
+import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
 import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
 import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
 
@@ -542,6 +543,15 @@ export function reviewerReadsRepository(name, reviewers=REVIEWERS){
   return reviewers.find((row)=>row.name===name)?.readsRepository===true
 }
 
+// #2831. The sibling fact: a reviewer is drawable for a governed review only if its
+// wrapper can end a review with the governed `VERDICT: <decision> <head>` line. The
+// list lives in scripts/lib/reviewer-capabilities.mjs, which the governed runner also
+// reads, so the allocator and the runner cannot disagree. Unknown names fail closed.
+export function reviewerEmitsGovernedVerdict(name, reviewers=REVIEWERS){
+  const row=reviewers.find((candidate)=>candidate.name===name)
+  return Boolean(row)&&wrapperEmitsGovernedVerdict(row.wrapper)
+}
+
 // #2079 ROUND 3. The two directions need OPPOSITE defaults for an unknown name.
 // The merge gate asks "may this verdict authorize?" and an unknown name must
 // answer no -- that is `reviewerReadsRepository` above. Replacement asks "may this
@@ -798,6 +808,10 @@ export const EXCLUSIVE_REFS = Object.freeze({
 // HTTP client a checkout -- and it exists so the recovery route this tool NAMES
 // is one an operator can actually run, instead of forcing a misdescription as
 // `wrapper_terminal_failure`.
+// `reviewer_cannot_emit_governed_verdict` (#2831) is its sibling: the reviewer is
+// healthy but its wrapper cannot end a review with the governed verdict line, so the
+// slot can never be satisfied. Like the code above it asserts no fault; it exists so a
+// slot already spent on such a reviewer can be redirected honestly.
 // `review_target_superseded` is the one code that blames NOBODY: the PR head
 // moved (or the PR closed) while a healthy reviewer was mid-review, and the
 // runner refused with "review target is no longer the exact open PR head".
@@ -807,7 +821,7 @@ export const EXCLUSIVE_REFS = Object.freeze({
 // provider as failed on that head. Never use a provider code for this case.
 export const REVIEW_TARGET_SUPERSEDED = 'review_target_superseded'
 export const SLOT_INDEPENDENCE_CONFLICT = 'slot_independence_conflict'
-export const TERMINAL_FAILURE_CODES = Object.freeze(['insufficient_quota','provider_unavailable','local_dependency_unavailable','wrapper_terminal_failure','turn_limit_cancelled','reviewer_cannot_read_repository',REVIEW_TARGET_SUPERSEDED])
+export const TERMINAL_FAILURE_CODES = Object.freeze(['insufficient_quota','provider_unavailable','local_dependency_unavailable','wrapper_terminal_failure','turn_limit_cancelled','reviewer_cannot_read_repository','reviewer_cannot_emit_governed_verdict',REVIEW_TARGET_SUPERSEDED])
 function reviewTargetSuperseded(prRow,headSha){return Boolean(prRow?.state)&&(String(prRow.state).toLowerCase()!=='open'||(/^[0-9a-f]{40}$/i.test(String(prRow?.head?.sha??''))&&String(prRow.head.sha).toLowerCase()!==String(headSha).toLowerCase()))}
 
 export const QUEUE_STATUSES = new Set(['ready','blocked','owner-decision'])
@@ -1863,13 +1877,14 @@ export function assertReviewerDrawReadiness(pr,io=githubIo){
   try{live=io.getPr(Number(pr))}catch{return null}
   if(!live||typeof live!=='object')return null
   if(live.draft===true)throw new LaneError(`PR #${pr} is still a DRAFT, so no reviewer was drawn and no reviewer capacity was spent. A draft pull request cannot be merged, so a verdict on it could not be acted on. Mark the pull request ready for review, then assign a reviewer.`)
-  // DELIBERATELY NOT CHECKED: closed/merged state. The governed review of PR #3338
-  // suggested refusing a non-open pull request as the same waste class. It is not
-  // added, because issue #2915 -- delivered by cdc74cb5 and 3cef6b68 -- exists
-  // precisely so that a MERGED pull request bound by the verified merged-PR issue
-  // binding CAN be assigned a reviewer and receive an exact-head verdict. Refusing a
-  // non-open PR here would silently undo that capability, which is a worse defect than
-  // the capacity it would save. The binding's own refusals already bound that path.
+  // Closed-and-UNMERGED refuses (issue #3348). A merged pull request stays drawable:
+  // issue #2915 lets a MERGED pull request bound by the verified merged-PR issue binding
+  // receive an exact-head verdict, and a merged PR always carries merged_at. Only a PR
+  // that is closed AND definitely not merged refuses, because a verdict on an abandoned
+  // PR can never be acted on. When neither merge field is present the payload cannot
+  // tell merged from abandoned, so it fails OPEN and proceeds exactly as before.
+  const mergeFieldsPresent=live.merged!==undefined||live.merged_at!==undefined
+  if(String(live.state??'').toLowerCase()==='closed'&&mergeFieldsPresent&&live.merged!==true&&!live.merged_at)throw new LaneError(`PR #${pr} is CLOSED without being merged, so no reviewer was drawn and no reviewer capacity was spent. A verdict on an abandoned pull request can never be acted on. Reopen the pull request (or open a new one), then assign a reviewer.`)
   if(live.mergeable===false)throw new LaneError(`PR #${pr} conflicts with its base branch (GitHub reports mergeable=false), so no reviewer was drawn and no reviewer capacity was spent. Bring the branch up to date with main, resolve the conflict, push, then assign a reviewer.`)
   return {draft:false,mergeable:live.mergeable===undefined?null:live.mergeable}
 }
@@ -2399,13 +2414,11 @@ export const githubIo = {
   // audit while carrying a valid db-work-scope block. Coordination issues
   // (db-claim, orchestrator-marker) are the only exclusions; a missing db-work
   // label on anything else is now a reported defect, never a silent skip.
-  openWorkIssues(pager = ghPaginated) {
-    const rows = pager(`repos/${REPO}/issues?state=open&per_page=100`)
-    return rows.filter((x)=>!x.pull_request)
-      .map((x)=>({ number:x.number, title:x.title, body:x.body, createdAt:x.created_at, labels:(x.labels??[]).map((l)=>l.name) }))
-      .filter((x)=>!x.labels.some((name)=>COORDINATION_LABELS.has(name)))
-  },
-  openIssueNumbers() { return ghPaginated(`repos/${REPO}/issues?state=open&per_page=100`).filter((x)=>!x.pull_request).map((x)=>x.number) },
+  openWorkIssues(pager = ghPaginated) { return workIssuesFromRows(pager(`repos/${REPO}/issues?state=open&per_page=100`)) },
+  openIssueNumbers(pager = ghPaginated) { return openIssueNumbersFromRows(pager(`repos/${REPO}/issues?state=open&per_page=100`)) },
+  // #2787: the queue audit lists open issues ONCE and derives claims, work issues and
+  // open numbers from that single listing.
+  openIssueRows() { const rows=ghPaginated(`repos/${REPO}/issues?state=open&per_page=100`); if(!Array.isArray(rows))throw new LaneError('open issue listing was unreadable'); return rows },
   // DEPENDENCY STATE (Step 3, issue #1366). Fetch every REFERENCED dependency, not
   // just the ones that happen to be open, because a nonexistent number and an
   // unreadable issue must both BLOCK rather than release. Any failure is recorded
@@ -3736,6 +3749,9 @@ export function recordReviewVerdict(options,io=githubIo){
 // and (before this change) any durable verdict at the head blocked it outright.
 // This builds the command that actually runs, so the message names a route
 // rather than a direction.
+export function nonVerdictReviewerReplacementCommand({issue,pr,headSha,slot=1},failedSequence){
+  return `node scripts/manage-migration-author-lanes.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`
+}
 export function nonReadingReviewerReplacementCommand({issue,pr,headSha,slot=1},failedSequence){
   return `node scripts/manage-migration-author-lanes.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_read_repository --confirm-no-verdict --confirm-no-artifact`
 }
@@ -6069,7 +6085,8 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // Provider capacity is deliberately not a draw constraint for the exact
     // production protocol.  Lightweight historical fixtures may use short
     // heads, which cannot name a parallel lease and retain old serial rules.
-    const notTaken=(row)=>eligibleNames.has(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
+    // #2831: a reviewer whose wrapper cannot emit a governed verdict is never drawn.
+    const notTaken=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
     const reviewer=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
@@ -7648,6 +7665,18 @@ function migrationVersions(files) {
 // merged pull request from that claim's branch and the resulting merge remains
 // in current main. Object overlap is deliberately irrelevant: another lane may
 // later touch the same object without spending this claim's reserved version.
+export function workIssuesFromRows(rows) {
+  return rows.filter((x)=>!x.pull_request)
+    .map((x)=>({ number:x.number, title:x.title, body:x.body, createdAt:x.created_at, labels:(x.labels??[]).map((l)=>l.name) }))
+    .filter((x)=>!x.labels.some((name)=>COORDINATION_LABELS.has(name)))
+}
+export function openIssueNumbersFromRows(rows) { return rows.filter((x)=>!x.pull_request).map((x)=>x.number) }
+// #2787: one audit run reads each pull request's file list at most once. Only merged
+// pull requests whose branch holds a claim whose version is already on main reach it.
+export function memoizePrFiles(io) {
+  const cache=new Map()
+  return {branchPulls:(branch)=>io.branchPulls(branch),mergeCommitInMain:(sha)=>io.mergeCommitInMain(sha),getPrFiles(number){const key=Number(number);if(!cache.has(key))cache.set(key,io.getPrFiles(key));return cache.get(key)}}
+}
 export function closedClaimAuthoredOnMain(claim, now, mainVersions, io) {
   let lease
   try { lease = parseAuthorLease(claim.body, now) } catch { return false }
@@ -9216,10 +9245,13 @@ export function main(argv, now = new Date(), io = githubIo) {
       const claimed=acquireAuthorLane(o, now, io)
       console.log(JSON.stringify(claimed, null, 2));return 0
     }
-    const claims = io.openClaims()
+    // #2787: the queue audit lists open issues exactly once and reuses the rows.
+    const auditRows = o.queueAudit && typeof io.openIssueRows === 'function' ? io.openIssueRows() : null
+    const claims = auditRows ? io.openClaims(() => auditRows) : io.openClaims()
     if (o.returnIssue) { console.log(JSON.stringify(returnIssueToOwner(o.returnIssue, io), null, 2)); return 0 }
     if (o.queueAudit) {
-      const issues = io.openWorkIssues()
+      const issues = auditRows ? workIssuesFromRows(auditRows) : io.openWorkIssues()
+      const openNumbers = auditRows ? openIssueNumbersFromRows(auditRows) : io.openIssueNumbers()
       const outcomeStates=new Map()
       for(const issue of issues){
         let scope=null
@@ -9259,12 +9291,12 @@ export function main(argv, now = new Date(), io = githubIo) {
       // Resolve historical authoring only for the bounded set that would be
       // dispatched. This catches merged work without scanning all historical
       // claim refs or spending an unbounded GitHub API budget.
-      let result = buildDynamicQueues(issues, claims, now, io.openIssueNumbers(), dependencyStates, claimPullStates,new Set(),outcomeStates)
+      let result = buildDynamicQueues(issues, claims, now, openNumbers, dependencyStates, claimPullStates,new Set(),outcomeStates)
       const authoredOnMain = new Set()
       if (result.dispatchable.length && io.closedClaimsForWork && io.branchPulls && io.getPrFiles && io.treeFiles && io.mainSha && io.mergeCommitInMain) {
         const main = io.mainSha()
         const mainVersions = new Set(io.treeFiles(main).filter((file)=>/^supabase\/migrations\/\d{14}_/.test(file)).map((file)=>path.basename(file).slice(0,14)))
-        const checked = new Set()
+        const checked = new Set(), filesOnce = memoizePrFiles(io)
         // Removing one already-authored issue can expose the next item in its
         // collision queue. Iterate to a fixed point and inspect each issue at
         // most once so a deeper queue cannot hide another completed authoring.
@@ -9273,11 +9305,11 @@ export function main(argv, now = new Date(), io = githubIo) {
           if (!fresh.length) break
           for (const issue of fresh) {
             checked.add(issue)
-            const completed = io.closedClaimsForWork(issue).some((claim)=>closedClaimAuthoredOnMain(claim,now,mainVersions,io))
+            const completed = io.closedClaimsForWork(issue).some((claim)=>closedClaimAuthoredOnMain(claim,now,mainVersions,filesOnce))
             if (completed) authoredOnMain.add(issue)
           }
           if (!fresh.some((issue)=>authoredOnMain.has(issue))) break
-          result = buildDynamicQueues(issues, claims, now, io.openIssueNumbers(), dependencyStates, claimPullStates, authoredOnMain,outcomeStates)
+          result = buildDynamicQueues(issues, claims, now, openNumbers, dependencyStates, claimPullStates, authoredOnMain,outcomeStates)
         }
       }
       for (const issue of result.urgentWaitingCapacity ?? []) {

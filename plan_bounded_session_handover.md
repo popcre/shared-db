@@ -2,14 +2,14 @@
 
 Tracking: [#2596](https://github.com/u2giants/shared-db/issues/2596). Work type: repository maintenance, outside the schema orchestrator. Planning authority only; no implementation, database write, settings change, or repository transfer is authorized by this document.
 
-Paired [handoff](HANDOFF.d/2026-09-08T1924Z-edge-dev-codex-handover-latency-plan.md).
+The paired handoff was retired when PR #2607 landed step 1 (it closes #2596). Later milestones need a new tracking issue before they start.
 
 ## STATUS — 2026-09-08
 
 | Step | State | Evidence or next gate |
 |---|---|---|
 | Investigation and plan | Done | Source identities and GitHub run evidence in sections 3–6; this document |
-| 1. Whole-path document qualification | Implemented — awaiting PR/CI | Trusted-base classifier and truthful database-contract applicability context; cross-gate/live proof pending |
+| 1. Whole-path document qualification | Landed by PR #2607 | Trusted-base classifier and truthful database-contract applicability context; cross-gate/live proof pending |
 | 2. Fast applicable checks and automatic guarded dispatch | Open | Harmless live handoff PR, no reviewer/database replay, required contexts present |
 | 3. Durable checkpoint and fenced ownership transfer | Open | Successor resumes while document merge is unavailable; predecessor cannot act |
 | 4. Bounded reviewer and refresh lifecycle | Open | Wall-clock deadline covers preparation, model, replacement, and cleanup |

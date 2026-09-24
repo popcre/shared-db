@@ -18,9 +18,10 @@ test('a pure handoff makes only the ephemeral database context inapplicable', ()
   assert.equal(result.gates.guarded_merge, 'applicable')
 })
 
-test('rulebook, workflow, code, and a rename from SQL retain the full path', () => {
+test('AGENTS/skill rulebook, workflow, code, and a rename from SQL retain the full path', () => {
   for (const row of [
-    { filename: 'plan_bounded_session_handover.md' },
+    { filename: 'AGENTS.md' },
+    { filename: '.claude/skills/x/SKILL.md' },
     { filename: '.github/workflows/database-contract-tests.yml' },
     { filename: 'scripts/check-closeout-readiness.mjs' },
     { filename: 'docs/new.md', previous_filename: 'supabase/migrations/20260908000000_x.sql' },

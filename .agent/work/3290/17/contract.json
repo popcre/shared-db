@@ -1,7 +1,7 @@
 {
   "allowed_paths": [
-    ".agent/work/3290/16/completion.json",
-    ".agent/work/3290/16/contract.json",
+    ".agent/work/3290/17/completion.json",
+    ".agent/work/3290/17/contract.json",
     ".gitignore",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",
     "docs/verification/product-type-reader/final-2026-09-23.md",
@@ -38,8 +38,8 @@
   "db_writes": [],
   "dispatcher": "Coordinator session for #3024 Phase A (non-orchestrator repository work)",
   "file_writes": [
-    ".agent/work/3290/16/completion.json",
-    ".agent/work/3290/16/contract.json",
+    ".agent/work/3290/17/completion.json",
+    ".agent/work/3290/17/contract.json",
     ".gitignore",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",
     "docs/verification/product-type-reader/final-2026-09-23.md",
@@ -65,7 +65,7 @@
     "tools/product_type_reader/test_treatment_rules.py",
     "tools/product_type_reader/treatment_rules.py"
   ],
-  "generation": 16,
+  "generation": 17,
   "goal": "Land the corrected product-type reader Phase A with zero wrong answers on the strict live-catalog evaluation, regenerated public artifacts, and gold labels corrected for Faux Book.",
   "prohibited_actions": [
     "No database write, migration, schema, function, view, role, grant or index change.",

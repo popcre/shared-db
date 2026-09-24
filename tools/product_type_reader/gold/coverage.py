@@ -21,7 +21,7 @@ def main(argv=None):
         uncovered = sum(count for key, _, count in corpus if key not in assignments)
         print(f'uncovered: {uncovered}')
         return 1 if uncovered else 0
-    except (ValueError, OSError):
+    except Exception:  # any failure is exit 2, never a traceback or a false pass
         print('coverage: invalid input')
         return 2
 

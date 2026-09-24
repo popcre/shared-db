@@ -6,9 +6,12 @@ The returned fields match the Phase A plan; `matched_wording` is audit evidence
 and is not a database column. Empty facts are empty strings. Multiple explicitly
 stated facts use a semicolon separator. No unstated material is supplied.
 
-The historical MG API remains in `legacy.py`, re-exported by its old module path.
-Its old assumptions remain available only for reproducing the historical work;
-use the package API for the new product reader. `baseline.py` adapts that unchanged
+`legacy.py` is a standalone fork of the historical MG-era ruleset in
+`docs/verification/item-mg-reclassification-20260814/product_type_dictionary.py`;
+nothing re-exports it and the two copies are not kept in sync.  The historical
+copy stays frozen for reproducing the 2026-08-14 work.  `reader.py` seeds part of
+its product vocabulary from `legacy.LEGACY_PATTERNS` (filtered), so the new
+reader does depend on that historical table; use the package API for new work. `baseline.py` adapts that unchanged
 historical API for comparison against the same independent gold evidence.
 
 ## Reproduce evaluation
@@ -26,7 +29,7 @@ Run from the repository root with Python, pandas and pytest installed:
 python -m pytest -q docs/verification/item-mg-reclassification-20260814 tools/product_type_reader
 PRODUCT_TYPE_READER_PRIVATE_FIXTURE=PRIVATE/reviewed-description-fixture.csv python -m pytest -q tools/product_type_reader/test_catalog_fixture.py
 python tools/product_type_reader/gold/coverage.py --corpus PRIVATE/catalog.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv
-python tools/product_type_reader/evaluate.py --corpus PRIVATE/catalog.json --manifest PRIVATE/manifest.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv --strict
+python tools/product_type_reader/evaluate.py --corpus PRIVATE/catalog.json --manifest PRIVATE/manifest.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv --live-recheck docs/verification/product-type-reader/live-recheck-2026-09-24.json --strict
 ```
 
 Add `--reader legacy` for the baseline and `--report REPORT.md` for an aggregate
@@ -48,3 +51,9 @@ unreadable, with **mixed products** recorded as the private review reason. A sin
 constructed product with accessories is not automatically a mixed assortment.
 Database population remains Phase B and requires Albert's acceptance on #3024
 (non-orchestrator work).
+
+Strict mode also requires `--live-recheck FILE`: a public aggregate JSON
+(`checked_at` with timezone, `sha256`, `source_row_count`, `distinct_descriptions`,
+`source`) that must match the corpus exactly and be taken at or after capture.
+The accuracy claim is snapshot-bound: a changed catalog changes the sha and the
+gate refuses until the new rows are labelled and rechecked.

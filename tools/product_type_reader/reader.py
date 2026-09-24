@@ -10,7 +10,7 @@ import re
 import unicodedata
 
 from .legacy import PRODUCT_PATTERNS as LEGACY_PATTERNS
-from .construction_rules import refine_construction
+from .construction_rules import _VISUAL_CONTENT, refine_construction
 from .material_rules import extract_materials
 from .treatment_rules import extract_treatments
 from .storage_rules import refine_storage_type
@@ -51,7 +51,7 @@ def normalize(value: object) -> str:
         "trnkt": "trinket",
         "cntdwn": "countdown", "calndr": "calendar",
         "stbck": "setback", "mntd": "mounted",
-        "mlded": "molded", "mld": "molded", "wll": "wall", "lanscape": "landscape",
+        "mld": "molded", "wll": "wall", "lanscape": "landscape",
         "hngng": "hanging", "rbbn": "ribbon", "glltr": "glitter",
         "fltng": "floating", "embssd": "embossed", "metllc": "metallic", "stoarge": "storage", "strage": "storage",
         "mettalic": "metallic", "shawdowbox": "shadowbox", "shadowbow": "shadowbox",
@@ -358,6 +358,10 @@ _FIXES = (
     ("Foam Art", r"\b(?:molded )?foam art\b"),
     ("Relief Art", r"\b3d relief art\b|\brelief art\b"),
 )
+# ORDER IS LOAD-BEARING: match selection breaks ties by position in this
+# tuple, so the curated fixes come first, then the historical MG-era table
+# (legacy.LEGACY_PATTERNS, filtered), then the broad Book, Canvas and Plaque
+# fallbacks last.  Reordering these extensions changes predictions.
 PRODUCT_PATTERNS = tuple((product, re.compile(pattern)) for product, pattern in _FIXES)
 PRODUCT_PATTERNS += tuple((product, pattern) for product, _, pattern in LEGACY_PATTERNS
                          if product not in {"Canvas", "Book", "Framed Print", "Wall Shelf", "Framed Glass Art", "Tabletop Planter", "Pencil Cup"}
@@ -372,6 +376,9 @@ PRODUCT_PATTERNS += tuple((product, re.compile(pattern)) for product, pattern in
     ("Plaque", r"\bplaques?\b"),
 ))
 
+# _MATERIALS marks the product-phrase boundary and feeds _PHYSICAL.  The output
+# vocabulary lives in material_rules._MATERIALS; test_caption_invariant pins
+# that every name here (except PE, used only for "pe rattan") exists there.
 _MATERIALS = (
     ("Crumb Rubber", r"crumb rubber"), ("Memory Foam", r"memory foam"),
     ("MDF", r"mdf"), ("Greyboard", r"greyboard"), ("Canvas", r"canvas(?! texture)"),
@@ -392,6 +399,8 @@ _MATERIALS = (
     ("Rope", r"rope"), ("Seagrass", r"seagrass"), ("Rattan", r"(?<!pe )rattan"),
     ("Rubber", r"(?<!crumb )rubber"),
 )
+# Vocabulary only: _TREATMENTS feeds _PHYSICAL and variant grouping.  The
+# product_treatment output comes solely from treatment_rules.extract_treatments.
 _TREATMENTS = (
     ("LED", r"leds?|light up|backlit"), ("Foil", r"foil|holofoil"),
     ("Embroidery", r"embroidered|embroidery|cross stitch|applique"),
@@ -1013,12 +1022,12 @@ def read_product_type(description: object) -> dict[str, str]:
         materials = [name for name in materials if name != "PE"]
     if mixed_shadowbox:
         materials = []
-    treatments = [name for name, pattern in _TREATMENTS if re.search(r"\b(?:" + pattern + r")\b", evidence)]
     repeated_noun = "canvas" if product in {"Canvas", "Framed Canvas"} else "glass" if product == "Glass Art" else ""
     common_treatments = _common_variant_treatments(text, repeated_noun) if repeated_noun else None
-    if common_treatments is not None:
-        treatments = [name for name in treatments if name in common_treatments]
-    constructions = [name for name, pattern in _CONSTRUCTIONS if re.search(r"\b(?:"+pattern+r")\b", evidence)]
+    # A depicted-content clause ("with layered flowers graphic") names what is
+    # pictured, never how the product is built, so it cannot add a construction.
+    physical_evidence = _VISUAL_CONTENT.sub(" ", evidence)
+    constructions = [name for name, pattern in _CONSTRUCTIONS if re.search(r"\b(?:"+pattern+r")\b", physical_evidence)]
     if product == "Decorative Bow" and re.search(r"\bdimensional bow\b", evidence):
         constructions.append("Dimensional")
     if product == "Framed Art" and re.search(r"\bframed 3 d wall art\b", evidence):
@@ -1048,8 +1057,6 @@ def read_product_type(description: object) -> dict[str, str]:
         constructions = [name for name in constructions if name != "Faux Book"]
     if product in {"Mat", "Door Mat", "Outdoor Mat", "Floor Mat"} and re.search(r"\bhalf circle\b", text):
         constructions.append("Half-Circle")
-    if product == "Embroidery Kit":
-        treatments = [name for name in treatments if name != "Embroidery"]
     if "Die-Cut Attachment" in constructions:
         constructions = [name for name in constructions if name != "Die-Cut"]
     if product == "Message Board" and re.search(r"\bshadowbox\b", evidence):

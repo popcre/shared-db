@@ -5,12 +5,13 @@
   "pr": 3446,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3290/16",
-  "contract_sha256": "e35e7f82e55df772e40ca007c67db3ed13565b08bef14831eef5661938bb9181",
+  "contract_sha256": "043c89e7aef731b9e005355a5e04867e076dcb215196d1c2433e5a33c97a6052",
   "head_sha": "b1d0810e121158b59bc0e8acb3f0762e95931ca4",
   "files_changed": [
     ".gitignore",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",
     "docs/verification/product-type-reader/final-2026-09-23.md",
+    "docs/verification/product-type-reader/live-recheck-2026-09-24.json",
     "plan_product_type_reader.md",
     "tools/product_type_reader/README.md",
     "tools/product_type_reader/__init__.py",
@@ -22,6 +23,7 @@
     "tools/product_type_reader/material_rules.py",
     "tools/product_type_reader/reader.py",
     "tools/product_type_reader/storage_rules.py",
+    "tools/product_type_reader/test_caption_invariant.py",
     "tools/product_type_reader/test_catalog_fixture.py",
     "tools/product_type_reader/test_construction_rules.py",
     "tools/product_type_reader/test_evaluate.py",
@@ -31,13 +33,20 @@
     "tools/product_type_reader/test_treatment_rules.py",
     "tools/product_type_reader/treatment_rules.py"
   ],
-  "db_reads": [],
+  "db_reads": [
+    "read-only aggregate of coldlion.item_header on production qsllyeztdwjgirsysgai: row count, distinct descriptions, sha256 (2026-09-24T00:28:29Z); no rows copied"
+  ],
   "db_writes": [],
   "checks": [
     {
       "command": "python -m pytest -q docs/verification/item-mg-reclassification-20260814 tools/product_type_reader",
       "exit_code": 0,
-      "evidence": "1304 passed, 1 skipped (private fixture) at b1d0810e; private fixture 37 passed"
+      "evidence": "1329 passed, 1 skipped (private fixture); private fixture 37 passed"
+    },
+    {
+      "command": "python tools/product_type_reader/evaluate.py --corpus PRIVATE/catalog.json --manifest PRIVATE/manifest.json --labels PRIVATE/labels.csv --assignments PRIVATE/assignments.csv --live-recheck docs/verification/product-type-reader/live-recheck-2026-09-24.json --strict",
+      "exit_code": 0,
+      "evidence": "correct 18985, wrong 0, errors 0, uncovered 0, passed true"
     }
   ],
   "assumptions_resolved": [

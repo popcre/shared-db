@@ -195,7 +195,9 @@ def test_strict_exit_code_fails_only_a_failing_gate(inputs):
     rows[0]['product_type'] = 'Mat'
     write_csv(labels, rows)
     assert main(_cli_args(inputs)) == 0
-    assert main(_cli_args(inputs) + ['--strict']) == 1
+    live = _live(inputs)
+    assert main(_cli_args(inputs) + ['--strict']) == 2  # strict without a live recheck is refused
+    assert main(_cli_args(inputs) + ['--strict', '--live-recheck', str(live)]) == 1
 
 
 def test_private_details_refused_inside_any_git_checkout(inputs, tmp_path):
@@ -214,3 +216,79 @@ def test_private_details_written_to_plain_directory(inputs, tmp_path):
     target = tmp_path / 'plain' / 'details.json'
     assert main(_cli_args(inputs) + ['--private-details', str(target)]) == 0
     assert target.is_file()
+
+
+def _live(inputs, **overrides):
+    corpus, manifest = inputs[0], inputs[1]
+    data = dict(checked_at='2026-09-20T00:00:00Z', source='coldlion.item_header',
+                sha256=hashlib.sha256(corpus.read_bytes()).hexdigest(),
+                source_row_count=9, distinct_descriptions=2)
+    data.update(overrides)
+    path = manifest.parent / 'live.json'
+    path.write_text(json.dumps(data), encoding='utf-8')
+    return path
+
+
+def test_live_recheck_recorded(inputs):
+    result, _ = evaluate(*inputs, correct_reader, _live(inputs))
+    assert result['live_recheck']['source_row_count'] == 9
+
+
+@pytest.mark.parametrize('overrides', [
+    dict(checked_at='2026-09-18T00:00:00Z'), dict(checked_at='2026-09-20T00:00:00'),
+    dict(source='other'), dict(sha256='0' * 64), dict(source_row_count=10),
+    dict(source_row_count='9'), dict(distinct_descriptions=3)])
+def test_live_recheck_mismatch_or_stale_rejected(inputs, overrides):
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader, _live(inputs, **overrides))
+
+
+def _rewrite_manifest(inputs, **overrides):
+    data = json.loads(inputs[1].read_text())
+    data.update(overrides)
+    inputs[1].write_text(json.dumps(data))
+
+
+@pytest.mark.parametrize('overrides', [dict(source='other'), dict(captured_at='2026-09-19T12:00:00'),
+                                       dict(captured_at=None)])
+def test_manifest_source_and_capture_time_required(inputs, overrides):
+    _rewrite_manifest(inputs, **overrides)
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader)
+
+
+def test_unknown_label_and_foreign_assignment_rejected(inputs):
+    corpus, manifest, labels, assignments = inputs
+    write_csv(assignments, [dict(description_sha256=description_sha256('pencil case'), label_id='nope'),
+                            dict(description_sha256=description_sha256(None), label_id='blank')])
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader)
+    write_csv(assignments, [dict(description_sha256=description_sha256('pencil case'), label_id='pencil'),
+                            dict(description_sha256=description_sha256('not in corpus'), label_id='pencil')])
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader)
+
+
+@pytest.mark.parametrize('rows', [
+    [{'description': 'pencil case', 'item_count': 0}],
+    [{'description': 'pencil case', 'item_count': 'x'}],
+    [{'description': 'pencil case', 'item_count': 4}, {'description': 'pencil case', 'item_count': 5}]])
+def test_bad_corpus_rows_rejected(inputs, rows):
+    corpus, manifest = inputs[0], inputs[1]
+    corpus.write_text(json.dumps(rows), encoding='utf-8')
+    _rewrite_manifest(inputs, sha256=hashlib.sha256(corpus.read_bytes()).hexdigest())
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader)
+
+
+def test_unreadable_label_carrying_fields_rejected(inputs):
+    labels = inputs[2]
+    rows = list(csv.DictReader(labels.open(encoding='utf-8', newline='')))
+    rows[1]['product_type'] = 'Mat'
+    write_csv(labels, rows)
+    with pytest.raises(ValueError):
+        evaluate(*inputs, correct_reader)
+
+
+def test_legacy_reader_runs_through_cli(inputs):
+    assert main(_cli_args(inputs) + ['--reader', 'legacy']) in (0, 1)

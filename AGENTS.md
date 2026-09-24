@@ -823,7 +823,7 @@ rules below are the operative summary.
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
     Grok 4.6, Qwen 3.8 Max, Muse Spark 1.3 Contributor, and
-    Gemini 3.8 Flash High, minus the live orchestrator's own engine — exactly
+    Gemini 3.8 Flash High, and DeepSeek V4.1 Flash, minus the live orchestrator's own engine — exactly
     `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`. Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
     was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
@@ -840,7 +840,11 @@ rules below are the operative summary.
     `RETIRED_REVIEWERS` once the account has credit and its wrapper doctor passes.
     A reviewer already running other reviews is never a reason to wait: there is
     no per-reviewer concurrency limit.
-    DeepSeek is inactive: it was RETIRED on 2026-09-01 (issue #2078) and is not drawable.
+    **DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is drawable as of 2026-09-23**
+    (owner instruction, issue #3468): `ai-deepseek-agent --review` now reads the
+    repository through read-only tools (ai-devops PR #730) and passed a live
+    qualification and a live governed review. The text-only `deepseek-chat` row,
+    RETIRED on 2026-09-01 (issue #2078), stays retired.
     **Codex GPT-5.6 Sol is NOT in the rotation:** the owner retired it
     permanently on 2026-09-06 (issue #2485) once the other providers were
     working, so it sits in `RETIRED_REVIEWERS` and is not drawable. Its

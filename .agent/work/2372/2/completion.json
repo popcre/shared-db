@@ -6,10 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2372/2",
   "contract_sha256": "8b6d125ac6bd25e92d53362ff98f55bb05198e060bf84f36c6bac35d88685639",
-  "head_sha": "f27f40b869dd260f8944aeeefb766fc77ed702f7",
+  "head_sha": "0c473b67f03706bbdd0bcda5bd1828a249c1c43d",
   "files_changed": [
-    ".agent/work/2372/2/completion.json",
-    ".agent/work/2372/2/contract.json",
     "scripts/test_production_owner_decision_evidence.py"
   ],
   "db_reads": [],

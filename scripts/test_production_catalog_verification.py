@@ -664,6 +664,13 @@ class SqlBuildTests(unittest.TestCase):
         self.assertIn("from plm.b", sql)
         self.assertIn("union all", sql)
 
+    def test_row_count_sql_orders_composite_rows_by_their_name_field(self):
+        for relations in (["plm.a"], ["plm.b", "plm.a"]):
+            with self.subTest(relations=relations):
+                sql = build_row_count_sql(relations)
+                self.assertIn("jsonb_agg(x order by x.name)", sql)
+                self.assertNotIn("x->>'name'", sql)
+
     def test_unsafe_identifiers_are_refused_not_interpolated(self):
         bad = Targets({"plm.widget'; drop table x --"}, set(), set(), set(), set(), set())
         with self.assertRaises(GuardError):

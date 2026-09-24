@@ -21,6 +21,15 @@
 // An assignment is not an approval and an approval at an older head is not an
 // approval of these bytes. Both are required, both pinned to the same exact SHA.
 //
+// MERGED PULL REQUESTS (#2839): once GitHub reports the pull request merged, this
+// gate stops being the live reviewer check and becomes an AUDIT. It passes only
+// if the newest guarded-merge status on the exact head, at or before merged_at,
+// is the guarded lane's success. It does NOT re-read reviewer records, so a later
+// refusal or archived verdict does not rewrite a lawful merge. It proves that an
+// unrevoked authorization existed at merge time -- not that the guarded lane
+// itself performed the merge (a cancelled run can leave a success standing), and
+// not which pull request it was posted for when two share a head SHA.
+//
 // WHAT THIS GATE DOES NOT CHECK -- stated here so nobody reads more into a pass
 // than it carries. It enforces `an assignment exists at this head` AND `an approval
 // exists at this head`, not `the assigned reviewer approved`. Assignment refs record
@@ -50,7 +59,7 @@ import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository } from './manage-migration-author-lanes.mjs'
+import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository, selectNewestCommitStatus } from './manage-migration-author-lanes.mjs'
 import { approvalLine, evidenceTiedToHead, refusalLine, trustedVerdictEvidence, unambiguouslyTiedToHead } from './lib/review-verdict.mjs'
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, isValidatedVerdictArtifact, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 import { changedPathsFromPullRequestFiles, classifyChangedPaths } from './lib/documents-only-change.mjs'
@@ -320,32 +329,35 @@ export { parseAssignmentRef }
 // where the same class of defect has now hidden twice repo-wide: a conversion layer
 // whose test-time shape diverges from the one production produces. Nothing is
 // stubbed in production; the defaults are the real readers.
-const MERGE_AUTHORIZED_DESCRIPTION = 'Exclusive merge lock held and exact head revalidated'
-const KNOWN_STATUS_STATES = new Set(['success', 'failure', 'error', 'pending'])
+// #2839 review H1: the description literal is posted by
+// `.github/workflows/guarded-migration-merge.yml`; the test suite reads that
+// workflow and fails if the two ever differ, so this copy is bound, not re-typed.
+// GitHub truncates status descriptions at 140 characters; the test also keeps
+// this under that limit so an exact match stays possible.
+export const MERGE_AUTHORIZED_DESCRIPTION = 'Exclusive merge lock held and exact head revalidated'
 // #2839 audit: the verdict at merge time is the NEWEST guarded-merge status on
-// the exact head at or before merged_at, ordered by (created_at, id). A success
-// followed by any later pre-merge failure, revoke or freeze refuses. Rows after
-// the merge are ignored (even if unreadable); malformed pre-merge rows refuse.
+// the exact head at or before merged_at. Ordering, identity and state checks are
+// the lane's own `selectNewestCommitStatus` (one reader, not a second copy).
+// Rows whose server timestamp is after the merge are dropped before selection;
+// a row whose timestamp is unreadable is kept, so the shared reader refuses it
+// rather than this file guessing which side of the merge it fell on.
 export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt) {
-  const seen = new Set()
-  let newest = null
-  for (const row of Array.isArray(statuses) ? statuses : []) {
-    if (row?.context !== MERGE_SELF_CONTEXT) continue
-    const id = row?.id
-    if (!Number.isSafeInteger(id) || id <= 0) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status has an invalid id`)
-    if (seen.has(id)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status id ${id} appears more than once`)
-    seen.add(id)
-    const createdAtMs = Date.parse(String(row?.created_at ?? ''))
-    if (Number.isFinite(createdAtMs) && createdAtMs > mergeCutoffMs) continue
-    if (!Number.isFinite(createdAtMs)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status has no readable server timestamp`)
-    if (!KNOWN_STATUS_STATES.has(row?.state)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status ${id} has unknown state`)
-    if (!newest || createdAtMs > newest.ms || (createdAtMs === newest.ms && id > newest.row.id)) newest = { ms: createdAtMs, row }
+  if (!Array.isArray(statuses)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status history is unreadable`)
+  const preMerge = statuses.filter((row) => {
+    if (row?.context !== MERGE_SELF_CONTEXT) return false
+    const ms = Date.parse(String(row?.created_at ?? ''))
+    return !Number.isFinite(ms) || ms <= mergeCutoffMs
+  }).map((row) => ({ ...row, created_at: String(row?.created_at ?? '') })) // null must not read as 1970
+  let row
+  try { row = selectNewestCommitStatus(preMerge, MERGE_SELF_CONTEXT) } catch (error) {
+    throw new ApprovalCheckError(`pull request #${pr} guarded-merge status history refused: ${error.message}`)
   }
-  if (!newest) throw new ApprovalCheckError(`pull request #${pr} has no guarded-merge authorization status at or before its merge time ${mergedAt}`)
-  const row = newest.row
-  if (row.state !== 'success' || row.description !== MERGE_AUTHORIZED_DESCRIPTION || row?.creator?.login !== 'github-actions[bot]') {
-    throw new ApprovalCheckError(`pull request #${pr} newest guarded-merge status at or before merge time ${mergedAt} is not a lawful authorization (state ${row.state})`)
-  }
+  if (!row) throw new ApprovalCheckError(`pull request #${pr} has no guarded-merge authorization status at or before its merge time ${mergedAt}`)
+  // #2839 review H2: name the predicate that actually failed.
+  const where = `pull request #${pr} newest guarded-merge status ${row.id} at or before merge time ${mergedAt}`
+  if (row.state !== 'success') throw new ApprovalCheckError(`${where} is not a lawful authorization: state is ${row.state}, not success`)
+  if (row.description !== MERGE_AUTHORIZED_DESCRIPTION) throw new ApprovalCheckError(`${where} is not a lawful authorization: description ${JSON.stringify(row.description)} is not the guarded lane's`)
+  if (row?.creator?.login !== 'github-actions[bot]') throw new ApprovalCheckError(`${where} is not a lawful authorization: created by ${JSON.stringify(row?.creator?.login ?? null)}, not github-actions[bot]`)
   return row
 }
 

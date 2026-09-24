@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2831/5",
   "contract_sha256": "1e13c5906004b9ee6e48146c19a321b83c162370159fb15ebfdda2526a72da4f",
-  "head_sha": "3ca9f09ffd04ddfc70849e121e89cfe64d9306e4",
+  "head_sha": "36e96195c65278c2863df506091ec2f9b8cd61e5",
   "base_sha": "cb517b3054263a9a1668df6dbed4487b8a6448dc",
   "files_changed": [
     "config/orchestrator-global-invalidators-v1.json",
@@ -24,12 +24,12 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/lib/reviewer-capabilities.test.mjs scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "pass 802 fail 0 at implementation 3ca9f09ffd04ddfc70849e121e89cfe64d9306e4."
+      "evidence": "pass 804 fail 0 at implementation 36e96195c65278c2863df506091ec2f9b8cd61e5."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "no whitespace errors against base cb517b3054263a9a1668df6dbed4487b8a6448dc at 3ca9f09ffd04ddfc70849e121e89cfe64d9306e4."
+      "evidence": "no whitespace errors against base cb517b3054263a9a1668df6dbed4487b8a6448dc at 36e96195c65278c2863df506091ec2f9b8cd61e5."
     }
   ],
   "assumptions_resolved": [

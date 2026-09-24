@@ -9,7 +9,7 @@ const payload = (rows) => JSON.stringify(rows)
 
 test('a pure handoff makes only the ephemeral database context inapplicable', () => {
   const result = evaluateCloseoutReadiness({
-    repository: 'u2giants/shared-db', pullRequest: '2596', policySha: SHA,
+    repository: 'fixture-owner/fixture-repo', pullRequest: '2596', policySha: SHA,
     filesPayload: payload([{ filename: 'HANDOFF.d/next.md' }, { filename: 'docs/closeout.md' }]),
   })
   assert.equal(result.documents_only, true)
@@ -26,22 +26,22 @@ test('AGENTS/skill rulebook, workflow, code, and a rename from SQL retain the fu
     { filename: 'scripts/check-closeout-readiness.mjs' },
     { filename: 'docs/new.md', previous_filename: 'supabase/migrations/20260908000000_x.sql' },
   ]) {
-    const result = evaluateCloseoutReadiness({ repository: 'u2giants/shared-db', pullRequest: '1', policySha: SHA, filesPayload: payload([row]) })
+    const result = evaluateCloseoutReadiness({ repository: 'fixture-owner/fixture-repo', pullRequest: '1', policySha: SHA, filesPayload: payload([row]) })
     assert.equal(result.gates.database_contract_tests, 'applicable', JSON.stringify(row))
   }
 })
 
 test('unreadable file evidence retains the full path', () => {
-  const result = evaluateCloseoutReadiness({ repository: 'u2giants/shared-db', pullRequest: '1', policySha: SHA, filesPayload: 'not json' })
+  const result = evaluateCloseoutReadiness({ repository: 'fixture-owner/fixture-repo', pullRequest: '1', policySha: SHA, filesPayload: 'not json' })
   assert.equal(result.documents_only, false)
   assert.equal(result.gates.database_contract_tests, 'applicable')
 })
 
 test('the command emits machine-readable result and refuses malformed identity', () => {
   const out = []
-  assert.equal(main(['u2giants/shared-db', '1', SHA], { read: () => payload([{ filename: 'HANDOFF.d/a.md' }]), out: (text) => out.push(text), err: () => {} }), 0)
+  assert.equal(main(['fixture-owner/fixture-repo', '1', SHA], { read: () => payload([{ filename: 'HANDOFF.d/a.md' }]), out: (text) => out.push(text), err: () => {} }), 0)
   assert.equal(JSON.parse(out.join('')).gates.database_contract_tests, 'inapplicable')
-  assert.equal(main(['u2giants/shared-db', 'nope', SHA], { read: () => '[]', out: () => {}, err: () => {} }), 2)
+  assert.equal(main(['fixture-owner/fixture-repo', 'nope', SHA], { read: () => '[]', out: () => {}, err: () => {} }), 2)
 })
 
 test('the contract workflow takes the classification only from protected base policy', () => {
@@ -81,11 +81,11 @@ test('every documents-only decision that can waive a safeguard uses protected po
 
 test('a failed file-list read refuses with exit 2 and never reports inapplicable', () => {
   const out = []
-  assert.equal(main(['u2giants/shared-db', '1', SHA], { read: () => { throw new Error('HTTP 403') }, out: (t) => out.push(t), err: () => {} }), 2)
+  assert.equal(main(['fixture-owner/fixture-repo', '1', SHA], { read: () => { throw new Error('HTTP 403') }, out: (t) => out.push(t), err: () => {} }), 2)
   assert.equal(out.length, 0)
 })
 
 test('an empty file list is never documents-only', () => {
-  const result = evaluateCloseoutReadiness({ repository: 'u2giants/shared-db', pullRequest: '1', policySha: SHA, filesPayload: '[]' })
+  const result = evaluateCloseoutReadiness({ repository: 'fixture-owner/fixture-repo', pullRequest: '1', policySha: SHA, filesPayload: '[]' })
   assert.equal(result.gates.database_contract_tests, 'applicable')
 })

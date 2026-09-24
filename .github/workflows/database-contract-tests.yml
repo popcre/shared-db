@@ -140,7 +140,7 @@ jobs:
     name: supabase/tests against an ephemeral database
     needs: classify
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Refuse an unreadable applicability decision

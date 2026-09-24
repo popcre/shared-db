@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 2596,
+  "outcome": "ready-for-merge",
+  "pr": 2607,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2596/8",
+  "contract_sha256": "27eec12a0e88586e5e193c4e51f3bbbf62bc219d99a5a6e2023383a3c5f5479f",
+  "head_sha": "0000000000000000000000000000000000000000",
+  "files_changed": [],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-closeout-readiness.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/lib/documents-only-change.test.mjs scripts/database-contract-authorization.test.mjs",
+      "exit_code": 0,
+      "evidence": "Ran exactly as recorded on the refreshed head: 39 tests, 39 pass, 0 fail"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main HEAD reported nothing"
+    }
+  ],
+  "assumptions_resolved": [
+    "Refreshed from current main; merge conflicts in four files resolved by keeping both sides; evidence moved to keyed gen 8 path; paired handoff retired because this PR closes #2596."
+  ]
+}

@@ -28,7 +28,12 @@
 // refusal or archived verdict does not rewrite a lawful merge. It proves that an
 // unrevoked authorization existed at merge time -- not that the guarded lane
 // itself performed the merge (a cancelled run can leave a success standing), and
-// not which pull request it was posted for when two share a head SHA.
+// not which pull request it was posted for when two share a head SHA. It also
+// accepts the documents-only lane's status for a prose-only PR (see
+// DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION). The live PR is now always read once,
+// even when REQUESTED_SHA is set; an unreadable PR refuses. A guarded-merge
+// re-run against an already-merged PR is satisfied by the earlier run's status
+// (self-referential, harmless: the merge step itself then fails).
 //
 // WHAT THIS GATE DOES NOT CHECK -- stated here so nobody reads more into a pass
 // than it carries. It enforces `an assignment exists at this head` AND `an approval
@@ -335,13 +340,21 @@ export { parseAssignmentRef }
 // GitHub truncates status descriptions at 140 characters; the test also keeps
 // this under that limit so an exact match stays possible.
 export const MERGE_AUTHORIZED_DESCRIPTION = 'Exclusive merge lock held and exact head revalidated'
+// The second lawful producer of the same context (#2102/#2715): a prose-only pull
+// request never dispatches the guarded merge, so its merge-time authorization is
+// the one `.github/workflows/documents-only-merge-authorization.yml` posts. It is
+// bound to that workflow by test, like the guarded one, and is accepted ONLY when
+// the merged pull request's own changed files still classify documents-only. A
+// prose-only PR that also touched a plan or routing pointer (which that lane's
+// adapter admits) is refused here -- fail closed, never guessed.
+export const DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION = 'Prose-only head verified under the coordination/production-freeze mutex'
 // #2839 audit: the verdict at merge time is the NEWEST guarded-merge status on
 // the exact head at or before merged_at. Ordering, identity and state checks are
 // the lane's own `selectNewestCommitStatus` (one reader, not a second copy).
 // Rows whose server timestamp is after the merge are dropped before selection;
 // a row whose timestamp is unreadable is kept, so the shared reader refuses it
 // rather than this file guessing which side of the merge it fell on.
-export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt) {
+export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly = () => false } = {}) {
   if (!Array.isArray(statuses)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status history is unreadable`)
   const preMerge = statuses.filter((row) => {
     if (row?.context !== MERGE_SELF_CONTEXT) return false
@@ -356,6 +369,11 @@ export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mer
   // #2839 review H2: name the predicate that actually failed.
   const where = `pull request #${pr} newest guarded-merge status ${row.id} at or before merge time ${mergedAt}`
   if (row.state !== 'success') throw new ApprovalCheckError(`${where} is not a lawful authorization: state is ${row.state}, not success`)
+  if (row.description === DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION) {
+    if (row?.creator?.login !== 'github-actions[bot]') throw new ApprovalCheckError(`${where} is not a lawful authorization: created by ${JSON.stringify(row?.creator?.login ?? null)}, not github-actions[bot]`)
+    if (isDocumentsOnly() !== true) throw new ApprovalCheckError(`${where} is not a lawful authorization: it is the documents-only lane's status, but this pull request's changed files do not classify documents-only`)
+    return row
+  }
   if (row.description !== MERGE_AUTHORIZED_DESCRIPTION) throw new ApprovalCheckError(`${where} is not a lawful authorization: description ${JSON.stringify(row.description)} is not the guarded lane's`)
   if (row?.creator?.login !== 'github-actions[bot]') throw new ApprovalCheckError(`${where} is not a lawful authorization: created by ${JSON.stringify(row?.creator?.login ?? null)}, not github-actions[bot]`)
   return row
@@ -390,7 +408,8 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
     // evidence result actually used for the merge, so later reviewer records or
     // later changes to this checker cannot rewrite a lawful merge into a refusal.
     const statuses = readPages(`repos/${REPO}/commits/${headSha}/statuses?per_page=100`)
-    const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt)
+    const isDocumentsOnly = () => classifyChangedPaths(changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))).documentsOnly
+    const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly })
     return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, headSha: headSha.toLowerCase(), authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
   }
   const issueNumbers = new Set([pr])
@@ -584,8 +603,8 @@ export function resolveApprovalMainRef(env = process.env, pr, readJson = json, r
 }
 
 export function main(env = process.env, deps = {}) {
-  const { gather = gatherApprovalInput, evaluate = evaluateApprovalWithRefresh } = deps
   try {
+    const { gather = gatherApprovalInput, evaluate = evaluateApprovalWithRefresh } = deps ?? {}
     const input = gather(env)
     if (input.mergeAudit) {
       console.log(`Merged pull request approval audit verified: PR #${input.pr} head ${input.headSha} carried successful guarded-merge authorization status ${input.mergeAudit.statusId} at ${input.mergeAudit.authorizedAt}, before merge ${input.mergeAudit.mergedAt} (merge commit ${input.mergeAudit.mergeCommitSha}). Later reviewer activity and later gate-rule changes do not rewrite that merge-time decision.`)

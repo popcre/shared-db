@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, main as approvalMain, MERGE_AUTHORIZED_DESCRIPTION, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
+import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
+import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, main as approvalMain, MERGE_AUTHORIZED_DESCRIPTION, DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
 import { isValidatedVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 
 const OLD = 'b494401028464ef8b2e67fe0b5b1836839b2be36'
@@ -918,10 +919,40 @@ test('a merged pull request is judged against its merge commit first parent', ()
 
 test('#2839 H1: the audited description is bound to the text the guarded-merge workflow posts', () => {
   const yml = readFileSync(new URL('../.github/workflows/guarded-migration-merge.yml', import.meta.url), 'utf8')
-  assert.ok(yml.includes(`-f description='${MERGE_AUTHORIZED_DESCRIPTION}'`))
+  const line = yml.split(/\r?\n/).find((l) => l.includes(`-f description='${MERGE_AUTHORIZED_DESCRIPTION}'`))
+  assert.ok(line, 'guarded-merge workflow must post the audited description')
+  assert.ok(line.includes('-f state=success') && line.includes(`-f context='${MERGE_SELF_CONTEXT}'`), 'description, state and context are posted together')
   assert.ok(MERGE_AUTHORIZED_DESCRIPTION.length <= 140)
 })
 test('#2839 M5: a newest pre-merge pending row refuses and names its state', () => {
   const extra = [{ id: 47, context: 'Migration guarded merge authorization', state: 'pending', description: 'x', creator: { login: 'github-actions[bot]' }, created_at: '2026-09-20T22:31:59Z' }]
   assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, mergedRefreshGithub({ extra })), /state is pending, not success/)
+})
+
+test('#2839 review H1: the documents-only description is bound to its workflow', () => {
+  const yml = readFileSync(new URL('../.github/workflows/documents-only-merge-authorization.yml', import.meta.url), 'utf8')
+  assert.ok(yml.includes(`--description '${DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION}'`))
+  assert.ok(DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION.length <= 140)
+})
+function docsOnlyMerged(files) {
+  const base = mergedRefreshGithub({ description: DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION })
+  return { ...base, pages: (endpoint) => /\/pulls\/\d+\/files/.test(endpoint) ? files.map((filename) => ({ filename, status: 'modified' })) : base.pages(endpoint) }
+}
+test('#2839 review H1: a merged prose-only PR audits PASS on the documents-only status', () => {
+  assert.equal(gatherApprovalInput({ PR_NUMBER: '1931' }, docsOnlyMerged(['docs/readme-note.md'])).mergeAudit.statusId, 40)
+})
+test('#2839 review H1: the documents-only status is refused when the PR changed code', () => {
+  assert.throws(() => gatherApprovalInput({ PR_NUMBER: '1931' }, docsOnlyMerged(['docs/x.md', 'scripts/x.mjs'])), /do not classify documents-only/)
+})
+test('#2839 review M4: a durable refusal at the merged head does not rewrite a lawful merge', () => {
+  const base = mergedRefreshGithub()
+  let verdictReads = 0
+  const io = { ...base, json: (args) => { if (String(args[args.length - 1]).includes('db-review-verdict')) { verdictReads++; return [{ ref: `refs/db-review-verdicts/1931-1931-${REFRESHED_HEAD}`, object: { sha: 'f'.repeat(40) } }] } return base.json(args) } }
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, io)
+  assert.equal(input.mergeAudit.statusId, 40)
+  assert.equal(verdictReads, 0)
+  assert.equal(approvalMain({}, { gather: () => input, evaluate: () => { throw new Error('must not evaluate') } }), 0)
+})
+test('#2839 review L4: main() with a non-object deps refuses instead of throwing', () => {
+  assert.equal(approvalMain({ PR_NUMBER: '' }, null) , 2)
 })

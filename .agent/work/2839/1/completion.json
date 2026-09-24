@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2839/1",
   "contract_sha256": "c823a546cd4880394e1310330d37ee16687b9abdbec56b7edcf0e768b0cfa7d2",
-  "head_sha": "95d1d3786d2bfbdf08ed710192ee761bda20357e",
+  "head_sha": "bc01347dfdfb6ec5152717cf0265dfd832922b55",
   "files_changed": [
     "scripts/check-exact-head-approval.mjs",
     "scripts/check-exact-head-approval.test.mjs"

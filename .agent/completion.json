@@ -1,31 +1,36 @@
 {
   "schema_version": 1,
-  "work_issue": 2372,
+  "work_issue": 3295,
   "outcome": "ready-for-merge",
-  "pr": 3214,
+  "pr": 3296,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2372/1",
-  "contract_sha256": "809fd6db0b3a5481f5efa14db62309a4e3632e9c03f3af265629ce33691d7a4a",
-  "head_sha": "aac15b80849fbc496bd9388a7ef83e6cb7b25fc4",
+  "contract_ref": "refs/db-contracts/3295/5",
+  "contract_sha256": "d25cd9a0863ea900fe8bf0f90261e94a73dc4e4ad104fb77d2f773e813cc3e4e",
+  "base_sha": "1d2a0db59104514e31507f96fd401c3925995086",
+  "head_sha": "e4397fe612055d1cca7e19e0512f396ac6e3f21f",
   "files_changed": [
-    "scripts/test_production_owner_decision_evidence.py"
+    "tools/coldlion-landing-masters.test.mjs",
+    "tools/coldlion-landing/lib/load-masters.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "command": "python -m unittest scripts.test_production_owner_decision_evidence -v",
+      "command": "node --test tools/coldlion-landing-masters.test.mjs",
       "exit_code": 0,
-      "evidence": "12 passed, 0 failed, 0 skipped; both new negative-path tests passed."
+      "evidence": "42 passed, 0 failed"
     },
     {
-      "command": "GITHUB_REPOSITORY=u2giants/shared-db python scripts/mutation_sweep_guards.py --file scripts/production_owner_decision_evidence.py --command 'python -m unittest scripts.test_production_owner_decision_evidence' --workers 2 --max-seconds 180",
+      "command": "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs",
       "exit_code": 0,
-      "evidence": "Complete 16-guard sweep caught assigned guards 12 and 16; seven unrelated guards remain assigned to other issues."
+      "evidence": "176 passed, 0 failed"
     }
   ],
   "assumptions_resolved": [
-    "Live issue and pull-request searches showed #2372 open, ready, unassigned, with no dependency or existing pull request."
+    "Both required suites passed after integrating current main: focused 42 and full 176 passed, 0 failed/skipped/cancelled.",
+    "Implementation SQL still preserves atomic transaction, target checks, timeout and prior-raw fallback; no timeout or database structure changed.",
+    "Original production investigation and cost comparison are historical evidence recorded by the prior worker, not a new live measurement by this recovery.",
+    "This completion reports offline repair validation only. A future scheduled-run result remains separate live proof."
   ],
   "stop_conditions_hit": []
 }

@@ -1,0 +1,95 @@
+# Manual ColdLion /prepackDetail backfill (issue #3179).
+#
+# Walks the harvested prepackCode population in bounded, resumable slices: every
+# successful run records the cumulative covered set in coldlion.sync_run, so an
+# interrupted run costs nothing — the next dispatch continues where the evidence
+# stops. Re-dispatch until the run prints "pending 0".
+#
+# Manual dispatch only. The ongoing refresh is NOT this workflow: it rides the
+# scheduled ColdLion Landing Sync, which re-asks every harvested code daily.
+#
+# This workflow WRITES to the shared database. Two rules follow from that:
+#   1. It is never triggered by a pull request or a push. Dispatch only, so a
+#      branch cannot make it run.
+#   2. The offline contract tests run first, in the same job, immediately before
+#      the write. If they are red nothing is fetched and nothing is written.
+
+name: ColdLion Prepack Detail Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maximum not-yet-covered prepack codes to load in this run'
+        required: false
+        default: '150'
+      pause_ms:
+        description: 'Pause between vendor requests (ms, minimum 250)'
+        required: false
+        default: '3000'
+      dry_run:
+        description: 'Harvest, plan and fetch live; write nothing'
+        type: boolean
+        required: false
+        default: false
+      reconcile:
+        description: 'Read-only reconciliation report; no fetch, no write'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Shares its group with the scheduled sync and the history backfill: all three
+# write the coldlion landing tables, and two loaders racing the same vendor key
+# space is a race with no upside.
+concurrency:
+  group: coldlion-landing-sync
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill prepack detail codes
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-prepack.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Backfill
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.limit }}
+          PAUSE_MS: ${{ github.event.inputs.pause_ms }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          RECONCILE: ${{ github.event.inputs.reconcile }}
+        run: |
+          set -euo pipefail
+          ARGS=(--limit "${LIMIT:-150}" --pause-ms "${PAUSE_MS:-3000}")
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+          if [ "${RECONCILE:-false}" = "true" ]; then ARGS=(--reconcile); fi
+          node tools/coldlion-landing/sync-prepack-detail.mjs "${ARGS[@]}"

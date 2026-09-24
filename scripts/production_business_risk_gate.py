@@ -702,6 +702,9 @@ PREVIEW_PRODUCER_PATHS = (
     # select the exact issue/claim/source/orphan/replacement tuple. Bind those
     # bytes to the same exact-main producer proof as the workflow and tool.
     "config/preview-ledger-orphan-reconciliations.json",
+    # Loaded by the outcome lifecycle imported by the lane manager. Bind the
+    # exact incident authorization to the same producer identity as its reader.
+    "config/outcome-timestamp-recovery.json",
     # READ, NOT EXECUTED -- and therefore invisible to the executed-closure
     # walk, which follows invocations and imports. The Supabase CLI reads this
     # file on every `link`, `migration list` and `db push` the preview job runs,
@@ -806,6 +809,15 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "and by this gate itself, both of which check out exact main and prove "
         "HEAD == origin/main before executing; prove_activation additionally "
         "re-reads it against main. Pinning it here would assert nothing new."
+    ),
+    "config/production-owner-identity.json": (
+        "Never read by the preview job. Its only reader is "
+        "scripts/production_owner_decision_evidence.py, run by the production "
+        "owner-decision evidence workflow and the production-apply risk gate, "
+        "both of which check out exact main. It binds the owner's decision "
+        "comment to an exact login and numeric user id (#3443); no migration, "
+        "apply helper or catalog verifier reads it, so it cannot shape preview "
+        "evidence."
     ),
     "config/db-data-admin-property-source-coverage.json": (
         "Never read by the preview job. Its only reader is "
@@ -2513,7 +2525,7 @@ _IDENT = r'(?:"[^"]+"|[a-z_][a-z0-9_$]*)'
 _NAME = rf"{_IDENT}(?:\.{_IDENT})?"
 
 
-def sql_top_level_statements(raw: str, keep_literals: bool = False) -> list[str] | None:
+def sql_top_level_statements(raw: str, keep_literals: bool = False, spans: list | None = None, keep_dollar_quoted: bool = False) -> list[str] | None:
     """Split SQL into top-level statements with literal CONTENTS neutralised.
 
     Comments are removed, string literals become '', and dollar-quoted bodies
@@ -2521,8 +2533,25 @@ def sql_top_level_statements(raw: str, keep_literals: bool = False) -> list[str]
     can neither hide a statement nor invent one. Returns None when the text
     cannot be tokenised (an unterminated quote or comment): the caller treats
     that as high-risk rather than guessing.
+
+    Two additional output modes for the self-service additive lane (#3199),
+    neither of which changes the tokenisation itself:
+
+    * ``spans``: when a list is passed, the RAW character offsets of every
+      RETURNED statement are appended to it (aligned with the return value, so
+      empty statements dropped by the final filter drop their spans too). A
+      caller can then slice the original text for the exact statement it just
+      matched, without a second tokenizer.
+    * ``keep_dollar_quoted``: dollar-quoted bodies are kept VERBATIM instead of
+      being emptied to ``$$ $$`` (comments and '...' literals are still
+      neutralised). This is the reference-scanning view: the lane classifier
+      must see every schema-qualified name a function or view body mentions,
+      while the ALLOWLIST shapes keep consuming the default ``$$ $$`` view so
+      they cannot be fooled by body content.
     """
     out: list[str] = []
+    raw_spans: list[tuple[int, int]] = []
+    start = 0
     current: list[str] = []
     literals: list[str] = []  # keep_literals: exact literal text, restored after folding
     i, n = 0, len(raw)
@@ -2585,21 +2614,30 @@ def sql_top_level_statements(raw: str, keep_literals: bool = False) -> list[str]
                 end = raw.find(tag.group(0), i + len(tag.group(0)))
                 if end == -1:
                     return None
-                current.append(" $$ $$ ")
+                if keep_dollar_quoted:
+                    current.append(raw[i:end + len(tag.group(0))])
+                else:
+                    current.append(" $$ $$ ")
                 i = end + len(tag.group(0))
                 continue
         if ch == ";":
             out.append("".join(current))
+            raw_spans.append((start, i))
             current = []
+            start = i + 1
             i += 1
             continue
         current.append(ch)
         i += 1
     out.append("".join(current))
+    raw_spans.append((start, n))
     normalised = [_normalise_outside_identifiers(s) for s in out]
     if keep_literals:
         normalised = [re.sub(r"'#(\d+)'", lambda m: literals[int(m.group(1))], s) for s in normalised]
-    return [s for s in normalised if s]
+    kept = [(s, raw_spans[index]) for index, s in enumerate(normalised) if s]
+    if spans is not None:
+        spans.extend(span for _, span in kept)
+    return [s for s, _ in kept]
 
 
 def _normalise_outside_identifiers(statement: str) -> str:

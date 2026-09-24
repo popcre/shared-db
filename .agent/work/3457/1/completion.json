@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "work_issue": 3457,
+  "outcome": "ready-for-review",
+  "pr": null,
+  "migration_versions": ["20260924174155"],
+  "contract_ref": "refs/db-contracts/3457/1",
+  "head_sha": null,
+  "base_sha": "c5a4c7d07",
+  "files_changed": [
+    "supabase/migrations/20260924174155_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    ".agent/work/3457/1/contract.json",
+    ".agent/work/3457/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh (CHECK_SQL_MIGRATIONS_ONLY=1)",
+      "exit_code": 0,
+      "evidence": "Guard B clean vs origin/main newest 20260923173715; expected-count, verify-cost, and EOL guards passed"
+    },
+    {
+      "command": "python scripts/migration_derivation.py supabase/migrations/20260924174155_popdam_search_semantic_score_floor.sql",
+      "exit_code": 0,
+      "evidence": "derived-from: 20260901130428 accepted"
+    }
+  ],
+  "assumptions_resolved": [
+    "prior definition of search_dam_documents is migration 20260901130428 (popdam_ranked_filter_parity)",
+    "existing supabase/tests contract files pinned the 7-arg signature and were updated in the same PR so CI does not fail",
+    "T1-T8 behaviour tests are authored under .agent/work/3457/1/behavior_tests_t1_t8.sql for preview execution after merge"
+  ],
+  "stop_conditions_hit": []
+}

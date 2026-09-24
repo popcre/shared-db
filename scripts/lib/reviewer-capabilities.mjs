@@ -14,10 +14,13 @@ export const GOVERNED_VERDICT_WRAPPERS = Object.freeze(['ai-claude-review','ai-c
 // Wrappers that take the explicit `--governed-verdict <head>` contract flag.
 export const VERDICT_CONTRACT_FLAG_WRAPPERS = Object.freeze(['ai-gemini','ai-qwen','ai-deepseek-agent'])
 
-// Subcommands that force a verdict grammar a governed review cannot record. `ai-muse
-// review` injects `VERDICT: FINDINGS|NO FINDINGS` (REQUIRE_VERDICT=1), which carries no
-// decision and no head. Its `new`/`ask` subcommands take the governed prompt as written.
-export const FORBIDDEN_GOVERNED_SUBCOMMANDS = Object.freeze({'ai-muse':Object.freeze(['review'])})
+// Wrappers whose governed capability depends on the subcommand. The list is an
+// ALLOWLIST, so an unknown or future subcommand fails closed. `ai-muse review` injects
+// `VERDICT: FINDINGS|NO FINDINGS` (REQUIRE_VERDICT=1), which carries no decision and no
+// head; only `new`/`ask` take the governed prompt as written. The runner enforces this
+// before any reviewer starts, so ai-muse's place in GOVERNED_VERDICT_WRAPPERS is a fact
+// the runner guarantees, not an operator choice.
+export const GOVERNED_SUBCOMMANDS = Object.freeze({'ai-muse':Object.freeze(['new','ask'])})
 
 export function wrapperBaseName(wrapper){
   return String(wrapper??'').split(/[\\/]/).pop().replace(/\.(cmd|bat|exe)$/i,'').toLowerCase()
@@ -27,12 +30,18 @@ export function wrapperEmitsGovernedVerdict(wrapper){
   return GOVERNED_VERDICT_WRAPPERS.includes(wrapperBaseName(wrapper))
 }
 
-// The first positional argument is the subcommand. Returns the forbidden subcommand, or null.
-export function forbiddenGovernedSubcommand(wrapper,args){
-  const forbidden=FORBIDDEN_GOVERNED_SUBCOMMANDS[wrapperBaseName(wrapper)]
-  if(!forbidden)return null
-  const list=[...(args??[])].map(String)
-  const start=list[0]==='--'?1:0
-  const sub=list.slice(start).find((token)=>!token.startsWith('-'))
-  return sub&&forbidden.includes(sub.toLowerCase())?sub:null
+// The first positional argument is the subcommand; the value of an option named in
+// `valueOptions` is skipped, never mistaken for one. Returns the refused subcommand (or
+// '(none)' when there is none), or null when the wrapper may run as given.
+export function forbiddenGovernedSubcommand(wrapper,args,valueOptions=new Set()){
+  const name=wrapperBaseName(wrapper)
+  if(!Object.hasOwn(GOVERNED_SUBCOMMANDS,name))return null
+  const allowed=GOVERNED_SUBCOMMANDS[name],list=[...(args??[])].map(String)
+  let sub=null
+  for(let i=list[0]==='--'?1:0;i<list.length;i+=1){
+    if(list[i].startsWith('-')){if(valueOptions.has(list[i]))i+=1;continue}
+    sub=list[i];break
+  }
+  if(sub===null)return '(none)'
+  return allowed.includes(sub.toLowerCase())?null:sub
 }

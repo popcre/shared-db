@@ -918,6 +918,6 @@ test('#3338 review: the codex wrapper is exempt from the prompt contract, and eq
 
 test('#2831: the runner refuses ai-muse review and passes ai-muse new through',()=>{
   const head='b'.repeat(40)
-  assert.throws(()=>wrapperVerdictContractArgs('ai-muse',['review','look at this'],head),/ai-muse review subcommand forces a verdict grammar/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-muse',['review','look at this'],head),/ai-muse review subcommand is not one that takes the governed prompt as written[\s\S]*--failure-code reviewer_cannot_emit_governed_verdict/)
   assert.deepEqual(wrapperVerdictContractArgs('ai-muse',['new','look at this'],head),['new','look at this'])
 })

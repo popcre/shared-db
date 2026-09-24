@@ -10090,3 +10090,33 @@ test('#2787: pull request files are read at most once per audit run',()=>{
   io.getPrFiles(8)
   assert.equal(reads,2)
 })
+
+test('#2787: queue audit reads a shared merged pull request once and removes both authored issues',()=>{
+  const now=new Date('2026-09-24T12:00:00Z')
+  const rows=[
+    {number:2,title:'add crm.x',body:scope('ready','structural','shared-db-orchestrator',10,['table crm.x']),created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-work'}]},
+    {number:3,title:'add crm.y',body:scope('ready','structural','shared-db-orchestrator',10,['table crm.y']),created_at:'2026-09-21T00:00:00Z',labels:[{name:'db-work'}]},
+  ]
+  const versions={2:'20260924010102',3:'20260924010103'}
+  const run=(authored)=>{
+    let reads=0
+    const io={...githubIo,
+      openIssueRows:()=>rows,
+      openClaims:(p)=>githubIo.openClaims(p,()=>({total_count:0,items:[]})),
+      issueComments:()=>[],dependencyStates:()=>({}),openPulls:()=>[],commentIssue:()=>{},
+      closedClaimsForWork:(issue)=>authored?[{number:100+issue,title:'CLAIM: #'+issue,body:claimBody({version:versions[issue],objects:['table crm.'+(issue===2?'x':'y')],owner:'agent/a',branch:'shared/branch',worktree:'C:/repos/a',expiresAt:new Date('2026-09-25T00:00:00Z')})}]:[],
+      branchPulls:()=>[{number:50,merged_at:'2026-09-23T00:00:00Z',merge_commit_sha:'c'.repeat(40)}],
+      mergeCommitInMain:()=>true,mainSha:()=>'d'.repeat(40),
+      treeFiles:()=>Object.values(versions).map((v)=>'supabase/migrations/'+v+'_x.sql'),
+      getPrFiles:()=>{reads++;return Object.values(versions).map((v)=>({filename:'supabase/migrations/'+v+'_x.sql',status:'added'}))}}
+    const out=[],log=console.log;console.log=(...a)=>out.push(a.join(' '))
+    try{main(['--queue-audit'],now,io)}finally{console.log=log}
+    return {reads,out:out.join('\n')}
+  }
+  const before=run(false),after=run(true)
+  const dispatch=(out)=>JSON.parse(out.slice(out.indexOf('{'),out.lastIndexOf('}')+1)).dispatchable
+  assert.equal(before.reads,0)
+  assert.deepEqual(new Set(dispatch(before.out)),new Set([2,3]))
+  assert.equal(after.reads,1,'the shared pull request is read once')
+  assert.deepEqual(dispatch(after.out),[])
+})

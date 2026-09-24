@@ -323,8 +323,8 @@ export function codexGovernedBody(report,headSha,reportName='the codex report'){
 export function wrapperVerdictContractArgs(wrapper,args,headSha){
   const name=wrapperBaseName(wrapper)
   // #2831: a subcommand that forces a non-governed verdict grammar can never be recorded.
-  const forbidden=forbiddenGovernedSubcommand(wrapper,args)
-  if(forbidden)throw new Error(`the ${name} ${forbidden} subcommand forces a verdict grammar a governed review cannot record (it carries no decision and no head); run the governed review through a subcommand that takes the prompt as written`)
+  const forbidden=forbiddenGovernedSubcommand(wrapper,args,OPAQUE_VALUE_OPTIONS)
+  if(forbidden)throw new Error(`the ${name} ${forbidden} subcommand is not one that takes the governed prompt as written, so it cannot end with a recordable VERDICT line. Rerun through an allowed subcommand, or draw another reviewer with --replace-failed-reviewer --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`)
   if(!VERDICT_CONTRACT_FLAG_WRAPPERS.includes(name))return args
   const list=[...args],head=String(headSha??'').toLowerCase()
   // EVERY spelling of the flag is checked, not the first one found: `--x value`,

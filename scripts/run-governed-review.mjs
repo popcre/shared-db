@@ -706,6 +706,7 @@ Do not stop at the first problem -- a partial list costs another full review rou
 These three are mandatory and additional to your normal review. Report everything else
 you would normally raise as well; this list is a floor, never a ceiling.
 `
+export const DEEPSEEK_GOVERNED_MESSAGE='Review the attached governed brief completely and follow its final VERDICT instruction.'
 export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={},wrapper=null){
   const list=[...wrapperArgs]
   let carried=false
@@ -723,32 +724,33 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
   // ISSUE #3479 -- ai-deepseek-agent takes its brief as the POSITIONAL message after
   // `send` (or after `reply <session-id>`) and has no --prompt / --prompt-file flag. Its
   // parser folds any unknown token into the message, so a forwarded `--prompt-file x`
-  // would send the literal path text, never the brief. For this wrapper the brief is
-  // therefore moved into the positional message (reading --prompt-file here) and the
-  // same checklist + head-bound VERDICT instruction is appended to it. The stale-head
-  // check applies exactly as for the flag forms.
-  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'){
-    const valued=new Set(['--file','--model','--system','--base','--assert-head','--governed-verdict'])
-    const out=[],texts=[]
-    for(let i=0;i<list.length;i++){
+  // would send the literal path text, never the brief. For this wrapper the brief (a
+  // positional message and/or --prompt / --prompt-file, in command-line order) plus the
+  // checklist and head-bound VERDICT instruction is written to one private file passed
+  // with --file, which the wrapper appends to the message. The positional message stays
+  // a short fixed line, so argv never carries the unbounded brief (the Windows
+  // command-line budget run-deepseek-evidence-review.mjs guards). Value flags are the
+  // module's canonical OPAQUE_VALUE_OPTIONS, so a flag value is never taken for the brief.
+  // The stale-head check applies exactly as for the flag forms.
+  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'&&(list[0]==='send'||(list[0]==='reply'&&list.length>=2&&!String(list[1]).startsWith('-')))){
+    const valued=new Set([...OPAQUE_VALUE_OPTIONS,'--base','--assert-head'])
+    const start=list[0]==='reply'?2:1,out=list.slice(0,start),texts=[]
+    let ended=false
+    for(let i=start;i<list.length;i++){
       const arg=list[i]
+      if(ended||!/^--/.test(arg)){texts.push(arg);continue}
+      if(arg==='--'){ended=true;continue}
       if(arg==='--prompt-file'&&i+1<list.length){texts.push(readFile(list[++i]));continue}
       if(/^--prompt-file=/.test(arg)){texts.push(readFile(arg.slice('--prompt-file='.length)));continue}
       if(arg==='--prompt'&&i+1<list.length){texts.push(list[++i]);continue}
       if(/^--prompt=/.test(arg)){texts.push(arg.slice('--prompt='.length));continue}
       out.push(arg)
+      if(valued.has(arg)&&i+1<list.length)out.push(list[++i])
     }
-    const start=out[0]==='reply'?2:out[0]==='send'?1:out.length
-    let at=-1
-    for(let i=start;i<out.length;i++){
-      if(valued.has(out[i])){i++;continue}
-      if(/^--/.test(out[i]))continue
-      at=i;break
-    }
-    if(at>=0){texts.unshift(out[at]);out.splice(at,1)}
-    if(texts.length&&(out[0]==='send'||(out[0]==='reply'&&out.length>=2))){
+    if(texts.length){
       const text=texts.join('\n\n');stale(text)
-      out.splice(start,0,`${text}${instruction}`)
+      const copy=join(tempDir(),'governed-brief.md');writeFile(copy,`${text}${instruction}`)
+      out.splice(start,0,DEEPSEEK_GOVERNED_MESSAGE,'--file',copy)
       return out
     }
   }

@@ -8,6 +8,8 @@
   "contract_sha256": "c823a546cd4880394e1310330d37ee16687b9abdbec56b7edcf0e768b0cfa7d2",
   "head_sha": "dddfeae989c169e24693f18ab0ca5f3558db8dee",
   "files_changed": [
+    ".agent/work/2839/1/completion.json",
+    ".agent/work/2839/1/contract.json",
     "scripts/check-exact-head-approval.mjs",
     "scripts/check-exact-head-approval.test.mjs"
   ],

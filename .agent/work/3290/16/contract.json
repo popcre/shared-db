@@ -34,9 +34,7 @@
   ],
   "base_sha": "3a46121f865137ccef79ac3bc0463e993ebad495",
   "branch": "codex/product-reader-01a0bc30",
-  "db_reads": [
-    "read-only aggregate of coldlion.item_header on production qsllyeztdwjgirsysgai: row count, distinct descriptions, sha256 (2026-09-24T00:28:29Z); no rows copied"
-  ],
+  "db_reads": [],
   "db_writes": [],
   "dispatcher": "Coordinator session for #3024 Phase A (non-orchestrator repository work)",
   "file_writes": [

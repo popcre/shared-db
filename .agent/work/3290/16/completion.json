@@ -5,7 +5,7 @@
   "pr": 3446,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3290/16",
-  "contract_sha256": "043c89e7aef731b9e005355a5e04867e076dcb215196d1c2433e5a33c97a6052",
+  "contract_sha256": "deeb2869252c1ca50c5cd191dab39553cdbf4b64ecf1b909430af4a0961e7fd6",
   "head_sha": "0bf88f3625db1522f8faac3f6077f2d4ee1360bb",
   "files_changed": [
     ".gitignore",
@@ -33,9 +33,7 @@
     "tools/product_type_reader/test_treatment_rules.py",
     "tools/product_type_reader/treatment_rules.py"
   ],
-  "db_reads": [
-    "read-only aggregate of coldlion.item_header on production qsllyeztdwjgirsysgai: row count, distinct descriptions, sha256 (2026-09-24T00:28:29Z); no rows copied"
-  ],
+  "db_reads": [],
   "db_writes": [],
   "checks": [
     {

@@ -27,7 +27,7 @@
       "evidence": "syntax ok at dddfeae9"
     },
     {
-      "command": "PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
+      "command": "APPROVAL_AUDIT=merged PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
       "exit_code": 0,
       "evidence": "PR #2746 carried guarded-merge authorization status 54025196895 at 2026-09-11T22:32:13Z, before merge 2026-09-11T22:32:17Z (APPROVAL_AUDIT=merged re-run at dddfeae9)"
     },

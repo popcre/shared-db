@@ -33,7 +33,7 @@
   "required_checks": [
     "node --test scripts/check-exact-head-approval.test.mjs",
     "node --check scripts/check-exact-head-approval.mjs",
-    "PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
+    "APPROVAL_AUDIT=merged PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
     "git diff --check"
   ],
   "route": "repo-maintenance",

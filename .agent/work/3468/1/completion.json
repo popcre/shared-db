@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3468/1",
   "contract_sha256": "0a25f45a11fc7b3ebb637161c13dc172ec0a23191e102d500bc5eef54d6a3ccd",
-  "head_sha": "ba5b6daa536eeeaa0d953dc3203f185c180973c0",
+  "head_sha": "9fa73e92886b56f0913dec95c180143a4ff3456e",
   "base_sha": "107d9066cb05e701418d9cde76ee988224f4ed2c",
   "files_changed": [
     "AGENTS.md",
@@ -20,7 +20,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "690 tests, 690 pass, 0 fail, 0 skipped at implementation head ba5b6daa536eeeaa0d953dc3203f185c180973c0 (rebased on 107d9066cb05e701418d9cde76ee988224f4ed2c)."
+      "evidence": "690 tests, 690 pass, 0 fail, 0 skipped at implementation head 9fa73e92886b56f0913dec95c180143a4ff3456e (rebased on 107d9066cb05e701418d9cde76ee988224f4ed2c)."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
@@ -32,7 +32,8 @@
     "run-governed-review already injects --governed-verdict for ai-deepseek-agent send --review; no runner change was needed.",
     "The code edit was drafted before refs/db-contracts/3468/1 was published; the implementation commit follows the published ref.",
     "Implementation was rebased from contract base bcf7d32fd130ca43859876e9c6c70c88207b549d onto current main before commit of evidence.",
-    "No database read, write, or production dispatch is claimed."
+    "No database read, write, or production dispatch is claimed.",
+    "Muse governed review (assignment 3737) returned REVISE at 61e0b479 for stale pool-size comments, the checkout list, and roster wording; fixed at this head."
   ],
   "stop_conditions_hit": []
 }

@@ -461,6 +461,10 @@ export const REVIEWERS = Object.freeze([
 // head. The same run could have said APPROVE and produced a green merge gate over
 // SQL no reviewer ever saw. Retirement is the correct disposition, not a pause:
 // no future wrapper version fixes a conversational API client having no checkout.
+// That verdict applies to the 'deepseek-chat' name and the wrapper's plain
+// conversation mode only. Since 2026-09-23 (#3468) 'deepseek-v4.1-flash' is the
+// drawable successor: the same wrapper in `--review` mode, which reads the
+// checkout through read-only repository tools.
 // Its historical name stays readable in REVIEWERS forever because durable refs
 // (`refs/db-review-assignments/1987-1989-2108fcd1...`) still name it.
 //
@@ -552,9 +556,10 @@ export function reviewerKnownNonReading(name, reviewers=REVIEWERS){
   return Boolean(row)&&row.readsRepository===false
 }
 
-// ACTIVE ROTATION EXPANSION (owner approval, 2026-08-28). Codex GPT-5.6 Sol and
-// DeepSeek were added as active rotation providers then. NEITHER IS ACTIVE NOW:
-// DeepSeek was retired for fabricated reviews, and Codex on 2026-09-06 for an
+// ACTIVE ROTATION EXPANSION (owner approval, 2026-08-28). 'codex-gpt-5.6-sol' and
+// 'deepseek-chat' were added as active rotation providers then. NEITHER NAME IS
+// ACTIVE NOW: 'deepseek-chat' was retired for fabricated reviews (DeepSeek itself
+// returned as 'deepseek-v4.1-flash' on 2026-09-23), and Codex on 2026-09-06 for an
 // exhausted account (see RETIRED_REVIEWERS above, which is the only roster that
 // decides this). No overflow provider remains. A provider with live reviews is
 // never "occupied": one reviewer may run any number of concurrent reviews

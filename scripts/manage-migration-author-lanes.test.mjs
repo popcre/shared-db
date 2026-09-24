@@ -9834,6 +9834,11 @@ test('#3411 real Git: production refresh carries only unchanged approval after a
 test('deepseek-v4.1-flash is drawable and reads the repository while deepseek-chat stays retired',()=>{
   const row=REVIEWERS.find((r)=>r.name==='deepseek-v4.1-flash')
   assert.equal(row.wrapper,'ai-deepseek-agent')
+  assert.equal(row.provider,'deepseek')
+  assert.ok(!RETIRED_REVIEWERS.includes('deepseek-v4.1-flash'))
+  assert.ok(!QUARANTINED_REVIEWERS.includes('deepseek-v4.1-flash'))
+  assert.ok(!OVERFLOW_REVIEWERS.some((r)=>r.name==='deepseek-v4.1-flash'))
+  for(const engine of [null,'claude','codex'])assert.ok(reviewersForOrchestrator(engine).some((r)=>r.name==='deepseek-v4.1-flash'))
   assert.equal(reviewerReadsRepository('deepseek-v4.1-flash'),true)
   assert.ok(ACTIVE_REVIEWERS.some((r)=>r.name==='deepseek-v4.1-flash'))
   assert.ok(RETIRED_REVIEWERS.includes('deepseek-chat'))

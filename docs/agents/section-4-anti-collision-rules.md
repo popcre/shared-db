@@ -516,9 +516,10 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    roster now records `readsRepository` per reviewer, and `recordReviewVerdict`
    refuses outright — before any commit or ref is created — to record a
    code-review verdict from a reviewer whose wrapper cannot read the repository.
-   Every drawable reviewer is given a real checkout: Grok via `--cwd`, GLM and
-   Muse via an `ai-review-sandbox` clone, Gemini via a disposable sandbox copy of
-   the checkout under `--sandbox`, Kimi via a read-only agent profile, and
+   Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
+   an `ai-review-sandbox` clone (as is paused GLM), Qwen via a sealed
+   evidence-packet checkout, Gemini via a disposable sandbox copy of
+   the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
    DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
    tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
    retired Codex reviewer was equipped the same way, via `codex exec --sandbox

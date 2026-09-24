@@ -1,0 +1,10 @@
+{
+  "_why": "Vendor landing schemas record what a third-party feed sent. An identity constraint on one of these tables is a CLAIM ABOUT THE VENDOR'S DATA, and it can only be true if the vendor said so. On 2026-09-15 a 166-row sample was used to assert (prod_order_no, prod_line_seq) unique on coldlion.prod_detail; the live population falsified it on 2026-09-17 and nine orders stopped landing. Nobody had asked ColdLion, and the answer file was never opened. This guard makes the citation mandatory and machine-checked.",
+  "activation_migration": "20260920000000",
+  "schemas": {
+    "coldlion": {
+      "register": "docs/coldlion-open-questions.md",
+      "vendor": "ColdLion"
+    }
+  }
+}

@@ -750,6 +750,13 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "source would make the production-risk test depend on which commands had "
         "previously run on that machine without protecting committed evidence."
     ),
+    "config/vendor-landing-authority.json": (
+        "Never read by the preview job. Read only by scripts/check-vendor-identity-authority.mjs, "
+        "which runs in its own pull-request workflow and decides whether a landing identity "
+        "constraint cites a settled vendor authority. It names documents and open questions, not "
+        "migrations or database objects, and no preview step, migration apply helper or promotion "
+        "tool imports it or reads its path, so it cannot shape what preview executes."
+    ),
     "config/blocker-ledger": (
         "Never read by the preview job. Read only by the offline throughput "
         "diagnosis and reporting tools. The "

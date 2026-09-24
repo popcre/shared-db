@@ -1,0 +1,58 @@
+# Guard: an identity constraint on a VENDOR LANDING table must cite a settled source
+# authority.
+#
+# Why this workflow exists (added 2026-09-20, issue #3234).
+#
+# A landing table records what a third-party feed sent. Declaring columns unique there is
+# a claim about the VENDOR'S data, not ours, so only the vendor can make it true. On
+# 2026-09-15 a session measured 166 rows of ColdLion's /proddetails feed, found
+# (prodOrderNo, prodLineSeq) unique in that sample, and shipped it as a unique constraint.
+# The live population falsified it two days later and nine production orders stopped
+# landing. ColdLion had never been asked; the answer register was never opened; the one
+# prodLineSeq answer on record is about a different endpoint, where the line number alone
+# was never a row identity either.
+#
+# The guard makes the citation mandatory and machine-checked, in both directions: a
+# migration may not ASSERT an identity on vendor data without naming where the vendor said
+# it, and may not REMOVE one while the question that would settle it is still open.
+#
+# Design rules, same as the other repo-wide guards here:
+#   1. NO `paths:` filter — a filtered job is skipped by exactly the PR that needs it, and
+#      the PR still shows all-checks-passed.
+#   2. A UNIQUE check-run name, so it can be a required context on its own.
+#   3. Its own negative-path tests run FIRST, in the same job: a guard whose tests are not
+#      run is a guard nobody has proven fires.
+#   4. Offline and deterministic. No secrets, no network, no database.
+
+name: Vendor Identity Authority
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendor-identity-authority-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Vendor identity source authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the guard refuses an uncited or unsettled identity claim
+        run: node --test scripts/check-vendor-identity-authority.test.mjs
+
+      - name: Check every vendor landing identity constraint cites a settled authority
+        run: node scripts/check-vendor-identity-authority.mjs

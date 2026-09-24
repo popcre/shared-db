@@ -27,7 +27,7 @@ concurrency:
 jobs:
   reconcile:
     name: Reconcile one proven preview ledger orphan
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: preview
     timeout-minutes: 15
     env:

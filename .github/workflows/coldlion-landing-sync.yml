@@ -59,7 +59,7 @@ concurrency:
 jobs:
   sync:
     name: Sync masters and recent history windows
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
     # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
     # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min

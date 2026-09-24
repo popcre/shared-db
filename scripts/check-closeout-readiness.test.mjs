@@ -46,7 +46,12 @@ test('the command emits machine-readable result and refuses malformed identity',
 
 test('the contract workflow takes the classification only from protected base policy', () => {
   const workflow = readFileSync(fileURLToPath(new URL('../.github/workflows/database-contract-tests.yml', import.meta.url)), 'utf8')
-  assert.match(workflow, /ref: main/)
+  assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/)
+  assert.match(workflow, /pull-requests: read/)
+  assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}/)
+  // Only a positive inapplicable answer skips; an undecidable read runs the full test.
+  assert.match(workflow, /if \[ "\$status" -eq 0 \] && \[ "\$applicability" = inapplicable \]/)
+  assert.doesNotMatch(workflow, /test "\$status" -le 1/)
   assert.match(workflow, /POLICY_SHA="\$\(git rev-parse HEAD\)"/)
   assert.match(workflow, /if \[ -f scripts\/check-closeout-readiness\.mjs \]/)
   assert.match(workflow, /check-documents-only-pull-request\.mjs "\$GITHUB_REPOSITORY" "\$PR_NUMBER"/)
@@ -60,11 +65,27 @@ test('the contract workflow takes the classification only from protected base po
 })
 
 test('every documents-only decision that can waive a safeguard uses protected policy', () => {
-  const agent = readFileSync(fileURLToPath(new URL('../.github/workflows/agent-work-contract.yml', import.meta.url)), 'utf8')
-  const merge = readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml', import.meta.url)), 'utf8')
-  assert.match(agent, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/)
+  const agent = readFileSync(fileURLToPath(new URL('../.github/workflows/agent-work-contract.yml', import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
+  const merge = readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml', import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
+  assert.match(agent, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| steps\.queue\.outputs\.pr_base_sha \}\}/)
+  // The exemption is decided on merge_group too, after the queued PR is resolved.
+  assert.match(agent, /id: documents_only\n        if: github\.event_name == 'pull_request' \|\| github\.event_name == 'merge_group'/)
+  assert.ok(agent.indexOf('id: queue') < agent.indexOf('id: documents_only'))
   assert.match(agent, /node trusted-policy\/scripts\/check-documents-only-pull-request\.mjs/)
   assert.match(agent, /steps\.documents_only\.outputs\.value/)
   assert.match(merge, /ref: main\n          path: trusted-policy/)
-  assert.match(merge, /trusted-policy\/scripts\/check-exact-head-approval\.mjs/)
+  // Both the first pass and the lock-held re-proof run protected main's copy.
+  assert.equal(merge.match(/trusted-policy\/scripts\/check-exact-head-approval\.mjs/g).length, 2)
+  assert.doesNotMatch(merge, /^\s*node scripts\/check-exact-head-approval\.mjs/m)
+})
+
+test('a failed file-list read refuses with exit 2 and never reports inapplicable', () => {
+  const out = []
+  assert.equal(main(['u2giants/shared-db', '1', SHA], { read: () => { throw new Error('HTTP 403') }, out: (t) => out.push(t), err: () => {} }), 2)
+  assert.equal(out.length, 0)
+})
+
+test('an empty file list is never documents-only', () => {
+  const result = evaluateCloseoutReadiness({ repository: 'u2giants/shared-db', pullRequest: '1', policySha: SHA, filesPayload: '[]' })
+  assert.equal(result.gates.database_contract_tests, 'applicable')
 })

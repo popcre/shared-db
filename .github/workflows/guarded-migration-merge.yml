@@ -145,8 +145,9 @@ jobs:
           node scripts/check-migration-pr-lease.mjs
           node scripts/check-live-proof-probe.mjs
           # Re-proven under the lock: a reviewer can withdraw, or a refusal can
-          # land, between the first pass and the merge itself.
-          node scripts/check-exact-head-approval.mjs
+          # land, between the first pass and the merge itself. Protected main's
+          # copy, never the pull request's own, on BOTH passes.
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
           # The status write above and the mergeability GitHub evaluates below are
           # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked

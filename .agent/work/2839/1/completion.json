@@ -5,7 +5,7 @@
   "pr": 3375,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2839/1",
-  "contract_sha256": "82f1769865746a54649e6434598b882072764d3dd93a42678d82edbd0ed963f8",
+  "contract_sha256": "c823a546cd4880394e1310330d37ee16687b9abdbec56b7edcf0e768b0cfa7d2",
   "head_sha": "dddfeae989c169e24693f18ab0ca5f3558db8dee",
   "files_changed": [
     ".agent/work/2839/1/completion.json",
@@ -27,7 +27,7 @@
       "evidence": "syntax ok at dddfeae9"
     },
     {
-      "command": "APPROVAL_AUDIT=merged PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
+      "command": "PR_NUMBER=2746 node scripts/check-exact-head-approval.mjs",
       "exit_code": 0,
       "evidence": "PR #2746 carried guarded-merge authorization status 54025196895 at 2026-09-11T22:32:13Z, before merge 2026-09-11T22:32:17Z (APPROVAL_AUDIT=merged re-run at dddfeae9)"
     },

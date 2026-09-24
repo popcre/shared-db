@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "work_issue": 3234,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Refuse a vendor landing identity constraint that cites no settled source authority",
+  "base_sha": "be2a1aae38d4890a5d3679f76da3a9e4a8d3b4e3",
+  "dispatcher": "owner request in chat 2026-09-20",
+  "worker": "aeadf820-4914-47bc-af83-5f14bbc3ed05",
+  "branch": "guard/vendor-identity-source-authority",
+  "worktree": "D:/repos/shared-db-worktrees/github-issues-production-0ec2db",
+  "allowed_paths": [
+    ".github/workflows/vendor-identity-authority.yml",
+    "config/vendor-landing-authority.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/work/3234/3/contract.json",
+    ".agent/work/3234/3/completion.json"
+  ],
+  "file_writes": [
+    ".github/workflows/vendor-identity-authority.yml",
+    "config/vendor-landing-authority.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    ".agent/work/3234/3/contract.json",
+    ".agent/work/3234/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database writes or migration changes",
+    "No change to any existing guard's behaviour"
+  ],
+  "required_checks": [
+    "node --test scripts/check-vendor-identity-authority.test.mjs",
+    "node scripts/check-vendor-identity-authority.mjs",
+    "python -m unittest scripts.test_production_business_risk_gate"
+  ],
+  "assumptions": [
+    "ColdLion is the only vendor landing schema configured at activation; more are added by editing config, not code"
+  ],
+  "stop_conditions": [
+    "A repository migration would have to change"
+  ],
+  "generation": 3
+}

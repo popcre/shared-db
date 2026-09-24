@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 2831,
+  "generation": 3,
+  "pr": 3472,
+  "contract_ref": "refs/db-contracts/2831/3",
+  "head_sha": "3756c6b1a4472cd0356bb809c60ad56df9109c77",
+  "base_sha": "cb517b3054263a9a1668df6dbed4487b8a6448dc",
+  "files_changed": [
+    ".agent/work/2831/3/completion.json",
+    ".agent/work/2831/3/contract.json",
+    "scripts/lib/reviewer-capabilities.mjs",
+    "scripts/lib/reviewer-capabilities.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/*.test.mjs scripts/lib/*.test.mjs",
+      "result": "2320 pass, 1 fail (pre-existing on base cb517b305: check-issue-505-licensor-code-forward-repair)"
+    }
+  ]
+}

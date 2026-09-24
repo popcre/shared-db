@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3290/16",
   "contract_sha256": "043c89e7aef731b9e005355a5e04867e076dcb215196d1c2433e5a33c97a6052",
-  "head_sha": "b1d0810e121158b59bc0e8acb3f0762e95931ca4",
+  "head_sha": "0bf88f3625db1522f8faac3f6077f2d4ee1360bb",
   "files_changed": [
     ".gitignore",
     "docs/verification/product-type-reader/baseline-2026-09-23.md",

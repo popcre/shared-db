@@ -6,6 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2596/8",
   "contract_sha256": "27eec12a0e88586e5e193c4e51f3bbbf62bc219d99a5a6e2023383a3c5f5479f",
+  "base_sha": "bcf7d32fd130ca43859876e9c6c70c88207b549d",
   "head_sha": "3bb75e46e0298d6cc841262e6259150a791d2459",
   "files_changed": [
     ".github/workflows/agent-work-contract.yml",

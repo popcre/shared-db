@@ -1,6 +1,6 @@
 # Ledger drift status — issue #2508
 
-**Date:** 2026-09-25  
+**Date:** 2026-09-25 (4:22 AM EST)  
 **Scope:** detection/reporting tooling and documentation. No production apply.  
 **Work type:** repo-maintenance / non-orchestrator.
 

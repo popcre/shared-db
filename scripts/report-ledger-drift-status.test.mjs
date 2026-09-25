@@ -146,6 +146,7 @@ test('attributeVersions recovers commit and PR from a git runner', () => {
   const run = (_cmd, args) => {
     assert.ok(args.includes('--first-parent'))
     assert.ok(args.includes('--reverse'))
+    assert.ok(args.includes('origin/main'))
     return '26d9345b3a0ee015d8d02c0705002dd10b7f3f4e\tMerge pull request #2746 from u2giants/codex/issue-2478-shared-sku-key\n'
   }
   const attribution = attributeVersions(
@@ -154,6 +155,22 @@ test('attributeVersions recovers commit and PR from a git runner', () => {
   )
   assert.equal(attribution['20260911212849'].commit, '26d9345b3a0ee015d8d02c0705002dd10b7f3f4e')
   assert.equal(attribution['20260911212849'].pr, 2746)
+})
+
+test('attributeVersions uses the supplied base ref', () => {
+  const run = (_cmd, args) => {
+    assert.ok(args.includes('refs/heads/feature'))
+    return 'abc123\tMerge pull request #99 from x/y\n'
+  }
+  const attribution = attributeVersions({ '20260101000000': 'a.sql' }, run, 'refs/heads/feature')
+  assert.equal(attribution['20260101000000'].pr, 99)
+})
+
+test('attributeVersions prefers the entry that carries a PR number', () => {
+  const run = () => 'aaa\tmigration: re-reserve something\nbbb\tMerge pull request #42 from x/y\n'
+  const attribution = attributeVersions({ '20260101000000': 'a.sql' }, run)
+  assert.equal(attribution['20260101000000'].commit, 'bbb')
+  assert.equal(attribution['20260101000000'].pr, 42)
 })
 
 test('attributeVersions skips files git cannot attribute rather than failing', () => {

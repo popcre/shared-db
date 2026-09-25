@@ -116,7 +116,7 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
     lines.push('These are reviewed, merged migrations that are **not** switched on in this database.')
     lines.push('⚠️ Any object they create is **absent from the live catalog**. Do not read that absence as "the work was never done" (issue #892).')
     lines.push('')
-    lines.push('**Holders:** each version above needs a production apply through the bounded Shared Supabase Migrations workflow. That lane is the orchestrator\'s single production lane, not this session\'s. This report is detection only — no production action was taken.')
+    lines.push(`**Holders:** each version above needs a ${target} apply through the bounded Shared Supabase Migrations workflow. That lane is the orchestrator's single ${target} lane, not this session's. This report is detection only — no production action was taken.`)
     lines.push('')
   }
 
@@ -152,14 +152,17 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
  * commit inside the feature branch that created the file, whose subject has no
  * PR number. Walking only first-parent history finds the merge that landed the
  * file on main.
+ *
+ * Only the versions the caller actually needs attributed are queried — the
+ * actionable pending list, never all 700+ merged versions.
  */
-export function attributeVersions(fileByVersion, run = execFileSync) {
+export function attributeVersions(fileByVersion, run = execFileSync, baseRef = 'origin/main') {
   const attribution = {}
   for (const [version, file] of Object.entries(fileByVersion ?? {})) {
     if (!file) continue
     let out = ''
     try {
-      out = run('git', ['-C', repoRoot, 'log', '--first-parent', '--format=%H%x09%s', '--reverse', 'origin/main', '--', file], {
+      out = run('git', ['-C', repoRoot, 'log', '--first-parent', '--format=%H%x09%s', '--reverse', baseRef, '--', file], {
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
       })
@@ -167,11 +170,19 @@ export function attributeVersions(fileByVersion, run = execFileSync) {
       // A file git cannot attribute is not a reason to refuse the whole report.
       continue
     }
-    const line = String(out).trim().split(/\r?\n/)[0] ?? ''
-    if (!line) continue
-    const tab = line.indexOf('\t')
-    const commit = tab === -1 ? line : line.slice(0, tab)
-    const subject = tab === -1 ? '' : line.slice(tab + 1)
+    // Prefer the oldest first-parent entry whose subject carries a PR number;
+    // fall back to the oldest entry if none does.
+    const lines = String(out).trim().split(/\r?\n/).filter(Boolean)
+    if (lines.length === 0) continue
+    let chosen = lines[0]
+    for (const line of lines) {
+      const tab = line.indexOf('\t')
+      const subject = tab === -1 ? '' : line.slice(tab + 1)
+      if (prNumberFromSubject(subject) !== null) { chosen = line; break }
+    }
+    const tab = chosen.indexOf('\t')
+    const commit = tab === -1 ? chosen : chosen.slice(0, tab)
+    const subject = tab === -1 ? '' : chosen.slice(tab + 1)
     attribution[version] = { commit, subject, pr: prNumberFromSubject(subject) }
   }
   return attribution
@@ -247,13 +258,24 @@ export async function main(argv) {
     console.error('UNKNOWN: drift input is not valid JSON.')
     return 2
   }
-  if (!result?.drift || typeof result.drift.mergedCount !== 'number') {
-    console.error('UNKNOWN: drift JSON is missing the expected shape (drift.mergedCount).')
+  if (!result?.drift || typeof result.drift.mergedCount !== 'number' || typeof result.drift.appliedCount !== 'number') {
+    console.error('UNKNOWN: drift JSON is missing the expected shape (drift.mergedCount, drift.appliedCount).')
+    return 2
+  }
+  if (!Array.isArray(result.drift.actionableMergedNotApplied) || !Array.isArray(result.drift.mergedNotApplied)) {
+    console.error('UNKNOWN: drift JSON is missing the expected arrays (drift.mergedNotApplied, drift.actionableMergedNotApplied).')
     return 2
   }
 
+  // Attribute ONLY the actionable pending versions — never all 700+ merged ones.
+  const actionable = result.drift.actionableMergedNotApplied
   const fileByVersion = result.fileByVersion ?? {}
-  const attribution = attributeVersions(fileByVersion)
+  const actionableFiles = {}
+  for (const v of actionable) {
+    if (fileByVersion[v]) actionableFiles[v] = fileByVersion[v]
+  }
+  const baseRef = result.baseRef ?? 'origin/main'
+  const attribution = attributeVersions(actionableFiles, execFileSync, baseRef)
   const rows = buildStatusRows(
     { ...result.drift, fileByVersion, pendingClassifications: result.pendingClassifications ?? {} },
     attribution,
@@ -261,7 +283,7 @@ export async function main(argv) {
   console.log(formatStatusReport({
     target: result.target ?? 'production',
     projectRef: result.projectRef ?? 'unknown',
-    baseRef: result.baseRef ?? 'origin/main',
+    baseRef,
     drift: result.drift,
     rows,
   }))

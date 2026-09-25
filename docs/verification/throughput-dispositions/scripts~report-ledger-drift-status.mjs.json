@@ -19,12 +19,20 @@
       "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:ec620cc3bb15d3a1dfbd6da687d1b4de503eb6eb5b4b1ce7e5faac10e96b665e:1"
     },
     {
-      "site": "scripts/report-ledger-drift-status.mjs:251",
-      "semantic_key": "scripts/report-ledger-drift-status.mjs:b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71:context-cf8103e8790e805d3c722aeb858ee5513addf0a9fe4756362785004bc7be05b8",
-      "line_sha256": "b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71",
+      "site": "scripts/report-ledger-drift-status.mjs:262",
+      "semantic_key": "scripts/report-ledger-drift-status.mjs:fd324e947b0c31d756647925db653ac5f1339bef49cce134c50a2295abd022e8:context-3921f09f5f159c0fbff504fa52a5a9fdcd544da08370b82fa787ad56f8f8b7e3",
+      "line_sha256": "fd324e947b0c31d756647925db653ac5f1339bef49cce134c50a2295abd022e8",
       "disposition": "excluded",
-      "reason": "Error message for malformed JSON input; the word 'missing' refers to a missing required shape field, not a derivability claim. Not a dynamic-DDL call site.",
-      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71:1"
+      "reason": "Error message for malformed JSON input; the word 'missing' refers to missing required shape fields, not a derivability claim. Not a dynamic-DDL call site.",
+      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:fd324e947b0c31d756647925db653ac5f1339bef49cce134c50a2295abd022e8:1"
+    },
+    {
+      "site": "scripts/report-ledger-drift-status.mjs:266",
+      "semantic_key": "scripts/report-ledger-drift-status.mjs:3b211a37a3aa190e844d5ee0d639f94e87b2e422e6dae73287ea2f3b878d0e8a:context-ad5b45a4cbc82243b7bf63b2bfae4be07782014765e64e378a11600ba027c480",
+      "line_sha256": "3b211a37a3aa190e844d5ee0d639f94e87b2e422e6dae73287ea2f3b878d0e8a",
+      "disposition": "excluded",
+      "reason": "Error message for malformed JSON input; the word 'missing' refers to missing required arrays, not a derivability claim. Not a dynamic-DDL call site.",
+      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:3b211a37a3aa190e844d5ee0d639f94e87b2e422e6dae73287ea2f3b878d0e8a:1"
     }
   ]
 }

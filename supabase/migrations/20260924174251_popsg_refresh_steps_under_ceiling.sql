@@ -249,5 +249,44 @@ begin
               pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer,text)'::regprocedure)) = 0 then
     raise exception 'issue #3458: the steppable refresh overload does not refresh both matviews CONCURRENTLY';
   end if;
+
+  -- Constraint 1 is an accepted invariant of this claim: the legacy 2-arg body
+  -- is byte-identical. Pin it here so a future rewrite fails this migration's
+  -- own verify block, not only the external catalog contract.
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+       and p.prosecdef
+       and md5(p.prosrc) = '52b676f90e4500dc323c2f9e6e6f3c97') then
+    raise exception 'issue #3458: legacy 2-arg prosrc md5 or definer posture drifted from popsg_refresh_search_sync_queue_v1';
+  end if;
+
+  -- The steppable overload must keep the same definer/search_path posture.
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer,text)')
+       and p.prosecdef
+       and coalesce(p.proconfig, '{}') && array['search_path=public']::text[]) then
+    raise exception 'issue #3458: the steppable overload lost SECURITY DEFINER or its fixed search_path';
+  end if;
+
+  -- REFRESH MATERIALIZED VIEW CONCURRENTLY requires a unique index on each
+  -- matview. Assert both, so a dropped index fails loudly here.
+  if not exists (
+    select 1 from pg_index i
+      join pg_class c on c.oid = i.indrelid
+      join pg_class ic on ic.oid = i.indexrelid
+     where c.oid = 'public.style_guide_file_groups'::regclass
+       and i.indisunique
+       and ic.relname = 'sgfilegroups_group_uidx')
+     or not exists (
+    select 1 from pg_index i
+      join pg_class c on c.oid = i.indrelid
+      join pg_class ic on ic.oid = i.indexrelid
+     where c.oid = 'public.style_guide_folders'::regclass
+       and i.indisunique
+       and ic.relname = 'sgfolders_licensor_property_uidx') then
+    raise exception 'issue #3458: a CONCURRENTLY-enabling unique index is missing on style_guide_file_groups or style_guide_folders';
+  end if;
 end
 $verify$;

@@ -13,22 +13,21 @@ create or replace function pg_temp.mk_sg_file(
   p_run uuid,
   p_name text
 ) returns uuid
-language plpgsql
+language sql
 as $fn$
-declare
-  v_id uuid;
-begin
-  insert into public.style_guide_files (
-    root_label, crawl_run_id, licensor_name, property_folder, style_guide_folder,
-    directory_path, relative_path, filename, file_extension,
-    tag_names, size_bytes, modified_at, tag_search_text, is_active
-  ) values (
-    p_root, p_run, 'TestLicensor', 'TestProperty', 'TestGuide',
-    '/Test/' || p_root, 'TestLicensor/' || p_name, p_name, '.pdf',
-    array['tag-a'], 100, now(), 'tag-a', true
-  ) returning id into v_id;
-  return v_id;
-end;
+  -- licensor_name is GENERATED ALWAYS AS split_part(relative_path, '/', 1), so
+  -- it cannot be written directly -- the path carries it. basename_no_ext and
+  -- normalized_name are NOT NULL without defaults and must be supplied. Same
+  -- shape as pg_temp.mk_file in popsg_bounded_crawl_and_search_contracts.sql.
+  insert into public.style_guide_files
+    (crawl_run_id, root_label, relative_path, directory_path, filename, basename_no_ext,
+     file_extension, normalized_name, property_folder, style_guide_folder,
+     size_bytes, modified_at, is_active, tag_names, tag_search_text)
+  values
+    (p_run, p_root, 'TestLicensor/' || p_name, 'dir/' || p_root, p_name, replace(p_name, '.pdf', ''),
+     'pdf', lower(p_name), 'TestProperty', 'TestGuide',
+     100, now(), true, array['tag-a'], 'tag-a')
+  returning id;
 $fn$;
 
 do $tests$
@@ -91,8 +90,17 @@ begin
   end if;
 
   -- =========================================================================
-  -- 2. legacy2-arg body unchanged: still all-in-one, still queue-based
+  -- 2. legacy2-arg body unchanged: still all-in-one, still queue-based, and
+  --    byte-identical (md5(prosrc) pinned by
+  --    scripts/production_catalog_verification.py popsg_refresh_search_sync_queue_v1)
   -- =========================================================================
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+       and p.prosecdef
+       and md5(p.prosrc) = '52b676f90e4500dc323c2f9e6e6f3c97') then
+    raise exception 'test 2: legacy 2-arg prosrc md5 or definer posture drifted from the pinned catalog contract';
+  end if;
   if position('refresh materialized view concurrently public.style_guide_file_groups' in v_def2) = 0
      or position('refresh materialized view concurrently public.style_guide_folders' in v_def2) = 0 then
     raise exception 'test 2: legacy overload lost its concurrent refreshes';

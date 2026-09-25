@@ -61,6 +61,20 @@ Stop looping when `search_documents_synced < p_search_batch_size` (the batch was
 partial, so the queue is empty for this run). A `search` call with an empty queue
 returns `search_documents_synced = 0` and still stamps `refresh_completed_at`.
 
+## Caller footguns (read before wiring)
+
+1. **One RPC call per statement — never wrap the steps in an explicit
+   transaction.** Each step must be its own statement. `REFRESH MATERIALIZED
+   VIEW CONCURRENTLY` is illegal inside a transaction block, so a `begin` that
+   spans `file_groups` + `folders` + `search` fails at the first refresh. The
+   RPC call itself is a single statement, which is what makes CONCURRENTLY legal.
+2. **`refresh_completed_at` means "a search step ran", not "all files are
+   synced".** It is stamped on every `search` / `all` call, including a partial
+   batch and an empty-queue call. Lifecycle completion is caller-gated (the
+   `completed` transition's CHECK), so always drain the queue to
+   `search_documents_synced < p_search_batch_size` before treating the run as
+   finished.
+
 ## Compatibility
 
 - `refresh_style_guide_matviews(p_run_id, p_search_batch_size)` — unchanged

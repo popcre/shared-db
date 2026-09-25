@@ -5736,6 +5736,60 @@ test('#3427 a conflicting slot-1 replacement is refused and can be redrawn witho
   assert.equal(io.refs.get(started),recovered.replacementSha,'the atomic recovery seals the unstarted conflicting review against a late launch')
 })
 
+test('#3427 slot 3 draws a third distinct provider and refuses both peer holders',()=>{
+  const io=reviewIo(),request={issue:3430,pr:3431,headSha:'c'.repeat(40)}
+  const first=assignNextReviewer(request,io)
+  const second=assignNextReviewer({...request,slot:2},io)
+  const third=assignNextReviewer({...request,slot:3},io)
+  assert.equal(third.slot,3)
+  assert.notEqual(third.reviewer,first.reviewer,'slot 3 must not duplicate slot 1')
+  assert.notEqual(third.reviewer,second.reviewer,'slot 3 must not duplicate slot 2')
+  // Idempotent retry of each slot stays stable.
+  assert.deepEqual(assignNextReviewer(request,io),first)
+  assert.deepEqual(assignNextReviewer({...request,slot:2},io),second)
+  assert.deepEqual(assignNextReviewer({...request,slot:3},io),third)
+})
+
+test('#3427 slot 1 replacement after three slots draws a provider outside all peers',()=>{
+  const io=withAtomicRefs(reviewIo()),request={issue:3432,pr:3433,headSha:'d'.repeat(40)}
+  io.requiresExactReviewHeadSha=true
+  io.getPr=()=>({number:request.pr,state:'open',head:{sha:request.headSha,ref:'codex/x'}})
+  const first=assignNextReviewer(request,io)
+  const second=assignNextReviewer({...request,slot:2},io)
+  const third=assignNextReviewer({...request,slot:3},io)
+  const peers=new Set([first.reviewer,second.reviewer,third.reviewer])
+  // Forge a conflicting slot-1 replacement that names the slot-3 provider.
+  const sequence=third.sequence+1
+  const replacementRef=`${REVIEW_REPLACEMENT_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}-${first.sequence}`
+  const failureRef=`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}-${first.sequence}`
+  const conflictingSha=io.makeOwnerCommit(`db-coordination reviewer-failure-replacement sequence=${sequence} reviewer=${third.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=1 failed-sequence=${first.sequence} prior-sequence=${third.sequence} failure-ref=self failed-reviewer=${first.reviewer} code=turn_limit_cancelled verdict=none artifact=none`)
+  io.refs.set(replacementRef,conflictingSha);io.refs.set(failureRef,conflictingSha);io.refs.set(REVIEW_CURSOR_REF,conflictingSha)
+  io.refs.delete(reviewActiveRef(first.reviewer,first))
+  // Give the peers verdicts so recovery proves the other slots are preserved.
+  const secondVerdict=giveVerdict(io,{...request,slot:2}),secondSha=io.refs.get(secondVerdict)
+  const thirdVerdict=giveVerdict(io,{...request,slot:3}),thirdSha=io.refs.get(thirdVerdict)
+  assert.throws(()=>assignNextReviewer(request,io),/already holds another review slot/)
+  const started=reviewStartedMarkerRef({...request,slot:1,sequence})
+  const recovered=replaceFailedReviewer({...request,failedSequence:sequence,failureCode:SLOT_INDEPENDENCE_CONFLICT,confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.ok(!peers.has(recovered.reviewer),'the redrawn slot-1 provider must differ from every peer')
+  assert.equal(io.refs.get(secondVerdict),secondSha,'the slot-2 verdict is untouched')
+  assert.equal(io.refs.get(thirdVerdict),thirdSha,'the slot-3 verdict is untouched')
+  assert.equal(io.refs.get(replacementRef),conflictingSha,'conflict history remains immutable')
+  assert.equal(io.refs.get(started),recovered.replacementSha,'the recovery seals the unstarted conflicting review')
+})
+
+test('#3427 head-SHA case is normalized so peer exclusion sees the same namespace',()=>{
+  const io=reviewIo(),lower='e'.repeat(40),upper=lower.toUpperCase()
+  const first=assignNextReviewer({issue:3434,pr:3435,headSha:upper},io)
+  // The request above stores lowercase internally; the assignment ref is lowercase.
+  assert.ok(io.refs.has(`${REVIEW_ASSIGNMENT_REF_PREFIX}/3434-3435-${lower}`),'the assignment ref must be lowercase')
+  const second=assignNextReviewer({issue:3434,pr:3435,headSha:lower,slot:2},io)
+  assert.notEqual(second.reviewer,first.reviewer,'slot 2 drawn with a lowercase head must see the uppercase-drawn slot 1 peer')
+  // Retrying with the original uppercase input still resolves the same records.
+  assert.deepEqual(assignNextReviewer({issue:3434,pr:3435,headSha:upper},io),first)
+  assert.deepEqual(assignNextReviewer({issue:3434,pr:3435,headSha:upper,slot:2},io),second)
+})
+
 // LEGACY SHORT-HEAD FIXTURE PROTOCOL ONLY: reviewIo() sets no requiresExactReviewHeadSha, so
 // one lease ref per reviewer makes a provider unable to take a second review here. Production
 // (exact-head leases) has no busy state; see the owner ruling 2026-09-16 test.

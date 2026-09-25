@@ -27,13 +27,6 @@
       "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:10203ad02cbf2b582359cb072ce142147e2970c7b9c0aee6318b80c1daf3c1f0:1"
     },
     {
-      "site": "scripts/manage-migration-author-lanes.mjs:5711",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:14e03f439297e93956633573e69f4ec650cbbde1ab02de3677ccbe41412000a5:context-7428faf261f7d5be527defd5514d8a97834ca03ca1c51fabe111f0e1bf0e2a21",
-      "line_sha256": "14e03f439297e93956633573e69f4ec650cbbde1ab02de3677ccbe41412000a5",
-      "disposition": "excluded",
-      "reason": "Excluded: local tooling or CI wording matched the discovery pattern and makes no database presence, absence, or applied-migration claim."
-    },
-    {
       "site": "scripts/manage-migration-author-lanes.mjs:7100",
       "semantic_key": "scripts/manage-migration-author-lanes.mjs:1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7:context-339bdfbb6f15a84e7908a538253ad9fe7340bc445971020d3ee696abb9de29e3",
       "line_sha256": "1a8f56bcdf8680f4353a5954af7a8a0ea450b17b8d7ee64b832e52c411bf59b7",

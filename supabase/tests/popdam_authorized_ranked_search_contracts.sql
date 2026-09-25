@@ -95,7 +95,7 @@ begin
   end if;
 
   if to_regprocedure(
-       'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'
+       'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)'
      ) is not null then
     raise exception 'old 7-arg ranked-search overload survived the semantic-floor signature swap';
   end if;

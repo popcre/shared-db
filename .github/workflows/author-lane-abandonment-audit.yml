@@ -58,6 +58,10 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  # actions: read is required to list workflow runs (the audit's evidence
+  # source). Without it every run since 2026-09-16 exited 3 "unverifiable"
+  # on an HTTP 403 (issue #3536); the audit never once produced a result.
+  actions: read
 
 concurrency:
   group: author-lane-abandonment-audit-${{ github.ref }}
@@ -66,7 +70,7 @@ concurrency:
 jobs:
   audit:
     name: Author lane abandonment audit
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

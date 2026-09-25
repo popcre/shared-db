@@ -80,7 +80,8 @@
     "Issue2662 is now explicitly bounded to these six views; original broader findings retained in owned successors3327/3328/3329 and2326. PR3304 closes only this bounded outcome. Current-main70b0cad2 integrated reviewer parser repair; SQL migration and six tests remain byte-identical to hosted passing run35518490787.",
     "Refresh 2026-09-20: integration of faed5557 changes no migration, test SQL, or live probe bytes versus approved 4a76f2db. Hosted and local database evidence above is historical, not rerun; hosted CI will run on the refreshed PR head. Existing authentic approvals require native content-preserving carry-forward validation.",
     "Refresh 2026-09-20: current main 18c2610526e9b34a9d5af3818853cf1fb63e8979 integrated; all SQL migration, tests and live proof remain byte-identical to approved 4a76f2db. No database write or preview reuse performed.",
-    "Refresh 2026-09-20 against exact main 8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b; SQL, tests and live probe remain byte-identical to approved 4a76f2db. No database writes."
+    "Refresh 2026-09-20 against exact main 8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b; SQL, tests and live probe remain byte-identical to approved 4a76f2db. No database writes.",
+    "Evidence-only head move 2026-09-25: head B is head A 3a23378d plus this pair-only rebind so slot-1 failedNames resets at the new exact head. Implementation files and merge base 5653b760 are unchanged since 97123cb9; gemini-3.8-flash-high slot-2 APPROVE at 3a23378d carries forward under #2758 / AGENTS.md 4 rule 2. Contract bytes and hash unchanged, so refs/db-contracts/2662/18 needs no republish. Migration version 20260923174737 unchanged. No implementation, preview, or production write."
   ],
   "stop_conditions_hit": [],
   "base_sha": "5653b760e445ff27264b82e42596c84afc101ee5"

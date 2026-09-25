@@ -7,8 +7,11 @@
   "contract_ref": "refs/db-contracts/3507/1",
   "contract_sha256": "8dd3c986fb9afbe9fac81c9ec027eb866af3bb0be9b45fd5cf620c476c1cd17c",
   "base_sha": "c4250cd753e8b8780e0af05de9b0ceceb08c070b",
-  "head_sha": "c4250cd753e8b8780e0af05de9b0ceceb08c070b",
-  "files_changed": [],
+  "head_sha": "e8bfa397d6bea6139ac81b9daff36d0104cd1b05",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
   "db_reads": [],
   "db_writes": [],
   "checks": [

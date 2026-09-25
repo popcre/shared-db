@@ -96,8 +96,8 @@ export function assertContextsAndWorkflow({ contexts, workflows }) {
 export const COVERED_CONTEXTS_PATH = 'docs/verification/main-required-status-checks.json'
 export function assertLiveContextsCovered({ contexts, coveredContexts }) {
   if (!Array.isArray(coveredContexts) || coveredContexts.length === 0) throw new ConfigureQueueError('the merge-group-covered context list is unreadable; refusing')
-  const missing = (contexts ?? []).filter((c) => !coveredContexts.includes(c))
-  if (missing.length) throw new ConfigureQueueError(`live required context(s) without proven merge-group coverage: ${missing.join(', ')}; mirror and map them first (scripts/update-required-checks.mjs, scripts/check-merge-queue-workflows.test.mjs)`)
+  const uncovered = (contexts ?? []).filter((c) => !coveredContexts.includes(c))
+  if (uncovered.length) throw new ConfigureQueueError(`live required context(s) without proven merge-group coverage: ${uncovered.join(', ')}; mirror and map them first (scripts/update-required-checks.mjs, scripts/check-merge-queue-workflows.test.mjs)`)
   return true
 }
 

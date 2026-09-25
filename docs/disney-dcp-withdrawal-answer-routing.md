@@ -9,17 +9,19 @@ or anyone else to obtain one.
 
 The question below was answered and published on 2026-09-25. The authoritative
 statement now lives in
-[Disney DCP Vault artwork withdrawal signals](business-rules/licensing-master-data.md#disney-dcp-vault-artwork-withdrawal-signals),
-with its full provenance recorded on issue
+[the licensing master-data rule](business-rules/licensing-master-data.md)
+under "Disney DCP Vault artwork withdrawal signals", with its full provenance
+recorded on issue
 [#3347](https://github.com/popcre/shared-db/issues/3347). Read that rule first.
 
 Do not treat this note as the answer, do not re-litigate the settled question,
 and do not report the question as unanswered.
 
 What remains routed here is **later input**: a correction, a refinement, or a
-new relayed explanation from Laura or Ilona. A later answer is applied only to
-the behavior it actually settles; everything the settled rule already answers
-stays as it is until a later answer clearly changes it.
+new relayed statement about Disney/DCP Vault artwork withdrawal, removal
+status or missing artwork. A later answer is applied only to the behavior it
+actually settles; everything the settled rule already answers stays as it is
+until a later answer clearly changes it.
 
 ## Recognize a later answer
 
@@ -53,14 +55,28 @@ than a new rule.
    private, retain it privately and publish a faithful sanitized meaning.
 4. Once authoritative and unambiguous, amend the settled topic in
    [the companywide business rules](business-rules/licensing-master-data.md)
-   through the normal reviewed branch-and-PR process, with provenance and the
-   issue reference. Do not create a competing business rule in this note.
-   If authority or meaning is unresolved, record precisely what is unresolved
-   and retain the settled rule until it is clarified.
+   following the collection process in
+   [docs/business-rules/README.md](business-rules/README.md) ("How rules are
+   collected"), through the normal reviewed branch-and-PR process, with
+   provenance and the issue reference. In that amendment: record the meaning
+   under a clearly separated "What this changes" heading in the same topic
+   document (README step 3); mark conflicting older text Historical or add a
+   correction at the point a reader would encounter it (README step 5 and
+   Maintenance rule item 2); and update
+   [application-map.md](business-rules/application-map.md) if relevance
+   changed (README step 6 and Maintenance rule item 3). Do not create a
+   competing business rule in this note. If authority or meaning is
+   unresolved, record precisely what is unresolved and retain the settled
+   rule until it is clarified.
 5. Classify each concrete follow-up from its own actual work. A database SHAPE
    change must resolve the CURRENT orchestrator using
    `node scripts/check-orchestrator-marker.mjs --resolve` and follow that live
-   route. Never reuse a stale chat UUID, marker, or predecessor's object claims.
+   route. If that command exits NONE (exit 3 — no open marker, no active
+   orchestrator), queue the work and do not dispatch. If it reports UNSAFE
+   (the marker guard failed), stop and resolve the collision before routing.
+   A resolved address is DECLARED, not proven reachable (#2350): a
+   well-formed address is not authority to write. Never reuse a stale chat
+   UUID, marker, or predecessor's object claims.
    Ordinary source capture, producer qualification and loader changes belong
    to the private `u2giants/licensor-source-data` session; repository notes and
    business-rule documentation stay with a non-orchestrator repository session.
@@ -75,16 +91,17 @@ than a new rule.
 
 The separation of facts, the definitions of the withdrawal signals, and the
 limits on what this settles are stated once, in
-[the settled rule](business-rules/licensing-master-data.md#disney-dcp-vault-artwork-withdrawal-signals).
-Read and cite that section; this note deliberately does not restate it, so the
-two can never drift.
+[the settled rule](business-rules/licensing-master-data.md) under "Disney DCP
+Vault artwork withdrawal signals". Read and cite that section; this note
+deliberately does not restate it, so the two can never drift.
 
 A vendor attestation requirement was an agent proposal, not an owner decision.
-Do not make one a prerequisite for technical capture qualification. The existing
-engineering contract requires authenticated, exhaustive coverage of the configured
-scope, immutable retained provenance, zero failed fetches and rejection of
-incomparable captures. Confirm the current #3347 contract before implementation;
-this note neither weakens it nor authorizes database or production writes.
+Do not make one a prerequisite for technical capture qualification. The #3347
+engineering contract is stated in
+[the settled rule](business-rules/licensing-master-data.md) under "Disney DCP
+Vault artwork withdrawal signals"; confirm the current contract at #3347 before
+implementation. This note neither weakens it nor authorizes database or
+production writes.
 
 The independent technical producer repair and capture qualification proceed
 under their own approvals. The human answer is no longer outstanding: do not

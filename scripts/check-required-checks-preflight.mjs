@@ -12,7 +12,7 @@
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { pathToFileURL } from 'node:url'
-import { REPO } from './manage-migration-author-lanes.mjs'
+import { REPO, MERGE_ADVISORY_CONTEXT } from './manage-migration-author-lanes.mjs'
 import { MERGE_SELF_CONTEXT as SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 export class PreflightError extends Error {}
@@ -28,9 +28,9 @@ export const SELF_CHECK_RUN = 'merge'
 // here would make every code PR unmergeable through the guarded lane (#2759).
 // It is never a required context; the mirrored required contexts are still
 // enforced in full. #3505: the advisory commit status uses its own context name
-// ("Documents-only merge advisory") so it can never stand in for a real grant;
-// the workflow check run retains the original name.
-export const ADVISORY_CONTEXTS = ['Documents-only merge advisory', 'Documents-only merge authorization']
+// (MERGE_ADVISORY_CONTEXT, single-sourced from the producer) so it can never
+// stand in for a real grant; the workflow check run retains the original name.
+export const ADVISORY_CONTEXTS = [MERGE_ADVISORY_CONTEXT, 'Documents-only merge authorization']
 
 // A skipped or neutral required check can still be refused by the merge API.
 // Accept only explicit success so that refusal happens before the merge lock.

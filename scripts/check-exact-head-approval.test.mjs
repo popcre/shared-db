@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
+import { MERGE_ADVISORY_CONTEXT } from './manage-migration-author-lanes.mjs'
 import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, main as approvalMain, selectMergeAuthorizationAtMerge, MERGE_AUTHORIZED_DESCRIPTION, DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
 import { isValidatedVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 
@@ -999,12 +1000,12 @@ test('#2839 round 3 M2: the audit admits what the documents-only producer admits
 // advisory status ("Not applicable: code change; guarded code checks required") and no
 // `Migration guarded merge authorization` at all. A code PR with only the advisory must
 // never be treated as merge-authorized. The advisory lives on its own context name
-// ("Documents-only merge advisory") and must never satisfy the guarded-merge context.
+// (MERGE_ADVISORY_CONTEXT) and must never satisfy the guarded-merge context.
 test('#3505: a code PR with only the advisory status is refused at merge-authorization audit', () => {
   const advisoryOnly = [
     {
       id: 60,
-      context: 'Documents-only merge advisory',
+      context: MERGE_ADVISORY_CONTEXT,
       state: 'success',
       description: 'Not applicable: code change; guarded code checks required',
       creator: { login: 'github-actions[bot]' },
@@ -1021,7 +1022,7 @@ test('#3505: the advisory context is distinct from the real grant context', () =
   const advisoryOnly = [
     {
       id: 61,
-      context: 'Documents-only merge advisory',
+      context: MERGE_ADVISORY_CONTEXT,
       state: 'success',
       description: 'Not applicable: code change; guarded code checks required',
       creator: { login: 'github-actions[bot]' },

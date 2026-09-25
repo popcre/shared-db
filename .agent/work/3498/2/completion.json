@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3498,
+  "outcome": "ready-for-merge",
+  "pr": 3510,
+  "migration_versions": ["20260925044029"],
+  "contract_ref": "refs/db-contracts/3498/2",
+  "contract_sha256": "8e58771e76ba570379f5e22082b09e68933bb52fd47e10e0c3bd2e7e4c5aff3e",
+  "head_sha": "2ba64cab4d5f8e3f46fcf1474ea0f1b3408a042c",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "files_changed": [
+    "supabase/migrations/20260925044029_plm_item_user_assignment_and_workflow_action.sql"
+  ],
+  "db_reads": [
+    "table dflow.item_user_assignment",
+    "table dflow.item_workflow_action"
+  ],
+  "db_writes": [
+    "table plm.item_user_assignment",
+    "table plm.item_workflow_action"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed (Guard B against main newest 20260924183947, expected-count, verify-cost, EOL reference) at 2ba64cab after REVISE fixes"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20..2ba64cab4d5f8e3f46fcf1474ea0f1b3408a042c reported no whitespace errors"
+    },
+    {
+      "command": "object keys of the migration match the claim writes exactly",
+      "exit_code": 0,
+      "evidence": "node --input-type=module dispatchObjectKeys(migration) returns exactly ['table plm.item_user_assignment', 'table plm.item_workflow_action'] matching db_writes at 2ba64cab"
+    }
+  ],
+  "assumptions_resolved": [
+    "B1 fixed: -- derived-from names real ledger versions 20260901221310, 20260904143518, 20260905053422, 20260907121732",
+    "B2 fixed: actor_identity_source and actor_identity_email defaults copied verbatim from 20260907121732",
+    "B3 fixed: intra-plm FKs included (rfq_item_id to plm.RFQItem, prior_step_id/new_step_id to plm.RFQStep, composite self-FK on source_action_id); rationale narrowed to the four cross-schema dflow.users references",
+    "REVISE findings fixed: item_workflow_action_return_names_its_source CHECK added; catalogue-only verify block added; header discloses all six deferred indexes with integrity-invariant callout; shape/append-only claims narrowed to match reality",
+    "Cross-schema FKs into dflow.users and all six source indexes deferred so the claim writes exactly the two tables; intra-plm FKs are included",
+    "Mover obligations: use OVERRIDING SYSTEM VALUE + setval past max(id) for identity columns; use explicit column lists (column order differs on item_workflow_action); re-point app.user_notification.workflow_action_id; grant designflow role; wire dflow.users FKs and append-only triggers; land two partial-unique indexes before any row insert",
+    "Contract published at refs/db-contracts/3498/2 (sha256 8e58771e76ba570379f5e22082b09e68933bb52fd47e10e0c3bd2e7e4c5aff3e); generation 1 superseded"
+  ],
+  "stop_conditions_hit": []
+}

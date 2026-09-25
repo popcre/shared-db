@@ -80,7 +80,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      # TRUSTED PURE-PROSE FAST CI ROUTE (issue #3383).
+      #
+      # A proven pure-prose change skips the contract tests below. The proof is
+      # an exact base/head git inventory including file modes, computed by the
+      # classifier taken from the PROTECTED BASE, never from the pull request
+      # head. Fail closed: every other outcome keeps the full suite. The
+      # required context name is unchanged; this step only decides whether the
+      # suite needs to run.
+      - name: Decide the CI route from a trusted pure-prose inventory
+        id: route
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          echo 'pure_prose=false' >> "$GITHUB_OUTPUT"
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo 'Full engineering path: no base/head pair to prove an inventory against.'
+            exit 0
+          fi
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'Full engineering path: base/head objects could not be fetched.'
+            exit 0
+          fi
+          scratch="$(mktemp -d)"
+          if ! git archive "$BASE_SHA" scripts/check-documents-ci-route.mjs scripts/lib/documents-only-change.mjs | tar -x -C "$scratch"; then
+            echo 'Full engineering path: the protected base does not carry the route classifier.'
+            exit 0
+          fi
+          if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
+            echo 'Pure-prose fast route proven; the contract tests are skipped.'
+          else
+            echo 'Full engineering path: the change is not proven pure prose.'
+          fi
+
       - name: Run the ColdLion promotion contract tests
+        if: steps.route.outputs.pure_prose != 'true'
         run: |
           node --test \
             tools/coldlion-recurring-promotion.test.mjs \

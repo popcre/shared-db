@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "scripts/agent-work-contract-git-evidence.mjs",
+  "sites": [
+    {
+      "site": "scripts/agent-work-contract-git-evidence.mjs:118",
+      "semantic_key": "scripts/agent-work-contract-git-evidence.mjs:8bc3ab5c262bb9bb928b5022e743f73514392badc546771587c730380fe42e84:context-3c0de3a3704e3a7d87f7a0a88b5932cf80037dc9a6a8a07c2a35cc735cc0ae56",
+      "line_sha256": "8bc3ab5c262bb9bb928b5022e743f73514392badc546771587c730380fe42e84",
+      "disposition": "enriched",
+      "reason": "Enriched by this implementation: the fetch failure now refuses closed with a structured missing-predecessor error naming the exact ref, instead of a generic command failure that a successor could mistake for an unreadable contract.",
+      "legacy_semantic_key": "scripts/agent-work-contract-git-evidence.mjs:8bc3ab5c262bb9bb928b5022e743f73514392badc546771587c730380fe42e84:1"
+    }
+  ]
+}

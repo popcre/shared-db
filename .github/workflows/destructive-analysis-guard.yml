@@ -74,4 +74,13 @@ jobs:
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-destructive-analysis.mjs --diff-base "${{ github.event.merge_group.base_sha }}"
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          # Fail closed when the group base is not a resolvable commit: an
+          # unresolvable base must never read as "no SQL added".
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::merge_group base_sha '${BASE_SHA}' does not resolve to a commit; refusing to scan."
+            exit 1
+          fi
+          node scripts/check-destructive-analysis.mjs --diff-base "${BASE_SHA}"

@@ -21,9 +21,22 @@ const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name
 const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8'))
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
-// scripts/update-required-checks.mjs from the live read-back at activation; an
-// entry here must then move OUT of this list only by the mirror catching up.
-const KNOWN_LIVE_ADDITIONS = ['Queue-sensitive checks (aggregate)']
+// scripts/update-required-checks.mjs from the live read-back; it now equals that
+// read-back exactly (15 contexts, strict false), so nothing is pending here.
+const KNOWN_LIVE_ADDITIONS = []
+
+// The exact job-level display names a workflow emits. A literal `name:` emits
+// itself; a lane-capable name EXPRESSION emits its `|| '<default>'` branch on
+// every non-lane run, which is the only form a required context can take.
+function emittedJobNames(text) {
+  const names = new Set()
+  for (const [, raw] of text.matchAll(/^ {4}name: (.+)$/gm)) {
+    const value = raw.trim()
+    const expr = /^\$\{\{.*\|\| '([^']+)' \}\}$/.exec(value)
+    names.add(expr ? expr[1] : value)
+  }
+  return names
+}
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the
@@ -52,9 +65,22 @@ const CONTEXT_MAP = {
 test('every mirrored or known-live required context has a mapped emitter', () => {
   const mirrored = MIRROR.contexts
   assert.ok(Array.isArray(mirrored) && mirrored.length > 0, 'the committed mirror carries no contexts; the required list is unknown')
-  for (const context of [...mirrored, ...KNOWN_LIVE_ADDITIONS, 'Merge queue gate']) {
+  for (const context of [...mirrored, ...KNOWN_LIVE_ADDITIONS]) {
     assert.ok(CONTEXT_MAP[context], `no merge-group-capable emitter is mapped for required context "${context}"`)
   }
+})
+
+test('the emitter check matches exact job names, not substrings or comments', () => {
+  const names = emittedJobNames([
+    'jobs:',
+    '  a:',
+    '    name: Not Destructive SQL outside migrations',
+    '    # name: Destructive SQL outside migrations',
+    '  b:',
+    "    name: ${{ inputs.lane && format('Tools offline tests [lane {0}]', inputs.lane) || 'Tools offline tests' }}",
+  ].join('\n'))
+  assert.equal(names.has('Destructive SQL outside migrations'), false)
+  assert.equal(names.has('Tools offline tests'), true)
 })
 
 test('every check-run emitter triggers on pull_request AND merge_group checks_requested', () => {
@@ -64,9 +90,9 @@ test('every check-run emitter triggers on pull_request AND merge_group checks_re
     assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
     assert.match(text, /^ {2}merge_group:$/m, `${spec.workflow} (${context}) does not trigger for merge_group`)
     assert.match(text, /^ {4}types: \[checks_requested\]$/m, `${spec.workflow} (${context}) does not pin merge_group checks_requested`)
-    // Lane-capable jobs emit the context through a name EXPRESSION whose default
-    // branch is the exact context string; asserting the string is present covers both.
-    assert.ok(text.includes(spec.job), `${spec.workflow} does not emit a job named "${spec.job}"`)
+    // Exact object: a job whose display name (literal, or the default branch of a
+    // lane-capable name expression) equals the context. A substring or comment is not enough.
+    assert.ok(emittedJobNames(text).has(spec.job), `${spec.workflow} does not emit a job named exactly "${spec.job}"`)
   }
 })
 

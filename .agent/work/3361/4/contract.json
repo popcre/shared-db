@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "work_issue": 3361,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Establish live effective required-check authority without stale snapshots or advisory vetoes; prove token permissions at preflight",
+  "base_sha": "85566ccb392b27022fe9bbb100d308fc587b13cc",
+  "dispatcher": "MiMo parent session fixing PR #3369",
+  "worker": "MiMo required-authority fix",
+  "branch": "codex/workflow-refactor-required-authority",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/fix-3369-d-mimo",
+  "allowed_paths": [
+    ".agent/work/3361/4/completion.json",
+    ".agent/work/3361/4/contract.json",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/3361/4/completion.json",
+    ".agent/work/3361/4/contract.json",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not change required_status_checks.strict; it is false by owner ruling in issue #1286",
+    "do not touch any migration or database object",
+    "do not edit another session handoff, worktree, branch, or claim"
+  ],
+  "required_checks": [
+    "node --test scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs"
+  ],
+  "assumptions": [
+    "Fresh effective settings includes classic protection and applicable inherited rulesets; authority is not a static mirror",
+    "Workflow token can complete GraphQL branchProtectionRule and REST rules/branches reads with contents:read; the preflight probe proves this live"
+  ],
+  "stop_conditions": [
+    "Refuse authorization if live settings are unreadable; do not broaden credentials",
+    "Do not mutate settings without exact independent approval"
+  ],
+  "generation": 4
+}

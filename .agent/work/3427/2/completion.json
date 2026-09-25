@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "contract_ref": "refs/db-contracts/3427/2",
+  "outcome": "ready-for-merge",
+  "head_sha": "416897225fdcb7ecc8a13b5491dc0d2cc07c43f8",
+  "work_issue": 3427,
+  "migration_versions": [],
+  "contract_sha256": "1ed7cff6669b0a41f3672195e1f09283d3c2b44504dcd97e4ec9e83554da7094",
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "807 tests pass (713 manage-migration-author-lanes + 91 check-exact-head-approval including 4 #3427 tests)",
+      "exit_code": 0,
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
+    },
+    {
+      "evidence": "no whitespace errors",
+      "exit_code": 0,
+      "command": "git diff --check"
+    }
+  ],
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json"
+  ],
+  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
+  "pr": 3521,
+  "assumptions_resolved": [
+    "Symmetric peer-slot discovery closes the #3429 advisory on slot-3 duplication",
+    "Head-SHA normalization closes the #3429 advisory on asymmetric case handling"
+  ],
+  "stop_conditions_hit": []
+}

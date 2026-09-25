@@ -10167,3 +10167,260 @@ test('#2787: queue audit reads a shared merged pull request once and removes bot
   assert.equal(after.reads,1,'the shared pull request is read once')
   assert.deepEqual(dispatch(after.out),[])
 })
+
+// ---------------------------------------------------------------------------
+// ISSUE #2998 — PRE-DRAW HANDOFF READINESS.
+//
+// Every criterion below is checked BEFORE the draw on both CLI paths, and each
+// refusal test asserts the draw was never reached (the tripwire io) and that
+// the refusal never reads as an approval.
+// ---------------------------------------------------------------------------
+import { DrawReadinessError, assertDrawPromptContract, collectCrossPrObjectCollisions, collectProtectedSourceCollisions, currentMainReadiness, evidencePairReadiness } from './lib/reviewer-draw-readiness.mjs'
+import { contractHash } from './agent-work-contract.mjs'
+
+const HANDOFF_HEAD = 'a'.repeat(40)
+const NO_DRAW_PHRASE = /No reviewer was drawn and no reviewer capacity was spent/
+
+function handoffRun(argv, io) {
+  const errors = [], original = console.error
+  console.error = (message) => errors.push(String(message))
+  let code
+  try { code = main(argv, NOW, io) } finally { console.error = original }
+  return { code, stderr: errors.join('\n') }
+}
+
+// A draw-shaped io: non-documents files, a ready open PR, and a tripwire that
+// proves the draw itself was never reached when a readiness check refuses.
+function drawIo(pr) {
+  return {
+    pullRequestFiles: () => [{ filename: 'supabase/migrations/20260925000000_x.sql', status: 'added' }],
+    getPr: () => pr ?? { draft: false, mergeable: true, state: 'open' },
+    listIssues() { throw new Error('the reviewer draw must not be reached') },
+  }
+}
+
+const assignArgv = ['--assign-reviewer', '--issue', '2998', '--pr', '2112', '--head-sha', 'd'.repeat(40)]
+const replaceArgv = ['--replace-failed-reviewer', '--issue', '2998', '--pr', '2112', '--head-sha', 'd'.repeat(40), '--reviewer', 'muse-spark-1.3-contributor', '--reason', 'x', '--failed-sequence', '1', '--failure-code', 'insufficient_quota', '--confirm-no-verdict', '--confirm-no-artifact']
+
+test('#2998 prompt: a handoff without a brief proceeds; a carried brief must be readable, non-empty and head-clean', () => {
+  assert.deepEqual(assertDrawPromptContract({ headSha: HANDOFF_HEAD }), { carried: false })
+  assert.deepEqual(assertDrawPromptContract({ prompt: 'Review this change against the brief.', headSha: HANDOFF_HEAD }), { carried: true, headClean: true })
+  const dir = mkdtempSync(path.join(tmpdir(), 'draw-prompt-'))
+  try {
+    assert.throws(
+      () => assertDrawPromptContract({ promptFile: path.join(dir, 'missing.md'), headSha: HANDOFF_HEAD }),
+      (error) => error instanceof DrawReadinessError && /is not readable/.test(error.message) && NO_DRAW_PHRASE.test(error.message),
+    )
+    const empty = path.join(dir, 'empty.md'); writeFileSync(empty, '  \n')
+    assert.throws(() => assertDrawPromptContract({ promptFile: empty, headSha: HANDOFF_HEAD }), /is empty/)
+    const stale = path.join(dir, 'stale.md'); writeFileSync(stale, `Review the change.\n\nVERDICT: APPROVE ${'0'.repeat(40)}\n`)
+    // A refusal names the problem without ever printing an approval or a decision line.
+    assert.throws(
+      () => assertDrawPromptContract({ promptFile: stale, headSha: HANDOFF_HEAD }),
+      (error) => error instanceof DrawReadinessError && /binds a decision line to head/.test(error.message) && !/APPROVE|VERDICT/.test(error.message),
+    )
+    const clean = path.join(dir, 'clean.md'); writeFileSync(clean, 'Review the change.\n')
+    assert.deepEqual(assertDrawPromptContract({ promptFile: clean, headSha: HANDOFF_HEAD }), { carried: true, headClean: true })
+    const bound = path.join(dir, 'bound.md'); writeFileSync(bound, `Review.\n\nVERDICT: APPROVE ${HANDOFF_HEAD}\n`)
+    assert.deepEqual(assertDrawPromptContract({ promptFile: bound, headSha: HANDOFF_HEAD }), { carried: true, headClean: true })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// A complete, valid keyed evidence pair for issue 2998 generation 7, with the
+// io that reads it exactly as the CLI would: two files at the head, the
+// published immutable ref, and its commit message.
+function evidenceFixture({ pr = 2112, issue = 2998, generation = 7, publishedContract } = {}) {
+  const contract = { schema_version: 1, work_issue: issue, work_type: 'repo-maintenance', route: 'repo-maintenance', goal: 'fail fast before the draw', base_sha: 'b'.repeat(40), dispatcher: 'owner', worker: 'session', branch: 'b', worktree: 'w', allowed_paths: ['scripts/x.mjs'], file_writes: ['scripts/x.mjs'], db_reads: [], db_writes: [], prohibited_actions: ['no db'], required_checks: ['node --test x'], assumptions: ['a'], stop_conditions: ['s'], generation }
+  const report = { schema_version: 1, work_issue: issue, outcome: 'ready-for-merge', pr, migration_versions: [], contract_ref: `refs/db-contracts/${issue}/${generation}`, contract_sha256: contractHash(contract), head_sha: 'e'.repeat(40), base_sha: 'b'.repeat(40), files_changed: ['scripts/x.mjs'], db_reads: [], db_writes: [], checks: [{ command: 'node --test x', exit_code: 0, evidence: 'pass' }], assumptions_resolved: [], stop_conditions_hit: [] }
+  const rows = [
+    { filename: `.agent/work/${issue}/${generation}/contract.json`, status: 'modified' },
+    { filename: `.agent/work/${issue}/${generation}/completion.json`, status: 'modified' },
+  ]
+  const published = publishedContract ?? contract
+  const io = {
+    getFileAt: (file) => String(file).endsWith('contract.json') ? JSON.stringify(contract) : JSON.stringify(report),
+    readRef: () => 'f'.repeat(40),
+    readCommitMessage: () => `db-agent-contract issue=${issue} generation=${generation} sha256=${contractHash(published)}\n\n${JSON.stringify(published)}`,
+  }
+  return { contract, report, rows, io }
+}
+
+test('#2998 evidence: classification refuses a half pair or two pairs, and inherited or unreadable input proceeds', () => {
+  assert.throws(() => evidencePairReadiness({ rows: [{ filename: '.agent/work/9/1/contract.json' }], prState: 'open' }), (error) => error instanceof DrawReadinessError && /only one half of its agent evidence pair/.test(error.message) && NO_DRAW_PHRASE.test(error.message))
+  assert.throws(() => evidencePairReadiness({ rows: [{ filename: '.agent/work/9/1/contract.json' }, { filename: '.agent/work/9/1/completion.json' }, { filename: '.agent/contract.json' }], prState: 'open' }), /more than one agent evidence pair/)
+  assert.deepEqual(evidencePairReadiness({ rows: [{ filename: 'scripts/x.mjs' }], prState: 'open' }), { state: 'inherited', contract: null, completion: null, key: null })
+  assert.equal(evidencePairReadiness({ rows: 'nonsense', prState: 'open' }).state, 'unreadable')
+})
+
+test('#2998 evidence: a current pair validates against its contract, its completion, and the immutable publication', () => {
+  const { rows, io } = evidenceFixture()
+  const result = evidencePairReadiness({ rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io })
+  assert.equal(result.state, 'current')
+  assert.equal(result.validated, true)
+})
+
+test('#2998 evidence: definite faults refuse; transport faults and non-open pull requests proceed', () => {
+  const base = evidenceFixture()
+  // The completion does not bind this pull request.
+  assert.throws(() => evidencePairReadiness({ rows: base.rows, pr: 9999, headSha: HANDOFF_HEAD, prState: 'open', io: base.io }), /does not bind this pull request/)
+  // A required check that never ran means the report does not satisfy its contract.
+  const noChecks = evidenceFixture(); noChecks.report.checks = []
+  noChecks.io.getFileAt = (file) => String(file).endsWith('contract.json') ? JSON.stringify(noChecks.contract) : JSON.stringify(noChecks.report)
+  assert.throws(() => evidencePairReadiness({ rows: noChecks.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io: noChecks.io }), /does not satisfy its contract/)
+  // No immutable publication exists for the checked-in pair.
+  const unpublished = evidenceFixture(); unpublished.io.readRef = () => null
+  assert.throws(() => evidencePairReadiness({ rows: unpublished.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io: unpublished.io }), /no immutable contract is published/)
+  // The published contract is not the checked-in contract.
+  const drifted = evidenceFixture({ publishedContract: { ...evidenceFixture().contract, goal: 'different after the fact' } })
+  assert.throws(() => evidencePairReadiness({ rows: drifted.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io: drifted.io }), /does not match the immutable contract published before the work/)
+  // Bytes that are not JSON are a definite fault.
+  const garbage = evidenceFixture(); garbage.io.getFileAt = () => 'not json'
+  assert.throws(() => evidencePairReadiness({ rows: garbage.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io: garbage.io }), /not readable JSON/)
+  // A transport fault proceeds exactly as the readiness guard always has.
+  const offline = evidenceFixture(); offline.io.getFileAt = () => { throw new Error('HTTP 502') }
+  assert.equal(evidencePairReadiness({ rows: offline.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'open', io: offline.io }).validated, false)
+  // A merged pull request (#2915) stops at classification: the files are never read.
+  const closed = evidenceFixture()
+  closed.io.getFileAt = () => { throw new Error('must not read evidence for a non-open pull request') }
+  assert.equal(evidencePairReadiness({ rows: closed.rows, pr: 2112, headSha: HANDOFF_HEAD, prState: 'closed', io: closed.io }).validated, false)
+  // No exact head means no deep judgment, and the downstream draw still demands one.
+  assert.equal(evidencePairReadiness({ rows: base.rows, pr: 2112, prState: 'open', io: base.io }).validated, false)
+})
+
+test('#2998 current-main: only a definite behind refuses, and only for an open pull request', () => {
+  assert.throws(() => currentMainReadiness({ state: 'open', mergeable_state: 'behind' }, 7), (error) => error instanceof DrawReadinessError && /not current with main/.test(error.message) && NO_DRAW_PHRASE.test(error.message))
+  assert.deepEqual(currentMainReadiness({ state: 'open', mergeable_state: 'clean' }, 7), { state: 'clean' })
+  assert.deepEqual(currentMainReadiness({ state: 'open', mergeable: true }, 7), { state: 'unknown' })
+  assert.deepEqual(currentMainReadiness({ state: 'closed', merged_at: '2026-09-14T00:00:00Z' }, 7), { state: 'not-open' })
+  assert.deepEqual(currentMainReadiness(undefined, 7), { state: 'unknown' })
+})
+
+test('#2998 collision: the protected-source scan skips pull requests that do not edit the protected source', () => {
+  let called = 0
+  const gather = () => { called += 1; throw new Error('gather must not run') }
+  assert.deepEqual(collectProtectedSourceCollisions({ repo: 'popcre/shared-db', pr: 9, rows: [{ filename: 'scripts/example.mjs' }], gather }), [])
+  assert.deepEqual(collectProtectedSourceCollisions({ repo: 'popcre/shared-db', pr: 9, rows: 'nonsense', gather }), [])
+  assert.equal(called, 0, 'a pull request that edits no protected source never gathers the open pull requests')
+})
+
+test('#2998 collision: the protected-source scan names an earlier ready pull request on the same source, and a failed gather proceeds', () => {
+  const rows = [{ filename: 'docs/x.md' }, { filename: 'scripts/manage-migration-author-lanes.mjs' }]
+  const gather = () => ({
+    current: { number: 9, title: 'mine', draft: false, activatedAt: '2026-09-25T00:00:00Z', files: ['docs/x.md', 'scripts/manage-migration-author-lanes.mjs'] },
+    others: [
+      { number: 3301, title: 'theirs', draft: false, activatedAt: '2026-09-20T00:00:00Z', files: ['scripts/manage-migration-author-lanes.mjs'] },
+      { number: 3302, title: 'a draft', draft: true, activatedAt: '2026-09-01T00:00:00Z', files: ['scripts/manage-migration-author-lanes.mjs'] },
+    ],
+  })
+  assert.deepEqual(collectProtectedSourceCollisions({ repo: 'popcre/shared-db', pr: 9, rows, gather }), [
+    { file: 'scripts/manage-migration-author-lanes.mjs', pr: 3301, title: 'theirs' },
+  ])
+  assert.deepEqual(collectProtectedSourceCollisions({ repo: 'popcre/shared-db', pr: 9, rows, gather: () => { throw new Error('HTTP 502') } }), [])
+})
+
+test('#2998 collision: the object scan skips pull requests with no migration of their own, and reports one that collides', () => {
+  let called = 0
+  const gatherSources = () => { called += 1; throw new Error('gather must not run') }
+  assert.deepEqual(collectCrossPrObjectCollisions({ repo: 'popcre/shared-db', pr: 9, rows: [{ filename: 'scripts/x.mjs', status: 'modified' }], gatherSources }), [])
+  assert.deepEqual(collectCrossPrObjectCollisions({ repo: 'popcre/shared-db', pr: 9, rows: [{ filename: 'supabase/migrations/20260925000000_x.sql', status: 'removed' }], gatherSources }), [])
+  assert.equal(called, 0, 'a pull request with no added migration never gathers SQL')
+  const rows = [{ filename: 'supabase/migrations/20260925000000_x.sql', status: 'added' }]
+  const colliding = () => [
+    { label: 'PR #9 (this PR)', files: [{ path: 'supabase/migrations/20260925000000_x.sql', sql: 'create or replace view api.x as select 1;' }] },
+    { label: 'PR #3301 "theirs"', files: [{ path: 'supabase/migrations/20260924000000_y.sql', sql: 'CREATE OR REPLACE VIEW api.x AS SELECT 2;' }] },
+  ]
+  const collisions = collectCrossPrObjectCollisions({ repo: 'popcre/shared-db', pr: 9, rows, gatherSources: colliding })
+  assert.equal(collisions.length, 1)
+  assert.equal(collisions[0].object, 'view api.x')
+  assert.deepEqual(new Set(collisions[0].sources.map((source) => source.label)), new Set(['PR #9 (this PR)', 'PR #3301 "theirs"']))
+  const clean = () => [
+    { label: 'PR #9 (this PR)', files: [{ path: 'supabase/migrations/20260925000000_x.sql', sql: 'create or replace view api.x as select 1;' }] },
+    { label: 'PR #3301 "theirs"', files: [{ path: 'supabase/migrations/20260924000000_y.sql', sql: 'create or replace view api.z as select 2;' }] },
+  ]
+  assert.deepEqual(collectCrossPrObjectCollisions({ repo: 'popcre/shared-db', pr: 9, rows, gatherSources: clean }), [])
+  assert.deepEqual(collectCrossPrObjectCollisions({ repo: 'popcre/shared-db', pr: 9, rows, gatherSources: () => { throw new Error('HTTP 502') } }), [])
+})
+
+test('#2998 CLI: an unreadable carried brief refuses before any reviewer draw is consumed', () => {
+  const run = handoffRun([...assignArgv, '--prompt-file', path.join(tmpdir(), 'definitely-missing-brief-2998.md')], drawIo())
+  assert.equal(run.code, 2)
+  assert.match(run.stderr, /is not readable/)
+  assert.match(run.stderr, NO_DRAW_PHRASE)
+  assert.doesNotMatch(run.stderr, /the reviewer draw must not be reached/)
+  assert.ok(!/APPROVE|VERDICT/.test(run.stderr))
+})
+
+test('#2998 CLI: a pull request that is not current with main refuses before the draw', () => {
+  const run = handoffRun(assignArgv, drawIo({ draft: false, mergeable: true, mergeable_state: 'behind', state: 'open' }))
+  assert.equal(run.code, 2)
+  assert.match(run.stderr, /not current with main/)
+  assert.match(run.stderr, /mergeable_state=behind/)
+  assert.doesNotMatch(run.stderr, /the reviewer draw must not be reached/)
+})
+
+test('#2998 CLI: a half-written or invalid evidence pair refuses before the draw', () => {
+  const partial = { ...drawIo(), pullRequestFiles: () => [{ filename: '.agent/work/2998/7/contract.json', status: 'modified' }] }
+  const half = handoffRun(assignArgv, partial)
+  assert.equal(half.code, 2)
+  assert.match(half.stderr, /only one half of its agent evidence pair/)
+  assert.doesNotMatch(half.stderr, /the reviewer draw must not be reached/)
+  const broken = { ...drawIo(), pullRequestFiles: () => [{ filename: '.agent/work/2998/7/contract.json', status: 'modified' }, { filename: '.agent/work/2998/7/completion.json', status: 'modified' }], getFileAt: () => 'not json' }
+  const invalid = handoffRun(assignArgv, broken)
+  assert.equal(invalid.code, 2)
+  assert.match(invalid.stderr, /not readable JSON/)
+  assert.doesNotMatch(invalid.stderr, /the reviewer draw must not be reached/)
+})
+
+test('#2998 CLI: a cross-PR protected-source collision refuses before the draw', () => {
+  const io = {
+    ...drawIo(),
+    pullRequestFiles: () => [{ filename: 'scripts/manage-migration-author-lanes.mjs', status: 'modified' }],
+    protectedSourceCollisions: () => [{ file: 'scripts/manage-migration-author-lanes.mjs', pr: 3301, title: 'theirs' }],
+  }
+  const run = handoffRun(assignArgv, io)
+  assert.equal(run.code, 2)
+  assert.match(run.stderr, /same protected coordination source/)
+  assert.match(run.stderr, /PR #3301/)
+  assert.doesNotMatch(run.stderr, /the reviewer draw must not be reached/)
+})
+
+test('#2998 CLI: a cross-PR object collision refuses before the draw', () => {
+  const io = {
+    ...drawIo(),
+    crossPrObjectCollisions: () => [{ object: 'view api.x', sources: [{ label: 'PR #2112 (this PR)', files: [] }, { label: 'PR #3301 "theirs"', files: [] }] }],
+  }
+  const run = handoffRun(assignArgv, io)
+  assert.equal(run.code, 2)
+  assert.match(run.stderr, /collides with another open pull request on view api\.x/)
+  assert.match(run.stderr, /PR #3301/)
+  assert.doesNotMatch(run.stderr, /the reviewer draw must not be reached/)
+})
+
+test('#2998 CLI: the replacement draw asserts the same readiness as a first draw', () => {
+  const behind = handoffRun(replaceArgv, drawIo({ draft: false, mergeable: true, mergeable_state: 'behind', state: 'open' }))
+  assert.equal(behind.code, 2)
+  assert.match(behind.stderr, /not current with main/)
+  assert.doesNotMatch(behind.stderr, /the reviewer draw must not be reached/)
+  const partial = { ...drawIo(), pullRequestFiles: () => [{ filename: '.agent/work/2998/7/completion.json', status: 'modified' }] }
+  const half = handoffRun(replaceArgv, partial)
+  assert.equal(half.code, 2)
+  assert.match(half.stderr, /only one half of its agent evidence pair/)
+  assert.doesNotMatch(half.stderr, /the reviewer draw must not be reached/)
+  const brief = handoffRun([...replaceArgv, '--prompt-file', path.join(tmpdir(), 'definitely-missing-brief-2998.md')], drawIo())
+  assert.equal(brief.code, 2)
+  assert.match(brief.stderr, /is not readable/)
+})
+
+test('#2998 CLI: a fully valid handoff clears every readiness check and reaches the draw', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'draw-valid-'))
+  try {
+    const brief = path.join(dir, 'brief.md'); writeFileSync(brief, 'Review the change against the brief.\n')
+    const { rows, io: evidenceIo } = evidenceFixture({ pr: 2112 })
+    const io = { ...drawIo(), ...evidenceIo, pullRequestFiles: () => rows, protectedSourceCollisions: () => [], crossPrObjectCollisions: () => [] }
+    const run = handoffRun([...assignArgv, '--prompt-file', brief], io)
+    // Every readiness refusal is absent, so the handoff cleared and the draw ran
+    // (the stub io then fails deeper in the draw, exactly like the #2102 controls).
+    assert.doesNotMatch(run.stderr, NO_DRAW_PHRASE)
+    assert.doesNotMatch(run.stderr, /not current with main|only one half|not readable JSON|protected coordination source|collides with another open pull request|is not readable/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

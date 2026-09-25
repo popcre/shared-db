@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 2998,
+  "outcome": "ready-for-merge",
+  "pr": 3528,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2998/7",
+  "contract_sha256": "633dfd14341c2471c8492b95bb3e344f790ed7fa4c3cf3acba02230adc40ecea",
+  "head_sha": "179330c5a76db96f5a61474c35cc065d895d3eb5",
+  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
+  "files_changed": [
+    "scripts/lib/reviewer-draw-readiness.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/check-pr-object-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "pass 770 fail 0 at implementation 179330c5a76db96f5a61474c35cc065d895d3eb5."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "318 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs, at implementation 179330c5a76db96f5a61474c35cc065d895d3eb5."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors at implementation 179330c5a76db96f5a61474c35cc065d895d3eb5."
+    }
+  ],
+  "assumptions_resolved": [
+    "prompt arguments are optional at draw time: refresh-code-pr-branch re-draws with no brief and the codex wrapper takes no prompt by design, so the runner keeps its pre-start prompt guard as the backstop",
+    "transport failures during pre-draw reads proceed exactly as assertReviewerDrawReadiness always has; only a definite bad fact refuses a draw",
+    "merged-pull-request draws (#2915) keep their reachability: current-main and cross-PR checks are gated to open pull requests and non-open evidence validation stops at classification"
+  ],
+  "stop_conditions_hit": []
+}

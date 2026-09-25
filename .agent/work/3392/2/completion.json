@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3392,
+  "outcome": "ready-for-merge",
+  "pr": 3394,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3392/2",
+  "contract_sha256": "9e8f9fad9c238d6e90c9a496effb05f7c8658dba6c248996be92aaaf14fdc1da",
+  "head_sha": "a3828226dcb6959c510865413f30b8eff1a210bc",
+  "base_sha": "8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~isolated-rehearsal-evidence.mjs.json",
+    "scripts/orchestrator-flow/isolated-rehearsal-evidence.mjs",
+    "scripts/orchestrator-flow/isolated-rehearsal-evidence.test.mjs",
+    "scripts/orchestrator-flow/preview-graph.mjs",
+    "scripts/orchestrator-flow/select-preview-route.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "20 tests passed; zero failed, skipped, cancelled or todo",
+      "command": "node --test scripts/orchestrator-flow/preview-graph.test.mjs scripts/orchestrator-flow/select-preview-route.test.mjs scripts/orchestrator-flow/isolated-rehearsal-evidence.test.mjs",
+      "exit_code": 0
+    },
+    {
+      "evidence": "truth audit OK over every discovered call site against current main context-bound keys",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0
+    }
+  ],
+  "assumptions_resolved": [
+    "Default shared route remains unchanged; only in-process authenticated capability enables isolated decision",
+    "Preparation only: runtime producer integration, independent review and actual live delivery remain pending"
+  ],
+  "stop_conditions_hit": []
+}

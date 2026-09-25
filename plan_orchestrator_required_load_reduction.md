@@ -23,7 +23,7 @@ Paired handoff: [`HANDOFF.d/2026-09-17T1325Z-zcode-plan-orchestrator-load-reduct
 | C2. Automate only pure-mechanics hops — or land "no code change" if every remaining hop is load-bearing | ✅ outcome: no code change (2026-09-17) | 2026-09-17 | The only pure-mechanics hop (evidence transcription) is already automated by `dispatch-production-apply.mjs` (popcre/ai-devops#507); every other manual hop is a review judgment, a deliberate authorization act, or an owned outcome claim. A no-preview auto-dispatch of production would be a second production path — refused by AGENTS.md §5 and plan §7. Artifact: the hop table's C2 conclusion section. |
 | D. Landing: STATUS upkeep per phase; retire handoff when the tracking issue closes | ✅ done 2026-09-18 | 2026-09-17 | STATUS current at every merge (A3 in PR #3216, B/C in PR #3228, this row here); the paired handoff file is retired in this same closing change and #3199 closes with it. |
 
-**Fresh implementation starts at Step A1.** Natural context cut points: after A3, after B4, after C1. Before each phase, re-read this STATUS table, `git fetch origin` and re-derive the live queue state — the counts in §3 are the 2026-09-17 reading, not standing truth.
+**Historical implementation record — all steps below are complete.** Merges `13efcd77` and `c8dd3baa` are present in current main. Do not restart A1 or repeat the historical queue cleanup. Use [the current workflow](docs/agents/current-workflow.md) and verify present state before any new operation.
 
 ---
 
@@ -75,6 +75,7 @@ The deepest relief — GitHub's native merge queue — already has a full plan (
 - **No change to the curated Master Data gate (§6.4)** or its matched-row abstention rule.
 - **No database schema or data changes, no credential or secret work, no consumer-repo changes** (skill-file copies under user directories are documentation, not consumer-repo sync targets).
 - **No self-service boundary beyond `{crm, pim, dam}`** — not `plm`, `api`, `core`, `public`, `ingest`, `storage`, `dflow`, or `app`, and **not brand-new schemas** (creating a schema is how a second shared schema gets born without an owner decision). Extending the boundary, including to `dflow`/`app` for DesignFlow work, requires a new owner decision.
+  - **SUPERSEDED 2026-09-25 (owner ruling, Albert Hazan).** Albert ordered the self-service lane opened to all four app-owned schemas. The live boundary is now `{crm, pim, dam, plm}` (PLM = DesignFlow). Shared schemas (`api`/`core`/`public`/`ingest`/`storage`/`dflow`/`app`) and brand-new schemas remain out. This plan's original three-schema limit is history, not current instruction.
 
 ## 5. Current state of the code
 

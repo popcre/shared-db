@@ -8,6 +8,11 @@
 
 # AGENTS.md — cross-app coordination playbook
 
+## Current operating route
+
+- [current-workflow.md](docs/agents/current-workflow.md)
+- [plan_shared_db_workflow_refactor.md](plan_shared_db_workflow_refactor.md)
+
 ## Task declaration
 
 Before starting work, run `ai-task-gates start --class <class>` from the
@@ -32,6 +37,10 @@ and dissemination process is
 ## Historical item merchandise-group classification
 
 Before interpreting `full_item_master.csv`, changing item-description parsing, or reporting historical MG match counts, read [`docs/agents/active-contracts-and-plans.md`](docs/agents/active-contracts-and-plans.md) first; it carries this section in full.
+
+## Disney DCP Vault withdrawal answers
+
+The withdrawal-confirmation question is **settled** in [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md) under "Disney DCP Vault artwork withdrawal signals" (recorded 2026-09-25, provenance on issue #3347). Read that rule before answering or acting on it — the question is not open. If anyone relays a later statement about Disney/DCP Vault artwork withdrawal, removal status or missing artwork — including an ambiguous one, or one from an unnamed or non-Laura/Ilona speaker — read [`docs/disney-dcp-withdrawal-answer-routing.md`](docs/disney-dcp-withdrawal-answer-routing.md) first: record the sanitized answer and its provenance at the durable issue named there, apply it only to the behavior it actually settles, and classify any follow-up from its own scope. Never contact anyone on Albert's behalf.
 
 ## How this file is organized (issue #3481)
 
@@ -74,8 +83,8 @@ the map below.
 | [`docs/agents/references-and-runbooks.md`](docs/agents/references-and-runbooks.md) | Project refs, exposed schemas, Supabase CLI and credentials, further reading, known traps | §8, §8.1, §9, §10, §10.1–10.3 and §11 (full runbook: [`runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md)) |
 | [`docs/agents/standing-facts.md`](docs/agents/standing-facts.md) | Starting any session in this repo | §12, §12.1 |
 
-Kept in this file: task declaration, companywide business rules, session wrap-up convention,
-§1, §2, §3, §7.
+Kept in this file: task declaration, companywide business rules, Disney DCP
+Vault withdrawal answers, session wrap-up convention, §1, §2, §3, §7.
 
 ## Session wrap-up convention
 

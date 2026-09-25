@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generation": 2,
+  "work_issue": 3302,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Harden the recovered ColdLion detail replay proof (issue #2863, recovered under #3302) with offline synthetic false controls that fail loudly on an inauthentic or incomplete proof, without changing probe SQL or weakening the original assertion.",
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
+  "dispatcher": "MiMo repo-maintenance session for issue #3302",
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "mimo/3302-coldlion-replay",
+  "worktree": "C:/repos/shared-db-worktrees/3302-coldlion-replay",
+  "allowed_paths": [
+    "scripts/issue-2863-live-proof.test.mjs",
+    ".agent/work/3302/2/contract.json",
+    ".agent/work/3302/2/completion.json"
+  ],
+  "file_writes": [
+    "scripts/issue-2863-live-proof.test.mjs",
+    ".agent/work/3302/2/contract.json",
+    ".agent/work/3302/2/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No probe SQL change; the live artifact already passed and must not be rewritten.",
+    "No migration or database write.",
+    "No fixed expected counts or weakened assertion.",
+    "No ColdLion row values in commits."
+  ],
+  "required_checks": [
+    "node --test scripts/issue-2863-live-proof.test.mjs"
+  ],
+  "assumptions": [
+    "Disclosed: generation 2 is published after implementation commit 5a5030d9833e3a0b3b3829a0f022f10e1059f466; no prior refs/db-contracts/3302/2 exists. Generation 1 covered the original Codex proof recovery (PR #3303)."
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the change needs a file outside allowed_paths."
+  ]
+}

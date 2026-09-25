@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 3302,
+  "outcome": "ready-for-merge",
+  "pr": 3515,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3302/2",
+  "contract_sha256": "dab014e248b0142ec141d716a9a5dfc40cd95bb5a934ce64f86790789c601367",
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
+  "head_sha": "5a5030d9833e3a0b3b3829a0f022f10e1059f466",
+  "files_changed": [
+    "scripts/issue-2863-live-proof.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/issue-2863-live-proof.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 pass, 0 fail"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 2 published at refs/db-contracts/3302/2 (sha256 dab014e248b0142ec141d716a9a5dfc40cd95bb5a934ce64f86790789c601367) after implementation commit 5a5030d9833e3a0b3b3829a0f022f10e1059f466; no prior refs/db-contracts/3302/2 existed.",
+    "Authentic live replay proof for issue #2863 already verified on production: run 35787289542, artifact shared-db-live-proof-2863-b055a4141bf91450adacd3a1383decdef9693402, result=passed at 2026-09-22T21:32:53Z."
+  ],
+  "stop_conditions_hit": []
+}

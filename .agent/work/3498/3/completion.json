@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 3510,
   "migration_versions": ["20260925222635"],
-  "contract_ref": "refs/db-contracts/3498/2",
-  "contract_sha256": "8e58771e76ba570379f5e22082b09e68933bb52fd47e10e0c3bd2e7e4c5aff3e",
+  "contract_ref": "refs/db-contracts/3498/3",
+  "contract_sha256": "cd022589815168e76f03e3773b0d2daada022ead9254e959ca379df8ec08b572",
   "head_sha": "9f33a554f2a1a519051429adf01fbe817ca6dcb8",
   "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
   "files_changed": [
@@ -42,9 +42,9 @@
     "B3 fixed: intra-plm FKs included (rfq_item_id to plm.RFQItem, prior_step_id/new_step_id to plm.RFQStep, composite self-FK on source_action_id); rationale narrowed to the four cross-schema dflow.users references",
     "REVISE findings fixed: item_workflow_action_return_names_its_source CHECK added; catalogue-only verify block added; header discloses all six deferred indexes with integrity-invariant callout; shape/append-only claims narrowed to match reality",
     "Version supersession: 20260925044029 re-reserved as 20260925222635 via claim-version-supersession (supersession d02d64f1) because main gained 20260925193145; SQL body unchanged, pure rename",
+    "Generation 3 contract published at refs/db-contracts/3498/3 to admit the re-reserved migration path; generation 2 pair retired",
     "Cross-schema FKs into dflow.users and all six source indexes deferred so the claim writes exactly the two tables; intra-plm FKs are included",
-    "Mover obligations: use OVERRIDING SYSTEM VALUE + setval past max(id) for identity columns; use explicit column lists (column order differs on item_workflow_action); re-point app.user_notification.workflow_action_id; grant designflow role; wire dflow.users FKs and append-only triggers; land two partial-unique indexes before any row insert",
-    "Contract published at refs/db-contracts/3498/2 (sha256 8e58771e76ba570379f5e22082b09e68933bb52fd47e10e0c3bd2e7e4c5aff3e); generation 1 superseded; contract kept immutable across version supersession"
+    "Mover obligations: use OVERRIDING SYSTEM VALUE + setval past max(id) for identity columns; use explicit column lists (column order differs on item_workflow_action); re-point app.user_notification.workflow_action_id; grant designflow role; wire dflow.users FKs and append-only triggers; land two partial-unique indexes before any row insert"
   ],
   "stop_conditions_hit": []
 }

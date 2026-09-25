@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3563,
+  "outcome": "ready-for-merge",
+  "pr": 3564,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3563/1",
+  "contract_sha256": "2fbefc39d7e10c10ab12125180c9b2a65623c1ead6897fa51299dba643b67304",
+  "base_sha": "4f395967e1a5bd42db1e28dce85faa10e3c8537b",
+  "head_sha": "7f7897f593c2623a73e376d5e0f9004159ea6e3d",
+  "files_changed": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "714 pass, 0 fail"}
+  ],
+  "assumptions_resolved": [
+    "curated-master-data exits by data-session; OUTSIDE_ORCHESTRATOR_EXITS includes data-session.",
+    "6.4 curation protections unchanged."
+  ],
+  "stop_conditions_hit": []
+}

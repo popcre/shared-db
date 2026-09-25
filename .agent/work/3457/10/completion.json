@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "work_issue": 3457,
+  "outcome": "ready-for-merge",
+  "pr": 3489,
+  "migration_versions": [
+    "20260925222432"
+  ],
+  "contract_ref": "refs/db-contracts/3457/10",
+  "contract_sha256": "9519809c99b021aa1c4e776e305fbefa8ef9c81ddf52616bf843591ba181d0ee",
+  "base_sha": "e8d3129964cd03969ef27b6f8e11bd42e1c2ee30",
+  "head_sha": "98a5b99f3b8ff20b94cd3004bc745f62f0a36ed3",
+  "files_changed": [
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260925222432.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    "supabase/tests/popdam_semantic_score_floor_behavior.sql"
+  ],
+  "db_reads": [
+    "public.dam_search_documents",
+    "public.assets",
+    "public.style_groups",
+    "public.asset_effective_tags",
+    "public.admin_config"
+  ],
+  "db_writes": [
+    "function public.search_dam_documents"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Guard B clean vs origin/main newest 20260924183947 after supersession to 20260925175038; expected-count, verify-cost, and EOL guards passed; static checks passed. Re-run at implementation head 7f9e9de8."
+    },
+    {
+      "command": "python scripts/migration_derivation.py supabase/migrations/20260925175038_popdam_search_semantic_score_floor.sql",
+      "exit_code": 0,
+      "evidence": "derived-from: 20260901130428 accepted. Re-run at implementation head 7f9e9de8 after version supersession and T3 fixture fix."
+    },
+    {
+      "command": "python -m pytest scripts/test_check_production_verification_sidecars.py scripts/test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "244 passed, 73 subtests passed in 3.30s at implementation head 7f9e9de8 after supersession, origin/main merge, and T3 fixture fix."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "6 pass, 0 fail at implementation head 7f9e9de8; live repository registry agrees with the sidecar files on disk after declaring 20260925175038."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "49 pass, 0 fail at implementation head 7f9e9de8; contract validation and generation publish semantics confirmed."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "status OK, 61 sidecars, detector baseline regenerated from merged tree: detector_source_sha256 382bdf604f0dbec7fac312c3b2258777fd985f46deff06d28f0aa3b6282cfd37, total_migration_files 708, matched_count 103. Re-run at implementation head 7f9e9de8."
+    }
+  ],
+  "assumptions_resolved": [
+    "prior definition of search_dam_documents is migration 20260901130428 (popdam_ranked_filter_parity)",
+    "existing supabase/tests contract files pinned the 7-arg signature and were updated in the same PR so CI does not fail",
+    "the old 7-arg overload assertion pointed at the 8-arg signature by mistake; corrected to the real 7-arg identity",
+    "REVISE H1: production_catalog_verification.py contracts and their unit tests now bind the surviving 8-arg identity; the dropped 7-arg is asserted absent by the sidecar",
+    "REVISE H2: scripts/production-verification-sidecars/20260925175038.json is hash-bound to the migration and declared in config/production-verification-sidecar-registry.json",
+    "REVISE H3: offline suite executed at 7f9e9de8 (check-sql, derivation, 244 pytest, registry and contract node tests). T1-T8 behaviour SQL remains a preview-execution artifact under .agent/work/3457/1/",
+    "REVISE M1/T6: behaviour fixtures use cosine similarities 0.90/0.20/0.30 with no exact 1.0 match, so floor=1 is a stable zero; T6 also covers clamp boundaries 1.5 and -0.5",
+    "REVISE M4: completion head_sha and files_changed are derived from git at the implementation head that carries no evidence pair; contract generation 5 is published at refs/db-contracts/3457/5",
+    "Muse REVISE High: T3 fixture title was changed to alpha beta gamma delta so it is truly semantic-only and no longer keyword-matches its own query; T3 and T4 are now consistent with the floor-only-in-semantic-leg contract",
+    "db_reads lists the tables the SECURITY DEFINER body consults (dam_search_documents, assets, style_groups, asset_effective_tags, admin_config via assets_thumbnail_min_date)",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json regenerated from the merged tree because production_catalog_verification.py changed (H1) and origin/main moved the inventory",
+    "version supersession 20260924174155 -> 20260925175038 via manage-migration-author-lanes.mjs --reversion-active-claim (claim #3482); generation 3 pair at ba818efb2/6fa413704 is void; generation 5 pair is the only live pair",
+    "origin/main merged at e8d312996 to clear the CONFLICTING state on docs/verification/throughput-guard-truth-baseline-20260828.json; the generated baseline was regenerated, not hand-merged",
+    "DeepSeek REVISE: T1-T8 behaviour SQL moved to supabase/tests/popdam_semantic_score_floor_behavior.sql so CI executes it; search_tsv fixture fixed (GENERATED ALWAYS column); expand_dam_search_queries whole-query-variant behaviour verified against 20260714173500; pass-2 routine supersession check clean",
+    "Muse REVISE H1: migration now drops search_assets_full_text and search_style_groups_full_text before dropping the 7-arg overload, then recreates them; sidecar hash updated",
+    "version supersession 20260925175038 -> 20260925222432 because 20260925193145 landed on main after the original reservation; claim #3482 writes updated to declare wrapper functions",
+    "version supersession 20260925175038 -> 20260925222432; claim #3482 writes updated to declare wrapper functions"
+  ],
+  "stop_conditions_hit": []
+}

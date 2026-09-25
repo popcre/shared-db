@@ -6,8 +6,8 @@
   "route": "repo-maintenance",
   "goal": "Implement the trusted pure-prose fast CI route: an exact base/head git inventory including file modes proves pure prose before existing required jobs skip engineering suites. Code, migrations, executable agent instructions, symlinks and executable modes retain full checks. Fail closed on misclassification. No database, production, or branch-protection change.",
   "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
-  "dispatcher": "MiMo chat parent dispatch for issue #3383",
   "worker": "MiMo chat unknown on edge-dev",
+  "dispatcher": "MiMo chat parent dispatch for issue #3383",
   "branch": "3383-prose-fast-ci",
   "worktree": "C:/repos/shared-db-3383-prose-fast-ci",
   "allowed_paths": [

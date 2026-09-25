@@ -49,7 +49,7 @@ begin
 end;
 $$;
 
--- T1–T7 behaviour fixtures. Insert a DAM-entitled caller and three documents:
+-- T1–T7 behaviour fixtures. Insert a DAM-entitled caller and four documents:
 --   kw-only   : keyword hit, no embedding
 --   sem-high  : semantic-only hit with high score
 --   sem-low   : semantic-only hit with low score (below typical floor)
@@ -89,8 +89,8 @@ values
    to_tsvector('simple','zz3457 sem high unrelated'),
    (select array_fill(0.0::real, array[384])::extensions.vector)),
   ('asset','34570000-0000-4000-8000-000000000012','34570000-0000-4000-8000-000000000012',null,
-   'zz3457 sem low unrelated','zz3457-sem-low.ai',null,null,
-   to_tsvector('simple','zz3457 sem low unrelated'),
+   'alpha beta gamma delta','zz3457-sem-low.ai',null,null,
+   to_tsvector('simple','alpha beta gamma delta'),
    (select array_fill(0.5::real, array[384])::extensions.vector)),
   ('asset','34570000-0000-4000-8000-000000000013','34570000-0000-4000-8000-000000000013',null,
    'zz3457 mixed canvas','zz3457-mixed.ai',null,null,
@@ -122,7 +122,6 @@ declare
   dam_uid uuid := '34570000-0000-4000-8000-000000000001';
   qemb extensions.vector(384);
   n int;
-  ids text[];
   sem real;
 begin
   execute 'set local role authenticated';

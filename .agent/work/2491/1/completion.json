@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2491/1",
   "contract_sha256": "bdfd81e51922b16ba14e2f46f9dd114a4b25144cad777beaa2ba4b84f0983074",
-  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
-  "head_sha": "b74ea1043a5664a6f0236121262e96c21da57885",
+  "base_sha": "a48ce7b1699e5ab4aa3ae7aff69a0261c3bdb7f3",
+  "head_sha": "3d03cbf6fe9fec2fd62a7379d500fa0251e71115",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -18,17 +18,17 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "713 pass, 0 fail"
+      "evidence": "714 pass, 0 fail at 3d03cbf6 after refreshing onto origin/main."
     },
     {
       "command": "node --test scripts/orchestrator-flow/select-preview-route.test.mjs",
       "exit_code": 0,
-      "evidence": "12 pass, 0 fail"
+      "evidence": "12 pass, 0 fail at 3d03cbf6 after refreshing onto origin/main."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=317 sources=72"
+      "evidence": "truth audit OK: call_sites=320 sources=74 derived_digest=9e121864f51d at 3d03cbf6"
     }
   ],
   "assumptions_resolved": [

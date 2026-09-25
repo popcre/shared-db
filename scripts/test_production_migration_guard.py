@@ -311,6 +311,7 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "20260903200951"):
             parse_allowlist("20260903200951,20260905024139")
         self.assertEqual(parse_allowlist("20260905024139"), ["20260905024139"])
+
     def test_issue_2478_stranded_originals_remain_retired(self) -> None:
         for version in ("20260911212849", "20260917112129"):
             for allowlist in (version, f"{version},20260907031246"):
@@ -328,6 +329,24 @@ class GuardTests(unittest.TestCase):
             with self.subTest(version=version):
                 original = REPO / "supabase/migrations" / f"{version}_shared_style_group_sku_key.sql"
                 self.assertEqual(hashlib.sha256(original.read_text(encoding="utf-8").encode()).hexdigest(), digest)
+
+    def test_issue_2478_reissue_is_byte_identical_to_original(self) -> None:
+        """The reissue is only safe because it is the SAME executable SQL.
+
+        Nothing else in the suite pins that. If a later edit touches either
+        file, the hard block on 20260917112129 would be retiring a version
+        whose replacement no longer matches it.  Comparison excludes the
+        version-header line and normalises newlines, matching the contract's
+        "after newline normalization" caveat.
+        """
+        migrations = REPO / "supabase" / "migrations"
+        original = (
+            migrations / "20260917112129_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        reissue = (
+            migrations / "20260925061508_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        self.assertEqual(original.split(b"\n", 1)[1], reissue.split(b"\n", 1)[1])
 
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):

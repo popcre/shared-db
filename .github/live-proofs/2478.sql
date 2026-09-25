@@ -13,11 +13,12 @@ with helper as (
   from pg_proc p
   where p.oid = to_regprocedure('public.style_group_key_for_sku(text)')
 ), consumers as (
-  select p.proname, p.prosecdef, pg_get_functiondef(p.oid) as def
+  select p.oid, p.proname, p.prosecdef, pg_get_functiondef(p.oid) as def
   from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public'
-    and p.proname in ('rebuild_style_groups_batch', 'reconcile_style_group_drift')
+  where p.oid in (
+    to_regprocedure('public.rebuild_style_groups_batch(uuid, integer)'),
+    to_regprocedure('public.reconcile_style_group_drift(integer)')
+  )
 )
 select (
   exists (select 1 from supabase_migrations.schema_migrations where version = '20260925061508')
@@ -25,8 +26,9 @@ select (
   and (select bool_and(provolatile = 'i' and not prosecdef) from helper)
   and (select bool_and(not has_function_privilege('anon', oid, 'EXECUTE')
                        and not has_function_privilege('authenticated', oid, 'EXECUTE')) from helper)
-  and (select count(distinct proname) from consumers) = 2
-  and (select bool_and(prosecdef and def like '%style_group_key_for_sku%') from consumers)
+  and (select count(*) from consumers) = 2
+  and (select bool_and(prosecdef and def ~ 'style_group_key_for_sku\s*\(') from consumers)
+  and (select bool_and(has_function_privilege('postgres', oid, 'EXECUTE')) from consumers)
   and public.style_group_key_for_sku('Licensor/Property/AB12345CD/art/AB12345CD01.psd') = 'AB12345CD'
   and public.style_group_key_for_sku('Art/ab12/AB12345CD01.psd') is null
 ) as passed

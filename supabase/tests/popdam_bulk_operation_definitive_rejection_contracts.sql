@@ -177,19 +177,20 @@ begin
   -- Invalid or unparsed provider outcomes can never turn an uncertain POST
   -- into another chance to submit. This explicit set records the known
   -- routing, policy, conflict, timeout and retry-shaped refusal cases.
-  foreach v_status in array array[200, 401, 402, 403, 404, 405, 406,
+  -- Widened by #3464: 401/402/403/429 are now accepted definitive rejections.
+  foreach v_status in array array[200, 404, 405, 406,
                                   407, 408, 409, 410, 411, 412, 413, 414,
                                   415, 416, 417, 418, 419, 420, 421, 423,
-                                  424, 425, 426, 427, 428, 429, 430, 431,
+                                  424, 425, 426, 427, 428, 430, 431,
                                   449, 451, 499, 500] loop
     perform pg_temp.expect_lease_reset_refusal(
       1, 'worker-A', v_token, 'provider_definitive_rejection',
       v_status, v_error, '22023');
   end loop;
   -- Exhaust the entire 4xx space with the same provider-origin-shaped JSON
-  -- evidence: only the two accepted validation statuses may reach a reset.
+  -- evidence: only the six accepted validation statuses may reach a reset.
   for v_status in 400..499 loop
-    if v_status not in (400, 422) then
+    if v_status not in (400, 401, 402, 403, 422, 429) then
       perform pg_temp.expect_lease_reset_refusal(
         1, 'worker-A', v_token, 'provider_definitive_rejection',
         v_status, v_error, '22023');

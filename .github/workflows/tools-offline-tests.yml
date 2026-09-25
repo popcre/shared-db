@@ -160,6 +160,19 @@ jobs:
           node --test scripts/lib/repository-identity.test.mjs scripts/check-repository-identity-conformance.test.mjs
           node scripts/check-repository-identity-conformance.mjs
 
+      - name: Run the exact global role claims and SQL role collision accounting tests (#3398)
+        # Named explicitly, like the gates above. These prove exact global role
+        # identity (quoted case preserved), CREATE/ALTER/DROP ROLE + rename +
+        # membership accounting, ownership dependencies that are NOT exclusive
+        # writes, literal DO handling, and fail-closed refusal of dynamic role
+        # mutations. A suite that silently stopped running would let the role
+        # collision axis go unguarded while structural work depends on it.
+        run: |
+          set -euo pipefail
+          test -f scripts/lib/sql-role-operations.test.mjs || {
+            echo "::error::required test file absent: scripts/lib/sql-role-operations.test.mjs"; exit 1; }
+          node --test scripts/lib/sql-role-operations.test.mjs
+
       - name: Run the merge queue contract, configurator, and workflow coverage tests (#2530)
         # Named explicitly, like the freshness gate above: the workflow coverage
         # test is the machine proof that every required context reports on

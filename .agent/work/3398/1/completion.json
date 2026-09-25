@@ -1,0 +1,39 @@
+{
+  "work_issue": 3398,
+  "db_reads": [],
+  "contract_ref": "refs/db-contracts/3398/1",
+  "files_changed": [
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    ".github/workflows/tools-offline-tests.yml"
+  ],
+  "stop_conditions_hit": [],
+  "pr": 3524,
+  "head_sha": "2ca590c1b1b519ca6fe8136daeef2ae87b4d5cae",
+  "db_writes": [],
+  "base_sha": "85566ccb392b27022fe9bbb100d308fc587b13cc",
+  "outcome": "ready-for-merge",
+  "checks": [
+    {
+      "command": "node --test scripts/lib/sql-role-operations.test.mjs",
+      "exit_code": 0,
+      "evidence": "role operations tests pass: exact role identity, quoted identifiers, CREATE/ALTER/DROP ROLE, rename, GRANT/REVOKE membership, DO blocks, dynamic SQL refusal"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Initial independent helper and tests delivered; collision parser integration deferred to owner-cleared follow-up"
+  ],
+  "migration_versions": [],
+  "schema_version": 1,
+  "contract_sha256": "7cd6e91dab92785637644cf998ac7ce63d5f809ba02f8167a60e68f0e958dd34"
+}

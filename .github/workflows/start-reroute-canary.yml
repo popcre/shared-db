@@ -28,7 +28,7 @@ permissions:
 jobs:
   gate:
     name: Gate the canary label
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4

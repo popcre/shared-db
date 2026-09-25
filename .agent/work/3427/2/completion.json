@@ -2,17 +2,22 @@
   "schema_version": 1,
   "contract_ref": "refs/db-contracts/3427/2",
   "outcome": "ready-for-merge",
-  "head_sha": "416897225fdcb7ecc8a13b5491dc0d2cc07c43f8",
+  "head_sha": "f5c915f57907bb333488c44831a4dd1c134299d2",
   "work_issue": 3427,
   "migration_versions": [],
-  "contract_sha256": "1ed7cff6669b0a41f3672195e1f09283d3c2b44504dcd97e4ec9e83554da7094",
+  "contract_sha256": "4e5e2efddd350089b22f648fe5b12c1814b79465e50f9507139463ac12029a03",
   "db_reads": [],
   "db_writes": [],
   "checks": [
     {
-      "evidence": "807 tests pass (713 manage-migration-author-lanes + 91 check-exact-head-approval including 4 #3427 tests)",
+      "evidence": "716 tests pass (manage-migration-author-lanes, including re-derived peer-slot wire budgets)",
       "exit_code": 0,
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs"
+    },
+    {
+      "evidence": "truth audit OK: call_sites=313 sources=72 derived_digest=662b05f9a95e",
+      "exit_code": 0,
+      "command": "node scripts/check-throughput-truth-audit.mjs"
     },
     {
       "evidence": "no whitespace errors",
@@ -21,9 +26,11 @@
     }
   ],
   "files_changed": [
+    ".agent/work/3427/2/completion.json",
+    ".agent/work/3427/2/contract.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
     "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
   "pr": 3521,

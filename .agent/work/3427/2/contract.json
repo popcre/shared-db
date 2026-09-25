@@ -38,5 +38,10 @@
     "node --test scripts/manage-migration-author-lanes.test.mjs",
     "node scripts/check-throughput-truth-audit.mjs",
     "git diff --check"
+  ],
+  "stop_conditions": [
+    "Stop if the change would require a database-structure or migration edit.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
   ]
 }

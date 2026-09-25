@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3457,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Add optional p_min_semantic_score real default null to public.search_dam_documents, apply the floor only inside the semantic leg before blend, drop the old 7-arg signature in the same migration, re-grant execute to authenticated and service_role",
+  "base_sha": "c5a4c7d07845890237d66a1597b6ce0ca7b3ea0e",
+  "dispatcher": "orchestrator dispatch to mimo:author-3457",
+  "worker": "mimo",
+  "branch": "mimo/3457-search-semantic-floor",
+  "worktree": "C:\\repos\\shared-db\\.claude\\worktrees\\3457-search-dam",
+  "allowed_paths": [
+    "supabase/migrations/20260924174155_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    ".agent/work/3457/"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260924174155_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    ".agent/work/3457/1/contract.json",
+    ".agent/work/3457/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.search_dam_documents"
+  ],
+  "prohibited_actions": [
+    "no production writes",
+    "no preview apply without explicit orchestrator permission",
+    "do not edit AGENTS.md or HANDOFF.md",
+    "do not merge the PR"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "prior definition of search_dam_documents is migration 20260901130428",
+    "existing supabase/tests contract files pin the 7-arg signature and must be updated in the same PR or CI fails"
+  ],
+  "stop_conditions": [
+    "stop if the reserved version 20260924174155 is not the only new migration file",
+    "stop if check-sql.sh refuses the migration"
+  ]
+}

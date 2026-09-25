@@ -13,6 +13,7 @@ import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
 import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './orchestrator-flow/start-reroute.mjs'
 import { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
 import { loadReviewBrief, storeReviewBrief } from './lib/review-packet.mjs'
+import { GOVERNED_VERDICT_WRAPPERS, VERDICT_CONTRACT_FLAG_WRAPPERS, forbiddenGovernedSubcommand, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
 
 export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['issue','pr','headSha','reviewer','wrapper','worktree','reviewSlot','replacementSequence','assignmentId','skipDoctor'])
 export function parseArgs(argv){
@@ -103,9 +104,7 @@ export function neutraliseVerdictLine(body,reason){
 // standard output. The caller must not have to remember that, and a caller that
 // passes the wrong head must not be silently accepted, so the flag is injected
 // here from the head this review is actually recording against.
-export function wrapperBaseName(wrapper){
-  return String(wrapper??'').split(/[\\/]/).pop().replace(/\.(cmd|bat|exe)$/i,'').toLowerCase()
-}
+export { wrapperBaseName }
 
 // Source authority is the live PR, never a caller's remembered branch name.
 // No fetch, ref update, lease change, or provider invocation happens here.
@@ -178,7 +177,7 @@ export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,dig
   return {repository:REPO,pr:Number(options.pr),baseRef,targetSha:target,headSha:head,mergeBase,files,fileSetSha256:createHash('sha256').update(encoded).digest('hex'),sourceDigest}
 }
 
-const SOURCE_WRAPPERS=new Set(['ai-claude-review','ai-codex-review','ai-deepseek-agent','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen'])
+const SOURCE_WRAPPERS=new Set(GOVERNED_VERDICT_WRAPPERS)
 const OPAQUE_VALUE_OPTIONS=new Set(['--prompt','--prompt-file','--decision','--tests','--system','--file','--model','--timeout','--review-kind','--governed-verdict'])
 function canonicalSourcePath(value,platform=process.platform){
   let path=String(value)
@@ -324,7 +323,10 @@ export function codexGovernedBody(report,headSha,reportName='the codex report'){
 
 export function wrapperVerdictContractArgs(wrapper,args,headSha){
   const name=wrapperBaseName(wrapper)
-  if(!['ai-gemini','ai-qwen','ai-deepseek-agent'].includes(name))return args
+  // #2831: a subcommand that forces a non-governed verdict grammar can never be recorded.
+  const forbidden=forbiddenGovernedSubcommand(wrapper,args,OPAQUE_VALUE_OPTIONS)
+  if(forbidden)throw new Error(`the ${name} ${forbidden} subcommand is not one that takes the governed prompt as written, so it cannot end with a recordable VERDICT line. Rerun through an allowed subcommand, or draw another reviewer with --replace-failed-reviewer --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`)
+  if(!VERDICT_CONTRACT_FLAG_WRAPPERS.includes(name))return args
   const list=[...args],head=String(headSha??'').toLowerCase()
   // EVERY spelling of the flag is checked, not the first one found: `--x value`,
   // `--x=value`, and a repeat later in the argument list. A single unchecked
@@ -354,11 +356,39 @@ export function wrapperSpawnPlan(resolved,args,platform=process.platform){
   if(platform==='win32'&&/\.(cmd|bat)$/i.test(resolved))return{file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,...args]}
   return{file:resolved,args}
 }
+// OUT OF CREDIT (owner requirement, 2026-09-24): a session whose reviewer failed
+// because the provider account ran out of credit must know that, and tell Albert in
+// the same reply. The ai-devops rotation wrappers exit 92 and print two stderr lines:
+//   AI_REVIEWER_OUT_OF_CREDIT provider=<grok|muse|qwen|gemini|deepseek> code=insufficient_quota
+//   OUT OF CREDIT: <plain-English sentence naming the provider and where to add credit>
+export const OUT_OF_CREDIT_MACHINE_LINE=/^AI_REVIEWER_OUT_OF_CREDIT provider=(grok|muse|qwen|gemini|deepseek) code=insufficient_quota$/
+export const OUT_OF_CREDIT_HUMAN_LINE=/^OUT OF CREDIT: [ -~]{10,300}$/
+const OUT_OF_CREDIT_PROVIDER_NAMES=Object.freeze({grok:'xAI (Grok)',muse:'Meta (Muse)',qwen:'Alibaba Model Studio (Qwen)',gemini:'Google Gemini',deepseek:'DeepSeek'})
+// Raw provider billing text, from a wrapper that predates the contract above. It is
+// recognized but NEVER echoed: only the fixed sentence below crosses into the refusal.
+const RAW_BILLING_EXHAUSTION=/used all available credits|monthly spending limit|insufficient balance|arrearage|prepayment credits are depleted/i
+export function outOfCreditReason(stderr){
+  const lines=String(stderr??'').split(/\r?\n/)
+  const machine=lines.map((line)=>OUT_OF_CREDIT_MACHINE_LINE.exec(line)).find(Boolean)
+  if(machine){
+    const human=lines.find((line)=>OUT_OF_CREDIT_HUMAN_LINE.test(line))
+    return `insufficient_quota: ${human??`OUT OF CREDIT: the ${OUT_OF_CREDIT_PROVIDER_NAMES[machine[1]]} reviewer account has run out of credits or hit its spending limit`}`
+  }
+  if(RAW_BILLING_EXHAUSTION.test(String(stderr??'')))return 'insufficient_quota: the provider reported that its account is out of credit or over its spending limit'
+  return null
+}
 // Provider diagnostics may contain credentials or private repository text. Only
-// fixed, recognized reasons cross into the refusal; never echo raw stderr.
+// fixed, recognized reasons cross into the refusal; never echo raw stderr. The ONE
+// deliberate exception is the wrapper's `OUT OF CREDIT:` sentence, and only when the
+// anchored machine line is also present: it is copied verbatim so the session can tell
+// Albert which account needs credit. It must match OUT_OF_CREDIT_HUMAN_LINE exactly --
+// one whole line, printable ASCII only, 10-300 characters -- so no control character,
+// multi-line payload, or unbounded provider text can ride along with it.
 export function wrapperFailureReason(run){
   const stderr=String(run.stderr??'')
   const reasons=[]
+  const outOfCredit=outOfCreditReason(stderr)
+  if(outOfCredit)reasons.push(outOfCredit)
   const hasReason=(reason)=>new RegExp(`(?:^|[^A-Za-z0-9_-])${reason}(?=$|[^A-Za-z0-9_-])`,'i').test(stderr)
   if(run.error)reasons.push('the wrapper process could not complete')
   if(run.signal)reasons.push('the wrapper process was terminated by a signal')
@@ -376,7 +406,7 @@ export function wrapperFailureReason(run){
   if(/execution-context-denied/i.test(stderr))reasons.push('the wrapper reported execution-context-denied')
   if(hasReason('content-filter')||hasReason('DataInspectionFailed'))reasons.push('provider_unavailable: content-filter rejected the request')
   else if(hasReason('provider-unavailable'))reasons.push('provider_unavailable: the provider refused the request')
-  if(/usage-limit|insufficient.quota|quota exceeded|usage limit/i.test(stderr))reasons.push('the wrapper reported a usage limit')
+  if(!outOfCredit&&/usage-limit|insufficient.quota|quota exceeded|usage limit/i.test(stderr))reasons.push('the wrapper reported a usage limit')
   if(/already active|already in progress|held for reconciliation|retained/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
   return reasons.join('; ')||(stderr?'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session':'the wrapper supplied no recognized diagnostic')
 }
@@ -678,6 +708,7 @@ Do not stop at the first problem -- a partial list costs another full review rou
 These three are mandatory and additional to your normal review. Report everything else
 you would normally raise as well; this list is a floor, never a ceiling.
 `
+export const DEEPSEEK_GOVERNED_MESSAGE='Review the attached governed brief completely and follow its final VERDICT instruction.'
 export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={},wrapper=null,brief=''){
   const list=[...wrapperArgs]
   let carried=false
@@ -691,6 +722,39 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
     for(const match of String(text).matchAll(/VERDICT:\s*[A-Z_]+[ \t]+([0-9a-f]{7,40})\b/gi)){
       const named=match[1].toLowerCase()
       if(!head.startsWith(named))throw new Error(`the review prompt names head ${named} in a VERDICT line, but the live pull request head is ${head}. No reviewer was started. Remove the head from the prompt (the runner injects the live head) or update it.`)
+    }
+  }
+  // ISSUE #3479 -- ai-deepseek-agent takes its brief as the POSITIONAL message after
+  // `send` (or after `reply <session-id>`) and has no --prompt / --prompt-file flag. Its
+  // parser folds any unknown token into the message, so a forwarded `--prompt-file x`
+  // would send the literal path text, never the brief. For this wrapper the brief (a
+  // positional message and/or --prompt / --prompt-file, in command-line order) plus the
+  // checklist and head-bound VERDICT instruction is written to one private file passed
+  // with --file, which the wrapper appends to the message. The positional message stays
+  // a short fixed line, so argv never carries the unbounded brief (the Windows
+  // command-line budget run-deepseek-evidence-review.mjs guards). Value flags are the
+  // module's canonical OPAQUE_VALUE_OPTIONS, so a flag value is never taken for the brief.
+  // The stale-head check applies exactly as for the flag forms.
+  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'&&(list[0]==='send'||(list[0]==='reply'&&list.length>=2&&!String(list[1]).startsWith('-')))){
+    const valued=new Set([...OPAQUE_VALUE_OPTIONS,'--base','--assert-head'])
+    const start=list[0]==='reply'?2:1,out=list.slice(0,start),texts=[]
+    let ended=false
+    for(let i=start;i<list.length;i++){
+      const arg=list[i]
+      if(ended||!/^--/.test(arg)){texts.push(arg);continue}
+      if(arg==='--'){ended=true;continue}
+      if(arg==='--prompt-file'&&i+1<list.length){texts.push(readFile(list[++i]));continue}
+      if(/^--prompt-file=/.test(arg)){texts.push(readFile(arg.slice('--prompt-file='.length)));continue}
+      if(arg==='--prompt'&&i+1<list.length){texts.push(list[++i]);continue}
+      if(/^--prompt=/.test(arg)){texts.push(arg.slice('--prompt='.length));continue}
+      out.push(arg)
+      if(valued.has(arg)&&i+1<list.length)out.push(list[++i])
+    }
+    if(texts.length){
+      const text=texts.join('\n\n');stale(text)
+      const copy=join(tempDir(),'governed-brief.md');writeFile(copy,`${text}${instruction}`)
+      out.splice(start,0,DEEPSEEK_GOVERNED_MESSAGE,'--file',copy)
+      return out
     }
   }
   // Both spellings of each flag are handled. The governed review of PR #3338 found the

@@ -2934,7 +2934,7 @@ export const githubIo = {
       ?{file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,...args]}
       :{file:resolved,args}
     let output=''
-    try{output=execFileSync(spawn.file,spawn.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_DOCTOR_TIMEOUT_MS})}
+    try{output=execFileSync(spawn.file,spawn.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_PREFLIGHT_TIMEOUT_MS})}
     catch(error){output=String(error?.stdout??'');if(error?.code==='ETIMEDOUT'||error?.signal)return reconcilePreflightRows(output,reviewers,{complete:false})}
     return reconcilePreflightRows(output,reviewers)
   },
@@ -3218,6 +3218,23 @@ export const REVIEWER_DOCTOR_TIMEOUT_MS = (()=>{
   if(raw===undefined||String(raw).trim()==='')return 60000
   const value=Number(raw)
   if(!Number.isFinite(value)||value<=0)throw new LaneError(`REVIEWER_DOCTOR_TIMEOUT_MS must be a positive number of milliseconds; got "${raw}". Left unchecked this disables the timeout and a hung doctor hangs a governed lane.`)
+  return value
+})()
+
+// `ai-review-preflight usable` reconciles EVERY provider in one process (nine on
+// edge-dev). Spawned through the cmd.exe -> Git bash shim chain one pass measures
+// ~39 s and has taken ~80 s under load, so sharing the single-doctor budget here
+// cut the run off before the later providers reported and refused the whole draw
+// with "cut off before reporting qwen". The single-doctor budget above stays
+// tight -- a hung wrapper doctor must still fail fast -- while the aggregate gets
+// room for every provider to answer. REVIEWER_DOCTOR_TIMEOUT_MS, when the
+// operator raises it, still widens both; it never shrinks the aggregate below the
+// floor that a real pass needs.
+export const REVIEWER_PREFLIGHT_TIMEOUT_MS = (()=>{
+  const raw=process.env.REVIEWER_PREFLIGHT_TIMEOUT_MS
+  if(raw===undefined||String(raw).trim()==='')return Math.max(REVIEWER_DOCTOR_TIMEOUT_MS,240000)
+  const value=Number(raw)
+  if(!Number.isFinite(value)||value<=0)throw new LaneError(`REVIEWER_PREFLIGHT_TIMEOUT_MS must be a positive number of milliseconds; got "${raw}". Left unchecked this disables the timeout and a hung preflight hangs a governed lane.`)
   return value
 })()
 
@@ -9702,7 +9719,14 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
     // not the dispatch run head. Accept it only against the exact claim head the
     // caller proved, and only for a claim-mode binding.
     const provenClaimApply=Boolean(!mergeCommitSha&&provenClaimHead&&binding.rehearsalMode==='claim'&&String(binding.appliedCommit).toLowerCase()===provenClaimHead)
-    if(!mergeCommitSha&&!provenClaimApply&&binding.appliedCommit!==run.head_sha){reject(runId,lane,`binding applied commit ${binding.appliedCommit} is neither the run head ${run.head_sha} nor the proven claim head ${provenClaimHead??'(none supplied)'}`);continue}
+    if(!mergeCommitSha&&!provenClaimApply&&binding.appliedCommit!==run.head_sha){
+      // Name the SPECIFIC reason the claim-head path did not accept this binding,
+      // so a refusal never reads as "the head was wrong" when the real gate is
+      // the binding mode. Acceptance is unchanged.
+      const claimNote=!provenClaimHead?'no claim head was proven':binding.rehearsalMode!=='claim'?`binding rehearsal mode ${binding.rehearsalMode} is not claim`:`applied commit does not equal the proven claim head ${provenClaimHead}`
+      reject(runId,lane,`binding applied commit ${binding.appliedCommit} is neither the run head ${run.head_sha} nor an accepted claim-head apply: ${claimNote}`)
+      continue
+    }
     // The ARTIFACT is named for the applied checkout, never for the dispatch head.
     const appliedCommit=(pinnedClaimApply||hashBoundClaimApply||mergedMainRehearsal||provenClaimApply)?binding.appliedCommit:run.head_sha
 

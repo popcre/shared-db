@@ -26,8 +26,8 @@ begin
   foreach v_required in array array[
     'Disney - Creative (DCP Vault)',
     'Disney - Submissions (OPA)',
-    'Pixar - Creative (DCP Vault)',
-    'Pixar - Submissions (OPA)',
+    'Disney (Pixar) - Creative (DCP Vault)',
+    'Disney (Pixar) - Submissions (OPA)',
     'Lucasfilm / Star Wars - Creative (DCP Vault)',
     'Lucasfilm / Star Wars - Submissions (OPA)',
     'DCP Vault - Creative (authoritative Marvel scope)',

@@ -926,6 +926,12 @@ test('ai-stepfun is governed only through review (#3555)',()=>{
   const head='c'.repeat(40)
   for(const sub of ['ask','implement'])assert.throws(()=>wrapperVerdictContractArgs('ai-stepfun',[sub,'--prompt-file','brief.md'],head),/reviewer_cannot_emit_governed_verdict/)
   assert.deepEqual(wrapperVerdictContractArgs('ai-stepfun',['review','--prompt-file','brief.md'],head),['review','--prompt-file','brief.md'])
+  // ai-stepfun is a governed wrapper, so it is also a source wrapper: the runner binds
+  // its --base and --assert-head to the trusted pull request source.
+  const source={mergeBase:'d'.repeat(40),headSha:head}
+  assert.deepEqual(wrapperSourceContractArgs('ai-stepfun',['review','--prompt-file','brief.md'],source),['review','--prompt-file','brief.md','--base',source.mergeBase,'--assert-head',head])
+  assert.throws(()=>wrapperSourceContractArgs('ai-stepfun',['review','--assert-head','e'.repeat(40)],source),/does not match the trusted pull request source/)
+  assert.equal(reviewCallerEnvironment('ai-stepfun',{CLAUDE_CODE_SESSION_ID:'s'}).AI_STEPFUN_CALLER,'claude')
 })
 
 // Owner requirement 2026-09-24: an out-of-credit reviewer failure is named, and the

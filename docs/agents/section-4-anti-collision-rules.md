@@ -460,7 +460,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
    slot independence still decide who is usable. It creates no concurrency cap.
 
-   For new assignments, the machine-independent cursor rotates Grok 4.6 → Qwen
+   For new assignments, the shared cursor (the sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run) rotates Grok 4.6 → Qwen
    3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
    V4.1 Flash → StepFun Step 5 → repeat,
    skipping any reviewer whose engine matches the live orchestrator, and on a
@@ -534,8 +535,10 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    evidence-packet checkout, Gemini via a disposable sandbox copy of
    the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
    DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
-   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
-   retired Codex reviewer was equipped the same way, via `codex exec --sandbox
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root, and
+   StepFun Step 5 (Linux machines only) via `ai-stepfun review`: read/grep/find/ls
+   inside bubblewrap over a read-only disposable copy with the sealed evidence
+   packet. The retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
    No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,

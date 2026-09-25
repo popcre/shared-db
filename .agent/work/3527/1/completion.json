@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "work_issue": 3527,
+  "outcome": "ready-for-merge",
+  "pr": 3526,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3527/1",
+  "contract_sha256": "676c4366ec610f5968cd121913b089f9d94b9fa582b7e4232a2cfe703295c382",
+  "base_sha": "84efcba2db06bd8e530b81fb2f4fd08c9118d07b",
+  "head_sha": "0d2e647ec21693b2ff1b7df9a56f089bac9a7378",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "716 pass, 0 fail at 0d2e647e after refreshing onto origin/main."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=321 sources=74 derived_digest=13f182c8c53a at 0d2e647e"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 published after implementation commit 77b42a5ba; no prior refs/db-contracts/3527/1 existed."
+  ],
+  "stop_conditions_hit": []
+}

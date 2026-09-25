@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3505,
+  "outcome": "ready-for-merge",
+  "pr": 3520,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3505/1",
+  "contract_sha256": "9ddb4feefdff1473a5d72533986c589a1bb230aaf246a787e550d40846ef0a42",
+  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
+  "head_sha": "abca42703d343a9ae7262a0057672987157b85db",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/repository-maintenance-authorization.test.mjs",
+    "scripts/check-exact-head-approval.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/documents-only-merge-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/lib/documents-only-change.test.mjs scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "226 pass, 0 fail"
+    },
+    {
+      "command": "node scripts/update-required-checks.mjs --add 'Migration guarded merge authorization' --repo popcre/shared-db --apply",
+      "exit_code": 0,
+      "evidence": "READBACK OK - 5 contexts required including Migration guarded merge authorization, strict: false preserved"
+    }
+  ],
+  "assumptions_resolved": [
+    "The advisory now posts under 'Documents-only merge advisory', distinct from MERGE_SELF_CONTEXT and the workflow check run name.",
+    "Migration guarded merge authorization added to live branch-protection required checks.",
+    "Regression tests confirm a code PR with only the advisory is refused at merge-authorization audit.",
+    "A disguised advisory description under the grant context is also refused.",
+    "No existing test assertion was weakened or deleted."
+  ],
+  "stop_conditions_hit": []
+}

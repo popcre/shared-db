@@ -6,7 +6,17 @@ const rule = { id: 'BPR_1', requiresStatusChecks: true, requiresStrictStatusChec
 export function fixture(rules = [], mutate = () => {}) {
   const response = { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: structuredClone(rule) } } } }
   mutate(response)
-  return { repo: 'popcre/shared-db', read: (args) => args.includes('graphql') ? response : [rules] }
+  return {
+    repo: 'popcre/shared-db',
+    read: (args) => {
+      if (args.includes('graphql')) return response
+      // Default: REST /protection is absent (404). Override when testing other paths.
+      if (/(\/branches\/[^/]+\/protection)$/.test(String(args.at(-1) ?? ''))) {
+        const err = Error('gh: Not Found (HTTP 404)'); err.stderr = 'gh: Not Found (HTTP 404)'; throw err
+      }
+      return [rules]
+    },
+  }
 }
 test('resolves classic protection and allowed producer from a fresh identified branch', () => {
   const result = readEffectiveRequiredChecks(fixture())
@@ -37,4 +47,39 @@ test('refuses transport denial, partial GraphQL, malformed pagination, wrong rep
 })
 test('null classic protection requires a known effective ruleset and empty policy refuses', () => {
   assert.throws(() => readEffectiveRequiredChecks(fixture([], (r) => { r.data.repository.ref.branchProtectionRule = null })), /no checks/)
+})
+test('null classic protection probes REST /protection to distinguish 404 from 403', () => {
+  // 404 on /protection: genuine absence. With a ruleset providing checks, accept.
+  const ok404 = { type: 'required_status_checks', ruleset_id: 9, ruleset_source_type: 'Organization', ruleset_source: 'popcre', parameters: { required_status_checks: [{ context: 'from ruleset', integration_id: 7 }] } }
+  const input = fixture([ok404], (r) => { r.data.repository.ref.branchProtectionRule = null })
+  const originalRead = input.read
+  input.read = (args) => {
+    if (args.includes('graphql')) return originalRead(args)
+    if (/(\/branches\/[^/]+\/protection)$/.test(String(args.at(-1) ?? ''))) {
+      const err = Error('gh: Not Found (HTTP 404)'); err.stderr = 'gh: Not Found (HTTP 404)'; throw err
+    }
+    return originalRead(args)
+  }
+  const result = readEffectiveRequiredChecks(input)
+  assert.deepEqual(result.checks, [{ context: 'from ruleset', app_id: 7 }])
+  // 403 on /protection: unauthorized null, must refuse even with ruleset checks.
+  const input403 = fixture([ok404], (r) => { r.data.repository.ref.branchProtectionRule = null })
+  const read403 = input403.read
+  input403.read = (args) => {
+    if (args.includes('graphql')) return read403(args)
+    if (/(\/branches\/[^/]+\/protection)$/.test(String(args.at(-1) ?? ''))) {
+      const err = Error('gh: Resource not accessible by integration (HTTP 403)'); err.stderr = 'gh: Resource not accessible by integration (HTTP 403)'; throw err
+    }
+    return read403(args)
+  }
+  assert.throws(() => readEffectiveRequiredChecks(input403), /permission denied|null cannot be trusted/)
+  // 200 on /protection: protection exists but GraphQL said null, refuse.
+  const input200 = fixture([ok404], (r) => { r.data.repository.ref.branchProtectionRule = null })
+  const read200 = input200.read
+  input200.read = (args) => {
+    if (args.includes('graphql')) return read200(args)
+    if (/(\/branches\/[^/]+\/protection)$/.test(String(args.at(-1) ?? ''))) return { required_status_checks: { contexts: ['hidden'], strict: false } }
+    return read200(args)
+  }
+  assert.throws(() => readEffectiveRequiredChecks(input200), /unauthorized-null|unauthorized or inconsistent/)
 })

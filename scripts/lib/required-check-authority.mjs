@@ -21,12 +21,15 @@ export function normalizeRequirements(checks) {
 // GitHub itself performs the final atomic policy enforcement; callers must read
 // this again under the merge lock and must never use an administrative bypass.
 //
-// TOKEN PERMISSIONS: the two reads below require the workflow token to have
+// TOKEN PERMISSIONS: the reads below require the workflow token to have
 // `contents:read` (or write) for the GraphQL ref/branchProtectionRule query and
 // `administration:read` is NOT needed — the REST /rules/branches endpoint is
-// served under the repository's contents permission. A 403 on either read
-// causes every merge to refuse (fail-closed). Verified live 2026-09-25 under
-// github.token with contents:write, statuses:write, checks:read, actions:write.
+// served under the repository's contents permission. A 403 on any read causes
+// every merge to refuse (fail-closed). When GraphQL returns
+// branchProtectionRule === null, a REST /protection probe distinguishes
+// genuine absence (404) from an unauthorized null (403 or 200-inconsistent):
+// GitHub hides unauthorized nullable fields as null, so a bare null must never
+// be trusted as "no classic rule".
 export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now = () => new Date() }) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
   const [owner, name] = repo.split('/')
@@ -44,6 +47,26 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
       const contexts = new Set(requirements.map((item) => item.context))
       if (protection.requiredStatusCheckContexts.some((context) => !contexts.has(context)) || requirements.some((item) => !protection.requiredStatusCheckContexts.includes(item.context))) refuse('classic context and producer lists disagree')
     }
+  } else {
+    // GraphQL hides unauthorized nullable fields as null. Probe REST /protection
+    // to distinguish genuine absence (404) from a permission-denied null (403)
+    // or an inconsistent read (200 with a real rule). Fail closed on anything
+    // other than a clean 404.
+    let probeSucceeded = false
+    try {
+      read(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}/protection`])
+      probeSucceeded = true
+    } catch (error) {
+      const message = String(error?.message ?? error?.stderr ?? '')
+      if (/404|Not Found/i.test(message)) {
+        // Genuine absence: no classic protection rule on this branch.
+      } else if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) {
+        refuse('classic protection is not readable (permission denied); GraphQL null cannot be trusted as absent')
+      } else {
+        refuse('classic protection probe failed; GraphQL null cannot be trusted as absent')
+      }
+    }
+    if (probeSucceeded) refuse('classic protection exists but GraphQL returned null; refusing unauthorized-null')
   }
   const perPage = 100
   const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=${perPage}`])
@@ -52,6 +75,14 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
   // paginating early and we are about to under-count requirements (fail-open).
   for (let i = 0; i < pages.length - 1; i++) {
     if (pages[i].length !== perPage) refuse('effective ruleset pagination is incomplete')
+  }
+  // A full last page (including a single full page) is ambiguous: --paginate
+  // stops at Link boundaries and a truncated read looks identical to an exact
+  // multiple of per_page. Refuse unless an explicit next-page read confirms
+  // the end with an empty page (fail-closed).
+  if (pages[pages.length - 1].length === perPage) {
+    const confirm = read(['api', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=${perPage}&page=${pages.length + 1}`])
+    if (!Array.isArray(confirm) || confirm.length > 0) refuse('effective ruleset pagination is incomplete')
   }
   const rules = pages.flat()
   for (const rule of rules) {

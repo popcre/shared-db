@@ -68,17 +68,31 @@ test('pagination preserves all pages and refuses incomplete totals', () => {
 test('ruleset pagination refuses a short non-last page (fail-open guard)', () => {
   const rule = { type: 'required_status_checks', ruleset_id: 1, ruleset_source: 'popcre', ruleset_source_type: 'Organization', parameters: { required_status_checks: [{ context: 'required', integration_id: 15368 }] } }
   const graphql = { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: null } } } }
+  // Probe mock: REST /protection returns 404 (genuine absence of classic rule).
+  const probe404 = () => { const err = Error('gh: Not Found (HTTP 404)'); err.stderr = 'gh: Not Found (HTTP 404)'; throw err }
   const okRead = (args) => {
     if (args.includes('graphql')) return graphql
+    if (args.some((arg) => /\/branches\/[^/]+\/protection$/.test(String(arg)))) return probe404()
     // Two pages: first has 1 rule (short), second has 1 rule. With per_page=100
     // the first page is incomplete → must refuse.
     return [[rule], [rule]]
   }
-  assert.throws(() => readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: okRead }), RequiredCheckAuthorityError, /pagination is incomplete/)
-  // Single full-length page (exactly per_page) is accepted.
+  assert.throws(() => readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: okRead }), (err) => err instanceof RequiredCheckAuthorityError && /pagination is incomplete/.test(err.message))
+  // Single full-length page (exactly per_page) is ambiguous: --paginate may have
+  // stopped at a Link boundary. Refuse unless a second (even empty) page
+  // confirms the end.
   const fullPage = Array.from({ length: 100 }, (_, i) => ({ ...rule, ruleset_id: i + 1, parameters: { required_status_checks: [{ context: `c${i}`, integration_id: 15368 }] } }))
+  const truncatedRead = (args) => {
+    if (args.includes('graphql')) return graphql
+    if (args.some((arg) => /\/branches\/[^/]+\/protection$/.test(String(arg)))) return probe404()
+    return [fullPage]
+  }
+  assert.throws(() => readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: truncatedRead }), (err) => err instanceof RequiredCheckAuthorityError && /pagination is incomplete/.test(err.message))
+  // With a confirming empty second page, a single full page is accepted.
   const fullRead = (args) => {
     if (args.includes('graphql')) return graphql
+    if (args.some((arg) => /\/branches\/[^/]+\/protection$/.test(String(arg)))) return probe404()
+    if (args.some((arg) => String(arg).includes('page=2'))) return []
     return [fullPage]
   }
   const result = readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: fullRead })
@@ -87,6 +101,7 @@ test('ruleset pagination refuses a short non-last page (fail-open guard)', () =>
   const partialLast = [[...fullPage], [rule]]
   const partialRead = (args) => {
     if (args.includes('graphql')) return graphql
+    if (args.some((arg) => /\/branches\/[^/]+\/protection$/.test(String(arg)))) return probe404()
     return partialLast
   }
   const result2 = readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: partialRead })

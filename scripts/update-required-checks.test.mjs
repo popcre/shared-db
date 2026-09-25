@@ -282,7 +282,8 @@ test('app-bound settings updates preserve every existing producer and readback r
   const plan = planUnion(live, ['new'])
   const transport = io(['{}'])
   applyUnion({ repo: DEFAULT_REPO, branch: 'main' }, plan, transport)
-  assert.deepEqual(JSON.parse(transport.calls[0].input).checks, [{ context: 'required', app_id: 15368 }, { context: 'new', app_id: -1 }])
+  // GitHub's "any source" encoding omits app_id — never -1 or null.
+  assert.deepEqual(JSON.parse(transport.calls[0].input).checks, [{ context: 'required', app_id: 15368 }, { context: 'new' }])
   assert.throws(() => verifyReadback({ strict: false, contexts: plan.next, checks: plan.next.map((context) => ({ context, app_id: -1 })) }, plan), /producer binding changed/)
   assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, { run: () => JSON.stringify({ strict: false, contexts: ['required'] }) }), /producer bindings are missing/)
 })

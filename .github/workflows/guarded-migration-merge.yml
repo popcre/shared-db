@@ -148,6 +148,13 @@ jobs:
           # land, between the first pass and the merge itself. Protected main's
           # copy, never the pull request's own, on BOTH passes.
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+          # Under-lock re-read of effective required-check authority. The
+          # pre-lock preflight proved the checks were green; this proves the
+          # POLICY itself did not change while the lock was being acquired
+          # (a newly inherited ruleset requirement must refuse the merge).
+          # PREFLIGHT_WAIT_SECONDS=0: the checks are already proven green;
+          # only an authority change can refuse here.
+          PREFLIGHT_WAIT_SECONDS=0 node scripts/check-required-checks-preflight.mjs
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
           # The status write above and the mergeability GitHub evaluates below are
           # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked

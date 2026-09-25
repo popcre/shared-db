@@ -173,7 +173,7 @@ export function planUnion(live, additions) {
   const removed = existing.filter((context) => !next.includes(context))
   if (removed.length) throw new RequiredChecksError(`refusing: the computed change would REMOVE ${removed.join(', ')}`)
 
-  const checks = validated.checks === undefined ? undefined : [...validated.checks.map((check) => ({ ...check })), ...toAdd.map((context) => ({ context, app_id: -1 }))]
+  const checks = validated.checks === undefined ? undefined : [...validated.checks.map((check) => ({ ...check })), ...toAdd.map((context) => ({ context, app_id: null }))]
   return { strict: validated.strict, existing, toAdd, alreadyPresent, next, checks, changed: toAdd.length > 0 }
 }
 
@@ -226,7 +226,11 @@ export function applyUnion({ repo, branch }, plan, io = {}) {
   // The NARROW endpoint. PATCH here touches only required_status_checks and
   // leaves force-push, deletion, admin enforcement, reviews and everything else
   // untouched. `strict` is echoed back exactly as read.
-  const body = JSON.stringify(plan.checks ? { strict: plan.strict, checks: plan.checks } : { strict: plan.strict, contexts: plan.next })
+  // Omit app_id for unrestricted checks: GitHub's documented "any source"
+  // encoding is the absence of app_id, not -1 or null (which may 422 or fail
+  // to match check runs produced by a specific app).
+  const checks = plan.checks?.map((check) => (check.app_id == null || check.app_id === -1) ? { context: check.context } : { context: check.context, app_id: check.app_id })
+  const body = JSON.stringify(plan.checks ? { strict: plan.strict, checks } : { strict: plan.strict, contexts: plan.next })
   run(['api', '-X', 'PATCH', `repos/${repo}/branches/${branch}/protection/required_status_checks`, '--input', '-'], { input: body })
   return body
 }

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "work_issue": 2998,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Complete the remaining #2998 pre-draw readiness checks (evidence pair, main currency, protected-source collision) and the pre-draw prompt contract, without reducing any review requirement.",
+  "base_sha": "a48ce7b1699e5ab4aa3ae7aff69a0261c3bdb7f3",
+  "dispatcher": "Owner Albert Hazan authorized resolving open non-orchestrator GitHub issues in popcre/shared-db",
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "mimo/2998-2923-2824-resolve",
+  "worktree": "C:/repos/shared-db-wt-2998-2923-2824",
+  "allowed_paths": [
+    "scripts/lib/reviewer-draw-readiness.mjs",
+    "scripts/reviewer-draw-readiness.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    ".agent/work/2998/1/contract.json",
+    ".agent/work/2998/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/reviewer-draw-readiness.mjs",
+    "scripts/reviewer-draw-readiness.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    ".agent/work/2998/1/contract.json",
+    ".agent/work/2998/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database write, migration, function, view, role, grant, index, or timeout change.",
+    "Do not reduce what a reviewer must check, make any verdict optional, or let a failed handoff read as an approval.",
+    "No production command.",
+    "No edit to the shared checkout."
+  ],
+  "required_checks": [
+    "node --test scripts/reviewer-draw-readiness.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/reviewer-wire-budget.test.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-repository-identity-conformance.mjs",
+    "node scripts/check-skill-drift.mjs --require-skills"
+  ],
+  "assumptions": [
+    "GitHub computes pull request mergeable asynchronously, so a null value must proceed rather than refuse.",
+    "The #3187 wire budget of 10 GitHub API requests per reviewer operation is preserved by sharing pre-draw reads and never caching across the post-mutex freshness re-read.",
+    "Existing assertReviewerDrawReadiness draft/conflict/closed-unmerged refusals are unchanged and still run on both draw paths."
+  ],
+  "stop_conditions": [
+    "Stop and report if any change would need a schema or structure change, a database write, or a new migration.",
+    "Stop and report if any refusal would become a warning or a pass.",
+    "Stop and report if a required check cannot be made green without weakening a gate."
+  ],
+  "generation": 1
+}

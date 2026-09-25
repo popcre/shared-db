@@ -21,8 +21,8 @@ const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name
 const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8'))
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
-// scripts/update-required-checks.mjs from the live read-back; it now equals that
-// read-back exactly (15 contexts, strict false), so nothing is pending here.
+// scripts/update-required-checks.mjs from the live read-back; it now equals the
+// dated readback artifact below (16 contexts, strict false), so nothing is pending.
 const KNOWN_LIVE_ADDITIONS = []
 
 // The exact job-level display names a workflow emits. A literal `name:` emits
@@ -68,6 +68,34 @@ test('every mirrored or known-live required context has a mapped emitter', () =>
   for (const context of [...mirrored, ...KNOWN_LIVE_ADDITIONS]) {
     assert.ok(CONTEXT_MAP[context], `no merge-group-capable emitter is mapped for required context "${context}"`)
   }
+})
+
+// Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
+// branch protection. The mirror must carry exactly its contexts and strictness.
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+
+test('the committed mirror equals the dated live readback artifact', () => {
+  assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())
+  assert.equal(READBACK.contextCount, READBACK.contexts.length)
+  assert.equal(MIRROR.strict, READBACK.strict)
+  assert.ok(MIRROR.contexts.includes('Queue-sensitive checks (aggregate)'), 'the restored aggregate context left the mirror')
+})
+
+// #3562 review M-1: the required context "Destructive SQL outside migrations" must
+// actually SCAN on merge_group, not merely run green. Pin the step, its event gate,
+// its group base and its fail-closed base resolution.
+test('destructive SQL guard scans the queued group against merge_group.base_sha, fail-closed', () => {
+  const text = readWorkflow('destructive-analysis-guard.yml')
+  const job = text.slice(text.indexOf('    name: Destructive SQL outside migrations'))
+  const at = job.indexOf('      - name: Scan SQL added by the queued group')
+  assert.ok(at >= 0, 'the merge_group scan step is missing from the Destructive SQL job')
+  const step = job.slice(at, (job.indexOf('\n      - name:', at + 1) + 1 || job.length + 1) - 1)
+  assert.match(step, /^ {8}if: github\.event_name == 'merge_group'$/m)
+  assert.match(step, /^ {10}BASE_SHA: \$\{\{ github\.event\.merge_group\.base_sha \}\}$/m)
+  assert.match(step, /git cat-file -e "\$\{BASE_SHA\}\^\{commit\}"/)
+  assert.match(step, /exit 1/)
+  assert.match(step, /node scripts\/check-destructive-analysis\.mjs --diff-base "\$\{BASE_SHA\}"/)
+  assert.match(job, /^ {6}- uses: actions\/checkout@v4\n {8}with:\n {10}fetch-depth: 0$/m, 'the group base must be fetchable (full history)')
 })
 
 test('the emitter check matches exact job names, not substrings or comments', () => {

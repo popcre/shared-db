@@ -90,6 +90,9 @@ export const PINNED_REQUIRED_CONTEXTS = Object.freeze([
   // live protection already required but the mirror had never recorded.
   'Destructive SQL outside migrations', 'Merge queue gate',
   'supabase/tests against an ephemeral database',
+  // Restored 2026-09-25 (#2530 Step 8, #3562): required on 2026-09-18/20 per the
+  // dated transfer artifacts, dropped with no recorded decision, restored additively.
+  'Queue-sensitive checks (aggregate)',
 ])
 
 export const PREFLIGHT_SOURCE_PATH = 'scripts/check-required-checks-preflight.mjs'

@@ -33,6 +33,40 @@ test('digest, baseline, closure and producer identities are independently bound'
   assert.throws(()=>verifyIsolatedRehearsal(f.manifest,f.identity,f.adapters),/digest/)
 })
 
+test('each identity field validator refuses a matching expected identity',()=>{
+  // Move BOTH the manifest identity and the expected identity together, so line 18's
+  // equality check passes and the field-specific validators at 20-26 are the ones
+  // that must refuse. Mutating only the manifest proves nothing about them.
+  const cases=[
+    ['repository','not-a-repo',/invalid source identity/],
+    ['issue',1.5,/invalid source identity/],
+    ['pr',0,/invalid source identity/],
+    ['base_sha','z'.repeat(40),/invalid source identity/],
+    ['head_sha','short',/invalid source identity/],
+    ['bundle_id','not-a-digest',/missing bundle_id/],
+    ['baseline_sha256','xyz',/missing baseline_sha256/],
+    ['permission_setup_sha256','',/missing permission_setup_sha256/],
+    ['catalog_sha256','a'.repeat(63),/missing catalog_sha256/],
+    ['probe_manifest_sha256','a'.repeat(65),/missing probe_manifest_sha256/],
+    ['producer',{repository:'popcre/shared-db',run_id:0,run_attempt:1,workflow_sha:'3'.repeat(40)},/invalid producer identity/],
+    ['producer',{repository:'other/repo',run_id:10,run_attempt:0,workflow_sha:'3'.repeat(40)},/invalid producer identity/],
+    ['producer',{repository:'popcre/shared-db',run_id:10,run_attempt:1,workflow_sha:'3'.repeat(39)},/invalid producer identity/],
+    ['closure',[{version:'not-a-version',sha256:'1'.repeat(64)}],/invalid ordered dependency closure/],
+    ['closure',[{version:predecessor,sha256:'1'.repeat(64)},{version:predecessor,sha256:'1'.repeat(64)}],/invalid ordered dependency closure/],
+    ['selected_versions',[other],/outside closure/],
+    ['contract_tests',[],/contract coverage is missing/],
+    ['contract_tests',['dup','dup'],/contract coverage is missing/],
+    ['contract_tests',[123],/contract coverage is missing/],
+  ]
+  for(const [field,value,pattern] of cases){
+    const f=fixture()
+    f.manifest.identity[field]=structuredClone(value)
+    f.identity[field]=structuredClone(value)
+    f.sign()
+    assert.throws(()=>verifyIsolatedRehearsal(f.manifest,f.identity,f.adapters),pattern,`${field}=${JSON.stringify(value)} must be refused by its own validator`)
+  }
+})
+
 test('failed prerequisites, retry successes, missing coverage and quarantines refuse',()=>{
   for(const mutate of [m=>m.replay[0].result='failed',m=>m.replay.shift(),m=>m.replay.reverse(),m=>m.replay.push({...m.replay[0],result:'passed'}),m=>m.tests[0].quarantined=true,m=>m.tests[0].result='failed',m=>m.tests=[]]){
     const f=fixture();mutate(f.manifest);f.sign();assert.throws(()=>verifyIsolatedRehearsal(f.manifest,f.identity,f.adapters),/prerequisite|contract/)

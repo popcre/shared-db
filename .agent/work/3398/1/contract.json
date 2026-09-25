@@ -40,5 +40,10 @@
   "db_reads": [],
   "goal": "Support exact cluster-global database-role reservations and collision checks: model CREATE/ALTER/DROP ROLE, rename targets, and membership GRANT/REVOKE with quoted identifier case preservation (#3398)",
   "db_writes": [],
-  "schema_version": 1
+  "schema_version": 1,
+  "stop_conditions": [
+    "Stop if manage-migration-author-lanes.mjs would need editing (held by other active work)",
+    "Stop before any database, production, or role mutation",
+    "Stop if the change needs a file outside allowed_paths"
+  ]
 }

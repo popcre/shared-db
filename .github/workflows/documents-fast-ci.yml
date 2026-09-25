@@ -65,6 +65,7 @@ jobs:
         run: >-
           node --test
           scripts/check-documents-ci-route.test.mjs
+          scripts/documents-fast-ci-workflow.test.mjs
           scripts/lib/documents-only-change.test.mjs
 
       - name: Read the head as a git object and classify the route
@@ -83,7 +84,13 @@ jobs:
           fi
           # Fetch the head OBJECTS only. Nothing from the head is checked out
           # or executed; it exists here solely as the right-hand side of a diff.
-          git fetch --no-tags --depth=1 origin "$HEAD_SHA"
+          # Fail closed: an unfetchable head is a full path, never a red job
+          # and never a silent fast route.
+          if ! git fetch --no-tags --depth=1 origin "$HEAD_SHA"; then
+            echo 'route=full' >> "$GITHUB_OUTPUT"
+            echo 'Full engineering path: head objects could not be fetched.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if node scripts/check-documents-ci-route.mjs "$BASE_SHA" "$HEAD_SHA"; then
             echo 'route=pure-prose' >> "$GITHUB_OUTPUT"
             echo 'Pure-prose fast CI route proven from an exact base/head inventory.' >> "$GITHUB_STEP_SUMMARY"

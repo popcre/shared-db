@@ -40,8 +40,11 @@ test('the route workflow never executes anything from the head tree', () => {
   // There is exactly one checkout and it is the base.
   const checkouts = route.match(/uses: actions\/checkout@/g) ?? []
   assert.equal(checkouts.length, 1, 'the route workflow must have exactly one checkout, and it must be the base')
-  // The head is fetched as an object, not checked out.
-  assert.match(route, /git fetch .*"\$HEAD_SHA"/)
+  // The head is fetched as an object, not checked out -- and the fetch is
+  // guarded so an unfetchable head takes the full path instead of failing red
+  // or silently routing (review L1).
+  assert.match(route, /if ! git fetch --no-tags --depth=1 origin "\$HEAD_SHA"/)
+  assert.match(route, /git fetch --no-tags --depth=1 origin "\$HEAD_SHA"[\s\S]{0,200}route=full/)
 })
 
 test('the route workflow is read-only and cannot weaken branch protection', () => {
@@ -82,11 +85,20 @@ test('the route workflow does not path-filter: a filtered route silently misses 
 // Engineering-suite skip wiring
 // ---------------------------------------------------------------------------
 
+// The exact required-context names from the branch-protection mirror. A rename
+// of these strings is a branch-protection change and must fail here (review M2).
+const REQUIRED_CONTEXTS = {
+  'tools-offline-tests.yml': 'Tools offline tests',
+  'coldlion-promotion-contract-tests.yml': 'Promotion contract tests (offline)',
+}
+const mirror = JSON.parse(readFileSync(fileURLToPath(new URL('../docs/verification/main-required-status-checks.json', import.meta.url)), 'utf8'))
+
 for (const [name, text] of [['tools-offline-tests.yml', tools], ['coldlion-promotion-contract-tests.yml', promotion]]) {
   test(`${name} skips its engineering suite only on a proven pure-prose route`, () => {
     // The skip decision is produced by the trusted classifier, not by a paths
-    // filter or a head-authored expression.
-    assert.match(text, /check-documents-ci-route\.mjs/, `${name} must consult the route classifier`)
+    // filter or a head-authored expression. Pin the actual invocation: a
+    // comment mention of the classifier proves nothing (review M2).
+    assert.match(text, /node "\$scratch\/scripts\/check-documents-ci-route\.mjs"/, `${name} must invoke the base-extracted route classifier`)
     // Fail closed: an absent classifier or an unreadable inventory takes the
     // full path. The wiring must be able to write a non-pure-prose decision.
     assert.match(text, /pure_prose=false/, `${name} must be able to refuse the fast route`)
@@ -96,7 +108,17 @@ for (const [name, text] of [['tools-offline-tests.yml', tools], ['coldlion-promo
     assert.match(text, /git archive "\$BASE_SHA" scripts\/check-documents-ci-route\.mjs/, `${name} must extract the classifier from the protected base`)
     assert.match(text, /scratch=/, `${name} must run the classifier outside the working tree`)
     // Required context name is unchanged: the skip must not rename the job.
-    assert.ok(text.includes('name: ${'), `${name} must keep its stable required-context job name`)
+    // Pin the exact context string as the name expression's default branch --
+    // merely finding `name: ${` would pass a rename of the context itself.
+    const context = REQUIRED_CONTEXTS[name]
+    assert.ok(context, `no required context pinned for ${name}`)
+    assert.ok(
+      text.includes(`|| '${context}'`) || new RegExp(`^ {4}name: ${context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').test(text),
+      `${name} must keep its stable required-context job name "${context}"`,
+    )
+    assert.ok(Array.isArray(mirror.contexts) && mirror.contexts.includes(context), `required-context mirror no longer lists "${context}"`)
+    // A skipped suite must leave a visible signal on the check itself (review L3).
+    assert.match(text, /::notice::/, `${name} must annotate the check when the suite is skipped`)
   })
 
   test(`${name} does not gain a paths filter or a weakened required context`, () => {
@@ -105,6 +127,17 @@ for (const [name, text] of [['tools-offline-tests.yml', tools], ['coldlion-promo
     assert.doesNotMatch(text, /continue-on-error:\s*true/, `${name} must not soften a failure into a warning`)
   })
 }
+
+test('the route-safety suites are invoked by a required workflow, not only by the optional route workflow', () => {
+  // Review H1/M1: the classifier negative tests and these workflow-shape tests
+  // must gate the required "Tools offline tests" context. A PR that deletes or
+  // weakens them has to fail a required check to merge.
+  assert.match(tools, /node --test scripts\/check-documents-ci-route\.test\.mjs scripts\/documents-fast-ci-workflow\.test\.mjs/, 'tools-offline-tests.yml must run both route-safety suites')
+  assert.match(tools, /Route-safety test file is absent/, 'tools-offline-tests.yml must refuse to run without the route-safety suites')
+  // And the route workflow proves them on the trusted base before classifying.
+  assert.match(route, /scripts\/documents-fast-ci-workflow\.test\.mjs/)
+  assert.match(route, /scripts\/check-documents-ci-route\.test\.mjs/)
+})
 
 // ---------------------------------------------------------------------------
 // The existing documents-only lane must not be weakened

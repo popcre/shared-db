@@ -124,9 +124,25 @@ jobs:
           if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
             echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
             echo 'Pure-prose fast route proven; the engineering suite is skipped.'
+            echo '::notice::Pure-prose fast route proven from a trusted inventory; the engineering suites below are skipped.'
           else
             echo 'Full engineering path: the change is not proven pure prose.'
           fi
+
+      # THE ROUTE-SAFETY SUITES GATE THE REQUIRED CONTEXT ITSELF (issue #3383
+      # review H1/M1). They are deliberately NOT skip-gated: the classifier
+      # negative tests and the workflow-shape tests must run on every pull
+      # request so a future change cannot delete or weaken them while keeping
+      # "Tools offline tests" green. A pure-prose change cannot touch these
+      # .mjs files anyway -- they are never prose -- so the fast route still
+      # skips the heavy engineering suites below.
+      - name: Prove the fast-route classifier and its workflow wiring
+        run: |
+          set -euo pipefail
+          for f in scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs; do
+            test -f "$f" || { echo "::error::Route-safety test file is absent: $f"; exit 1; }
+          done
+          node --test scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs
 
       - name: Run throughput guard tests and prove planned files are present
         if: steps.route.outputs.pure_prose != 'true'

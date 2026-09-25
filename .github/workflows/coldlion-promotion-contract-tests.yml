@@ -113,6 +113,7 @@ jobs:
           if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
             echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
             echo 'Pure-prose fast route proven; the contract tests are skipped.'
+            echo '::notice::Pure-prose fast route proven from a trusted inventory; the contract tests below are skipped.'
           else
             echo 'Full engineering path: the change is not proven pure prose.'
           fi

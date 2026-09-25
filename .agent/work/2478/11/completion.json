@@ -7,8 +7,8 @@
     "20260925061508"
   ],
   "contract_ref": "refs/db-contracts/2478/11",
-  "contract_sha256": "a7548daad0f2511428d5967fe282a49abed0d9838481ae04aaf691ee2506d079",
-  "head_sha": "bd9114601f5ec1c03f2ec81afb349838b54cd409",
+  "contract_sha256": "bbb97eaa65830d6937a5faaf6b786772fa37ecc980cffac22105ef45fbb14429",
+  "head_sha": "f142033b42cf1497b5bb3eaa9825db1267647732",
   "files_changed": [
     ".agent/work/2478/11/completion.json",
     ".agent/work/2478/11/contract.json",

@@ -4,6 +4,10 @@
 -- old 7-arg signature, and re-grants execute to authenticated and service_role.
 -- derived-from: 20260901130428
 
+-- Drop SQL-language dependents before dropping the 7-arg overload; Postgres
+-- records function-body call dependencies and a bare RESTRICT drop refuses.
+drop function if exists public.search_assets_full_text(text,int);
+drop function if exists public.search_style_groups_full_text(text,int);
 drop function if exists public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real);
 
 create or replace function public.search_dam_documents(
@@ -134,3 +138,71 @@ grant execute on function public.search_dam_documents(text,jsonb,int,int,text[],
 
 comment on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) is
   'DAM-entitled ranked search with optional semantic-only score floor applied before blend; keyword hits below the floor survive with semantic_rank null.';
+
+-- Recreate the two wrappers dropped above; their 7-arg calls rebind to the
+-- 8-arg overload via the trailing default null.
+create or replace function public.search_assets_full_text(p_query text, p_limit int default 10000)
+returns table(asset_id uuid, style_group_id uuid, rank real)
+language sql stable security definer set search_path=public set statement_timeout='8s'
+as $$
+  select d.asset_id,d.style_group_id,d.rank
+  from public.search_dam_documents(p_query,'{}'::jsonb,p_limit,0,array['asset']::text[],null,0) d
+  where d.asset_id is not null;
+$$;
+
+create or replace function public.search_style_groups_full_text(p_query text, p_limit int default 10000)
+returns table(style_group_id uuid, rank real)
+language sql stable security definer set search_path=public set statement_timeout='8s'
+as $$
+  with queries as materialized (
+    select websearch_to_tsquery('simple', q.query_text) tsq,
+      '%' || q.query_text || '%' like_pattern,
+      length(q.query_text) >= 3 allow_substring
+    from public.expand_dam_search_queries(nullif(trim(p_query), '')) q
+    where public.require_dam_access()
+  ), direct_candidates as materialized (
+    select d.style_group_id,
+      greatest(ts_rank_cd(d.search_tsv, q.tsq), 0.01)::real rank
+    from queries q
+    join public.dam_search_documents d on d.search_tsv @@ q.tsq
+    where d.document_type = 'style_group'
+    union all
+    select d.style_group_id,
+      case when d.title ilike q.like_pattern then 0.04
+           when d.path ilike q.like_pattern then 0.03
+           when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02
+           else 0.01 end::real rank
+    from queries q
+    join public.dam_search_documents d on q.allow_substring and (
+      d.title ilike q.like_pattern or d.path ilike q.like_pattern
+      or d.customer ilike q.like_pattern or d.program ilike q.like_pattern
+    )
+    where d.document_type = 'style_group'
+  ), direct_groups as (
+    select d.style_group_id,max(d.rank)::real rank
+    from direct_candidates d
+    where d.style_group_id is not null
+    group by d.style_group_id
+  ), member_assets as materialized (
+    select d.* from public.search_dam_documents(
+      p_query,'{}'::jsonb,20000,0,array['asset']::text[],null,0
+    ) d
+  ), asset_groups as (
+    select d.style_group_id,max(d.rank)*0.8 rank from member_assets d
+    where d.style_group_id is not null
+    group by d.style_group_id
+  ), combined as (
+    select style_group_id, rank from direct_groups
+    union all
+    select style_group_id, rank from asset_groups
+  )
+  select c.style_group_id, max(c.rank)::real rank
+  from combined c
+  where c.style_group_id is not null
+  group by c.style_group_id;
+$$;
+
+revoke all on function public.search_assets_full_text(text,int) from public,anon;
+revoke all on function public.search_style_groups_full_text(text,int) from public,anon;
+grant execute on function public.search_assets_full_text(text,int) to authenticated,service_role;
+grant execute on function public.search_style_groups_full_text(text,int) to authenticated,service_role;

@@ -66,5 +66,5 @@
     "Rebind to current PR merge base 5653b760e445ff27264b82e42596c84afc101ee5 at implementation head 775db2e0e9c4c8801a54f1ba6761fe35d7a2de3f (evidence removed from implementation tree per #2845); implementation files and migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 unchanged from prior head da92c3172; claim #2745 and reserved version 20260925061508 untouched."
   ],
   "stop_conditions_hit": [],
-  "base_sha": "5696ce12e3c302daea0f2b10fe1c20a101b1cddc"
+  "base_sha": "4b74a86965e937917a99d05fd5e427b7ac4388b3"
 }

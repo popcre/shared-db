@@ -1,8 +1,175 @@
 {
-  "_why": "MIRROR of the live required status checks on the protected branch, NOT the authority. GitHub branch protection still enforces at merge time. scripts/check-required-checks-preflight.mjs reads this because the merge workflow token cannot read branch protection (there is no `administration` permission scope in GitHub Actions; declaring one makes the workflow unparseable). Rewritten by scripts/update-required-checks.mjs from the post-write readback. Do not hand-edit.",
-  "repo": "u2giants/shared-db",
+  "_why": "INFORMATIONAL effective required-check readback, never merge authority. No snapshot invalidation protocol is claimed. Protected merge boundaries read classic protection and applicable inherited rulesets live. Rewritten by scripts/update-required-checks.mjs; do not hand-edit.",
+  "authority": {
+    "schema_version": 1,
+    "mode": "live-effective-settings",
+    "repository_id": 1275568548,
+    "repository": "popcre/shared-db",
+    "branch": "main",
+    "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
+    "capturedIso": "2026-09-20T19:43:42.549Z",
+    "revision": "46f23dd1a0fb10de9b251fd1ad80aadb60d5e1af5ae4b0140405ce0e6440adf9",
+    "sources": {
+      "classic": {
+        "id": "BPR_kwDOTAehpM4E2ure",
+        "requiresStatusChecks": true,
+        "requiresStrictStatusChecks": false,
+        "requiredStatusCheckContexts": [
+          "Promotion contract tests (offline)",
+          "Cross-PR object collision",
+          "Tools offline tests",
+          "SQL migration guards",
+          "Domain ownership",
+          "Intake pointer guard",
+          "Handoff contract",
+          "Migration author lease",
+          "Orchestrator marker guard",
+          "Cancelled work guard",
+          "Agent work contract",
+          "Queue-sensitive checks (aggregate)",
+          "Migration guarded merge authorization"
+        ],
+        "requiredStatusChecks": [
+          {
+            "context": "Promotion contract tests (offline)",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Cross-PR object collision",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Tools offline tests",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "SQL migration guards",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Domain ownership",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Intake pointer guard",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Handoff contract",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Migration author lease",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Orchestrator marker guard",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Cancelled work guard",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Agent work contract",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Queue-sensitive checks (aggregate)",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Migration guarded merge authorization",
+            "app": {
+              "databaseId": 15368
+            }
+          }
+        ]
+      },
+      "rulesets": []
+    },
+    "checks": [
+      {
+        "context": "Agent work contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Cancelled work guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Cross-PR object collision",
+        "app_id": 15368
+      },
+      {
+        "context": "Domain ownership",
+        "app_id": 15368
+      },
+      {
+        "context": "Handoff contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration author lease",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration guarded merge authorization",
+        "app_id": 15368
+      },
+      {
+        "context": "Orchestrator marker guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Promotion contract tests (offline)",
+        "app_id": 15368
+      },
+      {
+        "context": "Queue-sensitive checks (aggregate)",
+        "app_id": 15368
+      },
+      {
+        "context": "SQL migration guards",
+        "app_id": 15368
+      },
+      {
+        "context": "Tools offline tests",
+        "app_id": 15368
+      }
+    ]
+  },
+  "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-09-08T21:28:48.825Z",
+  "capturedIso": "2026-09-20T19:43:42.549Z",
   "strict": false,
   "contexts": [
     "Agent work contract",
@@ -15,7 +182,62 @@
     "Migration guarded merge authorization",
     "Orchestrator marker guard",
     "Promotion contract tests (offline)",
+    "Queue-sensitive checks (aggregate)",
     "SQL migration guards",
     "Tools offline tests"
+  ],
+  "checks": [
+    {
+      "context": "Agent work contract",
+      "app_id": 15368
+    },
+    {
+      "context": "Cancelled work guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Cross-PR object collision",
+      "app_id": 15368
+    },
+    {
+      "context": "Domain ownership",
+      "app_id": 15368
+    },
+    {
+      "context": "Handoff contract",
+      "app_id": 15368
+    },
+    {
+      "context": "Intake pointer guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration author lease",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration guarded merge authorization",
+      "app_id": 15368
+    },
+    {
+      "context": "Orchestrator marker guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Promotion contract tests (offline)",
+      "app_id": 15368
+    },
+    {
+      "context": "Queue-sensitive checks (aggregate)",
+      "app_id": 15368
+    },
+    {
+      "context": "SQL migration guards",
+      "app_id": 15368
+    },
+    {
+      "context": "Tools offline tests",
+      "app_id": 15368
+    }
   ]
 }

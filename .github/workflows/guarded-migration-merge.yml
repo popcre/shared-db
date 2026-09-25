@@ -42,9 +42,17 @@ permissions:
   actions: write
   # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
   # file unparseable, and because this workflow is the ONLY path to `main`, every
-  # merge in the repository was refused at dispatch with HTTP 422. The pre-flight
-  # therefore cannot read main's required status check list with `github.token`;
-  # it detects that and applies a STRICTLY STRONGER test instead. See
+  # merge in the repository was refused at dispatch with HTTP 422. Since #3369 the
+  # pre-flight reads FRESH effective settings (classic branch protection plus the
+  # applicable rulesets) and REFUSES when that read cannot complete: there is no
+  # committed-mirror fallback and no snapshot or expiry can authorize a merge.
+  #
+  # The authority reads (GraphQL branchProtectionRule + REST /rules/branches)
+  # require ADMIN-LEVEL access. GITHUB_TOKEN (github.token) has no administration
+  # permission and gets "Resource not accessible by integration" (live run
+  # 36186790619). A classic PAT with `repo` scope (secrets.SYNC_TOKEN) provides
+  # the needed access and is passed as AUTHORITY_TOKEN for the authority-read
+  # steps ONLY; every other step keeps github.token. See
   # `scripts/check-required-checks-preflight.mjs`.
 
 jobs:
@@ -100,22 +108,41 @@ jobs:
           # doubt, any unrecognized statement, any object outside {crm,pim,dam,plm}
           # refuses.
           node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
-      # `github.token` cannot read branch protection (there is no `administration`
-      # permission scope), so this falls back to the committed mirror. It reads that
-      # mirror only from trusted `origin/main`; the checked-out pull request cannot
-      # alter the list that judges it. This first mirror merge has an exact-head-bound,
-      # immutable bootstrap floor. The step above fetches and proves current main.
-      # Before the lane is taken, so a low quota waits (or fails plainly) while
-      # holding nothing, instead of failing half-way through under the lock.
+      # The pre-flight reads FRESH effective settings with this run's token — the
+      # classic branch protection rule and the applicable ruleset read — and refuses
+      # when either read cannot complete. Fail-closed: the committed mirror is
+      # informational only and authorizes nothing. The step above fetches and proves
+      # current main. Before the lane is taken, so a refusal or a low quota surfaces
+      # while holding nothing, instead of failing half-way through under the lock.
       - name: Check the GitHub API quota before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          # Quota multiplier note: the probe and preflight below add a handful of
+          # authority reads (GraphQL + REST) on top of the status/check reads;
+          # the absolute quota cost is not yet metered per merge.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-actions-quota.mjs
+      # PREFLIGHT-TIME PERMISSION PROBE (issue #3361). The authority reads are
+      # load-bearing: if the token cannot complete them, every merge would
+      # refuse permanently at the preflight with no hint about why. This probe
+      # attempts exactly those two reads (GraphQL branchProtectionRule + REST
+      # /rules/branches) FIRST and fails closed with an actionable message
+      # naming the real requirement (admin / Administration:read / GitHub App).
+      # AUTHORITY_TOKEN is a classic PAT (secrets.SYNC_TOKEN) with repo scope
+      # that provides admin-level access; GITHUB_TOKEN alone cannot read branch
+      # protection. This run is the run-link proof that the token can complete
+      # the reads.
+      - name: Prove the authority-read token can complete the required-check authority reads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          PROBE_AUTHORITY_PERMISSIONS: '1'
+        run: node scripts/check-required-checks-preflight.mjs --probe-permissions
       - name: Pre-flight the required status checks before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
         run: node scripts/check-required-checks-preflight.mjs
       - name: Acquire the exclusive merge lane
@@ -132,6 +159,7 @@ jobs:
         id: guarded_merge
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           # The merge lane is held: never sit on it waiting for a quota reset.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
           PR_NUMBER: ${{ inputs.pull_request }}
@@ -148,6 +176,13 @@ jobs:
           # land, between the first pass and the merge itself. Protected main's
           # copy, never the pull request's own, on BOTH passes.
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+          # Under-lock re-read of effective required-check authority. The
+          # pre-lock preflight proved the checks were green; this proves the
+          # POLICY itself did not change while the lock was being acquired
+          # (a newly inherited ruleset requirement must refuse the merge).
+          # PREFLIGHT_WAIT_SECONDS=0: the checks are already proven green;
+          # only an authority change can refuse here.
+          PREFLIGHT_WAIT_SECONDS=0 node scripts/check-required-checks-preflight.mjs
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
           # The status write above and the mergeability GitHub evaluates below are
           # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked

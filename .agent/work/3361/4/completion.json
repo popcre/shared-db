@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 3361,
+  "outcome": "ready-for-merge",
+  "pr": 3369,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3361/4",
+  "contract_sha256": "53dcda81364337e1079f8622cfad27593e0a655a19cfbaa7de9d09928313ec5c",
+  "head_sha": "8cfdd49d921afd1dac772bd306f49fd209a066f3",
+  "base_sha": "95c5db5e933e4ca378465fcac895d67c24e744e8",
+  "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "exit_code": 0,
+      "evidence": "56 tests pass, 0 fail, 0 skipped. The contract's exact required_checks command, run and recorded verbatim so reconcileReportWithContract can match it.",
+      "command": "node --test scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs"
+    },
+    {
+      "exit_code": 0,
+      "evidence": "121 tests pass, 0 fail, 0 skipped at 8cfdd49d9 (implementation head). Covers preflight, authority lib (incl. probe with corrected admin-requirement message + tokenScopedRead), update-required-checks, merge-queue-workflows, agent-work-contract and git-evidence.",
+      "command": "node --test scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs"
+    }
+  ],
+  "assumptions_resolved": [
+    "Authority reads require admin-level access (classic PAT with repo scope, Administration:read, or GitHub App); contents:read is NOT sufficient — corrected in code comments and probe message",
+    "secrets.SYNC_TOKEN (classic PAT with repo scope) is wired as AUTHORITY_TOKEN for authority-read steps only; github.token is kept for everything else",
+    "Probe-then-gather in one invocation names a denied permission even when workflow_dispatch runs main's workflow YAML without a separate probe step",
+    "tokenScopedRead wraps authority reads with the elevated token while leaving status/check reads on the default token",
+    "Revision digest is canonical JSON so key-order jitter cannot refuse a merge",
+    "evaluatePreflight recomputes the revision from the authority own content",
+    "GITHUB_ACTIONS_APP_ID (15368) is a named tested constant",
+    "Probe test asserts the corrected actionable message names admin / Administration:read / GitHub App and explicitly says contents:read is NOT enough"
+  ],
+  "stop_conditions_hit": []
+}

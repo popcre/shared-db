@@ -146,7 +146,9 @@ export function createStageEvidenceVerifier(io, repository) {
 
 /** Create-only durable checkpoint, followed by recoverable at-least-once comment delivery. */
 export function publishStageEvent({ issue, stage, repository, pr, evidenceRef, signature }, io) {
-  if (typeof signature !== 'string' || !/^Posted by (?:Codex|Claude) chat \S+ on \S+$/.test(signature)) throw new Error('stage publication requires the posting chat signature')
+  // Every chat that signs repository comments may publish; authorization stays
+  // with the trusted-operator author check in the verifier, not this shape test.
+  if (typeof signature !== 'string' || !/^Posted by (?:Codex|Claude|MiMo) chat \S+ on \S+$/.test(signature)) throw new Error('stage publication requires the posting chat signature')
   if (!Number.isSafeInteger(issue) || issue <= 0 || !Number.isSafeInteger(pr) || pr <= 0 || typeof repository !== 'string' || !REPOSITORY.test(repository) || !REQUIRED_STAGES.includes(stage) || stage === 'complete') throw new Error('stage publication identity is invalid')
   const pull = io.getPr(pr)
   const pending = { schema_version: 1, repository, work_issue: issue, stage, pr, head_sha: pull?.head?.sha, merge_sha: pull?.merge_commit_sha, evidence_ref: evidenceRef }

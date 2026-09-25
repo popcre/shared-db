@@ -208,6 +208,18 @@ test('publisher rejects bad identities before IO and final cancellation before c
 })
 
 
+test('publisher accepts every repository chat signature and refuses malformed ones', () => {
+  for (const signature of ['Posted by Codex chat abc on host', 'Posted by Claude chat abc on host', 'Posted by MiMo chat unknown on edge-dev']) {
+    assert.equal(publishStageEvent(publishInput({ signature }), runtimeIo()).event.stage, 'implementation-merged')
+  }
+  for (const signature of ['Posted by MiMo chat', 'signed by MiMo chat x on y', 'Posted by MiMo chat  on host', 42]) {
+    const io = runtimeIo()
+    io.getPr = () => { throw new Error('IO should not run') }
+    assert.throws(() => publishStageEvent(publishInput({ signature }), io), /chat signature/)
+  }
+})
+
+
 test('database-applied accepts its own complete proof without any future live proof', () => {
   const io = runtimeIo()
   const record = parseOutcomeEvidence(io.evidenceComment.body)

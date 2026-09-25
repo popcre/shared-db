@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3563,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Owner ruling 2026-09-25: curated Master Data loads leave the orchestrator. Change NON_STRUCTURAL_EXITS so curated-master-data exits by data-session (dedicated curated-data session owns the work under 6.4), add data-session to OUTSIDE_ORCHESTRATOR_EXITS, and update tests plus rulebook prose so code and documentation cannot drift. Curation protections are unchanged.",
+  "base_sha": "4f395967e1a5bd42db1e28dce85faa10e3c8537b",
+  "dispatcher": "MiMo repo-maintenance session for issue #3563",
+  "worker": "MiMo chat unknown on EDGE-DEV",
+  "branch": "master-data-off-orchestrator",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/master-data-session-mimo",
+  "allowed_paths": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/1/contract.json",
+    ".agent/work/3563/1/completion.json"
+  ],
+  "file_writes": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/1/contract.json",
+    ".agent/work/3563/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not touch any migration or database object.",
+    "Do not weaken 6.4 curation protections (matched-row abstention, bind-the-typing session).",
+    "Do not make curated Master Data leave this repository for an application repo.",
+    "Do not change structural routing or the self-service additive lane boundary."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "assumptions": [
+    "Disclosed: implementation was authored in this session before contract publication, because the Agent work contract gate is encountered at CI. Allowed paths and goal match the net implementation exactly. No prior refs/db-contracts/3563/1 exists.",
+    "Owner ruling 2026-09-25 (Albert Hazan, chat): curated Master Data loads do not need an orchestrator."
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the change needs a file outside allowed_paths.",
+    "Stop if curation protections would be weakened."
+  ]
+}

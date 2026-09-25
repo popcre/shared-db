@@ -400,7 +400,7 @@ test('status and non-structural routes never consume a migration-author lane',()
 
 test('every non-structural work type has a named exit and never accept',()=>{
   assert.equal(queueExit('structural'),'accept')
-  const allowed=new Set(['reject','fork','repo-session','return-to-owner'])
+  const allowed=new Set(['reject','fork','repo-session','data-session','return-to-owner'])
   for(const [workType,exit] of Object.entries(NON_STRUCTURAL_EXITS)){
     assert.ok(allowed.has(exit),`${workType} must exit to a named destination, got ${exit}`)
     assert.notEqual(exit,'accept',`${workType} must never be accepted by the orchestrator`)
@@ -409,18 +409,17 @@ test('every non-structural work type has a named exit and never accept',()=>{
   assert.throws(()=>queueExit('invented-work-type'),/no orchestrator exit is defined/)
 })
 
-// OWNER RULING 2026-08-21 (issue #1366). Repository maintenance, documentation and
-// security-settings work is not the orchestrator's, not even to dispatch. These
-// exits are the machine-readable form of that ruling; a regression here is how the
-// original routing mistake happened.
-test('the 2026-08-21 owner ruling is enforced: repo work leaves the orchestrator, Master Data does not move',()=>{
+// OWNER RULING 2026-08-21 (issue #1366) and 2026-09-25. Repository maintenance,
+// documentation, security-settings and curated Master Data loads are not the
+// orchestrator's. These exits are the machine-readable form of those rulings.
+test('owner rulings route repo work and Master Data loads out of the orchestrator',()=>{
   assert.equal(queueExit('repo-maintenance'),'repo-session')
   assert.equal(queueExit('documentation'),'repo-session')
   assert.equal(queueExit('security-settings'),'return-to-owner')
-  // Deliberately unchanged. The ruling did not cover curated Master Data, which
-  // AGENTS.md 6.4 still governs inside this repository.
-  assert.equal(queueExit('curated-master-data'),'fork')
-  for(const workType of ['repo-maintenance','documentation','security-settings']){
+  // OWNER RULING 2026-09-25 (Albert Hazan): curated Master Data loads do not
+  // need the orchestrator. A dedicated data session owns them under 6.4.
+  assert.equal(queueExit('curated-master-data'),'data-session')
+  for(const workType of ['repo-maintenance','documentation','security-settings','curated-master-data']){
     assert.ok(OUTSIDE_ORCHESTRATOR_EXITS.includes(queueExit(workType)),`${workType} must be outside orchestrator action`)
   }
   assert.equal(OUTSIDE_ORCHESTRATOR_EXITS.includes('fork'),false,'fork still means the orchestrator hands the work on inside this repo')
@@ -455,11 +454,11 @@ test('a non-structural issue parked at blocked is still reported rather than sil
   assert.deepEqual(result.dispatchable,[])
 })
 
-test('curated Master Data forks inside this repo and is never returned to an application repo',()=>{
-  assert.equal(queueExit('curated-master-data'),'fork')
+test('curated Master Data loads leave the orchestrator and are never returned to an application repo',()=>{
+  assert.equal(queueExit('curated-master-data'),'data-session')
   assert.equal(requiresReturnAddress('curated-master-data'),false)
   const result=buildDynamicQueues([{number:80,title:'outside-sourced property load',body:scope('ready','curated-master-data','curated-master-data-governance',10)}],[],NOW)
-  assert.equal(result.notOrchestratorWork[0].exit,'fork')
+  assert.equal(result.notOrchestratorWork[0].exit,'data-session')
   assert.equal(result.notOrchestratorWork[0].needsReturnAddress,false)
 })
 

@@ -35,7 +35,7 @@ Before interpreting `full_item_master.csv`, changing item-description parsing, o
 
 ## Disney DCP Vault withdrawal answers
 
-If Albert relays an answer from Laura or Ilona to "When artwork disappears from DCP Vault, what notice or status do you use to confirm that Disney withdrew it?" — in any future chat — read [`docs/disney-dcp-withdrawal-answer-routing.md`](docs/disney-dcp-withdrawal-answer-routing.md) before responding or acting. Record the sanitized answer and its provenance at the durable issue named there and classify any follow-up from its own scope. Never contact anyone on Albert's behalf, and never infer confirmed vendor withdrawal or legal rights from disappearance alone.
+The withdrawal-confirmation question is **settled** in [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md) under "Disney DCP Vault artwork withdrawal signals" (recorded 2026-09-25, provenance on issue #3347). Read that rule before answering or acting on it — the question is not open. If Albert relays a **later** answer, correction or refinement from Laura or Ilona in any future chat, read [`docs/disney-dcp-withdrawal-answer-routing.md`](docs/disney-dcp-withdrawal-answer-routing.md) first: record the sanitized answer and its provenance at the durable issue named there, apply it only to the behavior it actually settles, and classify any follow-up from its own scope. Never contact anyone on Albert's behalf, and never infer confirmed vendor withdrawal or legal rights from disappearance alone.
 
 ## How this file is organized (issue #3481)
 
@@ -78,8 +78,8 @@ the map below.
 | [`docs/agents/references-and-runbooks.md`](docs/agents/references-and-runbooks.md) | Project refs, exposed schemas, Supabase CLI and credentials, further reading, known traps | §8, §8.1, §9, §10, §10.1–10.3 and §11 (full runbook: [`runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md)) |
 | [`docs/agents/standing-facts.md`](docs/agents/standing-facts.md) | Starting any session in this repo | §12, §12.1 |
 
-Kept in this file: task declaration, companywide business rules, session wrap-up convention,
-§1, §2, §3, §7.
+Kept in this file: task declaration, companywide business rules, Disney DCP
+Vault withdrawal answers, session wrap-up convention, §1, §2, §3, §7.
 
 ## Session wrap-up convention
 

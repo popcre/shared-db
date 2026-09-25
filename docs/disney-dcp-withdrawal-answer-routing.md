@@ -3,18 +3,35 @@
 This note is a durable intake instruction, not an answer or a vendor ruling.
 Albert may obtain an answer himself from Laura or Ilona and relay it in any
 future shared-db chat. No agent is authorized to contact Disney, Laura, Ilona,
-or anyone else to obtain it.
+or anyone else to obtain one.
 
-## Recognize the answer
+## Status: this question is answered — start from the business rule
 
-The business question is:
+The question below was answered and published on 2026-09-25. The authoritative
+statement now lives in
+[Disney DCP Vault artwork withdrawal signals](business-rules/licensing-master-data.md#disney-dcp-vault-artwork-withdrawal-signals),
+with its full provenance recorded on issue
+[#3347](https://github.com/popcre/shared-db/issues/3347). Read that rule first.
+
+Do not treat this note as the answer, do not re-litigate the settled question,
+and do not report the question as unanswered.
+
+What remains routed here is **later input**: a correction, a refinement, or a
+new relayed explanation from Laura or Ilona. A later answer is applied only to
+the behavior it actually settles; everything the settled rule already answers
+stays as it is until a later answer clearly changes it.
+
+## Recognize a later answer
+
+The settled question is:
 
 > When artwork disappears from DCP Vault, what notice or status do you use to confirm that Disney withdrew it?
 
 Treat a relayed explanation about Disney/DCP Vault missing artwork, withdrawal
-notices, removal status, Laura, or Ilona as potentially answering this question.
-Read the actual answer before deciding its meaning. A name alone does not prove
-authority, and an ambiguous answer remains unresolved rather than a new rule.
+notices, removal status, Laura, or Ilona as potentially settling or correcting
+that question. Read the actual answer before deciding its meaning. A name alone
+does not prove authority, and an ambiguous answer remains unresolved rather
+than a new rule.
 
 ## Capture and act in the receiving chat
 
@@ -34,12 +51,12 @@ authority, and an ambiguous answer remains unresolved rather than a new rule.
    comments and rules contain only the sanitized decision and provenance; never
    copy private examples into this public repository. If exact wording itself is
    private, retain it privately and publish a faithful sanitized meaning.
-4. Once authoritative and unambiguous, update the relevant topic in
+4. Once authoritative and unambiguous, amend the settled topic in
    [the companywide business rules](business-rules/licensing-master-data.md)
    through the normal reviewed branch-and-PR process, with provenance and the
    issue reference. Do not create a competing business rule in this note.
    If authority or meaning is unresolved, record precisely what is unresolved
-   and retain the existing rule until clarified.
+   and retain the settled rule until it is clarified.
 5. Classify each concrete follow-up from its own actual work. A database SHAPE
    change must resolve the CURRENT orchestrator using
    `node scripts/check-orchestrator-marker.mjs --resolve` and follow that live
@@ -56,9 +73,11 @@ authority, and an ambiguous answer remains unresolved rather than a new rule.
 
 ## Boundaries that remain in force
 
-Disappearance from a portal is not by itself verified Disney withdrawal, nor
-proof of legal entitlement, termination or lack of rights. Keep observed source
-absence, confirmed vendor withdrawal and legal rights as separate facts.
+The separation of facts, the definitions of the withdrawal signals, and the
+limits on what this settles are stated once, in
+[the settled rule](business-rules/licensing-master-data.md#disney-dcp-vault-artwork-withdrawal-signals).
+Read and cite that section; this note deliberately does not restate it, so the
+two can never drift.
 
 A vendor attestation requirement was an agent proposal, not an owner decision.
 Do not make one a prerequisite for technical capture qualification. The existing
@@ -67,7 +86,6 @@ scope, immutable retained provenance, zero failed fetches and rejection of
 incomparable captures. Confirm the current #3347 contract before implementation;
 this note neither weakens it nor authorizes database or production writes.
 
-The independent technical producer repair and capture qualification can proceed
-without this human answer under their own approvals. Do not block all Disney work
-on the question, and do not present the question as already answered. Apply any
-later authoritative answer only to the behavior it actually settles.
+The independent technical producer repair and capture qualification proceed
+under their own approvals. The human answer is no longer outstanding: do not
+block Disney work waiting for it, and do not present the question as unanswered.

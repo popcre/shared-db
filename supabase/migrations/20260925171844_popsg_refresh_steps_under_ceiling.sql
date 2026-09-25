@@ -172,7 +172,7 @@ begin
   -- untouched so a later 'search' call (or a caller that knows no search is
   -- needed) closes the run. 'search' and 'all' accumulate the synced count the
   -- existing popdam3 loop already reads.
-  if p_run_id is not null and v_step in ('all', 'search') then
+  if p_run_id is not null and v_step in ('all', 'search') and v_batch > 0 then
     update public.style_guide_crawl_runs
        set refresh_completed_at = v_now,
            -- qualified: `search_documents_synced` is also this function's output
@@ -197,6 +197,14 @@ revoke all on function public.refresh_style_guide_matviews(uuid, integer, text) 
 revoke all on function public.refresh_style_guide_matviews(uuid, integer, text) from anon;
 revoke all on function public.refresh_style_guide_matviews(uuid, integer, text) from authenticated;
 grant execute on function public.refresh_style_guide_matviews(uuid, integer, text) to service_role;
+
+-- Issue #3458 review note: the search-step retire predicate filters on
+-- q.queued_at (`where q.queued_at < v_started`). The queue table's primary
+-- key is style_guide_file_id alone. On a typical change night the queue holds
+-- only the delta rows (new/changed files since the last run), so the scan is
+-- bounded by the change volume, not the full library. An index on queued_at
+-- would serve the predicate but expands this claim's structural writes beyond
+-- the admitted function scope; the bounded-scan argument is accepted instead.
 
 -- Catalogue-only self verification (no data scans)
 do $verify$
@@ -271,13 +279,17 @@ begin
   end if;
 
   -- REFRESH MATERIALIZED VIEW CONCURRENTLY requires a unique index on each
-  -- matview. Assert both, so a dropped index fails loudly here.
+  -- matview. Assert both, so a dropped index fails loudly here. The index must
+  -- be a plain-column, non-partial unique index (indexprs IS NULL AND indpred
+  -- IS NULL) -- exactly what CONCURRENTLY requires.
   if not exists (
     select 1 from pg_index i
       join pg_class c on c.oid = i.indrelid
       join pg_class ic on ic.oid = i.indexrelid
      where c.oid = 'public.style_guide_file_groups'::regclass
        and i.indisunique
+       and i.indexprs is null
+       and i.indpred is null
        and ic.relname = 'sgfilegroups_group_uidx')
      or not exists (
     select 1 from pg_index i
@@ -285,8 +297,10 @@ begin
       join pg_class ic on ic.oid = i.indexrelid
      where c.oid = 'public.style_guide_folders'::regclass
        and i.indisunique
+       and i.indexprs is null
+       and i.indpred is null
        and ic.relname = 'sgfolders_licensor_property_uidx') then
-    raise exception 'issue #3458: a CONCURRENTLY-enabling unique index is missing on style_guide_file_groups or style_guide_folders';
+    raise exception 'issue #3458: a CONCURRENTLY-enabling plain-column non-partial unique index is missing on style_guide_file_groups or style_guide_folders';
   end if;
 end
 $verify$;

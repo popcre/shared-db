@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "source": "scripts/report-ledger-drift-status.mjs",
+  "sites": [
+    {
+      "site": "scripts/report-ledger-drift-status.mjs:25",
+      "semantic_key": "scripts/report-ledger-drift-status.mjs:8bf2d8c134682c2923cb6501b74174e63fac43fb6f7dd835bdd2a70ae2efcecc:context-55c7163ae68d642ccc9f206ed87bd67eecd3e72ae9b71cc4e7bb1716901a7420",
+      "line_sha256": "8bf2d8c134682c2923cb6501b74174e63fac43fb6f7dd835bdd2a70ae2efcecc",
+      "disposition": "excluded",
+      "reason": "Comment text describing exit codes; the word 'missing' refers to a missing CLI argument, not a derivability claim. Not a dynamic-DDL call site.",
+      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:8bf2d8c134682c2923cb6501b74174e63fac43fb6f7dd835bdd2a70ae2efcecc:1"
+    },
+    {
+      "site": "scripts/report-ledger-drift-status.mjs:63",
+      "semantic_key": "scripts/report-ledger-drift-status.mjs:ec620cc3bb15d3a1dfbd6da687d1b4de503eb6eb5b4b1ce7e5faac10e96b665e:context-46a754575c350fb36a5910b1c3451a75a1229aa1328d5e85d825371ded822587",
+      "line_sha256": "ec620cc3bb15d3a1dfbd6da687d1b4de503eb6eb5b4b1ce7e5faac10e96b665e",
+      "disposition": "excluded",
+      "reason": "JSDoc comment describing tolerance for missing git attribution entries. Not a derivability claim or dynamic-DDL call site.",
+      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:ec620cc3bb15d3a1dfbd6da687d1b4de503eb6eb5b4b1ce7e5faac10e96b665e:1"
+    },
+    {
+      "site": "scripts/report-ledger-drift-status.mjs:251",
+      "semantic_key": "scripts/report-ledger-drift-status.mjs:b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71:context-cf8103e8790e805d3c722aeb858ee5513addf0a9fe4756362785004bc7be05b8",
+      "line_sha256": "b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71",
+      "disposition": "excluded",
+      "reason": "Error message for malformed JSON input; the word 'missing' refers to a missing required shape field, not a derivability claim. Not a dynamic-DDL call site.",
+      "legacy_semantic_key": "scripts/report-ledger-drift-status.mjs:b75a37c3254853cb96032564e74a0edf27d1d347365a76e0b994949e93733e71:1"
+    }
+  ]
+}

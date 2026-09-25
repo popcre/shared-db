@@ -130,8 +130,8 @@
       "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:725ad6a26a99dd10f4914ee276f361b53002358769a10700fe337cf72971536d:1"
     },
     {
-      "site": "scripts/manage-migration-author-lanes.mjs:2367",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:7d8875f1c49d3354fc47de9e020545d7f83bd6f691cde1d99585ee9d7f915019:context-da6f6c864ac85604e0e5c01d58f9ffcd3751026853cf1d5f08b71f1e865668a2",
+      "site": "scripts/manage-migration-author-lanes.mjs:2415",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:7d8875f1c49d3354fc47de9e020545d7f83bd6f691cde1d99585ee9d7f915019:context-c2f512c23ffd4d20bb63f0f30599f6d46d525c6444ffcfc12d42fe0103540da4",
       "line_sha256": "7d8875f1c49d3354fc47de9e020545d7f83bd6f691cde1d99585ee9d7f915019",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",

@@ -1161,8 +1161,10 @@ test('10,000 historical assignments do not change bounded availability cost',()=
     return {requests,activeReads,historyScans}
   }
   const empty=run(0), large=run(10_000)
-  assert.equal(large.historyScans,0);assert.equal(empty.requests,large.requests)
-  assert.equal(large.requests,21,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
+  // One head-narrowed prefix scan discovers peer slots; it is O(1) in history
+  // because the prefix names the exact issue/pr/head. Cost must stay constant.
+  assert.equal(large.historyScans,1);assert.equal(empty.requests,large.requests)
+  assert.equal(large.requests,20,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
 })
 
 test('complete assignment stays inside the real wire-attempt budget',()=>{
@@ -1252,7 +1254,7 @@ test('complete slot-2 assignment stays inside the real wire-attempt budget (issu
   // section still fits. Both reviewers derived that mechanism correctly, and
   // the wrong name was nearly merged anyway -- so the gate is now asserted by
   // behaviour below, not only by its numeral.
-  assert.equal(attempts,24,`slot 2 used ${attempts} wire attempts including a fresh slot-1 independence check; keep the ${REVIEW_OPERATION_REQUEST_LIMIT}-request ceiling`)
+  assert.equal(attempts,23,`slot 2 used ${attempts} wire attempts with the shared peer resolver; keep the ${REVIEW_OPERATION_REQUEST_LIMIT}-request ceiling`)
   assert.equal(REVIEW_MUTEX_SECTION_RESERVE,15,'the mutex-section entry-gate reserve changed without this budget being re-derived')
   assert.equal(REVIEW_OPERATION_REQUEST_LIMIT,25,'the ceiling changed; re-derive it against the real cost rather than raising it again')
   // The three pins above are near-tautologies: they restate constants. None of
@@ -1303,13 +1305,13 @@ test('complete replacement stays inside the real wire-attempt budget',()=>{
   assert.ok(result.reviewer);assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`used ${attempts} wire attempts`)
   const mutexAt=labels.indexOf(`createRef:${MUTEX_REF}`)
   assert.notEqual(mutexAt,-1,`mutex acquisition was not observed: ${labels.join(',')}`)
-  assert.equal(mutexAt,10,'the first replacement path spends 10 requests before its mutex gate, including the fixed slot-2 independence read')
-  assert.equal(labels.length-mutexAt,12,`new replacement success path costs exactly 12 requests after mutex acquisition including the fresh independence read: ${labels.slice(mutexAt).join(',')}`)
+  assert.equal(mutexAt,11,'the first replacement path spends 11 requests before its mutex gate with the shared peer resolver')
+  assert.equal(labels.length-mutexAt,13,`new replacement success path costs 13 requests after mutex acquisition with the shared peer resolver: ${labels.slice(mutexAt).join(',')}`)
   attempts=0;labels.length=0
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),result)
   const retryMutexAt=labels.indexOf(`createRef:${MUTEX_REF}`)
   assert.notEqual(retryMutexAt,-1,`retry mutex acquisition was not observed: ${labels.join(',')}`)
-  assert.equal(retryMutexAt,11,'the idempotent path spends 11 requests before its mutex gate, including the fixed slot-2 independence read')
+  assert.equal(retryMutexAt,14,'the idempotent path spends 14 requests before its mutex gate with the shared peer resolver')
   assert.equal(labels.length-retryMutexAt,10,`idempotent replacement success path costs exactly 10 requests after mutex acquisition: ${labels.slice(retryMutexAt).join(',')}`)
   const source=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8')
   assert.match(source,/requireReviewWireCapacity\(11\);acquireReviewMutex\(ownerSha,io\);mutexAcquired=true/,'the idempotent reserve changed without re-derivation')
@@ -2037,9 +2039,9 @@ test('three terminal providers do not grow replacement preflight past the fixed 
   const third=replaceFailedReviewer({...replacementRequest,failedSequence:second.sequence},io)
   assert.ok(third.reviewer)
   const mutexAt=labels.indexOf(`createRef:${MUTEX_REF}`)
-  assert.equal(mutexAt,10,`third terminal-provider replacement pre-mutex accounting drifted: ${labels.join(',')}`)
-  assert.equal(labels.length-mutexAt,11,`third terminal-provider replacement post-mutex accounting drifted: ${labels.join(',')}`)
-  assert.equal(attempts,21,`third terminal-provider replacement wire accounting drifted: ${labels.join(',')}`)
+  assert.equal(mutexAt,11,`third terminal-provider replacement pre-mutex accounting drifted: ${labels.join(',')}`)
+  assert.equal(labels.length-mutexAt,12,`third terminal-provider replacement post-mutex accounting drifted: ${labels.join(',')}`)
+  assert.equal(attempts,23,`third terminal-provider replacement wire accounting drifted: ${labels.join(',')}`)
   assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`third terminal-provider replacement used ${attempts} wire attempts`)
   const source=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8')
   assert.match(source,/const allRefs=reviewRecordRefs\(\[\.\.\.refs,\.\.\.dependentFailures\],matches\)/,'the production batch must include every immutable matching replacement, predecessor failure and verdict ref')

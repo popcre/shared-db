@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 3380,
+  "outcome": "ready-for-merge",
+  "pr": 3445,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3380/8",
+  "contract_sha256": "8ae3fc8bf66fc772ab4ab13c84cda19d0b33f7c3610f3744af4cfd4f9b30945c",
+  "head_sha": "12e472c768a1389448b9024c4bf694f88dc5a68d",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "files_changed": [
+    ".github/workflows/agent-work-contract.yml",
+    "docs/verification/throughput-dispositions/scripts~agent-work-contract-git-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~agent-work-contract.mjs.json",
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/agent-work-contract.mjs",
+    "scripts/agent-work-contract.test.mjs",
+    "scripts/lib/agent-evidence-paths.mjs",
+    "scripts/lib/agent-evidence-paths.test.mjs",
+    "scripts/lib/evidence-generation-lineage.mjs",
+    "scripts/lib/evidence-generation-lineage.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/evidence-generation-lineage.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/lib/agent-evidence-paths.test.mjs scripts/agent-work-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "100 passed, 0 failed, 0 skipped at implementation head 12e472c768a1389448b9024c4bf694f88dc5a68d."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors at implementation head 12e472c768a1389448b9024c4bf694f88dc5a68d."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=76 derived_digest=766b1c510789"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed, 0 skipped; current_repository_catalogues_follow_current_discovery is green."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 8 is the successor prescribed by refuseCommittedMutation: refs/db-contracts/3380/7 is already published and hash-locks its allowed_paths, so the two throughput-truth-audit disposition catalogues this fix needs could not be admitted into generation 7. Generation 7 remains published and byte-identical; its evidence_parent digest is verified against the live ref.",
+    "The main refresh (merge of origin/main at 49b4389d7) plus this branch's five-findings fix moved call sites that scripts/agent-work-contract.mjs and scripts/agent-work-contract-git-evidence.mjs bind semantically, which made the recorded disposition inventory stale (found 4, recorded 2) and left the git-evidence source with no catalogue at all.",
+    "The two historical disposition identities for scripts/agent-work-contract.mjs keep their recorded reason, disposition, line_sha256, and legacy_semantic_key verbatim; only site line numbers were re-pointed and two new enriched sites were recorded for the structured missing-predecessor refusals.",
+    "The generation-7 pair files under .agent/work/3380/7/ are removed from this pull request's change set in the implementation commit so exactly one evidence pair (3380/8) claims the work, as resolveCurrentPair requires; the published generation-7 record at its ref is untouched.",
+    "A fresh exact-head review is required for implementation head 12e472c768a1389448b9024c4bf694f88dc5a68d."
+  ],
+  "stop_conditions_hit": []
+}

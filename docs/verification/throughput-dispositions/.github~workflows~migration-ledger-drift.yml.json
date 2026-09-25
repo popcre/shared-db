@@ -15,7 +15,7 @@
       "semantic_key": ".github/workflows/migration-ledger-drift.yml:d08e3c90a9b0faf4812afbd9987fc93665e131ffe4ecdf6cb6372bb067f20361:context-8a9bc1bbf5260badade6d17c8bd13dcf88c4b6aa1ab8c62e31173b663aba9736",
       "line_sha256": "d08e3c90a9b0faf4812afbd9987fc93665e131ffe4ecdf6cb6372bb067f20361",
       "disposition": "excluded",
-      "reason": "Prose inside the scheduled alarm's heredoc body: it lists the three conditions a human should check, while every one of those conditions is derived from the ledger read the script performs, never asserted by this text.",
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
       "legacy_semantic_key": ".github/workflows/migration-ledger-drift.yml:d08e3c90a9b0faf4812afbd9987fc93665e131ffe4ecdf6cb6372bb067f20361:1"
     }
   ]

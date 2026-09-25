@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/2508/1",
   "contract_sha256": "e99a52dcfaf21637c0720ad3de20546069e00c16fac4d623946610c187654746",
-  "head_sha": "5936f0d31fc693390974608b00925b36b4be479b",
+  "head_sha": "77d228139c38f2ee58beeebaf5e284c67d14ed12",
   "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
   "files_changed": [
     "docs/verification/ledger-drift-2508-status-20260925.md",
@@ -20,23 +20,24 @@
     {
       "command": "node --test scripts/report-ledger-drift-status.test.mjs",
       "exit_code": 0,
-      "evidence": "16/16 pass, 0 fail at 5936f0d3."
+      "evidence": "18/18 pass, 0 fail at 77d22813 after Codex review fixes."
     },
     {
       "command": "node --test scripts/check-migration-ledger-drift.test.mjs",
       "exit_code": 0,
-      "evidence": "35/35 pass, 0 fail at 5936f0d3."
+      "evidence": "35/35 pass, 0 fail at 77d22813."
     },
     {
       "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "16/16 pass including current_repository_catalogues_follow_current_discovery at 5936f0d3."
+      "evidence": "16/16 pass including current_repository_catalogues_follow_current_discovery at 77d22813."
     }
   ],
   "assumptions_resolved": [
     "Issue #2508 is non-orchestrator detection/reporting tooling; no production action was taken.",
     "Six genuinely-pending versions need production applies through the bounded Shared Supabase Migrations workflow — holder is the orchestrator's production lane.",
-    "The throughput-disposition catalogue covers three comment/error-message sites matching the word 'missing'; all excluded as non-derivability text."
+    "The throughput-disposition catalogue covers four comment/error-message sites matching the word 'missing'; all excluded as non-derivability text.",
+    "Codex final-check review at 26d3ccf2 returned REJECT; all High/Medium/Low findings were fixed in 77d22813."
   ],
   "stop_conditions_hit": []
 }

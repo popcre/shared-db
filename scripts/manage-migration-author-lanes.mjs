@@ -821,7 +821,13 @@ export const EXCLUSIVE_REFS = Object.freeze({
 // provider as failed on that head. Never use a provider code for this case.
 export const REVIEW_TARGET_SUPERSEDED = 'review_target_superseded'
 export const SLOT_INDEPENDENCE_CONFLICT = 'slot_independence_conflict'
-export const TERMINAL_FAILURE_CODES = Object.freeze(['insufficient_quota','provider_unavailable','local_dependency_unavailable','wrapper_terminal_failure','turn_limit_cancelled','reviewer_cannot_read_repository','reviewer_cannot_emit_governed_verdict',REVIEW_TARGET_SUPERSEDED])
+// `silent_worker_observed` (#3492) is terminal for release purposes: the worker
+// went silent, the silence was proved and reclaimed with immutable evidence, and
+// the slot must be freed so a replacement can be drawn. It stays out of the
+// provider-fault family on purpose -- silence is not a provider outage -- but
+// `--release-failed-reviewer` must accept it, or the recovery path dead-ends
+// (release refuses the code, replace tells the operator to release first).
+export const TERMINAL_FAILURE_CODES = Object.freeze(['insufficient_quota','provider_unavailable','local_dependency_unavailable','wrapper_terminal_failure','turn_limit_cancelled','reviewer_cannot_read_repository','reviewer_cannot_emit_governed_verdict',REVIEW_TARGET_SUPERSEDED,'silent_worker_observed'])
 function reviewTargetSuperseded(prRow,headSha){return Boolean(prRow?.state)&&(String(prRow.state).toLowerCase()!=='open'||(/^[0-9a-f]{40}$/i.test(String(prRow?.head?.sha??''))&&String(prRow.head.sha).toLowerCase()!==String(headSha).toLowerCase()))}
 
 export const QUEUE_STATUSES = new Set(['ready','blocked','owner-decision'])
@@ -2928,7 +2934,7 @@ export const githubIo = {
       ?{file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,...args]}
       :{file:resolved,args}
     let output=''
-    try{output=execFileSync(spawn.file,spawn.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_DOCTOR_TIMEOUT_MS})}
+    try{output=execFileSync(spawn.file,spawn.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_PREFLIGHT_TIMEOUT_MS})}
     catch(error){output=String(error?.stdout??'');if(error?.code==='ETIMEDOUT'||error?.signal)return reconcilePreflightRows(output,reviewers,{complete:false})}
     return reconcilePreflightRows(output,reviewers)
   },
@@ -3212,6 +3218,23 @@ export const REVIEWER_DOCTOR_TIMEOUT_MS = (()=>{
   if(raw===undefined||String(raw).trim()==='')return 60000
   const value=Number(raw)
   if(!Number.isFinite(value)||value<=0)throw new LaneError(`REVIEWER_DOCTOR_TIMEOUT_MS must be a positive number of milliseconds; got "${raw}". Left unchecked this disables the timeout and a hung doctor hangs a governed lane.`)
+  return value
+})()
+
+// `ai-review-preflight usable` reconciles EVERY provider in one process (nine on
+// edge-dev). Spawned through the cmd.exe -> Git bash shim chain one pass measures
+// ~39 s and has taken ~80 s under load, so sharing the single-doctor budget here
+// cut the run off before the later providers reported and refused the whole draw
+// with "cut off before reporting qwen". The single-doctor budget above stays
+// tight -- a hung wrapper doctor must still fail fast -- while the aggregate gets
+// room for every provider to answer. REVIEWER_DOCTOR_TIMEOUT_MS, when the
+// operator raises it, still widens both; it never shrinks the aggregate below the
+// floor that a real pass needs.
+export const REVIEWER_PREFLIGHT_TIMEOUT_MS = (()=>{
+  const raw=process.env.REVIEWER_PREFLIGHT_TIMEOUT_MS
+  if(raw===undefined||String(raw).trim()==='')return Math.max(REVIEWER_DOCTOR_TIMEOUT_MS,240000)
+  const value=Number(raw)
+  if(!Number.isFinite(value)||value<=0)throw new LaneError(`REVIEWER_PREFLIGHT_TIMEOUT_MS must be a positive number of milliseconds; got "${raw}". Left unchecked this disables the timeout and a hung preflight hangs a governed lane.`)
   return value
 })()
 
@@ -6553,7 +6576,19 @@ export function releaseFailedReviewer(options,io=githubIo){
     // slot, and was only safe because the single global sequence cursor keeps
     // sequences unique across slots. `leaseMatchesAssignment` already compares the
     // slot, so reuse it rather than depend on that invariant.
-    if(!failedLease||!leaseMatchesAssignment(failedLease,{issue:request.issue,pr:request.pr,headSha:request.headSha,sequence:request.failedSequence,reviewer:original.reviewer,slot:request.slot}))throw new LaneError('failed reviewer active lease does not match the terminal failure evidence')
+    //
+    // #3492: a silence-reclaimed lease is already gone (reclaim cleared it and
+    // wrote immutable silence-release evidence). When the failure code is
+    // `silent_worker_observed` and no lease remains, the silence-release ref IS
+    // the proof the lease was properly handled -- release must not demand a
+    // lease that reclaim already removed. Absent lease + absent silence-release
+    // evidence still refuses (fail closed).
+    const silenceReleaseSha=String(options.failureCode)==='silent_worker_observed'?io.readRef(silenceReleaseRef({...request,sequence:request.failedSequence})):null
+    if(!failedLease&&silenceReleaseSha){
+      // Silence already reclaimed the lease; validate the evidence matches.
+      const silenceRelease=parseSilenceRelease(io.getCommit(silenceReleaseSha))
+      if(silenceRelease.issue!==request.issue||silenceRelease.pr!==request.pr||silenceRelease.headSha!==request.headSha||silenceRelease.sequence!==request.failedSequence||silenceRelease.reviewer!==original.reviewer)throw new LaneError('immutable silence-release evidence does not match the release request')
+    }else if(!failedLease||!leaseMatchesAssignment(failedLease,{issue:request.issue,pr:request.pr,headSha:request.headSha,sequence:request.failedSequence,reviewer:original.reviewer,slot:request.slot}))throw new LaneError('failed reviewer active lease does not match the terminal failure evidence')
     if(typeof io.atomicReviewRefs!=='function'||typeof io.readReviewRefs!=='function')throw new LaneError('reviewer release requires atomic compare-and-swap ref support')
     const checkNote=String(options.failingCheck??'').trim()?` failing-check=${String(options.failingCheck).trim().replace(/\s+/g,'_')}`:''
     const failureSha=io.makeOwnerCommit(`db-coordination reviewer-failure-release reviewer=${original.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} failed-sequence=${request.failedSequence} code=${String(options.failureCode)}${checkNote} verdict=none artifact=none replacement=none`)
@@ -6719,9 +6754,17 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
     if(silenceReplacement){
       const releaseRef=silenceReleaseRef({...request,sequence:request.failedSequence}),releaseSha=io.readRef(releaseRef)
-      if(!releaseSha)throw new LaneError('silent reviewer replacement requires immutable silence-release evidence for the exact failed sequence')
-      const release=parseSilenceRelease(io.getCommit(releaseSha))
-      if(release.issue!==request.issue||release.pr!==request.pr||release.headSha!==request.headSha||release.sequence!==request.failedSequence||release.reviewer!==original.reviewer)throw new LaneError('immutable silence-release evidence does not match the replacement request')
+      const failureReleaseCheck=fixedRecords?(fixedRecords.get(failureRef)?.sha??null):io.readRef(failureRef)
+      if(releaseSha){
+        const release=parseSilenceRelease(io.getCommit(releaseSha))
+        if(release.issue!==request.issue||release.pr!==request.pr||release.headSha!==request.headSha||release.sequence!==request.failedSequence||release.reviewer!==original.reviewer)throw new LaneError('immutable silence-release evidence does not match the replacement request')
+      }else if(!failureReleaseCheck){
+        throw new LaneError('silent reviewer replacement requires immutable silence-release evidence or a prior --release-failed-reviewer record for the exact failed sequence')
+      }
+      // When only a failure-release exists (the #3492 release-then-replace path),
+      // it is validated by the releasedFailure check below; no silence-release
+      // record is required when --release-failed-reviewer already proved the
+      // terminal failure with immutable evidence.
     }
     const releasedFailureSha=fixedRecords?(fixedRecords.get(failureRef)?.sha??null):io.readRef(failureRef)
     let releasedFailure=null

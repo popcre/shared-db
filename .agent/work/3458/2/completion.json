@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "work_issue": 3458,
+  "outcome": "ready-for-merge",
+  "pr": 3487,
+  "migration_versions": [
+    "20260925171844"
+  ],
+  "contract_ref": "refs/db-contracts/3458/2",
+  "contract_sha256": "2e4bc4b7b1ebb77f0d0ff0d168ea0c386fb94265d853cc49762f268f4982e7c0",
+  "head_sha": "bac37a39eb86f20392530873f2bc4cdf25cfd92c",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "files_changed": [
+    ".agent/work/3458/1/behavior_tests.sql",
+    ".agent/work/3458/1/caller_contract.md",
+    "supabase/migrations/20260925171844_popsg_refresh_steps_under_ceiling.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed (Guard B ok against base branch newest 20260924183947) at implementation head bac37a39eb86f20392530873f2bc4cdf25cfd92c on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20. This head carries only the migration and its supporting files; the evidence commit that follows it adds only the contract/completion pair and does not change code."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Ran 44 tests OK at implementation head bac37a39eb86f20392530873f2bc4cdf25cfd92c on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20. The evidence commit that follows is code-identical apart from evidence JSON."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no whitespace errors at implementation head bac37a39eb86f20392530873f2bc4cdf25cfd92c on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20."
+    }
+  ],
+  "assumptions_resolved": [
+    "overload of the claimed name stays inside claim #3483 writes: function public.refresh_style_guide_matviews",
+    "legacy (uuid,integer) body left byte-identical so popsg_refresh_search_sync_queue_v1 md5(prosrc) stays green",
+    "matview steps proven by function-body shape because REFRESH CONCURRENTLY cannot run inside the test transaction; search step proven live in behavior_tests.sql",
+    "Claim #3483 version was superseded 20260924174251 -> 20260925171844 (refs/db-claim-supersessions/3483-20260924174251), so the migration file is 20260925171844_popsg_refresh_steps_under_ceiling.sql and the gen-1 contract could not name it; generation 2 retargets file_writes/allowed_paths at the live version and the pair moves to .agent/work/3458/2/.",
+    "Generation 1 (refs/db-contracts/3458/1) is immutable and unchanged; generation 2 supersedes it only to correct the migration path after the governed version supersession. Scope, claimed object, required checks and prohibitions are identical.",
+    "Implementation head bac37a39eb86f20392530873f2bc4cdf25cfd92c carries no evidence pair; only this PR's gen-2 pair follows it. This is the designed evidence layout: the implementation head is code-only, and the evidence commit that follows it changes only the two JSON files (agent-work-contract-git-evidence.mjs verifies exactly this).",
+    "All three required checks re-run and green at this implementation head on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20. Review findings addressed: completion stamp gated on v_batch > 0, CONCURRENTLY index checks tightened to assert plain-column non-partial, queue scan documented as bounded by change volume (index would expand structural writes beyond admitted scope).",
+    "Evidence pair is anchored to the implementation head by design (agent-work-contract-git-evidence.mjs requires the evidence pair to be the only delta between report.head_sha and the PR head). The PR head is the evidence commit; the code under review is the implementation head."
+  ],
+  "stop_conditions_hit": []
+}

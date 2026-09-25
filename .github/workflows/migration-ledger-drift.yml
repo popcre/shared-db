@@ -115,7 +115,7 @@ jobs:
   drift:
     name: Migration ledger drift (${{ matrix.target }})
     needs: targets
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     strategy:
       # One database failing must never hide the other's result.

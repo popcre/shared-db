@@ -107,7 +107,7 @@ jobs:
   # prove the offline contracts. Nothing production-facing happens here.
   # ---------------------------------------------------------------------------------
   gate:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     outputs:
@@ -232,7 +232,7 @@ jobs:
     # `preflight` is excluded here on purpose: it must NEVER enter the job that holds
     # the production environment and the production DB password (#548).
     if: needs.gate.outputs.enabled == 'true' && needs.gate.outputs.job != 'preflight'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     environment: production
@@ -478,7 +478,7 @@ jobs:
     # has already refused any ref that is not production and any dispatch that did not
     # spell the production ref out.
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'preflight'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     env:

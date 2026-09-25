@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3349,
+  "outcome": "ready-for-merge",
+  "pr": 0,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3349/1",
+  "contract_sha256": "ef52c08a823ff3d41af93230ac0ccc2f0f01b89871026ae2a06c63545225c0d1",
+  "base_sha": "8a23225b1242ea03b1c97d40818b218da806d8db",
+  "head_sha": "83151f24b0e6978f31ed296be3719c85e094c392",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "717 pass, 0 fail (714 existing + 3 new #3349 cause-carrying tests)"
+    }
+  ],
+  "assumptions_resolved": [
+    "Fix throws cause-carrying errors instead of returning null; fail-closed behavior preserved.",
+    "Transient failures name \"Retry the operation\"; determinate failures name the retirement command.",
+    "Existing tests updated to match new wording; no refusal weakened."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 3493,
+  "outcome": "ready-for-merge",
+  "pr": 3519,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3493/2",
+  "contract_sha256": "3e5571c8e01d0907656819a6974dcdf8fa69b33c30e81673f3f4dc7b114f6f62",
+  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
+  "head_sha": "12b47375d525b32055350263f79f6984aa7ca8da",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=317 sources=72 derived_digest=623c3a6c3f85"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed, 0 skipped at implementation head 12b47375d525b32055350263f79f6984aa7ca8da"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "70 passed, 0 failed, 0 skipped; historical identity preserved and current-repository catalogue agreement holds"
+    }
+  ],
+  "assumptions_resolved": [
+    "Site agreement across all 72 catalogues is now 0 stale entries; before this change scripts~manage-migration-author-lanes.mjs.json carried 31 stale site line numbers out of 34.",
+    "Only the site key changed: semantic_key, line_sha256, disposition, reason and legacy_semantic_key are byte-identical, and the derived digest is unchanged at 623c3a6c3f85.",
+    "The truth-audit detector and every scripts/throughput-guard test are untouched, so the audit remains fail-closed."
+  ],
+  "stop_conditions_hit": []
+}

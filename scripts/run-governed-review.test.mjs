@@ -16,7 +16,7 @@ const fixtureFiles=[{filename:'source.txt',status:'modified'}]
 const fixtureSource=(input)=>({repository:THIS_REPO,pr:input.pr,baseRef:'develop',targetSha:'b'.repeat(40),headSha:input.headSha,mergeBase:'c'.repeat(40),files:fixtureFiles,fileSetSha256:createHash('sha256').update(JSON.stringify(fixtureFiles)).digest('hex'),sourceDigest:'d'.repeat(64)})
 const fixtureReceipt=(input)=>({schema_version:1,identity:{repository:input.worktree,base:'c'.repeat(40),head:input.headSha,source_digest:'d'.repeat(64)},packet_sha256:'e'.repeat(64)})
 const fixturePaths={platform:'win32',realpath:(path)=>path,lstat:()=>({isSymbolicLink:()=>false,isDirectory:()=>true})}
-function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
+function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,briefPreparer:(input)=>({wrapperArgs:input.wrapperArgs,env:{}}),sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
 
 test('all qualified wrappers receive immutable source arguments without rewriting prompt values',()=>{
   const source=fixtureSource(options)
@@ -1000,4 +1000,46 @@ test('out of credit: raw provider billing text alone is recognized without echoi
     assert.ok(!error.message.includes('private-value'))
     assert.equal(error.startDecision.reason,'insufficient_quota')
   }
+})
+
+test('#3479: a governed DeepSeek send carries the brief in an attached file with the verdict instruction',async()=>{
+  const { promptHeadContract: contract, wrapperVerdictContractArgs: verdictArgs, DEEPSEEK_GOVERNED_MESSAGE: MESSAGE } = await import('./run-governed-review.mjs')
+  const live='c'.repeat(40),W='C:/bin/ai-deepseek-agent'
+  const io=(briefs={})=>{const written={};let n=0;return {written,files:{readFile:(p)=>briefs[p],writeFile:(p,v)=>{written[p]=v},tempDir:()=>`T${n++}`}}}
+  const check=(args,expectedTail,expectBrief,briefs)=>{
+    const {written,files}=io(briefs)
+    const out=contract(args,live,files,W)
+    const start=out[0]==='reply'?2:1
+    assert.deepEqual(out.slice(start,start+2),[MESSAGE,'--file'])
+    const body=written[out[start+2]]
+    assert.ok(body.startsWith(expectBrief),body)
+    assert.match(body,/volatilit/i)
+    assert.ok(body.trimEnd().endsWith(`VERDICT: REJECT ${live}`))
+    assert.deepEqual(out.slice(start+3),expectedTail)
+    assert.ok(!out.some((a)=>/^--prompt/.test(a)))
+    assert.ok(out.every((a)=>a.length<200),'argv never carries the brief')
+    return out
+  }
+  // Positional form: the runner used to refuse it outright.
+  check(['send','Review PR 1.','--review'],['--review'],'Review PR 1.')
+  // --prompt-file: the wrapper has no such flag and would have sent the literal path.
+  check(['send','--prompt-file','brief.md','--review'],['--review'],'Brief body.',{'brief.md':'Brief body.'})
+  check(['send','--prompt-file=brief.md','--review'],['--review'],'Brief body.',{'brief.md':'Brief body.'})
+  // Every canonical value flag keeps its value; a value is never taken for the brief.
+  for(const flag of ['--timeout','--decision','--tests','--review-kind','--model','--file','--base','--assert-head'])
+    check(['send',flag,'900','Review this.','--review'],[flag,'900','--review'],'Review this.')
+  // Command-line order is kept when both forms are present.
+  check(['send','--prompt','First.','Second.','--review'],['--review'],'First.\n\nSecond.')
+  // A bare -- ends options; the separator is not forwarded.
+  check(['send','--review','--','--looks-like-a-flag'],['--review'],'--looks-like-a-flag')
+  // reply keeps the session id before the message.
+  const reply=check(['reply','sess-1','--file','d.diff','Again.','--review'],['--file','d.diff','--review'],'Again.')
+  assert.deepEqual(reply.slice(0,2),['reply','sess-1'])
+  // Composes with the runner's later verdict contract.
+  const composed=verdictArgs(W,contract(['send','Go.','--review'],live,io().files,W),live)
+  assert.deepEqual(composed.slice(0,4),['send','--governed-verdict',live,MESSAGE])
+  // The stale-head guard still applies, and a missing brief is still refused.
+  assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,io().files,W),/names head bbbbbbbb/)
+  assert.throws(()=>contract(['send','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
+  assert.throws(()=>contract(['send','--timeout','900','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
 })

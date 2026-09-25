@@ -508,6 +508,16 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
    above a report citing specific lines.
 
+   **StepFun Step 5 (`stepfun-step-5-preview`) is ACTIVE as of 2026-09-25,
+   Ubuntu/Linux only** (owner instruction). `ai-stepfun review` (ai-devops PR
+   #849) runs StepCode `step/step-5-preview` with only read/grep/find/ls under
+   strict approval inside bubblewrap, over the shared sealed evidence packet, and
+   ends in a head-bound `VERDICT:` line; a live review of `94bf83c6` returned
+   `VERDICT: REVISE 94bf83c64889c2c29e229a2faa66d8ee183e911c` above a report
+   citing specific lines. The allocator has no platform field: on Windows,
+   `ai-review-preflight usable` reports stepfun `unsupported-platform`, so that
+   machine never draws it.
+
    **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
    and stays retired.** At that time
    `ai-deepseek-agent` was a conversational API client with no filesystem, no

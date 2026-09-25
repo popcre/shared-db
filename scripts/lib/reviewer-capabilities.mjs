@@ -9,7 +9,7 @@
 
 // Every wrapper the governed runner will launch. A roster row whose wrapper is not here
 // cannot produce a recordable governed verdict and is never drawn.
-export const GOVERNED_VERDICT_WRAPPERS = Object.freeze(['ai-claude-review','ai-codex-review','ai-deepseek-agent','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen'])
+export const GOVERNED_VERDICT_WRAPPERS = Object.freeze(['ai-claude-review','ai-codex-review','ai-deepseek-agent','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen','ai-stepfun'])
 
 // Wrappers that take the explicit `--governed-verdict <head>` contract flag.
 export const VERDICT_CONTRACT_FLAG_WRAPPERS = Object.freeze(['ai-gemini','ai-qwen','ai-deepseek-agent'])

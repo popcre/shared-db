@@ -36,7 +36,7 @@ concurrency:
 jobs:
   verify:
     name: Agent work contract
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +57,7 @@ jobs:
           scripts/agent-work-contract-git-evidence.test.mjs
           scripts/lib/agent-evidence-paths.test.mjs
           scripts/check-documents-only-pull-request.test.mjs
+          scripts/check-closeout-readiness.test.mjs
 
       - name: Report the activation mode, so nobody has to guess
         run: |
@@ -93,6 +94,34 @@ jobs:
             echo "pr_head_sha=$(echo "$facts" | jq -r .headRefOid)"
           } >> "$GITHUB_OUTPUT"
           echo "pr_base_sha=$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/$(echo "$facts" | jq -r .number)" --jq .base.sha)" >> "$GITHUB_OUTPUT"
+
+      # Classified from protected base policy whenever the pull request is known,
+      # including the one queued PR on merge_group, so the documents-only
+      # exemption behaves identically on both paths (#2596 review).
+      - name: Check out the protected base policy for the documents-only decision
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          path: trusted-policy
+          fetch-depth: 1
+
+      - name: Classify documents-only status from protected base policy
+        id: documents_only
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_NUMBER"
+          set +e
+          node trusted-policy/scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          status=$?
+          set -e
+          # 0 = documents only. Anything else, including an unreadable file list,
+          # is NOT documents only: the pair stays required (fail closed).
+          if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Validate any contract and report carried by this pull request
         env:
@@ -179,7 +208,7 @@ jobs:
             # automated check and the guarded merge lane are unchanged by this.
             # The GitHub read happens INSIDE the script, through the one shared
             # transport library (#2342), never directly from this step.
-            if node scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"; then
+            if [ "${{ steps.documents_only.outputs.value }}" = "true" ]; then
               echo "This pull request changes only prose documents, so the agent work contract pair is not required (#2591)."
               exit 0
             fi

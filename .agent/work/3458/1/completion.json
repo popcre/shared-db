@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "work_issue": 3458,
+  "outcome": "ready-for-merge",
+  "pr": 3487,
+  "migration_versions": [
+    "20260924174251"
+  ],
+  "contract_ref": "refs/db-contracts/3458/1",
+  "contract_sha256": "7a04d5d47abc64fec8337b7e316506f28e6d30083ad6e9594bc52d77ff8a45a0",
+  "head_sha": "734208013a0d95cf9360a32890bd2599fce357d3",
+  "base_sha": "4b74a86965e937917a99d05fd5e427b7ac4388b3",
+  "files_changed": [
+    ".agent/work/3458/1/behavior_tests.sql",
+    ".agent/work/3458/1/caller_contract.md",
+    "supabase/migrations/20260924174251_popsg_refresh_steps_under_ceiling.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed (Guard B ok against base newest 20260923173715) at implementation 734208013a0d95cf9360a32890bd2599fce357d3 after refreshing onto origin/main merge base 4b74a86965e937917a99d05fd5e427b7ac4388b3"
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Ran 44 tests OK at implementation 734208013a0d95cf9360a32890bd2599fce357d3 after refreshing onto origin/main merge base 4b74a86965e937917a99d05fd5e427b7ac4388b3"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no whitespace errors at implementation 734208013a0d95cf9360a32890bd2599fce357d3"
+    }
+  ],
+  "assumptions_resolved": [
+    "overload of the claimed name stays inside claim #3483 writes: function public.refresh_style_guide_matviews",
+    "legacy (uuid,integer) body left byte-identical so popsg_refresh_search_sync_queue_v1 md5(prosrc) stays green",
+    "matview steps proven by function-body shape because REFRESH CONCURRENTLY cannot run inside the test transaction; search step proven live in behavior_tests.sql",
+    "check-sql.sh ran with CHECK_SQL_BASE_VERSIONS and CHECK_SQL_EOL_DIFF_FILE seams because Windows Git Bash cannot fetch origin/main inside this tool; Guard B compared against base newest 20260923173715 and every static guard passed",
+    "Rebind to current PR merge base 4b74a86965e937917a99d05fd5e427b7ac4388b3 at implementation head 734208013a0d95cf9360a32890bd2599fce357d3 (evidence removed from implementation tree per #2845); implementation files and migration 20260924174251 unchanged from prior head 34ee2b68bc8db295329e3ab6bfd17d048ad70d27; claim #3483 and reserved version 20260924174251 untouched."
+  ],
+  "stop_conditions_hit": []
+}

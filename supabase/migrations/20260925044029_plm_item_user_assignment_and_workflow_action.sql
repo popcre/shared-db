@@ -1,19 +1,19 @@
 -- Issue #3498: final plm homes for two DesignFlow tables added after the July
 -- segregation map (docs PR #3497; owner request 2026-09-24).
--- derived-from: dflow.item_user_assignment, dflow.item_workflow_action (live shapes)
+-- derived-from: 20260901221310, 20260904143518, 20260905053422, 20260907121732
 --
 -- Additive only. Structure only; row movement belongs to the DesignFlow
 -- migration session. Column shapes match the dflow sources. Cross-schema
--- foreign keys into dflow.* are deliberately omitted so the plm homes do not
--- couple to the landing schema; referential integrity is wired when rows move.
--- Partial unique indexes from the dflow sources are also deferred: this claim
--- writes exactly the two tables.
+-- foreign keys into dflow.users are deliberately omitted so the plm homes do
+-- not couple to the landing schema; referential integrity for those is wired
+-- when rows move. Intra-plm foreign keys are included. Partial unique indexes
+-- from the dflow sources are deferred: this claim writes exactly the two tables.
 
 BEGIN;
 
 CREATE TABLE plm.item_user_assignment (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  rfq_item_id integer NOT NULL,
+  rfq_item_id integer NOT NULL REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE CASCADE,
   function_key text NOT NULL,
   user_id integer NOT NULL,
   assigned_by_user_id integer NOT NULL,
@@ -34,13 +34,24 @@ COMMENT ON TABLE plm.item_user_assignment IS
 
 CREATE TABLE plm.item_workflow_action (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  rfq_item_id integer NOT NULL,
+  rfq_item_id integer NOT NULL REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE RESTRICT,
   actor_user_id integer NOT NULL,
   actor_auth_user_id uuid,
-  actor_identity_source text NOT NULL DEFAULT 'supabase_auth',
-  actor_identity_email text,
-  prior_step_id integer,
-  new_step_id integer NOT NULL,
+  actor_identity_source text NOT NULL DEFAULT
+    (case
+       when nullif(pg_catalog.current_setting('request.designflow.actor_id', true), '') is not null
+         then 'designflow_jwt'
+       else 'supabase_auth'
+     end),
+  actor_identity_email text DEFAULT
+    (pg_catalog.lower(nullif(pg_catalog.btrim(
+       coalesce(
+         nullif(pg_catalog.current_setting('request.designflow.actor_email', true), ''),
+         auth.jwt() ->> 'email'
+       )
+     ), ''))),
+  prior_step_id integer REFERENCES plm."RFQStep"("RFQStep_id"),
+  new_step_id integer NOT NULL REFERENCES plm."RFQStep"("RFQStep_id"),
   action_key text NOT NULL,
   correlation_key uuid NOT NULL,
   routing_context jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -50,6 +61,10 @@ CREATE TABLE plm.item_workflow_action (
   fallback_reason text,
   requires_admin_review boolean NOT NULL DEFAULT false,
   CONSTRAINT item_workflow_action_id_rfq_item_key UNIQUE (id, rfq_item_id),
+  CONSTRAINT item_workflow_action_source_action_id_fkey
+    FOREIGN KEY (source_action_id, rfq_item_id)
+    REFERENCES plm.item_workflow_action(id, rfq_item_id)
+    ON DELETE RESTRICT,
   CONSTRAINT item_workflow_action_correlation_key_key UNIQUE (correlation_key),
   CONSTRAINT item_workflow_action_action_key_shape_check
     CHECK (action_key = lower(btrim(action_key)) AND action_key ~ '^[a-z][a-z0-9_-]*$'),

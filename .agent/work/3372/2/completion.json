@@ -31,7 +31,9 @@
   "assumptions_resolved": [
     "AGENTS routes a later Laura/Ilona/Disney/DCP withdrawal answer or correction to the existing local note, and points at the settled 2026-09-25 business rule",
     "Note explicitly handles relayed provenance, privacy, ambiguous authority, closed anchor and fresh actual-scope routing",
-    "Issue #3347 (orchestrator work) is the durable anchor; technical work does not depend on the human answer"
+    "Issue #3347 (orchestrator work) is the durable anchor; technical work does not depend on the human answer",
+    "Cross-read of the settled Disney DCP Vault withdrawal signals section in docs/business-rules/licensing-master-data.md against the routing note and the AGENTS entry: the note now links to that section instead of restating it, and both now record the question as answered",
+    "Contract ref refs/db-contracts/3372/2 was published prospectively under the dispatcher delegation recorded in contract.json; the completion report inherits that disclosure and does not independently prove publication ordering"
   ],
   "stop_conditions_hit": []
 }

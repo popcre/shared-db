@@ -9,7 +9,8 @@
 --      licensor_key and row_key are unchanged so paging cursors stay stable.
 --   2. DCP Vault licensor comes from the source system. Rows with source_system
 --      disney_dcpvault group to Disney, marvel_dcpvault to Marvel,
---      lucasfilm_dcpvault to Lucasfilm / Star Wars, regardless of mapping
+--      lucasfilm_dcpvault to Lucasfilm / Star Wars,
+--      twentieth_century_dcpvault to 20th Century, regardless of mapping
 --      authority status. Authority/mapping conflicts remain visible as
 --      source_status but never move a row into the unresolved group.
 --      This supersedes the #2905 rule.
@@ -648,6 +649,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'disney'
           when s.source_system = 'marvel_dcpvault' then 'marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'lucasfilm-star-wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th-century'
           else 'unresolved'
         end::text as licensor_group_key,
         case
@@ -668,6 +670,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'Disney'
           when s.source_system = 'marvel_dcpvault' then 'Marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'Lucasfilm / Star Wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th Century'
           else 'Licensor not yet determined'
         end::text as licensor_group_name,
         coalesce(
@@ -1154,6 +1157,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'disney'
           when s.source_system = 'marvel_dcpvault' then 'marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'lucasfilm-star-wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th-century'
           else 'unresolved'
         end::text as licensor_group_key,
         case
@@ -1174,6 +1178,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'Disney'
           when s.source_system = 'marvel_dcpvault' then 'Marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'Lucasfilm / Star Wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th Century'
           else 'Licensor not yet determined'
         end::text as licensor_group_name,
         coalesce(
@@ -1361,6 +1366,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'disney'
           when s.source_system = 'marvel_dcpvault' then 'marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'lucasfilm-star-wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th-century'
           else 'unresolved'
         end::text as licensor_group_key,
         case
@@ -1381,6 +1387,7 @@ begin
           when s.source_system = 'disney_dcpvault' then 'Disney'
           when s.source_system = 'marvel_dcpvault' then 'Marvel'
           when s.source_system = 'lucasfilm_dcpvault' then 'Lucasfilm / Star Wars'
+          when s.source_system = 'twentieth_century_dcpvault' then '20th Century'
           else 'Licensor not yet determined'
         end::text as licensor_group_name,
         coalesce(
@@ -1450,7 +1457,7 @@ end;
 $function$;
 
 comment on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) is
-  'Licensing-manager-gated read-only inventory of the raw scraped source vocabularies for Properties, Characters and Style Guides. One entity kind per call (property, character, style_guide), with search text, a deterministic base64 keyset cursor and a page size clamped to 1..1000. Every row carries source-declared identity only: licensor key and name decided by the actual scrape route and source authority, one canonical licensor_group_key and licensor_group_name (a single unresolved group, "Licensor not yet determined", holds rows whose licensor is genuinely undetermined and is not covered by source-system DCP Vault grouping), a source purpose normalized to exactly Creative or Submissions (NBCU Product Submissions picker rows and Warner STARLABS Product catalogue rows are Submissions), the display label, source system/table/id/status, a capture marker, and for Creative Property rows the existing mapped/unmapped indicator plus a submissions array naming the Submissions members of the winning mapped decision, and for Submissions Property rows a mapped_creative array naming the Creative rows mapped to it. Pixar rows group under Disney (#3539); DCP Vault rows group by source system (disney_dcpvault to Disney, marvel_dcpvault to Marvel, lucasfilm_dcpvault to Lucasfilm / Star Wars) regardless of mapping authority status (#3539); Disney, Marvel and Lucasfilm / Star Wars remain the other separate licensors; retained copies across scrape routes are never deduplicated and identity is never inferred from names. Matching controls, review reasons, evidence basis, review guidance, contract status and authority-derived presentation buckets are deliberately absent, as are the Sega and WWE inferred character and style-guide candidate tables, which their own comments and constraints declare are not source-declared facts. api.db_data_admin_scraped_properties is unchanged and remains the Property Matching contract.';
+  'Licensing-manager-gated read-only inventory of the raw scraped source vocabularies for Properties, Characters and Style Guides. One entity kind per call (property, character, style_guide), with search text, a deterministic base64 keyset cursor and a page size clamped to 1..1000. Every row carries source-declared identity only: licensor key and name decided by the actual scrape route and source authority, one canonical licensor_group_key and licensor_group_name (a single unresolved group, "Licensor not yet determined", holds rows whose licensor is genuinely undetermined and is not covered by source-system DCP Vault grouping), a source purpose normalized to exactly Creative or Submissions (NBCU Product Submissions picker rows and Warner STARLABS Product catalogue rows are Submissions), the display label, source system/table/id/status, a capture marker, and for Creative Property rows the existing mapped/unmapped indicator plus a submissions array naming the Submissions members of the winning mapped decision, and for Submissions Property rows a mapped_creative array naming the Creative rows mapped to it. Pixar rows group under Disney (#3539); DCP Vault rows group by source system (disney_dcpvault to Disney, marvel_dcpvault to Marvel, lucasfilm_dcpvault to Lucasfilm / Star Wars, twentieth_century_dcpvault to 20th Century) regardless of mapping authority status (#3539); Disney, Marvel, Lucasfilm / Star Wars and 20th Century remain the other separate licensors; retained copies across scrape routes are never deduplicated and identity is never inferred from names. Matching controls, review reasons, evidence basis, review guidance, contract status and authority-derived presentation buckets are deliberately absent, as are the Sega and WWE inferred character and style-guide candidate tables, which their own comments and constraints declare are not source-declared facts. api.db_data_admin_scraped_properties is unchanged and remains the Property Matching contract.';
 
 revoke all on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) from public, anon, service_role;
 grant execute on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) to authenticated;

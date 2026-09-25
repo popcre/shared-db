@@ -7,6 +7,10 @@ begin;
 -- definition and the catalog, so no private source content can leak into public
 -- CI evidence. It also proves that api.db_data_admin_scraped_properties, the
 -- Property Matching contract, is still present and still separate.
+--
+-- A second block below exercises the function as a Licensing Manager and
+-- asserts grouping behaviour (#3539) from response keys and counts only,
+-- never row contents.
 
 do $$
 declare
@@ -54,7 +58,7 @@ begin
   end loop;
 
   -- ---------------------------------------------------------------------
-  -- Disney, Marvel, Pixar and Lucasfilm / Star Wars stay separate licensors,
+  -- Disney (including Pixar) and the other licensors stay separate groups,
   -- decided by scrape route and source authority, never by name similarity.
   -- ---------------------------------------------------------------------
   foreach v_required in array array[
@@ -89,6 +93,10 @@ begin
     'when s.licensor_key in (''marvel'', ''marvel-opa'', ''marvel-asgard-creative'') then ''marvel''',
     'when s.licensor_key in (''disney'', ''disney-opa'') then ''disney''',
     'when s.licensor_key in (''lucasfilm-star-wars'', ''lucasfilm-star-wars-opa'') then ''lucasfilm-star-wars''',
+    'when s.source_system = ''disney_dcpvault'' then ''disney''',
+    'when s.source_system = ''marvel_dcpvault'' then ''marvel''',
+    'when s.source_system = ''lucasfilm_dcpvault'' then ''lucasfilm-star-wars''',
+    'when s.source_system = ''twentieth_century_dcpvault'' then ''20th-century''',
     'when p.source_kind in (''property'', ''franchise_asset'')',
     'NBCUniversal - Submissions (Product Submissions picker)'
   ] loop
@@ -232,6 +240,79 @@ begin
        'api.db_data_admin_scraped_properties(text,text,integer)'::regprocedure)) = 0 then
     raise exception 'the existing Property Matching RPC lost its review fields';
   end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Behavioural proof (#3539): call the inventory and assert grouping from
+-- response keys and counts only. Pixar rows must group under Disney; zero
+-- *_dcpvault rows may land in the unresolved group; disney_dcpvault rows
+-- positively group to disney.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_profile uuid;
+  v_auth uuid;
+  v_role_id uuid;
+  v_kind text;
+  v_cursor text;
+  v_result jsonb;
+begin
+  select p.id, p.auth_user_id into v_profile, v_auth
+  from app.profile p
+  where p.status = 'active' and p.auth_user_id is not null
+  order by p.created_at, p.id limit 1;
+  if v_profile is null then
+    raise exception 'behavioural fixture requires an active authenticated profile';
+  end if;
+
+  select r.id into v_role_id from app.role r where r.slug = 'licensing'::app.app_role;
+  delete from app.user_role where profile_id = v_profile and role_id = v_role_id;
+  delete from app.app_access where profile_id = v_profile and app in ('plm', 'admin');
+  insert into app.user_role (profile_id, role_id) values (v_profile, v_role_id);
+  insert into app.app_access (profile_id, app) values (v_profile, 'plm');
+  perform set_config('request.jwt.claim.sub', v_auth::text, true);
+
+  foreach v_kind in array array['property', 'character', 'style_guide'] loop
+    v_cursor := null;
+    loop
+      v_result := api.db_data_admin_scraped_source_inventory(v_kind, null, v_cursor, 1000);
+      if v_result is null or jsonb_typeof(v_result) <> 'object' then
+        raise exception 'inventory arm % returned no object', v_kind;
+      end if;
+
+      -- (a) Pixar is never its own licensor group.
+      if exists (
+        select 1 from jsonb_array_elements(v_result -> 'rows') r
+        where r ->> 'licensor_group_key' = 'pixar'
+           or r ->> 'licensor_group_name' = 'Pixar'
+      ) then
+        raise exception 'entity kind % returns a pixar licensor group', v_kind;
+      end if;
+
+      -- (b) Zero *_dcpvault rows in the unresolved group.
+      if exists (
+        select 1 from jsonb_array_elements(v_result -> 'rows') r
+        where r ->> 'source_system' in (
+            'disney_dcpvault', 'marvel_dcpvault',
+            'lucasfilm_dcpvault', 'twentieth_century_dcpvault')
+          and r ->> 'licensor_group_key' = 'unresolved'
+      ) then
+        raise exception 'entity kind % returns a *_dcpvault row in the unresolved group', v_kind;
+      end if;
+
+      -- (c) Positive control: disney_dcpvault groups to disney.
+      if exists (
+        select 1 from jsonb_array_elements(v_result -> 'rows') r
+        where r ->> 'source_system' = 'disney_dcpvault'
+          and r ->> 'licensor_group_key' <> 'disney'
+      ) then
+        raise exception 'entity kind % returns a disney_dcpvault row outside the disney group', v_kind;
+      end if;
+
+      v_cursor := v_result ->> 'next_cursor';
+      exit when v_cursor is null;
+    end loop;
+  end loop;
 end $$;
 
 rollback;

@@ -32,8 +32,9 @@ Disney, with Pixar kept in parentheses as the portal/brand. The existing
 
 DCP Vault licensor comes from the source system (#3539, superseding the #2905
 unresolved-authority rule). Rows with `source_system` `disney_dcpvault` group to
-Disney, `marvel_dcpvault` to Marvel, and `lucasfilm_dcpvault` to Lucasfilm /
-Star Wars, regardless of mapping authority status. Authority and mapping
+Disney, `marvel_dcpvault` to Marvel, `lucasfilm_dcpvault` to Lucasfilm / Star
+Wars, and `twentieth_century_dcpvault` to 20th Century, regardless of mapping
+authority status. Authority and mapping
 conflicts may still appear as row status or mapping state, but they never move a
 row into the unresolved group.
 

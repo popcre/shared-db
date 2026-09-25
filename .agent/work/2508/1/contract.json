@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 2508,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add a ledger-drift status reporter (scripts/report-ledger-drift-status.mjs) that turns a check-migration-ledger-drift --json result into an issue-comment-ready status report with per-version PR attribution, plus tests and a verification doc. Detection/reporting only — no production apply.",
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
+  "dispatcher": "MiMo session resolving popcre/shared-db issue #2508 (non-orchestrator)",
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "2508-ledger-drift",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/2508-ledger-drift",
+  "allowed_paths": [
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    ".agent/work/2508/1/contract.json",
+    ".agent/work/2508/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    ".agent/work/2508/1/contract.json",
+    ".agent/work/2508/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No production apply, no migration, no database write.",
+    "No secrets in commits, logs, or PR body.",
+    "Do not edit the shared checkout; worktree-only.",
+    "Do not close issue #2508 — it stays open until production applies land."
+  ],
+  "required_checks": [
+    "node --test scripts/report-ledger-drift-status.test.mjs",
+    "node --test scripts/check-migration-ledger-drift.test.mjs",
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+  ],
+  "assumptions": [
+    "Issue #2508 is non-orchestrator (detection/reporting tooling and docs).",
+    "Six genuinely-pending migration versions need production applies through the bounded Shared Supabase Migrations workflow — that is the orchestrator's lane, not this session's.",
+    "The throughput-disposition catalogue for the new script is required because the truth-audit discovers the word 'missing' in comments and error messages."
+  ],
+  "stop_conditions": [
+    "Stop if the change would need to touch a migration, database object, or production workflow.",
+    "Stop if the drift check itself needs modification (out of scope — this PR adds reporting on top of it)."
+  ]
+}

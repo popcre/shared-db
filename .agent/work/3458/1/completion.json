@@ -4,16 +4,18 @@
   "outcome": "ready-for-merge",
   "pr": 3487,
   "migration_versions": [
-    "20260924174251"
+    "20260925171844"
   ],
   "contract_ref": "refs/db-contracts/3458/1",
   "contract_sha256": "7a04d5d47abc64fec8337b7e316506f28e6d30083ad6e9594bc52d77ff8a45a0",
-  "head_sha": "734208013a0d95cf9360a32890bd2599fce357d3",
+  "head_sha": "e2c9cc897b4c5d158a6bc17d306dd25bd1a9687e",
   "base_sha": "4b74a86965e937917a99d05fd5e427b7ac4388b3",
   "files_changed": [
     ".agent/work/3458/1/behavior_tests.sql",
     ".agent/work/3458/1/caller_contract.md",
-    "supabase/migrations/20260924174251_popsg_refresh_steps_under_ceiling.sql"
+    ".agent/work/3458/1/completion.json",
+    ".agent/work/3458/1/contract.json",
+    "supabase/migrations/20260925171844_popsg_refresh_steps_under_ceiling.sql"
   ],
   "db_reads": [
     "table public.style_guide_search_sync_queue",

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 3464,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Widen PopDAM submission-lease reset to accept reason not_submitted with NULL http status and fixed provider_error category, and widen provider_definitive_rejection to HTTP 400/401/402/403/422/429, while preserving every other guard",
@@ -12,15 +12,17 @@
   "worktree": "C:/repos/shared-db/.claude/worktrees/3464-lease-widen",
   "allowed_paths": [
     "supabase/migrations/20260924183947_popdam_submission_lease_reset_widen.sql",
+    "supabase/tests/popdam_bulk_operation_definitive_rejection_contracts.sql",
     "supabase/tests/popdam_submission_lease_reset_widen_contracts.sql",
-    ".agent/work/3464/1/contract.json",
-    ".agent/work/3464/1/completion.json"
+    ".agent/work/3464/2/contract.json",
+    ".agent/work/3464/2/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20260924183947_popdam_submission_lease_reset_widen.sql",
+    "supabase/tests/popdam_bulk_operation_definitive_rejection_contracts.sql",
     "supabase/tests/popdam_submission_lease_reset_widen_contracts.sql",
-    ".agent/work/3464/1/contract.json",
-    ".agent/work/3464/1/completion.json"
+    ".agent/work/3464/2/contract.json",
+    ".agent/work/3464/2/completion.json"
   ],
   "db_reads": [
     "table public.admin_config"

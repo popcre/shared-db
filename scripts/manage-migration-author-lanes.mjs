@@ -246,6 +246,38 @@ export function isCommandSizeFailure(error){
   const text=[error?.code,error?.message,error?.stderr,error?.cause?.code,error?.cause?.message].filter(Boolean).map(String).join(' ')
   return /\bE2BIG\b|\bENAMETOOLONG\b|argument list too long|command line is too long|filename or extension is too long/i.test(text)
 }
+// Issue #3349. A lease-probe read failure that names which read failed, which
+// ref it failed on, and the underlying transport/parse error — the same
+// carry-the-cause idiom as markReviewRefListingRefusal above. The probe's
+// fail-open catches used to collapse every one of these into a bare null, and
+// every caller then reported "active reviewer leases are unreadable", which
+// named a namespace that was often entirely healthy.
+export function markLeaseProbeRefusal(error,detail){error.leaseProbeRefusal=detail;return error}
+export function isLeaseProbeRefusal(error){return Boolean(error?.leaseProbeRefusal)}
+// Transient means a retry of the SAME command can succeed on its own. The
+// patterns are read-only and deliberately narrow: transport faults, rate limits
+// (they have a known end) and an occupied mutex classify transient; malformed
+// leases, missing capabilities and permission refusals classify determinate, so
+// the message never points an operator at a retry that cannot work. Unknown
+// errors default to transient because a retry of this read-only probe is always
+// safe and cheap, while a wrongly-determinate label sends the operator hunting
+// for a retirement command that does not exist (#3346's hour-long wrong
+// diagnosis).
+export function leaseProbeFailureIsTransient(error){
+  const text=[error?.message,error?.stderr,error?.code,error?.cause?.message].filter(Boolean).map(String).join(' ')
+  if(isTransientGitHubTransport(error))return true
+  if(/secondary rate limit|rate limit exceeded|abuse-detection/i.test(text))return true
+  if(/\bis occupied\b/i.test(text))return true
+  if(/malformed|resource not accessible|HTTP 401\b|HTTP 403\b|E2BIG|ENAMETOOLONG|is not a function/i.test(text))return false
+  return true
+}
+function leaseProbeRefusal(stage,error,{ref=null,transient=null}={}){
+  const cause=String(error?.message??error??'unknown failure')
+  const classified=transient===null?leaseProbeFailureIsTransient(typeof error==='object'&&error?error:{message:cause}):transient
+  const where=ref?` (${ref})`:''
+  const guidance=classified?'transient: retry the same command':'determinate: a retry will not clear this'
+  return markLeaseProbeRefusal(new LaneError(`${stage} failed${where}: ${cause}; ${guidance}`),{stage,ref,cause,transient:classified})
+}
 //
 // `readsRepository` RECORDS A FACT ABOUT THE WRAPPER, NOT A PREFERENCE (#2078).
 // `true` means the wrapper hands its model a real, self-contained checkout of the
@@ -5118,16 +5150,30 @@ function isReviewAssignmentLive(assignment,states,io){
 // no verdict has landed for that head. Anything else -- a merged or closed PR, a
 // head that moved on, a recorded verdict -- frees the provider.
 //
-// NULL MEANS UNREADABLE, AND EVERY CALLER FAILS CLOSED ON IT. If the refs cannot
-// be listed this returns null; the draw, release, replacement, reap, capacity
-// report and start watch all refuse rather than proceed. No caller may treat null
-// as "nobody is busy" -- a probe that cannot read GitHub must never invent
-// availability. (Before issue #3130 the test-only rotation helper kept rotating on
-// null; it no longer reads this at all.)
+// A FAILED PROBE NEVER INVENTS AVAILABILITY. Read failures used to be signalled
+// by returning null, and every caller failed closed on that null; since issue
+// #3349 the same failures throw a marked refusal that carries the cause (see
+// below). Callers still keep the null guard as a defensive backstop: no caller
+// may treat null as "nobody is busy" -- a probe that cannot read GitHub must
+// never invent availability. (Before issue #3130 the test-only rotation helper
+// kept rotating on null; it no longer reads this at all.)
+//
+// ISSUE #3349. Every ordinary read failure inside this probe used to be a bare
+// `return null`, so every caller reported the same "active reviewer leases are
+// unreadable" sentence no matter what actually broke -- an HTTP 502, a rate
+// limit, an occupied mutex, a malformed lease ref and a permission refusal were
+// indistinguishable, and the message named a namespace that was often healthy.
+// Each failure now throws a marked lease-probe refusal (markLeaseProbeRefusal)
+// that names WHICH read failed, WHICH ref it failed on, the underlying transport
+// or parse error, and whether the failure is transient (retry the same command)
+// or determinate (a retry cannot clear it). Callers append their operation
+// context; the generic sentence survives only as the defensive no-cause
+// backstop below, where it is actually true. Fail-closed is unchanged: every
+// site that returned null now throws, and null itself is still refused.
 export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={}){
-  if(typeof io.readRef!=='function')return null
+  if(typeof io.readRef!=='function')throw leaseProbeRefusal('active reviewer lease probe capability check','io.readRef is not a function; this io cannot read refs',{transient:false})
   let cutover
-  try{cutover=io.readRef(REVIEW_ACTIVE_CUTOVER_REF)}catch{return null}
+  try{cutover=io.readRef(REVIEW_ACTIVE_CUTOVER_REF)}catch(error){throw leaseProbeRefusal('active reviewer lease cutover read',error,{ref:REVIEW_ACTIVE_CUTOVER_REF})}
   if(!cutover)throw new LaneError('active reviewer lease cutover is incomplete; assignment refused')
   const busy=new Set()
   const stale=[]
@@ -5142,31 +5188,40 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
   try{snapshot=typeof io.readActiveReviewLeases==='function'?io.readActiveReviewLeases():null}
   catch(error){
     if(isReviewRefListingRefusal(error))throw new LaneError(`active reviewer lease namespace cannot be listed: ${error.message}`)
-    return null
+    throw leaseProbeRefusal('active reviewer lease snapshot read',error)
   }
   const records=[]
   const refs=snapshot?[...snapshot.keys()]:[...ACTIVE_REVIEWERS,...OVERFLOW_REVIEWERS].map((reviewer)=>reviewActiveRef(reviewer.name))
   for(const ref of refs){
     let sha
-    try{sha=snapshot?snapshot.get(ref)?.sha??null:io.readRef(ref)}catch{return null}
+    try{sha=snapshot?snapshot.get(ref)?.sha??null:io.readRef(ref)}catch(error){throw leaseProbeRefusal('active reviewer lease ref read',error,{ref})}
     if(!sha)continue
     let assignment,commit
-    try{commit=snapshot?.get(ref)?.commit??io.getCommit(sha);assignment=parseReviewLease(commit)}catch{return null}
+    try{commit=snapshot?.get(ref)?.commit??io.getCommit(sha);assignment=parseReviewLease(commit)}catch(error){throw leaseProbeRefusal('active reviewer lease commit read',error,{ref})}
     const reviewer=REVIEWERS.find((row)=>row.name===assignment?.reviewer)
     const legacy=reviewer?reviewActiveRef(reviewer.name):null
     const parallel=reviewer&&/^[0-9a-f]{40}$/i.test(assignment.headSha)?reviewLeaseRefForAssignment(assignment,true):null
-    if(!reviewer||ref!==legacy&&ref!==parallel||(io.requiresExactReviewHeadSha&&!/^[0-9a-f]{40}$/i.test(assignment.headSha)))return null
+    if(!reviewer||ref!==legacy&&ref!==parallel||(io.requiresExactReviewHeadSha&&!/^[0-9a-f]{40}$/i.test(assignment.headSha))){
+      const reason=!assignment
+        ?'the lease commit carries no readable lease message'
+        :!reviewer
+          ?`the lease names reviewer ${assignment.reviewer}, who is not in the reviewer catalog`
+          :io.requiresExactReviewHeadSha&&!/^[0-9a-f]{40}$/i.test(assignment.headSha)
+            ?`the lease head ${assignment.headSha} is not a 40-character SHA while exact-head matching is required`
+            :`the lease ref is not the legacy or parallel ref for reviewer ${assignment.reviewer}`
+      throw leaseProbeRefusal('active reviewer lease validation',reason,{ref,transient:false})
+    }
     const heldSince=commit?.committedDate??commit?.committer?.date??commit?.commit?.committer?.date??null
     records.push({reviewer,ref,sha,assignment,heldSince})
   }
   let states=null
-    try{states=typeof io.readReviewStates==='function'?io.readReviewStates([...records.map((row)=>row.assignment),...requested]):null}catch{return null}
+    try{states=typeof io.readReviewStates==='function'?io.readReviewStates([...records.map((row)=>row.assignment),...requested]):null}catch(error){throw leaseProbeRefusal('reviewer issue and pull request state read',error)}
   for(const {reviewer,ref,sha,assignment} of records){
     let prRow
     try{
       const state=states?.get(`${assignment.issue}:${assignment.pr}`)
       prRow=state?.pr??io.getPr(assignment.pr)
-    }catch{return null}
+    }catch(error){throw leaseProbeRefusal(`pull request ${assignment.pr} state read`,error,{ref})}
     if(prRow?.state!=='open'||prRow?.head?.sha!==assignment.headSha){stale.push({ref,sha,assignment});continue}
     let verdict
     try{verdict=hasVerdictForHead(assignment.issue,assignment.pr,assignment.headSha,io,leaseVerdictOptions(assignment))}catch(error){
@@ -5176,7 +5231,7 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
       // Capacity reporting must retain the readable lease row so it can expose
       // the verdict read error on that row. Mutation callers keep the existing
       // fail-closed whole-probe behavior.
-      if(!keepUnreadableLeases)return null
+      if(!keepUnreadableLeases)throw leaseProbeRefusal(`durable reviewer verdict read for issue ${assignment.issue} pull request ${assignment.pr}`,error,{ref})
       busy.add(assignment.reviewer)
       continue
     }
@@ -5193,6 +5248,25 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
   Object.defineProperty(busy,'byAssignment',{value:new Map(leaseRecords.map((row)=>[reviewLeaseIdentity(row.lease),{sha:row.sha,lease:row.lease,heldSince:row.heldSince,ref:row.ref}])),enumerable:false})
   Object.defineProperty(busy,'byReviewer',{value:new Map([...new Set(leaseRecords.map((row)=>row.lease.reviewer))].map((name)=>[name,leaseRecords.filter((row)=>row.lease.reviewer===name).map((row)=>({sha:row.sha,lease:row.lease,heldSince:row.heldSince,ref:row.ref}))])),enumerable:false})
   Object.defineProperty(busy,'leaseSnapshot',{value:snapshot,enumerable:false})
+  return busy
+}
+
+// #3349. Callers pair the probe with the operation it guards. A marked
+// lease-probe refusal already names which read failed, which ref, and whether a
+// retry can clear it; the caller appends WHAT was refused and preserves the
+// historic sentence shape ("<cause>; <operation> refused"). The generic
+// "active reviewer leases are unreadable" survives only for a null result that
+// carries no recorded cause -- which is exactly when it is actually true.
+// Fail-closed is unchanged: null still refuses here, and a thrown probe
+// refusal propagates before any mutation.
+function busyReviewersOr(io,operation,requested=[],options={}){
+  let busy
+  try{busy=findBusyReviewers(io,requested,options)}
+  catch(error){
+    if(isLeaseProbeRefusal(error))throw markLeaseProbeRefusal(new LaneError(`${error.message}; ${operation}`),error.leaseProbeRefusal)
+    throw error
+  }
+  if(!busy)throw new LaneError(`active reviewer leases are unreadable; ${operation}`)
   return busy
 }
 
@@ -5403,8 +5477,7 @@ export function legacyLeaseTerminalReason(row,states,io){
   return null
 }
 function abandonedLeases(io){
-  const busy=findBusyReviewers(io)
-  if(!busy)throw new LaneError('active reviewer leases are unreadable; nothing was reaped')
+  const busy=busyReviewersOr(io,'nothing was reaped')
   const rows=[]
   for(const row of busy.stale){
     const reason=row.ref.startsWith(`${REVIEW_ACTIVE_PARALLEL_REF_PREFIX}/`)?abandonedLeaseReason(row,busy.states):legacyLeaseTerminalReason(row,busy.states,io)
@@ -5553,8 +5626,7 @@ export function archiveOldReviewVerdicts(options={},now=new Date(),io=githubIo){
 }
 
 function reviewerCapacityReportOperation(io,now){
-  const busy=findBusyReviewers(io,[],{keepUnreadableLeases:true})
-  if(!busy)throw new LaneError('active reviewer leases are unreadable; reviewer capacity is unknown')
+  const busy=busyReviewersOr(io,'reviewer capacity is unknown',[],{keepUnreadableLeases:true})
   // #2694 review (slot 2, medium-high finding 6). `busy.leases` is
   // Map(reviewer -> LAST record), so two live jobs for one provider collapsed
   // to one row and the capacity report simply did not show the second. Under
@@ -5602,8 +5674,7 @@ function reviewerCapacityReportOperation(io,now){
 // PR activity. Anything unreadable is reported as `unknown`, which the watcher never
 // reroutes. Leases younger than the start SLO are listed without further reads.
 function reviewerStartWatchLeasesOperation(io,now,minAgeHours){
-  const busy=findBusyReviewers(io,[],{keepUnreadableLeases:true})
-  if(!busy)throw new LaneError('active reviewer leases are unreadable; start watch refused')
+  const busy=busyReviewersOr(io,'start watch refused',[],{keepUnreadableLeases:true})
   const staleRefs=new Set((busy.stale??[]).map((row)=>row.ref))
   return [...(busy.byAssignment?.values()??[])].map((record)=>{
     const lease=record.lease,row={leaseRef:record.ref,reviewer:lease.reviewer,issue:lease.issue,pr:lease.pr,headSha:lease.headSha,sequence:lease.sequence,slot:lease.slot??1,heldSinceIso:record.heldSince??null,stale:staleRefs.has(record.ref),started:null,lastActivityIso:null,verdictPresent:null,error:null}
@@ -5623,8 +5694,7 @@ function reviewerStartWatchLeasesOperation(io,now,minAgeHours){
 // that listed markers just before the marker landed has then already removed the lease, and
 // the runner refuses to start. Unreadable leases throw: an unknown lease never starts a review.
 export function reviewLeaseStillHeld(request,io=githubIo){
-  const busy=findBusyReviewers(reviewOperationIo(io),[],{keepUnreadableLeases:true})
-  if(!busy)throw new LaneError('active reviewer leases are unreadable; review start refused')
+  const busy=busyReviewersOr(reviewOperationIo(io),'review start refused',[],{keepUnreadableLeases:true})
   // Returns the exact held lease (with its draw sequence) or null.
   const hit=[...(busy.byAssignment?.values()??[])].find(({lease})=>Number(lease.issue)===Number(request.issue)&&Number(lease.pr)===Number(request.pr)&&String(lease.headSha).toLowerCase()===String(request.headSha).toLowerCase()&&Number(lease.slot??1)===Number(request.slot??1)&&(!request.reviewer||lease.reviewer===request.reviewer)&&(request.sequence===undefined||Number(lease.sequence)===Number(request.sequence)))
   return hit?{...hit.lease,slot:Number(hit.lease.slot??1)}:null
@@ -5940,8 +6010,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   const otherSlots=otherSlotReviewers(request.issue,request.pr,request.headSha,request.slot,io)
   const excludedProviders=new Set([slotOne?.reviewer,...[...otherSlots.values()].map((row)=>row.reviewer)].filter(Boolean))
   if(slotOne)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist)
-  const preflightBusy=findBusyReviewers(io)
-  if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer assignment refused before mutex acquisition')
+  const preflightBusy=busyReviewersOr(io,'reviewer assignment refused before mutex acquisition')
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
   requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE)
   acquireReviewMutex(ownerSha,io)
@@ -6564,8 +6633,7 @@ export function releaseFailedReviewer(options,io=githubIo){
       if(reviewLeaseRefCandidates({...original,slot:request.slot},Boolean(io.requiresExactReviewHeadSha)).some((candidate)=>leaseRefHoldsAssignment(candidate,{...original,slot:request.slot},io)))throw new LaneError('reviewer release evidence exists but the active lease is still present; reconciliation requires manual audit')
       throw new LaneError(`reviewer ${original.reviewer} terminal failure was already released with immutable evidence ${priorFailureSha}`)
     }
-    const preflightBusy=findBusyReviewers(io,[request])
-    if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer release refused before mutex acquisition')
+    const preflightBusy=busyReviewersOr(io,'reviewer release refused before mutex acquisition',[request])
     const state=preflightBusy.states?.get(`${request.issue}:${request.pr}`),issueRow=state?.issue??io.getIssue(request.issue),prRow=state?.pr??io.getPr(request.pr)
     const superseded=String(options.failureCode)===REVIEW_TARGET_SUPERSEDED
     if(superseded){if(!reviewTargetSuperseded(prRow,request.headSha))throw new LaneError(`${REVIEW_TARGET_SUPERSEDED} requires proof the review target moved: PR #${request.pr} must be closed or its open head must differ from ${request.headSha}. The recorded head is still the open PR head, so this is not a superseded target.`)}
@@ -6627,8 +6695,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   // failing check is required so the evidence says what actually broke, and a
   // replacement is only issued once the operator states plainly that the local
   // fault cannot be fixed on this machine right now.
-  const preflightBusy=findBusyReviewers(io,[request])
-  if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer replacement refused before mutex acquisition')
+  const preflightBusy=busyReviewersOr(io,'reviewer replacement refused before mutex acquisition',[request])
   const preflightExclusions=reviewerExclusions(request.issue,request.pr,io)
   // Slot-aware, in the SAME namespaces assignment writes: a replacement request
   // for slot N resolves the failed sequence against slot N's own records and

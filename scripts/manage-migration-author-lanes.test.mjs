@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
+import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal,isLeaseProbeRefusal,markLeaseProbeRefusal,leaseProbeFailureIsTransient, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
@@ -1125,7 +1125,16 @@ test('active reviewer lease parser round-trips exact identity and fails closed',
   assert.throws(()=>parseReviewLease({message:message.replace('head='+('a'.repeat(40)),'head=not-a-sha')}),/malformed/)
   const legacy=parseReviewLease({message:message.replace('a'.repeat(40),'abcdef1')})
   const io=reviewIo(),sha=io.makeOwnerCommit(message.replace('a'.repeat(40),'abcdef1')),ref=reviewActiveRef(reviewer)
-  assert.equal(legacy.headSha,'abcdef1');io.requiresExactReviewHeadSha=true;io.refs.set(ref,sha);assert.equal(findBusyReviewers(io),null)
+  assert.equal(legacy.headSha,'abcdef1');io.requiresExactReviewHeadSha=true;io.refs.set(ref,sha)
+  // #3349: the exact-head mismatch used to return null (reported generically);
+  // it now refuses with the determinate cause naming the ref and the head.
+  let error=null
+  try{findBusyReviewers(io)}catch(caught){error=caught}
+  assert.ok(error,'the probe must refuse, never report an empty busy set')
+  assert.match(error.message,/active reviewer lease validation failed/)
+  assert.match(error.message,new RegExp(ref.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')))
+  assert.match(error.message,/abcdef1 is not a 40-character SHA/)
+  assert.match(error.message,/determinate: a retry will not clear this/)
 })
 
 test('low or unreadable quota refuses before owner commit and mutex acquisition',()=>{
@@ -1406,13 +1415,26 @@ test('a recorded verdict and a moved head both free the reviewer that held them'
   assert.ok(!findBusyReviewers(movedIo).has('grok-4.6'))
 })
 
-test('an unreadable busy probe reports null, never an empty busy set',()=>{
-  // Every production caller refuses on null; see the findBusyReviewers header.
+test('an unreadable busy probe refuses with the real cause, never an empty busy set',()=>{
+  // #3349: the probe used to report null for these, and every caller collapsed
+  // that into the generic "active reviewer leases are unreadable". It now names
+  // which read failed and why -- and it must still never report an empty set.
   const {io}=busyIo()
   const blind={...io,readRef:()=>{throw new Error('HTTP 500')}}
-  assert.equal(findBusyReviewers(blind),null)
+  let error=null
+  try{findBusyReviewers(blind)}catch(caught){error=caught}
+  assert.ok(error,'a read failure must refuse, never yield an empty busy set')
+  assert.match(error.message,/active reviewer lease cutover read failed/)
+  assert.match(error.message,/HTTP 500/)
+  assert.match(error.message,/transient: retry the same command/)
+  assert.doesNotMatch(error.message,/^active reviewer leases are unreadable/)
   const noReadRef={...io};delete noReadRef.readRef
-  assert.equal(findBusyReviewers(noReadRef),null)
+  error=null
+  try{findBusyReviewers(noReadRef)}catch(caught){error=caught}
+  assert.ok(error,'a missing capability must refuse, never yield an empty busy set')
+  assert.match(error.message,/capability check failed/)
+  assert.match(error.message,/io\.readRef is not a function/)
+  assert.match(error.message,/determinate: a retry will not clear this/)
 })
 
 test('the rotation helper ignores busy state entirely (no same-reviewer ceiling)',()=>{
@@ -8448,10 +8470,35 @@ test('#2694 a determinate lease-listing refusal names its real cause instead of 
   assert.doesNotMatch(error.message,/unreadable/,'a ceiling refusal is determinate, not an unreadable namespace')
 })
 
-test('#2694 a transient lease-listing failure still fails open rather than stopping the lane',()=>{
+test('#3349 classify lease-probe failures as transient or determinate by name',()=>{
+  assert.equal(leaseProbeFailureIsTransient({message:'HTTP 502: bad gateway'}),true)
+  assert.equal(leaseProbeFailureIsTransient({message:'secondary rate limit hit'}),true)
+  assert.equal(leaseProbeFailureIsTransient({message:'refs/db-coordination/author-acquisition is occupied'}),true,'an occupied mutex is transient; the next attempt can win')
+  assert.equal(leaseProbeFailureIsTransient({message:'malformed lease commit'}),false)
+  assert.equal(leaseProbeFailureIsTransient({message:'io.readRef is not a function'}),false)
+  assert.equal(leaseProbeFailureIsTransient({message:'resource not accessible by integration'}),false)
+})
+
+test('#3349 a caller refusal keeps the operation context after the cause',()=>{
+  const {io}=busyIo()
+  const blind={...io,readRef:()=>{throw new Error('HTTP 502')}}
+  assert.throws(()=>reviewerCapacityReport(blind),(error)=>{
+    assert.match(error.message,/cutover read failed/)
+    assert.match(error.message,/HTTP 502/)
+    assert.match(error.message,/reviewer capacity is unknown/)
+    return true
+  })
+})
+test('#3349 a transient lease-listing failure refuses with its real cause and a retry hint, still fail-closed',()=>{
   const transient=new LaneError('HTTP 502: bad gateway')
   assert.equal(isReviewRefListingRefusal(transient),false)
-  assert.equal(findBusyReviewers(leaseListingIo(transient)),null)
+  let error=null
+  try{findBusyReviewers(leaseListingIo(transient))}catch(caught){error=caught}
+  assert.ok(error,'a transient read failure must still refuse (fail-closed), never yield an empty busy set')
+  assert.match(error.message,/active reviewer lease snapshot read failed/)
+  assert.match(error.message,/HTTP 502: bad gateway/)
+  assert.match(error.message,/transient: retry the same command/)
+  assert.doesNotMatch(error.message,/^active reviewer leases are unreadable/)
 })
 
 // MEDIUM-HIGH 6. The capacity report read the lossy reviewer-keyed Map, so two
@@ -8786,7 +8833,10 @@ test('reap refuses a legacy lease whose PR state is unreadable, and accepts REST
   io.readReviewStates=(rows)=>{const m=readStates(rows);for(const v of m.values())delete v.pr;return m}
   io.getPr=()=>{throw new Error('HTTP 502')}
   const before=new Map(io.refs)
-  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable; nothing was reaped/)
+  // #3349: the refusal now carries the failing read and the transport error
+  // instead of the generic "unreadable" sentence, and still ends in the
+  // operation context so it is clear nothing was reaped.
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/state read failed: HTTP 502; transient: retry the same command; nothing was reaped/)
   assert.deepEqual(io.refs,before)
   io.readReviewStates=readStates;io.getPr=getPr
   prs.set(21,{number:21,state:'closed',merged_at:'2026-09-01T00:00:00Z',head:{sha:'a'.repeat(40)}})
@@ -8996,7 +9046,13 @@ test('#2987 a verdict-namespace ceiling refusal names its real cause and the arc
   const capacity=(()=>{try{findBusyReviewers(io,[],{keepUnreadableLeases:true});return null}catch(caught){return caught}})()
   assert.match(capacity?.message??'',/verdict namespace cannot be listed/)
   const transient={...io,listReviewRefsPaged:()=>{throw new LaneError('HTTP 502')}}
-  assert.equal(findBusyReviewers(transient),null,'a transient verdict read still fails closed as before')
+  let transientError=null
+  try{findBusyReviewers(transient)}catch(caught){transientError=caught}
+  assert.ok(transientError,'a transient verdict read must still refuse (fail-closed)')
+  assert.match(transientError.message,/durable reviewer verdict read for issue 1 pull request 51 failed/)
+  assert.match(transientError.message,/HTTP 502/)
+  assert.match(transientError.message,/transient: retry the same command/)
+  assert.doesNotMatch(transientError.message,/^active reviewer leases are unreadable/)
 })
 
 // A LEGACY CLAIM TITLE MUST NOT BLANK THE WHOLE READ-ONLY AUDIT. On 2026-09-16 the
@@ -10044,7 +10100,9 @@ test('a read failure after the mutex is held releases the mutex (#3449)',()=>{
   io.createRef=(r,sha)=>{if(r===MUTEX_REF)held=true;return create(r,sha)}
   io.readReviewStates=(rows)=>{const m=readStates(rows);if(held)for(const v of m.values())delete v.pr;return m}
   io.getPr=(...a)=>{if(held)throw new Error('HTTP 502');return getPr(...a)}
-  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable; nothing was reaped/)
+  // #3349: the refusal names the state read and the transport error, still
+  // ending in "nothing was reaped"; the mutex must still be released.
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/state read failed: HTTP 502.*nothing was reaped/)
   assert.ok(held);assert.equal(io.refs.has(MUTEX_REF),false);assert.ok(io.refs.has(ref))
 })
 

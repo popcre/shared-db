@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 3361,
+  "outcome": "ready-for-merge",
+  "pr": 3369,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3361/3",
+  "contract_sha256": "847c7ba18f1942d97eeb060eddd31f6dadb2fff3b10641ef2129959cb6a5721b",
+  "head_sha": "c6f07e76fb8206da226d3ae054940d28646d5bfa",
+  "base_sha": "85566ccb392b27022fe9bbb100d308fc587b13cc",
+  "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "exit_code": 0,
+      "evidence": "46 tests pass, 0 fail, 0 skipped at c6f07e76 (implementation head carrying merged origin/main 85566ccb3 and no evidence pair); full offline tool batches also green earlier on this branch.",
+      "command": "node --test scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs"
+    }
+  ],
+  "assumptions_resolved": [
+    "Disposition catalogues updated for PR-local semantic sites",
+    "Historical audit entries retired for the 12 preflight lines the Step 6 rewrite removed, per precedent fe6cd5c24",
+    "Generation-3 contract published to widen allowed_paths for the two CI-repair files and the new evidence pair"
+  ],
+  "stop_conditions_hit": []
+}

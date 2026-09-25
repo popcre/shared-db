@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "work_issue": 3505,
+  "outcome": "ready-for-merge",
+  "pr": 3520,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3505/1",
+  "contract_sha256": "9ddb4feefdff1473a5d72533986c589a1bb230aaf246a787e550d40846ef0a42",
+  "base_sha": "9429b4e65d513781bc06e18f59a327f8bf50fe34",
+  "head_sha": "f880582a1c84c0f5150d5d6fa3ca4fcdfcb5c0b1",
+  "files_changed": [
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/repository-maintenance-authorization.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/documents-only-merge-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs",
+      "exit_code": 0,
+      "evidence": "163 pass, 0 fail at f880582a after refreshing onto origin/main."
+    }
+  ],
+  "assumptions_resolved": [
+    "The advisory now posts under 'Documents-only merge advisory', distinct from MERGE_SELF_CONTEXT and the workflow check run name.",
+    "Migration guarded merge authorization added to live branch-protection required checks.",
+    "Regression tests confirm a code PR with only the advisory is refused at merge-authorization audit.",
+    "A disguised advisory description under the grant context is also refused.",
+    "No existing test assertion was weakened or deleted.",
+    "contract.base_sha is the immutable published base; completion.base_sha is the current merge-base with main after refresh."
+  ],
+  "stop_conditions_hit": []
+}

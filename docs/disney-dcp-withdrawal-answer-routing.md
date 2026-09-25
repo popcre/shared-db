@@ -47,7 +47,9 @@ than a new rule.
    whether it is a direct statement, quotation, paraphrase, or interpretation.
    For example, an answer Albert relays must say "Albert reports that Laura
    said...", never claim the agent spoke to Laura. Preserve uncertainty and any
-   limits on the answer's scope. Sign the GitHub comment under repository rules.
+   limits on the answer's scope. Sign the GitHub comment
+   `Posted by MiMo chat <id> on <machine>` (the standing GitHub signature
+   rule: `<id>` is `$MIMO_SESSION_ID`, or `unknown` when empty).
 3. Keep private messages, licensed artwork, screenshots, identifiers and examples
    in the approved private `u2giants/licensor-source-data` repository. Public
    comments and rules contain only the sanitized decision and provenance; never
@@ -71,9 +73,12 @@ than a new rule.
 5. Classify each concrete follow-up from its own actual work. A database SHAPE
    change must resolve the CURRENT orchestrator using
    `node scripts/check-orchestrator-marker.mjs --resolve` and follow that live
-   route. If that command exits NONE (exit 3 — no open marker, no active
-   orchestrator), queue the work and do not dispatch. If it reports UNSAFE
-   (the marker guard failed), stop and resolve the collision before routing.
+   route. If that command returns UNKNOWN (exit 2 — could not determine),
+   treat it as if a marker exists and never collapse it into "none open"; do
+   not dispatch. If that command exits NONE (exit 3 — no open marker, no
+   active orchestrator), queue the work and do not dispatch. If it reports
+   UNSAFE (the marker guard failed), stop and resolve the collision before
+   routing.
    A resolved address is DECLARED, not proven reachable (#2350): a
    well-formed address is not authority to write. Never reuse a stale chat
    UUID, marker, or predecessor's object claims.

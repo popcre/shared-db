@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "work_issue": 2662,
+  "outcome": "ready-for-merge",
+  "pr": 3304,
+  "migration_versions": [
+    "20260923174737"
+  ],
+  "contract_ref": "refs/db-contracts/2662/18",
+  "contract_sha256": "c370b4fcd52167d4f47a78ef4f744950a3a1a045121ecf23825e604c759161a2",
+  "head_sha": "97123cb9fb974f6f58afbead244397f07fe72ff1",
+  "files_changed": [
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260923174737_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog information_schema.role_table_grants"
+  ],
+  "db_writes": [
+    "view api.crm_factory_picker_list",
+    "view api.opa_disney_property",
+    "view api.opa_lucasfilm_property",
+    "view api.opa_marvel_property",
+    "view api.pm_factory_list",
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main...97123cb9 passed on edge-dev after merging main 5653b760."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed on edge-dev at 97123cb9 (version 20260923174737, no backdating). Live-ledger guard not configured; static only."
+    },
+    {
+      "command": "supabase/tests against an ephemeral database",
+      "exit_code": 0,
+      "evidence": "GitHub run35518490787 at849d1e0b018e075a38e46bce3d8137a3a77f3c71 succeeded:190 passed,0 unquarantined failed,1 quarantine passed,12 existing quarantine failures. All6 changed/added test files explicitly PASS. Main integration6910a070 changed none of these tested migration/test files; incoming proof2611 change is separate. Generation 18 changes only the migration filename version; hosted CI reruns this suite on the new head."
+    },
+    {
+      "command": "psql local isolated PostgreSQL18 six-view fixture",
+      "exit_code": 0,
+      "evidence": "42 authenticated denials,6 service reads,4 unchanged browser controls pass. Snapshot exact delta is6 removed authenticated SELECT grants; no added grants, view definition/owner/options changes. Live probe returns true."
+    },
+    {
+      "command": "python -m unittest scripts.test_shared_db_live_proof -q",
+      "exit_code": 0,
+      "evidence": "6 tests passed,0 failures; probe alias normalized to lowercase as required by committed probe contract. SQL semantics unchanged."
+    },
+    {
+      "command": "native refreshed readiness",
+      "exit_code": 0,
+      "evidence": "Exact-head carry validates two approvals/two assignments and unchanged implementation digest; current claim 3294 verified; collision guard clear; SQL static checks pass; risk classifier returns zero findings. No preview or production write."
+    }
+  ],
+  "assumptions_resolved": [
+    "Parent rebind preserved old owner/version/locks and unseen remote work; supported expansion added only parser aliases for six catalog views.",
+    "Current production24h logs zero6-name hits in845279 entries; positive controls23582 plm_item_list/845153 REST requests.",
+    "Local CRM/DAM/PIM/DesignFlow source searches found no six-view consumers; Data Admin has moved into DAM.",
+    "Preview and production reserved migration version absent before authorship.",
+    "Source inventory exact function remains SECURITY DEFINER; existing authenticated RPC behavior test passes unchanged.",
+    "Scope is bounded six-view subset only. Broader issue2662 findings remain open; parent owns review,preview,merge,production.",
+    "Issue2662 is now explicitly bounded to these six views; original broader findings retained in owned successors3327/3328/3329 and2326. PR3304 closes only this bounded outcome. Current-main70b0cad2 integrated reviewer parser repair; SQL migration and six tests remain byte-identical to hosted passing run35518490787.",
+    "Refresh 2026-09-20: integration of faed5557 changes no migration, test SQL, or live probe bytes versus approved 4a76f2db. Hosted and local database evidence above is historical, not rerun; hosted CI will run on the refreshed PR head. Existing authentic approvals require native content-preserving carry-forward validation.",
+    "Refresh 2026-09-20: current main 18c2610526e9b34a9d5af3818853cf1fb63e8979 integrated; all SQL migration, tests and live proof remain byte-identical to approved 4a76f2db. No database write or preview reuse performed.",
+    "Refresh 2026-09-20 against exact main 8cf89c5ea6684d68b5cb433b12dd0542fe71cf0b; SQL, tests and live probe remain byte-identical to approved 4a76f2db. No database writes.",
+    "Evidence-only head move 2026-09-25: head B is head A 3a23378d plus this pair-only rebind so slot-1 failedNames resets at the new exact head. Implementation files and merge base 5653b760 are unchanged since 97123cb9; gemini-3.8-flash-high slot-2 APPROVE at 3a23378d carries forward under #2758 / AGENTS.md 4 rule 2. Contract bytes and hash unchanged, so refs/db-contracts/2662/18 needs no republish. Migration version 20260923174737 unchanged. No implementation, preview, or production write."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "5653b760e445ff27264b82e42596c84afc101ee5"
+}

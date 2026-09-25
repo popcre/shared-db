@@ -835,7 +835,7 @@ export const QUEUE_WORK_TYPES = new Set(['structural','curated-master-data','app
 export const QUEUE_ROUTES = new Set(['shared-db-orchestrator','self-service-additive','curated-master-data-governance','application-session','source-data-session','owner-only','repo-maintenance'])
 export const ROUTES_BY_WORK_TYPE = Object.freeze({
   // self-service-additive (#3199 Phase B2): structural work confined by the
-  // merge-time boundary classifier to additive changes in {crm,pim,dam}. It is
+  // merge-time boundary classifier to additive changes in {crm,pim,dam,plm}. It is
   // a ROUTE, never a work type: NON_STRUCTURAL_EXITS is untouched and shape
   // work stays structural.
   structural: new Set(['shared-db-orchestrator','self-service-additive']),
@@ -1107,7 +1107,7 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
       // registration and admission, so the audit went BLIND to exactly this
       // route's blockers -- an invalid depends_on never surfaced, a cycle
       // through a self-service issue was invisible, and an admission failure
-      // (including the {crm,pim,dam} confinement) never reported as malformed.
+      // (including the {crm,pim,dam,plm} confinement) never reported as malformed.
       // The checks below are the same ones the orchestrator-routed path runs;
       // the only thing withheld is the refill itself (no candidates.push).
       dependencyEdges[issue.number] = scope.dependencies

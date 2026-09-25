@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "work_issue": 3234,
+  "outcome": "ready-for-merge",
+  "pr": 3389,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3234/3",
+  "contract_sha256": "f467c26cd1a22c185eebf028bb6ed7347011fb47dbcd5b29b8b83b2853c085d9",
+  "head_sha": "a5f698f7258c4808ea6d5bc727025d23e826e13e",
+  "base_sha": "be2a1aae38d4890a5d3679f76da3a9e4a8d3b4e3",
+  "files_changed": [
+    ".github/workflows/vendor-identity-authority.yml",
+    "config/vendor-landing-authority.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-vendor-identity-authority.test.mjs",
+      "exit_code": 0,
+      "evidence": "8 tests passed; 0 failed, cancelled, skipped or todo"
+    },
+    {
+      "command": "node scripts/check-vendor-identity-authority.mjs",
+      "exit_code": 0,
+      "evidence": "vendor identity authority OK"
+    },
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "Ran 187 tests; OK"
+    }
+  ],
+  "assumptions_resolved": [
+    "Only coldlion is configured; adding a vendor is a config edit"
+  ],
+  "stop_conditions_hit": []
+}

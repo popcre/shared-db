@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 3349,
+  "outcome": "ready-for-merge",
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3349/1",
+  "contract_sha256": "f5d565ca8fb801b3b1a96e1b90c59f7cded8d167b9d714cf9bc6d955408ef9a5",
+  "head_sha": "370ba5e9e70bdb6f1104ff7fe017b0e80c88008b",
+  "base_sha": "85566ccb392b27022fe9bbb100d308fc587b13cc",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "716 pass, 0 fail at 370ba5e9e, including #3349 classify lease-probe failures as transient or determinate by name, #3349 a caller refusal keeps the operation context after the cause, #3349 a transient lease-listing failure refuses with its real cause and a retry hint, still fail-closed, and the exact-head validation refusal that names the ref and the head."
+    }
+  ],
+  "assumptions_resolved": [
+    "PR #3338 did not cover this defect: it isolated the determinate listing-refusal path only; the ordinary transient fail-open sites remained generic.",
+    "Fail-closed is unchanged: every former return-null site in findBusyReviewers now throws a marked refusal, and callers still refuse; no caller proceeds on an unreadable probe."
+  ],
+  "stop_conditions_hit": []
+}

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3364/7",
   "contract_sha256": "a671992dc92c1d8e488bbbc191db518401e8c341de12617c2e1d682459ea92c8",
-  "head_sha": "60100f7a0d9105a1b3568ce3e510d9517e8e6d4c",
+  "head_sha": "c82a8a68ee8734928e6e65fa1149ff52c1c2b601",
   "base_sha": "e937f5f9630d228052f9107898fd77bed21da233",
   "files_changed": [
     "config/orchestrator-global-invalidators-v1.json",
@@ -21,17 +21,17 @@
   "checks": [
     {
       "exit_code": 0,
-      "evidence": "46 tests pass, 0 fail, 0 skipped at 60100f7a after inventory/disposition cover.",
+      "evidence": "47 tests pass, 0 fail, 0 skipped at c82a8a68e after signature-shape coverage.",
       "command": "node --test scripts/lib/work-dependencies.test.mjs scripts/lib/work-stage-evidence.test.mjs"
     },
     {
       "exit_code": 0,
-      "evidence": "Exit 0 with no output at 60100f7a.",
+      "evidence": "Exit 0 with no output at c82a8a68e.",
       "command": "git diff --check"
     },
     {
       "exit_code": 0,
-      "evidence": "790 tests pass, 0 fail, 0 skipped at 60100f7a after inventory/disposition cover.",
+      "evidence": "790 tests pass, 0 fail, 0 skipped at c82a8a68e.",
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs"
     }
   ],

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3539,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Pixar under Disney and DCP Vault licensor from source system in api.db_data_admin_scraped_source_inventory: group pixar/pixar-opa to disney/Disney with Pixar kept in parentheses on labels, and group *_dcpvault source systems to Disney/Marvel/Lucasfilm / Star Wars before the unresolved fallback regardless of mapping authority (supersedes #2905 for those rows), across property, character and style_guide branches. licensor_key and row_key unchanged. Update docs Canonical licensor grouping.",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "dispatcher": "MiMo orchestrator recovery session for issue #3539",
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "mimo/3539-dcp-licensor-groups",
+  "worktree": "C:/repos/shared-db/.claude/worktrees/3539-dcp-licensor",
+  "allowed_paths": [
+    "supabase/migrations/20260925174850_scraped_source_inventory_pixar_disney_dcpvault_licensor.sql",
+    "docs/db-data-admin-scraped-properties.md",
+    ".agent/work/3539/1/contract.json",
+    ".agent/work/3539/1/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260925174850_scraped_source_inventory_pixar_disney_dcpvault_licensor.sql",
+    "docs/db-data-admin-scraped-properties.md",
+    ".agent/work/3539/1/contract.json",
+    ".agent/work/3539/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "prohibited_actions": [
+    "No shared preview or production database write from this author session",
+    "No merge or manual production dispatch; Guarded Merge belongs to the orchestrator",
+    "Do not change licensor_key or row_key for any row",
+    "Do not drop any row or invent a new licensor group beyond Disney grouping for Pixar and source-system grouping for *_dcpvault"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python scripts/migration_derivation.py",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Claim #3546 holds migration version 20260925174850 for function api.db_data_admin_scraped_source_inventory",
+    "The function body is a full re-derivation of the current body from migration 20260917144950 with only the #3539 grouping and label changes",
+    "Source-system DCP Vault grouping is a fallback after known licensor_key groups, so rows whose authority already names a known key keep that key's group; rows that would have fallen to unresolved now group by source_system"
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate",
+    "Stop if the change needs a file outside allowed_paths",
+    "Stop if acceptance would require changing licensor_key or row_key"
+  ]
+}

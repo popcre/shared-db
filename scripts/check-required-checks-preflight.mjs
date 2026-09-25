@@ -22,11 +22,15 @@ export class PreflightError extends Error {}
 export { SELF_CONTEXT }
 export const SELF_CHECK_RUN = 'merge'
 
-// Routing diagnostic from documents-only-merge-authorization.yml (#2715). It fails
-// on every code PR by design ("guarded code checks required"), so requiring it here
-// made every code PR unmergeable through the guarded lane (#2759). It is never a
-// required context; the mirrored required contexts are still enforced in full.
-export const ADVISORY_CONTEXTS = ['Documents-only merge authorization']
+// Routing diagnostic from documents-only-merge-authorization.yml (#2715) and the
+// advisory commit status posted by the lane manager (#2838/#3505). It succeeds
+// on every code PR by design ("guarded code checks required"), so requiring it
+// here would make every code PR unmergeable through the guarded lane (#2759).
+// It is never a required context; the mirrored required contexts are still
+// enforced in full. #3505: the advisory commit status uses its own context name
+// ("Documents-only merge advisory") so it can never stand in for a real grant;
+// the workflow check run retains the original name.
+export const ADVISORY_CONTEXTS = ['Documents-only merge advisory', 'Documents-only merge authorization']
 
 // A skipped or neutral required check can still be refused by the merge API.
 // Accept only explicit success so that refusal happens before the merge lock.

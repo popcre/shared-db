@@ -286,7 +286,7 @@ test('optional skipped jobs and the running merge job cannot deadlock the prefli
 test('the documents-only routing diagnostic failing on a code PR does not block the guarded merge (#2759)', () => {
   const result = evaluateWithoutRequiredList({
     reason: REASON, mirrorContexts: MIRROR,
-    statuses: [{ context: 'Documents-only merge authorization', state: 'failure' }],
+    statuses: [{ context: 'Documents-only merge advisory', state: 'failure' }],
     checkRuns: [ok('SQL migration guards'), ok('Tools offline tests'),
       { name: 'Documents-only merge authorization', status: 'completed', conclusion: 'failure' }],
   })

@@ -1,0 +1,46 @@
+{
+  "db_writes": [],
+  "checks": [
+    {
+      "evidence": "56 pass, 0 fail, 1 skipped (mode/rename/deletion/instruction negative tests plus workflow integration)",
+      "exit_code": 0,
+      "command": "node --test scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs"
+    },
+    {
+      "evidence": "truth audit OK: call_sites=318 sources=73 derived_digest=8f3c70a80cb6",
+      "exit_code": 0,
+      "command": "node scripts/check-throughput-truth-audit.mjs"
+    },
+    {
+      "evidence": "no whitespace errors",
+      "exit_code": 0,
+      "command": "git diff --check"
+    }
+  ],
+  "assumptions_resolved": [
+    "PR #3279 merged 2026-09-23; the workflow-integration coordination blocker named in the issue is resolved",
+    "The documents-only merge authorization lane is untouched and remains the only grant of its kind"
+  ],
+  "contract_ref": "refs/db-contracts/3383/1",
+  "contract_sha256": "6cd7f6c7378a08d91898235202ebde3837b856743e23be404025b986a0fa66ec",
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
+  "schema_version": 1,
+  "migration_versions": [],
+  "outcome": "ready-for-merge",
+  "db_reads": [],
+  "files_changed": [
+    "scripts/lib/documents-only-change.mjs",
+    "scripts/check-documents-ci-route.mjs",
+    "scripts/check-documents-ci-route.test.mjs",
+    "scripts/documents-fast-ci-workflow.test.mjs",
+    ".github/workflows/documents-fast-ci.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    "docs/verification/throughput-dispositions/.github~workflows~tools-offline-tests.yml.json",
+    "docs/verification/throughput-dispositions/scripts~check-documents-ci-route.mjs.json"
+  ],
+  "pr": 3523,
+  "stop_conditions_hit": [],
+  "work_issue": 3383,
+  "head_sha": "95d0e97a18c19299bbe68a32f08df391dfcab80a"
+}

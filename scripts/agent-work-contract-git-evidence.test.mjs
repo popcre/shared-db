@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { classifyEvidencePair, main, prChangedFiles, verifyGitEvidence } from './agent-work-contract-git-evidence.mjs'
+import { classifyEvidencePair, GitEvidenceError, main, prChangedFiles, verifyGitEvidence } from './agent-work-contract-git-evidence.mjs'
+import { contractHash } from './agent-work-contract.mjs'
 
 const base = 'a'.repeat(40)
 const prBase = 'd'.repeat(40)
@@ -43,7 +44,10 @@ test('both ancestry links and full SHAs are required', () => {
 
 test('the checked-in contract must match its exact immutable published ref', () => {
   assert.throws(() => verifyGitEvidence({ contract, report: { ...report, contract_ref: 'refs/db-contracts/42/2' }, prBaseSha: prBase, prHeadSha: prHead }, io()), /exact immutable ref/)
-  assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ readPublishedContract: () => ({ ...contract, goal: 'wider after the fact' }) })), /does not match/)
+  // A content mutation of the committed record now reaches refuseCommittedMutation
+  // (previously shadowed by an earlier identical hash throw) and is refused as an
+  // immutable-record rewrite.
+  assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ readPublishedContract: () => ({ ...contract, goal: 'wider after the fact' }) })), /immutable|cannot be rewritten/)
 })
 
 test('evidence pair classification distinguishes inherited, current, and half-written evidence', () => {
@@ -154,4 +158,107 @@ test('#2845: rebinding the completion report to the refreshed base and head pass
 test('#2845: a rebound base is still held to the exact-SHA and ancestry rules', () => {
   assert.throws(() => verifyGitEvidence({ contract, report: { ...report, base_sha: 'e1e2e3' }, prBaseSha: prBase, prHeadSha: prHead }, io()), /40-character base SHA/)
   assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ mergeBase: () => 'not-a-sha' })), /could not resolve an exact merge base/)
+})
+
+// --- #3380: gate-level enforcement of generation lineage -----------------------
+
+const parentContract = { ...contract } // v1, generation 1
+const parentDigest = contractHash(parentContract)
+const childV2 = {
+  ...contract,
+  schema_version: 2,
+  generation: 2,
+  evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest },
+}
+const keyedPair2 = ['.agent/work/42/2/completion.json', '.agent/work/42/2/contract.json']
+const childReport = { ...report, contract_ref: 'refs/db-contracts/42/2' }
+const childIo = (over = {}) => ({
+  isAncestor: () => true,
+  changedFiles: (from) => from === base ? ['scripts/fix.mjs'] : keyedPair2,
+  mergeBase: () => base,
+  readPublishedContract: (ref) => {
+    if (ref === 'refs/db-contracts/42/2') return childV2
+    if (ref === 'refs/db-contracts/42/1') return parentContract
+    throw new Error(`unexpected ref ${ref}`)
+  },
+  ...over,
+})
+
+test('#3380: a v2 contract with a verified parent binding passes the gate', () => {
+  assert.equal(verifyGitEvidence({ contract: childV2, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, childIo()), true)
+})
+
+test('#3380: a forged evidence_parent digest is refused in the gate (Major 1)', () => {
+  const forged = {
+    ...childV2,
+    evidence_parent: { work_issue: 42, generation: 1, contract_sha256: '0'.repeat(64) },
+  }
+  const forgedIo = childIo({
+    readPublishedContract: (ref) => (ref === 'refs/db-contracts/42/2' ? forged : parentContract),
+  })
+  assert.throws(
+    () => verifyGitEvidence({ contract: forged, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, forgedIo),
+    /forged parent|does not match the predecessor/,
+  )
+})
+
+test('#3380: a v2 contract whose parent contract is unavailable is refused', () => {
+  const missingParentIo = childIo({
+    readPublishedContract: (ref) => (ref === 'refs/db-contracts/42/2' ? childV2 : null),
+  })
+  assert.throws(
+    () => verifyGitEvidence({ contract: childV2, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, missingParentIo),
+    /predecessor contract is not available/,
+  )
+})
+
+test('#3380: a missing predecessor ref fails closed with a structured error, not an unhandled throw', () => {
+  const throwingIo = childIo({
+    readPublishedContract: (ref) => {
+      if (ref === 'refs/db-contracts/42/2') return childV2
+      throw new GitEvidenceError(`missing predecessor contract: ${ref} does not exist`)
+    },
+  })
+  assert.throws(
+    () => verifyGitEvidence({ contract: childV2, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, throwingIo),
+    /missing predecessor contract/,
+  )
+})
+
+test('#3380: a v2 contract may not fall back to the legacy pair (mismatched pair-vs-identity)', () => {
+  const legacyIo = childIo({
+    changedFiles: (from) => (from === base ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json']),
+  })
+  // The tail predicate and resolveCurrentPair now agree: a v2 contract's
+  // acceptable pairs exclude the legacy paths, so the refusal fires at the
+  // tail check rather than later in resolveCurrentPair.
+  assert.throws(
+    () => verifyGitEvidence({ contract: childV2, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, legacyIo),
+    /must use its keyed pair|only this pull request's own two evidence files/,
+  )
+})
+
+test('#3380: an unknown .agent/ path in the implementation diff is refused', () => {
+  const filesWithJunk = ['scripts/fix.mjs', '.agent/evil.sh']
+  assert.throws(
+    () => verifyGitEvidence({ contract, report: { ...report, files_changed: filesWithJunk }, prBaseSha: prBase, prHeadSha: prHead },
+      io({ changedFiles: (from) => (from === base ? filesWithJunk : ['.agent/contract.json', '.agent/completion.json']) })),
+    /not inert evidence/,
+  )
+})
+
+test('#3380: a committed-record content mutation reaches refuseCommittedMutation in the gate', () => {
+  assert.throws(
+    () => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead },
+      io({ readPublishedContract: () => ({ ...contract, goal: 'mutated after publication' }) })),
+    /immutable/,
+  )
+})
+
+test('#3380: a committed-generation identity mutation is refused with successor guidance', () => {
+  assert.throws(
+    () => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead },
+      io({ readPublishedContract: () => ({ ...contract, generation: 2 }) })),
+    /cannot be rewritten|publish a successor/,
+  )
 })

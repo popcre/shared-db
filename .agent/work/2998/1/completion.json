@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 2998,
+  "generation": 1,
+  "db_reads": [],
+  "db_writes": [],
+  "contract_ref": "refs/db-contracts/2998/1",
+  "files_changed": [
+    ".agent/work/2998/1/contract.json",
+    "scripts/lib/reviewer-draw-readiness.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/reviewer-draw-readiness.test.mjs"
+  ],
+  "stop_conditions_hit": [],
+  "pr": 3530,
+  "head_sha": "bda7b5ae119efc3698c86c655c279f59a41ed49e",
+  "base_sha": "a48ce7b1699e5ab4aa3ae7aff69a0261c3bdb7f3",
+  "outcome": "ready-for-merge",
+  "checks": [
+    {
+      "command": "node --test scripts/reviewer-draw-readiness.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "876 pass, 0 fail across the required battery including 14 new #2998 pre-draw readiness tests"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "GitHub transport conformance OK"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK"
+    },
+    {
+      "command": "node scripts/check-skill-drift.mjs --require-skills",
+      "exit_code": 0,
+      "evidence": "Skill drift check OK"
+    }
+  ],
+  "migration_versions": [],
+  "contract_sha256": "d0ed3f1cb810f0ce656a3b975d976762463648833acb85e7e46ad9bee2dd1fc0",
+  "assumptions_resolved": [
+    "GitHub mergeable=null proceeds rather than refusing (timing race never becomes a false refusal).",
+    "The #3187 wire budget of 10 GitHub API requests is preserved by sharing pre-draw reads and never caching across the post-mutex freshness re-read.",
+    "Existing assertReviewerDrawReadiness draft/conflict/closed-unmerged refusals are unchanged and still run on both draw paths."
+  ]
+}

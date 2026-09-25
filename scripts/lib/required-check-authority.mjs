@@ -89,7 +89,7 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
     if (!named(rule?.type) || !Number.isSafeInteger(rule.ruleset_id) || !named(rule.ruleset_source_type) || !named(rule.ruleset_source)) refuse('effective ruleset source identity is incomplete')
     if (rule.type === 'required_status_checks') {
       if (!Array.isArray(rule.parameters?.required_status_checks)) refuse('effective ruleset check list is unreadable')
-      for (const item of rule.parameters.required_status_checks) requirements.push({ context: item.context, app_id: item.integration_id })
+      for (const item of rule.parameters.required_status_checks) requirements.push({ context: item.context, app_id: item.integration_id ?? null })
     }
   }
   const checks = normalizeRequirements(requirements)

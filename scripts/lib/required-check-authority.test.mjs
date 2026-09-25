@@ -48,6 +48,11 @@ test('refuses transport denial, partial GraphQL, malformed pagination, wrong rep
 test('null classic protection requires a known effective ruleset and empty policy refuses', () => {
   assert.throws(() => readEffectiveRequiredChecks(fixture([], (r) => { r.data.repository.ref.branchProtectionRule = null })), /no checks/)
 })
+test('ruleset any-source check with omitted integration_id is treated as classic app: null', () => {
+  const anySource = { type: 'required_status_checks', ruleset_id: 11, ruleset_source_type: 'Repository', ruleset_source: 'popcre/shared-db', parameters: { required_status_checks: [{ context: 'any-source' }] } }
+  const result = readEffectiveRequiredChecks(fixture([anySource]))
+  assert.deepEqual(result.checks.find((item) => item.context === 'any-source'), { context: 'any-source', app_id: null })
+})
 test('null classic protection probes REST /protection to distinguish 404 from 403', () => {
   // 404 on /protection: genuine absence. With a ruleset providing checks, accept.
   const ok404 = { type: 'required_status_checks', ruleset_id: 9, ruleset_source_type: 'Organization', ruleset_source: 'popcre', parameters: { required_status_checks: [{ context: 'from ruleset', integration_id: 7 }] } }

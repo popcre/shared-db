@@ -7,8 +7,8 @@
     "20260925061508"
   ],
   "contract_ref": "refs/db-contracts/2478/11",
-  "contract_sha256": "a7548daad0f2511428d5967fe282a49abed0d9838481ae04aaf691ee2506d079",
-  "head_sha": "03c0e5cf185035a6d21ce16792344a6d66ede801",
+  "contract_sha256": "7e03e0549b293d5a38f1cad0d254d85acf071922334b5aac7ab91b45217bcd2d",
+  "head_sha": "bd9114601f5ec1c03f2ec81afb349838b54cd409",
   "files_changed": [
     ".agent/work/2478/11/completion.json",
     ".agent/work/2478/11/contract.json",
@@ -65,7 +65,8 @@
     "Merged current main 1d2a0db59104514e31507f96fd401c3925995086 at 3439f21b71ddbc79fb798965b5f1c07fafa103f1; the seven-file pull-request diff and migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 are unchanged.",
     "Isolated current-main implementation at f4d5c6320fcea5400890dff43655f9c74923b24a with only this immutable evidence pair to follow; prior ancestry failure on the refreshed CI head is corrected.",
     "Merged current main 57c2c30793abaa968a121393dbe6eef012398f8a into exact remote PR head 2d5fa814c36b031827fc6a01b616ccc936f51b86 at implementation da92c3172ee88d64445c9ff457f5291e7d5e84bf; both preserved worktrees and claim #2745 remained untouched; exact-head approvals require revalidation after evidence commit.",
-    "Rebind to current PR merge base 5653b760e445ff27264b82e42596c84afc101ee5 at implementation head 775db2e0e9c4c8801a54f1ba6761fe35d7a2de3f (evidence removed from implementation tree per #2845); implementation files and migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 unchanged from prior head da92c3172; claim #2745 and reserved version 20260925061508 untouched."
+    "Rebind to current PR merge base 5653b760e445ff27264b82e42596c84afc101ee5 at implementation head 775db2e0e9c4c8801a54f1ba6761fe35d7a2de3f (evidence removed from implementation tree per #2845); implementation files and migration blob 869c0fe2b13258041cd71f47bfdc30b744090516 unchanged from prior head da92c3172; claim #2745 and reserved version 20260925061508 untouched.",
+    "Evidence pair rebound after version supersession to 20260925061508; both contract and completion carried together at current head."
   ],
   "stop_conditions_hit": [],
   "base_sha": "4b74a86965e937917a99d05fd5e427b7ac4388b3"

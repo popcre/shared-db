@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
 
-from apply_attempt_recovery import (
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from apply_attempt_recovery import (  # noqa: E402
     ApplyRecoveryError,
     RecoveryClaim,
     ApplyAttemptEvidence,

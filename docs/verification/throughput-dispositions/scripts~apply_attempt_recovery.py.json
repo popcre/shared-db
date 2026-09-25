@@ -3,46 +3,52 @@
   "source": "scripts/apply_attempt_recovery.py",
   "sites": [
     {
-      "site": "scripts/apply_attempt_recovery.py:187",
-      "semantic_key": "scripts/apply_attempt_recovery.py:331421232bb43909beccb37f30221dfd7150992063dc9c79f3e69ec5b4ad97f3:1",
-      "line_sha256": "331421232bb43909beccb37f30221dfd7150992063dc9c79f3e69ec5b4ad97f3",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
-    },
-    {
-      "site": "scripts/apply_attempt_recovery.py:185",
-      "semantic_key": "scripts/apply_attempt_recovery.py:3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996:1",
-      "line_sha256": "3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
-    },
-    {
-      "site": "scripts/apply_attempt_recovery.py:184",
-      "semantic_key": "scripts/apply_attempt_recovery.py:6902b7b5b9e7e66af9ca1ceef2441cacbdce87a0748bbe99ef0e3deea619541b:1",
-      "line_sha256": "6902b7b5b9e7e66af9ca1ceef2441cacbdce87a0748bbe99ef0e3deea619541b",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
+      "site": "scripts/apply_attempt_recovery.py:167",
+      "semantic_key": "scripts/apply_attempt_recovery.py:ce284d3f1a7298e7d0d252f642f6bdc3774cb2b73c9f842219dc5d1999ab3344:context-bbc5a6de5f145eeeaf6ceae865a0c695f8607fc2b24f6b84447533d5ca18a11b",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:ce284d3f1a7298e7d0d252f642f6bdc3774cb2b73c9f842219dc5d1999ab3344:1",
+      "line_sha256": "ce284d3f1a7298e7d0d252f642f6bdc3774cb2b73c9f842219dc5d1999ab3344",
+      "disposition": "excluded",
+      "reason": "Comment stating the recovery semantic that a clean non-apply is not a re-apply grant; it makes no assertion that a database object or migration is absent."
     },
     {
       "site": "scripts/apply_attempt_recovery.py:178",
-      "semantic_key": "scripts/apply_attempt_recovery.py:b8ebb4b7e1d7823e724977d4d5c84f806da13346ce2c8ba899bfb2ff6c67665c:1",
+      "semantic_key": "scripts/apply_attempt_recovery.py:b8ebb4b7e1d7823e724977d4d5c84f806da13346ce2c8ba899bfb2ff6c67665c:context-cbd2a7d7aad6a92c38f8e876a69062b27f2de377d684db23a8951ca5914aa93b",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:b8ebb4b7e1d7823e724977d4d5c84f806da13346ce2c8ba899bfb2ff6c67665c:1",
       "line_sha256": "b8ebb4b7e1d7823e724977d4d5c84f806da13346ce2c8ba899bfb2ff6c67665c",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
-    },
-    {
-      "site": "scripts/apply_attempt_recovery.py:167",
-      "semantic_key": "scripts/apply_attempt_recovery.py:ce284d3f1a7298e7d0d252f642f6bdc3774cb2b73c9f842219dc5d1999ab3344:1",
-      "line_sha256": "ce284d3f1a7298e7d0d252f642f6bdc3774cb2b73c9f842219dc5d1999ab3344",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
+      "disposition": "excluded",
+      "reason": "Computes which claimed migration hashes are absent from the ledger content so recovery can refuse; it does not assert that a schema object is missing."
     },
     {
       "site": "scripts/apply_attempt_recovery.py:180",
-      "semantic_key": "scripts/apply_attempt_recovery.py:ef60699dcb0fac25e7e1b53ee5d30e10c8ba6311aad613d46ddb118f1878d158:1",
+      "semantic_key": "scripts/apply_attempt_recovery.py:ef60699dcb0fac25e7e1b53ee5d30e10c8ba6311aad613d46ddb118f1878d158:context-91b824a1720498cc6a69e41abd3bad4c40c9c77c42a9210474fdb42fe08f359a",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:ef60699dcb0fac25e7e1b53ee5d30e10c8ba6311aad613d46ddb118f1878d158:1",
       "line_sha256": "ef60699dcb0fac25e7e1b53ee5d30e10c8ba6311aad613d46ddb118f1878d158",
-      "disposition": "enriched",
-      "reason": "New fail-closed idempotent apply-attempt recovery helper for issue #3397. This call site implements trusted-adapter evaluation, stable claim binding, or exclusive-lock ledger verification as designed in the Step 11 recovery contract."
+      "disposition": "excluded",
+      "reason": "Accumulator initialization for the ledger-gap refusal list; carries no assertion about any database object or migration being absent."
+    },
+    {
+      "site": "scripts/apply_attempt_recovery.py:184",
+      "semantic_key": "scripts/apply_attempt_recovery.py:6902b7b5b9e7e66af9ca1ceef2441cacbdce87a0748bbe99ef0e3deea619541b:context-8eb20cd86d73c84e0dd8b8a37ced8431d43234d545731c22f3f2bb67c666bb1d",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:6902b7b5b9e7e66af9ca1ceef2441cacbdce87a0748bbe99ef0e3deea619541b:1",
+      "line_sha256": "6902b7b5b9e7e66af9ca1ceef2441cacbdce87a0748bbe99ef0e3deea619541b",
+      "disposition": "excluded",
+      "reason": "Records a ledger-content gap into the refusal list so recovery cannot proceed; it is not a claim that a schema object was never created."
+    },
+    {
+      "site": "scripts/apply_attempt_recovery.py:185",
+      "semantic_key": "scripts/apply_attempt_recovery.py:3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996:context-38817a57adaa1224d61136eb1c3d8cf0f5c71ac6b41cb184e421c327206a0c89",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996:1",
+      "line_sha256": "3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996",
+      "disposition": "excluded",
+      "reason": "Branch that refuses recovery when the ledger lacks claimed migration content; the condition guards a refusal, not an absence assertion."
+    },
+    {
+      "site": "scripts/apply_attempt_recovery.py:187",
+      "semantic_key": "scripts/apply_attempt_recovery.py:331421232bb43909beccb37f30221dfd7150992063dc9c79f3e69ec5b4ad97f3:context-fb563d4c916a3d012bfbd23d72f01a5df2939edcedc9a3e9e73e83514a89352d",
+      "legacy_semantic_key": "scripts/apply_attempt_recovery.py:331421232bb43909beccb37f30221dfd7150992063dc9c79f3e69ec5b4ad97f3:1",
+      "line_sha256": "331421232bb43909beccb37f30221dfd7150992063dc9c79f3e69ec5b4ad97f3",
+      "disposition": "excluded",
+      "reason": "Refusal message naming ledger-content gaps before marking recovered; it reports the gap for the caller and never asserts a schema object is absent."
     }
   ]
 }

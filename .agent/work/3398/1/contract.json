@@ -1,0 +1,44 @@
+{
+  "work_type": "repo-maintenance",
+  "worktree": "C:/repos/shared-db-wt-3398-role-claims",
+  "generation": 1,
+  "branch": "3398-role-claims",
+  "base_sha": "85566ccb392b27022fe9bbb100d308fc587b13cc",
+  "route": "repo-maintenance",
+  "file_writes": [
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    ".github/workflows/tools-offline-tests.yml",
+    ".agent/work/3398/1/contract.json",
+    ".agent/work/3398/1/completion.json"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/sql-role-operations.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Collision parser integration into manage-migration-author-lanes.mjs requires confirmed owner clearance and is deferred",
+    "Initial scope is the independent helper and its tests only"
+  ],
+  "prohibited_actions": [
+    "No database structure change, database write, migration edit, or production action",
+    "No role creation or mutation on any database",
+    "Do not edit scripts/manage-migration-author-lanes.mjs (held by other active work)",
+    "Do not edit the shared checkout; work stays in the worktree"
+  ],
+  "work_issue": 3398,
+  "dispatcher": "MiMo repo-maintenance session for issue #3398",
+  "allowed_paths": [
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    ".github/workflows/tools-offline-tests.yml",
+    ".agent/work/3398/1/contract.json",
+    ".agent/work/3398/1/completion.json"
+  ],
+  "worker": "MiMo chat unknown on edge-dev",
+  "db_reads": [],
+  "goal": "Support exact cluster-global database-role reservations and collision checks: model CREATE/ALTER/DROP ROLE, rename targets, and membership GRANT/REVOKE with quoted identifier case preservation (#3398)",
+  "db_writes": [],
+  "schema_version": 1
+}

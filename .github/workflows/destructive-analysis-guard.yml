@@ -31,7 +31,7 @@ jobs:
   proposal-checklist:
     name: Destructive proposal checklist
     if: github.event_name == 'issues'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
   destructive-sql:
     name: Destructive SQL outside migrations
     if: github.event_name != 'issues'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

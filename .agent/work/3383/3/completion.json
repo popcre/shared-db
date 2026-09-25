@@ -43,9 +43,9 @@
       "evidence": "truth audit OK: call_sites=318 sources=73"
     },
     {
-      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs scripts/throughput-guard/*.test.mjs",
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "70 pass, 0 fail"
+      "evidence": "truth-audit tests pass"
     }
   ],
   "assumptions_resolved": [

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 3457,
-  "outcome": "ready-for-review",
+  "outcome": "ready-for-merge",
   "pr": null,
   "migration_versions": [
     "20260924174155"

@@ -1125,7 +1125,7 @@ test('active reviewer lease parser round-trips exact identity and fails closed',
   assert.throws(()=>parseReviewLease({message:message.replace('head='+('a'.repeat(40)),'head=not-a-sha')}),/malformed/)
   const legacy=parseReviewLease({message:message.replace('a'.repeat(40),'abcdef1')})
   const io=reviewIo(),sha=io.makeOwnerCommit(message.replace('a'.repeat(40),'abcdef1')),ref=reviewActiveRef(reviewer)
-  assert.equal(legacy.headSha,'abcdef1');io.requiresExactReviewHeadSha=true;io.refs.set(ref,sha);assert.equal(findBusyReviewers(io),null)
+  assert.equal(legacy.headSha,'abcdef1');io.requiresExactReviewHeadSha=true;io.refs.set(ref,sha);assert.throws(()=>findBusyReviewers(io),/unreadable/)
 })
 
 test('low or unreadable quota refuses before owner commit and mutex acquisition',()=>{
@@ -1406,13 +1406,13 @@ test('a recorded verdict and a moved head both free the reviewer that held them'
   assert.ok(!findBusyReviewers(movedIo).has('grok-4.6'))
 })
 
-test('an unreadable busy probe reports null, never an empty busy set',()=>{
-  // Every production caller refuses on null; see the findBusyReviewers header.
+test('an unreadable busy probe throws with its cause, never an empty busy set',()=>{
+  // Every production caller refuses; the probe now carries which read failed.
   const {io}=busyIo()
   const blind={...io,readRef:()=>{throw new Error('HTTP 500')}}
-  assert.equal(findBusyReviewers(blind),null)
+  assert.throws(()=>findBusyReviewers(blind),/unreadable \(transient cutover read failure.*HTTP 500.*Retry/)
   const noReadRef={...io};delete noReadRef.readRef
-  assert.equal(findBusyReviewers(noReadRef),null)
+  assert.throws(()=>findBusyReviewers(noReadRef),/unreadable \(determinate readRef capability check failure/)
 })
 
 test('the rotation helper ignores busy state entirely (no same-reviewer ceiling)',()=>{
@@ -8448,10 +8448,63 @@ test('#2694 a determinate lease-listing refusal names its real cause instead of 
   assert.doesNotMatch(error.message,/unreadable/,'a ceiling refusal is determinate, not an unreadable namespace')
 })
 
-test('#2694 a transient lease-listing failure still fails open rather than stopping the lane',()=>{
+test('#2694 a transient lease-listing failure names its cause and the retry',()=>{
   const transient=new LaneError('HTTP 502: bad gateway')
   assert.equal(isReviewRefListingRefusal(transient),false)
-  assert.equal(findBusyReviewers(leaseListingIo(transient)),null)
+  assert.throws(()=>findBusyReviewers(leaseListingIo(transient)),/unreadable \(transient.*failure.*HTTP 502.*Retry/)
+})
+
+// Issue #3349. A transient read failure in the lease probe carries its cause --
+// which read, which ref, and the transport error -- so the caller names the real
+// reason instead of the generic "active reviewer leases are unreadable".
+test('#3349 a transient read failure names the read, the ref, and the retry',()=>{
+  const {io}=busyIo()
+  const blind={...io,readRef:(ref)=>{const e=new Error('HTTP 502: bad gateway');throw e}}
+  // Cutover read is the first readRef call in findBusyReviewers.
+  assert.throws(
+    ()=>findBusyReviewers(blind),
+    (error)=>{
+      assert.match(error.message,/active reviewer leases are unreadable \(transient cutover read failure/)
+      assert.match(error.message,/HTTP 502: bad gateway/)
+      assert.match(error.message,/Retry the operation/)
+      assert.ok(error.leaseReadFailure,'the error carries a machine-readable leaseReadFailure detail')
+      assert.equal(error.leaseReadFailure.kind,'transient')
+      assert.equal(error.leaseReadFailure.read,'cutover read')
+      return true
+    })
+})
+
+test('#3349 a determinate failure names the retirement command',()=>{
+  const {io}=busyIo()
+  const noReadRef={...io};delete noReadRef.readRef
+  assert.throws(
+    ()=>findBusyReviewers(noReadRef),
+    (error)=>{
+      assert.match(error.message,/active reviewer leases are unreadable \(determinate readRef capability check failure/)
+      assert.match(error.message,/--reap-abandoned-review-leases --apply-recovery/)
+      assert.equal(error.leaseReadFailure.kind,'determinate')
+      return true
+    })
+})
+
+test('#3349 a per-ref read failure names the exact ref that failed',()=>{
+  const {io}=busyIo()
+  let calls=0
+  const blind={...io,readRef:(ref)=>{
+    calls++
+    // First call is the cutover ref; succeed it so the failure is per-ref.
+    if(ref.includes('cutover')||calls===1)return 'cutover-sha'
+    throw new Error('HTTP 503: service unavailable')
+  }}
+  // Provide a snapshot so the per-ref path is exercised
+  blind.readActiveReviewLeases=()=>{const m=new Map();m.set('refs/db-review-active/ghost',{sha:'f'.repeat(40),commit:{message:'db-coordination reviewer-lease generation=1 reviewer=ghost issue=1 pr=1 head='+('a'.repeat(40))+' sequence=1'}});return m}
+  assert.throws(
+    ()=>findBusyReviewers(blind),
+    (error)=>{
+      assert.match(error.message,/unreadable/)
+      assert.match(error.message,/HTTP 503|malformed|ghost/)
+      return true
+    })
 })
 
 // MEDIUM-HIGH 6. The capacity report read the lossy reviewer-keyed Map, so two
@@ -8786,7 +8839,7 @@ test('reap refuses a legacy lease whose PR state is unreadable, and accepts REST
   io.readReviewStates=(rows)=>{const m=readStates(rows);for(const v of m.values())delete v.pr;return m}
   io.getPr=()=>{throw new Error('HTTP 502')}
   const before=new Map(io.refs)
-  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable; nothing was reaped/)
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable.*Retry the operation/)
   assert.deepEqual(io.refs,before)
   io.readReviewStates=readStates;io.getPr=getPr
   prs.set(21,{number:21,state:'closed',merged_at:'2026-09-01T00:00:00Z',head:{sha:'a'.repeat(40)}})
@@ -8996,7 +9049,7 @@ test('#2987 a verdict-namespace ceiling refusal names its real cause and the arc
   const capacity=(()=>{try{findBusyReviewers(io,[],{keepUnreadableLeases:true});return null}catch(caught){return caught}})()
   assert.match(capacity?.message??'',/verdict namespace cannot be listed/)
   const transient={...io,listReviewRefsPaged:()=>{throw new LaneError('HTTP 502')}}
-  assert.equal(findBusyReviewers(transient),null,'a transient verdict read still fails closed as before')
+  assert.throws(()=>findBusyReviewers(transient),/unreadable \(transient.*failure.*Retry/,'a transient verdict read must name its cause and the retry')
 })
 
 // A LEGACY CLAIM TITLE MUST NOT BLANK THE WHOLE READ-ONLY AUDIT. On 2026-09-16 the
@@ -10044,7 +10097,7 @@ test('a read failure after the mutex is held releases the mutex (#3449)',()=>{
   io.createRef=(r,sha)=>{if(r===MUTEX_REF)held=true;return create(r,sha)}
   io.readReviewStates=(rows)=>{const m=readStates(rows);if(held)for(const v of m.values())delete v.pr;return m}
   io.getPr=(...a)=>{if(held)throw new Error('HTTP 502');return getPr(...a)}
-  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable; nothing was reaped/)
+  assert.throws(()=>reapAbandonedReviewLeases({applyRecovery:true},new Date(),io),/unreadable.*Retry the operation/)
   assert.ok(held);assert.equal(io.refs.has(MUTEX_REF),false);assert.ok(io.refs.has(ref))
 })
 

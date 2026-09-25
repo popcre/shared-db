@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3387/2",
   "contract_sha256": "b1e7188bfc5cfa5bd48ab5826d769a74f8df5f80d38f647cf1493b8fa0773b74",
-  "head_sha": "fc06dc0afefd5e172daac4e0f7a8c5ede3ab49e0",
-  "base_sha": "fdb4c3a8ecc75e53253b280f77cb180261b2fc2f",
+  "head_sha": "b03655490ba984689c2ac6074062c0f6e35f6271",
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
   "files_changed": [
     ".agent/work/3387/2/completion.json",
     ".agent/work/3387/2/contract.json",
@@ -23,12 +23,12 @@
     {
       "exit_code": 0,
       "command": "node --test scripts/run-governed-review.test.mjs scripts/lib/review-packet.test.mjs",
-      "evidence": "90 tests passed; 0 failed, cancelled, skipped or todo"
+      "evidence": "96 tests passed; 0 failed, cancelled, skipped or todo"
     },
     {
       "exit_code": 0,
       "command": "node scripts/check-throughput-truth-audit.mjs",
-      "evidence": "313 sites in 70 sources, derived digest 15a460d12d30"
+      "evidence": "319 sites in 73 sources, derived digest de190c283e38"
     }
   ],
   "assumptions_resolved": [

@@ -19,9 +19,9 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/documents-only-merge-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-documents-only-pull-request.test.mjs scripts/lib/documents-only-change.test.mjs scripts/merge-queue-contract.test.mjs",
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/repository-maintenance-authorization.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/documents-only-merge-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs",
       "exit_code": 0,
-      "evidence": "226 pass, 0 fail"
+      "evidence": "226 pass, 0 fail (includes documents-only, preflight, merge-queue, and classifier suites)"
     },
     {
       "command": "node scripts/update-required-checks.mjs --add 'Migration guarded merge authorization' --repo popcre/shared-db --apply",

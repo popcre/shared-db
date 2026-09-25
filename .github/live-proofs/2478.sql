@@ -27,7 +27,7 @@ select (
   and (select bool_and(not has_function_privilege('anon', oid, 'EXECUTE')
                        and not has_function_privilege('authenticated', oid, 'EXECUTE')) from helper)
   and (select count(*) from consumers) = 2
-  and (select bool_and(prosecdef and def ~ 'style_group_key_for_sku\s*\(') from consumers)
+  and (select bool_and(prosecdef and def ~ 'style_group_key_for_sku[[:space:]]*[(]') from consumers)
   and (select bool_and(has_function_privilege('postgres', oid, 'EXECUTE')) from consumers)
   and public.style_group_key_for_sku('Licensor/Property/AB12345CD/art/AB12345CD01.psd') = 'AB12345CD'
   and public.style_group_key_for_sku('Art/ab12/AB12345CD01.psd') is null

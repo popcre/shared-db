@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 3458,
+  "outcome": "ready-for-merge",
+  "pr": 3487,
+  "migration_versions": [
+    "20260925171844"
+  ],
+  "contract_ref": "refs/db-contracts/3458/2",
+  "contract_sha256": "2e4bc4b7b1ebb77f0d0ff0d168ea0c386fb94265d853cc49762f268f4982e7c0",
+  "head_sha": "98159ce71369bdaac656deef559892402dd9510f",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "files_changed": [
+    ".agent/work/3458/1/behavior_tests.sql",
+    ".agent/work/3458/1/caller_contract.md",
+    "supabase/migrations/20260925171844_popsg_refresh_steps_under_ceiling.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at implementation head 98159ce71369bdaac656deef559892402dd9510f on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Ran 44 tests OK at implementation head 98159ce71369bdaac656deef559892402dd9510f on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no whitespace errors at implementation head 98159ce71369bdaac656deef559892402dd9510f on merge base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20."
+    }
+  ],
+  "assumptions_resolved": [
+    "overload of the claimed name stays inside claim #3483 writes: function public.refresh_style_guide_matviews",
+    "legacy (uuid,integer) body left byte-identical so popsg_refresh_search_sync_queue_v1 md5(prosrc) stays green",
+    "matview steps proven by function-body shape because REFRESH CONCURRENTLY cannot run inside the test transaction; search step proven live in behavior_tests.sql",
+    "Generation 2 contract is immutable at refs/db-contracts/3458/2; scope and allowed_paths unchanged.",
+    "Implementation head carries no evidence pair; the evidence commit that follows changes only the two JSON files.",
+    "Review findings addressed: completion stamp gated on v_batch > 0, CONCURRENTLY index checks tightened, caller-contract stamp docs corrected for batch=0, race-safety comment fixed. Documented gaps: queued_at index (bounded by change volume), crawl_run_id index looseness (inherited), matview steps body-shape only."
+  ],
+  "stop_conditions_hit": []
+}

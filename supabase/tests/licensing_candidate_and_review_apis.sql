@@ -19,6 +19,9 @@ begin
     values ('disney_opa','character','923570001'),('disney_opa','property',repeat('9',100)),
            ('disney_opa','property','923579999'),('disney_opa','property','-923579999'),
            ('disney_opa','property','-'||repeat('9',100));
+  -- L2: 19-digit bigint boundary must be readable, not abstain.
+  insert into plm.source_resolution(source_system,entity_kind,source_id)
+    values ('disney_opa','property','9000000000000000000');
   insert into plm.source_resolution(source_system,entity_kind,source_id,resolution_status,core_licensor_id)
     select 'warner:zz_fixture2357_queue','licensor',s,s,case when s='matched' then a end
     from unnest(array['unresolved','ambiguous','deferred','matched','no_match','rejected']) s;
@@ -43,6 +46,8 @@ begin
   if to_jsonb(r)::text like '%ZZ PRIVATE TEXT%' then raise exception '2357 entity free text leaked'; end if;
   if not r.needs_decision or r.is_ambiguous or not r.has_resolution_reason or r.core_property_id is not null
     then raise exception '2357 entity decision flags wrong'; end if;
+  -- H1: is_open must match the queue backlog definition (unresolved, ambiguous, deferred).
+  if not r.is_open then raise exception '2357 entity is_open must be true for unresolved'; end if;
   select * into strict r from api.licensing_relationship_candidates where source_left_id='ZZ2357-left' and licensor_id=a;
   if r.scope_row_count<>0 or r.source_purposes<>'{}'::text[] or r.relationship_evidence_permitted
      or not r.has_source_evidence or not r.needs_decision or r.is_ambiguous or not r.has_resolution_reason
@@ -59,6 +64,14 @@ begin
     and source_system='warner:zz_fixture2357_queue' and licensor_id is null and item_kind='licensor'
     and resolution_status in ('unresolved','ambiguous','deferred') and item_count=1;
   if n<>3 then raise exception '2357 entity queue lost open statuses or NULL licensor grain'; end if;
+  -- H1: deferred must be is_open=true but needs_decision=false in candidates,
+  -- matching the queue's backlog definition exactly.
+  select * into strict r from api.licensing_entity_candidates
+    where source_system='warner:zz_fixture2357_queue' and source_id='deferred';
+  if not r.is_open or r.needs_decision then raise exception '2357 deferred must be is_open=true needs_decision=false (H1)'; end if;
+  select * into strict r from api.licensing_entity_candidates
+    where source_system='warner:zz_fixture2357_queue' and source_id='matched';
+  if r.is_open or r.needs_decision then raise exception '2357 matched must be is_open=false needs_decision=false'; end if;
   if exists(select 1 from api.licensing_resolution_queue where source_system='warner:zz_fixture2357_queue'
     and resolution_status in ('matched','no_match','rejected')) then raise exception '2357 entity queue includes closed decisions'; end if;
   reset role;
@@ -124,6 +137,9 @@ begin
   if not r.opa_evidence_readable or r.opa_observation_count<>0 then raise exception '2357 valid negative source ID must be readable'; end if;
   select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='-'||repeat('9',100);
   if r.opa_evidence_readable or r.opa_observation_count is not null then raise exception '2357 negative overflow must abstain'; end if;
+  -- L2: 19-digit bigint boundary must be readable (was silently abstained at 18-digit cap).
+  select * into strict r from api.licensing_entity_candidates where source_system='disney_opa' and source_id='9000000000000000000';
+  if not r.opa_evidence_readable then raise exception '2357 19-digit bigint ID must be readable (L2)'; end if;
   perform count(*) from api.licensing_relationship_candidates;
   perform count(*) from api.licensing_resolution_queue;
   reset role;

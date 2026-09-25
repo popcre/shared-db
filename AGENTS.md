@@ -8,6 +8,11 @@
 
 # AGENTS.md — cross-app coordination playbook
 
+## Current operating route
+
+- [current-workflow.md](docs/agents/current-workflow.md)
+- [plan_shared_db_workflow_refactor.md](plan_shared_db_workflow_refactor.md)
+
 ## Task declaration
 
 Before starting work, run `ai-task-gates start --class <class>` from the
@@ -32,6 +37,10 @@ and dissemination process is
 ## Historical item merchandise-group classification
 
 Before interpreting `full_item_master.csv`, changing item-description parsing, or reporting historical MG match counts, read [`docs/agents/active-contracts-and-plans.md`](docs/agents/active-contracts-and-plans.md) first; it carries this section in full.
+
+## Disney DCP Vault withdrawal answers
+
+The withdrawal-confirmation question is **settled** in [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md) under "Disney DCP Vault artwork withdrawal signals" (recorded 2026-09-25, provenance on issue #3347). Read that rule before answering or acting on it — the question is not open. If anyone relays a later statement about Disney/DCP Vault artwork withdrawal, removal status or missing artwork — including an ambiguous one, or one from an unnamed or non-Laura/Ilona speaker — read [`docs/disney-dcp-withdrawal-answer-routing.md`](docs/disney-dcp-withdrawal-answer-routing.md) first: record the sanitized answer and its provenance at the durable issue named there, apply it only to the behavior it actually settles, and classify any follow-up from its own scope. Never contact anyone on Albert's behalf.
 
 ## How this file is organized (issue #3481)
 
@@ -74,8 +83,8 @@ the map below.
 | [`docs/agents/references-and-runbooks.md`](docs/agents/references-and-runbooks.md) | Project refs, exposed schemas, Supabase CLI and credentials, further reading, known traps | §8, §8.1, §9, §10, §10.1–10.3 and §11 (full runbook: [`runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md)) |
 | [`docs/agents/standing-facts.md`](docs/agents/standing-facts.md) | Starting any session in this repo | §12, §12.1 |
 
-Kept in this file: task declaration, companywide business rules, session wrap-up convention,
-§1, §2, §3, §7.
+Kept in this file: task declaration, companywide business rules, Disney DCP
+Vault withdrawal answers, session wrap-up convention, §1, §2, §3, §5.0-C, §7.
 
 ## Session wrap-up convention
 
@@ -125,3 +134,48 @@ the next. Where possible, prefer one **additive** change that satisfies both app
 rather than two competing edits. If they genuinely conflict, explain the trade-off
 to the owner in plain English and let them choose order.
 
+
+## Running pull-request waits (kept in this file)
+
+### 5.0-C Run CI and the governed review in PARALLEL, and batch fixes into ONE head (issue #3002, added 2026-09-20)
+
+Observed 2026-09-15 on PRs #2980 and #2981: sessions waited for a full green CI
+run before requesting the governed review that must approve the merge, then
+pushed once per review finding, rerunning the whole matrix each time (the Windows
+jobs alone are ~30 minutes). That roughly doubles wall-clock per pull request.
+The cause is structural, not carelessness: review evidence binds to the exact
+head SHA, so any fix pushed after a review voids that review, and sessions learn
+to "spend" only one review.
+
+**The rule, from now on:**
+
+1. **Start the governed review as soon as a head is pushed, in parallel with
+   CI.** Do not wait for a green matrix first. Accept that a required fix costs
+   one re-review — that is cheaper than serialising two long waits, and a
+   re-review is exactly what the exact-head rule is for.
+2. **Batch fixes into a single new head.** Collect every finding from the review
+   round *and* every CI failure, fix them together, and push once. One push per
+   finding is forbidden: each one reruns the full matrix and voids the review
+   again.
+3. **Hold the wait inside the turn.** Watch both with the repository's bounded,
+   event-aware waiter, concurrently. Never end a turn to report that something
+   is still running.
+
+**What this does NOT change — and must never be traded for speed:**
+
+- The exact-head APPROVE requirement stands exactly as enforced by
+  `scripts/check-exact-head-approval.mjs`. A review
+  bound to an earlier head does not authorize a later head, and the only
+  equivalence permitted is the narrow, already-enforced #2758 rule
+  (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request
+  diff is byte-identical, ignoring only `.agent/` evidence files.
+- **The proposal in #3002 to accept a review bound to a head whose only later
+  change is test or evidence files is REFUSED.** Tests are code: a changed test
+  changes what the change proves, and a reviewer who never saw it never reviewed
+  it. Widening equivalence beyond `.agent/` would be reviewing less, not
+  reviewing faster.
+- No required check becomes optional, no gate is skipped, and no reviewer
+  requirement is dropped. Parallelise; do not delete.
+
+`scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
+place, and fails the tools-offline check if either is removed or contradicted.

@@ -170,7 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f scripts/lib/sql-role-operations.test.mjs || {
-            echo "::error::Missing scripts/lib/sql-role-operations.test.mjs"; exit 1; }
+            echo "::error::required test file absent: scripts/lib/sql-role-operations.test.mjs"; exit 1; }
           node --test scripts/lib/sql-role-operations.test.mjs
 
       - name: Run the merge queue contract, configurator, and workflow coverage tests (#2530)

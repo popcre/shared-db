@@ -1446,7 +1446,8 @@ test('the active rotation is exactly the current models, in a stable order',()=>
   // RETIRED_REVIEWERS and this assertion reverts with it.
   // kimi-k3 was paused again on 2026-09-22 (owner instruction): the account has
   // been out of credit since 2026-09-17. With deepseek-v4.1-flash added on
-  // 2026-09-23 (issue #3468) the live pool is exactly five.
+  // 2026-09-23 (issue #3468) and stepfun-step-5-preview on 2026-09-25 (issue
+  // #3555, drawn only on Linux machines) the live pool is exactly six.
   assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash','stepfun-step-5-preview'])
   assert.ok(RETIRED_REVIEWERS.includes('kimi-k3'),'kimi-k3 stays paused until its account has credit again')
   assert.equal(reviewerReadsRepository('kimi-k3'),true,'pausing the account must not invalidate the verdicts it already recorded')
@@ -2788,6 +2789,7 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
   states.set(heads.get(0),livePair)
   // 'free' is the fifth classification and it is a property of an ABSENT lease, so
   // it is proved by removing one rather than by needing a spare roster name.
+  // The last roster name (stepfun-step-5-preview since 2026-09-25) is the one freed.
   const freed=ACTIVE_REVIEWERS.at(-1).name
   snapshot.delete(reviewActiveRef(freed));io.refs.delete(reviewActiveRef(freed))
   const withFree=reviewerCapacityReport(io,now)
@@ -10181,10 +10183,12 @@ test('stepfun-step-5-preview is drawable, reads the repository, and emits a gove
 })
 
 test('a machine whose preflight reports stepfun unsupported-platform never draws it',()=>{
-  const rows=ACTIVE_REVIEWERS.map((r)=>JSON.stringify(r.provider==='stepfun'
-    ?{provider:'stepfun',status:'unsupported-platform',failure_class:'unsupported-platform',usable:false,admission:{state:'unknown',reason:'check-failed'}}
-    :{provider:r.provider,status:'installed-healthy',usable:true,admission:{state:'eligible',reason:'no-applicable-backoff'}})).join('\n')
-  const state=reconcilePreflightRows(rows,ACTIVE_REVIEWERS)
-  assert.equal(state.get('stepfun').usable,false)
-  assert.ok([...state.values()].some((row)=>row.usable===true),'the other reviewers stay drawable')
+  const io=reviewIo()
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,row.provider==='stepfun'
+    ?{...usableAdmission(row),status:'unsupported-platform',failure_class:'unsupported-platform',usable:false}
+    :usableAdmission(row)]))
+  const {eligible,unusable}=allocatableReviewers(io)
+  const expected=reviewersForOrchestrator('claude').filter((r)=>r.provider!=='stepfun').map((r)=>r.name)
+  assert.deepEqual(eligible.map((r)=>r.name),expected,'every other independent reviewer stays drawable, exactly')
+  assert.equal(unusable.get('stepfun-step-5-preview')?.status,'unsupported-platform')
 })

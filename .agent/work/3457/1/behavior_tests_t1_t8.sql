@@ -72,11 +72,12 @@ insert into public.assets (id, filename, relative_path, file_type, quick_hash, m
   ('34570000-0000-4000-8000-000000000012','zz3457-sem-low.ai','zz3457-sem-low.ai','ai','zz3457-sl',now(),'https://example.invalid/sl.png',false),
   ('34570000-0000-4000-8000-000000000013','zz3457-mixed.ai','zz3457-mixed.ai','ai','zz3457-mx',now(),'https://example.invalid/mx.png',false);
 
--- dam_search_documents rows. Embeddings are 384-dim unit-ish vectors.
--- Query embedding for the semantic tests: a vector close to sem-high and far from sem-low.
---   sem-high cosine distance ~0.10  -> semantic_rank ~0.90
---   sem-low  cosine distance ~0.80  -> semantic_rank ~0.20
---   mixed    cosine distance ~0.75  -> semantic_rank ~0.25
+-- dam_search_documents rows. Embeddings are 384-dim unit vectors.
+-- Query embedding for the semantic tests is the first basis vector e0.
+-- Distances are exact by construction (no exact 1.0 match, so no float-boundary coin flip):
+--   sem-high cosine similarity 0.90  -> semantic_rank 0.90
+--   sem-low  cosine similarity 0.20  -> semantic_rank 0.20
+--   mixed    cosine similarity 0.30  -> semantic_rank 0.30
 insert into public.dam_search_documents
   (document_type, entity_id, asset_id, style_group_id, title, path, customer, program, search_tsv, embedding)
 values
@@ -96,22 +97,23 @@ values
    to_tsvector('simple','zz3457 mixed canvas'),
    (select array_fill(0.5::real, array[384])::extensions.vector));
 
--- Make the embeddings distinguishable: write distinct vectors via update.
+-- Make the embeddings distinguishable unit vectors along known angles to qemb=e0.
+-- sem-high: cos=0.90 (high, but strictly below 1.0 so floor=1.0 cannot pass it).
 update public.dam_search_documents
 set embedding = (
-  select (array_fill(1.0::real, array[1]) || array_fill(0.0::real, array[383]))::extensions.vector
+  select (array[0.9::real, sqrt(0.19)::real] || array_fill(0.0::real, array[382]))::extensions.vector
 )
 where asset_id = '34570000-0000-4000-8000-000000000011';
 
 update public.dam_search_documents
 set embedding = (
-  select (array_fill(0.0::real, array[1]) || array_fill(1.0::real, array[383]))::extensions.vector
+  select (array[0.2::real, sqrt(0.96)::real] || array_fill(0.0::real, array[382]))::extensions.vector
 )
 where asset_id = '34570000-0000-4000-8000-000000000012';
 
 update public.dam_search_documents
 set embedding = (
-  select (array_fill(0.2::real, array[1]) || array_fill(0.8::real, array[383]))::extensions.vector
+  select (array[0.3::real, sqrt(0.91)::real] || array_fill(0.0::real, array[382]))::extensions.vector
 )
 where asset_id = '34570000-0000-4000-8000-000000000013';
 
@@ -228,25 +230,41 @@ begin
   end;
 
   ----------------------------------------------------------------
-  -- T6: floor=1 with no keyword match -> zero rows; floor=0 ≡ null.
+  -- T6: floor=1 rejects every non-exact semantic hit; floor=0 ≡ null;
+  --      out-of-range floors clamp into [0,1].
+  -- No fixture has cosine similarity 1.0, so floor=1.0 is a stable zero
+  -- (the semantic leg ignores query text, so the absent query alone is not
+  -- what suppresses the rows).
   ----------------------------------------------------------------
   select count(*) into n
   from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.0);
   if n <> 0 then
-    raise exception 'T6 FAIL: floor=1 with no keyword match returned % rows, expected 0', n;
+    raise exception 'T6 FAIL: floor=1 with no exact semantic match returned % rows, expected 0', n;
+  end if;
+  -- Out-of-range floor 1.5 clamps to 1.0 and must behave identically.
+  select count(*) into n
+  from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.5);
+  if n <> 0 then
+    raise exception 'T6 FAIL: floor=1.5 (clamp 1.0) returned % rows, expected 0', n;
   end if;
   -- floor=0 must match null-floor row count exactly.
+  -- floor=-0.5 clamps to 0.0 and must match as well.
   declare
-    n0 int; nnull int;
+    n0 int; nnull int; nneg int;
   begin
     select count(*) into n0
     from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,0.0);
     select count(*) into nnull
     from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,null);
+    select count(*) into nneg
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,-0.5);
     if n0 <> nnull then
       raise exception 'T6 FAIL: floor=0 (=%) is not equivalent to null floor (=%)', n0, nnull;
     end if;
-    raise notice 'T6 PASS: floor=1 no-keyword -> 0 rows; floor=0 ≡ null (% rows)', n0;
+    if nneg <> nnull then
+      raise exception 'T6 FAIL: floor=-0.5 clamp (=%) is not equivalent to null floor (=%)', nneg, nnull;
+    end if;
+    raise notice 'T6 PASS: floor=1/1.5 -> 0 rows; floor=0/-0.5 ≡ null (% rows)', n0;
   end;
 
   ----------------------------------------------------------------

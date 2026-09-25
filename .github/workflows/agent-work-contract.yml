@@ -16,6 +16,8 @@ name: Agent work contract
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -27,12 +29,14 @@ permissions:
 
 concurrency:
   group: agent-work-contract-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: GitHub re-requests checks for the same
+  # group, and cancelling the older run could starve it (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
     name: Agent work contract
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +55,9 @@ jobs:
           scripts/agent-work-contract.test.mjs
           scripts/agent-work-contract-activation.test.mjs
           scripts/agent-work-contract-git-evidence.test.mjs
+          scripts/lib/agent-evidence-paths.test.mjs
           scripts/check-documents-only-pull-request.test.mjs
+          scripts/check-closeout-readiness.test.mjs
 
       - name: Report the activation mode, so nobody has to guess
         run: |
@@ -70,12 +76,59 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve the queued pull request (merge group only)
+        # The merge_group payload carries no pull_request object. The one queued
+        # PR is resolved from the queue ref and re-verified live (open, base
+        # main, readable head) by the merge queue contract (#2530).
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          {
+            echo "pr_number=$(echo "$facts" | jq -r .number)"
+            echo "pr_head_sha=$(echo "$facts" | jq -r .headRefOid)"
+          } >> "$GITHUB_OUTPUT"
+          echo "pr_base_sha=$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/$(echo "$facts" | jq -r .number)" --jq .base.sha)" >> "$GITHUB_OUTPUT"
+
+      # Classified from protected base policy whenever the pull request is known,
+      # including the one queued PR on merge_group, so the documents-only
+      # exemption behaves identically on both paths (#2596 review).
+      - name: Check out the protected base policy for the documents-only decision
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          path: trusted-policy
+          fetch-depth: 1
+
+      - name: Classify documents-only status from protected base policy
+        id: documents_only
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_NUMBER"
+          set +e
+          node trusted-policy/scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          status=$?
+          set -e
+          # 0 = documents only. Anything else, including an unreadable file list,
+          # is NOT documents only: the pair stays required (fail closed).
+          if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
+
       - name: Validate any contract and report carried by this pull request
         env:
           MODE: ${{ env.mode }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || steps.queue.outputs.pr_head_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -83,14 +136,28 @@ jobs:
           # files under .agent/. The activation PR's pair remains on main, so
           # mere filesystem presence is not current-PR evidence. Compare the
           # exact PR base and head before reading either file.
+          #
+          # THE PAIR'S PATHS ARE NO LONGER FIXED (#2708). Each pull request writes
+          # .agent/work/<work_issue>/<generation>/{contract,completion}.json, so two
+          # unrelated pull requests cannot collide on one path and force each other
+          # through a full re-review. The legacy .agent/contract.json pair is still
+          # accepted. The resolver -- not this shell -- decides which two files this
+          # pull request's evidence is, and it fails closed on more than one pair.
           CONTRACT=.agent/contract.json
           REPORT=.agent/completion.json
 
           if [ -n "$PR_NUMBER" ]; then
-            PAIR_STATE=$(node scripts/agent-work-contract-git-evidence.mjs \
-              --classify-evidence-pair \
+            RESOLVED=$(node scripts/agent-work-contract-git-evidence.mjs \
+              --resolve-evidence-pair \
               --pr-base-sha "$PR_BASE_SHA" \
               --pr-head-sha "$PR_HEAD_SHA")
+            PAIR_STATE=$(echo "$RESOLVED" | cut -d' ' -f1)
+            RESOLVED_CONTRACT=$(echo "$RESOLVED" | cut -d' ' -f2)
+            RESOLVED_REPORT=$(echo "$RESOLVED" | cut -d' ' -f3)
+            if [ -n "$RESOLVED_CONTRACT" ] && [ -n "$RESOLVED_REPORT" ]; then
+              CONTRACT="$RESOLVED_CONTRACT"
+              REPORT="$RESOLVED_REPORT"
+            fi
           else
             # A manual dispatch has no PR diff. Validate the checked-out pair as
             # repository evidence, but do not render a PR gate verdict.
@@ -100,7 +167,11 @@ jobs:
           case "$PAIR_STATE" in
             inherited|current) ;;
             partial)
-              echo "::error::A pull request must change both $CONTRACT and $REPORT together."
+              echo "::error::A pull request must change its contract and its completion report together."
+              exit 1
+              ;;
+            conflicted)
+              echo "::error::This pull request carries more than one agent evidence pair. Exactly one pair, at .agent/work/<work_issue>/<generation>/, may be present (#2708)."
               exit 1
               ;;
             *)
@@ -137,11 +208,11 @@ jobs:
             # automated check and the guarded merge lane are unchanged by this.
             # The GitHub read happens INSIDE the script, through the one shared
             # transport library (#2342), never directly from this step.
-            if node scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"; then
+            if [ "${{ steps.documents_only.outputs.value }}" = "true" ]; then
               echo "This pull request changes only prose documents, so the agent work contract pair is not required (#2591)."
               exit 0
             fi
-            echo "::error::Enforced mode requires this pull request to change both $CONTRACT and $REPORT. Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
+            echo "::error::Enforced mode requires this pull request to change both .agent/work/<work_issue>/<generation>/contract.json and .agent/work/<work_issue>/<generation>/completion.json (#2708). Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
             exit 1
           fi
 

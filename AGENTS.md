@@ -159,7 +159,8 @@ to "spend" only one review.
 
 **What this does NOT change — and must never be traded for speed:**
 
-- The exact-head APPROVE requirement stands exactly as written above. A review
+- The exact-head APPROVE requirement stands exactly as enforced by
+  `scripts/check-exact-head-approval.mjs`. A review
   bound to an earlier head does not authorize a later head, and the only
   equivalence permitted is the narrow, already-enforced #2758 rule
   (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request

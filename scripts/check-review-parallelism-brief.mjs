@@ -20,10 +20,12 @@ export const REQUIRED_CLAUSES = Object.freeze([
   { name: 'batched-fixes', pattern: /batch fixes into a single new head/i },
   { name: 'one-push-per-finding-forbidden', pattern: /one push per\s+finding is forbidden/i },
   { name: 'wait-inside-the-turn', pattern: /hold the wait inside the turn/i },
-  { name: 'exact-head-preserved', pattern: /the exact-head approve requirement stands exactly as written/i },
+  { name: 'exact-head-preserved', pattern: /the exact-head approve requirement stands exactly as enforced by\s+`scripts\/check-exact-head-approval\.mjs`/i },
+  { name: 'earlier-head-not-authorized', pattern: /a review\s+bound to an earlier head does not authorize a later head/i },
   { name: 'equivalence-stays-narrow', pattern: /pr-content-equivalence\.mjs/i },
   { name: 'equivalence-bound-to-agent-only', pattern: /byte-identical, ignoring only `\.agent\/` evidence files/i },
   { name: 'no-check-becomes-optional', pattern: /no required check becomes optional/i },
+  { name: 'no-gate-skipped-no-reviewer-dropped', pattern: /no gate is skipped, and no reviewer\s+requirement is dropped/i },
   { name: 'test-evidence-widening-refused', pattern: /test or evidence files is refused/i },
   { name: 'parallelise-do-not-delete', pattern: /parallelise; do not delete/i },
 ]);
@@ -34,7 +36,10 @@ export const FORBIDDEN_CLAUSES = Object.freeze([
   // from tripping the guard, while any affirmative rewording still does.
   { name: 'optional-required-check', pattern: /(?<!no )(required|ci) checks? (may|can|is|are|were|becomes?|become|turn)[^.\n]{0,40}optional/i },
   { name: 'skippable-review', pattern: /(skip|waive|bypass|drop) the (governed )?review/i },
-  { name: 'stale-approval-accepted', pattern: /(approve|approval) (of|for|at|bound to) an? (earlier|older|previous|prior) head[^.\n]{0,40}authoriz/i },
+  // Matches both "An approval of an earlier head still authorizes …" and the brief's own
+  // subject shape inverted ("A review bound to an earlier head still authorizes …").
+  // `(?<!not )` keeps the live negated sentence ("does not authorize") from tripping.
+  { name: 'stale-approval-accepted', pattern: /(approve|approval|review) (of|for|at|bound to) an? (earlier|older|previous|prior) head[^.\n]{0,40}(?<!not )authoriz/i },
   { name: 'widened-equivalence', pattern: /ignor(ing|es) (only )?(`)?\.agent(`)?[^.\n]*\band tests?\b/i },
 ]);
 

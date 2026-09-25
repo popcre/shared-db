@@ -24,7 +24,9 @@
     ".agent/work/3457/1/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function public.search_dam_documents"
+  ],
   "prohibited_actions": [
     "no production writes",
     "no preview apply without explicit orchestrator permission",

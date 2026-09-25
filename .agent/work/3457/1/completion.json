@@ -3,7 +3,9 @@
   "work_issue": 3457,
   "outcome": "ready-for-review",
   "pr": null,
-  "migration_versions": ["20260924174155"],
+  "migration_versions": [
+    "20260924174155"
+  ],
   "contract_ref": "refs/db-contracts/3457/1",
   "head_sha": null,
   "base_sha": "c5a4c7d07",
@@ -16,7 +18,9 @@
     ".agent/work/3457/1/completion.json"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "function public.search_dam_documents"
+  ],
   "checks": [
     {
       "command": "bash scripts/check-sql.sh (CHECK_SQL_MIGRATIONS_ONLY=1)",

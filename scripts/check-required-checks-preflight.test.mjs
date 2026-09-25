@@ -1,10 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT } from './check-required-checks-preflight.mjs'
-import { readEffectiveRequiredChecks, RequiredCheckAuthorityError } from './lib/required-check-authority.mjs'
+import { evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT, GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
+import { readEffectiveRequiredChecks, computeRevision, RequiredCheckAuthorityError } from './lib/required-check-authority.mjs'
 const sha = 'a'.repeat(40)
-const authority = { mode: 'live-effective-settings', revision: 'b'.repeat(64), checks: [{ context: 'required', app_id: 15368 }, { context: SELF_CONTEXT, app_id: 15368 }] }
-const ok = (name = 'required', extra = {}) => ({ name, head_sha: sha, app: { id: 15368 }, status: 'completed', conclusion: 'success', started_at: '2026-09-20T10:00:00Z', ...extra })
+function makeAuthority(overrides = {}) {
+  const base = {
+    mode: 'live-effective-settings',
+    repository_id: 1,
+    repository: 'popcre/shared-db',
+    branch: 'main',
+    sources: { classic: null, rulesets: [] },
+    checks: [{ context: 'required', app_id: GITHUB_ACTIONS_APP_ID }, { context: SELF_CONTEXT, app_id: GITHUB_ACTIONS_APP_ID }],
+  }
+  const merged = { ...base, ...overrides }
+  merged.revision = computeRevision(merged)
+  return merged
+}
+const authority = makeAuthority()
+const ok = (name = 'required', extra = {}) => ({ name, head_sha: sha, app: { id: GITHUB_ACTIONS_APP_ID }, status: 'completed', conclusion: 'success', started_at: '2026-09-20T10:00:00Z', ...extra })
 const evaluate = (extra = {}) => evaluatePreflight({ authority, sha, checkRuns: [ok()], ...extra })
 test('green exact-head required producer passes with only self authorization excluded', () => assert.equal(evaluate().required, 1))
 test('required missing, pending, failing, skipped and neutral all refuse', () => {
@@ -16,7 +29,7 @@ test('wrong app and wrong head cannot satisfy required result; later foreign suc
   assert.throws(() => evaluate({ checkRuns: [ok('required', { app: { id: 7 } })] }), /never reported/)
   assert.throws(() => evaluate({ checkRuns: [ok('required', { head_sha: 'c'.repeat(40) })] }), /never reported/)
   assert.throws(() => evaluate({ checkRuns: [ok('required', { conclusion: 'failure' }), ok('required', { app: { id: 7 }, started_at: '2026-09-20T11:00:00Z' })] }), /failing/)
-  assert.throws(() => evaluate({ checkRuns: [], statuses: [{ context: 'required', state: 'success', creator: { id: 15368 } }] }), /never reported/)
+  assert.throws(() => evaluate({ checkRuns: [], statuses: [{ context: 'required', state: 'success', creator: { id: GITHUB_ACTIONS_APP_ID } }] }), /never reported/)
 })
 test('advisory failure remains visible without independently vetoing a merge', () => {
   const result = evaluate({ checkRuns: [ok(), ok('optional', { conclusion: 'failure' })] })
@@ -25,15 +38,23 @@ test('advisory failure remains visible without independently vetoing a merge', (
 })
 test('stale mirror and unexpired attestation never authorize unreadable current settings', () => {
   assert.throws(() => evaluateWithoutRequiredList({ reason: '403', mirrorContexts: ['required'], expires: '2099-01-01' }), /cannot authorize/)
-  assert.throws(() => evaluate({ authority: { ...authority, mode: 'snapshot', expires: '2099-01-01' } }), /fresh effective/)
+  assert.throws(() => evaluate({ authority: { ...makeAuthority(), mode: 'snapshot', expires: '2099-01-01' } }), /fresh effective/)
 })
 test('a newly effective requirement is enforced even with a still-valid old snapshot', () => {
-  const current = { ...authority, checks: [...authority.checks, { context: 'new ruleset requirement', app_id: 7 }] }
+  const current = makeAuthority({ checks: [...authority.checks, { context: 'new ruleset requirement', app_id: 7 }] })
   assert.throws(() => evaluate({ authority: current, snapshot: authority }), /never reported: new ruleset/)
 })
 test('same name requirements from two apps both apply; self authorization cannot change producer', () => {
-  assert.throws(() => evaluate({ authority: { ...authority, checks: [...authority.checks, { context: 'required', app_id: 7 }] } }), /app 7/)
-  assert.throws(() => evaluate({ authority: { ...authority, checks: [{ context: SELF_CONTEXT, app_id: 7 }, { context: 'required', app_id: 15368 }] } }), /different producer/)
+  assert.throws(() => evaluate({ authority: makeAuthority({ checks: [...authority.checks, { context: 'required', app_id: 7 }] }) }), /app 7/)
+  assert.throws(() => evaluate({ authority: makeAuthority({ checks: [{ context: SELF_CONTEXT, app_id: 7 }, { context: 'required', app_id: GITHUB_ACTIONS_APP_ID }] }) }), /different producer/)
+})
+test('revision digest is rebound to content; a tampered or stale digest refuses', () => {
+  const tampered = { ...makeAuthority(), revision: 'b'.repeat(64) }
+  assert.throws(() => evaluate({ authority: tampered }), /revision does not match its own content/)
+})
+test('GITHUB_ACTIONS_APP_ID is the documented GitHub Actions producer identity', () => {
+  assert.equal(GITHUB_ACTIONS_APP_ID, 15368)
+  assert.ok(Number.isSafeInteger(GITHUB_ACTIONS_APP_ID) && GITHUB_ACTIONS_APP_ID > 0)
 })
 test('latest attempt wins within producer; same-time contradictory results refuse', () => {
   assert.throws(() => evaluate({ checkRuns: [ok(), ok('required', { status: 'queued', started_at: '2026-09-20T11:00:00Z' })] }), /still running/)
@@ -121,7 +142,7 @@ test('new queued check with no timestamp cannot be hidden behind a completed old
   assert.throws(() => evaluate({ checkRuns: [ok('required', { started_at: 'invalid', completed_at: null })] }), /ambiguous/)
 })
 test('unrestricted same-name commit status and check must both pass', () => {
-  const unrestricted = { ...authority, checks: [{ context: 'required', app_id: null }] }
+  const unrestricted = makeAuthority({ checks: [{ context: 'required', app_id: null }] })
   assert.throws(() => evaluate({ authority: unrestricted, statuses: [{ context: 'required', state: 'failure', id: 1 }] }), /failing/)
   assert.equal(evaluate({ authority: unrestricted, statuses: [{ context: 'required', state: 'success', id: 1 }] }).required, 1)
 })

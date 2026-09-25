@@ -111,8 +111,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          # Quota multiplier note: the probe and preflight below add a handful of
+          # authority reads (GraphQL + REST) on top of the status/check reads;
+          # the absolute quota cost is not yet metered per merge.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-actions-quota.mjs
+      # PREFLIGHT-TIME PERMISSION PROBE (issue #3361). The authority reads are
+      # load-bearing: if this token cannot complete them, every merge would
+      # refuse permanently at the preflight with no hint about why. This probe
+      # attempts exactly those two reads (GraphQL branchProtectionRule + REST
+      # /rules/branches) FIRST and fails closed with an actionable message
+      # naming what to grant. This run is the run-link proof that the token can
+      # complete the reads.
+      - name: Prove the workflow token can complete the required-check authority reads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_AUTHORITY_PERMISSIONS: '1'
+        run: node scripts/check-required-checks-preflight.mjs --probe-permissions
       - name: Pre-flight the required status checks before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}

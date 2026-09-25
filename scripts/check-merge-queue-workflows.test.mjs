@@ -9,7 +9,8 @@
 //
 // The context list is derived from TWO sources and must cover both:
 //   1. the committed mirror docs/verification/main-required-status-checks.json
-//      (the list the guarded merge pre-flight enforces);
+//      (informational only; the guarded merge pre-flight enforces fresh live
+//      effective settings, and the mirror cannot authorize a merge);
 //   2. KNOWN_LIVE_ADDITIONS below — contexts already live but not yet mirrored.
 // The mirror must never shrink this coverage, and this test fails the moment a
 // mirrored context has no mapped merge-group-capable emitter.

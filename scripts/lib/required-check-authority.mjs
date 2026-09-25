@@ -4,6 +4,24 @@ export class RequiredCheckAuthorityError extends Error {}
 const refuse = (message) => { throw new RequiredCheckAuthorityError(message) }
 const named = (value) => typeof value === 'string' && value.trim().length > 0
 const appId = (value) => value === null || value === -1 ? null : (Number.isSafeInteger(value) && value > 0 ? value : refuse('required check producer identity is unreadable'))
+
+// Canonical JSON: object keys sorted at every level. Two reads that say the
+// same thing must produce the same revision digest, or representational
+// key-order jitter refuses the merge unactionably.
+export function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+// The revision digest is a pure function of these four fields. Recomputing it
+// binds an authority object to its own content instead of trusting a
+// shape-only hex string.
+export function computeRevision({ repository_id: repositoryId, repository, branch, sources }) {
+  return createHash('sha256').update(stableStringify({ repository_id: repositoryId, repository, branch, sources })).digest('hex')
+}
 export function normalizeRequirements(checks) {
   if (!Array.isArray(checks)) refuse('required checks are not a complete list')
   const unique = new Map()
@@ -95,6 +113,38 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
   const checks = normalizeRequirements(requirements)
   if (!checks.length) refuse('effective policy requires no checks; refusing unknown or removed protection')
   const sources = { classic: protection, rulesets: rules }
-  const revision = createHash('sha256').update(JSON.stringify({ repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, sources })).digest('hex')
+  const revision = computeRevision({ repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, sources })
   return { schema_version: 1, mode: 'live-effective-settings', repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, base_sha: repository.ref.target.oid, capturedIso: now().toISOString(), revision, sources, checks }
+}
+
+// PREFLIGHT-TIME PERMISSION PROBE (issue #3361). The authority reads above are
+// load-bearing: if the workflow token cannot complete them, EVERY merge refuses
+// permanently at the preflight with no hint about why. This probe attempts
+// exactly those two reads first and fails closed with an actionable message
+// naming what to grant, turning "every merge refuses mysteriously" into
+// "permission denied, here's what to grant". The guarded-lane run of this
+// probe is itself the run-link proof that the token can complete the reads.
+export function probeAuthorityReadPermissions({ repo, branch = 'main', read }) {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
+  const [owner, name] = repo.split('/')
+  const query = 'query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$ref){name branchProtectionRule{id}}}}'
+  const actionable = (detail) => refuse(`workflow token cannot complete the required-check authority reads (${detail}). Grant the workflow token contents:read (or write) on this repository so the GraphQL branchProtectionRule query and REST /rules/branches read can complete; administration:read is NOT required. This probe fails closed so the merge path cannot refuse later without naming the denied permission.`)
+  try {
+    const response = read(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-f', `ref=refs/heads/${branch}`])
+    if (response?.errors?.length) actionable(`GraphQL branchProtectionRule read returned errors: ${JSON.stringify(response.errors).slice(0, 200)}`)
+    if (response?.data?.repository?.ref?.name !== branch) actionable('GraphQL branchProtectionRule read did not return the requested branch identity')
+  } catch (error) {
+    const message = String(error?.message ?? error?.stderr ?? '')
+    if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) actionable(`GraphQL branchProtectionRule read denied: ${message.slice(0, 200)}`)
+    actionable(`GraphQL branchProtectionRule read failed: ${message.slice(0, 200)}`)
+  }
+  try {
+    const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=100`])
+    if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) actionable('REST /rules/branches read did not return a usable rule list')
+  } catch (error) {
+    const message = String(error?.message ?? error?.stderr ?? '')
+    if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) actionable(`REST /rules/branches read denied: ${message.slice(0, 200)}`)
+    actionable(`REST /rules/branches read failed: ${message.slice(0, 200)}`)
+  }
+  return { ok: true, repo, branch, proven: ['GraphQL branchProtectionRule', 'REST /rules/branches'] }
 }

@@ -5,12 +5,18 @@
 import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
-import { readEffectiveRequiredChecks } from './lib/required-check-authority.mjs'
+import { readEffectiveRequiredChecks, computeRevision, probeAuthorityReadPermissions } from './lib/required-check-authority.mjs'
 import { MERGE_SELF_CONTEXT as SELF_CONTEXT } from './lib/merge-self-context.mjs'
 export { SELF_CONTEXT }
 export class PreflightError extends Error {}
 export const SELF_CHECK_RUN = 'merge'
 export const REQUIRED_CHECKS_MIRROR = 'docs/verification/main-required-status-checks.json'
+// The GitHub Actions app (github-actions[bot]) is the only producer of the self
+// authorization status this workflow posts after every other gate passes. A
+// different producer on that context means someone other than this workflow
+// claimed the self-authorization identity (see check-required-checks-preflight
+// self-authorization tests and issue #3361).
+export const GITHUB_ACTIONS_APP_ID = 15368
 const REQUIRED_SUCCESS = new Set(['success'])
 const REPORTED_SUCCESS = new Set(['success', 'neutral', 'skipped'])
 
@@ -59,14 +65,18 @@ export function observedStates({ statuses = [], checkRuns = [], appId, sha }) {
 export function evaluateWithoutRequiredList({ reason } = {}) {
   throw new PreflightError(`effective required-check authority is unreadable (${sanitize(reason)}); a committed mirror or unexpired snapshot cannot authorize a merge`)
 }
-export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sha, protectionUnreadable }) {
-  if (protectionUnreadable) return evaluateWithoutRequiredList({ reason: protectionUnreadable })
+export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sha }) {
   if (authority?.mode !== 'live-effective-settings' || !/^[a-f0-9]{64}$/.test(authority?.revision ?? '') || !Array.isArray(authority?.checks) || !authority.checks.length || !/^[a-f0-9]{40}$/.test(sha ?? '')) throw new PreflightError('fresh effective required-check authority and exact reviewed head are required')
+  // Rebind the revision to the authority's own content. A shape-only hex string
+  // is not proof; recomputing the digest from {repository_id, repository,
+  // branch, sources} refuses an authority whose recorded revision does not
+  // match what it actually carries.
+  if (computeRevision(authority) !== authority.revision) throw new PreflightError('effective required-check authority revision does not match its own content; refusing a tampered or stale digest')
   const required = authority.checks.filter((item) => item.context !== SELF_CONTEXT)
   if (!required.length) throw new PreflightError('effective settings name only the self authorization; no independent required checks')
   // The self authorization is produced later by this workflow's GitHub Actions
   // app. Exclusion is safe only for that producer (or an unrestricted context).
-  if (authority.checks.some((item) => item.context === SELF_CONTEXT && item.app_id != null && item.app_id !== 15368)) throw new PreflightError('self authorization requires a different producer')
+  if (authority.checks.some((item) => item.context === SELF_CONTEXT && item.app_id != null && item.app_id !== GITHUB_ACTIONS_APP_ID)) throw new PreflightError('self authorization requires a different producer')
   const missing = [], pending = [], failing = []
   for (const item of required) {
     const states = observedStates({ statuses, checkRuns, appId: item.app_id, sha })
@@ -149,6 +159,22 @@ export async function waitForPreflight(env = process.env, deps = {}) {
   }
 }
 export async function main(env = process.env, deps = {}) {
+  // --probe-permissions: attempt exactly the two load-bearing authority reads
+  // and fail closed with an actionable message if the workflow token cannot
+  // complete them. This runs BEFORE the authoritative gather so a denied
+  // permission is named instead of every merge refusing mysteriously at :120.
+  if (env.PROBE_AUTHORITY_PERMISSIONS === '1' || process.argv.includes('--probe-permissions')) {
+    try {
+      const repo = deps.repo ?? resolveRepositoryIdentity()
+      const read = deps.json ?? json
+      const result = probeAuthorityReadPermissions({ repo, read })
+      console.log(`Authority-read permissions proven for ${result.repo} (branch ${result.branch}): ${result.proven.join(' + ')}.`)
+      return 0
+    } catch (e) {
+      console.error(`REFUSED: ${e.message}`)
+      return 2
+    }
+  }
   try {
     const result = await waitForPreflight(env, deps)
     console.log(`Fresh effective required status checks satisfied (${result.required} contexts; revision ${result.revision}).`)

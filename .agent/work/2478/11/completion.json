@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/2478/11",
   "contract_sha256": "a7548daad0f2511428d5967fe282a49abed0d9838481ae04aaf691ee2506d079",
-  "head_sha": "7389951f4b00e329a32ea02102edcf1087bfec1b",
+  "head_sha": "03c0e5cf185035a6d21ce16792344a6d66ede801",
   "files_changed": [
     ".github/live-proofs/2478.sql",
     "scripts/production_migration_guard.py",

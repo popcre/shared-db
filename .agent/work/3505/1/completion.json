@@ -29,7 +29,8 @@
     "Migration guarded merge authorization added to live branch-protection required checks.",
     "Regression tests confirm a code PR with only the advisory is refused at merge-authorization audit.",
     "A disguised advisory description under the grant context is also refused.",
-    "No existing test assertion was weakened or deleted."
+    "No existing test assertion was weakened or deleted.",
+    "contract.base_sha b32deb1c is the immutable published base at contract creation; completion.base_sha e29e6f82 is the current merge-base with main after refresh. The evidence model intentionally keeps these separate."
   ],
   "stop_conditions_hit": []
 }

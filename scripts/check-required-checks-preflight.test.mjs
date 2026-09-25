@@ -298,6 +298,16 @@ test('the documents-only routing diagnostic failing on a code PR does not block 
   }), /Some other guard/)
 })
 
+test('the legacy documents-only advisory status name still routes correctly (#2759 old-name coverage)', () => {
+  const result = evaluateWithoutRequiredList({
+    reason: REASON, mirrorContexts: MIRROR,
+    statuses: [{ context: 'Documents-only merge authorization', state: 'failure' }],
+    checkRuns: [ok('SQL migration guards'), ok('Tools offline tests'),
+      { name: 'Documents-only merge authorization', status: 'completed', conclusion: 'failure' }],
+  })
+  assert.equal(result.mode, 'committed-mirror')
+})
+
 test('the head cannot inject a context into the trusted list', () => {
   const contexts = readRequiredChecksMirror('/x', mirrorRun({
     'origin/main': doc(...PINNED_REQUIRED_CONTEXTS),

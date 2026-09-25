@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3555,
+  "outcome": "ready-for-merge",
+  "pr": 3556,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3555/1",
+  "contract_sha256": "9d32eb10766bdc1ef24491ae31e6167d8fb20bca7d80175377b0505dd74e8632",
+  "head_sha": "4113a6da7b92bbfb1963bdf3404a2fd50a3e4476",
+  "base_sha": "49b4389d7ef009e5e86b5c0728ab22c5cfac0e20",
+  "files_changed": [
+  "docs/agents/active-contracts-and-plans.md",
+  "docs/agents/anti-collision-summary.md",
+  "docs/agents/section-4-anti-collision-rules.md",
+  "scripts/lib/reviewer-capabilities.mjs",
+  "scripts/manage-migration-author-lanes.mjs",
+  "scripts/manage-migration-author-lanes.test.mjs",
+  "scripts/run-governed-review.mjs"
+],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs",
+      "exit_code": 0,
+      "evidence": "820 tests, 819 pass, 0 fail, 1 skipped at implementation head 4113a6da7b92bbfb1963bdf3404a2fd50a3e4476 (base 49b4389d7ef009e5e86b5c0728ab22c5cfac0e20)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=322 sources=75 derived_digest=605a2266b160"
+    }
+  ],
+  "assumptions_resolved": [
+    "run-governed-review passes --prompt-file, --base and --assert-head to ai-stepfun review; ai-review-packet verify writes the source receipt (pinned by ai-devops tests/test-ai-stepfun.sh governed-receipt checks). No --governed-verdict flag was needed.",
+    "The implementation was drafted in PR #3554 before refs/db-contracts/3555/1 was published; #3554 was closed and the implementation commit here follows the published ref.",
+    "No database read, write, or production dispatch is claimed."
+  ],
+  "stop_conditions_hit": []
+}

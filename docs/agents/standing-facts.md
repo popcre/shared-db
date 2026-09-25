@@ -150,6 +150,11 @@ have already happened in this repo, more than once.
     explicit decision from Albert. See `NON_STRUCTURAL_EXITS` in
     `scripts/manage-migration-author-lanes.mjs` for the enforced form.
 
+    **SUPERSEDED 2026-09-25 (owner ruling, Albert Hazan).** Curated Master Data loads no longer
+    need the orchestrator. `curated-master-data` now exits by `data-session`: a dedicated
+    curated-data session owns the work end to end under §6.4. The curation protections still bind
+    the session doing the typing. What left is only the orchestrator in the middle.
+
 17. **`required_status_checks.strict` is FALSE on purpose (owner ruling, 2026-08-19, issue #1286).**
     Requiring every branch to be up to date before merging restarted the full check suite on every
     open branch after every unrelated merge, costing roughly 50 minutes a day. Albert turned it

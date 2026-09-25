@@ -57,7 +57,7 @@ AI sessions from breaking each other through the one database they all depend on
 > triggers, RLS, indexes, migrations. An application session changing its own *rows* does not
 > belong here and must not open an issue for it. The one exception is curated Master Data
 > under §6.4. **§0.0-C is the orchestrator's own admission test**: anything that fails the shape
-> test is REJECTED (it belongs to another session) or FORKED to a fresh sub-agent — never worked
+> test is REJECTED (it belongs to another session) or sent to a dedicated session — never worked
 > in the orchestrator's own context window.
 > **Any other session with a STRUCTURE change opens a GitHub issue and stops — with ONE
 > exception (issue #3199 Phase B, boundary opened to all four app schemas 2026-09-25):** an additive change whose every named object lives in

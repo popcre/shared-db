@@ -41,20 +41,18 @@ instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
 - **REJECT** — the work belongs to another repository and must leave this queue. `application-data`
   and `source-data`. **Rejection FORWARDS the task; it never merely closes it** — see "A reject is
   a forward" below.
-- **FORK** — genuinely this repo's work, dispatched by this orchestrator to a fresh session with an
-  empty context window, but never worked in the orchestrator's own window. **This is now curated
-  Master Data only** (`curated-master-data`), which §6.4 governs *inside* this repo and which never
-  leaves for an application repo. It forks to keep the work out of the orchestrator's context, not
-  because somebody else owns it. A fork that ships a file under `supabase/migrations/` **must claim
-  a migration-author lane before authoring it**; the lease's version reservation and object locks
-  are safety controls and override the normal throughput preference not to consume a lane. Curated
-  work that ships no migration does not use a lane. The orchestrator does not read the code, debug
-  it, or
-  does not "just fix it quickly".
+- **DATA-SESSION** — curated Master Data loads (`curated-master-data`), owner ruling 2026-09-25
+  (Albert Hazan). **Not an orchestrator assignment at all, not even to dispatch.** A dedicated
+  curated-data session owns the work end to end under §6.4: the matched-row abstention rule and
+  the curation protections still bind the session doing the typing. What left is only the
+  orchestrator in the middle. A curated session that ships a file under `supabase/migrations/`
+  **must claim a migration-author lane before authoring it**; the lease's version reservation and
+  object locks are safety controls and override the normal throughput preference not to consume a
+  lane. Curated work that ships no migration does not use a lane.
 - **REPO-SESSION** — `repo-maintenance` and `documentation`. **Not an orchestrator assignment at
   all, not even to dispatch.** A separately started repository-maintenance session owns this work
   end to end. The orchestrator lists such issues in `--queue-audit` under
-  `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` purely so nothing accumulates unseen, and then
+  `OUTSIDE ORCHESTRATOR — OWNED BY A DEDICATED SESSION` purely so nothing accumulates unseen, and then
   takes no action on them.
 - **RETURN-TO-OWNER** — `security-settings`. It needs authority the orchestrator does not have.
   Put it to Albert; do not dispatch it to any session.
@@ -97,6 +95,10 @@ The ruling did **not** change how curated Master Data is routed. `curated-master
 by FORK and is still governed here by §6.4. Do not extend the ruling to it without a separate
 explicit decision from Albert.
 
+**SUPERSEDED 2026-09-25 (owner ruling, Albert Hazan).** Curated Master Data loads now exit by
+`DATA-SESSION`. A dedicated curated-data session owns them under §6.4; the orchestrator neither
+works nor dispatches them.
+
 There is no size exemption. "It is only a one-line doc fix" is precisely how an orchestrator
 context fills up.
 
@@ -121,18 +123,18 @@ therefore moves the task to the repository that owns it:
 3. **Only the return path may close a rejected issue.** Closing one by hand, without a
    `RETURNED TO <url>` comment, is the exact failure this section exists to prevent.
 
-FORK items are never lost either — they stay open, dispatched to a fresh sub-agent like any other
-work, and remain in the audit until that work is done.
+DATA-SESSION and REPO-SESSION items are never lost either — they stay open for their dedicated
+session, and remain in the audit until that work is done.
 
 ### What the orchestrator's own window is for
 
 Triage, dispatch, review, merge, and the promotion protocol. Nothing else. Every unit of actual
-work — structural or forked — happens in a sub-agent's context, not this one.
+structural work happens in a sub-agent's context, not this one.
 
 ### How it is enforced
 
 `node scripts/manage-migration-author-lanes.mjs --queue-audit` prints a **`NOT ORCHESTRATOR WORK`**
-block listing every open issue that fails the shape test, each stamped `REJECT` or `FORK`, with
+block listing every open issue that fails the shape test, each stamped `REJECT` or an outside exit, with
 `[blocked on owner decision]` where the route is `owner-only`. These items previously sat silently
 in `skipped` and accumulated. The block is a worklist, not a failure — it does not change the exit
 code — but an orchestrator that leaves items standing in it is carrying other people's work.

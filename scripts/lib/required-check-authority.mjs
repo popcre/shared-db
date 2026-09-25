@@ -39,10 +39,12 @@ export function normalizeRequirements(checks) {
 // GitHub itself performs the final atomic policy enforcement; callers must read
 // this again under the merge lock and must never use an administrative bypass.
 //
-// TOKEN PERMISSIONS: the reads below require the workflow token to have
-// `contents:read` (or write) for the GraphQL ref/branchProtectionRule query and
-// `administration:read` is NOT needed — the REST /rules/branches endpoint is
-// served under the repository's contents permission. A 403 on any read causes
+// TOKEN PERMISSIONS: the reads below require ADMIN-LEVEL access. GraphQL
+// `branchProtectionRule` and REST `/rules/branches` need Administration:read,
+// a classic PAT with `repo` scope, or a GitHub App with administration
+// permission. `contents:read` is NOT sufficient — the live guarded-migration-merge
+// run 36186790619 proved this: github.token received
+// "Resource not accessible by integration". A 403 on any read causes
 // every merge to refuse (fail-closed). When GraphQL returns
 // branchProtectionRule === null, a REST /protection probe distinguishes
 // genuine absence (404) from an unauthorized null (403 or 200-inconsistent):
@@ -118,17 +120,18 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
 }
 
 // PREFLIGHT-TIME PERMISSION PROBE (issue #3361). The authority reads above are
-// load-bearing: if the workflow token cannot complete them, EVERY merge refuses
+// load-bearing: if the token cannot complete them, EVERY merge refuses
 // permanently at the preflight with no hint about why. This probe attempts
 // exactly those two reads first and fails closed with an actionable message
-// naming what to grant, turning "every merge refuses mysteriously" into
-// "permission denied, here's what to grant". The guarded-lane run of this
-// probe is itself the run-link proof that the token can complete the reads.
+// naming the real requirement (admin / Administration:read / GitHub App),
+// turning "every merge refuses mysteriously" into "permission denied, here's
+// what to grant". The guarded-lane run of this probe is itself the run-link
+// proof that the token can complete the reads.
 export function probeAuthorityReadPermissions({ repo, branch = 'main', read }) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
   const [owner, name] = repo.split('/')
   const query = 'query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$ref){name branchProtectionRule{id}}}}'
-  const actionable = (detail) => refuse(`workflow token cannot complete the required-check authority reads (${detail}). Grant the workflow token contents:read (or write) on this repository so the GraphQL branchProtectionRule query and REST /rules/branches read can complete; administration:read is NOT required. This probe fails closed so the merge path cannot refuse later without naming the denied permission.`)
+  const actionable = (detail) => refuse(`authority-read token cannot complete the required-check authority reads (${detail}). GraphQL branchProtectionRule and REST /rules/branches require admin-level access: a classic PAT with repo scope, Administration:read, or a GitHub App with administration permission. contents:read is NOT enough. Set a repository secret (e.g. SYNC_TOKEN or REQUIRED_CHECKS_AUTHORITY_TOKEN) holding a token with admin access and pass it as AUTHORITY_TOKEN to the preflight step. This probe fails closed so the merge path cannot refuse later without naming the denied permission.`)
   try {
     const response = read(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-f', `ref=refs/heads/${branch}`])
     if (response?.errors?.length) actionable(`GraphQL branchProtectionRule read returned errors: ${JSON.stringify(response.errors).slice(0, 200)}`)

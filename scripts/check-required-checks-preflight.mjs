@@ -115,6 +115,20 @@ export function sanitize(text) {
   const flat = String(text ?? '').replace(/\s+/g, ' ').trim()
   return (flat.length > 200 ? `${flat.slice(0, 200)}...` : flat) || 'no reason was reported'
 }
+// Wrap a read function so authority calls use a different GH_TOKEN. The
+// elevated token is used ONLY for branch-protection reads; every other read
+// stays on the caller's default token. GH_TOKEN is swapped only for the
+// duration of one read call and restored immediately after.
+function tokenScopedRead(token, baseRead) {
+  return (args) => {
+    const prev = process.env.GH_TOKEN
+    process.env.GH_TOKEN = token
+    try { return baseRead(args) } finally {
+      if (prev === undefined) delete process.env.GH_TOKEN
+      else process.env.GH_TOKEN = prev
+    }
+  }
+}
 export function reportedTotal(payload) { return (Array.isArray(payload) ? payload[0] : payload)?.total_count }
 export function requireWholePage(what, totalCount, page) {
   if (!Number.isInteger(totalCount) || totalCount < 0) throw new PreflightError(`GitHub did not report how many ${what} exist on the reviewed head`)
@@ -125,8 +139,15 @@ export function gatherPreflightInput(env = process.env, deps = {}) {
   const sha = String(env.REQUESTED_SHA ?? '').trim()
   if (!/^[0-9a-f]{40}$/.test(sha)) throw new PreflightError('REQUESTED_SHA must be a 40-character head SHA')
   const repo = deps.repo ?? resolveRepositoryIdentity()
+  // The authority reads need admin-level access. When an elevated token is
+  // provided (AUTHORITY_TOKEN), use it ONLY for those reads; everything else
+  // stays on the default token. When no elevated token is available, the
+  // default token is used and probeAuthorityReadPermissions must be called
+  // first to name the denial before any merge lane is taken.
+  const elevatedToken = String(env.AUTHORITY_TOKEN ?? '').trim()
+  const authorityReadFn = elevatedToken ? tokenScopedRead(elevatedToken, read) : read
   const authorityRead = () => {
-    try { return readEffectiveRequiredChecks({ repo, read }) }
+    try { return readEffectiveRequiredChecks({ repo, read: authorityReadFn }) }
     catch (error) { throw new PreflightError(`effective required-check authority unreadable: ${sanitize(error.message)}; no snapshot fallback`) }
   }
   const before = authorityRead()
@@ -160,13 +181,16 @@ export async function waitForPreflight(env = process.env, deps = {}) {
 }
 export async function main(env = process.env, deps = {}) {
   // --probe-permissions: attempt exactly the two load-bearing authority reads
-  // and fail closed with an actionable message if the workflow token cannot
-  // complete them. This runs BEFORE the authoritative gather so a denied
-  // permission is named instead of every merge refusing mysteriously at :120.
+  // and fail closed with an actionable message if the token cannot complete
+  // them. Kept for the dedicated workflow step; the default path below also
+  // probes first so a denied permission is named even when the workflow YAML
+  // comes from main and has no separate probe step.
   if (env.PROBE_AUTHORITY_PERMISSIONS === '1' || process.argv.includes('--probe-permissions')) {
     try {
       const repo = deps.repo ?? resolveRepositoryIdentity()
-      const read = deps.json ?? json
+      const baseRead = deps.json ?? json
+      const elevatedToken = String(env.AUTHORITY_TOKEN ?? '').trim()
+      const read = elevatedToken ? tokenScopedRead(elevatedToken, baseRead) : baseRead
       const result = probeAuthorityReadPermissions({ repo, read })
       console.log(`Authority-read permissions proven for ${result.repo} (branch ${result.branch}): ${result.proven.join(' + ')}.`)
       return 0
@@ -176,6 +200,15 @@ export async function main(env = process.env, deps = {}) {
     }
   }
   try {
+    // PROBE-THEN-GATHER in one invocation (issue #3361). workflow_dispatch
+    // runs the workflow YAML from main, which may lack a separate probe step.
+    // Probing here names the denied permission before any merge lane is taken,
+    // even with main's current step list.
+    const repo = deps.repo ?? resolveRepositoryIdentity()
+    const baseRead = deps.json ?? json
+    const elevatedToken = String(env.AUTHORITY_TOKEN ?? '').trim()
+    const probeRead = elevatedToken ? tokenScopedRead(elevatedToken, baseRead) : baseRead
+    probeAuthorityReadPermissions({ repo, read: probeRead })
     const result = await waitForPreflight(env, deps)
     console.log(`Fresh effective required status checks satisfied (${result.required} contexts; revision ${result.revision}).`)
     for (const [name, state] of result.advisory ?? []) console.log(`ADVISORY: ${name} (${state}); not required by effective GitHub policy.`)

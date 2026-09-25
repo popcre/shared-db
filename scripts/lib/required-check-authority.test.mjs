@@ -108,7 +108,17 @@ test('probe proves both authority reads; a denial names the missing permission a
     err.stderr = 'gh: Resource not accessible by integration (HTTP 403)'
     throw err
   }
-  assert.throws(() => probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: deny }), /contents:read|permission missing|cannot complete the required-check authority reads/)
+  assert.throws(() => probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: deny }), /cannot complete the required-check authority reads/)
+  // The actionable message must name the REAL requirement (admin / Administration:read),
+  // not the false claim that contents:read suffices.
+  try {
+    probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: deny })
+    assert.fail('should have thrown')
+  } catch (e) {
+    assert.match(e.message, /admin-level access|Administration:read|GitHub App/i)
+    assert.match(e.message, /contents:read is NOT enough/i)
+    assert.doesNotMatch(e.message, /administration:read is NOT required/i)
+  }
   const denyRules = (args) => {
     if (args.includes('graphql')) return { data: { repository: { ref: { name: 'main', branchProtectionRule: { id: 'BPR_1' } } } } }
     const err = Error('gh: Resource not accessible by integration (HTTP 403)')

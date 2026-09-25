@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT } from './check-required-checks-preflight.mjs'
+import { readEffectiveRequiredChecks, RequiredCheckAuthorityError } from './lib/required-check-authority.mjs'
 const sha = 'a'.repeat(40)
 const authority = { mode: 'live-effective-settings', revision: 'b'.repeat(64), checks: [{ context: 'required', app_id: 15368 }, { context: SELF_CONTEXT, app_id: 15368 }] }
 const ok = (name = 'required', extra = {}) => ({ name, head_sha: sha, app: { id: 15368 }, status: 'completed', conclusion: 'success', started_at: '2026-09-20T10:00:00Z', ...extra })
@@ -64,6 +65,33 @@ test('pagination preserves all pages and refuses incomplete totals', () => {
   assert.throws(() => collectPages([{}], 'check_runs'), /no usable/)
   assert.throws(() => requireWholePage('checks', undefined, []), /how many/)
 })
+test('ruleset pagination refuses a short non-last page (fail-open guard)', () => {
+  const rule = { type: 'required_status_checks', ruleset_id: 1, ruleset_source: 'popcre', ruleset_source_type: 'Organization', parameters: { required_status_checks: [{ context: 'required', integration_id: 15368 }] } }
+  const graphql = { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: null } } } }
+  const okRead = (args) => {
+    if (args.includes('graphql')) return graphql
+    // Two pages: first has 1 rule (short), second has 1 rule. With per_page=100
+    // the first page is incomplete → must refuse.
+    return [[rule], [rule]]
+  }
+  assert.throws(() => readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: okRead }), RequiredCheckAuthorityError, /pagination is incomplete/)
+  // Single full-length page (exactly per_page) is accepted.
+  const fullPage = Array.from({ length: 100 }, (_, i) => ({ ...rule, ruleset_id: i + 1, parameters: { required_status_checks: [{ context: `c${i}`, integration_id: 15368 }] } }))
+  const fullRead = (args) => {
+    if (args.includes('graphql')) return graphql
+    return [fullPage]
+  }
+  const result = readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: fullRead })
+  assert.equal(result.checks.length, 100)
+  // Two pages where the first is exactly per_page and the second is partial → accepted.
+  const partialLast = [[...fullPage], [rule]]
+  const partialRead = (args) => {
+    if (args.includes('graphql')) return graphql
+    return partialLast
+  }
+  const result2 = readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read: partialRead })
+  assert.equal(result2.checks.length, 101)
+})
 test('waiting rereads authority, never waits a failure or unknown authority, and bounds pending waits', async () => {
   let time = 0, reads = 0
   const deps = { now: () => time, sleep: async (ms) => { time += ms }, log() {}, gather() { reads++; return {} }, evaluate() { if (reads < 2) throw new PreflightError('still running: required'); return { required: 1 } } }
@@ -81,4 +109,22 @@ test('unrestricted same-name commit status and check must both pass', () => {
   const unrestricted = { ...authority, checks: [{ context: 'required', app_id: null }] }
   assert.throws(() => evaluate({ authority: unrestricted, statuses: [{ context: 'required', state: 'failure', id: 1 }] }), /failing/)
   assert.equal(evaluate({ authority: unrestricted, statuses: [{ context: 'required', state: 'success', id: 1 }] }).required, 1)
+})
+test('app-bound requirement: failing status without app field stays visible behind a passing check run', () => {
+  // REST commit statuses carry `creator`, not `app`. A red status must never
+  // hide behind a green same-name check run (BOTH-channels invariant).
+  assert.throws(() => evaluate({ statuses: [{ context: 'required', state: 'failure', id: 1 }] }), /failing/)
+  assert.throws(() => evaluate({ statuses: [{ context: 'required', state: 'error', id: 1 }] }), /failing/)
+  assert.throws(() => evaluate({ statuses: [{ context: 'required', state: 'pending', id: 1 }] }), /still running|ambiguous/)
+})
+test('app-bound requirement: unverifiable success status cannot satisfy', () => {
+  // Without `app` on the status object the producer is unknown; a success from
+  // an unknown producer must not satisfy an app-bound requirement (fail-closed).
+  assert.throws(() => evaluate({ checkRuns: [], statuses: [{ context: 'required', state: 'success', id: 1 }] }), /never reported/)
+})
+test('app-bound requirement: known-wrong-app status is excluded entirely', () => {
+  // A status from a different app is ignored; the passing check run alone satisfies.
+  assert.equal(evaluate({ statuses: [{ context: 'required', state: 'failure', id: 1, app: { id: 7 } }] }).required, 1)
+  // But a status with NO app field (REST reality) that is red must still surface.
+  assert.throws(() => evaluate({ statuses: [{ context: 'required', state: 'failure', id: 1 }] }), /failing/)
 })

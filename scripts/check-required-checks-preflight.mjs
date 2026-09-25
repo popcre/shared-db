@@ -33,7 +33,13 @@ export function observedStates({ statuses = [], checkRuns = [], appId, sha }) {
     else if (order > 0) seen.set(key, current)
   }
   for (const s of statuses) {
-    if (!s?.context || (appId != null && s.app?.id !== appId)) continue
+    if (!s?.context) continue
+    if (appId != null && s.app != null && s.app.id !== appId) continue
+    // REST commit-status objects carry `creator`, not `app`. When the producer
+    // is unverifiable and the requirement is app-bound, a success must not
+    // satisfy it (fail-closed) but a non-success must remain visible so a
+    // red status can never hide behind a green same-name check run.
+    if (appId != null && s.app == null && REQUIRED_SUCCESS.has(String(s.state ?? ''))) continue
     put(s.context, 'status', s.id, s.updated_at ?? s.created_at, String(s.state ?? ''))
   }
   for (const r of checkRuns) {

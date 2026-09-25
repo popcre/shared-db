@@ -20,6 +20,13 @@ export function normalizeRequirements(checks) {
 // Neither a hand-authored manifest nor an expiring attestation authorizes a merge.
 // GitHub itself performs the final atomic policy enforcement; callers must read
 // this again under the merge lock and must never use an administrative bypass.
+//
+// TOKEN PERMISSIONS: the two reads below require the workflow token to have
+// `contents:read` (or write) for the GraphQL ref/branchProtectionRule query and
+// `administration:read` is NOT needed — the REST /rules/branches endpoint is
+// served under the repository's contents permission. A 403 on either read
+// causes every merge to refuse (fail-closed). Verified live 2026-09-25 under
+// github.token with contents:write, statuses:write, checks:read, actions:write.
 export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now = () => new Date() }) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
   const [owner, name] = repo.split('/')
@@ -38,8 +45,14 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
       if (protection.requiredStatusCheckContexts.some((context) => !contexts.has(context)) || requirements.some((item) => !protection.requiredStatusCheckContexts.includes(item.context))) refuse('classic context and producer lists disagree')
     }
   }
-  const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=100`])
+  const perPage = 100
+  const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=${perPage}`])
   if (!Array.isArray(pages) || !pages.length || pages.some((page) => !Array.isArray(page))) refuse('effective ruleset read is incomplete')
+  // Each non-last page must be full; a short non-last page means gh stopped
+  // paginating early and we are about to under-count requirements (fail-open).
+  for (let i = 0; i < pages.length - 1; i++) {
+    if (pages[i].length !== perPage) refuse('effective ruleset pagination is incomplete')
+  }
   const rules = pages.flat()
   for (const rule of rules) {
     if (!named(rule?.type) || !Number.isSafeInteger(rule.ruleset_id) || !named(rule.ruleset_source_type) || !named(rule.ruleset_source)) refuse('effective ruleset source identity is incomplete')

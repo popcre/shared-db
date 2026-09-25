@@ -253,9 +253,9 @@ test('RequiredChecksError is the single error type callers can catch', () => {
 })
 
 
-// The pre-flight falls back to the committed mirror, so a mirror that does not match
-// what was actually written is a stale guard. It is built from the READBACK, never
-// from the requested change.
+// The committed mirror is informational only and is never merge authority, so a
+// mirror that does not match what was actually written is a stale record. It is
+// built from the READBACK, never from the requested change.
 test('the mirror is written from the readback and is sorted, stable and complete', () => {
   const written = []
   writeMirror({ contexts: ['Zed', 'Alpha'], strict: false }, { repo: 'u2giants/shared-db', branch: 'main' },

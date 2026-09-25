@@ -42,10 +42,11 @@ permissions:
   actions: write
   # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
   # file unparseable, and because this workflow is the ONLY path to `main`, every
-  # merge in the repository was refused at dispatch with HTTP 422. The pre-flight
-  # therefore cannot read main's required status check list with `github.token`;
-  # it detects that and applies a STRICTLY STRONGER test instead. See
-  # `scripts/check-required-checks-preflight.mjs`.
+  # merge in the repository was refused at dispatch with HTTP 422. Since #3369 the
+  # pre-flight reads FRESH effective settings (classic branch protection plus the
+  # applicable rulesets) with this run's own token and REFUSES when that read
+  # cannot complete: there is no committed-mirror fallback and no snapshot or
+  # expiry can authorize a merge. See `scripts/check-required-checks-preflight.mjs`.
 
 jobs:
   merge:
@@ -100,13 +101,12 @@ jobs:
           # doubt, any unrecognized statement, any object outside {crm,pim,dam}
           # refuses.
           node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
-      # `github.token` cannot read branch protection (there is no `administration`
-      # permission scope), so this falls back to the committed mirror. It reads that
-      # mirror only from trusted `origin/main`; the checked-out pull request cannot
-      # alter the list that judges it. This first mirror merge has an exact-head-bound,
-      # immutable bootstrap floor. The step above fetches and proves current main.
-      # Before the lane is taken, so a low quota waits (or fails plainly) while
-      # holding nothing, instead of failing half-way through under the lock.
+      # The pre-flight reads FRESH effective settings with this run's token — the
+      # classic branch protection rule and the applicable ruleset read — and refuses
+      # when either read cannot complete. Fail-closed: the committed mirror is
+      # informational only and authorizes nothing. The step above fetches and proves
+      # current main. Before the lane is taken, so a refusal or a low quota surfaces
+      # while holding nothing, instead of failing half-way through under the lock.
       - name: Check the GitHub API quota before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}

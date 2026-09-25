@@ -154,6 +154,18 @@ jobs:
             test -f "$f" || { echo "::error::Missing planned throughput test: $f"; exit 1; }
           done
 
+      - name: Hold the review-parallelism brief in place (#3002)
+        # CI and the governed review must run in parallel and fixes must be
+        # batched into one head. This guard fails if that brief is removed, or
+        # edited into a licence to skip a check or accept a stale approval.
+        run: |
+          set -euo pipefail
+          for f in scripts/check-review-parallelism-brief.mjs scripts/check-review-parallelism-brief.test.mjs; do
+            test -f "$f" || { echo "::error::Missing review-parallelism guard file: $f"; exit 1; }
+          done
+          node --test scripts/check-review-parallelism-brief.test.mjs
+          node scripts/check-review-parallelism-brief.mjs
+
       - name: Run the main-tip freshness gate tests (#2047)
         if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly, not globbed: scripts/ holds a mix of test and

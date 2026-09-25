@@ -15,9 +15,9 @@ Its blocking findings included a genuine authority-file defect — the business-
 still carried the pre-2026-08-31 "bare list" description of `/orderHistory` — which was
 fixed in the authority file itself the same day (superseded paragraph, live re-verified).
 **Handoff entry:** retired — the session handoff
-`HANDOFF.d/2026-09-17T1440Z-edge-dev-zcode-order-intake-plan.md` is removed in the PR that
-closes #3262, per `scripts/check-handoff-contract.mjs` rule 2b (a handoff pointing at a
-closing issue is retired with it). This plan is the durable artifact.
+`HANDOFF.d/2026-09-17T1440Z-edge-dev-zcode-order-intake-plan.md` is already absent from the
+tree (not present on `main` and not in this change set), per `scripts/check-handoff-contract.mjs`
+rule 2b (a handoff pointing at a closing issue is retired with it). This plan is the durable artifact.
 
 **Business authority:** [`docs/business-rules/erp-orders-and-source-meaning.md`](docs/business-rules/erp-orders-and-source-meaning.md),
 section *How a new order enters the system (OrderList intake)*. That section, this plan, the
@@ -498,7 +498,7 @@ reads:
     uniques, the `PRIMARY KEY`/`UNIQUE` constraint on `routing_code_map.code` (the C1 decode
     key), and the `coldlion.sync_run` FKs — following the pattern at
     `20260905105038:113` (`conname = 'coldlion_window_ledger_identity_unique'`);
-    **plus the two winner-selection indexes and the `first_seen_run` index by name**
+    **plus the two winner-selection indexes and the `first_seen_run` and `last_seen_run` indexes by name**
     (a `pg_constraint` check does not cover indexes — a migration that silently drops an
     index must fail the gate); also assert `coldlion.window_ledger` is content-untouched by
     the intake path, not merely count-unchanged — e.g. no `window_ledger` row joins a

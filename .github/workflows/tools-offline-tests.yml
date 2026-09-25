@@ -88,7 +88,64 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      # TRUSTED PURE-PROSE FAST CI ROUTE (issue #3383).
+      #
+      # A proven pure-prose change skips the engineering suite below. The proof
+      # is an exact base/head git inventory including file modes, and it is
+      # computed by the classifier taken from the PROTECTED BASE, never from the
+      # pull request head, so a head cannot rewrite its own grader. Fail closed:
+      # every other outcome keeps the full engineering path. This step never
+      # renames or softens the required context; it only decides whether the
+      # suite below needs to run.
+      - name: Decide the CI route from a trusted pure-prose inventory
+        id: route
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          echo 'pure_prose=false' >> "$GITHUB_OUTPUT"
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo 'Full engineering path: no base/head pair to prove an inventory against.'
+            exit 0
+          fi
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'Full engineering path: base/head objects could not be fetched.'
+            exit 0
+          fi
+          # Extract the classifier from the protected base tree without
+          # touching the working tree, so the suite below still tests the head.
+          scratch="$(mktemp -d)"
+          if ! git archive "$BASE_SHA" scripts/check-documents-ci-route.mjs scripts/lib/documents-only-change.mjs | tar -x -C "$scratch"; then
+            echo 'Full engineering path: the protected base does not carry the route classifier.'
+            exit 0
+          fi
+          if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
+            echo 'Pure-prose fast route proven; the engineering suite is skipped.'
+            echo '::notice::Pure-prose fast route proven from a trusted inventory; the engineering suites below are skipped.'
+          else
+            echo 'Full engineering path: the change is not proven pure prose.'
+          fi
+
+      # THE ROUTE-SAFETY SUITES GATE THE REQUIRED CONTEXT ITSELF (issue #3383
+      # review H1/M1). They are deliberately NOT skip-gated: the classifier
+      # negative tests and the workflow-shape tests must run on every pull
+      # request so a future change cannot delete or weaken them while keeping
+      # "Tools offline tests" green. A pure-prose change cannot touch these
+      # .mjs files anyway -- they are never prose -- so the fast route still
+      # skips the heavy engineering suites below.
+      - name: Prove the fast-route classifier and its workflow wiring
+        run: |
+          set -euo pipefail
+          for f in scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs; do
+            test -f "$f" || { echo "::error::Route-safety test file is absent: $f"; exit 1; }
+          done
+          node --test scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs
+
       - name: Run throughput guard tests and prove planned files are present
+        if: steps.route.outputs.pure_prose != 'true'
         run: |
           set -euo pipefail
           node --test scripts/throughput-guard/*.test.mjs
@@ -98,6 +155,7 @@ jobs:
           done
 
       - name: Run the main-tip freshness gate tests (#2047)
+        if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly, not globbed: scripts/ holds a mix of test and
         # non-test files, and this gate decides whether a governed run may
         # proceed against a moved origin/main. Six of its cases are positive
@@ -110,6 +168,7 @@ jobs:
           node --test scripts/check-main-tip-freshness.test.mjs
 
       - name: Run the queue hygiene report tests (#3199 Phase A3)
+        if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly like the freshness gate above. The hygiene report is
         # a SCHEDULED job, so no pull-request trigger can prove it still refuses
         # to write: these tests are what prove the subcommand strips every
@@ -122,6 +181,7 @@ jobs:
           node --test scripts/queue-hygiene-report.test.mjs
 
       - name: Run the self-service lane boundary and route-sync tests (#3199 Phase B)
+        if: steps.route.outputs.pure_prose != 'true'
         # The boundary classifier is MERGE-TIME enforcement: no pull-request
         # check can prove it refuses, because the refusal happens inside the
         # guarded merge. These tests are that proof — dirty-first fixtures for
@@ -139,6 +199,7 @@ jobs:
           node --test scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs
 
       - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
+        if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly, like the freshness gate above: these decide how every
         # governed gate reaches GitHub. The conformance check is the half that
         # cannot be left to a reviewer's eye -- eight hand-rolled `gh` wrappers
@@ -161,6 +222,7 @@ jobs:
           node scripts/check-repository-identity-conformance.mjs
 
       - name: Run the merge queue contract, configurator, and workflow coverage tests (#2530)
+        if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly, like the freshness gate above: the workflow coverage
         # test is the machine proof that every required context reports on
         # merge_group. A suite that silently stops running would let a required
@@ -181,6 +243,7 @@ jobs:
           fi
 
       - name: Run every tools/*.test.mjs
+        if: steps.route.outputs.pure_prose != 'true'
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -194,6 +257,7 @@ jobs:
           node --test "${FILES[@]}"
 
       - name: Prove the four Step 7A test files were actually executed
+        if: steps.route.outputs.pure_prose != 'true'
         run: |
           set -euo pipefail
           # Named explicitly so that deleting or renaming one of them fails this job
@@ -223,6 +287,7 @@ jobs:
       # and no secret is needed. Checking it out into a sibling path makes the check real.
       # ---------------------------------------------------------------------------------
       - name: Check out the ai-devops skills so the drift check has something to compare
+        if: steps.route.outputs.pure_prose != 'true'
         uses: actions/checkout@v4
         with:
           repository: popcre/ai-devops
@@ -232,6 +297,7 @@ jobs:
           persist-credentials: false
 
       - name: Check the shared-db skills do not contradict AGENTS.md
+        if: steps.route.outputs.pure_prose != 'true'
         # It exists because shared-db-change told sessions to apply DDL through an MCP that
         # AGENTS.md says may be bound to PRODUCTION. It drifted for weeks and THREE separate
         # adversarial model reviews missed it, because the skills live in a different

@@ -1,0 +1,47 @@
+{
+  "dispatcher": "MiMo repo-maintenance session for issue #3427",
+  "schema_version": 1,
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    ".agent/work/3427/2/contract.json",
+    ".agent/work/3427/2/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    ".agent/work/3427/2/contract.json",
+    ".agent/work/3427/2/completion.json"
+  ],
+  "work_issue": 3427,
+  "worktree": "C:/repos/shared-db/.ai/worktrees/3427-slot-collision",
+  "route": "repo-maintenance",
+  "assumptions": [
+    "Cross-PR object collision on manage-migration-author-lanes.mjs serializes behind PRs #3512 and #3520"
+  ],
+  "base_sha": "b32deb1ce57d2158193100c72e40ab1ea720d72d",
+  "db_reads": [],
+  "generation": 2,
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "3427-slot-collision",
+  "work_type": "repo-maintenance",
+  "db_writes": [],
+  "goal": "Fail closed on reviewer replacement slot collisions and recover one conflicted slot: symmetric peer-slot discovery for every live exact-head slot, head-SHA normalization, and guarded conflict recovery that preserves valid other-slot verdicts (#3427)",
+  "prohibited_actions": [
+    "No database structure change, database write, migration edit, or production action",
+    "Do not weaken production safety gates (25-request budget, two-reviewer rule)",
+    "Do not edit the shared checkout; work stays in the worktree"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "stop_conditions": [
+    "Stop if the change would require a database-structure or migration edit.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
+  ]
+}

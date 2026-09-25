@@ -9281,13 +9281,18 @@ test('#2457 a refused mutex release still reports the completed replacement inst
   io.atomicReviewMutexRelease=(ownerSha)=>{io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}]);releasedOwner=ownerSha}
   io.readRefOverApi=(ref)=>(ref===MUTEX_REF&&releasedOwner)?releasedOwner:(io.refs.get(ref)??null)
   io.wait=()=>{}
-  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),(error)=>
+  let refused=null
+  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),(error)=>(refused=error,
     /could not be proved after atomic deletion/.test(error.message)&&
     /THE OPERATION ITSELF COMPLETED/.test(error.message)&&
     /"reviewer":/.test(error.message)&&
     /"replacementSha":/.test(error.message)&&
     Boolean(error.completedResult?.reviewer)&&
-    Boolean(error.completedResult?.replacementSha))
+    Boolean(error.completedResult?.replacementSha)))
+  // Durable state, not only the message: the replacement record the refusal
+  // names really exists at the ref it reports.
+  assert.ok(refused.completedResult.assignmentRef)
+  assert.equal(io.refs.get(refused.completedResult.assignmentRef),refused.completedResult.replacementSha)
   // The deletion itself worked: refusing and telling the operator to retry would
   // draw a SECOND reviewer, which is exactly the harm the old message invited.
   assert.equal(io.refs.get(MUTEX_REF),undefined)

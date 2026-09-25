@@ -86,6 +86,10 @@ export const PINNED_REQUIRED_CONTEXTS = Object.freeze([
   'Handoff contract', 'Intake pointer guard', 'Migration author lease',
   'Migration guarded merge authorization', 'Orchestrator marker guard',
   'Promotion contract tests (offline)', 'SQL migration guards', 'Tools offline tests',
+  // Joined 2026-09-25 (#2530 Step 8): the additive queue gate, plus the two contexts
+  // live protection already required but the mirror had never recorded.
+  'Destructive SQL outside migrations', 'Merge queue gate',
+  'supabase/tests against an ephemeral database',
 ])
 
 export const PREFLIGHT_SOURCE_PATH = 'scripts/check-required-checks-preflight.mjs'

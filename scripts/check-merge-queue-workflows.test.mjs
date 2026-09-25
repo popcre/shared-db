@@ -34,6 +34,7 @@ const CONTEXT_MAP = {
   'Agent work contract': { workflow: 'agent-work-contract.yml', kind: 'check-run', job: 'Agent work contract' },
   'Cancelled work guard': { workflow: 'cancelled-work-guard.yml', kind: 'check-run', job: 'Cancelled work guard' },
   'Cross-PR object collision': { workflow: 'pr-object-collision.yml', kind: 'check-run', job: 'Cross-PR object collision' },
+  'Destructive SQL outside migrations': { workflow: 'destructive-analysis-guard.yml', kind: 'check-run', job: 'Destructive SQL outside migrations' },
   'Domain ownership': { workflow: 'domain-ownership.yml', kind: 'check-run', job: 'Domain ownership' },
   'Handoff contract': { workflow: 'handoff-contract-guard.yml', kind: 'check-run', job: 'Handoff contract' },
   'Intake pointer guard': { workflow: 'intake-pointer-guard.yml', kind: 'check-run', job: 'Intake pointer guard' },
@@ -43,6 +44,7 @@ const CONTEXT_MAP = {
   'Promotion contract tests (offline)': { workflow: 'coldlion-promotion-contract-tests.yml', kind: 'check-run', job: 'Promotion contract tests (offline)' },
   'Queue-sensitive checks (aggregate)': { workflow: 'queue-sensitive-aggregate.yml', kind: 'check-run', job: 'Queue-sensitive checks (aggregate)' },
   'SQL migration guards': { workflow: 'shared-supabase-migrations.yml', kind: 'check-run', job: 'SQL migration guards' },
+  'supabase/tests against an ephemeral database': { workflow: 'database-contract-tests.yml', kind: 'check-run', job: 'supabase/tests against an ephemeral database' },
   'Tools offline tests': { workflow: 'tools-offline-tests.yml', kind: 'check-run', job: 'Tools offline tests' },
   'Merge queue gate': { workflow: 'merge-queue-gate.yml', kind: 'check-run', job: 'Merge queue gate' },
 }

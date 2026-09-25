@@ -2,14 +2,23 @@
   "_why": "MIRROR of the live required status checks on the protected branch, NOT the authority. GitHub branch protection still enforces at merge time. scripts/check-required-checks-preflight.mjs reads this because the merge workflow token cannot read branch protection (there is no `administration` permission scope in GitHub Actions; declaring one makes the workflow unparseable). Rewritten by scripts/update-required-checks.mjs from the post-write readback. Do not hand-edit.",
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-09-25T21:26:08.266Z",
+  "capturedIso": "2026-09-25T21:33:14.470Z",
   "strict": false,
   "contexts": [
+    "Agent work contract",
+    "Cancelled work guard",
     "Cross-PR object collision",
     "Destructive SQL outside migrations",
+    "Domain ownership",
+    "Handoff contract",
+    "Intake pointer guard",
     "Merge queue gate",
+    "Migration author lease",
     "Migration guarded merge authorization",
+    "Orchestrator marker guard",
+    "Promotion contract tests (offline)",
     "SQL migration guards",
+    "Tools offline tests",
     "supabase/tests against an ephemeral database"
   ]
 }

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "generation": 6,
+  "work_issue": 3498,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Resolve exact-head #3510 review: explicit int2vector cast, exact actor default checks at apply, accurate deferred wiring comments and proof lifecycle obligations",
+  "base_sha": "15f18e1bbfe0e6db41a1dee21e404b425d6459f9",
+  "dispatcher": "Codex shared-db orchestrator marker #3570, responding to DeepSeek slot-1 REVISE at c20efc29 and awaiting Muse slot-2",
+  "worker": "codex:pr3510_g5",
+  "branch": "mimo/3498-plm-item-homes",
+  "worktree": "/home/ahazan/repos/shared-db-3510-g6",
+  "allowed_paths": [
+    "supabase/migrations/20260925222635_plm_item_user_assignment_and_workflow_action.sql",
+    "supabase/tests/plm_item_assignment_action_homes_contract.sql",
+    ".github/live-proofs/3498.sql",
+    "docs/designflow-master-data-migration/designflow-schema-segregation.md",
+    ".agent/work/3498/6/contract.json",
+    ".agent/work/3498/6/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260925222635_plm_item_user_assignment_and_workflow_action.sql",
+    "supabase/tests/plm_item_assignment_action_homes_contract.sql",
+    ".github/live-proofs/3498.sql",
+    "docs/designflow-master-data-migration/designflow-schema-segregation.md",
+    ".agent/work/3498/6/contract.json",
+    ".agent/work/3498/6/completion.json"
+  ],
+  "db_reads": [
+    "table dflow.item_user_assignment",
+    "table dflow.item_workflow_action"
+  ],
+  "db_writes": [
+    "table plm.item_user_assignment",
+    "table plm.item_workflow_action",
+    "index plm.item_user_assignment_rfq_item_id_idx",
+    "index plm.item_workflow_action_rfq_item_id_idx",
+    "index plm.item_workflow_action_prior_step_id_idx",
+    "index plm.item_workflow_action_new_step_id_idx",
+    "index plm.item_workflow_action_source_action_rfq_item_idx",
+    "index plm.item_user_assignment_one_active",
+    "index plm.item_workflow_action_one_return_per_source"
+  ],
+  "prohibited_actions": [
+    "No preview, merge, or production action from this author",
+    "No row movement or grants in this migration; structure only",
+    "No writes outside the two tables and seven exact index objects claimed by #3502",
+    "Never reuse or invent a migration version; #3502 permanently reserves 20260925222635 with supersession of 20260925044029",
+    "Do not start row movement until the four deferred lookup indexes, append-only triggers, grants, and cross-schema wiring are owned by a successor"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python3 -m unittest scripts.test_shared_db_live_proof",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The two new plm tables are empty at creation; parent plm RFQItem and RFQStep are live and FK child indexes ship now",
+    "Cross-schema dflow.users FKs and four lookup-only source indexes are deferred to a successor before first row",
+    "Current main 15f18e1b is independent; its newest migration remains 20260925193145, below reserved 20260925222635."
+  ],
+  "stop_conditions": [
+    "Stop if claim #3502 does not cover both tables and all seven index objects",
+    "Stop if a migration version or object collides, or main/ledger outruns reserved version",
+    "Stop if read-only live proof or SQL contract test cannot describe actual shipped shape",
+    "Stop if Muse slot-2 finds an incompatible material issue before code is finalized."
+  ]
+}

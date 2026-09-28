@@ -11,8 +11,19 @@
 -- capture. finalize then clears chunk payloads, which is why a separate
 -- after-the-fact publish function could not re-derive membership and is absent.
 --
--- Cross-backend contention is not observable from one session; this file proves
--- at runtime that both begin and finalize hold the one shared transaction lock.
+-- What this file does NOT execute, stated plainly:
+--  * Cross-backend serialization. One session cannot observe contention and the
+--    ephemeral lane has no dblink; the file proves at runtime that begin and
+--    finalize both hold the one shared transaction-level lock key.
+--  * The in-function authentication branch. SET ROLE does not change
+--    session_user, and the harness connects as postgres, which the predicate
+--    admits. As in wb_grants_rls_and_dam_order_list_invoker.sql section D, the
+--    predicate is proven by its truth table, and client roles by the EXECUTE /
+--    schema-USAGE denial they actually hit.
+--  * wb_validate_normalized_row volatility (IMMUTABLE but TimeZone-dependent) is
+--    tracked separately in #3725; it is structural and out of scope here.
+--  * Index choice. The loader's identity OR-join cannot use the partial source
+--    indexes; that is pre-existing loader shape, not changed or relied on here.
 
 -- 1. Exact objects this contract depends on.
 do $catalog$
@@ -22,6 +33,7 @@ declare
   v_role text;
   v_privilege text;
   v_expected_config text[];
+  v_wrappers text[];
 begin
   foreach v_fn in array array[
     'plm.begin_wb_capture(text,date,text,text,integer,text,text,text)'::regprocedure,
@@ -59,15 +71,16 @@ begin
   end if;
 
   -- Only one body marks withdrawals, and only finalize produces a validating header.
+  -- Searched across every non-system schema, whitespace-tolerant.
   if (select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text)
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname in ('plm','public','api','app','core')
-         and p.prosrc ~* 'wb_[a-z_]+ t set status=''withdrawn''')
+       where n.nspname not in ('pg_catalog','information_schema') and n.nspname not like 'pg\_%'
+         and p.prosrc ~* 'update\s+plm\.wb_\w+[^;]*status\s*=\s*''withdrawn''')
      is distinct from array['plm.sync_wb_normalized_target(uuid,text,jsonb,text,numeric)'] then
     raise exception 'Warner withdrawal-marking inventory changed';
   end if;
   if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname in ('plm','public','api','app','core')
+              where n.nspname not in ('pg_catalog','information_schema') and n.nspname not like 'pg\_%'
                 and p.prosrc ~* 'wb_capture' and p.prosrc ~* 'status\s*=\s*''validating'''
                 and p.oid <> 'plm.finalize_wb_capture(uuid,text,numeric)'::regprocedure) then
     raise exception 'a function other than finalize can move a Warner header to validating';
@@ -75,9 +88,11 @@ begin
   if position('status=''validating''' in (select prosrc from pg_proc where oid = 'plm.finalize_wb_capture(uuid,text,numeric)'::regprocedure)) = 0 then
     raise exception 'finalize no longer sets the validating header state';
   end if;
-  foreach v_role in array array['anon','authenticated','service_role'] loop
+  foreach v_role in array array['public','anon','authenticated','service_role'] loop
     foreach v_privilege in array array['INSERT','UPDATE','DELETE','TRUNCATE'] loop
-      if has_table_privilege(v_role, 'plm.wb_capture', v_privilege) then
+      if (v_role = 'public' and exists (select 1 from aclexplode(coalesce((select relacl from pg_class where oid = 'plm.wb_capture'::regclass), '{}'::aclitem[])) a
+                                        where a.grantee = 0 and a.privilege_type = v_privilege))
+         or (v_role <> 'public' and has_table_privilege(v_role, 'plm.wb_capture', v_privilege)) then
         raise exception '% may % plm.wb_capture directly', v_role, v_privilege;
       end if;
     end loop;
@@ -85,6 +100,30 @@ begin
 
   if to_regprocedure('plm.wb_publish_lifecycle(uuid)') is not null then
     raise exception 'a second Warner publication path exists beside finalize';
+  end if;
+
+  -- The eleven plm and eleven public per-target wrappers reach the loader; none is open to a client role.
+  select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) into v_wrappers
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('plm','public') and p.proname like 'sync\_wb\_%'
+     and p.proname <> 'sync_wb_normalized_target' and p.proname <> 'sync_wb_canonical_relationship_edges';
+  if coalesce(array_length(v_wrappers,1),0) <> 22 then
+    raise exception 'Warner per-target wrapper inventory changed: %', coalesce(array_length(v_wrappers,1),0);
+  end if;
+  if exists (select 1 from unnest(v_wrappers) w
+              where has_function_privilege('anon', w::regprocedure, 'execute')
+                 or has_function_privilege('authenticated', w::regprocedure, 'execute')) then
+    raise exception 'a Warner per-target wrapper is executable by a client role';
+  end if;
+
+  -- Lifecycle invariants the publication assertions read as fact.
+  if (select count(*) from pg_constraint
+       where conrelid = 'plm.wb_franchise'::regclass and contype = 'c' and convalidated
+         and conname in ('wb_franchise_lifecycle_status_chk','wb_franchise_withdrawn_at_chk')) <> 2
+     or not exists (select 1 from pg_trigger
+                     where tgrelid = 'plm.wb_franchise'::regclass and tgname = 'trg_wb_franchise_lifecycle'
+                       and tgfoid = 'plm.enforce_wb_entity_lifecycle()'::regprocedure and not tgisinternal) then
+    raise exception 'plm.wb_franchise lifecycle constraints or trigger changed';
   end if;
 
   foreach v_col in array array['source_namespace','source_id','fallback_key','status','withdrawn_at','first_withdrawn_at'] loop
@@ -111,9 +150,13 @@ $catalog$;
 
 -- 2. Runtime locking: begin and finalize both take the shared import lock.
 -- Each probe runs in a subtransaction that is deliberately aborted. PostgreSQL
--- releases locks taken inside an aborted subtransaction, including
--- transaction-level advisory locks, so each probe starts without the key and
--- discards its synthetic rows even inside the harness's outer transaction.
+-- documents (Explicit Locking, "Table-Level Locks"): "if a lock is acquired
+-- after establishing a savepoint, the lock is released immediately if the
+-- savepoint is rolled back to"; a PL/pgSQL exception block is such a savepoint,
+-- and transaction-level advisory locks follow the same resource-owner release.
+-- The guards below make that falsifiable rather than assumed: if the key were
+-- still held, the finalize probe could not prove finalize took it, and the
+-- file fails loudly instead of passing.
 do $locking$
 declare
   c uuid := '99999999-9999-4999-8999-000000003682';

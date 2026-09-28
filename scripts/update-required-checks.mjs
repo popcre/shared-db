@@ -246,7 +246,9 @@ export function mirrorDocument(validated, repo, branch, now = new Date(), author
     repo, branch,
     capturedIso: now.toISOString(),
     strict: validated.strict,
-    contexts: [...new Set(authority ? authority.checks.map((check) => check.context) : validated.contexts)].sort(),
+    // Merge-queue coverage uses this as the classic readback baseline. The
+    // separate authority snapshot records inherited ruleset requirements.
+    contexts: [...new Set(validated.contexts)].sort(),
     checks: authority?.checks ?? validated.checks ?? null,
   }, null, 2)}
 `

@@ -4,7 +4,7 @@ export class RequiredCheckAuthorityError extends Error {}
 const refuse = (message) => { throw new RequiredCheckAuthorityError(message) }
 const named = (value) => typeof value === 'string' && value.trim().length > 0
 const validRepo = (value) => typeof value === 'string' && value.split('/').length === 2 && value.split('/').every((part) => /^[\w.-]+$/.test(part) && part !== '.' && part !== '..')
-const appId = (value) => value === null || value === -1 ? null : (Number.isSafeInteger(value) && value > 0 ? value : refuse('required check producer identity is unreadable'))
+const appId = (value) => value == null || value === -1 ? null : (Number.isSafeInteger(value) && value > 0 ? value : refuse('required check producer identity is unreadable'))
 
 // Canonical JSON: object keys sorted at every level. Two reads that say the
 // same thing must produce the same revision digest, or representational

@@ -92,6 +92,8 @@ jobs:
           NODE_OPTIONS: ''
           NODE_PATH: ''
           BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
         run: |
           set -euo pipefail
           export PATH="$TRUSTED_PATH"
@@ -146,6 +148,8 @@ jobs:
           NODE_OPTIONS: ''
           NODE_PATH: ''
           BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
         run: |
           set -euo pipefail
           export PATH="$TRUSTED_PATH"

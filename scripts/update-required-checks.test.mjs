@@ -284,6 +284,7 @@ test('app-bound settings updates preserve every existing producer and readback r
   applyUnion({ repo: DEFAULT_REPO, branch: 'main' }, plan, transport)
   // GitHub's "any source" encoding omits app_id — never -1 or null.
   assert.deepEqual(JSON.parse(transport.calls[0].input).checks, [{ context: 'required', app_id: 15368 }, { context: 'new' }])
+  assert.doesNotThrow(() => verifyReadback({ strict: false, contexts: plan.next, checks: [{ context: 'required', app_id: 15368 }, { context: 'new' }] }, plan), 'GitHub may omit app_id for an unrestricted check')
   assert.throws(() => verifyReadback({ strict: false, contexts: plan.next, checks: plan.next.map((context) => ({ context, app_id: -1 })) }, plan), /producer binding changed/)
   assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, { run: () => JSON.stringify({ strict: false, contexts: ['required'] }) }), /producer bindings are missing/)
 })
@@ -294,4 +295,9 @@ test('refresh reads effective settings into informational evidence with no setti
   assert.equal(transport.written.length, 1)
   assert.equal(JSON.parse(transport.written[0][1]).authority.mode, 'live-effective-settings')
   assert.equal(await main(['--refresh-mirror', '--apply'], transport), 2)
+})
+test('mirror keeps classic contexts as merge-queue baseline while recording inherited ruleset authority separately', () => {
+  const doc = JSON.parse(mirrorDocument({ strict: false, contexts: ['classic'] }, DEFAULT_REPO, 'main', new Date(0), { checks: [{ context: 'classic', app_id: null }, { context: 'ruleset', app_id: null }] }))
+  assert.deepEqual(doc.contexts, ['classic'])
+  assert.deepEqual(doc.authority.checks.map((check) => check.context), ['classic', 'ruleset'])
 })

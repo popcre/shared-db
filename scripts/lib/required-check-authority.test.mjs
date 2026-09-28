@@ -32,13 +32,13 @@ test('new inherited ruleset changes effective revision even with a still-unexpir
   assert.notEqual(current.revision, old.revision)
   assert.equal(current.checks.length, 2)
 })
-test('refuses transport denial, partial GraphQL, malformed pagination, wrong repository and missing producer', () => {
+test('refuses transport denial, partial GraphQL, malformed pagination, wrong repository and invalid producer', () => {
   assert.throws(() => readEffectiveRequiredChecks({ repo: 'popcre/shared-db', read() { throw Error('403') } }), /403/)
   for (const mutation of [
     (r) => { r.errors = [{ message: 'denied' }] },
     (r) => { r.data.repository.databaseId = null },
     (r) => { r.data.repository.nameWithOwner = 'other/repo' },
-    (r) => { r.data.repository.ref.branchProtectionRule.requiredStatusChecks[0].app = {} },
+    (r) => { r.data.repository.ref.branchProtectionRule.requiredStatusChecks[0].app = { databaseId: 'invalid' } },
     (r) => { r.data.repository.ref.branchProtectionRule.requiredStatusCheckContexts.push('lost') },
   ]) assert.throws(() => readEffectiveRequiredChecks(fixture([], mutation)))
   const input = fixture(); const read = input.read

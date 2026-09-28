@@ -190,7 +190,10 @@ begin
   -- Assignment: close once, then never rewrite.
   perform set_config('request.designflow.actor_id', v_sales::text, true);
   perform set_config('request.designflow.actor_email', 'issue-2874-sales@example.test', true);
-  if dflow_prod.set_item_user_assignment(v_item, 'sourcing', v_sourcing, false) <> v_assignment
+  -- Two statements: a subquery in the same expression would read the
+  -- statement snapshot taken before the function's UPDATE.
+  v_retry := dflow_prod.set_item_user_assignment(v_item, 'sourcing', v_sourcing, false);
+  if v_retry is distinct from v_assignment
      or (select effective_to from dflow_prod.item_user_assignment where id = v_assignment) is null then
     raise exception 'assignment was not closed';
   end if;

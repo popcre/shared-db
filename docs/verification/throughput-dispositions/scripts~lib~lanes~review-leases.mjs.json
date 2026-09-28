@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/lanes/review-leases.mjs",
+  "sites": [
+    {
+      "site": "scripts/lib/lanes/review-leases.mjs:376",
+      "semantic_key": "scripts/lib/lanes/review-leases.mjs:ce0ab3a91a6f988f7aa5002646c036fdcabab77a37713a33a87f8a8668d9e835:context-b169d16fd3ed56ed8d19da9ed21b9876344fceae36a4d57b8d94cb7a6ab6e4e1",
+      "line_sha256": "ce0ab3a91a6f988f7aa5002646c036fdcabab77a37713a33a87f8a8668d9e835",
+      "disposition": "excluded",
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
+      "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:ce0ab3a91a6f988f7aa5002646c036fdcabab77a37713a33a87f8a8668d9e835:1"
+    }
+  ]
+}

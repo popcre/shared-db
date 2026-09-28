@@ -1,11 +1,11 @@
--- Live proof for #3683 (migration 20260928160635, claim #3694). Read-only.
+-- Live proof for #3683 (migration 20260928211044, claim #3694). Read-only.
 -- Proves on production: the migration is in the ledger; both durable-state tables exist
 -- with RLS on, read-only to authenticated, and not writable by the loader role; the
 -- publish function is SECURITY DEFINER and executable only by service_role; and the
 -- durable state reconciles with its publications (every entity row points at a
 -- recorded publication, and every withdrawal names one).
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260928160635')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260928211044')
   and to_regclass('plm.nbcu_entity_lifecycle') is not null
   and to_regclass('plm.nbcu_lifecycle_publication') is not null
   and (select bool_and(relrowsecurity) from pg_class

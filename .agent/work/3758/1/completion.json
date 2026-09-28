@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "work_issue": 3758,
+  "outcome": "ready-for-merge",
+  "pr": 3759,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3758/1",
+  "contract_sha256": "961372bb3f5415d6b5544d74cc8d66e5c9e29307ab7a767df010a4fe86ad5e12",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "head_sha": "38718559e19660dcd465da0f3f1cbb71a606e204",
+  "files_changed": [".github/workflows/destructive-analysis-guard.yml",".github/workflows/documents-only-merge-authorization.yml",".github/workflows/guarded-migration-merge.yml",".github/workflows/merge-queue-gate.yml",".github/workflows/migration-author-lease.yml",".github/workflows/orchestrator-marker-guard.yml",".github/workflows/pr-object-collision.yml"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [{"command": "node --test (20 workflow-reading test files) + yaml.safe_load of every workflow + transport/identity/throughput/workflow-policy conformance scripts", "exit_code": 0, "evidence": "all pass, 0 fail; 19 GH_TOKEN lines switched, 7 mint steps, only read steps"}],
+  "assumptions_resolved": ["The workflow edits were drafted before the contract was published; they were set aside, the contract published, then re-applied unchanged as the implementation commit."],
+  "stop_conditions_hit": []
+}

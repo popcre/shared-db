@@ -21,7 +21,8 @@ from test_shared_db_live_proof import FakeConnection
 
 class StyleGroupProofTests(unittest.TestCase):
     def setUp(self):
-        self.sql = (ROOT / ".github/live-proofs/2478.sql").read_text(encoding="utf-8")
+        # Hash exactly what main() hashes: the committed bytes, not newline-normalized text.
+        self.sql = (ROOT / ".github/live-proofs/2478.sql").read_bytes().decode("utf-8")
         self.connection = FakeConnection()
         self.connection.state = ["postgres", "postgres", "postgres", "on",
                                  "8s", "1s", False, True]
@@ -58,8 +59,18 @@ class StyleGroupProofTests(unittest.TestCase):
         self.assertNotIn("private query text", str(caught.exception))
 
     def test_general_bypassrls_refusal_remains(self):
+        # A correctly shaped 9-column general-route state that differs ONLY in
+        # rolbypassrls=True, so the BYPASSRLS clause itself is what refuses.
+        connection = FakeConnection()
+        connection.state = ["postgres", "postgres", "postgres", "pg_catalog, public",
+                            "on", "8s", "1s", False, False]
+        execute_bounded_probe(connection, self.sql, expected_role="postgres")
+        connection = FakeConnection()
+        connection.state = ["postgres", "postgres", "postgres", "pg_catalog, public",
+                            "on", "8s", "1s", False, True]
         with self.assertRaises(LiveProofError):
-            execute_bounded_probe(self.connection, self.sql, expected_role="postgres")
+            execute_bounded_probe(connection, self.sql, expected_role="postgres")
+        self.assertFalse(any(call[2].get("prepare") for call in connection.calls))
 
     def test_workflow_limits_direct_route_to_2478(self):
         workflow = (ROOT / ".github/workflows/shared-db-live-proof.yml").read_text()
@@ -69,7 +80,18 @@ class StyleGroupProofTests(unittest.TestCase):
         self.assertIn("secrets.SUPABASE_DB_PASSWORD_PRODUCTION", workflow)
         self.assertIn("name: shared-db-live-proof-${{ inputs.work_issue }}-${{ github.sha }}", workflow)
 
-    def test_main_pins_connection_and_rejects_mismatched_identity(self):
+    def test_assertion_must_name_the_probe_version(self):
+        from style_group_live_proof import assertion_names_probe_version
+        def issue(text):
+            return {"body": f"```db-work-scope\nlive_assertion: {text}\n```\n"}
+        assertion_names_probe_version(issue("migration 20260925061508 recorded"), self.sql)
+        for text in ("migration 20260920203337 recorded",
+                     "migrations 20260925061508 and 20260920203337",
+                     "no version named"):
+            with self.subTest(text=text), self.assertRaises(LiveProofError):
+                assertion_names_probe_version(issue(text), self.sql)
+
+    def test_main_pins_connection_parameters_and_refuses_misroutes(self):
         self.assertEqual(PORT, 5432)
         calls = []
         connection = FakeConnection()
@@ -120,7 +142,28 @@ live_assertion: migration 20260925061508 and derivation controls pass
                 with self.assertRaises(LiveProofError):
                     main(argv[:5] + ["scripts/test_style_group_live_proof.py"] + argv[6:-1]
                          + [str(Path(directory) / "wrong-probe.json")])
-        self.assertEqual(len(calls), 5)
+                with self.assertRaises(LiveProofError):
+                    main(["--work-issue", "2479"] + argv[2:-1]
+                         + [str(Path(directory) / "wrong-issue.json")])
+                with self.assertRaises(LiveProofError):
+                    main(argv)  # output already exists
+                # A post-connect configuration mismatch never runs the probe.
+                connection.calls.clear()
+                connection.info.port = 6543
+                with self.assertRaises(LiveProofError):
+                    main(argv[:-1] + [str(Path(directory) / "no-probe.json")])
+                self.assertFalse(any(call[2].get("prepare") for call in connection.calls))
+                connection.info.port = PORT
+                # A failure after connecting is not reported as a connection refusal.
+                connection.rows = [(False,)]
+                with self.assertRaises(LiveProofError) as caught:
+                    main(argv[:-1] + [str(Path(directory) / "failed.json")])
+                self.assertNotIn("connection refused", str(caught.exception))
+        self.assertEqual(len(calls), 7)
+
+    def test_time_budget_is_enforced(self):
+        with self.assertRaises(LiveProofError):
+            execute_style_group_probe(self.connection, self.sql, clock=iter([0, 9]).__next__)
 
 
 if __name__ == "__main__":

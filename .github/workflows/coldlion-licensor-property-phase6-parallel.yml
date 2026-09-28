@@ -46,12 +46,6 @@ on:
         type: boolean
         required: true
         default: false
-  # Schedules stay registered but each job no-ops unless PHASE6_SCHEDULE_ENABLED=true.
-  schedule:
-    - cron: "0 4 * * *"    # ColdLion mirror_only candidate
-    - cron: "0 5 * * *"    # Daily comparison candidate
-    - cron: "15 * * * *"   # Health check candidate (HOURLY since 2026-07-28)
-
 permissions:
   contents: read
   issues: write   # required so a failing lane can deliver its own alert immediately

@@ -56,7 +56,9 @@ begin
       raise exception 'Warner capture function search_path changed: %', v_fn;
     end if;
     if has_function_privilege('anon', v_fn, 'execute')
-       or has_function_privilege('authenticated', v_fn, 'execute') then
+       or has_function_privilege('authenticated', v_fn, 'execute')
+       or exists (select 1 from pg_proc p2 cross join lateral aclexplode(coalesce(p2.proacl, acldefault('f', p2.proowner))) a
+                   where p2.oid = v_fn and a.grantee = 0 and a.privilege_type = 'EXECUTE') then
       raise exception 'Warner capture function is executable by a client role: %', v_fn;
     end if;
   end loop;
@@ -70,20 +72,33 @@ begin
     raise exception 'Warner loader authentication predicate changed';
   end if;
 
-  -- Only one body marks withdrawals, and only finalize produces a validating header.
-  -- Searched across every non-system schema, whitespace-tolerant.
-  if (select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text)
-        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname not in ('pg_catalog','information_schema') and n.nspname not like 'pg\_%'
-         and p.prosrc ~* 'update\s+plm\.wb_\w+[^;]*status\s*=\s*''withdrawn''')
-     is distinct from array['plm.sync_wb_normalized_target(uuid,text,jsonb,text,numeric)'] then
-    raise exception 'Warner withdrawal-marking inventory changed';
+  -- Exact inventory, not a single-name absence check: every function in a
+  -- non-system schema whose comment-stripped body references plm.wb_capture, or
+  -- that mentions a withdrawn state together with a plm.wb_ table, is exactly
+  -- these five. A new writer or a second publication path fails here by name.
+  select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) into v_wrappers
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   cross join lateral (select regexp_replace(regexp_replace(p.prosrc, '--[^\n]*', '', 'g'), '/\*.*?\*/', '', 'g') as src) b
+   where n.nspname not in ('pg_catalog','information_schema') and n.nspname not like 'pg\_%'
+     and (b.src ~* 'plm\.wb_capture\M' or (b.src ~* 'withdrawn' and b.src ~* 'plm\.wb_'));
+  if v_wrappers is distinct from array[
+       'plm.begin_wb_capture(text,date,text,text,integer,text,text,text)',
+       'plm.fail_wb_capture(uuid,text)',
+       'plm.finalize_wb_capture(uuid,text,numeric)',
+       'plm.load_wb_chunk(uuid,integer,text,text)',
+       'plm.sync_wb_normalized_target(uuid,text,jsonb,text,numeric)'] then
+    raise exception 'Warner capture/withdrawal function inventory changed: %', v_wrappers;
   end if;
-  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname not in ('pg_catalog','information_schema') and n.nspname not like 'pg\_%'
-                and p.prosrc ~* 'wb_capture' and p.prosrc ~* 'status\s*=\s*''validating'''
-                and p.oid <> 'plm.finalize_wb_capture(uuid,text,numeric)'::regprocedure) then
-    raise exception 'a function other than finalize can move a Warner header to validating';
+  -- Within that exact set (comments stripped), only sync marks withdrawals and
+  -- no function other than finalize moves a wb_capture header to validating.
+  if exists (select 1 from unnest(v_wrappers) w
+              cross join lateral (select regexp_replace(regexp_replace(prosrc, '--[^\n]*', '', 'g'), '/\*.*?\*/', '', 'g') as src
+                                    from pg_proc where oid = w::regprocedure) b
+              where (b.src ~* 'update\s+plm\.wb_\w+[^;]*status\s*=\s*''withdrawn''')
+                    <> (w = 'plm.sync_wb_normalized_target(uuid,text,jsonb,text,numeric)')
+                 or (b.src ~* 'update\s+plm\.wb_capture\M[^;]*status\s*=\s*''validating'''
+                     and w <> 'plm.finalize_wb_capture(uuid,text,numeric)')) then
+    raise exception 'Warner withdrawal or validating writer moved inside the capture function set';
   end if;
   if position('status=''validating''' in (select prosrc from pg_proc where oid = 'plm.finalize_wb_capture(uuid,text,numeric)'::regprocedure)) = 0 then
     raise exception 'finalize no longer sets the validating header state';
@@ -98,9 +113,18 @@ begin
     end loop;
   end loop;
 
-  if to_regprocedure('plm.wb_publish_lifecycle(uuid)') is not null then
-    raise exception 'a second Warner publication path exists beside finalize';
+  -- Shape the direct inserts in section 2 depend on (20260810130000:195-239).
+  if (select count(*) from pg_constraint
+       where conrelid = 'plm.wb_capture'::regclass and contype = 'c' and convalidated
+         and conname in ('wb_capture_header_shape_chk','wb_capture_chunk_shape_chk')) <> 2 then
+    raise exception 'plm.wb_capture header/chunk shape checks changed';
   end if;
+  foreach v_col in array array['capture_id','chunk_number','target','status','payload','payload_row_count','chunk_sha256','snapshot_sha256','expected_row_count','payload_cleared_at'] loop
+    if not exists (select 1 from pg_attribute
+                   where attrelid = 'plm.wb_capture'::regclass and attname = v_col and not attisdropped) then
+      raise exception 'plm.wb_capture lost column %', v_col;
+    end if;
+  end loop;
 
   -- The eleven plm and eleven public per-target wrappers reach the loader; none is open to a client role.
   select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) into v_wrappers
@@ -112,7 +136,9 @@ begin
   end if;
   if exists (select 1 from unnest(v_wrappers) w
               where has_function_privilege('anon', w::regprocedure, 'execute')
-                 or has_function_privilege('authenticated', w::regprocedure, 'execute')) then
+                 or has_function_privilege('authenticated', w::regprocedure, 'execute')
+                 or exists (select 1 from pg_proc p2 cross join lateral aclexplode(coalesce(p2.proacl, acldefault('f', p2.proowner))) a
+                             where p2.oid = w::regprocedure and a.grantee = 0 and a.privilege_type = 'EXECUTE')) then
     raise exception 'a Warner per-target wrapper is executable by a client role';
   end if;
 
@@ -149,14 +175,12 @@ end
 $catalog$;
 
 -- 2. Runtime locking: begin and finalize both take the shared import lock.
--- Each probe runs in a subtransaction that is deliberately aborted. PostgreSQL
--- documents (Explicit Locking, "Table-Level Locks"): "if a lock is acquired
--- after establishing a savepoint, the lock is released immediately if the
--- savepoint is rolled back to"; a PL/pgSQL exception block is such a savepoint,
--- and transaction-level advisory locks follow the same resource-owner release.
--- The guards below make that falsifiable rather than assumed: if the key were
--- still held, the finalize probe could not prove finalize took it, and the
--- file fails loudly instead of passing.
+-- Each probe runs in a subtransaction that is deliberately aborted. The harness
+-- wraps this file in one top-level transaction, so the probes depend on a
+-- transaction-level advisory lock taken inside a PL/pgSQL exception block being
+-- released when that block aborts. That is not assumed: step 0 proves it on a
+-- private key in this same transaction before either probe relies on it, and
+-- docs/advisory-lock-registry.md rule 2 records the semantic.
 do $locking$
 declare
   c uuid := '99999999-9999-4999-8999-000000003682';
@@ -170,6 +194,21 @@ declare
 begin
   h := encode(extensions.digest(convert_to(p,'UTF8'),'sha256'),'hex');
   m := encode(extensions.digest(convert_to(h,'UTF8'),'sha256'),'hex');
+
+  -- Step 0: prove subtransaction-abort release on a private key (#3691 review B1).
+  begin
+    perform pg_advisory_xact_lock(3682, 3691);
+    if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()
+                     and classid = 3682 and objid = 3691 and objsubid = 2 and granted) then
+      raise exception 'semantic probe did not take its private lock';
+    end if;
+    raise exception using errcode = 'QA682', message = 'q3682 semantic probe rollback';
+  exception when sqlstate 'QA682' then null;
+  end;
+  if exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()
+               and classid = 3682 and objid = 3691 and objsubid = 2) then
+    raise exception 'transaction-level advisory lock survived subtransaction abort; the lock probes cannot be trusted';
+  end if;
 
   execute v_lock_sql into v_held;
   if v_held then raise exception 'import lock already held before the begin probe'; end if;
@@ -229,6 +268,15 @@ begin
   if exists (select 1 from plm.wb_capture where capture_id=c and chunk_number>=1 and (payload is not null or payload_cleared_at is null)) then
     raise exception 'published capture kept its chunk payload';
   end if;
+
+  -- Digest convention: chunk_sha256 is sha256 of the UTF-8 payload text and
+  -- load_wb_chunk recomputes it; a wrong digest is refused.
+  c := plm.begin_wb_capture('wb_franchise',date '2099-03-09','q3682-chunkhash',m_one,1,'synthetic','https://example.invalid',null);
+  rejected := false;
+  begin perform plm.load_wb_chunk(c,1,p_one,h_both);
+  exception when sqlstate 'P0001' then rejected := position('failed its integrity check' in sqlerrm) > 0; end;
+  if not rejected then raise exception 'load_wb_chunk accepted a chunk whose digest does not match its payload'; end if;
+  perform plm.fail_wb_capture(c,'synthetic chunk digest mismatch');
 
   -- Partial run: declared two rows, streamed one.
   c := plm.begin_wb_capture('wb_franchise',date '2099-03-02','q3682-partial',m_one,2,'synthetic','https://example.invalid',null);

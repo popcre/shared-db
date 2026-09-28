@@ -77,7 +77,8 @@
     "Governed review round 2 APPROVE at 5c31b2c6 also flagged that the printed scope paragraph understated the comparison; fixed at this head, so this generation needs its own exact-head review.",
     "Generation 8 is a schema-v2 successor bound to published generation 7. It was published before the targeted regression tests and includes both #2986 sandbox drift monitoring and #2492 Grok review-budget preservation.",
     "The current-main conflict retained required-check authority tests and the reviewer-budget test in the migration-author-lease workflow. The ledger workflow retained the reporter test and now monitors sandbox. Two integration regression tests prove these coexist.",
-    "No live database read or write was performed during this rescue; prior Actions runs in checks[] are labeled historical."
+    "No live database read or write was performed during this rescue; prior Actions runs in checks[] are labeled historical.",
+    "GitHub PR #3341 base metadata was reindexed from stale 75ee715d to current main b02d04c7 without implementation changes; this evidence-only commit triggers a fresh synchronize event so CI evaluates the 14-file PR diff and one generation-8 pair."
   ],
   "stop_conditions_hit": [],
   "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15"

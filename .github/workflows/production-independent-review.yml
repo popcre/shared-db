@@ -1,0 +1,147 @@
+name: Independent Production SQL Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        description: Exact current main SHA
+        type: string
+        required: true
+      ordered_allowlist:
+        description: Exact ordered migration versions
+        type: string
+        required: true
+      source_pr:
+        description: Merged authoring PR
+        type: string
+        required: true
+      source_pr_head:
+        description: Exact authoring PR head SHA
+        type: string
+        required: true
+      work_issue:
+        description: Admitted structural work issue
+        type: string
+        required: true
+      preview_run_id:
+        description: Preview apply run ID
+        type: string
+        required: true
+      preview_artifact_digest:
+        description: Preview artifact SHA256
+        type: string
+        required: true
+      dry_run_run_id:
+        description: Fresh read-only production dry-run run ID
+        type: string
+        required: true
+      dry_run_artifact_digest:
+        description: Dry-run artifact SHA256 containing SQL risk vector
+        type: string
+        required: true
+      reviewed_sql_risk_reasons:
+        description: "Exact comma-separated SQL risk reasons from the dry-run report, or NONE"
+        type: string
+        required: true
+      verdict:
+        description: Independent technical decision on the bound SQL and risks
+        type: choice
+        required: true
+        options: [APPROVE, REQUEST_CHANGES]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  review:
+    if: github.ref == 'refs/heads/main'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.reviewed_main_sha }}
+          fetch-depth: 0
+      - name: Record only an authorized independent actor on exact current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ inputs.reviewed_main_sha }}
+          ALLOWLIST: ${{ inputs.ordered_allowlist }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+          SOURCE_HEAD: ${{ inputs.source_pr_head }}
+          WORK_ISSUE: ${{ inputs.work_issue }}
+          PREVIEW_RUN: ${{ inputs.preview_run_id }}
+          PREVIEW_DIGEST: ${{ inputs.preview_artifact_digest }}
+          DRY_RUN: ${{ inputs.dry_run_run_id }}
+          DRY_DIGEST: ${{ inputs.dry_run_artifact_digest }}
+          REVIEWED_RISKS: ${{ inputs.reviewed_sql_risk_reasons }}
+          VERDICT: ${{ inputs.verdict }}
+          REVIEWER_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.production_apply_review_evidence import EvidenceError, canonical_json, gh_json
+          from scripts.production_independent_review import (
+              REVIEW_SCHEMA, REVIEW_WORKFLOW, PRODUCTION_PROJECT_REF,
+              authorized_reviewers, verify_dry_run,
+          )
+          from scripts.production_review_allowlist import normalize_review_allowlist
+
+          actor = os.environ["REVIEWER_ACTOR"]
+          if actor.casefold() not in authorized_reviewers():
+              raise EvidenceError("reviewer is not on owner-approved independent roster")
+          main = os.environ["MAIN_SHA"]
+          source_head = os.environ["SOURCE_HEAD"]
+          source_pr = int(os.environ["SOURCE_PR"])
+          pr = gh_json(f"repos/{os.environ['GITHUB_REPOSITORY']}/pulls/{source_pr}")
+          if pr.get("state") != "closed" or not pr.get("merged_at") or pr.get("head", {}).get("sha") != source_head:
+              raise EvidenceError("source PR is not merged at the named exact head")
+          allowlist = normalize_review_allowlist(os.environ["ALLOWLIST"])
+          dry_run = int(os.environ["DRY_RUN"])
+          dry_digest = os.environ["DRY_DIGEST"]
+          vector = verify_dry_run(run_id=dry_run, digest=dry_digest, sha=main,
+                                  allowlist=allowlist, repo_root=Path.cwd())
+          risk_text = ",".join(vector["sql_risk_reasons"]) or "NONE"
+          if os.environ["REVIEWED_RISKS"] != risk_text:
+              raise EvidenceError("reviewer-entered SQL risk reasons differ from dry-run report")
+          if os.environ["VERDICT"] != "APPROVE":
+              raise EvidenceError("only an explicit APPROVE can authorize a record")
+          packet = {
+              "schema_version": REVIEW_SCHEMA,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow_file": REVIEW_WORKFLOW,
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "reviewed_main_sha": main,
+              "target_project_ref": PRODUCTION_PROJECT_REF,
+              "action": "production-apply",
+              "ordered_allowlist": allowlist,
+              "source_pr": source_pr,
+              "source_pr_head": source_head,
+              "work_issue": int(os.environ["WORK_ISSUE"]),
+              "preview_run_id": int(os.environ["PREVIEW_RUN"]),
+              "preview_artifact_digest": os.environ["PREVIEW_DIGEST"],
+              "dry_run_run_id": dry_run,
+              "dry_run_artifact_digest": dry_digest,
+              "sql_risk_reasons": vector["sql_risk_reasons"],
+              "verdict": "APPROVE",
+              "reviewer_actor": actor,
+          }
+          Path(os.environ["RUNNER_TEMP"], "independent-production-review.json").write_text(
+              canonical_json(packet), encoding="utf-8")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: independent-production-review
+          path: ${{ runner.temp }}/independent-production-review.json
+          if-no-files-found: error
+          retention-days: 90

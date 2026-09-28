@@ -19,14 +19,16 @@ export const WORKFLOW = '.github/workflows/shared-supabase-migrations.yml'
 export const EVIDENCE_ARTIFACTS = {
   review: /^(?:production-apply-review-evidence|automatic-production-apply-review-evidence)$/,
   preview: /^preview-migration-apply-[0-9a-f]{40}$/,
+  production_dry_run: /^production-migration-dry-run-[0-9a-f]{40}$/,
   owner_decision: /^production-owner-decision-\d+$/,
 }
-const USAGE = 'Usage: node scripts/dispatch-production-apply.mjs --versions V1,V2 --mode dry-run|apply [--commit-sha SHA] [--review-run-id ID] [--preview-run-id ID | --ephemeral-check-run-id ID] [--owner-decision-run-id ID] [--source-pr N] [--work-issue N] [--merged-pr-issue-binding PR:ISSUE] [--derivation-override TEXT] [--repo OWNER/NAME (assertion: must equal the detected repository)] [--dispatch]'
+const USAGE = 'Usage: node scripts/dispatch-production-apply.mjs --versions V1,V2 --mode dry-run|apply [--commit-sha SHA] [--review-run-id ID] [--preview-run-id ID] [--production-dry-run-run-id ID] [--source-pr N] [--source-pr-head SHA] [--work-issue N] [--owner-decision-run-id ID] [--merged-pr-issue-binding PR:ISSUE] [--derivation-override TEXT] [--repo OWNER/NAME] [--dispatch]'
 
 export function parseArgs(argv) {
   const flags = {
     '--versions': 'versions', '--mode': 'mode', '--commit-sha': 'commitSha', '--review-run-id': 'reviewRunId',
     '--preview-run-id': 'previewRunId', '--ephemeral-check-run-id': 'ephemeralCheckRunId',
+    '--production-dry-run-run-id': 'productionDryRunRunId', '--source-pr-head': 'sourcePrHead',
     '--owner-decision-run-id': 'ownerDecisionRunId', '--source-pr': 'sourcePr', '--work-issue': 'workIssue',
     '--merged-pr-issue-binding': 'mergedPrIssueBinding', '--derivation-override': 'derivationOverride', '--repo': 'repo',
   }
@@ -42,12 +44,15 @@ export function parseArgs(argv) {
   if (!versions.length || versions.some((v) => !/^\d{14}$/.test(v))) throw new DispatchError('--versions must be a comma-separated list of 14-digit migration versions')
   out.versions = versions
   if (out.commitSha !== undefined && !/^[0-9a-f]{40}$/.test(out.commitSha)) throw new DispatchError('--commit-sha must be a full 40-character SHA')
+  if (out.sourcePrHead !== undefined && !/^[0-9a-f]{40}$/.test(out.sourcePrHead)) throw new DispatchError('--source-pr-head must be a full 40-character SHA')
   if (out.mode === 'apply') {
     if (!out.reviewRunId) throw new DispatchError('apply needs --review-run-id (the immutable review evidence run)')
     if (!out.sourcePr || !out.workIssue) throw new DispatchError('apply needs --source-pr and --work-issue')
     if (out.previewRunId && out.ephemeralCheckRunId) throw new DispatchError('give --preview-run-id or --ephemeral-check-run-id, not both')
+    if (!out.sourcePrHead || !out.previewRunId || !out.productionDryRunRunId) throw new DispatchError('independent manual apply needs --source-pr-head, --preview-run-id, and --production-dry-run-run-id')
+    if (out.ephemeralCheckRunId) throw new DispatchError('independent manual review requires preview evidence; ephemeral CI alone is not a reviewed preview apply')
   } else {
-    for (const k of ['reviewRunId', 'previewRunId', 'ephemeralCheckRunId', 'ownerDecisionRunId', 'sourcePr', 'workIssue', 'mergedPrIssueBinding']) {
+    for (const k of ['reviewRunId', 'previewRunId', 'productionDryRunRunId', 'sourcePrHead', 'ephemeralCheckRunId', 'ownerDecisionRunId', 'sourcePr', 'workIssue', 'mergedPrIssueBinding']) {
       if (out[k] !== undefined) throw new DispatchError(`a dry-run takes no ${k}; the workflow ignores it`)
     }
   }
@@ -94,6 +99,7 @@ export function buildInputs(options, { commitSha, digests = {} }) {
   if (options.derivationOverride) inputs.derivation_override = options.derivationOverride
   if (options.mode === 'apply') {
     Object.assign(inputs, { review_run_id: String(options.reviewRunId), review_artifact_digest: digests.review, source_pr: String(options.sourcePr), work_issue: String(options.workIssue) })
+    Object.assign(inputs, { source_pr_head: options.sourcePrHead, production_dry_run_run_id: String(options.productionDryRunRunId), production_dry_run_artifact_digest: digests.production_dry_run })
     if (options.previewRunId) Object.assign(inputs, { preview_run_id: String(options.previewRunId), preview_artifact_digest: digests.preview })
     if (options.ephemeralCheckRunId) inputs.ephemeral_check_run_id = String(options.ephemeralCheckRunId)
     if (options.ownerDecisionRunId) Object.assign(inputs, { owner_decision_run_id: String(options.ownerDecisionRunId), owner_decision_artifact_digest: digests.owner_decision })
@@ -121,7 +127,7 @@ export function plan(options, deps = {}) {
   if (commitSha !== mainSha) throw new DispatchError(`--commit-sha ${commitSha} is not the current origin/main ${mainSha}; the workflow would refuse it`)
   const declared = declaredInputs(gitRun(['show', `origin/main:${WORKFLOW}`]))
   const digests = {}
-  for (const [kind, runId] of [['review', options.reviewRunId], ['preview', options.previewRunId], ['owner_decision', options.ownerDecisionRunId]]) {
+  for (const [kind, runId] of [['review', options.reviewRunId], ['preview', options.previewRunId], ['production_dry_run', options.productionDryRunRunId], ['owner_decision', options.ownerDecisionRunId]]) {
     if (!runId) continue
     if (!/^\d+$/.test(String(runId))) throw new DispatchError(`${kind} run id "${runId}" is not a number`)
     const run = readJson(['api', `repos/${options.repo}/actions/runs/${runId}`])

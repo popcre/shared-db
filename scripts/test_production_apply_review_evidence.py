@@ -342,12 +342,13 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("environment: production", self.apply)
 
     def test_review_workflow_is_non_writing_and_provider_neutral(self):
-        self.assertIn("production_review_allowlist import normalize_review_allowlist", self.review)
+        self.assertIn("python scripts/production_independent_review.py", self.review)
         self.assertIn("github.actor", self.review)
-        self.assertIn('Path(os.environ["RUNNER_TEMP"]', self.review)
+        self.assertIn("independent_review_run_id", self.review)
+        self.assertIn("dry_run_artifact_digest", self.review)
         self.assertIn("actions/upload-artifact@v4", self.review)
-        self.assertIn('"reviewer_actor"', self.review)
-        self.assertIn('"reviewer_label"', self.review)
+        self.assertIn("--operator-actor", self.review)
+        self.assertIn("reviewer_label", self.review)
         self.assertNotRegex(self.review, r"supabase|db push|psql")
 
     def test_production_lane_keeps_ledger_aware_guard(self):

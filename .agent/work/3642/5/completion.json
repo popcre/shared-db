@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 3642,
+  "outcome": "ready-for-merge",
+  "pr": 3643,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3642/5",
+  "contract_sha256": "3f0b2379e3c57cd826102c7162e1221a707ffbdfa3c419729eb026d1e46f88bb",
+  "head_sha": "52e809ddcab34a1e1a2391ea89216a97cb3fb1c9",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "files_changed": [
+    ".agent/work/3642/3/completion.json",
+    ".agent/work/3642/3/contract.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-retired-identity-sites-3643.json",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+      "exit_code": 0,
+      "evidence": "741 tests pass, 0 failed; includes ZIP refusal, current import closure, and retired historical identity."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=81 derived_digest=912962ddedfb"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against base 4b91483c85da7bac3421219b40252c169a455087"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 published before first code edit; generations 2 through 5 are immutable successor contracts for discovered integration scope, each binding its predecessor digest.",
+    "Original live artifact 10960473018 and production artifact 10487120010 retain their verified SHA-256 digests; no changed proof bytes are claimed.",
+    "No production action, database write, live_verified event, or issue closure is claimed."
+  ],
+  "stop_conditions_hit": []
+}

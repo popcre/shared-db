@@ -56,6 +56,7 @@ jobs:
           scripts/agent-work-contract-activation.test.mjs
           scripts/agent-work-contract-git-evidence.test.mjs
           scripts/lib/agent-evidence-paths.test.mjs
+          scripts/lib/evidence-generation-lineage.test.mjs
           scripts/check-documents-only-pull-request.test.mjs
           scripts/check-closeout-readiness.test.mjs
 

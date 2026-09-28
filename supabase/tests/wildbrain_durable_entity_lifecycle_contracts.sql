@@ -44,14 +44,15 @@ select v.id::uuid, 'contract:' || v.id, 'synthetic/repo', repeat('a', 40), repea
     ('36850000-0000-4000-8000-00000000000d', '2026-09-04T00:00:00Z', 'complete', 'https://p2.invalid', 1),
     ('36850000-0000-4000-8000-0000000000ee', '2026-09-05T00:00:00Z', 'complete', 'https://p2.invalid', 5),
     ('36850000-0000-4000-8000-0000000000ff', '2026-09-06T00:00:00Z', 'rejected', 'https://p2.invalid', 1),
-    ('36850000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', 'https://p1.invalid', 0)
+    ('36850000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', 'https://p1.invalid', 0),
+    ('36850000-0000-4000-8000-000000000006', '2026-09-07T00:00:00Z', 'complete', 'https://p2.invalid', 3)
   ) v(id, at, status, portal, total);
 
 insert into plm.wildbrain_era (capture_id, era_source_id, era_label, normalized_era_label, is_root, raw)
 select c::uuid, 'era-1', 'Era One', 'era one', true, '{}'::jsonb
   from unnest(array['36850000-0000-4000-8000-00000000000a','36850000-0000-4000-8000-00000000000b',
                     '36850000-0000-4000-8000-00000000000c','36850000-0000-4000-8000-00000000000d',
-                    '36850000-0000-4000-8000-0000000000ee']) c;
+                    '36850000-0000-4000-8000-0000000000ee','36850000-0000-4000-8000-000000000006']) c;
 
 insert into plm.wildbrain_asset (capture_id, asset_source_id, asset_uuid, asset_name, era_source_id,
   universe_label, source_hash, raw)
@@ -64,7 +65,10 @@ select v.cap::uuid, v.id, 'uuid-' || v.id, 'n', 'era-1', 'u', v.hash, '{}'::json
     ('36850000-0000-4000-8000-00000000000c', 'a-3', 'h1'),
     ('36850000-0000-4000-8000-00000000000c', 'a-4', 'h1'),
     ('36850000-0000-4000-8000-00000000000d', 'a-5', 'h1'),
-    ('36850000-0000-4000-8000-0000000000ee', 'a-5', 'h1')
+    ('36850000-0000-4000-8000-0000000000ee', 'a-5', 'h1'),
+    ('36850000-0000-4000-8000-000000000006', 'a-5', 'h1'),
+    ('36850000-0000-4000-8000-000000000006', 'a-3', 'h1'),
+    ('36850000-0000-4000-8000-000000000006', 'a-4', 'h1')
   ) v(cap, id, hash);
 
 -- Inferred guides: A and B use different rule versions, so B must not withdraw A's guide.
@@ -102,7 +106,9 @@ begin
   if (select count(*) from plm.wildbrain_entity_lifecycle) <> 4 then
     raise exception 'bootstrap did not record two assets, one era and one guide';
   end if;
-  if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
+  if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+                 and objsubid = 1
+                 and ((classid::bigint << 32) | objid::bigint) = hashtextextended('plm.wildbrain_publish_lifecycle', 0)) then
     raise exception 'publication did not hold its transaction advisory lock';
   end if;
 end
@@ -181,6 +187,56 @@ begin
   end if;
 end
 $held$;
+
+-- After a held publication, the next comparable run re-evaluates the held drop instead
+-- of orphaning it: a-2 was last seen before the hold and is now withdrawn.
+set local role service_role;
+select plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-000000000006');
+reset role;
+
+do $after_hold$
+begin
+  if (select mode from plm.wildbrain_lifecycle_publication where capture_id = '36850000-0000-4000-8000-000000000006') <> 'comparable' then
+    raise exception 'run after a held publication did not compare';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_key = 'a-2'
+                 and status = 'withdrawn' and withdrawn_capture_id = '36850000-0000-4000-8000-000000000006') then
+    raise exception 'drop held earlier was orphaned instead of re-evaluated';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_key = 'a-5' and status = 'active') then
+    raise exception 'entity seen after the hold is not active';
+  end if;
+end
+$after_hold$;
+
+-- Exact objects: column order and named constraints, not just names that resolve.
+do $exact$
+begin
+  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+       where attrelid = 'plm.wildbrain_entity_lifecycle'::regclass and attnum > 0 and not attisdropped)
+     <> 'entity_kind,entity_key,first_seen_capture_id,first_seen_at,last_seen_capture_id,last_seen_at,last_changed_capture_id,change_signal,status,withdrawn_at,first_withdrawn_at,withdrawn_capture_id' then
+    raise exception 'plm.wildbrain_entity_lifecycle columns differ from the reviewed shape';
+  end if;
+  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+       where attrelid = 'plm.wildbrain_lifecycle_publication'::regclass and attnum > 0 and not attisdropped)
+     <> 'capture_id,baseline_capture_id,mode,derivation_contract,guide_rule_versions,scope_sha256,source_captured_at,counts,published_at' then
+    raise exception 'plm.wildbrain_lifecycle_publication columns differ from the reviewed shape';
+  end if;
+  if (select count(*) from pg_constraint where conrelid = 'plm.wildbrain_entity_lifecycle'::regclass
+       and conname in ('wildbrain_entity_lifecycle_pkey','wildbrain_entity_lifecycle_kind_chk','wildbrain_entity_lifecycle_status_chk',
+                       'wildbrain_entity_lifecycle_withdrawn_at_chk','wildbrain_entity_lifecycle_history_chk')) <> 5
+     or (select count(*) from pg_constraint where conrelid = 'plm.wildbrain_entity_lifecycle'::regclass
+          and contype = 'f' and confrelid = 'plm.wildbrain_lifecycle_publication'::regclass) <> 4
+     or (select count(*) from pg_constraint where conrelid = 'plm.wildbrain_lifecycle_publication'::regclass
+          and conname in ('wildbrain_lifecycle_publication_pkey','wildbrain_lifecycle_publication_mode_chk',
+                          'wildbrain_lifecycle_publication_baseline_chk','wildbrain_lifecycle_publication_scope_chk')) <> 4 then
+    raise exception 'durable-state constraints differ from the reviewed shape';
+  end if;
+  if not (select prosecdef from pg_proc where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure) then
+    raise exception 'publish function is not SECURITY DEFINER';
+  end if;
+end
+$exact$;
 
 set local role service_role;
 do $direct$

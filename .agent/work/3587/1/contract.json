@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3587,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Deliver the read-only ledger drift status reporter in PR #3518 while leaving production drift alarm #2508 open.",
+  "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+  "dispatcher": "Codex non-orchestrator continuation for reporter tooling issue #3587",
+  "worker": "Codex chat on edge-dev3",
+  "branch": "2508-ledger-drift",
+  "worktree": "/home/ahazan/repos/shared-db-3518",
+  "allowed_paths": [
+    ".agent/work/3587/1/completion.json",
+    ".agent/work/3587/1/contract.json",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/3587/1/completion.json",
+    ".agent/work/3587/1/contract.json",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No migration, database write, production apply, or workflow dispatch.",
+    "Do not close production drift alarm #2508 before a read-only check proves clearance.",
+    "Do not edit the shared checkout or any db-claim lease."
+  ],
+  "required_checks": [
+    "node --test scripts/report-ledger-drift-status.test.mjs",
+    "node --test scripts/check-migration-ledger-drift.test.mjs",
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+  ],
+  "assumptions": [
+    "The PR changes only the reporter, its tests, disposition catalogue, verification document, and this evidence pair.",
+    "Issue #2508 is the production drift alarm; issue #3587 owns the reporter delivery and may close when PR #3518 merges.",
+    "Python 3 is needed by the existing drift-check tests; this Linux host provides python3 without a python alias."
+  ],
+  "stop_conditions": [
+    "Stop if the work requires a migration, database object, production workflow change, or production action.",
+    "Stop if the drift-check implementation itself needs modification; this PR only adds reporting on top of it."
+  ]
+}

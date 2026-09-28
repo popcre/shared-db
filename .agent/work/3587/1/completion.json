@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 3587,
+  "outcome": "ready-for-merge",
+  "pr": 3518,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3587/1",
+  "contract_sha256": "ef7c32bcd17339529ffd581f86031d2cec81cdd1fb45984d91db0160e563f965",
+  "head_sha": "b26ba6f0afa9692d2c47d93976014f718ca5ff6d",
+  "base_sha": "5f91f2f6582df8eb7774cf48aa1849e5891a0b02",
+  "files_changed": [
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/report-ledger-drift-status.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 passed, 0 failed, 0 skipped at implementation head b26ba6f0afa9692d2c47d93976014f718ca5ff6d."
+    },
+    {
+      "command": "node --test scripts/check-migration-ledger-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "35 passed, 0 failed, 0 skipped at implementation head b26ba6f0afa9692d2c47d93976014f718ca5ff6d; local PATH supplied a temporary python-to-python3 alias, then removed it."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed, 0 skipped at implementation head b26ba6f0afa9692d2c47d93976014f718ca5ff6d."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=324 sources=76 derived_digest=f44461cb6d08"
+    },
+    {
+      "command": "git diff --check 5f91f2f6582df8eb7774cf48aa1849e5891a0b02...b26ba6f0afa9692d2c47d93976014f718ca5ff6d",
+      "exit_code": 0,
+      "evidence": "No whitespace errors across the PR implementation diff."
+    },
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-completion --report-file .agent/work/3587/1/completion.json --contract-file .agent/work/3587/1/contract.json",
+      "exit_code": 0,
+      "evidence": "Completion report satisfies its contract at implementation head b26ba6f0afa9692d2c47d93976014f718ca5ff6d."
+    }
+  ],
+  "assumptions_resolved": [
+    "Reporter delivery is separately tracked by non-orchestrator issue #3587; production drift alarm #2508 stays open.",
+    "The published generation-1 contract preceded reporter implementation; the implementation head excludes the evidence pair, which is restored in the evidence-only tail.",
+    "Qwen REVISE findings H1 and M2-M7 were addressed together; the evidence gate will be repeated at the pushed PR head and posted in the durable review record.",
+    "No migration, database write, production apply, or workflow dispatch occurred."
+  ],
+  "stop_conditions_hit": []
+}

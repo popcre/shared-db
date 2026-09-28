@@ -10,6 +10,7 @@ import {
   LaneError,
   RETIRED_CLAIM_REF_PREFIX,
   RETIREMENT_SCHEMA_VERSION,
+  RETIREMENT_CLOSE_REASON,
   RETIREMENT_RECORD_PREFIX,
   RETIREMENT_REF_ROW_LIMIT,
   retiredClaimRef,
@@ -394,4 +395,68 @@ test('#2301 a retirement audit costs ONE bounded ref listing, not one call per c
   const before = io.calls.listRefs
   for (let n = 0; n < 40; n++) isVersionRetired(`2026090112${String(n).padStart(4, '0')}`, io)
   assert.equal(io.calls.listRefs - before, 1, '40 retirement questions must cost exactly one ref listing')
+})
+
+// --- #3675: no human approval on dirty/remote retirement --------------------
+
+test('#3675 a version 1 record written before #3675 stays readable, and only version 2 is ever written', () => {
+  const art = 'artifact:' + 'b'.repeat(40)
+  const legacy = { ...record({ worktree_state: 'dirty' }), schema_version: 1, owner_decision: art }
+  delete legacy.preservation
+  assert.equal(validateRetirementRecord(legacy).owner_decision, art)
+  assert.equal(parseRetirementRecord(`${RETIREMENT_RECORD_PREFIX}${JSON.stringify(legacy)}`).schema_version, 1)
+  assert.throws(() => formatRetirementRecord(legacy), /only schema_version 2/)
+  assert.equal(RETIREMENT_SCHEMA_VERSION, 2)
+})
+
+test('#3675 a version 2 record with preservation and review_approval survives a round trip', () => {
+  const art = 'artifact:' + 'c'.repeat(40)
+  const full = record({ worktree_state: 'remote', preservation: art, review_approval: art })
+  const parsed = parseRetirementRecord(formatRetirementRecord(full))
+  assert.equal(parsed.preservation, art)
+  assert.equal(parsed.review_approval, art)
+})
+
+test('#3675 the close reason no longer claims an owner confirmation', () => {
+  assert.doesNotMatch(RETIREMENT_CLOSE_REASON, /owner/i)
+})
+
+const DIRTY_ARGV = RETIRE_ARGV.map((x) => (x === 'absent' ? 'dirty' : x))
+
+test('#3675 --owner-decision and --review-approval are refused by name at the command boundary', () => {
+  for (const flag of ['--owner-decision', '--review-approval']) {
+    resetRetirementSnapshot()
+    const io = releaseIo()
+    assert.notEqual(main([...DIRTY_ARGV, flag, 'artifact:' + 'd'.repeat(40)], NOW, io), 0)
+    assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined)
+  }
+})
+
+test('#3675 a dirty retirement refuses without a dereferenceable preservation artifact and writes nothing', () => {
+  resetRetirementSnapshot()
+  let io = releaseIo()
+  assert.notEqual(main(DIRTY_ARGV, NOW, io), 0, 'missing --preservation must refuse')
+  assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined)
+  resetRetirementSnapshot()
+  io = releaseIo(); io.verifyArtifact = () => null
+  assert.notEqual(main([...DIRTY_ARGV, '--preservation', 'artifact:' + 'e'.repeat(40)], NOW, io), 0, 'an undereferenceable artifact must refuse')
+  assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined)
+  resetRetirementSnapshot()
+  io = releaseIo(); io.verifyArtifact = () => ({ kind: 'git-object' })
+  assert.notEqual(main([...DIRTY_ARGV, '--preservation', 'artifact:https://example.com/x'], NOW, io), 0, 'an https preservation reference cannot be dereferenced and must refuse')
+  assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined)
+})
+
+test('#3675 a dirty retirement with preservation still refuses without the durable exact-head AI reviewer APPROVE', () => {
+  resetRetirementSnapshot()
+  const io = releaseIo(); io.verifyArtifact = () => ({ kind: 'git-object' })
+  assert.notEqual(main([...DIRTY_ARGV, '--preservation', 'artifact:' + 'f'.repeat(40)], NOW, io), 0)
+  assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined, 'no tombstone without the durable APPROVE')
+  assert.equal(io.closed, undefined)
+})
+
+test('#3675 this suite is wired into the lane-test CI step', async () => {
+  const { readFileSync } = await import('node:fs')
+  const workflow = readFileSync(new URL('../.github/workflows/migration-author-lease.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /scripts\/migration-retirement-tombstones\.test\.mjs/)
 })

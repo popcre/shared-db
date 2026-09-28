@@ -449,7 +449,8 @@ test('the queue audit names every open issue that fails the shape test with its 
   const result=buildDynamicQueues(issues,[],NOW)
   assert.deepEqual(result.notOrchestratorWork.map((x)=>x.issue),[51,52,53])
   assert.deepEqual(result.notOrchestratorWork.map((x)=>x.exit),['reject','repo-session','repo-session'])
-  assert.equal(result.notOrchestratorWork.find((x)=>x.issue===53).blockedOnOwner,true)
+  // #3675: a legacy owner-only scope on security-settings is AI-session work, not a human debt.
+  assert.equal(result.notOrchestratorWork.find((x)=>x.issue===53).blockedOnOwner,false)
   assert.equal(result.notOrchestratorWork.some((x)=>x.issue===50),false)
   assert.deepEqual(result.dispatchable,[50])
 })

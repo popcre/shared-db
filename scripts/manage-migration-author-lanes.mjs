@@ -99,7 +99,13 @@ export const MUTEX_RECOVERY_ACTIVE_REF = 'refs/db-coordination/author-acquisitio
 // from the abandonment it records. A successor gets a FRESH version, branch,
 // worktree and claim instead; the retired version stays spent forever.
 export const RETIRED_CLAIM_REF_PREFIX = 'refs/db-claims-retired'
-export const RETIREMENT_SCHEMA_VERSION = 1
+// Version 2 (#3675, owner ruling 2026-09-28 "never ask a human to approve"):
+// a dirty/remote retirement carries `preservation` and `review_approval`.
+// Version 1 records (which carried `owner_decision`) stay readable forever,
+// because tombstones are create-only and an unreadable one would stop every
+// lane acquisition; only version 2 is ever written.
+export const RETIREMENT_SCHEMA_VERSION = 2
+export const RETIREMENT_LEGACY_SCHEMA_VERSIONS = Object.freeze([1])
 export const RETIREMENT_RECORD_PREFIX = 'db-claim-retirement '
 // Typed decisions. Free-text would let "abandoned" and "superseded" be recorded
 // as the same thing, and Step 4's reporting has to tell them apart.
@@ -111,6 +117,7 @@ export const RETIREMENT_DECISIONS = Object.freeze(['abandoned-worktree', 'supers
 // Owner ruling 2026-09-28 (#3675): never ask a human to approve, so this is no
 // longer an owner decision.
 export const RETIREMENT_PRESERVATION_STATES = Object.freeze(['dirty', 'remote'])
+export const RETIREMENT_PRESERVATION_FIELDS = Object.freeze(['preservation', 'review_approval'])
 // Sized like REVIEW_REF_ROW_LIMIT: one version per retirement, and this
 // repository has spent a few hundred versions in its whole history. At this
 // ceiling a silently truncated listing becomes plausible, and a truncated
@@ -1114,7 +1121,9 @@ export function buildDynamicQueues(issues, claims, now = new Date(), allOpenIssu
         workType: scope.workType,
         route: scope.route,
         exit: queueExit(scope.workType),
-        blockedOnOwner: scope.route === 'owner-only',
+        // #3675: security-settings is AI-session work; a legacy owner-only
+        // scope on it is re-scoped, not a debt owed by a human.
+        blockedOnOwner: scope.route === 'owner-only' && scope.workType !== 'security-settings',
         returnTo: scope.returnTo,
         // A copy that was already returned here must never be asked for a
         // forwarding address or returned again (issue #2836).
@@ -1946,7 +1955,7 @@ function requireClaimCloseReason(reason) {
 // Terminal retirement tombstones (issue #2301, Step 3)
 // ---------------------------------------------------------------------------
 
-export const RETIREMENT_CLOSE_REASON = 'Migration-author claim closed by an explicit owner-confirmed terminal retirement (--release-claim with retirement evidence). An immutable tombstone under refs/db-claims-retired records the decision. No lease expired and no cleanup sweep ran. Its migration version remains permanently unavailable and this claim can never be resumed, renewed, expanded, or merged.'
+export const RETIREMENT_CLOSE_REASON = 'Migration-author claim closed by an explicit terminal retirement (--release-claim with retirement evidence). An immutable tombstone under refs/db-claims-retired records the decision. No lease expired and no cleanup sweep ran. Its migration version remains permanently unavailable and this claim can never be resumed, renewed, expanded, or merged.'
 
 export function retiredClaimRef(version) {
   if (!/^\d{14}$/.test(String(version ?? ''))) throw new LaneError('retirement ref requires an exact 14-digit migration version')
@@ -1962,7 +1971,6 @@ export function normalizeRetirementIdentity(value) {
   return String(value ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
-const RETIREMENT_PRESERVATION_FIELDS = Object.freeze(['preservation', 'review_approval'])
 const RETIREMENT_REQUIRED_FIELDS = Object.freeze(['schema_version', 'claim', 'pr', 'head_sha', 'branch', 'version', 'worktree', 'worktree_state', 'decision', 'evidence', 'successor_issue', 'created_at'])
 
 /**
@@ -1973,12 +1981,13 @@ const RETIREMENT_REQUIRED_FIELDS = Object.freeze(['schema_version', 'claim', 'pr
  */
 export function validateRetirementRecord(record) {
   if (record === null || typeof record !== 'object' || Array.isArray(record)) throw new LaneError('retirement record must be a JSON object')
+  const legacy = RETIREMENT_LEGACY_SCHEMA_VERSIONS.includes(record.schema_version)
   for (const field of RETIREMENT_REQUIRED_FIELDS) if (record[field] === undefined) throw new LaneError(`retirement record is missing ${field}`)
   // Unknown keys are refused for the same reason the work contract refuses them:
   // a typo silently drops a binding, and a dropped binding is indistinguishable
   // from one that was never required.
-  for (const key of Object.keys(record)) if (!RETIREMENT_REQUIRED_FIELDS.includes(key) && !RETIREMENT_PRESERVATION_FIELDS.includes(key)) throw new LaneError(`retirement record has unknown field ${key}`)
-  if (record.schema_version !== RETIREMENT_SCHEMA_VERSION) throw new LaneError(`retirement record schema_version must be ${RETIREMENT_SCHEMA_VERSION}`)
+  for (const key of Object.keys(record)) if (!RETIREMENT_REQUIRED_FIELDS.includes(key) && !(legacy ? ['owner_decision'] : RETIREMENT_PRESERVATION_FIELDS).includes(key)) throw new LaneError(`retirement record has unknown field ${key}`)
+  if (!legacy && record.schema_version !== RETIREMENT_SCHEMA_VERSION) throw new LaneError(`retirement record schema_version must be ${RETIREMENT_SCHEMA_VERSION}`)
   if (!Number.isInteger(record.claim) || record.claim <= 0) throw new LaneError('retirement record claim must be a positive issue number')
   if (!Number.isInteger(record.pr) || record.pr <= 0) throw new LaneError('retirement record pr must be a positive pull request number')
   if (!/^[0-9a-f]{40}$/.test(String(record.head_sha))) throw new LaneError('retirement record head_sha must be an exact 40-character commit SHA')
@@ -1996,7 +2005,13 @@ export function validateRetirementRecord(record) {
   // AI reviewer must APPROVE the retirement. Both are durable, dereferenceable
   // artifacts, never a sentence typed at the command line, and never a human
   // approval (owner ruling 2026-09-28, #3675).
-  if (RETIREMENT_PRESERVATION_STATES.includes(record.worktree_state)) {
+  if (legacy) {
+    // Read-only compatibility for records written before #3675.
+    if (RETIREMENT_PRESERVATION_STATES.includes(record.worktree_state)) {
+      if (!record.owner_decision) throw new LaneError(`legacy retirement record from a ${record.worktree_state} worktree is missing owner_decision`)
+      validateImmutableArtifactReference(record.owner_decision, 'legacy retirement owner_decision')
+    } else if (record.owner_decision !== undefined) throw new LaneError('owner_decision is allowed only for a dirty or remote worktree retirement')
+  } else if (RETIREMENT_PRESERVATION_STATES.includes(record.worktree_state)) {
     if (!record.preservation) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires a preservation artifact (rescue branch or patch)`)
     validateImmutableArtifactReference(record.preservation, 'retirement preservation')
     if (!record.review_approval) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires an allocator-assigned AI reviewer APPROVE artifact`)
@@ -2006,6 +2021,7 @@ export function validateRetirementRecord(record) {
 }
 
 export function formatRetirementRecord(record) {
+  if (record?.schema_version !== RETIREMENT_SCHEMA_VERSION) throw new LaneError(`only schema_version ${RETIREMENT_SCHEMA_VERSION} retirement records may be written`)
   return `${RETIREMENT_RECORD_PREFIX}${JSON.stringify(validateRetirementRecord(record))}`
 }
 
@@ -9130,7 +9146,8 @@ function parseArgs(argv) {
       if (!RETIREMENT_DECISIONS.includes(decision)) throw new LaneError(`--retire must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
       out.retire = decision
     }
-    else if (['--successor-issue','--preservation','--review-approval'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (['--successor-issue','--preservation'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (a === '--owner-decision' || a === '--review-approval') throw new LaneError(`${a} is retired (#3675, owner ruling 2026-09-28: never ask a human to approve). A dirty or remote retirement takes --preservation artifact:<rescue commit or patch object>, and the allocator-assigned AI reviewer's durable exact-head APPROVE for --pr/--head-sha is read automatically`)
     else if (a === '--release-duplicate-claim') out.releaseDuplicateClaim = next(i), i++
     else if (a === '--confirm-finished') out.confirmFinished = true
     else if (a === '--recover-author-mutex') out.recoverMutex = true
@@ -9645,8 +9662,24 @@ export function main(argv, now = new Date(), io = githubIo) {
             successor_issue:o.successorIssue?Number(o.successorIssue):null,
             created_at:now.toISOString(),
           }
-          if(o.preservation)record.preservation=o.preservation
-          if(o.reviewApproval)record.review_approval=o.reviewApproval
+          if(RETIREMENT_PRESERVATION_STATES.includes(worktreeState)){
+            // #3675: unmerged work is preserved first (a dereferenceable git
+            // object in this repository), and the allocator-assigned AI
+            // reviewer's durable exact-head APPROVE must exist for the retired
+            // PR head. Both are proven here, never typed in as prose.
+            if(!o.preservation)throw new LaneError(`--retire from a ${worktreeState} worktree requires --preservation artifact:<rescue commit or patch object>`)
+            const preservation=validateImmutableArtifactReference(o.preservation,'--preservation')
+            if(!/^artifact:[0-9a-f]{40,64}$/i.test(preservation))throw new LaneError('--preservation must be an immutable object hash this repository can dereference')
+            let resolved
+            try{resolved=typeof io.verifyArtifact==='function'?io.verifyArtifact(preservation):null}catch(error){throw new LaneError(`preservation artifact verification is ambiguous: ${error.message}`)}
+            if(!resolved)throw new LaneError(`preservation artifact ${preservation} cannot be dereferenced`)
+            const verdicts=assertDurableReviewApproval(claim.number,o.pr,record.head_sha,io)
+            const approve=(verdicts??[]).find((row)=>row.verdict==='APPROVE')
+            const approveSha=approve?String(io.readRef(approve.ref)??'').toLowerCase():''
+            if(!/^[0-9a-f]{40}$/.test(approveSha))throw new LaneError(`no dereferenceable durable APPROVE verdict for pull request #${o.pr} at ${record.head_sha}`)
+            record.preservation=preservation
+            record.review_approval=`artifact:${approveSha}`
+          }
           requireOwnedRef(MUTEX_REF,ownerSha,io)
           const tombstone=createRetirementTombstone(record,io)
           requireOwnedRef(MUTEX_REF,ownerSha,io)

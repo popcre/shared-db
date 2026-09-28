@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Retire the idle historical item MG reclassification test workflow while preserving its reviewed truth-audit identity as historical evidence",
+  "base_sha": "13d0d888a77eba476bc8282f652ad425645b7e33",
+  "dispatcher": "program issue #3536 and parent Codex session",
+  "worker": "Codex chat 01a0e56d-24b7-7653-836f-638a3461db1c",
+  "branch": "codex/3536-retire-historical-mg",
+  "worktree": "/home/ahazan/repos/shared-db-3536-mg",
+  "allowed_paths": [
+    ".github/workflows/historical-item-mg-reclassification-tests.yml",
+    "docs/verification/throughput-dispositions/.github~workflows~historical-item-mg-reclassification-tests.yml.json",
+    "docs/verification/throughput-retired-identity-sites-3536.json",
+    "docs/verification/throughput-dispositions/README.md"
+  ],
+  "file_writes": [
+    ".github/workflows/historical-item-mg-reclassification-tests.yml",
+    "docs/verification/throughput-dispositions/.github~workflows~historical-item-mg-reclassification-tests.yml.json",
+    "docs/verification/throughput-retired-identity-sites-3536.json",
+    "docs/verification/throughput-dispositions/README.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change historical MG classifier code, cutoff, or application plan",
+    "Do not write database rows or change database structure",
+    "Do not touch #3505, #3552, or any db-claim lease"
+  ],
+  "required_checks": [
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node --test scripts/historical-item-mg-reclassification/*.test.mjs"
+  ],
+  "assumptions": [
+    "The next unticked independently actionable child of #3536 is retirement of the historical MG test workflow",
+    "The historical truth-audit snapshot remains immutable; active catalogue retirement preserves its reviewed site in a retirement archive"
+  ],
+  "stop_conditions": [
+    "Stop if the workflow is a currently required branch protection context",
+    "Stop if retirement needs a database or application behavior change",
+    "Stop if implementation needs a file outside the allowed paths"
+  ]
+}

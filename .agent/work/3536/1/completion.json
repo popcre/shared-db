@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3604,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/1",
+  "contract_sha256": "545a75470813d71079945e2f14f4a2a46a76450c39e564e844a836b1225521cf",
+  "base_sha": "13d0d888a77eba476bc8282f652ad425645b7e33",
+  "head_sha": "a0846bee53622462fb86237762e37652244027f3",
+  "files_changed": [
+    ".github/workflows/historical-item-mg-reclassification-tests.yml",
+    "docs/verification/throughput-dispositions/README.md",
+    "docs/verification/throughput-retired-identity-sites-3536.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed and 0 failed at implementation head a0846bee53622462fb86237762e37652244027f3"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=77 derived_digest=712500b8287d at implementation head a0846bee53622462fb86237762e37652244027f3"
+    },
+    {
+      "command": "node --test scripts/historical-item-mg-reclassification/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "45 passed and 0 failed at implementation head a0846bee53622462fb86237762e37652244027f3"
+    }
+  ],
+  "assumptions_resolved": [
+    "The workflow is not a current required branch-protection or ruleset status context.",
+    "The historical audit remains immutable; the retired active site's verdict and legacy identity are preserved in the retirement archive.",
+    "The historical MG apply phase remains unauthorized and the local synthetic test suite still passes."
+  ],
+  "stop_conditions_hit": []
+}

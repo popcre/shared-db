@@ -1,6 +1,6 @@
 -- Issue #3458 behavior tests for the steppable refresh overload.
 -- NOT part of the migration. Run on preview (or an ephemeral DB) after
--- 20260925171844 applies. Wraps in a transaction and rolls back, so it can
+-- 20260928003740 applies. Wraps in a transaction and rolls back, so it can
 -- exercise p_step='search' (no REFRESH CONCURRENTLY) live, and asserts the
 -- matview steps by function-body shape exactly like popsg_bounded_crawl_and_search_contracts.
 -- Proves: change-night work is split so each RPC statement is independently
@@ -115,7 +115,8 @@ begin
     raise exception 'test 0: legacy 2-arg overload missing';
   end if;
   if has_function_privilege('authenticated', 'public.refresh_style_guide_matviews(uuid,integer,text)', 'execute')
-     or has_function_privilege('anon', 'public.refresh_style_guide_matviews(uuid,integer,text)', 'execute') then
+     or has_function_privilege('anon', 'public.refresh_style_guide_matviews(uuid,integer,text)', 'execute')
+     or has_function_privilege('public', 'public.refresh_style_guide_matviews(uuid,integer,text)', 'execute') then
     raise exception 'test 0: steppable overload exposed to API roles';
   end if;
   if not has_function_privilege('service_role', 'public.refresh_style_guide_matviews(uuid,integer,text)', 'execute') then

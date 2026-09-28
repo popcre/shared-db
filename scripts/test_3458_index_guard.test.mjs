@@ -38,6 +38,12 @@ test('file_groups guard does not require one exact index name', () => {
   assert.ok(!migration.includes("relname = 'sgfilegroups_group_uidx'"));
 });
 
+test('file_groups guard has no disjunction that could bypass it', () => {
+  const block = guardBlock('public.style_guide_file_groups');
+  assert.ok(!/\bor\b/i.test(block), 'no OR inside the guard predicate');
+  assert.ok(!/\btrue\b/i.test(block), 'no literal true inside the guard predicate');
+});
+
 test('folders guard is unchanged and still strict', () => {
   const block = guardBlock('public.style_guide_folders');
   for (const clause of invariant) assert.ok(block.includes(clause), clause);
@@ -53,6 +59,7 @@ test('ephemeral test covers missing, alternate-name, partial and expression inde
   ]) assert.ok(ephemeral.includes(needle), needle);
 });
 
-test('no statement timeout is raised', () => {
-  assert.ok(!/set\s+(local\s+)?statement_timeout/i.test(migration));
+test('no statement timeout is raised in any form', () => {
+  assert.ok(!/statement_timeout/i.test(migration), 'migration never names statement_timeout');
+  assert.ok(!/alter\s+role/i.test(migration), 'migration never alters a role');
 });

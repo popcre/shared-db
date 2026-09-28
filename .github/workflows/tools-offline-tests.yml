@@ -255,6 +255,15 @@ jobs:
           set -euo pipefail
           node --test scripts/mcp-supabase-launch.test.mjs
 
+      - name: Run the #3458 CONCURRENTLY index-guard test
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the
+        # style_guide matview unique-index assertion that failed preview apply
+        # 36414234942 on a false exact-name requirement (#3458).
+        run: |
+          set -euo pipefail
+          node --test scripts/test_3458_index_guard.test.mjs
+
       - name: Refuse to run with any production authorization present
         run: |
           set -euo pipefail

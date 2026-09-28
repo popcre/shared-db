@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 3574,
+  "outcome": "ready-for-merge",
+  "pr": 3580,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3574/4",
+  "contract_sha256": "b2ef01b4ddc778fde52e54e20111ad367accdf471e3ab3fc546857070ed9c63e",
+  "head_sha": "b254162f8124173d98e81e2738721b124af43906",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
+  "files_changed": [
+    ".agent/work/3574/4/contract.json",
+    "docs/verification/throughput-dispositions/scripts~recover-3539-reservation.mjs.json",
+    "scripts/recover-3539-reservation.mjs",
+    "scripts/recover-3539-reservation.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/recover-3539-reservation.test.mjs",
+      "exit_code": 0,
+      "evidence": "3 passed, 0 failed at implementation b254162f"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "714 passed, 0 failed at implementation b254162f"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK with 326 call sites at implementation b254162f"
+    }
+  ],
+  "assumptions_resolved": [
+    "Exact claim and PR head were verified live; the repair rechecks both under the mutex",
+    "The old permanent reservation remains present"
+  ],
+  "stop_conditions_hit": []
+}

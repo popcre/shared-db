@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "work_issue": 3574,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Recover one missing permanent version reservation after an out-of-band claim and pull-request rename, with exact identity, collision, and immutable readback checks",
+  "base_sha": "448fc15fc2b458589d698965ed34c6071e56dd49",
+  "dispatcher": "Codex repository-maintenance session for issue #3574",
+  "worker": "codex",
+  "branch": "codex/repair-reservation-3574",
+  "worktree": "/home/ahazan/repos/shared-db-3574-repair",
+  "allowed_paths": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "file_writes": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["do not change any migration or database object", "do not merge structural PR #3557 or dispatch preview or production", "do not delete the old permanent reservation"],
+  "required_checks": ["node --test scripts/manage-migration-author-lanes.test.mjs"],
+  "assumptions": ["claim #3546 and PR #3557 still name exactly version 20260925223300", "the old reservation 20260925174850 remains permanent"],
+  "stop_conditions": ["stop on any conflicting claim, pull request, reservation, or changed head", "stop if exact PR-head content cannot be verified"]
+}

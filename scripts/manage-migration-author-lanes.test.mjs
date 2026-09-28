@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, readOrchestratorResolution, orchestratorEngineFromResolution, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
-import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
+import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot, recoverMissingSupersessionReservation } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
 
@@ -4654,6 +4654,54 @@ test('general active-claim version supersession is idempotent from immutable evi
   const second=supersedeActiveClaimVersion(reversionArgs,NOW,io)
   assert.equal(second.idempotent,true);assert.equal(second.newVersion,first.newVersion);assert.equal(second.newHead,first.newHead)
   assert.equal(io.refs.get(`refs/db-claims/${io.old}`),'1'.repeat(40));assert.equal(io.refs.get(`refs/db-claims/${io.fresh}`),'2'.repeat(40))
+})
+
+function missingReservationIo(){
+  const io=memoryIo(),old='20260925174850',fresh='20260925223300',head='f'.repeat(40),oldSha='e'.repeat(40),objects=['function api.db_data_admin_scraped_source_inventory']
+  const claim={number:3546,state:'open',title:'CLAIM: #3539 Pixar under Disney',body:claimBody({version:fresh,objects,owner:'mimo:author-3539',branch:'mimo/3539-dcp-licensor-groups',worktree:'C:\\repos\\shared-db\\.claude\\worktrees\\3539-dcp-licensor',expiresAt:new Date('2026-09-26T05:48:20.047Z')})}
+  const workIssue={number:3539,state:'open',body:scope('ready','structural','shared-db-orchestrator',5,objects)}
+  const commits=new Map();let sequence=0
+  io.makeOwnerCommit=(message)=>{const sha=(++sequence).toString(16).padStart(40,'0');commits.set(sha,{message});return sha}
+  io.getCommit=(sha)=>commits.get(sha)
+  io.refs.set(`refs/db-claims/${old}`,oldSha)
+  io.getIssue=(number)=>structuredClone(Number(number)===3546?claim:workIssue)
+  io.getPr=()=>({state:'open',head:{sha:head,ref:'mimo/3539-dcp-licensor-groups'}})
+  io.getPrFiles=()=>[{filename:`supabase/migrations/${fresh}_licensor.sql`,status:'added'}]
+  io.localClean=()=>true;io.localHead=()=>head
+  io.mainSha=()=> 'main';io.treeFiles=()=>['supabase/migrations/20260925193145_prior.sql']
+  io.openClaims=()=>[structuredClone(claim)]
+  io.prSources=()=>[{label:'PR #3557',versions:[fresh],objects}]
+  return Object.assign(io,{old,fresh,head,oldSha,claim,workIssue})
+}
+const missingReservationArgs={issue:3539,claim:3546,pr:3557,owner:'mimo:author-3539',branch:'mimo/3539-dcp-licensor-groups',worktree:'C:\\repos\\shared-db\\.claude\\worktrees\\3539-dcp-licensor',targetWorktree:'/tmp/exact-pr-head',headSha:'f'.repeat(40),oldVersion:'20260925174850',newVersion:'20260925223300'}
+test('missing supersession recovery permanently reserves exact claim version and preserves old ref',()=>{
+  const io=missingReservationIo(),first=recoverMissingSupersessionReservation(missingReservationArgs,NOW,io)
+  assert.equal(first.idempotent,false)
+  assert.equal(io.readRef(`refs/db-claims/${io.old}`),io.oldSha)
+  assert.equal(io.readRef(`refs/db-claims/${io.fresh}`),first.supersessionSha)
+  assert.equal(recoverMissingSupersessionReservation(missingReservationArgs,NOW,io).idempotent,true)
+  assert.equal(io.claim.body,missingReservationIo().claim.body)
+})
+test('missing supersession recovery refuses changed head, dirty target, collision, and foreign reservation',()=>{
+  const cases=[
+    [io=>{io.getPr=()=>({state:'open',head:{sha:'a'.repeat(40),ref:missingReservationArgs.branch}})},/exact head/],
+    [io=>{io.localClean=()=>false},/dirty/],
+    [io=>{io.prSources=()=>[{label:'PR #3557',versions:[io.fresh],objects:['function api.db_data_admin_scraped_source_inventory']},{label:'PR #9999',versions:[io.fresh],objects:[]}]},/another PR/],
+    [io=>{io.refs.set(`refs/db-claims/${io.fresh}`,'foreign')},/unreadable/],
+    [io=>{io.treeFiles=()=>[`supabase/migrations/${io.fresh}_other.sql`]},/present on main/],
+  ]
+  for(const [change,message] of cases){const io=missingReservationIo();change(io);assert.throws(()=>recoverMissingSupersessionReservation(missingReservationArgs,NOW,io),message);assert.equal(io.readRef(`refs/db-claims/${io.old}`),io.oldSha)}
+})
+test('missing supersession recovery resumes after a crash between its permanent refs',()=>{
+  const io=missingReservationIo(),create=io.createRef
+  io.createRef=(ref,sha)=>{if(ref.startsWith('refs/db-claim-supersessions/'))throw new Error('lost response before evidence write');return create(ref,sha)}
+  assert.throws(()=>recoverMissingSupersessionReservation(missingReservationArgs,NOW,io),/lost response/)
+  const spent=io.readRef(`refs/db-claims/${io.fresh}`)
+  assert.ok(spent);assert.equal(io.readRef(`refs/db-claims/${io.old}`),io.oldSha)
+  io.createRef=create
+  const resumed=recoverMissingSupersessionReservation(missingReservationArgs,NOW,io)
+  assert.equal(resumed.resumed,true)
+  assert.equal(io.readRef(`refs/db-claim-supersessions/3546-${io.old}`),spent)
 })
 test('general version supersession allows unrelated removals but refuses removed migration files',()=>{
   const allowed=reversionIo({getPrFiles:()=>[

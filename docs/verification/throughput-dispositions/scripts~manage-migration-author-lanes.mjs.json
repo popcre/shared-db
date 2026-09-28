@@ -155,14 +155,6 @@
       "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:a4160001fb75e95c53d5c85febd70b521db233cd2b3aeb35c9e57c17f6dda06c:1"
     },
     {
-      "site": "scripts/manage-migration-author-lanes.mjs:2812",
-      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a506dd54ce0a675ce62b60933700254ff523561f16a7abdd7e91a1615f095238:context-ad414d011e93f61d65e4ffdac7fb4b2b8e80efb751f681c377110e571b357a4f",
-      "line_sha256": "a506dd54ce0a675ce62b60933700254ff523561f16a7abdd7e91a1615f095238",
-      "disposition": "enriched",
-      "reason": "A missing required production-proof artifact file refuses outcome completion, so absent evidence cannot be read as successful application.",
-      "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:a506dd54ce0a675ce62b60933700254ff523561f16a7abdd7e91a1615f095238:1"
-    },
-    {
       "site": "scripts/manage-migration-author-lanes.mjs:4711",
       "semantic_key": "scripts/manage-migration-author-lanes.mjs:b03846824daaafeb0f0c7f536b249b0207a114a30eb80de2001ea5b575c7d5c6:context-189f7004b93c9bcf9aa29d7e15785deb1d40a27ac1ae5516231d35c6b0778228",
       "line_sha256": "b03846824daaafeb0f0c7f536b249b0207a114a30eb80de2001ea5b575c7d5c6",

@@ -96,11 +96,27 @@ jobs:
           scripts/configure-merge-queue.test.mjs
           scripts/check-merge-queue-workflows.test.mjs
 
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Resolve the single queued pull request
         if: github.event_name == 'merge_group'
         id: queue
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
         run: |
           set -euo pipefail
@@ -127,7 +143,7 @@ jobs:
       - name: Revalidate exact reviewed PR head, claims, collisions, and migration order
         if: github.event_name == 'merge_group'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ steps.queue.outputs.pr }}
           REQUESTED_SHA: ${{ steps.queue.outputs.head }}
         run: |
@@ -152,7 +168,7 @@ jobs:
       - name: Require the previous main migration merge to have completed preview rehearsal
         if: github.event_name == 'merge_group'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
@@ -201,10 +217,26 @@ jobs:
         with:
           node-version: 22
 
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Resolve the queued pull request for interlock ownership
         id: queue
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
         run: |
           set -euo pipefail
@@ -230,7 +262,7 @@ jobs:
 
       - name: Re-check authorization and production interlock under the merge lock
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           REQUESTED_SHA: ${{ steps.queue.outputs.head }}
         run: |
           set -euo pipefail

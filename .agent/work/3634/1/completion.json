@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 3634,
+  "outcome": "ready-for-merge",
+  "pr": 3636,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3634/1",
+  "contract_sha256": "f9f41e5d3de7a2ffe8e6fd27890ce6891661c1b5d0d0fc5487ac2817e2c95eb6",
+  "base_sha": "a096bccd0c112d92cc9b6be4010e8f019f9db083",
+  "head_sha": "aa6c8d560ced0e5482e9bf2faaedce5d08c7ead1",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "727 tests passed on implementation head aa6c8d560ced0e5482e9bf2faaedce5d08c7ead1 (adds historical-slug, absent-field and verifyLiveAssertion wiring tests)"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "python3 -m unittest discover -s scripts -p test_shared_db_live_proof.py passed on aa6c8d56"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "The authenticated GitHub run and artifact records expose exact workflow, event, attempt, repository, run id and head fields.",
+    "Application-owned live proofs retain the established success, head, artifact name and digest checks."
+  ],
+  "stop_conditions_hit": []
+}

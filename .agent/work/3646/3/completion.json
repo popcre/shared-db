@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 3646,
+  "outcome": "ready-for-merge",
+  "pr": 3649,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3646/3",
+  "contract_sha256": "b0311dfd045b0744481de49fc38f8311cabbee4fd18529aa73200d0cc83cd26d",
+  "base_sha": "9c3e7f75fb15695cdcedc6d341d7c0dac694c893",
+  "head_sha": "29e315d525d93bef6e5e45304222badeda590a36",
+  "files_changed": [
+    "scripts/check-github-transport-conformance.mjs",
+    "scripts/check-github-transport-conformance.test.mjs",
+    "scripts/reap-merged-worktrees.mjs",
+    "scripts/reap-merged-worktrees.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/reap-merged-worktrees.test.mjs",
+      "exit_code": 0,
+      "evidence": "33 passed, 0 failed on refreshed implementation head 29e315d5; includes all three main read call sites and failed liveness reads"
+    },
+    {
+      "command": "node --test scripts/check-github-transport-conformance.test.mjs",
+      "exit_code": 0,
+      "evidence": "10 passed, 0 failed on refreshed implementation head 29e315d5; known-dirty template-string sh(gh...) fixture refused"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "335 files scanned, no transport violations on refreshed implementation head 29e315d5"
+    }
+  ],
+  "assumptions_resolved": [
+    "The shared transport accepts the reaper's unchanged gh argv shapes in direct main call-site tests.",
+    "The former shell-helper bypass is now caught by a known-dirty source-guard fixture."
+  ],
+  "stop_conditions_hit": []
+}

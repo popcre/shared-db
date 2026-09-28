@@ -252,8 +252,8 @@ end $$;
 do $$
 declare
   v_definition text;
-  v_key_cases text[];
-  v_name_cases text[];
+  v_key_cases text[] := array[]::text[];
+  v_name_cases text[] := array[]::text[];
   v_sources text[] := array[
     'disney_dcpvault', 'marvel_dcpvault',
     'lucasfilm_dcpvault', 'twentieth_century_dcpvault'];
@@ -263,21 +263,54 @@ declare
   v_actual text;
   v_arm integer;
   v_source integer;
+  v_from integer := 1;
+  v_anchor integer;
+  v_key_start integer;
+  v_key_end integer;
+  v_name_start integer;
+  v_name_end integer;
 begin
   select pg_get_functiondef(
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure
   ) into v_definition;
 
-  select array_agg(captures[1] order by ordinal)
-    into v_key_cases
-    from regexp_matches(v_definition,
-      $rx$s\.\*,[[:space:]]*(case[[:space:]]+.*?end)::text as licensor_group_key$rx$,
-      'g') with ordinality as m(captures, ordinal);
-  select array_agg(captures[1] order by ordinal)
-    into v_name_cases
-    from regexp_matches(v_definition,
-      $rx$end::text as licensor_group_key,[[:space:]]*(case[[:space:]]+.*?end)::text as licensor_group_name$rx$,
-      'g') with ordinality as m(captures, ordinal);
+  -- PL/pgSQL preserves the routine's source text. Bound each expression by
+  -- the s.* row projection and its exact output alias, then evaluate that
+  -- expression below. This avoids regex newline-mode ambiguity.
+  for v_arm in 1..3 loop
+    v_anchor := strpos(substring(v_definition from v_from), 's.*,');
+    if v_anchor = 0 then
+      raise exception 'missing source projection in inventory arm %', v_arm;
+    end if;
+    v_key_start := v_from + v_anchor - 1 + length('s.*,');
+    v_anchor := strpos(substring(v_definition from v_key_start), 'case');
+    if v_anchor = 0 or v_anchor > 30 then
+      raise exception 'missing group-key CASE in inventory arm %', v_arm;
+    end if;
+    v_key_start := v_key_start + v_anchor - 1;
+    v_anchor := strpos(substring(v_definition from v_key_start), 'end::text as licensor_group_key');
+    if v_anchor = 0 then
+      raise exception 'missing group-key alias in inventory arm %', v_arm;
+    end if;
+    v_key_end := v_key_start + v_anchor - 1;
+    v_key_cases := array_append(v_key_cases,
+      substring(v_definition from v_key_start for v_key_end - v_key_start + 3));
+
+    v_name_start := v_key_end + length('end::text as licensor_group_key');
+    v_anchor := strpos(substring(v_definition from v_name_start), 'case');
+    if v_anchor = 0 or v_anchor > 30 then
+      raise exception 'missing group-name CASE in inventory arm %', v_arm;
+    end if;
+    v_name_start := v_name_start + v_anchor - 1;
+    v_anchor := strpos(substring(v_definition from v_name_start), 'end::text as licensor_group_name');
+    if v_anchor = 0 then
+      raise exception 'missing group-name alias in inventory arm %', v_arm;
+    end if;
+    v_name_end := v_name_start + v_anchor - 1;
+    v_name_cases := array_append(v_name_cases,
+      substring(v_definition from v_name_start for v_name_end - v_name_start + 3));
+    v_from := v_name_end + length('end::text as licensor_group_name');
+  end loop;
   if coalesce(array_length(v_key_cases, 1), 0) <> 3
      or coalesce(array_length(v_name_cases, 1), 0) <> 3 then
     raise exception 'expected grouping expressions from all three inventory arms';

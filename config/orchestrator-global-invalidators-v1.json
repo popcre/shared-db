@@ -19,6 +19,7 @@
     "scripts/lib/documents-only-change.mjs",
     "scripts/lib/exclusive-lease.mjs",
     "scripts/lib/github-transport.mjs",
+    "scripts/lib/github-proof-zip.mjs",
     "scripts/lib/github-tree.mjs",
     "scripts/lib/hold-reason.mjs",
     "scripts/lib/merge-self-context.mjs",

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "retired_by_pr": 3644,
+  "sites": [
+    {
+      "site": "scripts/manage-migration-author-lanes.mjs:2302",
+      "semantic_key": "scripts/manage-migration-author-lanes.mjs:a506dd54ce0a675ce62b60933700254ff523561f16a7abdd7e91a1615f095238:1",
+      "line_sha256": "a506dd54ce0a675ce62b60933700254ff523561f16a7abdd7e91a1615f095238",
+      "disposition": "enriched",
+      "reason": "A missing required production-proof artifact file refuses outcome completion, so absent evidence cannot be read as successful application.",
+      "state": "retired"
+    }
+  ]
+}

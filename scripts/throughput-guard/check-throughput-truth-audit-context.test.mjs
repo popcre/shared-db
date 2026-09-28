@@ -78,7 +78,10 @@ test('context migration preserves every historical identity hash verdict and rea
   const authorityRetirements = JSON.parse(fs.readFileSync(path.join(root, 'docs/verification/throughput-retired-identity-sites-3369.json'), 'utf8'));
   assert.equal(authorityRetirements.schema_version, 1);
   assert.equal(authorityRetirements.retired_by_pr, 3369);
-  assertHistoricalDispositions(historical, current, [...archive.sites, ...authorityRetirements.sites]);
+  const proofZipRetirements = JSON.parse(fs.readFileSync(path.join(root, 'docs/verification/throughput-retired-identity-sites-3644.json'), 'utf8'));
+  assert.equal(proofZipRetirements.schema_version, 1);
+  assert.equal(proofZipRetirements.retired_by_pr, 3644);
+  assertHistoricalDispositions(historical, current, [...archive.sites, ...authorityRetirements.sites, ...proofZipRetirements.sites]);
 });
 
 test('historical identity retirement refuses unexplained loss and changed verdicts', () => {

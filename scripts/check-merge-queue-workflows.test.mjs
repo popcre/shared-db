@@ -287,7 +287,7 @@ test('both authority reads precede every pull-request script and run from protec
   }
   assert.match(protectedQuota, /working-directory: trusted-policy/)
   assert.match(protectedLock, /working-directory: trusted-policy/)
-  assert.match(protectedLock, /node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/manage-migration-author-lanes\.mjs"/)
+  assert.match(protectedLock, /node scripts\/manage-migration-author-lanes\.mjs --acquire-merge/)
   assert.match(preflight, /GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'/)
   assert.match(underlock, /PREFLIGHT_WAIT_SECONDS: '0'/)
   assert.doesNotMatch(outside, /^\s*AUTHORITY_TOKEN:/m, 'head code outside the protected reads must not receive the authority token')

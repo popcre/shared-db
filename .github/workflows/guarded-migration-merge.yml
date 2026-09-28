@@ -81,8 +81,10 @@ jobs:
           path: trusted-policy
           fetch-depth: 1
       - name: Pre-flight the required status checks before taking the merge lane
+        id: trusted_preflight
         working-directory: trusted-policy
         env:
+          GH_TOKEN: ${{ github.token }}
           AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
@@ -93,7 +95,6 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$TRUSTED_PATH"
-          export GH_TOKEN="$AUTHORITY_TOKEN"
           git fetch origin main
           if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
             echo 'Protected-main checkout is stale' >&2
@@ -103,7 +104,13 @@ jobs:
             echo 'Protected-main checkout is dirty' >&2
             exit 1
           fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      - name: Refuse out-of-boundary self-service changes before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}"
       # The protected-main preflight above fetches and proves current main before
       # any pull-request script runs. Quota exhaustion waits outside the lock.
       - name: Check the GitHub API quota before taking the merge lane
@@ -130,6 +137,7 @@ jobs:
       - name: Re-read required-check authority under the merge lock from protected main
         working-directory: trusted-policy
         env:
+          GH_TOKEN: ${{ github.token }}
           AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
           PREFLIGHT_WAIT_SECONDS: '0'
@@ -141,7 +149,6 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$TRUSTED_PATH"
-          export GH_TOKEN="$AUTHORITY_TOKEN"
           git fetch origin main
           if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
             echo 'Protected-main checkout is stale under the merge lock' >&2
@@ -165,7 +172,6 @@ jobs:
           node scripts/check-migration-pr-lease.mjs
           node scripts/check-live-proof-probe.mjs
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
-          node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}"
       - name: Re-prove the head and merge while the lock is held
         id: guarded_merge
         env:
@@ -281,7 +287,20 @@ jobs:
         run: gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=failure -f context='Migration guarded merge authorization' -f description='Guarded merge failed; authorization revoked before lock release'
       - name: Release the exclusive merge lane with ownership proof
         if: always() && steps.merge_lock.outputs.owner_sha != '' && (steps.guarded_merge.outcome == 'success' || steps.revoke_authorization.outcome == 'success')
+        working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.merge_lock.outputs.owner_sha }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"
+          TRUSTED_MAIN_SHA: ${{ steps.trusted_preflight.outputs.sha }}
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          test "$(git rev-parse HEAD)" = "$TRUSTED_MAIN_SHA"
+          test -z "$(git status --porcelain)"
+          node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"

@@ -1,0 +1,77 @@
+{
+  "allowed_paths": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs",
+    ".agent/work/3361/9/contract.json",
+    ".agent/work/3361/9/completion.json",
+    ".agent/work/3361/10/contract.json",
+    ".agent/work/3361/10/completion.json"
+  ],
+  "assumptions": [
+    "Protected-main preflight, quota, and merge-lock acquisition can run from the clean trusted-policy checkout before pull-request-head code.",
+    "After the lock is acquired, a second protected-main authority read precedes every pull-request-head script.",
+    "The authority token is restricted to the two protected-main read steps; source code swaps GH_TOKEN only for authority reads.",
+    "Fresh effective settings includes classic protection and applicable inherited rulesets; an unreadable setting refuses."
+  ],
+  "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+  "branch": "codex/workflow-refactor-required-authority",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex parent session fixing PR #3369",
+  "file_writes": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs",
+    ".agent/work/3361/9/contract.json",
+    ".agent/work/3361/9/completion.json",
+    ".agent/work/3361/10/contract.json",
+    ".agent/work/3361/10/completion.json"
+  ],
+  "generation": 10,
+  "goal": "Restore the context-migration historical audit invariant while retaining trusted token reads, prelock self-service boundary, and protected-main lock cleanup.",
+  "prohibited_actions": [
+    "do not change required_status_checks.strict; it is false by owner ruling in issue #1286",
+    "do not touch any migration or database object",
+    "do not edit another session handoff, worktree, branch, or claim",
+    "do not execute a pull-request-head script before either token-bearing preflight"
+  ],
+  "required_checks": [
+    "node --test scripts/check-merge-queue-workflows.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs scripts/check-self-service-additive-lane.test.mjs",
+    "node --test --test-name-pattern database-only scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node --test --test-name-pattern context scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
+  "stop_conditions": [
+    "Refuse authorization if live settings are unreadable; do not broaden credentials",
+    "Do not mutate settings without exact independent approval"
+  ],
+  "work_issue": 3361,
+  "work_type": "repo-maintenance",
+  "worker": "Codex chat unknown on edge-dev3",
+  "worktree": "/home/ahazan/repos/shared-db/.ai/worktrees/repair-3369-linux"
+}

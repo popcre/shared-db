@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3659,
+  "outcome": "ready-for-merge",
+  "pr": 3661,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3659/3",
+  "contract_sha256": "afa02b7b1e35dad36385b01c40b371b9ca6308f259df5a15af903f3ddfe47520",
+  "base_sha": "5d6bb13d9b27786c214e505ddd7bf4c756c19219",
+  "head_sha": "fe2a8db6e80709c96c3ee5d9df4e21a95446e897",
+  "files_changed": [
+    ".mcp.json",
+    "scripts/mcp-supabase-launch.mjs",
+    "scripts/mcp-supabase-launch.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/mcp-supabase-launch.test.mjs",
+      "exit_code": 0,
+      "evidence": "5 passed, 0 failed on implementation head fe2a8db6e (Windows host): windows cmd /c mcp-launch.cmd route, linux and darwin mcp-launch.sh route, --read-only at 0.11.0 with project ref qsllyeztdwjgirsysgai, .mcp.json uses node and holds no secret"
+    }
+  ],
+  "assumptions_resolved": [
+    "Windows entry-point smoke on this machine: node scripts/mcp-supabase-launch.mjs spawned a fake mcp-launch.cmd under a temp home and delivered argv cmd /c npx -y @supabase/mcp-server-supabase@0.11.0 --read-only --project-ref qsllyeztdwjgirsysgai",
+    "Linux live assertion (MCP initialize -> serverInfo supabase 0.11.0) is NOT proven from this Windows machine; issue #3659 stays open for that"
+  ],
+  "stop_conditions_hit": []
+}

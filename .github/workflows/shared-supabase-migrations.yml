@@ -1667,7 +1667,7 @@ jobs:
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
-            --apply-triggering-actor "${{ github.triggering_actor }}" \
+            --apply-triggering-actor "$GITHUB_TRIGGERING_ACTOR" \
             --source-pr "$SOURCE_PR" \
             --work-issue "$WORK_ISSUE" --preview-run-id "$PREVIEW_RUN" \
             --preview-digest "$PREVIEW_DIGEST" \
@@ -1762,7 +1762,7 @@ jobs:
             --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
-            --apply-triggering-actor "${{ github.triggering_actor }}" \
+            --apply-triggering-actor "$GITHUB_TRIGGERING_ACTOR" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \
@@ -1892,7 +1892,7 @@ jobs:
             --commit-sha "$REQUESTED_SHA" \
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
-            --apply-triggering-actor "${{ github.triggering_actor }}" \
+            --apply-triggering-actor "$GITHUB_TRIGGERING_ACTOR" \
             --source-pr "$SOURCE_PR" \
             --work-issue "$WORK_ISSUE" --preview-run-id "$PREVIEW_RUN" \
             --preview-digest "$PREVIEW_DIGEST" \
@@ -1982,7 +1982,7 @@ jobs:
             --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
-            --apply-triggering-actor "${{ github.triggering_actor }}" \
+            --apply-triggering-actor "$GITHUB_TRIGGERING_ACTOR" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \

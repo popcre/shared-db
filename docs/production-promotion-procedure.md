@@ -134,7 +134,11 @@ exact `sha256:` artifact digest; #2716 removes transcription only from the ordin
    manual recovery; automatic v2 keeps its separate fully machine-qualified path. The reviewer
    roster is initially empty, so no manual approval can issue until a separate owner-approved
    roster change lands. A model's local report or descriptive label is not authenticated reviewer
-   identity.
+   identity. The independent packet deliberately carries no timestamp: freshness is bound by
+   exact-main equality (any later commit to `main` voids it) and by artifact expiry. Code enforces
+   reviewer independence only from the record operator and the apply actors; independence from
+   the migration author and source-PR applicant rests on the owner-controlled roster, so the
+   owner must not list an identity that authors or applies migrations.
 3. **`environment: production`.** Keep this binding. It remains the deployment boundary even
    after its separate manual-reviewer rule is removed.
 

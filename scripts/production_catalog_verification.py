@@ -4624,5 +4624,32 @@ CATALOG_CONTRACTS["popsg_refresh_search_sync_queue_v1"] = (
     POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT
 )
 
+# Issue #2179. ColdLion /itemImages METADATA landing table. Structure only; the
+# post-apply check is the proven grain (company_code, pkey), the complete owner
+# field disposition (14 ingested source fields + 5 provenance), NO image-content
+# column, and the landing-layer lockdown (RLS on, no policy, no anon/authenticated
+# privilege). pg_attribute and has_table_privilege are used because
+# information_schema is role-filtered under supabase_read_only_user.
+COLDLION_ITEM_IMAGE_METADATA_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.item_image_metadata',),
+        constraints=(
+            ('coldlion.item_image_metadata','item_image_metadata_pkey'),
+            ('coldlion.item_image_metadata','item_image_metadata_run_id_fkey'),
+        ),
+    )
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select count(*) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='u')=0"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped)=19"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and (a.attname in ('resource_content','thumbnail128','thumbnail_128','raw') or a.atttypid='bytea'::regtype))=0"
+    + " and (select relrowsecurity from pg_class where oid=to_regclass('coldlion.item_image_metadata'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,'coldlion.item_image_metadata',p.v))=0"
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename='item_image_metadata')=0"
+    + " and (select count(*) from pg_constraint c join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and (rn.nspname<>'coldlion' or rt.relname<>'sync_run'))=0"
+)
+CATALOG_CONTRACTS["coldlion_item_image_metadata_v1"] = (
+    COLDLION_ITEM_IMAGE_METADATA_CONTRACT
+)
+
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -1,0 +1,53 @@
+{
+  "allowed_paths": [
+    ".agent/work/2508/2/completion.json",
+    ".agent/work/2508/2/contract.json",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "assumptions": [
+    "Issue #2508 is non-orchestrator (detection/reporting tooling and docs).",
+    "Six genuinely-pending migration versions need production applies through the bounded Shared Supabase Migrations workflow — that is the orchestrator's lane, not this session's.",
+    "The throughput-disposition catalogue for the new script is required because the truth-audit discovers the word 'missing' in comments and error messages.",
+    "Generation 1 was published but its pair was interleaved with implementation commits; generation 2 retires the old pair from this PR diff and records a new published generation under the current schema-v1 contract format.",
+    "The production drift alarm remains open until a later read-only check proves clearance after the orchestrator production lane acts."
+  ],
+  "base_sha": "d73912fc38e7b6502baedb2a8c18bce343d09e84",
+  "branch": "2508-ledger-drift",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex non-orchestrator continuation: repair PR #3518 evidence topology and complete governed review",
+  "file_writes": [
+    ".agent/work/2508/2/completion.json",
+    ".agent/work/2508/2/contract.json",
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "generation": 2,
+  "goal": "Add a ledger-drift status reporter (scripts/report-ledger-drift-status.mjs) that turns a check-migration-ledger-drift --json result into an issue-comment-ready status report with per-version PR attribution, plus tests and a verification doc. Detection/reporting only — no production apply.",
+  "prohibited_actions": [
+    "No production apply, no migration, no database write.",
+    "No secrets in commits, logs, or PR body.",
+    "Do not edit the shared checkout; worktree-only.",
+    "Do not close issue #2508 — it stays open until production applies land."
+  ],
+  "required_checks": [
+    "node --test scripts/report-ledger-drift-status.test.mjs",
+    "node --test scripts/check-migration-ledger-drift.test.mjs",
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
+  "stop_conditions": [
+    "Stop if the change would need to touch a migration, database object, or production workflow.",
+    "Stop if the drift check itself needs modification (out of scope — this PR adds reporting on top of it)."
+  ],
+  "work_issue": 2508,
+  "work_type": "repo-maintenance",
+  "worker": "Codex chat on edge-dev3",
+  "worktree": "/home/ahazan/repos/shared-db-3518"
+}

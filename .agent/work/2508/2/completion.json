@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 2508,
+  "outcome": "ready-for-merge",
+  "pr": 3518,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2508/2",
+  "contract_sha256": "02bd5a828481cfcfe008c8147a69f34bc978125e6641200b0a8454d4d7c7af83",
+  "head_sha": "e513dcba6ea588d032620b94b4dce873f646ac45",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
+  "files_changed": [
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/report-ledger-drift-status.test.mjs",
+      "exit_code": 0,
+      "evidence": "18 passed, 0 failed, 0 skipped at implementation head e513dcba6ea588d032620b94b4dce873f646ac45."
+    },
+    {
+      "command": "node --test scripts/check-migration-ledger-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "35 passed, 0 failed, 0 skipped at implementation head e513dcba6ea588d032620b94b4dce873f646ac45; local PATH supplied a temporary python→python3 alias because this Linux host has python3 only. No project or OS binary was changed."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed, 0 skipped at implementation head e513dcba6ea588d032620b94b4dce873f646ac45."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=328 sources=77 derived_digest=57190268630f"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors at implementation head e513dcba6ea588d032620b94b4dce873f646ac45."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 was retired from this PR diff; the immutable published ref remains unchanged.",
+    "Generation 2 is a new schema-v1 contract supported by current main and lists only this PR source files plus its own evidence pair.",
+    "Production drift was still present on the latest checked scheduled run; issue #2508 remains open for the orchestrator production lane."
+  ],
+  "stop_conditions_hit": []
+}

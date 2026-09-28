@@ -11,6 +11,8 @@
   "head_sha": "8021b8056b8de2eae6fa26799d6c129f8e994592",
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
   "files_changed": [
+    ".agent/work/3683/1/completion.json",
+    ".agent/work/3683/1/contract.json",
     ".github/live-proofs/3683.sql",
     "supabase/migrations/20260928160635_nbcu_durable_entity_lifecycle.sql",
     "supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql",

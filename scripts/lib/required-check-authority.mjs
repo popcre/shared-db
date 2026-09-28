@@ -3,12 +3,14 @@ import { createHash } from 'node:crypto'
 export class RequiredCheckAuthorityError extends Error {}
 const refuse = (message) => { throw new RequiredCheckAuthorityError(message) }
 const named = (value) => typeof value === 'string' && value.trim().length > 0
+const validRepo = (value) => typeof value === 'string' && value.split('/').length === 2 && value.split('/').every((part) => /^[\w.-]+$/.test(part) && part !== '.' && part !== '..')
 const appId = (value) => value === null || value === -1 ? null : (Number.isSafeInteger(value) && value > 0 ? value : refuse('required check producer identity is unreadable'))
 
 // Canonical JSON: object keys sorted at every level. Two reads that say the
 // same thing must produce the same revision digest, or representational
 // key-order jitter refuses the merge unactionably.
 export function stableStringify(value) {
+  if (value === undefined || typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint' || (typeof value === 'number' && !Number.isFinite(value))) refuse('authority contains a non-JSON value')
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
   if (value && typeof value === 'object') {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
@@ -16,11 +18,11 @@ export function stableStringify(value) {
   return JSON.stringify(value)
 }
 
-// The revision digest is a pure function of these four fields. Recomputing it
+// The revision digest is a pure function of these five fields. Recomputing it
 // binds an authority object to its own content instead of trusting a
 // shape-only hex string.
-export function computeRevision({ repository_id: repositoryId, repository, branch, sources }) {
-  return createHash('sha256').update(stableStringify({ repository_id: repositoryId, repository, branch, sources })).digest('hex')
+export function computeRevision({ repository_id: repositoryId, repository, branch, sources, checks = [] }) {
+  return createHash('sha256').update(stableStringify({ repository_id: repositoryId, repository, branch, sources, checks: normalizeRequirements(checks) })).digest('hex')
 }
 export function normalizeRequirements(checks) {
   if (!Array.isArray(checks)) refuse('required checks are not a complete list')
@@ -50,8 +52,19 @@ export function normalizeRequirements(checks) {
 // genuine absence (404) from an unauthorized null (403 or 200-inconsistent):
 // GitHub hides unauthorized nullable fields as null, so a bare null must never
 // be trusted as "no classic rule".
+function confirmClassicProtectionAbsent({ repo, branch, read }) {
+  try {
+    read(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}/protection`])
+  } catch (error) {
+    const message = String(error?.message ?? error?.stderr ?? '')
+    if (/404|Not Found/i.test(message)) return
+    if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) refuse('classic protection is not readable (permission denied); GraphQL null cannot be trusted as absent')
+    refuse('classic protection probe failed; GraphQL null cannot be trusted as absent')
+  }
+  refuse('classic protection exists but GraphQL returned null; refusing unauthorized-null')
+}
 export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now = () => new Date() }) {
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
+  if (!validRepo(repo) || !named(branch)) refuse('repository or branch identity is invalid')
   const [owner, name] = repo.split('/')
   const query = 'query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){databaseId nameWithOwner ref(qualifiedName:$ref){name target{oid} branchProtectionRule{id requiresStatusChecks requiresStrictStatusChecks requiredStatusCheckContexts requiredStatusChecks{context app{databaseId}}}}}}'
   const response = read(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-f', `ref=refs/heads/${branch}`])
@@ -63,7 +76,7 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
   if (protection !== null) {
     if (!named(protection?.id) || typeof protection.requiresStatusChecks !== 'boolean' || typeof protection.requiresStrictStatusChecks !== 'boolean' || !Array.isArray(protection.requiredStatusCheckContexts) || !Array.isArray(protection.requiredStatusChecks)) refuse('effective classic protection is incomplete')
     if (protection.requiresStatusChecks) {
-      for (const item of protection.requiredStatusChecks) requirements.push({ context: item.context, app_id: item.app === null ? null : item.app?.databaseId })
+      for (const item of protection.requiredStatusChecks) requirements.push({ context: item.context, app_id: item.app == null ? null : item.app.databaseId })
       const contexts = new Set(requirements.map((item) => item.context))
       if (protection.requiredStatusCheckContexts.some((context) => !contexts.has(context)) || requirements.some((item) => !protection.requiredStatusCheckContexts.includes(item.context))) refuse('classic context and producer lists disagree')
     }
@@ -72,21 +85,7 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
     // to distinguish genuine absence (404) from a permission-denied null (403)
     // or an inconsistent read (200 with a real rule). Fail closed on anything
     // other than a clean 404.
-    let probeSucceeded = false
-    try {
-      read(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}/protection`])
-      probeSucceeded = true
-    } catch (error) {
-      const message = String(error?.message ?? error?.stderr ?? '')
-      if (/404|Not Found/i.test(message)) {
-        // Genuine absence: no classic protection rule on this branch.
-      } else if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) {
-        refuse('classic protection is not readable (permission denied); GraphQL null cannot be trusted as absent')
-      } else {
-        refuse('classic protection probe failed; GraphQL null cannot be trusted as absent')
-      }
-    }
-    if (probeSucceeded) refuse('classic protection exists but GraphQL returned null; refusing unauthorized-null')
+    confirmClassicProtectionAbsent({ repo, branch, read })
   }
   const perPage = 100
   const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=${perPage}`])
@@ -115,7 +114,7 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
   const checks = normalizeRequirements(requirements)
   if (!checks.length) refuse('effective policy requires no checks; refusing unknown or removed protection')
   const sources = { classic: protection, rulesets: rules }
-  const revision = computeRevision({ repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, sources })
+  const revision = computeRevision({ repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, sources, checks })
   return { schema_version: 1, mode: 'live-effective-settings', repository_id: repository.databaseId, repository: repository.nameWithOwner, branch, base_sha: repository.ref.target.oid, capturedIso: now().toISOString(), revision, sources, checks }
 }
 
@@ -128,15 +127,17 @@ export function readEffectiveRequiredChecks({ repo, branch = 'main', read, now =
 // what to grant". The guarded-lane run of this probe is itself the run-link
 // proof that the token can complete the reads.
 export function probeAuthorityReadPermissions({ repo, branch = 'main', read }) {
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !named(branch)) refuse('repository or branch identity is invalid')
+  if (!validRepo(repo) || !named(branch)) refuse('repository or branch identity is invalid')
   const [owner, name] = repo.split('/')
-  const query = 'query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$ref){name branchProtectionRule{id}}}}'
+  const query = 'query($owner:String!,$name:String!,$ref:String!){repository(owner:$owner,name:$name){databaseId nameWithOwner ref(qualifiedName:$ref){name target{oid} branchProtectionRule{id}}}}'
   const actionable = (detail) => refuse(`authority-read token cannot complete the required-check authority reads (${detail}). GraphQL branchProtectionRule and REST /rules/branches require admin-level access: a classic PAT with repo scope, Administration:read, or a GitHub App with administration permission. contents:read is NOT enough. Set a repository secret (e.g. SYNC_TOKEN or REQUIRED_CHECKS_AUTHORITY_TOKEN) holding a token with admin access and pass it as AUTHORITY_TOKEN to the preflight step. This probe fails closed so the merge path cannot refuse later without naming the denied permission.`)
   try {
     const response = read(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-f', `ref=refs/heads/${branch}`])
     if (response?.errors?.length) actionable(`GraphQL branchProtectionRule read returned errors: ${JSON.stringify(response.errors).slice(0, 200)}`)
-    if (response?.data?.repository?.ref?.name !== branch) actionable('GraphQL branchProtectionRule read did not return the requested branch identity')
-    if (!named(response.data.repository.ref.branchProtectionRule?.id)) actionable('GraphQL branchProtectionRule read returned null or incomplete protection; cannot prove authority')
+    const repository = response?.data?.repository
+    if (!Number.isSafeInteger(repository?.databaseId) || repository.databaseId <= 0 || repository.nameWithOwner?.toLowerCase() !== repo.toLowerCase() || repository.ref?.name !== branch || !/^[a-f0-9]{40}$/.test(repository.ref?.target?.oid ?? '')) actionable('GraphQL branchProtectionRule read did not return the requested repository and branch identity')
+    if (repository.ref.branchProtectionRule === null) confirmClassicProtectionAbsent({ repo, branch, read })
+    else if (!named(repository.ref.branchProtectionRule?.id)) actionable('GraphQL branchProtectionRule read returned incomplete protection')
   } catch (error) {
     const message = String(error?.message ?? error?.stderr ?? '')
     if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) actionable(`GraphQL branchProtectionRule read denied: ${message.slice(0, 200)}`)
@@ -144,7 +145,7 @@ export function probeAuthorityReadPermissions({ repo, branch = 'main', read }) {
   }
   try {
     const pages = read(['api', '--paginate', '--slurp', `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=100`])
-    if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) actionable('REST /rules/branches read did not return a usable rule list')
+    if (!Array.isArray(pages) || !pages.length || pages.some((page) => !Array.isArray(page))) actionable('REST /rules/branches read did not return a usable rule list')
   } catch (error) {
     const message = String(error?.message ?? error?.stderr ?? '')
     if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) actionable(`REST /rules/branches read denied: ${message.slice(0, 200)}`)

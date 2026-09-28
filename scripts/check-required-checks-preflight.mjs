@@ -62,15 +62,12 @@ export function observedStates({ statuses = [], checkRuns = [], appId, sha }) {
   }
   return states
 }
-export function evaluateWithoutRequiredList({ reason } = {}) {
-  throw new PreflightError(`effective required-check authority is unreadable (${sanitize(reason)}); a committed mirror or unexpired snapshot cannot authorize a merge`)
-}
 export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sha }) {
   if (authority?.mode !== 'live-effective-settings' || !/^[a-f0-9]{64}$/.test(authority?.revision ?? '') || !Array.isArray(authority?.checks) || !authority.checks.length || !/^[a-f0-9]{40}$/.test(sha ?? '')) throw new PreflightError('fresh effective required-check authority and exact reviewed head are required')
   // Rebind the revision to the authority's own content. A shape-only hex string
   // is not proof; recomputing the digest from {repository_id, repository,
-  // branch, sources} refuses an authority whose recorded revision does not
-  // match what it actually carries.
+  // branch, sources, checks} refuses an authority whose recorded revision does not
+  // match what it actually carries, including the enforced checks list.
   if (computeRevision(authority) !== authority.revision) throw new PreflightError('effective required-check authority revision does not match its own content; refusing a tampered or stale digest')
   const required = authority.checks.filter((item) => item.context !== SELF_CONTEXT)
   if (!required.length) throw new PreflightError('effective settings name only the self authorization; no independent required checks')

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluatePreflight, evaluateWithoutRequiredList, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT, GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
+import { evaluatePreflight, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT, GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
 import { readEffectiveRequiredChecks, computeRevision, RequiredCheckAuthorityError } from './lib/required-check-authority.mjs'
 const sha = 'a'.repeat(40)
 function makeAuthority(overrides = {}) {
@@ -36,8 +36,7 @@ test('advisory failure remains visible without independently vetoing a merge', (
   assert.deepEqual(result.advisory, [['optional', 'failure']])
   assert.match(result.shadow, /would refuse advisory/)
 })
-test('stale mirror and unexpired attestation never authorize unreadable current settings', () => {
-  assert.throws(() => evaluateWithoutRequiredList({ reason: '403', mirrorContexts: ['required'], expires: '2099-01-01' }), /cannot authorize/)
+test('an unexpired attestation never substitutes for fresh effective settings', () => {
   assert.throws(() => evaluate({ authority: { ...makeAuthority(), mode: 'snapshot', expires: '2099-01-01' } }), /fresh effective/)
 })
 test('a newly effective requirement is enforced even with a still-valid old snapshot', () => {
@@ -51,6 +50,8 @@ test('same name requirements from two apps both apply; self authorization cannot
 test('revision digest is rebound to content; a tampered or stale digest refuses', () => {
   const tampered = { ...makeAuthority(), revision: 'b'.repeat(64) }
   assert.throws(() => evaluate({ authority: tampered }), /revision does not match its own content/)
+  const changedChecks = { ...makeAuthority(), checks: [{ context: 'different requirement', app_id: GITHUB_ACTIONS_APP_ID }] }
+  assert.throws(() => evaluate({ authority: changedChecks }), /revision does not match its own content/)
 })
 test('GITHUB_ACTIONS_APP_ID is the documented GitHub Actions producer identity', () => {
   assert.equal(GITHUB_ACTIONS_APP_ID, 15368)

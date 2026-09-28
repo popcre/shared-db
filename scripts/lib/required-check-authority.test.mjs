@@ -53,6 +53,12 @@ test('ruleset any-source check with omitted integration_id is treated as classic
   const result = readEffectiveRequiredChecks(fixture([anySource]))
   assert.deepEqual(result.checks.find((item) => item.context === 'any-source'), { context: 'any-source', app_id: null })
 })
+test('classic omitted app is unrestricted and traversal-like repository names refuse', () => {
+  const input = fixture([], (r) => { delete r.data.repository.ref.branchProtectionRule.requiredStatusChecks[0].app })
+  assert.deepEqual(readEffectiveRequiredChecks(input).checks, [{ context: 'required', app_id: null }])
+  assert.throws(() => readEffectiveRequiredChecks({ ...input, repo: '../..' }), /repository or branch identity/)
+  assert.throws(() => probeAuthorityReadPermissions({ repo: '../..', read: input.read }), /repository or branch identity/)
+})
 test('null classic protection probes REST /protection to distinguish 404 from 403', () => {
   // 404 on /protection: genuine absence. With a ruleset providing checks, accept.
   const ok404 = { type: 'required_status_checks', ruleset_id: 9, ruleset_source_type: 'Organization', ruleset_source: 'popcre', parameters: { required_status_checks: [{ context: 'from ruleset', integration_id: 7 }] } }
@@ -94,19 +100,29 @@ test('revision digest is canonical: key-order jitter does not change it', () => 
   assert.equal(a, b)
   assert.match(a, /^[a-f0-9]{64}$/)
   assert.equal(stableStringify({ b: 1, a: { d: 2, c: 3 } }), '{"a":{"c":3,"d":2},"b":1}')
+  assert.notEqual(computeRevision({ repository_id: 1, repository: 'popcre/shared-db', branch: 'main', sources: {}, checks: [{ context: 'a', app_id: null }] }), computeRevision({ repository_id: 1, repository: 'popcre/shared-db', branch: 'main', sources: {}, checks: [{ context: 'b', app_id: null }] }))
+  assert.throws(() => stableStringify({ missing: undefined }), /non-JSON value/)
 })
 test('probe proves both authority reads; a denial names the missing permission and fails closed', () => {
   const okRead = (args) => {
-    if (args.includes('graphql')) return { data: { repository: { ref: { name: 'main', branchProtectionRule: { id: 'BPR_1' } } } } }
+    if (args.includes('graphql')) return { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: { id: 'BPR_1' } } } } }
     return [[]]
   }
   const result = probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: okRead })
   assert.equal(result.ok, true)
   assert.deepEqual(result.proven, ['GraphQL branchProtectionRule', 'REST /rules/branches'])
   assert.throws(() => probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: (args) => {
-    if (args.includes('graphql')) return { data: { repository: { ref: { name: 'main', branchProtectionRule: null } } } }
+    if (args.includes('graphql')) return { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: null } } } }
+    if (String(args.at(-1)).endsWith('/protection')) throw Error('gh: Forbidden (HTTP 403)')
     return [[]]
-  } }), /null or incomplete protection/)
+  } }), /permission denied/)
+  const noClassic = (args) => {
+    if (args.includes('graphql')) return { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: null } } } }
+    if (String(args.at(-1)).endsWith('/protection')) throw Error('gh: Not Found (HTTP 404)')
+    return [[]]
+  }
+  assert.equal(probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: noClassic }).ok, true)
+  assert.throws(() => probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: (args) => args.includes('graphql') ? okRead(args) : [] }), /usable rule list/)
   const deny = (args) => {
     const err = Error('gh: Resource not accessible by integration (HTTP 403)')
     err.stderr = 'gh: Resource not accessible by integration (HTTP 403)'
@@ -124,7 +140,7 @@ test('probe proves both authority reads; a denial names the missing permission a
     assert.doesNotMatch(e.message, /administration:read is NOT required/i)
   }
   const denyRules = (args) => {
-    if (args.includes('graphql')) return { data: { repository: { ref: { name: 'main', branchProtectionRule: { id: 'BPR_1' } } } } }
+    if (args.includes('graphql')) return { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: { id: 'BPR_1' } } } } }
     const err = Error('gh: Resource not accessible by integration (HTTP 403)')
     err.stderr = 'gh: Resource not accessible by integration (HTTP 403)'
     throw err

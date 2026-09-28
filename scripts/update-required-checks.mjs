@@ -241,7 +241,7 @@ export const MIRROR_PATH = 'docs/verification/main-required-status-checks.json'
 
 export function mirrorDocument(validated, repo, branch, now = new Date(), authority) {
   return `${JSON.stringify({
-    _why: 'INFORMATIONAL effective required-check readback, never merge authority. No snapshot invalidation protocol is claimed. Protected merge boundaries read classic protection and applicable inherited rulesets live. Rewritten by scripts/update-required-checks.mjs; do not hand-edit.',
+    _why: 'Informational for guarded merge and never merge authority. Merge-queue activation uses these contexts as a coverage baseline. Protected merge boundaries read classic protection and applicable inherited rulesets live. Rewritten by scripts/update-required-checks.mjs; do not hand-edit.',
     authority: authority ?? null,
     repo, branch,
     capturedIso: now.toISOString(),

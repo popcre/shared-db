@@ -1,14 +1,14 @@
 {
-  "_why": "INFORMATIONAL effective required-check readback, never merge authority. No snapshot invalidation protocol is claimed. Protected merge boundaries read classic protection and applicable inherited rulesets live. Rewritten by scripts/update-required-checks.mjs; do not hand-edit.",
+  "_why": "Informational for guarded merge and never merge authority. Merge-queue activation uses these contexts as a coverage baseline. Protected merge boundaries read classic protection and applicable inherited rulesets live. Rewritten by scripts/update-required-checks.mjs; do not hand-edit.",
   "authority": {
     "schema_version": 1,
     "mode": "live-effective-settings",
     "repository_id": 1275568548,
     "repository": "popcre/shared-db",
     "branch": "main",
-    "base_sha": "d963e931bba66098e1bf7f6f735da7a602bf764f",
-    "capturedIso": "2026-09-28T00:47:14.780Z",
-    "revision": "27c41202c3a433cca327b057b2f1d9dec316cc9beeeb1a25bdba1987854ae5f9",
+    "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+    "capturedIso": "2026-09-28T01:40:28.457Z",
+    "revision": "65122c856c3a3cf3ffb9f82dc057a6ea8e1c6944d02d594d761dd98b8c792ac2",
     "sources": {
       "classic": {
         "id": "BPR_kwDOTAehpM4E2ure",
@@ -202,7 +202,7 @@
   },
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-09-28T00:47:14.780Z",
+  "capturedIso": "2026-09-28T01:40:28.457Z",
   "strict": false,
   "contexts": [
     "Agent work contract",

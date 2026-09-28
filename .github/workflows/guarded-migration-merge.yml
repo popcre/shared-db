@@ -79,7 +79,11 @@ jobs:
         with:
           ref: main
           path: trusted-policy
-          fetch-depth: 1
+          # Full history (#3669): the merge-lane acquisition asks
+          # classifyBranchFreshness for the merge base of the head and the main
+          # tip. A depth-1 checkout has no merge base, so "main moved
+          # independently" (#2758) was always refused.
+          fetch-depth: 0
       - name: Pre-flight the required status checks before taking the merge lane
         id: trusted_preflight
         working-directory: trusted-policy
@@ -130,8 +134,13 @@ jobs:
         working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
+          # The freshness re-check below runs git merge-base / merge-tree on the
+          # head and the live main tip: both commits must exist locally (#3669).
+          # Fetching objects only; nothing from the head is checked out or run.
+          git fetch --no-tags --quiet origin main "$HEAD_SHA"
           node scripts/manage-migration-author-lanes.mjs --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
             --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"

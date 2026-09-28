@@ -1,5 +1,7 @@
 # AGENTS.md §4 — the five anti-collision rules, full text
 
+- [current-workflow.md](current-workflow.md)
+
 > **Active hardening plan:** [`../../plan_multi_agent_database_coordination_hardening.md`](../../plan_multi_agent_database_coordination_hardening.md), issue #1366. Read its STATUS table first. It preserves the rules below while adding read/write dependencies, proven prerequisites, provider-neutral work contracts, lifecycle traces, recoverable fenced stage leases, and an opt-in Supabase branch pilot. Its implementation is repository maintenance outside the structure/schema orchestrator.
 >
 > **Completed reviewer API-budget plan:** [`../../plan_reviewer_assignment_api_budget.md`](../../plan_reviewer_assignment_api_budget.md), issue #1767. Read its STATUS table and verification link before changing reviewer assignment. It replaced historical availability scans with a bounded active-reviewer index, strict pre-lock quota/request checks, cached PR/verdict reads, and exhaustive mutex-cleanup tests. The current fixed per-operation ceiling is 25 requests; see the dated re-derivations and #2550 repair in the verification record.
@@ -459,7 +461,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    slot independence still decide who is usable. It creates no concurrency cap.
 
    For new assignments, the machine-independent cursor rotates Grok 4.6 → Qwen
-   3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → repeat,
+   3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
+   V4.1 Flash → repeat,
    skipping any reviewer whose engine matches the live orchestrator. GLM 5.3
    (paused 2026-09-18) and Kimi K3 (paused 2026-09-22, account out of credit,
    issue #3423) are not drawable until removed from `RETIRED_REVIEWERS`.
@@ -497,8 +500,17 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    `QUARANTINED_REVIEWERS` is empty. The retired `glm-5.2` label is paused until
    an explicit owner instruction restores it.
 
-   **DeepSeek was RETIRED on 2026-09-01 (issue #2078) and is not drawable.**
-   `ai-deepseek-agent` is a conversational API client with no filesystem, no
+   **DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is ACTIVE as of 2026-09-23**
+   (owner instruction, issue #3468). `ai-deepseek-agent --review` gained
+   read-only repository tools (`list_dir`, `read_file`, `grep`; ai-devops PR
+   #730), so its row carries `readsRepository: true`. Re-entry followed the
+   Gemini precedent: a live qualification and a live governed review of merged
+   commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
+   above a report citing specific lines.
+
+   **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
+   and stays retired.** At that time
+   `ai-deepseek-agent` was a conversational API client with no filesystem, no
    diff and no tools, so it can only review a change as *described* in the
    brief, never as *written*. On PR #1989 it produced a complete, confidently
    ranked review of a file, five functions, two tables and two columns that do
@@ -506,9 +518,12 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    roster now records `readsRepository` per reviewer, and `recordReviewVerdict`
    refuses outright — before any commit or ref is created — to record a
    code-review verdict from a reviewer whose wrapper cannot read the repository.
-   Every drawable reviewer is given a real checkout: Grok via `--cwd`, GLM and
-   Muse via an `ai-review-sandbox` clone, Gemini via a disposable sandbox copy of
-   the checkout under `--sandbox`, and Kimi via a read-only agent profile. The
+   Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
+   an `ai-review-sandbox` clone (as is paused GLM), Qwen via a sealed
+   evidence-packet checkout, Gemini via a disposable sandbox copy of
+   the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
+   DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
    retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
@@ -696,6 +711,15 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    write its own state. A real `REVISE` verdict is not a transport failure and
    must never be replaced.
 
+   **Out of credit: tell Albert in the same reply (owner requirement,
+   2026-09-24).** When `REFUSED:` contains `insufficient_quota: OUT OF CREDIT:`,
+   the reviewer's provider account has run out of credit. In that same reply,
+   tell Albert in plain words which provider needs credits and where, quoting
+   the `OUT OF CREDIT:` text as printed. Never make him open another session to
+   learn it. Then replace the reviewer with `--replace-failed-reviewer
+   --failure-code insufficient_quota --confirm-no-verdict --confirm-no-artifact`
+   and continue with the replacement.
+
    **`--replace-failed-reviewer` is slot-aware, and the slot must be named.** It
    defaults to `--review-slot 1`. Pass `--review-slot 2` to replace a failed
    second reviewer; the request is then resolved only against slot 2's own
@@ -717,6 +741,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    adherence, continuity, latency, turns, and only metrics the wrapper reports.
    Kimi headless metrics and returned model are unavailable; never invent them.
    **The exact-head approval rule is ENFORCED at the merge gate, not merely documented (#1816, 2026-08-29).** Until then `guarded-migration-merge` proved head identity, base currency, object collisions and the author lease, but never asked whether the bytes being merged had been approved -- and under merge-first the preview gate that does ask only runs AFTER the merge. So `REJECT` at head A, a new commit B answering it, then merging B put unapproved bytes on `main`. That happened on PR #1809 (issue #1769): grok-4.6 REJECTed `b494401`, commit `8d3c31a` answered it, and `8d3c31a` merged as `2b68e7e` with zero approvals tied to it. `scripts/check-exact-head-approval.mjs` now runs twice in that workflow -- once up front and once re-proven under the merge lock -- and refuses unless a reviewer assignment AND an `APPROVE` are both pinned to the exact head being merged, with no unanswered refusal at that head. **An assignment is not an approval, and an approval of an earlier head is not an approval of these bytes.** A new commit answering a review always needs a fresh exact-head review before it can merge. A reviewer *replacement* does not change any of this: replacement exists for a reviewer that produced **silence** (the TERMINAL_FAILURE_CODES -- quota, provider unavailable, dependency unavailable, wrapper failure, turn-limit cancellation), not for one that produced a verdict. Replacing a reviewer who timed out mid-review is legitimate, but if that reviewer had already emitted a refusal, the refusal survives the replacement -- the distinction is verdict-vs-silence, not reviewer identity. Conversely, a replacement reviewer's assignment (and a slot 2 assignment, suffixed `-slot<N>`) counts as a genuine assignment at that head, so the gate reads both the assignment and the replacement ref namespaces. **What that gate still does NOT check:** free-text verdicts are now unauthorized by default and count only when GitHub reports an `OWNER`, `MEMBER` or `COLLABORATOR` association. This closes public-comment forgery in both the merge and lane gates. It still does not prove the assigned provider authored the verdict, because assignment refs carry no provider-to-GitHub-author binding. "Independent" describes the rotation process and must not be inferred from the commenter identity. A fenced or indented verdict line still counts. **The approval head tie is asymmetric, and the asymmetry closed a live fail-open (codex-gpt-5.6-sol, 2026-08-30).** An earlier draft tied approvals to a head by finding the SHA anywhere in the body, and recorded that as a deliberate limit. It was not a limit, it was #1809 rebuilt inside the tool meant to close it: a comment approving head A that merely *mentions* head B is tied to B and opens a line with `APPROVE`, so it authorized B — bytes nobody had looked at. Confirmed by probe before it was fixed. An **approval** now requires an unambiguous reference: either GitHub's own `commit_id` binding, which is structured data rather than prose, or a body that names this head and no other commit-length SHA at all. Two SHAs in one body means the reader cannot tell which the verdict is about, and an ambiguous authorization is refused. Requiring the SHA on the verdict line was rejected instead, because genuine wrapper reviews name the head in a header and some end with a bare `VERDICT: APPROVE`, so that rule would refuse real approvals. A **refusal** deliberately keeps the permissive tie: over-counting a refusal locks a head that may not have needed locking and costs a re-review, while over-counting an approval merges unreviewed bytes, so when a tie is uncertain both errors must fall on the side of not merging. The gate authenticates repository permission, not reviewer identity, and must never be cited as proof that the assigned provider authored the verdict. **Verdict recognition is on the claim, not the token (grok-4.6, 2026-08-30).** Markdown emphasis is stripped on both sides of the `VERDICT:` label, because `## VERDICT: **APPROVED**` is a genuine archived approval form (`.ai/reviews/phase6-glm-review.md`) that an earlier draft refused; a conditional approval is detected by the phrase "with condition(s)" anywhere on the verdict line or the line after it, rather than by `WITH` sitting next to `APPROVE`, which both missed `APPROVE ONLY WITH CONDITIONS` and wrongly refused `APPROVE WITH confidence`; and `REQUEST CHANGES` with a space refuses exactly as `REQUEST_CHANGES` does. Of the two failure directions, **refusing valid input is the more dangerous one**: it presents as reviewers not returning verdicts, so the wrappers get blamed and re-run while the gate is never suspected. **Measure the endpoint before calling a read broken.** The same review flagged the unpaginated assignment-ref listing as a defect that would make the gate impossible to pass, reasoning from the ~370-ref namespace and GitHub's usual 30/100 page sizes. Measured live on 2026-08-30, `git/matching-refs` is not a paged collection: unpaginated and `--paginate` both returned all 421 assignment refs and all 114 replacement refs. The listing stays unpaginated deliberately, and the extra requests would count against the per-process wire budget (#1767).
+
+   **Merged-PR audit mode (#2839, PR #3375, 2026-09).** Re-running the live gate on a pull request that has already merged re-evaluates today's reviewer records, so a refusal posted after the merge, or an archived verdict, could make a lawful merge look unauthorized. Setting `APPROVAL_AUDIT=merged PR_NUMBER=<n>` selects an opt-in audit path instead. It reads the pull request's merge time and exact merged head, keeps only `Migration guarded merge authorization` statuses on that head whose server timestamp is at or before `merged_at` (a status with an unreadable timestamp is kept so the shared reader refuses it rather than guessing), and takes the newest. It passes only when that status is `success`, was created by `github-actions[bot]`, and carries either the guarded lane's description or the documents-only lane's description; the documents-only form is accepted only when the merged PR's own changed files still classify documents-only. It reports the merge time, merge commit, head, authorization time and status id. It refuses an open PR (use the live gate), a closed-unmerged PR (nothing to audit), an inconsistent open-and-merged state, and a PR with no readable merge time, merge commit or head. Without the variable the gate is unchanged for every caller, merged or not -- the automatic-promotion re-proof still runs the live verdict check on a merged source PR. **What the audit does not prove:** that the guarded lane itself performed the merge (a cancelled run can leave a success standing), which PR a status was posted for when two share a head SHA, or any post-merge revocation. **Known limit: the merge commit SHA is shape-checked and reported only; it is not bound to the authorized head.**
 
    **What a verdict is worth depends on how it was obtained (#1816, #1824, 2026-08-30).**
    Six failures in two days shared one shape: a claim that was true when made,
@@ -838,11 +864,12 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    material objection. Ambiguous SQL stops for Albert. Ask him one plain
    business-risk question. Never ask him to approve migration numbers, project
    identifiers, SQL, or other technical details. This policy cannot authorize
-   its own rollout. `config/production-risk-policy-activation.json` remains
-   inactive, and the older exact-approval rule remains binding, until #1015 is
-   independently reviewed, both PRs are merged, the installed skill hash matches
-   canonical ai-devops, and the forward-test proof hash is recorded. The gate
-   verifies those facts again before it can permit automatic promotion.
+   its own rollout. The current activation record is active; the completed
+   rollout evidence is recorded in `config/production-risk-policy-activation.json`.
+   The gate still verifies that record, its immutable forward-test proof,
+   canonical skill hashes and the qualified delivery evidence before allowing
+   automatic promotion. Historical pre-activation requirements are evidence of
+   that rollout, not an instruction to repeat it or disable the active route.
    Record Qwen High as requested, but never override the wrapper's qualified
    fixed configuration.
 
@@ -961,24 +988,19 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    claimed the exclusion existed, and it never did. Promotions are serialised
    among themselves by the workflow `concurrency` group, not by this lock.
 
-   **Every pull request enters through that guarded merge lane, including
-   documentation-only and other non-migration changes.** A pull request that
-   changes no migration needs no migration-author claim, but the lease workflow
-   does not auto-authorize it: the guarded merge still proves the exact head,
-   current-main relationship, collision result, and governed review while it
-   holds the merge lock.
+   **Code and executable instructions use the guarded merge lane.** A change with
+   no migration needs no migration-author claim; its applicable exact-head review,
+   current-main relationship and collision protections remain enforced.
 
-   **One exemption, 2026-09-02 (#2102): a documents-only pull request draws no
-   database reviewer, and the merge gate requires no verdict for it.** It still
-   enters this same lane and still runs every other check; only the external
-   reviewer draw is skipped, because PR #2034 and PR #2070 spent migration
-   reviewer capacity on prose. Rulebook files — `AGENTS.md`, anything under
-   `.claude/skills/` or `skills/`, and `plan_*.md` — are **not** documents for
-   this purpose, and one non-document file of any kind removes the exemption from
-   the whole pull request. The classifier is
-   `scripts/lib/documents-only-change.mjs`; it fails closed on an empty,
-   unreadable or absent file list, and a refusal already recorded at the exact
-   head still blocks the merge.
+   **Documentation-only changes use the lightweight route** (owner ruling
+   2026-09-20), including standalone `plan_*.md` files. Prove the complete change
+   with the base-owned classifier in `scripts/lib/documents-only-change.mjs`;
+   empty, unreadable or incomplete inventory cannot qualify. Full engineering
+   CI and external reviewer waits are not required. `AGENTS.md`, `CLAUDE.md`,
+   skill/agent/command instructions and any mixed executable change retain
+   engineering protection. The existing narrow link-only routing-pointer
+   classifier does not exempt behavior-changing instructions. Exact-head
+   refusals remain binding. See the current workflow for the route map.
 
    When production acquires its lock, the production
    workflow revokes every open pull request's earlier merge authorization before

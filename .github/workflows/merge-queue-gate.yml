@@ -74,7 +74,7 @@ concurrency:
 jobs:
   verify:
     name: Merge queue gate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # Must exceed the preview hold's own bounded wait (25 minutes by default)
     # so the hold's refusal is reported by the contract, not by a timeout.
     timeout-minutes: 40
@@ -186,7 +186,7 @@ jobs:
     name: Queue interlock
     needs: verify
     if: github.event_name == 'merge_group' && success()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: write

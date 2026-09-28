@@ -4,14 +4,14 @@
 //   1. the route machinery admits `self-service-additive` (QUEUE_ROUTES,
 //      ROUTES_BY_WORK_TYPE.structural, STRUCTURAL_ROUTES in admission.mjs),
 //   2. the guarded merge workflow invokes the boundary classifier for it,
-//   3. AGENTS.md documents the same route and the same {crm,pim,dam} boundary.
+//   3. AGENTS.md documents the same route and the same {crm,pim,dam,plm} boundary.
 // The ordering rule (governed slot-1 review of PR #3204, finding 3) is that
 // admission and merge-time enforcement land together — this test makes that
 // rule PERMANENT: a main that admits the route without enforcing the boundary
 // fails here, whatever pull request introduced the drift.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { QUEUE_ROUTES, ROUTES_BY_WORK_TYPE } from './manage-migration-author-lanes.mjs'
 import { STRUCTURAL_ROUTES } from './orchestrator-flow/admission.mjs'
 import { BOUNDARY_SCHEMAS, SELF_SERVICE_ROUTE } from './check-self-service-additive-lane.mjs'
@@ -19,7 +19,12 @@ import { BOUNDARY_SCHEMAS, SELF_SERVICE_ROUTE } from './check-self-service-addit
 const ROUTE = SELF_SERVICE_ROUTE
 const laneScript = readFileSync(new URL('./manage-migration-author-lanes.mjs', import.meta.url), 'utf8')
 const admissionScript = readFileSync(new URL('./orchestrator-flow/admission.mjs', import.meta.url), 'utf8')
-const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8')
+// AGENTS.md is a router since #3481; its section text lives verbatim under
+// docs/agents/. The rulebook is AGENTS.md plus every file it routes to.
+const agents = [
+  '../AGENTS.md',
+  ...readdirSync(new URL('../docs/agents/', import.meta.url)).filter((f) => f.endsWith('.md')).sort().map((f) => `../docs/agents/${f}`),
+].map((rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')).join('\n')
 const guardedMerge = readFileSync(new URL('../.github/workflows/guarded-migration-merge.yml', import.meta.url), 'utf8')
 
 test('the route machinery, admission and workflow agree on the route name', () => {
@@ -44,11 +49,11 @@ test('ORDERING RULE: admitting the route and enforcing the boundary cannot drift
 
 test('AGENTS.md documents the same route and the same boundary', () => {
   assert.match(agents, /route: self-service-additive/, '§0.0-C names the route')
-  assert.match(agents, /\{crm, pim, dam\}/, 'the documented boundary is {crm, pim, dam}')
+  assert.match(agents, /\{crm, pim, dam, plm\}/, 'the documented boundary is {crm, pim, dam, plm}')
   assert.match(agents, /check-self-service-additive-lane\.mjs/, 'the classifier is named where the route is described')
   assert.match(agents, /self-service-additive` for additive/, 'the §4 operative summary carries the route')
-  // The boundary schemas in code and prose must be the same three schemas.
-  assert.deepEqual([...BOUNDARY_SCHEMAS], ['crm', 'pim', 'dam'])
+  // The boundary schemas in code and prose must be the same four app schemas.
+  assert.deepEqual([...BOUNDARY_SCHEMAS], ['crm', 'pim', 'dam', 'plm'])
 })
 
 test('the lane machinery still keeps non-structural exits untouched', () => {

@@ -25,7 +25,8 @@ Each catalogue is:
   "sites": [
     {
       "site": "scripts/example.mjs:42",
-      "semantic_key": "scripts/example.mjs:<sha256 of the line>:<occurrence>",
+      "semantic_key": "scripts/example.mjs:<sha256 of the line>:context-<sha256 of normalized context>",
+      "legacy_semantic_key": "scripts/example.mjs:<sha256 of the line>:<original occurrence>",
       "line_sha256": "<sha256 of the line>",
       "disposition": "enriched | excluded",
       "reason": "At least 20 characters saying why this call site is safe as written."
@@ -34,9 +35,16 @@ Each catalogue is:
 }
 ```
 
-`site` is a diagnostic line number. Identity is `semantic_key` + `line_sha256`, so moving an
-unchanged reviewed line needs no edit, while changing what the line *says* invalidates its
-review.
+`site` is a diagnostic line number. Identity is `semantic_key` + `line_sha256`.
+The context hash binds the nearest recognizable declaration, YAML ancestry when applicable,
+and the two nonblank source lines on either side. Blank-line insertion needs no edit;
+changing a call's surrounding context requires reviewing that source's catalogue. Identical
+lines in indistinguishable contexts refuse instead of inheriting reviews by occurrence order.
+
+`legacy_semantic_key` preserves the exact identity recorded at migration for historical
+equivalence; it never authorizes a current call site. The migration retains every original
+line hash, verdict and reason. New sites need their own substantive reviewed reason, with at
+least 20 characters after trimming surrounding whitespace.
 
 ## Why it is partitioned (issue #2832)
 
@@ -63,5 +71,9 @@ by the checker rather than stored in a shared artifact an author must edit.
 2. Edit only that source file's catalogue here, adding or retiring the affected entries.
 3. Write a real reason. Re-run the checker until it prints `truth audit OK`.
 
-`docs/verification/throughput-guard-truth-audit-20260828.json` is retained as historical evidence
-of the dispositions at the cutover. It is not read and is not a second source of truth.
+`docs/verification/throughput-guard-truth-audit-20260828.json` is immutable historical
+evidence of the dispositions at the cutover. Runtime auditing reads the partitioned
+catalogues; a regression test pins the historical file and compares retained identities.
+Retired preflight identities from PR #3369 are recorded with their original verdicts in
+`docs/verification/throughput-retired-identity-sites-3369.json` and checked alongside
+the earlier retirement archive.

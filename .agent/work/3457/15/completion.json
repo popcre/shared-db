@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "work_issue": 3457,
+  "outcome": "ready-for-merge",
+  "pr": 3489,
+  "migration_versions": [
+    "20260925222432"
+  ],
+  "contract_ref": "refs/db-contracts/3457/15",
+  "contract_sha256": "befe7d3af5bb36b7942737af80fae7822ab2ae15080ff714f6a5f866bf35e979",
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15",
+  "head_sha": "07989387e4590aff31dfc513a906802e199ade54",
+  "files_changed": [
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260925222432.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    "supabase/tests/popdam_semantic_score_floor_behavior.sql"
+  ],
+  "db_reads": [
+    "public.dam_search_documents",
+    "public.assets",
+    "public.style_groups",
+    "public.asset_effective_tags",
+    "public.admin_config"
+  ],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.search_assets_full_text",
+    "function public.search_style_groups_full_text"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Exit 0 at refreshed implementation 07989387 against current main b02d04c7; static SQL and migration guards passed. Output /tmp/pr3489-0798-check-sql.log."
+    },
+    {
+      "command": "python3 scripts/migration_derivation.py supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+      "exit_code": 0,
+      "evidence": "Exit 0 at refreshed implementation 07989387 with unchanged migration bytes."
+    },
+    {
+      "command": "python3 -m pytest scripts/test_check_production_verification_sidecars.py scripts/test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "244 passed at refreshed implementation 07989387 with isolated PYTHONPATH; output /tmp/pr3489-0798-pytest.log."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Exit 0, no failures at refreshed implementation 07989387; output /tmp/pr3489-0798-sidecar.log."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Exit 0, status OK, 61 sidecars at refreshed implementation 07989387; output /tmp/pr3489-0798-sidecars.log."
+    },
+    {
+      "command": "cmp supabase/tests/popdam_semantic_score_floor_behavior.sql .agent/work/3457/1/behavior_tests_t1_t8.sql",
+      "exit_code": 0,
+      "evidence": "Exit 0 at refreshed implementation 07989387; fixture and committed CI test remain byte-identical."
+    },
+    {
+      "command": "GitHub workflow dispatch database-contract-tests.yml --ref codex/pr3489-g13-ci-4fe70ee7",
+      "exit_code": 0,
+      "evidence": "Earlier exact-code ephemeral run 36376264683/job/108782626629 succeeded on implementation ec76d698 with T1\u2013T8 PASS; refresh merges to f27e8fb9 and 07989387 changed repository tooling only, not migration or fixture bytes. Fresh workflow run 36378507057 on f27e8fb9 is in progress; final PR CI must pass on the evidence-tail head before merge."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation-15 rebuild starts at current main 15f18e1b and final PR diff must contain only generation-15 evidence pair.",
+    "The migration and sidecar bytes are unchanged from generation 14, retaining the style-group wrapper ORDER BY/LIMIT and all three function writes.",
+    "T3 sem-low title/path have no query-token overlap; its no-embedding exclusion and null-floor positive control are direct behavioral falsifiers.",
+    "Static Guard B confirms migration version 20260925222432 exceeds current main max 20260925193145; live-ledger Guard B2 remains a guarded-preview proof.",
+    "Exact implementation SHA ec76d698 passed ephemeral database CI run 36376264683; final PR head still requires its own checks and fresh two-slot reviews."
+  ],
+  "stop_conditions_hit": []
+}

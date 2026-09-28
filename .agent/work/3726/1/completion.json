@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "work_issue": 3726,
+  "outcome": "ready-for-merge",
+  "pr": 3727,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3726/1",
+  "contract_sha256": "ad9fd483b44be2b7e9b18983ccd8348100ac400694f6be234c6b46c28a03472a",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "head_sha": "aefa35cf7b05a85912faa64673802b9a7d29cf12",
+  "files_changed": [
+    ".github/workflows/pr-object-collision.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~claim-maintenance.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~claim-versions.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~claims.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~github-wire.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~queue-routing.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~retirement.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-approval.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-leases.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-records.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-replacement.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/lib/lanes/admission.mjs",
+    "scripts/lib/lanes/claim-maintenance.mjs",
+    "scripts/lib/lanes/claim-versions.mjs",
+    "scripts/lib/lanes/claims.mjs",
+    "scripts/lib/lanes/cli-train.mjs",
+    "scripts/lib/lanes/constants.mjs",
+    "scripts/lib/lanes/exclusive-locks.mjs",
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/holds-and-refs.mjs",
+    "scripts/lib/lanes/preview-admission.mjs",
+    "scripts/lib/lanes/queue-routing.mjs",
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/lib/lanes/review-approval.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-leases.mjs",
+    "scripts/lib/lanes/review-records.mjs",
+    "scripts/lib/lanes/review-replacement.mjs",
+    "scripts/lib/lanes/reviewer-doctor.mjs",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/manage-migration-author-lanes-surface.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/route-lane-manager-patch.mjs",
+    "scripts/route-lane-manager-patch.test.mjs",
+    "scripts/test-fixtures/manage-migration-author-lanes-surface.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "729 passed, 0 failed; unchanged test file against the split entrypoint"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs scripts/route-lane-manager-patch.test.mjs scripts/check-pr-source-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "all pass; 293 pre-split exports present with same kind and each module export identical to the entrypoint binding"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=91"
+    }
+  ],
+  "assumptions_resolved": [
+    "moved declarations are byte-identical except an added export keyword on formerly module-private ones"
+  ],
+  "stop_conditions_hit": [],
+  "disclosure": "The implementation (commit 22027659aad2f5f3e6da6f7b4dec9ce5ccfba013) was written and pushed before the contract ref was published; the branch was reset to base, the contract published, and the identical tree recommitted as aefa35cf7b05a85912faa64673802b9a7d29cf12."
+}

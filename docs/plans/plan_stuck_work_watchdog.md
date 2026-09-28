@@ -13,7 +13,7 @@ Supersedes nothing; extends:
 
 ## STATUS — read first
 
-Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) reviews — see Review record. Start at Step 1 (needs `WATCHDOG_TOKEN`, §8).
+Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) reviews — see Review record. Start at Step 1 (needs `the watchdog App (§8)`, §8).
 
 | Step | Outcome | Status | Updated | Evidence |
 |---|---|---|---|---|
@@ -47,8 +47,8 @@ Albert works from three machines (concrete names/addresses live in the private a
 
 - **Where the watchdog runs:** on a GitHub-hosted `ubuntu-latest` runner (scheduled workflow in popcre/ai-devops). None of the three machines has to be awake, logged in, or have `gh` authenticated. This is deliberate: the census (atlas §"Agent harness census") shows expired Claude OAuth and unauthenticated `gh` on some machines, which is exactly how local wake-ups silently fail today.
 - **How each machine's sessions are seen:** the watchdog does not inspect machines. It sees sessions only through what they leave on GitHub — pushes, reviews, comments signed `Posted by Claude chat <id> on <machine>`, and `ai-blocker-watch` registrations (issue comments / `ai-blocker-watch:parked` markers). The daily stuck report groups items by the `<machine>` in the last signature so Albert can tell which box went quiet.
-- **Fixer routine:** a Claude scheduled cloud routine (no machine dependency). Fallback if cloud routines are unavailable: the Ubuntu server runs it from cron with its own worktree, because it is always on; never the Windows PC (WSL env trap, interactive CI contention) and never the desktop (sleeps).
-- **Windows differences the fixer must respect:** failures that only occur on Windows shards (path separators, `isMainModule` checks — see shared-db PR #3668, WSL `bash`) are real failures, not infrastructure; the watchdog never re-runs them. Windows runner capacity is tracked in ai-devops #185, #961 (WarpBuild Azure Windows CI) and #963 (admit EDGE-DEV); the watchdog reports "Windows runner queue > 30 min" as an infrastructure item routed to #961 rather than dispatching a code fixer.
+- **Fixer routine:** a Claude scheduled cloud routine (no machine dependency). Optional fallback if cloud routines are unavailable: the Ubuntu server runs it from cron (always on); never the Windows PC (WSL env trap, CI contention) or the desktop (sleeps). If no fixer picks up a `stuck-fixer` issue within 30 min, the watchdog treats that as unresolved and it reaches Albert at 90 min, so an absent fallback is visible, not silent.
+- **Windows differences the fixer must respect:** failures that only occur on Windows shards (path separators, `isMainModule` checks — see shared-db PR #3668, WSL `bash`) are real failures, not infrastructure; the watchdog never re-runs them. Windows runner capacity is tracked in ai-devops #185, #961 (WarpBuild Azure Windows CI) and #963 (admit EDGE-DEV); Windows runner-queue monitoring is NOT in this plan (it belongs to #961/#185); the watchdog only avoids dispatching a code fixer for failures whose job ran on a Windows runner and timed out.
 
 ## 5. Does anything notice stuck work today? — Answer: partially, and nothing clears or reassigns
 
@@ -72,16 +72,16 @@ Ownership of a red check is implicit (the session that pushed it). Sessions end 
 
 - **More local pollers per session.** Rejected: they are what exhausts the API quota (companion plan §6.1).
 - **Auto-merge by the watchdog.** Rejected: merge authority stays with the governed review + merge queue; the watchdog only re-runs, dispatches, and notifies.
-- **Paging Albert for every red check.** Rejected: he is not a programmer; notify only when automation could not resolve within 60 min.
+- **Paging Albert for every red check.** Rejected: he is not a programmer; notify only when automation could not resolve within 90 min (the single authoritative threshold).
 - **Extending the orchestrator no-progress alarm to all PRs.** Rejected: owner ruling §0.0-C keeps monitoring out of orchestrator scope.
 
 ## 8. Design decisions
 
 Locked:
-- Definition of **stuck**: open, non-draft PR where (a) a required check is failing or the PR is BLOCKED/ejected from queue, and (b) no *owner activity* for ≥ 30 min. Owner activity = a new head commit, a review, or a comment by a non-bot author; never `updatedAt` (bot comments, including the watchdog's own, bump it — the refactor plan already warns about this). Timeline: detected by 30–45 min (cron */15), re-run or fixer at detection, Albert told at 90 min if unresolved, proof threshold 120 min. Draft PRs older than 3 days with no activity are "abandoned" (report only).
+- Definition of **stuck**: open, non-draft PR where (a) a required check is failing or the PR is BLOCKED/ejected from queue, and (b) no *owner activity* for ≥ 30 min. Owner activity = a new head commit, a review, or a comment by any login other than the watchdog's GitHub App bot (`stuck-work-watchdog[bot]`); never `updatedAt` (bot comments, including the watchdog's own, bump it — the refactor plan already warns about this). Timeline: detected by 30–45 min (cron */15), re-run or fixer at detection, Albert told at 90 min if unresolved, proof threshold 120 min. Draft PRs older than 3 days with no activity are "abandoned" (report only).
 - Home: a new scheduled workflow in `popcre/ai-devops` (`.github/workflows/stuck-work-watchdog.yml`, cron `*/15`), because it covers both repos and is tooling, not database shape. Uses `repository(owner,name){pullRequests(states:OPEN)}` GraphQL (not `search`, which is eventually consistent — the reason `orchestrator-marker-guard.yml` avoids it). Budget: 1 GraphQL query per repo plus at most 1 REST log fetch per newly-failed check per run, capped at 20 per run.
 - Actions, in order: (1) infrastructure failure (log matches rate limit / runner lost / 5xx) → re-run failed jobs once per head SHA; (2) otherwise → open a `stuck-fixer` issue in the PR's repo and comment `Owner: stuck-fixer #<n> since <EDT>` on the PR; the fixer is a scheduled Claude cloud routine (created with the `schedule` skill, every 30 min) whose brief is: take the oldest open `stuck-fixer` issue, check out the PR branch in its own worktree, make required checks green without weakening any gate, push, and close the issue or comment its blocker; (3) at 90 min unresolved → notify Albert.
-- Credential: `GITHUB_TOKEN` is repo-scoped and cannot act on shared-db from ai-devops. Use a dedicated fine-grained token (or GitHub App) with `actions:write`, `checks:read`, `pull_requests:read`, `issues:write` on popcre/shared-db and popcre/ai-devops, stored in 1Password vault `vibe_coding` as item "stuck-work-watchdog GitHub token" and set as Actions secret `WATCHDOG_TOKEN` in ai-devops. It is a separate quota bucket from gates and sessions; the watchdog stays under 300 requests/hour.
+- Credential and identity: a dedicated **GitHub App** `stuck-work-watchdog` installed on popcre/shared-db and popcre/ai-devops, so it has its own bot login distinct from every session (sessions all act as u2giants). Permissions: `actions:write`, `checks:read`, `pull_requests:read`, `issues:write`, `contents:read`, `administration:read` (needed to read branch rules; a fine-grained PAT is not proven for GraphQL `branchProtectionRule` here — see `scripts/lib/required-check-authority.mjs`). App id and private key in 1Password vault `vibe_coding`, item "stuck-work-watchdog GitHub App"; Actions secrets `WATCHDOG_APP_ID` / `WATCHDOG_APP_KEY` in ai-devops, token minted per run. The rerun marker and `Owner:` comments are trusted only when authored by the App bot login; any other author's copy is untrusted text. The fixer routine uses its own environment's GitHub connection (a normal session identity pushing to the PR branch, never to `main`); it holds no watchdog credential.
 - Notification channel: one GitHub issue `Stuck work — <date>` per day in ai-devops, assigned to u2giants, updated in place (no email spam). Plain English, one line per item: "PR #3567 blocked 3 h on the merge-queue check; fixer Codex dispatched 2:10 PM EDT; no progress."
 Open: whether Albert also wants a phone push (ntfy/Pushover) — default off; decide by asking him once in the Step 4 PR.
 
@@ -125,10 +125,10 @@ Adversarial cases (untrusted input = PR bodies, comments, logs):
 | Check name | a check named like a required one from a fork | classify-failure.test "only required contexts from branch rules count" |
 
 ## 11. Constraints
-Watchdog never merges, never force-pushes, never edits gates, never touches production/database. Uses `WATCHDOG_TOKEN` (§8), never the Actions token for cross-repo work. Sign posts `Posted by stuck-work-watchdog (ai-devops)`. Times in EDT. Code changes go through normal checks and governed review.
+Watchdog never merges, never force-pushes, never edits gates, never touches production/database. Uses `the watchdog App (§8)` (§8), never the Actions token for cross-repo work. Sign posts `Posted by stuck-work-watchdog (ai-devops)`. Times in EDT. Code changes go through normal checks and governed review.
 
 ## 12. Access
-`gh` as u2giants (popcre admin). One new secret: `WATCHDOG_TOKEN` (1Password vault `vibe_coding`, item "stuck-work-watchdog GitHub token"; creating it needs Albert's approval to mint a token). The fixer routine uses the credentials its cloud environment already has.
+`gh` as u2giants (popcre admin). One new secret: `the watchdog App (§8)` (1Password vault `vibe_coding`, item "stuck-work-watchdog GitHub token"; creating it needs Albert's approval to mint a token). The fixer routine uses the credentials its cloud environment already has.
 
 ## 13. Done / risks
 Done: six STATUS rows cite artifacts; Albert sees the daily stuck issue.
@@ -162,3 +162,5 @@ Prices are approximate public list prices as of 2026 and must be re-checked befo
 Grok REVISE / Qwen REJECT findings on this plan: SLA/idle/notify timings contradicted each other and `updatedAt` is bumped by the watchdog's own comments; `search` is eventually consistent; repo-scoped `GITHUB_TOKEN` cannot act across repos; fixer route unnamed; loose log patterns would re-run real failures; merge_group re-runs; §14 should frame the recommendation as finishing refactor Steps 6/8. All incorporated in §1, §8, §9, §11, §12, §14. The §5 inventory and adversarial table were confirmed accurate by Qwen.
 
 Second round (2026-09-28): Grok confirmed first-round watchdog defects resolved except Step 1 still naming `search`/`updatedAt`; fixed in Step 1.
+
+Third round (2026-09-28): Qwen REJECT — watchdog could not be told apart from sessions (same login), token scopes lacked administration:read, Windows queue report had no step, 60 vs 90 min contradiction. Fixed: GitHub App bot identity with named permissions, Windows queue monitoring moved out of scope, single 90-min threshold, fallback absence made visible.

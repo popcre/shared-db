@@ -301,15 +301,28 @@ def validate_independent_record(
             RECORD_FIELDS, RECORD_SCHEMA, PRODUCTION_PROJECT_REF,
             verify_review, verify_dry_run, verify_current_main,
         )
-    if (not apply_actor or not apply_triggering_actor or source_pr is None or source_pr_head is None
+    if (not apply_actor or not apply_triggering_actor or source_pr is None
             or work_issue is None or preview_run_id is None or preview_digest is None
-            or dry_run_run_id is None or dry_run_digest is None):
+            ):
         raise EvidenceError("independent review needs complete exact production action context")
     if set(data) != RECORD_FIELDS:
         raise EvidenceError("independent operator record has wrong fields")
     verify_current_main(sha=sha, api=api)
     if run_attempt != 1:
         raise EvidenceError("independent operator evidence cannot be a rerun")
+    source = api(f"repos/{REPOSITORY}/pulls/{source_pr}")
+    if (not isinstance(source, dict) or source.get("state") != "closed"
+            or not source.get("merged_at") or not isinstance(source.get("head"), dict)
+            or not SHA_RE.fullmatch(str(source["head"].get("sha", "")))):
+        raise EvidenceError("source PR head is not authenticated from merged GitHub metadata")
+    actual_source_head = source["head"]["sha"]
+    if source_pr_head is not None and source_pr_head != actual_source_head:
+        raise EvidenceError("source PR head differs from separately derived risk proof")
+    source_pr_head = actual_source_head
+    if dry_run_run_id is None:
+        dry_run_run_id = data.get("dry_run_run_id")
+    if dry_run_digest is None:
+        dry_run_digest = data.get("dry_run_artifact_digest")
     expected = {
         "schema_version": RECORD_SCHEMA, "repository": REPOSITORY,
         "workflow_file": WORKFLOW_PATH, "workflow_run_id": run_id,

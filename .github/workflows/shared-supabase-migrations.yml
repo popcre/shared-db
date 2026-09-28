@@ -65,10 +65,6 @@ on:
         description: "Activated automatic policy only: merged source PR number"
         type: string
         required: false
-      source_pr_head:
-        description: "Independent manual review only: exact authoring PR head"
-        type: string
-        required: false
       work_issue:
         description: "Production apply only: independently admitted structural work issue"
         type: string
@@ -79,14 +75,6 @@ on:
         required: false
       preview_artifact_digest:
         description: "Activated automatic policy only: pinned preview evidence artifact digest"
-        type: string
-        required: false
-      production_dry_run_run_id:
-        description: "Independent manual review only: read-only production dry-run run ID"
-        type: string
-        required: false
-      production_dry_run_artifact_digest:
-        description: "Independent manual review only: dry-run artifact SHA256 including risk vector"
         type: string
         required: false
       merged_preview_source_pr:
@@ -1669,12 +1657,9 @@ jobs:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           SOURCE_PR: ${{ inputs.source_pr }}
-          SOURCE_HEAD: ${{ inputs.source_pr_head }}
           WORK_ISSUE: ${{ inputs.work_issue }}
           PREVIEW_RUN: ${{ inputs.preview_run_id }}
           PREVIEW_DIGEST: ${{ inputs.preview_artifact_digest }}
-          DRY_RUN: ${{ inputs.production_dry_run_run_id }}
-          DRY_DIGEST: ${{ inputs.production_dry_run_artifact_digest }}
         run: |
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
@@ -1683,10 +1668,9 @@ jobs:
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
             --apply-triggering-actor "${{ github.triggering_actor }}" \
-            --source-pr "$SOURCE_PR" --source-pr-head "$SOURCE_HEAD" \
+            --source-pr "$SOURCE_PR" \
             --work-issue "$WORK_ISSUE" --preview-run-id "$PREVIEW_RUN" \
-            --preview-digest "$PREVIEW_DIGEST" --dry-run-run-id "$DRY_RUN" \
-            --dry-run-digest "$DRY_DIGEST" \
+            --preview-digest "$PREVIEW_DIGEST" \
             --output-dir "$RUNNER_TEMP"
       - name: Detect machine-enforced policy activation
         id: policy_activation
@@ -1725,8 +1709,6 @@ jobs:
           REVIEW_ARTIFACT_DIGEST: ${{ inputs.review_artifact_digest }}
           PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
           PREVIEW_ARTIFACT_DIGEST: ${{ inputs.preview_artifact_digest }}
-          DRY_RUN_RUN_ID: ${{ inputs.production_dry_run_run_id }}
-          DRY_RUN_DIGEST: ${{ inputs.production_dry_run_artifact_digest }}
           # CONFIGURED, never a literal. The production gate must know which
           # preview database the rehearsal was allowed to run against, and the
           # answer changes whenever preview is rebuilt.
@@ -1781,8 +1763,6 @@ jobs:
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
             --apply-triggering-actor "${{ github.triggering_actor }}" \
-            --production-dry-run-run-id "$DRY_RUN_RUN_ID" \
-            --production-dry-run-digest "$DRY_RUN_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \
@@ -1902,12 +1882,9 @@ jobs:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           SOURCE_PR: ${{ inputs.source_pr }}
-          SOURCE_HEAD: ${{ inputs.source_pr_head }}
           WORK_ISSUE: ${{ inputs.work_issue }}
           PREVIEW_RUN: ${{ inputs.preview_run_id }}
           PREVIEW_DIGEST: ${{ inputs.preview_artifact_digest }}
-          DRY_RUN: ${{ inputs.production_dry_run_run_id }}
-          DRY_DIGEST: ${{ inputs.production_dry_run_artifact_digest }}
         run: |
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
@@ -1916,10 +1893,9 @@ jobs:
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
             --apply-triggering-actor "${{ github.triggering_actor }}" \
-            --source-pr "$SOURCE_PR" --source-pr-head "$SOURCE_HEAD" \
+            --source-pr "$SOURCE_PR" \
             --work-issue "$WORK_ISSUE" --preview-run-id "$PREVIEW_RUN" \
-            --preview-digest "$PREVIEW_DIGEST" --dry-run-run-id "$DRY_RUN" \
-            --dry-run-digest "$DRY_DIGEST" \
+            --preview-digest "$PREVIEW_DIGEST" \
             --output-dir "$RUNNER_TEMP"
       - name: Detect machine-enforced policy activation
         id: policy_activation
@@ -1955,8 +1931,6 @@ jobs:
           REVIEW_ARTIFACT_DIGEST: ${{ inputs.review_artifact_digest }}
           PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
           PREVIEW_ARTIFACT_DIGEST: ${{ inputs.preview_artifact_digest }}
-          DRY_RUN_RUN_ID: ${{ inputs.production_dry_run_run_id }}
-          DRY_RUN_DIGEST: ${{ inputs.production_dry_run_artifact_digest }}
           # CONFIGURED, never a literal. The production gate must know which
           # preview database the rehearsal was allowed to run against, and the
           # answer changes whenever preview is rebuilt.
@@ -2009,8 +1983,6 @@ jobs:
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             --require-independent --apply-actor "$GITHUB_ACTOR" \
             --apply-triggering-actor "${{ github.triggering_actor }}" \
-            --production-dry-run-run-id "$DRY_RUN_RUN_ID" \
-            --production-dry-run-digest "$DRY_RUN_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
             --owner-decision-digest "$OWNER_DECISION_ARTIFACT_DIGEST" \

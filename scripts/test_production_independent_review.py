@@ -214,7 +214,10 @@ class IndependentReviewTests(unittest.TestCase):
             source_pr=42, source_pr_head=SOURCE_HEAD, work_issue=41,
             preview_run_id=24, preview_digest=DIGEST,
             dry_run_run_id=30, dry_run_digest=DRY_DIGEST,
-            api=lambda _endpoint: {"object": {"sha": SHA}},
+            api=lambda endpoint: ({"object": {"sha": SHA}}
+                if endpoint.endswith("/git/ref/heads/main") else
+                {"state": "closed", "merged_at": "2026-09-28T00:00:00Z",
+                 "head": {"sha": SOURCE_HEAD}}),
             downloader=lambda _id, _path: None,
         )
         with mock.patch.object(gate, "verify_review", return_value=(packet(), "independent-reviewer")) as reviewer, \
@@ -318,9 +321,8 @@ class IndependentReviewTests(unittest.TestCase):
             allowlist_raw=ALLOWLIST[0], api=api, downloader=download,
             require_independent=True, apply_actor="operator",
             apply_triggering_actor="operator", source_pr=42,
-            source_pr_head=SOURCE_HEAD, work_issue=41,
+            work_issue=41,
             preview_run_id=24, preview_digest=DIGEST,
-            dry_run_run_id=30, dry_run_digest=dry_digest,
         )
         with tempfile.TemporaryDirectory() as temp, \
              mock.patch.object(gate, "authorized_reviewers", return_value={"independent-reviewer"}), \

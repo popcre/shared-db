@@ -10,6 +10,7 @@
   "head_sha": "4362211b7af000b6f66c43446f958f35eb37c64d",
   "files_changed": [
     ".github/workflows/historical-item-mg-reclassification-tests.yml",
+    "docs/verification/throughput-dispositions/.github~workflows~historical-item-mg-reclassification-tests.yml.json",
     "docs/verification/throughput-dispositions/README.md",
     "docs/verification/throughput-retired-identity-sites-3605.json",
     "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs"

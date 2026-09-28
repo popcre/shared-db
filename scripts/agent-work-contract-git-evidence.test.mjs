@@ -33,8 +33,34 @@ test('a self-reported file list cannot hide a changed file', () => {
   assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ changedFiles: (from) => from === base ? ['scripts/fix.mjs', 'scripts/hidden.mjs'] : ['.agent/contract.json', '.agent/completion.json'] })), /does not match Git/)
 })
 
+test('unchanged_implementation_needs_no_new_evidence_commit: a content-preserving fold is accepted without a rebind', () => {
+  // Folded shape: tip equals the reported head, pair sits on the tip, and the
+  // evidence still names the pre-refresh base (no trailing evidence commit).
+  const foldedReport = { ...report, head_sha: prHead, base_sha: 'e'.repeat(40) }
+  const newBase = 'f'.repeat(40)
+  const foldedIo = io({
+    mergeBase: () => newBase,
+    changedFiles: (from, to) => {
+      if (to === prHead && from === newBase) return ['scripts/fix.mjs', '.agent/contract.json', '.agent/completion.json']
+      if (to === prHead && from === prHead) return []
+      return ['.agent/contract.json', '.agent/completion.json']
+    },
+    isAncestor: () => true,
+  })
+  assert.equal(verifyGitEvidence({ contract, report: foldedReport, prBaseSha: prBase, prHeadSha: prHead }, foldedIo), true)
+})
+
+test('changed_implementation_invalidates_receipt: a superseded base still refuses when implementation is not folded', () => {
+  const stale = { ...report, base_sha: 'e'.repeat(40) }
+  const newBase = 'f'.repeat(40)
+  assert.throws(() => verifyGitEvidence({ contract, report: stale, prBaseSha: prBase, prHeadSha: prHead }, io({
+    mergeBase: () => newBase,
+    changedFiles: (from) => (from === newBase ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json']),
+  })), /superseded base|#2845/)
+})
+
 test('code changed after the reported head is refused', () => {
-  assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ changedFiles: (from) => from === base ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json', 'scripts/late.mjs'] })), /only this pull request's own two evidence files/)
+  assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ changedFiles: (from) => from === base ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json', 'scripts/late.mjs'] })), /implementation changed after the reported head|only this pull request's own two evidence files/)
 })
 
 test('both ancestry links and full SHAs are required', () => {

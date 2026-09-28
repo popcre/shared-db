@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { resolveEvidencePair, isEvidencePath } from './lib/agent-evidence-paths.mjs'
+import { readExactProofZip } from './lib/github-proof-zip.mjs'
 
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch } from './lib/github-transport.mjs'
@@ -2825,30 +2826,12 @@ export const githubIo = {
     return matchesGeneratedTypesProof(proof,evidence)
   },
   readArtifactJson(repository,id,expectedFile){
-    const directory=mkdtempSync(path.join(tmpdir(),'shared-db-proof-')),archive=path.join(directory,'proof.zip')
-    try{
-      const bytes=gh(['api',`repos/${repository}/actions/artifacts/${Number(id)}/zip`],{encoding:null,maxBuffer:20*1024*1024})
-      writeFileSync(archive,bytes)
-      const entries=execFileSync('tar',['-tf',archive],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).split(/\r?\n/).filter(Boolean)
-      if(entries.length!==1||entries[0]!==expectedFile)throw new LaneError(`proof artifact must contain exactly ${expectedFile}`)
-      execFileSync('tar',['-xf',archive,'-C',directory],{stdio:'ignore'})
-      return JSON.parse(readFileSync(path.join(directory,expectedFile),'utf8'))
-    }finally{rmSync(directory,{recursive:true,force:true})}
+    const bytes=gh(['api',`repos/${repository}/actions/artifacts/${Number(id)}/zip`],{encoding:null,maxBuffer:20*1024*1024})
+    return JSON.parse(readExactProofZip(bytes,[expectedFile]).get(expectedFile))
   },
   readArtifactFiles(repository,id,expectedFiles){
-    const directory=mkdtempSync(path.join(tmpdir(),'shared-db-production-proof-')),archive=path.join(directory,'proof.zip')
-    try{
-      const bytes=gh(['api',`repos/${repository}/actions/artifacts/${Number(id)}/zip`],{encoding:null,maxBuffer:20*1024*1024})
-      writeFileSync(archive,bytes)
-      const entries=execFileSync('tar',['-tf',archive],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).split(/\r?\n/).filter(Boolean)
-      const result=new Map()
-      for(const expected of expectedFiles){
-        const entry=entries.find((value)=>value===expected||value.endsWith(`/${expected}`))
-        if(!entry)throw new LaneError(`production proof artifact is missing ${expected}`)
-        result.set(expected,execFileSync('tar',['-xOf',archive,entry],{encoding:'utf8',stdio:['ignore','pipe','pipe']}))
-      }
-      return result
-    }finally{rmSync(directory,{recursive:true,force:true})}
+    const bytes=gh(['api',`repos/${repository}/actions/artifacts/${Number(id)}/zip`],{encoding:null,maxBuffer:20*1024*1024})
+    return readExactProofZip(bytes,expectedFiles,{allowUnrelatedFiles:true})
   },
   closeIssue(number) { gh(['issue','close',String(number),'--repo',REPO]) },
   closeClaim(number, reason) { gh(['issue', 'close', String(number), '--repo', REPO, '--comment', requireClaimCloseReason(reason)]) },

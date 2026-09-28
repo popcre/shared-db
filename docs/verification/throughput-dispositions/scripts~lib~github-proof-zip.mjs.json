@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/github-proof-zip.mjs",
+  "sites": [
+    {
+      "site": "scripts/lib/github-proof-zip.mjs:49",
+      "semantic_key": "scripts/lib/github-proof-zip.mjs:edb0cc00deb29b23f6b68ea24e1dd083b203ebae53d2367e8b3b867c171b1370:context-1ae63d45f8f5d541b602500213638921d97814e942ab87b090514d5f8f99a9e8",
+      "line_sha256": "edb0cc00deb29b23f6b68ea24e1dd083b203ebae53d2367e8b3b867c171b1370",
+      "disposition": "enriched",
+      "reason": "A missing exact proof-artifact member causes a refusal before outcome completion, so absent evidence cannot be read as successful application.",
+      "legacy_semantic_key": "scripts/lib/github-proof-zip.mjs:edb0cc00deb29b23f6b68ea24e1dd083b203ebae53d2367e8b3b867c171b1370:1"
+    }
+  ]
+}

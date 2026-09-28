@@ -9,8 +9,8 @@ begin
   select count(*) into v_tables
   from information_schema.tables
   where table_schema = 'dflow_prod' and table_type = 'BASE TABLE';
-  if v_tables <> 103 then
-    raise exception 'expected 103 dflow_prod tables, found %', v_tables;
+  if v_tables <> 122 then
+    raise exception 'expected 122 dflow_prod tables (103 + 19 Tracking tables, #2875), found %', v_tables;
   end if;
 
   select count(*) into v_sequences
@@ -18,8 +18,8 @@ begin
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'dflow_prod'
     and c.relkind = 'S';
-  if v_sequences <> 97 then
-    raise exception 'expected 97 dflow_prod sequences, found %', v_sequences;
+  if v_sequences <> 112 then
+    raise exception 'expected 112 dflow_prod sequences (97 + 15 Tracking identities, #2875), found %', v_sequences;
   end if;
 
   if exists (
@@ -36,16 +36,16 @@ begin
     raise exception 'audit live/archive read contract is incomplete';
   end if;
 
-  if exists (
-    select 1 from information_schema.tables
-    where table_schema = 'dflow_prod'
-      and table_name in (
-        'sample_import_job', 'sample_import_row', 'sample_movement',
-        'sample_shipment_line', 'sample_stop_closeout', 'sample_visit',
-        'sample_visit_event', 'sample_visit_plan'
-      )
-  ) then
-    raise exception 'newer Sample Tracking-only surface is active';
+  -- #2875 brought the current Tracking surface into dflow_prod; the retired
+  -- names sample_visit/sample_visit_event were never part of it.
+  if (select count(*) from information_schema.tables
+      where table_schema = 'dflow_prod'
+        and table_name in ('sample_import_job', 'sample_import_row', 'sample_movement',
+                           'sample_shipment_line', 'sample_stop_closeout')) <> 5
+     or to_regclass('dflow_prod.sample_visit_plan') is null
+     or to_regclass('dflow_prod.sample_visit') is not null
+     or to_regclass('dflow_prod.sample_visit_event') is not null then
+    raise exception 'dflow_prod Tracking surface does not match #2875';
   end if;
 
   if not exists (

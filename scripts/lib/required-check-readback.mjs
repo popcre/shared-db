@@ -3,6 +3,10 @@ function contextsFrom(value, source) {
   if (!Array.isArray(contexts) || contexts.some((name) => typeof name !== 'string' || !name.trim()) || new Set(contexts).size !== contexts.length) {
     throw new Error(`${source} required checks are absent or malformed`)
   }
+  const checks = value?.checks
+  if (!Array.isArray(checks) || checks.some((check) => typeof check?.context !== 'string' || !check.context.trim()) || new Set(checks.map((check) => check.context)).size !== checks.length || checks.length !== contexts.length || checks.some((check) => !contexts.includes(check.context))) {
+    throw new Error(`${source} check identities disagree with required contexts`)
+  }
   return contexts
 }
 

@@ -281,17 +281,17 @@ begin
   -- REFRESH MATERIALIZED VIEW CONCURRENTLY requires a unique index on each
   -- matview. Assert both, so a dropped index fails loudly here. The index must
   -- be a plain-column, non-partial unique index (indexprs IS NULL AND indpred
-  -- IS NULL) -- exactly what CONCURRENTLY requires.
+  -- IS NULL) -- exactly what CONCURRENTLY requires. The earlier file_groups
+  -- migration creates sgfilegroups_group_uidx only when no unique index exists;
+  -- an existing valid unique index can therefore have a different name.
   if not exists (
     select 1 from pg_index i
       join pg_class c on c.oid = i.indrelid
-      join pg_class ic on ic.oid = i.indexrelid
      where c.oid = 'public.style_guide_file_groups'::regclass
        and i.indisunique
        and i.indisvalid
        and i.indexprs is null
-       and i.indpred is null
-       and ic.relname = 'sgfilegroups_group_uidx')
+       and i.indpred is null)
      or not exists (
     select 1 from pg_index i
       join pg_class c on c.oid = i.indrelid

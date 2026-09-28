@@ -8,6 +8,63 @@
 
 begin;
 
+-- The migration's CONCURRENTLY guard must accept an existing valid unique
+-- index regardless of its name, while rejecting absent, partial, and
+-- expression indexes. The earlier migration conditionally creates its own
+-- name only when the matview has no unique index at all.
+create schema sg3458_index_guard_test;
+create materialized view sg3458_index_guard_test.fixture as select 1::integer as id;
+create or replace function pg_temp.sg3458_index_ok(p_relation regclass)
+returns boolean language sql as $index_guard$
+  select exists (
+    select 1 from pg_index i
+     where i.indrelid = p_relation
+       and i.indisunique
+       and i.indisvalid
+       and i.indexprs is null
+       and i.indpred is null);
+$index_guard$;
+
+do $index_tests$
+begin
+  if pg_temp.sg3458_index_ok('sg3458_index_guard_test.fixture'::regclass) then
+    raise exception 'index guard: missing unique index was accepted';
+  end if;
+end
+$index_tests$;
+
+create unique index arbitrary_existing_group_key
+  on sg3458_index_guard_test.fixture (id);
+do $index_tests$
+begin
+  if not pg_temp.sg3458_index_ok('sg3458_index_guard_test.fixture'::regclass) then
+    raise exception 'index guard: valid unique index with alternate name was rejected';
+  end if;
+end
+$index_tests$;
+
+drop index sg3458_index_guard_test.arbitrary_existing_group_key;
+create unique index partial_group_key
+  on sg3458_index_guard_test.fixture (id) where id > 0;
+do $index_tests$
+begin
+  if pg_temp.sg3458_index_ok('sg3458_index_guard_test.fixture'::regclass) then
+    raise exception 'index guard: partial unique index was accepted';
+  end if;
+end
+$index_tests$;
+
+drop index sg3458_index_guard_test.partial_group_key;
+create unique index expression_group_key
+  on sg3458_index_guard_test.fixture ((id + 1));
+do $index_tests$
+begin
+  if pg_temp.sg3458_index_ok('sg3458_index_guard_test.fixture'::regclass) then
+    raise exception 'index guard: expression unique index was accepted';
+  end if;
+end
+$index_tests$;
+
 create or replace function pg_temp.mk_sg_file(
   p_root text,
   p_run uuid,

@@ -1,0 +1,73 @@
+{
+  "worktree": "/home/ahazan/repos/shared-db-3458-refresh",
+  "worker": "codex:3458-preview-index-repair",
+  "work_type": "structural",
+  "work_issue": 3458,
+  "stop_conditions": [
+    "stop if live preview and production indexes differ materially",
+    "stop if the repair weakens unique, valid, plain-column, or non-partial requirements",
+    "stop if the legacy (uuid,integer) function body or claimed object scope changes",
+    "stop if any database write outside the governed preview lane is required"
+  ],
+  "schema_version": 2,
+  "route": "shared-db-orchestrator",
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python3 scripts/test_migration_derivation.py",
+    "node --test scripts/test_3458_index_guard.test.mjs",
+    "git diff --check",
+    "Database Contract Tests on isolated ephemeral database"
+  ],
+  "prohibited_actions": [
+    "Do not raise any statement timeout",
+    "Do not rewrite the legacy (uuid,integer) body (its prosrc md5 is pinned by popsg_refresh_search_sync_queue_v1)",
+    "Do not invent additional claimed objects",
+    "Do not write production or dispatch production manually",
+    "Do not delete or replay application rows"
+  ],
+  "goal": "Repair the false exact-name assertion in the steppable refresh migration using live preview and production catalog evidence, preserve the CONCURRENTLY unique-index invariant, add regression coverage for alternate valid and missing or invalid indexes, and bind a successor evidence pair before another preview apply.",
+  "generation": 6,
+  "file_writes": [
+    "supabase/migrations/20260928003740_popsg_refresh_steps_under_ceiling.sql",
+    "supabase/tests/issue_3458_steppable_refresh_ephemeral.sql",
+    "scripts/test_3458_index_guard.test.mjs",
+    ".agent/work/3458/6/contract.json",
+    ".agent/work/3458/6/completion.json"
+  ],
+  "dispatcher": "Codex successor orchestrator under existing issue #3458 / claim #3483 / PR #3487",
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "branch": "mimo/3458-style-guide-refresh",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "assumptions": [
+    "adding an overload named public.refresh_style_guide_matviews stays inside the claimed object function public.refresh_style_guide_matviews",
+    "leaving the legacy (uuid,integer) body byte-identical keeps production catalog contract popsg_refresh_search_sync_queue_v1 green",
+    "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block, so matview steps are proven by body shape and the search step is proven live",
+    "Fresh read-only preview and production catalogs both contain sgfg_group_key_uidx, a valid unique plain-column non-partial index on style_guide_file_groups; neither contains sgfilegroups_group_uidx.",
+    "The folders matview has the expected valid unique plain-column non-partial sgfolders_licensor_property_uidx in both targets.",
+    "The failed preview apply run 36414234942 left preview ledger 697 unchanged and did not apply version 20260928003740."
+  ],
+  "allowed_paths": [
+    "supabase/migrations/20260928003740_popsg_refresh_steps_under_ceiling.sql",
+    "supabase/tests/issue_3458_steppable_refresh_ephemeral.sql",
+    "scripts/test_3458_index_guard.test.mjs",
+    "docs/agents/3458-caller-contract.md",
+    ".agent/work/3458/6/contract.json",
+    ".agent/work/3458/6/completion.json"
+  ],
+  "evidence_parent": {
+    "work_issue": 3458,
+    "generation": 5,
+    "contract_sha256": "e0782142b96f1085ca7dab38b13c30835d481b0da82387a105890848a9db5cc5"
+  }
+}

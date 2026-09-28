@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 3614,
+  "outcome": "ready-for-merge",
+  "pr": 3615,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3614/3",
+  "contract_sha256": "d6432358ea46e56a6ba55c845a771e49d05a1470c5d900a2c4460d3974571a20",
+  "base_sha": "9794470eb01b974eb71ab31696c097d7383839da",
+  "head_sha": "5f93367f69c1cacf29670b508e37939bc2c13033",
+  "files_changed": [
+    ".github/workflows/shared-db-2870-observation.yml",
+    "docs/verification/2870-observer-restore-evidence.md",
+    "docs/verification/throughput-dispositions/scripts~proofs~shared-db-2870-observation.mjs.json",
+    "scripts/proofs/2870-catalog.sql",
+    "scripts/proofs/2870-contract.json",
+    "scripts/proofs/shared-db-2870-observation.mjs",
+    "scripts/proofs/shared-db-2870-observation.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/proofs/shared-db-2870-observation.test.mjs",
+      "exit_code": 0,
+      "evidence": "13 pass, 0 fail at implementation head 5f93367f; hosted CI reruns at PR head"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=80"
+    },
+    {
+      "command": "sha256sum four restored files equals backend develop 9899a3275ec34ca7138991a12fc51707b6482bc7 producer pins",
+      "exit_code": 0,
+      "evidence": "four expected and actual SHA-256 values recorded in docs/verification/2870-observer-restore-evidence.md"
+    },
+    {
+      "command": "git show 6dbdc25e0a4ab4f643928c4b394971b1f9ddb8f6:<path> equals current bytes for four restored files",
+      "exit_code": 0,
+      "evidence": "all four byte equal; hashes recorded in docs/verification/2870-observer-restore-evidence.md"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Backend develop 9899a3275ec34ca7138991a12fc51707b6482bc7 still pins the four hashes recorded in the verification document.",
+    "The four restored source files are byte-identical to shared-db commit 6dbdc25e0a4ab4f643928c4b394971b1f9ddb8f6.",
+    "The throughput disposition reason, line hash, and exclusion are unchanged; only its semantic-key suffix follows the current context-hash checker.",
+    "Prior contract generations are archived at refs/db-contracts/3614/1 and refs/db-contracts/3614/2."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Read-only repo maintenance; no migration or database write. The caller supplies the backend commit to the observer; backend acceptance verifies its own binding. Merge remains held until #3457 exact-main production proof no longer depends on fixed main. The fresh observation and backend acceptance still must run after merge."
+}

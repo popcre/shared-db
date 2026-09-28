@@ -8,7 +8,7 @@ owner: codex/orch-3570-wrapup-20260928
 
 ## 0. Owner decisions in one place
 
-Ask Albert about both items together when the next session starts. Do not infer an answer from silence.
+Ask Albert about the open decisions together when the next session starts. Do not infer an answer from silence.
 
 - **Blocking authenticated PopDAM proof:** A browser tool exposed a Supabase access/refresh token and a Microsoft provider token in a tool result while checking #3539. The tab was closed; no value was posted. Sanitized private incident: `u2giants/ai-devops-private-config#3`. Recommend revoking both tokens before a new authenticated page check. Albert was asked asynchronously and has not answered. This blocks the app-owned proof `u2giants/popdam3#170`, not other structural migrations.
 - **Historical production recovery reviewer identity:** Four already-merged structural migrations have failed automatic production children before SQL. The manual recovery lane needs truthful, independent, authenticated technical APPROVE; repository-maintenance #3619/PR #3641 is fixing the evidence route. Albert was asked whether a separate `devopswithkube` GitHub administrator identity can be the independent reviewer, but has not answered. Recommend an actually independent eligible reviewer, never self-approval. This blocks manual historical production recovery only.

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3388,
+  "outcome": "ready-for-merge",
+  "pr": 3396,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3388/3",
+  "contract_sha256": "2e6b1e96fcf5e3895f7b16dfc89b43e537feafa7804ddee0d23f405a74a8e609",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "head_sha": "f308b31b72ced3a7dc8ecc8cfb7d06bc92a6b53b",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~lib~work-stage-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~outcome-lifecycle.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~queue-hygiene-report.mjs.json",
+    "scripts/lib/work-stage-evidence.mjs",
+    "scripts/lib/work-stage-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/work-stage-manager-integration.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/queue-hygiene-report.test.mjs scripts/lib/work-stage-evidence.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/work-stage-manager-integration.test.mjs",
+      "exit_code": 0,
+      "evidence": "49 passed, 0 failed on edge-dev3"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=320 sources=81 derived_digest=e6b21b237497"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "passes once catalogues re-sited; remaining throughput-guard failures are the bare-python Linux environment failures identical on untouched main (fixed by #3635)"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Every re-keyed catalogue entry matched exactly one current site with an identical line_sha256; dispositions and reasons unchanged",
+    "The single new site (queue-hygiene-report.mjs:69) is a prose comment and received its own reviewed reason",
+    "PR #3366 prerequisites are on main (014cba43)"
+  ],
+  "stop_conditions_hit": []
+}

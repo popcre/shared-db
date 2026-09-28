@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "generation": 3,
+  "evidence_parent": {
+    "work_issue": 3388,
+    "generation": 2,
+    "contract_sha256": "b5d367b77a56c93248f34df5491729e08134412f73daa0bdb2a721716c3b9eb8"
+  },
+  "work_issue": 3388,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Land the read-only dependency and completion hygiene report (PR #3396) on current main: widen scope to the stage-evidence, lanes-manager and outcome-lifecycle exports it needs, and re-key the one throughput catalogue site whose context moved. Generation 3 adds the lanes-manager and outcome-lifecycle catalogues (sites moved, lines unchanged) and a new reviewed catalogue for the hygiene report's one prose site.",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "dispatcher": "Claude chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3 (coordinator-assigned takeover of orphaned PR #3396)",
+  "worker": "Claude chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3",
+  "branch": "codex/workflow-dependency-hygiene",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/h626-3396",
+  "allowed_paths": [
+    "scripts/lib/work-stage-evidence.mjs",
+    "scripts/lib/work-stage-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/work-stage-manager-integration.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~work-stage-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~outcome-lifecycle.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~queue-hygiene-report.mjs.json",
+    ".agent/work/3388/3/contract.json",
+    ".agent/work/3388/3/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/work-stage-evidence.mjs",
+    "scripts/lib/work-stage-evidence.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/work-stage-manager-integration.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~work-stage-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~outcome-lifecycle.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~queue-hygiene-report.mjs.json",
+    ".agent/work/3388/3/contract.json",
+    ".agent/work/3388/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database writes, automatic closure, claim release, workflow edits or new daemon",
+    "Do not bulk-regenerate throughput catalogues; re-key only reviewed sites whose line is unchanged",
+    "Do not dispatch guarded merge; the conductor serializes merges"
+  ],
+  "required_checks": [
+    "node --test scripts/queue-hygiene-report.test.mjs scripts/lib/work-stage-evidence.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/work-stage-manager-integration.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Implementation authored by the original Codex session on this branch; generation 1 scope omitted the lanes-manager and stage-evidence exports the integration needs",
+    "PR #3366 prerequisites are merged (014cba43)"
+  ],
+  "stop_conditions": [
+    "Stop if a catalogue site's line content changed rather than only its context",
+    "Stop if required checks or governed review refuse"
+  ]
+}

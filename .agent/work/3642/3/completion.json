@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "work_issue": 3642,
+  "outcome": "ready-for-merge",
+  "pr": 3643,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3642/3",
+  "contract_sha256": "39f07f4adf2c9530fa05e0808b645d585e41c7654047c9e651f6b75a482bd407",
+  "head_sha": "a7270a030c4185b20b6a78964fa102af2a2acc0a",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "727 tests pass, 0 failed; genuine GitHub ZIP formats and malformed/duplicate/traversal/symlink/oversize/wrong-proof refusals."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=81 derived_digest=912962ddedfb"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against base 4b91483c85da7bac3421219b40252c169a455087"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 contract was published before the first code edit; generations 2 and 3 expanded scope before their additional disposition edits and bind their predecessor hashes.",
+    "Original live artifact 10960473018 digest sha256:5522462b5f03bdd138fa3b399a657eb572ae9fead030ec5293c91b89aa69fc5d and production artifact 10487120010 digest sha256:c7719fc70a1e7e665bb82b3435438c2d5f596f4a17d71d673539edfd20580126 were read locally with the replacement ZIP reader.",
+    "No production action, database write, live_verified event or issue closure is claimed."
+  ],
+  "stop_conditions_hit": []
+}

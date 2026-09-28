@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "generation": 3,
+  "work_issue": 3642,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Read exact bounded GitHub ZIP proof artifacts for outcome completion and refuse malformed, extra, duplicate, traversing, oversized, or mismatched files; reconcile the throughput-truth disposition for the removed refusal call site and document the new fail-closed artifact-refusal site",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "dispatcher": "Codex orchestrator successor chat 01a0e65a-82f1-7d93-b8fb-4440da47884d",
+  "worker": "codex",
+  "branch": "codex/3642-github-zip-proof",
+  "worktree": "/home/ahazan/repos/shared-db-3642-github-zip-proof",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    ".agent/work/3642/3/contract.json",
+    ".agent/work/3642/3/completion.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    ".agent/work/3642/3/contract.json",
+    ".agent/work/3642/3/completion.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database write or manual outcome event",
+    "No weaker run/artifact provenance or digest checks",
+    "Do not merge while root holds main"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "GitHub Actions artifact downloads are ZIP and existing run/artifact identity checks remain authoritative"
+  ],
+  "stop_conditions": [
+    "Stop on source collision or unproven artifact trust"
+  ],
+  "evidence_parent": {
+    "work_issue": 3642,
+    "generation": 2,
+    "contract_sha256": "a458ac6f167b18e35d325e9bcc70dd962c28468228d44b5a8cb5f59e77d379c6"
+  }
+}

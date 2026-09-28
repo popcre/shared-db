@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3397,
+  "outcome": "ready-for-merge",
+  "pr": 3588,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3397/3",
+  "contract_sha256": "4b94ae504c7321cab7432934bb6e487a65c752e294b7aeb6236ca029365cee13",
+  "head_sha": "af05225945f3feffe51ea76c514e65aac3c19ea3",
+  "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~apply_attempt_recovery.py.json",
+    "scripts/apply_attempt_recovery.py",
+    "scripts/test_apply_attempt_recovery.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_apply_attempt_recovery.py",
+      "exit_code": 0,
+      "evidence": "20 focused tests passed at implementation head; include ledger content mismatch and target/baseline binding refusals."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Truth audit passed at implementation head: 328 call sites, 77 sources."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors at implementation head."
+    }
+  ],
+  "assumptions_resolved": [
+    "Workflow adapters and trusted consumers are future separately owned integration; this report covers helper preparation only.",
+    "Generation 2 was published but never committed; generation 3 fixed its required-check path without changing work scope."
+  ],
+  "stop_conditions_hit": []
+}

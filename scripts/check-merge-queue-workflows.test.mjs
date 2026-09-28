@@ -258,6 +258,23 @@ test('the guarded merge lane is dual-mode and never uses --admin', () => {
   assert.ok(text.includes('--match-head-commit'), 'the guarded lane dropped exact-head matching')
 })
 
+test('the authority token reaches only a clean protected-main preflight step', () => {
+  const workflow = readWorkflow('guarded-migration-merge.yml')
+  const start = workflow.indexOf('      - name: Pre-flight the required status checks before taking the merge lane')
+  const end = workflow.indexOf('      - name: Acquire the exclusive merge lane', start)
+  assert.ok(start >= 0 && end > start, 'the preflight must precede lock acquisition')
+  const preflight = workflow.slice(start, end)
+  const outside = workflow.slice(0, start) + workflow.slice(end)
+  assert.match(preflight, /working-directory: trusted-policy/)
+  assert.match(preflight, /AUTHORITY_TOKEN: \$\{\{ secrets\.SYNC_TOKEN \}\}/)
+  assert.match(preflight, /export PATH="\$TRUSTED_PATH"/)
+  assert.match(preflight, /NODE_OPTIONS: ''/)
+  assert.match(preflight, /git rev-parse HEAD[\s\S]*git rev-parse origin\/main/)
+  assert.match(preflight, /git status --porcelain/)
+  assert.match(preflight, /node scripts\/check-required-checks-preflight\.mjs/)
+  assert.doesNotMatch(outside, /^\s*AUTHORITY_TOKEN:/m, 'head code outside the protected preflight must not receive the authority token')
+})
+
 test('the preview rehearsal publishes the exact rehearsed main SHA, and only on success', () => {
   const text = readWorkflow('shared-supabase-migrations.yml')
   const preview = /^ {2}preview:\n([\s\S]*?)^ {2}[a-z]/m.exec(text)?.[1] ?? ''

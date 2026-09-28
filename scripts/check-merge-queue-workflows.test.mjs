@@ -263,6 +263,7 @@ test('the authority token reaches only a clean protected-main preflight step', (
   const start = workflow.indexOf('      - name: Pre-flight the required status checks before taking the merge lane')
   const end = workflow.indexOf('      - name: Acquire the exclusive merge lane', start)
   assert.ok(start >= 0 && end > start, 'the preflight must precede lock acquisition')
+  assert.ok(start < workflow.indexOf('      - name: Require current main and rerun every applicable coordination guard'), 'the token must be scoped before any pull-request script runs')
   const preflight = workflow.slice(start, end)
   const outside = workflow.slice(0, start) + workflow.slice(end)
   assert.match(preflight, /working-directory: trusted-policy/)

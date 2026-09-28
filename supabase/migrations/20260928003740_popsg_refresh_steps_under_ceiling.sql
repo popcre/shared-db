@@ -288,6 +288,7 @@ begin
       join pg_class ic on ic.oid = i.indexrelid
      where c.oid = 'public.style_guide_file_groups'::regclass
        and i.indisunique
+       and i.indisvalid
        and i.indexprs is null
        and i.indpred is null
        and ic.relname = 'sgfilegroups_group_uidx')
@@ -297,6 +298,7 @@ begin
       join pg_class ic on ic.oid = i.indexrelid
      where c.oid = 'public.style_guide_folders'::regclass
        and i.indisunique
+       and i.indisvalid
        and i.indexprs is null
        and i.indpred is null
        and ic.relname = 'sgfolders_licensor_property_uidx') then

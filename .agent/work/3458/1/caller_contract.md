@@ -27,8 +27,8 @@ public.refresh_style_guide_matviews(
 |---|---|---|
 | `file_groups` | `REFRESH MATERIALIZED VIEW CONCURRENTLY public.style_guide_file_groups` only | no |
 | `folders` | `REFRESH MATERIALIZED VIEW CONCURRENTLY public.style_guide_folders` only | no |
-| `search` | one bounded queue drain (`p_search_batch_size`, clamped 0..50000) + queue retire | yes |
-| `all` | all three in one statement (convenience; can still exceed 8s on a heavy change night) | yes |
+| `search` | one bounded queue drain (`p_search_batch_size`, clamped 0..50000) + queue retire | yes, if batch > 0 |
+| `all` | all three in one statement (convenience; can still exceed 8s on a heavy change night) | yes, if batch > 0 |
 
 Any other value raises. `search_documents_synced` is 0 on matview steps and the
 upserted count on `search` / `all`. A crawl run with `p_run_id` is stamped
@@ -60,6 +60,7 @@ do {
 Stop looping when `search_documents_synced < p_search_batch_size` (the batch was
 partial, so the queue is empty for this run). A `search` call with an empty queue
 returns `search_documents_synced = 0` and still stamps `refresh_completed_at`.
+A zero or negative batch skips sync, queue retirement, and the completion stamp.
 
 ## Caller footguns (read before wiring)
 
@@ -69,9 +70,9 @@ returns `search_documents_synced = 0` and still stamps `refresh_completed_at`.
    spans `file_groups` + `folders` + `search` fails at the first refresh. The
    RPC call itself is a single statement, which is what makes CONCURRENTLY legal.
 2. **`refresh_completed_at` means "a search step ran", not "all files are
-   synced".** It is stamped on every `search` / `all` call, including a partial
-   batch and an empty-queue call. Lifecycle completion is caller-gated (the
-   `completed` transition's CHECK), so always drain the queue to
+   synced".** With a positive batch, it is stamped on every `search` / `all`
+   call, including a partial batch and an empty-queue call. Lifecycle completion is caller-gated (the
+  `completed` transition's CHECK), so always drain the queue to
    `search_documents_synced < p_search_batch_size` before treating the run as
    finished.
 

@@ -1,6 +1,6 @@
 -- Issue #3458 behavior tests for the steppable refresh overload.
 -- NOT part of the migration. Run on preview (or an ephemeral DB) after
--- 20260924174251 applies. Wraps in a transaction and rolls back, so it can
+-- 20260925171844 applies. Wraps in a transaction and rolls back, so it can
 -- exercise p_step='search' (no REFRESH CONCURRENTLY) live, and asserts the
 -- matview steps by function-body shape exactly like popsg_bounded_crawl_and_search_contracts.
 -- Proves: change-night work is split so each RPC statement is independently
@@ -192,8 +192,11 @@ begin
     returning id into v_run2;
   -- cannot EXECUTE the matview steps here (REFRESH CONCURRENTLY is forbidden
   -- inside a transaction block), so assert the completion-stamp gate in the body
-  if position('if p_run_id is not null and v_step in (''all'', ''search'')' in v_def3) = 0 then
+  if position('if p_run_id is not null and v_step in (''all'', ''search'') and v_batch > 0' in v_def3) = 0 then
     raise exception 'test 5: matview-only steps are allowed to stamp refresh_completed_at';
+  end if;
+  if position('if v_step in (''all'', ''search'') and v_batch > 0' in v_def3) = 0 then
+    raise exception 'test 5: zero-size search batch is allowed to drain the queue';
   end if;
 
   -- =========================================================================

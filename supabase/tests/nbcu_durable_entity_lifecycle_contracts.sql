@@ -77,6 +77,8 @@ select v.cap::uuid, v.path, v.path, 'f', '1 KB', v.modified, '[]', '[]', '[]', '
     ('36830000-0000-4000-8000-00000000000d', '/content/dam/synthetic/five.png', 'm1'),
     ('36830000-0000-4000-8000-00000000000e', '/content/dam/synthetic/five.png', 'm1'),
     ('36830000-0000-4000-8000-000000000006', '/content/asset-share-commons/en/details/stream.html/content/dam/synthetic/five.png', 'm1'),
+    -- Same capture, same DAM object through two viewer forms (#3695 M2): one identity.
+    ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/five.png', 'm9'),
     ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/three.png', 'm1'),
     ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/four.png', 'm1')
   ) v(cap, path, modified);
@@ -226,6 +228,10 @@ begin
                  and status = 'withdrawn' and withdrawn_capture_id = '36830000-0000-4000-8000-000000000006') then
     raise exception 'drop held earlier was orphaned instead of re-evaluated';
   end if;
+  if (select count(*) from plm.nbcu_entity_lifecycle where entity_kind = 'asset'
+       and entity_key like '%synthetic/five.png') <> 1 then
+    raise exception 'two viewer forms of one DAM object in one capture were not collapsed';
+  end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/five.png' and status = 'active') then
     raise exception 'entity seen after the hold is not active';
   end if;
@@ -245,15 +251,72 @@ begin
      <> 'capture_id,baseline_capture_id,mode,derivation_contract,scope_sha256,source_captured_at,counts,published_at' then
     raise exception 'plm.nbcu_lifecycle_publication columns differ from the reviewed shape';
   end if;
-  if (select count(*) from pg_constraint where conrelid = 'plm.nbcu_entity_lifecycle'::regclass
-       and conname in ('nbcu_entity_lifecycle_pkey','nbcu_entity_lifecycle_kind_chk','nbcu_entity_lifecycle_status_chk',
-                       'nbcu_entity_lifecycle_withdrawn_at_chk','nbcu_entity_lifecycle_history_chk')) <> 5
-     or (select count(*) from pg_constraint where conrelid = 'plm.nbcu_entity_lifecycle'::regclass
-          and contype = 'f' and confrelid = 'plm.nbcu_lifecycle_publication'::regclass) <> 4
-     or (select count(*) from pg_constraint where conrelid = 'plm.nbcu_lifecycle_publication'::regclass
-          and conname in ('nbcu_lifecycle_publication_pkey','nbcu_lifecycle_publication_mode_chk',
-                          'nbcu_lifecycle_publication_baseline_chk','nbcu_lifecycle_publication_scope_chk')) <> 4 then
-    raise exception 'durable-state constraints differ from the reviewed shape';
+  -- Every named constraint on both tables, exactly (#3695 review): no missing and no extra.
+  if (select string_agg(conname, ',' order by conname) from pg_constraint
+       where conrelid = 'plm.nbcu_entity_lifecycle'::regclass and contype in ('p','c'))
+     <> 'nbcu_entity_lifecycle_basis_chk,nbcu_entity_lifecycle_history_chk,nbcu_entity_lifecycle_key_chk,'
+        'nbcu_entity_lifecycle_kind_chk,nbcu_entity_lifecycle_pkey,nbcu_entity_lifecycle_status_chk,'
+        'nbcu_entity_lifecycle_withdrawn_at_chk'
+     or (select string_agg(conname, ',' order by conname) from pg_constraint
+       where conrelid = 'plm.nbcu_lifecycle_publication'::regclass and contype in ('p','c'))
+     <> 'nbcu_lifecycle_publication_baseline_chk,nbcu_lifecycle_publication_contract_chk,'
+        'nbcu_lifecycle_publication_counts_chk,nbcu_lifecycle_publication_mode_chk,'
+        'nbcu_lifecycle_publication_pkey,nbcu_lifecycle_publication_scope_chk' then
+    raise exception 'durable-state named constraints differ from the reviewed set';
+  end if;
+  if pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_entity_lifecycle_basis_chk'
+         and conrelid = 'plm.nbcu_entity_lifecycle'::regclass)) not like '%dam_path%source_id%label_sha256%id_fallback%folder_path%'
+     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_entity_lifecycle_key_chk'
+         and conrelid = 'plm.nbcu_entity_lifecycle'::regclass)) not like '%btrim(entity_key)%'
+     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_lifecycle_publication_contract_chk'
+         and conrelid = 'plm.nbcu_lifecycle_publication'::regclass)) not like '%btrim(derivation_contract)%'
+     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_lifecycle_publication_counts_chk'
+         and conrelid = 'plm.nbcu_lifecycle_publication'::regclass)) not like '%jsonb_typeof(counts)%object%' then
+    raise exception 'durable-state CHECK bodies differ from the reviewed shape';
+  end if;
+  -- Foreign keys by exact column mapping, restrict on delete.
+  if (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
+       where conrelid = 'plm.nbcu_entity_lifecycle'::regclass and contype = 'f')
+     <> 'FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+        'FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+        'FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+        'FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT'
+     or (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
+       where conrelid = 'plm.nbcu_lifecycle_publication'::regclass and contype = 'f')
+     <> 'FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+        'FOREIGN KEY (capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT' then
+    raise exception 'durable-state foreign keys differ from the reviewed column mapping';
+  end if;
+  -- Serving indexes named in the #3695 review.
+  if (select string_agg(pg_get_indexdef(indexrelid), ' | ' order by pg_get_indexdef(indexrelid)) from pg_index
+       where indrelid in ('plm.nbcu_entity_lifecycle'::regclass, 'plm.nbcu_lifecycle_publication'::regclass)
+         and not indisprimary)
+     <> 'CREATE INDEX nbcu_entity_lifecycle_first_seen_idx ON plm.nbcu_entity_lifecycle USING btree (first_seen_capture_id) | '
+        'CREATE INDEX nbcu_entity_lifecycle_kind_last_seen_idx ON plm.nbcu_entity_lifecycle USING btree (entity_kind, last_seen_capture_id, status) | '
+        'CREATE INDEX nbcu_entity_lifecycle_last_changed_idx ON plm.nbcu_entity_lifecycle USING btree (last_changed_capture_id) | '
+        'CREATE INDEX nbcu_entity_lifecycle_withdrawn_capture_idx ON plm.nbcu_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL) | '
+        'CREATE INDEX nbcu_lifecycle_publication_baseline_idx ON plm.nbcu_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL) | '
+        'CREATE INDEX nbcu_lifecycle_publication_latest_idx ON plm.nbcu_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC)' then
+    raise exception 'durable-state serving indexes differ from the reviewed set';
+  end if;
+  -- Policies: exactly one permissive SELECT policy per table, for authenticated, with the
+  -- PLM / administrator / sales-licensing audience.
+  if (select count(*) from pg_policies where schemaname = 'plm'
+       and tablename in ('nbcu_entity_lifecycle','nbcu_lifecycle_publication')) <> 2
+     or (select count(*) from pg_policies where schemaname = 'plm'
+       and (tablename, policyname) in (('nbcu_entity_lifecycle','nbcu_entity_lifecycle_plm_read'),
+                                       ('nbcu_lifecycle_publication','nbcu_lifecycle_publication_plm_read'))
+       and cmd = 'SELECT' and permissive = 'PERMISSIVE' and roles = array['authenticated']::name[]
+       and with_check is null
+       and qual like '%app.has_app_access(''plm''%'
+       and qual like '%app.has_role(''administrator''%'
+       and qual like '%app.has_any_role(%sales%licensing%') <> 2 then
+    raise exception 'durable-state read policies differ from the reviewed audience';
+  end if;
+  if (select provolatile from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure) <> 'v'
+     or (select proconfig from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure)
+        is distinct from array['search_path=pg_catalog, pg_temp'] then
+    raise exception 'publish function volatility or search_path differs from the reviewed shape';
   end if;
   if not (select prosecdef from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure) then
     raise exception 'publish function is not SECURITY DEFINER';

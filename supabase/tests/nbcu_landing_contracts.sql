@@ -1196,6 +1196,25 @@ begin
     raise warning 'I6 FAIL: % plm.nbcu_* tables, expected 16', v_n;
   else v_pass := v_pass+1; end if;
 
+  -- #3695 review: the name exclusions above must match exactly the two #3683 durable
+  -- tables and their reviewed keys, so a rename or drop cannot pass the 15/16 literals.
+  select count(*) into v_n from pg_class
+   where relnamespace='plm'::regnamespace and relkind='r' and relname like 'nbcu\_%';
+  if v_n <> 18
+     or to_regclass('plm.nbcu_entity_lifecycle') is null
+     or to_regclass('plm.nbcu_lifecycle_publication') is null
+     or (select pg_get_constraintdef(oid) from pg_constraint
+          where conname = 'nbcu_entity_lifecycle_pkey'
+            and conrelid = to_regclass('plm.nbcu_entity_lifecycle'))
+        is distinct from 'PRIMARY KEY (entity_kind, entity_key)'
+     or (select pg_get_constraintdef(oid) from pg_constraint
+          where conname = 'nbcu_lifecycle_publication_pkey'
+            and conrelid = to_regclass('plm.nbcu_lifecycle_publication'))
+        is distinct from 'PRIMARY KEY (capture_id)' then
+    v_fail := v_fail+1;
+    raise warning 'I6 FAIL: % plm.nbcu_* tables (expected 18) or the excluded #3683 durable tables differ from their reviewed keys', v_n;
+  else v_pass := v_pass+1; end if;
+
   raise notice 'I: % passed / % failed', v_pass, v_fail;
   if v_fail > 0 then raise exception 'I FAILED (% failures)', v_fail; end if;
 end;

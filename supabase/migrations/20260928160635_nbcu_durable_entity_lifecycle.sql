@@ -93,6 +93,23 @@ comment on table plm.nbcu_entity_lifecycle is
   'opaque: an asset hashes the portal display_modified and display_size; every other '
   'kind hashes its retained raw source record.';
 
+-- Serving indexes (#3695 review): the bulk-drop guard, withdrawal counts and withdrawal
+-- filter on (entity_kind, last_seen_capture_id[, status]); the latest-publication lookup
+-- orders by (source_captured_at desc, published_at desc); the remaining publication FK
+-- child columns get their own index so a publication-row check never scans.
+create index nbcu_entity_lifecycle_kind_last_seen_idx
+  on plm.nbcu_entity_lifecycle (entity_kind, last_seen_capture_id, status);
+create index nbcu_entity_lifecycle_first_seen_idx
+  on plm.nbcu_entity_lifecycle (first_seen_capture_id);
+create index nbcu_entity_lifecycle_last_changed_idx
+  on plm.nbcu_entity_lifecycle (last_changed_capture_id);
+create index nbcu_entity_lifecycle_withdrawn_capture_idx
+  on plm.nbcu_entity_lifecycle (withdrawn_capture_id) where withdrawn_capture_id is not null;
+create index nbcu_lifecycle_publication_latest_idx
+  on plm.nbcu_lifecycle_publication (source_captured_at desc, published_at desc);
+create index nbcu_lifecycle_publication_baseline_idx
+  on plm.nbcu_lifecycle_publication (baseline_capture_id) where baseline_capture_id is not null;
+
 alter table plm.nbcu_lifecycle_publication enable row level security;
 alter table plm.nbcu_entity_lifecycle enable row level security;
 revoke all on plm.nbcu_lifecycle_publication from public, anon, authenticated, service_role;
@@ -196,36 +213,36 @@ begin
   values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
 
   drop table if exists pg_temp.nbcu_lifecycle_seen;
-  create temporary table nbcu_lifecycle_seen (
+  create temporary table pg_temp.nbcu_lifecycle_seen (
     entity_kind text not null, entity_key text not null, identity_basis text not null,
     change_signal text not null, primary key (entity_kind, entity_key)
   ) on commit drop;
 
   -- One DAM object reached through two viewer URLs in one capture is one identity; the
   -- lexically first path supplies the signal so the choice is deterministic.
-  insert into nbcu_lifecycle_seen
+  insert into pg_temp.nbcu_lifecycle_seen
   select distinct on (k.dam_path) 'asset', k.dam_path, 'dam_path',
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(k.display_modified, k.display_size)::text, 'UTF8')), 'hex')
     from (select pg_catalog.regexp_replace(a.asset_path, '^/content/asset-share-commons/en/details/[^/]+[.]html(?=/content/dam/)', '') as dam_path,
                  a.asset_path, a.display_modified, a.display_size
             from plm.nbcu_asset a where a.capture_id = p_capture_id) k
    order by k.dam_path, k.asset_path;
-  insert into nbcu_lifecycle_seen
+  insert into pg_temp.nbcu_lifecycle_seen
   select 'property', p.property_key,
          case when p.property_source_id is not null then 'source_id' else 'label_sha256' end,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.raw::text, 'UTF8')), 'hex')
     from plm.nbcu_property p where p.capture_id = p_capture_id;
-  insert into nbcu_lifecycle_seen
+  insert into pg_temp.nbcu_lifecycle_seen
   select 'character', c.character_key,
          case when c.character_source_id is not null then 'source_id' else 'id_fallback' end,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(c.raw::text, 'UTF8')), 'hex')
     from plm.nbcu_character c where c.capture_id = p_capture_id;
-  insert into nbcu_lifecycle_seen
+  insert into pg_temp.nbcu_lifecycle_seen
   select 'style_guide', g.style_guide_key,
          case when g.style_guide_source_id is not null then 'source_id' else 'folder_path' end,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(g.raw::text, 'UTF8')), 'hex')
     from plm.nbcu_style_guide g where g.capture_id = p_capture_id;
-  insert into nbcu_lifecycle_seen
+  insert into pg_temp.nbcu_lifecycle_seen
   select 'ip_family', f.ip_family_key, 'label_sha256',
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(f.raw::text, 'UTF8')), 'hex')
     from plm.nbcu_ip_family f where f.capture_id = p_capture_id;
@@ -240,7 +257,7 @@ begin
        where l.entity_kind = v_kind and l.last_seen_capture_id = any(v_eligible);
       select pg_catalog.count(*) into v_drop from plm.nbcu_entity_lifecycle l
        where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
-         and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+         and not exists (select 1 from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
       v_limit := greatest(1, least(100, pg_catalog.floor(v_base * 0.02)::bigint));
       if v_drop > v_limit then
         v_held := true;
@@ -253,20 +270,20 @@ begin
   end if;
 
   foreach v_kind in array array['asset','property','character','style_guide','ip_family'] loop
-    select pg_catalog.count(*) into v_seen from nbcu_lifecycle_seen s where s.entity_kind = v_kind;
-    select pg_catalog.count(*) into v_added from nbcu_lifecycle_seen s where s.entity_kind = v_kind
+    select pg_catalog.count(*) into v_seen from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = v_kind;
+    select pg_catalog.count(*) into v_added from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = v_kind
        and not exists (select 1 from plm.nbcu_entity_lifecycle l where l.entity_kind = s.entity_kind and l.entity_key = s.entity_key);
-    select pg_catalog.count(*) into v_changed from nbcu_lifecycle_seen s join plm.nbcu_entity_lifecycle l
+    select pg_catalog.count(*) into v_changed from pg_temp.nbcu_lifecycle_seen s join plm.nbcu_entity_lifecycle l
         on l.entity_kind = s.entity_kind and l.entity_key = s.entity_key
      where s.entity_kind = v_kind and l.change_signal <> s.change_signal;
-    select pg_catalog.count(*) into v_back from nbcu_lifecycle_seen s join plm.nbcu_entity_lifecycle l
+    select pg_catalog.count(*) into v_back from pg_temp.nbcu_lifecycle_seen s join plm.nbcu_entity_lifecycle l
         on l.entity_kind = s.entity_kind and l.entity_key = s.entity_key
      where s.entity_kind = v_kind and l.status = 'withdrawn';
     v_drop := 0;
     if v_mode = 'comparable' then
       select pg_catalog.count(*) into v_drop from plm.nbcu_entity_lifecycle l
        where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
-         and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+         and not exists (select 1 from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
     end if;
     v_counts := v_counts || pg_catalog.jsonb_build_object(v_kind, pg_catalog.jsonb_build_object(
       'seen', v_seen, 'added', v_added, 'changed', v_changed, 'reactivated', v_back, 'withdrawn', v_drop));
@@ -278,7 +295,7 @@ begin
            first_withdrawn_at = coalesce(l.first_withdrawn_at, v_cap.source_captured_at),
            withdrawn_capture_id = p_capture_id
      where l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
-       and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+       and not exists (select 1 from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
   end if;
 
   insert into plm.nbcu_entity_lifecycle as l
@@ -286,7 +303,7 @@ begin
      last_seen_capture_id, last_seen_at, last_changed_capture_id, change_signal)
   select s.entity_kind, s.entity_key, s.identity_basis, p_capture_id, v_cap.source_captured_at,
          p_capture_id, v_cap.source_captured_at, p_capture_id, s.change_signal
-    from nbcu_lifecycle_seen s
+    from pg_temp.nbcu_lifecycle_seen s
   on conflict (entity_kind, entity_key) do update
      set identity_basis = excluded.identity_basis,
          last_seen_capture_id = excluded.last_seen_capture_id,

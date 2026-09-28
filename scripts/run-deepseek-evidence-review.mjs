@@ -11,7 +11,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { resolveCommandPath } from './manage-migration-author-lanes.mjs'
+import { ACTIVE_REVIEWERS, resolveCommandPath } from './manage-migration-author-lanes.mjs'
+
+// #3764: never hard-code the reviewer name. 'deepseek-chat' was retired and every
+// preflight refused; the active DeepSeek row is whatever the allocator says it is.
+export function activeDeepSeekReviewer(wrapper = 'ai-deepseek-agent', active = ACTIVE_REVIEWERS) {
+  const rows = active.filter((row) => row.provider === 'deepseek' && row.wrapper === wrapper)
+  if (rows.length !== 1) throw new Error(`expected exactly one active DeepSeek reviewer for ${wrapper}; found ${rows.length}`)
+  return rows[0].name
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
@@ -116,15 +124,15 @@ export function runReview(options, deps = {}) {
   if (fs.existsSync(bundlePath)) {
     if (!fs.readFileSync(bundlePath).equals(bundle.payload)) throw new Error('existing evidence bundle digest path has different bytes')
   } else fs.writeFileSync(bundlePath, bundle.payload, { flag: 'wx' })
-  const wrapperArgs = ['send', 'Review the attached governed evidence packet completely.', '--file', bundlePath, '--review']
+  const wrapperArgs = ['send', 'Review the attached governed evidence packet completely.', '--file', bundlePath, '--review', '--governed-verdict', options.headSha, '--model', 'deepseek-flash']
   if (commandLineLength(wrapper, wrapperArgs) > 7000) throw new Error('review launch still exceeds the safe Windows command-line budget')
-  const preflightArgs = ['scripts/manage-migration-author-lanes.mjs', '--reviewer-preflight', '--reviewer', 'deepseek-chat', '--wrapper', wrapper, '--worktree', worktree, '--head-sha', options.headSha]
+  const preflightArgs = ['scripts/manage-migration-author-lanes.mjs', '--reviewer-preflight', '--reviewer', activeDeepSeekReviewer(wrapper, deps.activeReviewers), '--wrapper', wrapper, '--worktree', worktree, '--head-sha', options.headSha]
   ;(deps.preflight ?? ((args) => execFileSync(process.execPath, args, { cwd: worktree, stdio: 'inherit' })))(preflightArgs)
   const run = deps.spawn ?? ((command, args) => {
     const resolved = resolveCommandPath(command)
     if (!resolved) return { status: null, error: new Error(`cannot resolve reviewer wrapper: ${command}`) }
     const plan = reviewSpawnPlan(resolved, args)
-    return spawnSync(plan.file, plan.args, { cwd: worktree, stdio: 'inherit', env: { ...process.env, AI_DEEPSEEK_CALLER: 'codex' } })
+    return spawnSync(plan.file, plan.args, { cwd: worktree, stdio: 'inherit', env: { ...process.env, AI_DEEPSEEK_CALLER: process.env.AI_DEEPSEEK_CALLER || 'codex' } })
   })
   const result = run(wrapper, wrapperArgs)
   if (result.error) throw result.error

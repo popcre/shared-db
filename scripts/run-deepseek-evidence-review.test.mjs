@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { buildEvidenceBundle, requireRegularNonSymlink, reviewSpawnPlan, runReview, safeEvidenceDirectory } from './run-deepseek-evidence-review.mjs'
+import { activeDeepSeekReviewer, buildEvidenceBundle, requireRegularNonSymlink, reviewSpawnPlan, runReview, safeEvidenceDirectory } from './run-deepseek-evidence-review.mjs'
 
 const head = 'a'.repeat(40)
 function fixture() {
@@ -93,4 +93,15 @@ test('launcher keeps allocation, replacement, verdict, and lease ownership outsi
   }
   assert.match(source, /--reviewer-preflight/)
   assert.match(source, /--review/)
+})
+
+test('preflight names the ACTIVE DeepSeek reviewer, never the retired deepseek-chat (#3764)', () => {
+  assert.notEqual(activeDeepSeekReviewer(), 'deepseek-chat')
+  assert.equal(activeDeepSeekReviewer('ai-deepseek-agent', [{ name: 'deepseek-x', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }]), 'deepseek-x')
+  assert.throws(() => activeDeepSeekReviewer('ai-deepseek-agent', []), /exactly one active DeepSeek reviewer/)
+  assert.throws(() => activeDeepSeekReviewer('ai-deepseek-agent', [{ name: 'a', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }, { name: 'b', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }]), /found 2/)
+  const source = fs.readFileSync(new URL('./run-deepseek-evidence-review.mjs', import.meta.url), 'utf8')
+  assert.equal(source.includes("'--reviewer', 'deepseek-chat'"), false)
+  assert.match(source, /'--governed-verdict', options\.headSha, '--model', 'deepseek-flash'/)
+  assert.match(source, /AI_DEEPSEEK_CALLER: process\.env\.AI_DEEPSEEK_CALLER \|\| 'codex'/)
 })

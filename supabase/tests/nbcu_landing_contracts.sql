@@ -245,6 +245,8 @@ begin
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'plm' and con.contype = 'p' and c.relname like 'nbcu\_%'
        and c.relname <> 'nbcu_capture'
+       -- #3683: durable cross-capture state is deliberately NOT capture-scoped.
+       and c.relname not in ('nbcu_entity_lifecycle', 'nbcu_lifecycle_publication')
   loop
     if r.first_col <> 'capture_id' then
       v_fail := v_fail + 1;
@@ -270,6 +272,7 @@ begin
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'plm' and con.contype = 'f' and c.relname like 'nbcu\_%'
        and f.relname like 'nbcu\_%' and f.relname <> 'nbcu_capture'
+       and c.relname not in ('nbcu_entity_lifecycle', 'nbcu_lifecycle_publication')
   loop
     if r.first_col <> 'capture_id' or array_length(
          (select con2.conkey from pg_constraint con2 where con2.conname = r.conname
@@ -1187,8 +1190,9 @@ begin
 
   select count(*) into v_n from pg_class
    where relnamespace='plm'::regnamespace and relkind='r' and relname like 'nbcu\_%';
-  if v_n <> 16 then v_fail := v_fail+1;
-    raise warning 'I6 FAIL: % plm.nbcu_* tables, expected 16', v_n;
+  -- 16 landing tables plus the two #3683 durable-state tables.
+  if v_n <> 18 then v_fail := v_fail+1;
+    raise warning 'I6 FAIL: % plm.nbcu_* tables, expected 18', v_n;
   else v_pass := v_pass+1; end if;
 
   raise notice 'I: % passed / % failed', v_pass, v_fail;

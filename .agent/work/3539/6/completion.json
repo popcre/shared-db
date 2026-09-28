@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3539,
+  "outcome": "ready-for-merge",
+  "pr": 3557,
+  "migration_versions": [
+    "20260925223300"
+  ],
+  "contract_ref": "refs/db-contracts/3539/6",
+  "contract_sha256": "4a48cdecce2f208a95baa3b5dc3782fe00b8ed9208aa2f829dba85166308fb8b",
+  "base_sha": "08790dcd7c0f54ea8e96721424ef07cec8ff092e",
+  "head_sha": "d30c4b60bc0d5623fd368a48501086c65a2dc1ce",
+  "files_changed": [
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260925223300_scraped_source_inventory_pixar_disney_dcpvault_licensor.sql",
+    "supabase/tests/db_data_admin_scraped_source_inventory.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed at refreshed implementation head d30c4b60 after main included PR #3510; Guard B live-ledger check still awaits ephemeral CI."
+    },
+    {
+      "command": "python scripts/migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "python3 scripts/migration_derivation.py exited 0 at refreshed implementation head d30c4b60."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main...HEAD exited 0 at refreshed implementation head d30c4b60."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #3546 remains open at version 20260925223300 with permanent reservation ref.",
+    "Production SQL grouping and identity expressions are unchanged from reviewed generation 4 implementation.",
+    "Installed CASE expressions are executed for all three arms with four DCP sources, Pixar key and name, non-DCP unresolved negative control, and Marvel ASGARD positive control.",
+    "Twelve source tables require a validated exact equality constraint and NOT NULL discriminator.",
+    "Qwen prior verdict is excluded due to 1Password review-policy violation; fresh exact-head governed review is required."
+  ],
+  "stop_conditions_hit": []
+}

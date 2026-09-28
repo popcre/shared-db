@@ -10,7 +10,6 @@
   "contract_sha256": "f7520642d95e9f44f4cb0063b53a2616e3f53502e73dda2a47ef9a6111b60af8",
   "head_sha": "f6d693c4fa263ab9620aa0626ec36e4b03e90be4",
   "files_changed": [
-    ".agent/work/3175/7/contract.json",
     "supabase/migrations/20260928050320_retire_designflow_taxonomy_health_lane.sql",
     "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
     ".github/live-proofs/3175.sql"

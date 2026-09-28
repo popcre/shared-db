@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3658,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/2",
+  "contract_sha256": "074269a1dbbda29e8779bed68e935404a0a26232dfdd2d44c79e6e46d3e71399",
+  "base_sha": "067420b116cbfe53b851ea460a11190607b9b699",
+  "head_sha": "8bac10302537353e9378c95835c9a873b3bff872",
+  "files_changed": [
+    ".github/workflows/coldlion-licensor-property-phase6-parallel.yml",
+    "tools/phase6-schedule-map.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-licensor-property-phase6.test.mjs tools/phase6-schedule-map.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 tests, 16 pass, 0 fail at implementation head 8bac10302 on merge base 067420b11"
+    }
+  ],
+  "assumptions_resolved": [
+    "The 3 idle cron entries are removed; workflow_dispatch and the PHASE6_SCHEDULE_ENABLED env-flag gate remain intact.",
+    "The phase6 schedule-map lockstep test now asserts the crons are absent (assert.doesNotMatch) so the tools-offline-tests glob stays green.",
+    "The full tools suite (node --test tools/*.test.mjs) reports 946 pass, 0 fail at implementation head 8bac10302."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Cron-trigger child of #3536 (non-orchestrator, CI audit cut list). Contract published at refs/db-contracts/3536/2 before the evidence pair commit; the implementation commit predates publication and the pair sits on top. Posted by MiMo chat ses_ffe5f181be6e4fferDgoW5x63k on edge-dev3"
+}

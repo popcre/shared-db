@@ -8,12 +8,10 @@
   ],
   "contract_ref": "refs/db-contracts/3458/10",
   "contract_sha256": "9d6e71d1e78b28c5e3328603c28217cc218fd09480965f3a7cfbf81265e9a553",
-  "head_sha": "38e7bd5463fd350e740fd970bf9d526c5a613d26",
+  "head_sha": "e2f943e086b942014db3a2c91dd10198bd6319a5",
   "base_sha": "a2bf06bcbb6e76fb4939f78ee0d9e38353dceb33",
   "files_changed": [
-    ".agent/work/3458/10/completion.json",
     ".agent/work/3458/10/contract.json",
-    "HANDOFF.d/2026-09-28T1650Z-edge-dev3-claude-orch-3653-handover.md",
     "scripts/production_migration_guard.py",
     "scripts/test_3458_index_guard.test.mjs",
     "scripts/test_post_batch_app_verification.py",

@@ -13,8 +13,8 @@
 //   * A successor generation names its predecessor explicitly (`evidence_parent`).
 //   * The current pair is resolved from contract identity and the changed-file
 //     set, never from filename ordering.
-//   * v1 pairs (no `evidence_parent`, schema_version 1) remain authentic and
-//     readable. They are not rewritten to look like v2.
+//   * v1 pairs (no `evidence_parent`, schema_version 1) remain readable as
+//     historical records. They do not claim a verified predecessor binding.
 //   * Unused reserved generations are skipped, never reused.
 //   * Arbitrary metadata under `.agent/` is not inert and is not a generation.
 //
@@ -153,8 +153,8 @@ export function bindPredecessor(parentContract) {
  *
  * Rules:
  *   * Exactly one complete pair may claim the issue among the changed files.
- *   * The pair must be the contract's own (issue + generation), or the legacy pair
- *     when the contract is a legacy v1 root.
+ *   * A keyed pair must match the contract's issue and generation. The legacy
+ *     pair remains readable for schema v1, whose path predates keys.
  *   * A higher generation number in an unrelated path is not "more current".
  *   * Partial and multi-pair lists are refused.
  */
@@ -307,8 +307,8 @@ export function assertGenerationWriteAllowed({ workIssue, generation, committedC
 }
 
 /**
- * True when a path is a real evidence record (contract/completion), not arbitrary
- * metadata that happens to live under `.agent/`.
+ * True when a path has a recognized evidence filename. File contents are
+ * validated by the contract and Git evidence gates, not by this path helper.
  */
 export function isRealEvidenceRecord(path) {
   return isEvidencePath(path)

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { classifyEvidencePair, GitEvidenceError, main, prChangedFiles, verifyGitEvidence } from './agent-work-contract-git-evidence.mjs'
+import { classifyEvidencePair, GitEvidenceError, main, prChangedFiles, readPublishedContractFromGit, verifyGitEvidence } from './agent-work-contract-git-evidence.mjs'
 import { contractHash } from './agent-work-contract.mjs'
 
 const base = 'a'.repeat(40)
@@ -13,7 +13,7 @@ const contract = {
   allowed_paths: ['scripts/**'], file_writes: ['scripts/fix.mjs'], db_reads: [], db_writes: [], prohibited_actions: ['no database writes'],
   required_checks: ['node --test'], assumptions: [], stop_conditions: ['stop on scope change'],
 }
-const report = { head_sha: implementation, files_changed: ['scripts/fix.mjs'], contract_ref: 'refs/db-contracts/42/1' }
+const report = { head_sha: implementation, files_changed: ['scripts/fix.mjs'], contract_ref: 'refs/db-contracts/42/1', contract_sha256: contractHash(contract) }
 // The merge base and the PR base agree on an un-refreshed branch, which is the
 // state every legacy pull request is in.
 const io = (over = {}) => ({
@@ -48,6 +48,18 @@ test('the checked-in contract must match its exact immutable published ref', () 
   // (previously shadowed by an earlier identical hash throw) and is refused as an
   // immutable-record rewrite.
   assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ readPublishedContract: () => ({ ...contract, goal: 'wider after the fact' }) })), /immutable|cannot be rewritten/)
+})
+
+test('completion digest must name the published contract bytes', () => {
+  assert.throws(() => verifyGitEvidence({ contract, report: { ...report, contract_sha256: '0'.repeat(64) }, prBaseSha: prBase, prHeadSha: prHead }, io()), /contract_sha256 does not match/)
+})
+
+test('published contract read distinguishes absent ref from transport and fetch failures', () => {
+  const ref = 'refs/db-contracts/42/1'
+  const fail = (status) => { const error = new Error('network unavailable'); error.status = status; throw error }
+  assert.throws(() => readPublishedContractFromGit(ref, () => fail(2)), /missing published contract/)
+  assert.throws(() => readPublishedContractFromGit(ref, () => fail(128)), /could not read published contract ref/)
+  assert.throws(() => readPublishedContractFromGit(ref, (_command, args) => args[0] === 'ls-remote' ? `${base}\t${ref}\n` : fail(128)), /could not fetch published contract/)
 })
 
 test('evidence pair classification distinguishes inherited, current, and half-written evidence', () => {
@@ -171,7 +183,7 @@ const childV2 = {
   evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest },
 }
 const keyedPair2 = ['.agent/work/42/2/completion.json', '.agent/work/42/2/contract.json']
-const childReport = { ...report, contract_ref: 'refs/db-contracts/42/2' }
+const childReport = { ...report, contract_ref: 'refs/db-contracts/42/2', contract_sha256: contractHash(childV2) }
 const childIo = (over = {}) => ({
   isAncestor: () => true,
   changedFiles: (from) => from === base ? ['scripts/fix.mjs'] : keyedPair2,
@@ -197,7 +209,7 @@ test('#3380: a forged evidence_parent digest is refused in the gate (Major 1)', 
     readPublishedContract: (ref) => (ref === 'refs/db-contracts/42/2' ? forged : parentContract),
   })
   assert.throws(
-    () => verifyGitEvidence({ contract: forged, report: childReport, prBaseSha: prBase, prHeadSha: prHead }, forgedIo),
+    () => verifyGitEvidence({ contract: forged, report: { ...childReport, contract_sha256: contractHash(forged) }, prBaseSha: prBase, prHeadSha: prHead }, forgedIo),
     /forged parent|does not match the predecessor/,
   )
 })

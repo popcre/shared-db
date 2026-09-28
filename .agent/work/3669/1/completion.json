@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3669,
+  "outcome": "ready-for-merge",
+  "pr": 3670,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3669/1",
+  "contract_sha256": "ca8139a85b5f6ac948806f5267d84cec21655ac2d8488df49f538e0cdf3f5b10",
+  "base_sha": "4b451fb0961ecc074ad24487c5d1b8df87cf1d78",
+  "head_sha": "6b01af4ffbb8c17fff20dd292dc222ae3de21813",
+  "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    "scripts/check-main-tip-freshness.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "20 passed, 0 failed on 6b01af4f; pins trusted-policy fetch-depth 0 and the head/main fetch immediately before --acquire-merge"
+    },
+    {
+      "command": "node --test scripts/check-main-tip-freshness.test.mjs",
+      "exit_code": 0,
+      "evidence": "27 passed, 0 failed on 6b01af4f; new #3669 case: depth-1 clone refuses with 'could not compute the merge base', full history plus fetched head accepts as independent"
+    }
+  ],
+  "assumptions_resolved": [
+    "classifyBranchFreshness is unchanged; only the checkout it runs in gained history."
+  ],
+  "stop_conditions_hit": [],
+  "disclosure": "A first draft of the same three-file change (commit 3df22602) was written and pushed before the contract ref was published; the branch was reset to base, the contract published, and the change recommitted as 6b01af4f."
+}

@@ -598,6 +598,7 @@ export const ACTIVE_REVIEWERS = Object.freeze(REVIEWERS.filter((row)=>!RETIRED_R
 // among the other eligible reviewers first. Grok remains an eligible fallback.
 export const REVIEWER_FALLBACK_PROVIDERS = Object.freeze(['grok'])
 export function orderedReviewers(sequence,reviewers=ACTIVE_REVIEWERS){
+  if(!Number.isSafeInteger(sequence)||sequence<1)throw new LaneError('reviewer sequence must be a positive integer')
   const rotate=(rows)=>rows.length?Array.from({length:rows.length},(_,offset)=>rows[(sequence-1+offset)%rows.length]):[]
   return [...rotate(reviewers.filter((row)=>!REVIEWER_FALLBACK_PROVIDERS.includes(row.provider))),
     ...rotate(reviewers.filter((row)=>REVIEWER_FALLBACK_PROVIDERS.includes(row.provider)))]
@@ -609,7 +610,7 @@ function drawOrder(sequence,io){
   if(io===githubIo||!io.reviewerOrder)return orderedReviewers(sequence)
   const rows=io.reviewerOrder(sequence)
   const names=ACTIVE_REVIEWERS.map((row)=>row.name).sort()
-  if(!Array.isArray(rows)||rows.length!==names.length||JSON.stringify(rows.map((row)=>row?.name).sort())!==JSON.stringify(names))throw new LaneError('injected reviewer order must be a permutation of the active roster')
+  if(!Array.isArray(rows)||rows.length!==names.length||!rows.every((row)=>ACTIVE_REVIEWERS.includes(row))||JSON.stringify(rows.map((row)=>row.name).sort())!==JSON.stringify(names))throw new LaneError('injected reviewer order must be a permutation of the active roster')
   return rows
 }
 

@@ -621,8 +621,8 @@ function usableAdmission(row){return {provider:row.provider,status:'ready',usabl
 
 function reviewIo(){
   const io=memoryIo(), commits=new Map();let seq=0
-  // Existing safety fixtures keep their historical sequence assertions; the
-  // preference behavior is tested separately with the production draw order.
+  // Legacy fixtures below pin the historical full-roster order. Tests that
+  // exercise the production preference order delete this test-only override.
   io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
   io.resolveOrchestratorEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
@@ -1048,7 +1048,7 @@ test('preference applies to the second independent slot and to a failed-reviewer
 })
 
 test('a test-only reviewer order cannot add, drop, or repeat a roster member',()=>{
-  for(const badOrder of [[],[ACTIVE_REVIEWERS[0]],ACTIVE_REVIEWERS.map(()=>ACTIVE_REVIEWERS[0])]){
+  for(const badOrder of [[],[ACTIVE_REVIEWERS[0]],ACTIVE_REVIEWERS.map(()=>ACTIVE_REVIEWERS[0]),ACTIVE_REVIEWERS.map((row)=>({...row,provider:'grok'}))]){
     const io=reviewIo();io.reviewerOrder=()=>badOrder
     assert.throws(()=>assignNextReviewer({issue:3596,pr:3597,headSha:'abcdef1'},io),/permutation of the active roster/)
   }
@@ -2636,8 +2636,10 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
   assert.throws(()=>replaceFailedReviewer({...replacementRequest,failedSequence:99},io),/does not match/)
 })
 
-// THE SAME-PROVIDER WRAPAROUND, NOW SKIPPED (#1297). replaceFailedReviewer starts at
-// ACTIVE_REVIEWERS[(sequence-1) % N] but SKIPS any provider that already failed on
+// HISTORICAL FULL-ROSTER ORDER FIXTURES (#1297). These use reviewIo's injected
+// order to preserve the original wraparound regression. Production-order
+// preference and replacement behavior is covered separately above.
+// The historical draw starts at ACTIVE_REVIEWERS[(sequence-1) % N] but SKIPS any provider that already failed on
 // this exact head, advancing the durable cursor past it. It used to REFUSE instead,
 // which stranded a failed review with no replacement at all after N-1 assignments,
 // for ANY N -- and after the #1290 roster change that was TWO intervening

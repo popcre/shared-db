@@ -21,7 +21,7 @@ export function readRepoVariable(name,{run=runGitHubCommand,env=process.env}={})
   // context vars but cannot call the repository-variables REST endpoint. Keep
   // the existing lookup for every other caller. readPreviewLedger validates
   // this exact ref against the checked-in preview cross-check before use.
-  if(name==='PREVIEW_PROJECT_REF'&&Object.hasOwn(env,'ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF'))return String(env.ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF)
+  if(name==='PREVIEW_PROJECT_REF'&&env.ABANDONMENT_AUDIT_READONLY==='1'&&Object.hasOwn(env,'PREVIEW_PROJECT_REF'))return String(env.PREVIEW_PROJECT_REF)
   try{return run(['variable','get',name,'--repo',currentRepository()],{wrapError:(detail)=>new Unknown(`repository variable ${name} is unavailable: ${detail}`)}).trim()}catch(error){throw error instanceof Unknown?error:new Unknown(`repository variable ${name} is unavailable: ${error.message}`)}
 }
 

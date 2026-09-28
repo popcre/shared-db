@@ -105,10 +105,15 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+          ABANDONMENT_AUDIT_READONLY: '1'
+          PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -uo pipefail
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo '::error::PREVIEW_PROJECT_REF is unset; the audit cannot read the preview ledger.' >&2
+            exit 3
+          fi
           set +e
           node scripts/manage-migration-author-lanes.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
           CODE=${PIPESTATUS[0]}

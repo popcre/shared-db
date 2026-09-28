@@ -5,11 +5,12 @@ import { APPLIED_VERSIONS_SQL, fetchAppliedVersions, PROJECT_REFS, readPreviewLe
 
 test('abandonment audit receives the same repository variable through workflow context',async()=>{
   const forbidden=()=>{throw new Error('workflow token cannot read repository variables')}
-  const value=readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF:PROJECT_REFS.preview}})
+  const value=readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{ABANDONMENT_AUDIT_READONLY:'1',PREVIEW_PROJECT_REF:PROJECT_REFS.preview}})
   assert.equal(value,PROJECT_REFS.preview)
-  await assert.rejects(()=>readPreviewLedger({readRepoVariable:async()=>readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF:''}}),fetchAppliedVersions:async()=>['20260828000001']}),/exactly 20 lowercase letters/)
+  await assert.rejects(()=>readPreviewLedger({readRepoVariable:async()=>readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{ABANDONMENT_AUDIT_READONLY:'1',PREVIEW_PROJECT_REF:''}}),fetchAppliedVersions:async()=>['20260828000001']}),/exactly 20 lowercase letters/)
   assert.throws(()=>readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{}}),/workflow token cannot read/)
-  assert.throws(()=>readRepoVariable('OTHER_VARIABLE',{run:forbidden,env:{ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF:PROJECT_REFS.preview}}),/workflow token cannot read/)
+  assert.throws(()=>readRepoVariable('PREVIEW_PROJECT_REF',{run:forbidden,env:{PREVIEW_PROJECT_REF:PROJECT_REFS.preview}}),/workflow token cannot read/)
+  assert.throws(()=>readRepoVariable('OTHER_VARIABLE',{run:forbidden,env:{ABANDONMENT_AUDIT_READONLY:'1',PREVIEW_PROJECT_REF:PROJECT_REFS.preview}}),/workflow token cannot read/)
 })
 
 test('abandonment audit credential is unreachable on branch dispatch',()=>{

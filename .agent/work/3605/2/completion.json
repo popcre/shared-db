@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3605/2",
   "contract_sha256": "bf291244cf21357b2c6fde2b61b91f6404e2f6995a69cd9194437f8217b9c200",
-  "base_sha": "13d0d888a77eba476bc8282f652ad425645b7e33",
-  "head_sha": "00ee9f9c2331dacf328920957de2e423690c826a",
+  "base_sha": "9ffb8d39f9bc3526fdc9a2b4464a8eb451b21b8d",
+  "head_sha": "02e86f0d1d9efc9088dc36989110f1c7a39c4b2b",
   "files_changed": [
     ".github/workflows/historical-item-mg-reclassification-tests.yml",
     "docs/verification/throughput-dispositions/README.md",
@@ -20,17 +20,17 @@
     {
       "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "16 passed and 0 failed at implementation head 00ee9f9c2331dacf328920957de2e423690c826a"
+      "evidence": "24 passed and 0 failed (with the context test) at implementation head 02e86f0d1d9efc9088dc36989110f1c7a39c4b2b"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=319 sources=77 derived_digest=712500b8287d at implementation head 00ee9f9c2331dacf328920957de2e423690c826a"
+      "evidence": "truth audit OK: call_sites=318 sources=79 derived_digest=5423ad58855d at implementation head 02e86f0d1d9efc9088dc36989110f1c7a39c4b2b"
     },
     {
       "command": "node --test scripts/historical-item-mg-reclassification/*.test.mjs",
       "exit_code": 0,
-      "evidence": "45 passed and 0 failed at implementation head 00ee9f9c2331dacf328920957de2e423690c826a"
+      "evidence": "45 passed and 0 failed at implementation head 02e86f0d1d9efc9088dc36989110f1c7a39c4b2b"
     }
   ],
   "assumptions_resolved": [

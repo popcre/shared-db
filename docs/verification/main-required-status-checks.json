@@ -6,32 +6,41 @@
     "repository_id": 1275568548,
     "repository": "popcre/shared-db",
     "branch": "main",
-    "base_sha": "20641bc6bbcd4e6e8fe1e2211126837456c045ab",
-    "capturedIso": "2026-09-20T19:43:42.549Z",
-    "revision": "46f23dd1a0fb10de9b251fd1ad80aadb60d5e1af5ae4b0140405ce0e6440adf9",
+    "base_sha": "d963e931bba66098e1bf7f6f735da7a602bf764f",
+    "capturedIso": "2026-09-28T00:47:14.780Z",
+    "revision": "27c41202c3a433cca327b057b2f1d9dec316cc9beeeb1a25bdba1987854ae5f9",
     "sources": {
       "classic": {
         "id": "BPR_kwDOTAehpM4E2ure",
         "requiresStatusChecks": true,
         "requiresStrictStatusChecks": false,
         "requiredStatusCheckContexts": [
-          "Promotion contract tests (offline)",
-          "Cross-PR object collision",
-          "Tools offline tests",
           "SQL migration guards",
+          "supabase/tests against an ephemeral database",
+          "Cross-PR object collision",
+          "Destructive SQL outside migrations",
+          "Migration guarded merge authorization",
+          "Merge queue gate",
+          "Agent work contract",
+          "Cancelled work guard",
           "Domain ownership",
-          "Intake pointer guard",
           "Handoff contract",
+          "Intake pointer guard",
           "Migration author lease",
           "Orchestrator marker guard",
-          "Cancelled work guard",
-          "Agent work contract",
-          "Queue-sensitive checks (aggregate)",
-          "Migration guarded merge authorization"
+          "Promotion contract tests (offline)",
+          "Tools offline tests",
+          "Queue-sensitive checks (aggregate)"
         ],
         "requiredStatusChecks": [
           {
-            "context": "Promotion contract tests (offline)",
+            "context": "SQL migration guards",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "supabase/tests against an ephemeral database",
             "app": {
               "databaseId": 15368
             }
@@ -43,13 +52,31 @@
             }
           },
           {
-            "context": "Tools offline tests",
+            "context": "Destructive SQL outside migrations",
             "app": {
               "databaseId": 15368
             }
           },
           {
-            "context": "SQL migration guards",
+            "context": "Migration guarded merge authorization",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Merge queue gate",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Agent work contract",
+            "app": {
+              "databaseId": 15368
+            }
+          },
+          {
+            "context": "Cancelled work guard",
             "app": {
               "databaseId": 15368
             }
@@ -61,13 +88,13 @@
             }
           },
           {
-            "context": "Intake pointer guard",
+            "context": "Handoff contract",
             "app": {
               "databaseId": 15368
             }
           },
           {
-            "context": "Handoff contract",
+            "context": "Intake pointer guard",
             "app": {
               "databaseId": 15368
             }
@@ -85,25 +112,19 @@
             }
           },
           {
-            "context": "Cancelled work guard",
+            "context": "Promotion contract tests (offline)",
             "app": {
               "databaseId": 15368
             }
           },
           {
-            "context": "Agent work contract",
+            "context": "Tools offline tests",
             "app": {
               "databaseId": 15368
             }
           },
           {
             "context": "Queue-sensitive checks (aggregate)",
-            "app": {
-              "databaseId": 15368
-            }
-          },
-          {
-            "context": "Migration guarded merge authorization",
             "app": {
               "databaseId": 15368
             }
@@ -126,6 +147,10 @@
         "app_id": 15368
       },
       {
+        "context": "Destructive SQL outside migrations",
+        "app_id": 15368
+      },
+      {
         "context": "Domain ownership",
         "app_id": 15368
       },
@@ -135,6 +160,10 @@
       },
       {
         "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Merge queue gate",
         "app_id": 15368
       },
       {
@@ -162,6 +191,10 @@
         "app_id": 15368
       },
       {
+        "context": "supabase/tests against an ephemeral database",
+        "app_id": 15368
+      },
+      {
         "context": "Tools offline tests",
         "app_id": 15368
       }
@@ -169,22 +202,25 @@
   },
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-09-20T19:43:42.549Z",
+  "capturedIso": "2026-09-28T00:47:14.780Z",
   "strict": false,
   "contexts": [
     "Agent work contract",
     "Cancelled work guard",
     "Cross-PR object collision",
+    "Destructive SQL outside migrations",
     "Domain ownership",
     "Handoff contract",
     "Intake pointer guard",
+    "Merge queue gate",
     "Migration author lease",
     "Migration guarded merge authorization",
     "Orchestrator marker guard",
     "Promotion contract tests (offline)",
     "Queue-sensitive checks (aggregate)",
     "SQL migration guards",
-    "Tools offline tests"
+    "Tools offline tests",
+    "supabase/tests against an ephemeral database"
   ],
   "checks": [
     {
@@ -200,6 +236,10 @@
       "app_id": 15368
     },
     {
+      "context": "Destructive SQL outside migrations",
+      "app_id": 15368
+    },
+    {
       "context": "Domain ownership",
       "app_id": 15368
     },
@@ -209,6 +249,10 @@
     },
     {
       "context": "Intake pointer guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Merge queue gate",
       "app_id": 15368
     },
     {
@@ -233,6 +277,10 @@
     },
     {
       "context": "SQL migration guards",
+      "app_id": 15368
+    },
+    {
+      "context": "supabase/tests against an ephemeral database",
       "app_id": 15368
     },
     {

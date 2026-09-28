@@ -36,7 +36,7 @@ Albert has five or more AI sessions that sit idle "waiting" on pull requests tha
 
 - `popcre/shared-db`: the single source of truth for the shared Supabase database used by CRM, DAM, PM/PIM and DesignFlow. Every schema change lands here via branch + PR + merge queue. Workflows live in `.github/workflows/` (49 files). Required checks on `main` come from branch protection (`gh api repos/popcre/shared-db/branches/main/protection`).
 - `popcre/ai-devops`: the shared AI toolkit (`bin/ai-pr-wait`, `bin/ai-blocker-watch`, `bin/ai-task-gates`, `bin/ai-review-pool`, reviewer wrappers). Its `main` uses rulesets ("main: pull request + merge queue"), not classic protection. Its single big CI workflow is `verify` (Linux + long Windows shards).
-- Sessions run on edge-dev, edge-dev2, edge-dev3 and Windows machines, all sharing one GitHub App installation / user token quota of 5,000 requests per hour.
+- Albert's sessions run on three development machines — a Windows 11 PC, an Ubuntu desktop and an Ubuntu server (details in the private atlas, `ai-private-config path machine_atlas`) — each with its own `gh` user login (user-token quota, 5,000/hour, shared by every session using that login). CI gates use the separate per-repo Actions token. Windows-specific: bare `bash` is WSL; Windows CI shards run on self-hosted runners on machines also used interactively (ai-devops #185). Steps 1–5 are machine-independent (they run in Actions); Step 6 touches Windows runners; Step 7 must work on Windows PowerShell and Linux alike.
 
 ## 3. What triggered this work
 
@@ -105,6 +105,7 @@ Gate: file lists each workflow's hourly spend and the quota/genuine split for th
 
 ### Step 2 — One conditional snapshot inside existing workflows
 `needs:` only works inside one workflow file, and `github-conditional.mjs` single-flight is local to one runner VM. So: create one workflow file `.github/workflows/coordination-gates.yml` with a `snapshot` job (paginates open PRs + issues once through `scripts/lib/github-conditional.mjs`, uploads `snapshot.json` as an artifact) and three jobs with `needs: snapshot` whose `name:` strings are exactly the existing required contexts (`Cross-PR object collision`, `Migration author lease`, `Orchestrator marker guard`) and which read the artifact instead of calling the API. Remove only the PR/merge_group triggers of the three old files after 3 days of identical results; keep each unchanged context name; keep `orchestrator-marker-guard.yml` `schedule`/`push` legs; keep `merge-queue-gate.yml:147` and `guarded-migration-merge.yml:185,201-202` merge-time calls untouched. Cancelled work guard is offline and is not touched.
+Also retarget `CONTEXT_MAP` in `scripts/check-merge-queue-workflows.test.mjs` to the new file, and never emit the same job name from old and new workflows at once (switch triggers in one PR).
 Gate: Step 1 logging shows per-PR spend for these gates at least halved; existing tests `scripts/check-merge-queue-workflows.test.mjs`, `migration-author-lease.yml` suite and `Tools offline tests` green.
 
 ### Step 3 — Automatic re-run after quota reset
@@ -119,7 +120,8 @@ Gate: failures of type "contract without report / report without contract" = 0 o
 Post the Step 1–4 evidence on #3306 (refactor tracker, Step 6 row) proposing one combined coordination context; Albert decides. Only after approval, change via a tool change to `scripts/update-required-checks.mjs` reviewed under §5.0-C, never a hand-written protection PUT.
 Gate: a decision comment on #3306.
 
-### Step 6 — ai-devops `verify`
+### Step 6 — ai-devops `verify` (Windows: see ai-devops #185, #961, #963, #1008)
+Windows shards run on self-hosted runners that share Albert's Windows PC-class machines with interactive sessions (#185); PR #1008 covers the protected Windows install. Do not duplicate those; this step fixes only the fast-classifier and linux-offline shard failures (new child issue).
 Fix the classifier/offline shard failures on #1006 from `gh run view --log-failed` (a real test fix). Then move Windows shards to `merge_group` + nightly; PRs run Linux shards.
 Gate: #1006 green; median PR `verify` < 10 min.
 
@@ -134,7 +136,7 @@ Gate: quota/paperwork failures < 5% of PR runs.
 ## 10. Tests required
 - `tests/gh-poll-budget.test.mjs` (ai-devops): shared cache, ETag 304 path, one-poller lock.
 - `scripts/lib/github-conditional.test.mjs` extensions: snapshot reuse across jobs; partial pagination never treated as complete.
-- `tests/task-gates-evidence-pair.test.mjs` (ai-devops): `ai-task-gates` always writes both contract and report.
+- `tests/task-gates-evidence-pair.test.mjs` (ai-devops): `ai-task-gates` always writes both `contract.json` and `completion.json`.
 - Existing: `Tools offline tests`, `scripts/check-review-parallelism-brief.mjs`, `scripts/check-exact-head-approval.mjs` stay green.
 
 Adversarial cases (trust boundary = GitHub API responses):

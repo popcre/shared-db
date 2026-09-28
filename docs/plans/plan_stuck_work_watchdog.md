@@ -41,6 +41,15 @@ Same as the companion plan §2: `popcre/shared-db` (shared database contracts, 4
 In: detection of stuck PRs in popcre/shared-db and popcre/ai-devops; automatic retry of infrastructure failures; fixer dispatch; owner notification.
 NOT in: changing which checks are required (companion plan); reviewer rotation; production or database actions — the watchdog never merges structural PRs, applies migrations, or bypasses a gate.
 
+## 4a. Albert's three development machines
+
+Albert works from three machines (concrete names/addresses live in the private atlas: `ai-private-config path machine_atlas`): a **Windows 11 PC** (PowerShell 7; bare `bash` is WSL and drops injected environment), an **Ubuntu desktop** (edge-dev3-class, Claude + Codex sessions), and an **Ubuntu server**. Self-hosted Windows CI runners share physical machines with interactive lanes (ai-devops #185).
+
+- **Where the watchdog runs:** on a GitHub-hosted `ubuntu-latest` runner (scheduled workflow in popcre/ai-devops). None of the three machines has to be awake, logged in, or have `gh` authenticated. This is deliberate: the census (atlas §"Agent harness census") shows expired Claude OAuth and unauthenticated `gh` on some machines, which is exactly how local wake-ups silently fail today.
+- **How each machine's sessions are seen:** the watchdog does not inspect machines. It sees sessions only through what they leave on GitHub — pushes, reviews, comments signed `Posted by Claude chat <id> on <machine>`, and `ai-blocker-watch` registrations (issue comments / `ai-blocker-watch:parked` markers). The daily stuck report groups items by the `<machine>` in the last signature so Albert can tell which box went quiet.
+- **Fixer routine:** a Claude scheduled cloud routine (no machine dependency). Fallback if cloud routines are unavailable: the Ubuntu server runs it from cron with its own worktree, because it is always on; never the Windows PC (WSL env trap, interactive CI contention) and never the desktop (sleeps).
+- **Windows differences the fixer must respect:** failures that only occur on Windows shards (path separators, `isMainModule` checks — see shared-db PR #3668, WSL `bash`) are real failures, not infrastructure; the watchdog never re-runs them. Windows runner capacity is tracked in ai-devops #185, #961 (WarpBuild Azure Windows CI) and #963 (admit EDGE-DEV); the watchdog reports "Windows runner queue > 30 min" as an infrastructure item routed to #961 rather than dispatching a code fixer.
+
 ## 5. Does anything notice stuck work today? — Answer: partially, and nothing clears or reassigns
 
 Existing scheduled workflows in shared-db (read their headers in `.github/workflows/`):
@@ -127,20 +136,27 @@ Risks: re-run loops burning quota (mitigated: once per SHA, quota floor); fixer 
 
 ## 14. Is GitHub the right fit for this many-agent workflow? — Recommendation
 
-Options considered:
-- **Keep GitHub PRs + Actions + ~16 custom gate checks (today).** Custom gates re-implement coordination (leases, collisions, markers) by each scanning the whole API; that is what exhausts the quota and turns coordination into red checks nobody owns.
-- **Graphite (stacked PRs + its merge queue).** Better stacking UX, but the problem is not stacking; it adds a vendor and still runs the same checks.
-- **Buildkite.** Faster/cheaper runners, fixes Windows shard time only; does not address ownership or coordination.
-- **Linear / a task queue as the source of work.** Good for assignment, but duplicates GitHub Issues, which already hold the queue and orchestrator markers.
-- **Trunk-based with a single integrator agent.** One agent owns landing: sessions push branches, the integrator batches, runs checks, fixes or bounces. Solves "nobody owns red checks" directly, but a single agent is a single point of failure and a bottleneck for four apps.
-- **GitHub native merge queue with few checks + watchdog.** Keep GitHub (the whole toolkit, sync, rulesets and history are built on it), cut API spend and fix quota-failed gates (companion plan), propose fewer required contexts to Albert, and let the queue serialize landing; the watchdog supplies the missing owner.
+The failure today is not GitHub's merge model; it is (a) coordination re-implemented as ~16 required custom checks that each scan the API and starve the Actions token, (b) no owner for a red check, and (c) slow, contended Windows runners. Any option must fix those three.
 
-**Recommendation: stay on GitHub, and finish the work already in flight rather than start a new platform — refactor plan Step 6 (required-check authority, #3361) and Step 8 (native merge queue, PR #3567 / #2530), then use it plainly — native merge queue, a smaller required set only if Albert approves it (companion plan Step 5), shared API snapshot for coordination gates, and this watchdog as the owner of stuck work.** It is the smallest change that removes today's actual failure causes (quota-starved gates, no owner for red checks) without a migration. Revisit a single integrator agent only if, after the 7-day proof, PRs still wait more than two hours on each other.
+Prices are approximate public list prices as of 2026 and must be re-checked before buying.
+
+| Option | Fixes (a) quota/gates | Fixes (b) no owner | Fixes (c) Windows | Cost | Migration effort |
+|---|---|---|---|---|---|
+| **GitHub + native merge queue, rulesets consolidated, this watchdog, WarpBuild/self-hosted Windows runners** | yes (companion plan) | yes (watchdog) | yes (#961/#963) | ~$0 new platform cost; runner minutes (WarpBuild Windows, roughly cents per minute) | none — work already in flight (refactor Steps 6/8, #961) |
+| GitHub + Mergify | partly (its queue/batching; still runs same checks) | no (it merges, doesn't fix) | no | ~$20–30 per active user/month | low (config file), but duplicates native queue work already built |
+| GitHub + Graphite | no (stacking, not coordination) | no | no | ~$20–40 per user/month | low–medium; agents must learn its CLI |
+| GitHub + Trunk merge queue | partly (parallel/batched queue, flaky-test quarantine) | no | no | free tier; paid ~$ per seat | low; replaces native queue |
+| GitLab (SaaS Premium or self-managed) | only by rewriting the same gates as GitLab CI | no | needs its own Windows runners | ~$29 per user/month Premium | very high: 49 workflows, rulesets, sync to four app repos, every tool in ai-devops speaks `gh` |
+| Gitea/Forgejo self-hosted | Actions-compatible, own API with no quota | no | own runners | server + admin time | very high, plus Albert becomes operator of a critical service |
+| Linear (or similar) as the agent task queue | no (code still lands via GitHub) | partly (assignment and SLAs) | no | ~$8–14 per user/month | medium; duplicates GitHub Issues that already hold the queue, markers and owner rulings |
+| Trunk-based with a single integrator agent | yes (one lander) | yes | no | agent cost | medium; single point of failure for four apps |
+
+**Recommendation: stay on GitHub with no new vendor.** Finish the native merge queue (refactor Step 8, PR #3567 / #2530) and required-check authority (Step 6), cut API spend with the companion plan, add this watchdog as the owner of stuck work, and move Windows CI off interactive machines via ai-devops #961 (WarpBuild) / #963. Cost: runner minutes only; migration effort: none beyond work already planned. Every alternative either adds a vendor that does not fix "no owner" (Mergify, Graphite, Trunk, Linear) or requires rewriting the entire toolkit (GitLab, Forgejo). Revisit a single integrator agent only if, after the 7-day proof in Step 6, PRs still wait more than two hours on each other.
 
 ## Self-audit
 1. Fresh session can execute? Yes — definitions (§8), files and gates per step (§9), tests named (§10).
 2. Background and rejections carried? Yes — §5 inventory of existing partial alarms, §7 rejections, §14 alternatives.
-3. Goal clear? Yes — §1: within 30 min something fixes, reassigns, or tells Albert.
+3. Goal clear? Yes — §1: within 45 min something re-runs or reassigns; by 90 min Albert is told.
 
 ## Review record (2026-09-28)
 Grok REVISE / Qwen REJECT findings on this plan: SLA/idle/notify timings contradicted each other and `updatedAt` is bumped by the watchdog's own comments; `search` is eventually consistent; repo-scoped `GITHUB_TOKEN` cannot act across repos; fixer route unnamed; loose log patterns would re-run real failures; merge_group re-runs; §14 should frame the recommendation as finishing refactor Steps 6/8. All incorporated in §1, §8, §9, §11, §12, §14. The §5 inventory and adversarial table were confirmed accurate by Qwen.

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 3592,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Prefer eligible non-Grok reviewers, including Linux-supported StepFun, while keeping Grok available when the preferred pool cannot take an exact review",
+  "base_sha": "ed0603578654911c337652bd060e3470b96c322d",
+  "dispatcher": "Codex chat for owner request on 2026-09-27",
+  "worker": "codex",
+  "branch": "codex/grok-priority-3592",
+  "worktree": "/home/ahazan/repos/shared-db-grok-3592",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/active-contracts-and-plans.md",
+    ".agent/work/3592/1/contract.json",
+    ".agent/work/3592/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/active-contracts-and-plans.md",
+    ".agent/work/3592/1/contract.json",
+    ".agent/work/3592/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not touch migrations or database objects",
+    "do not retire Grok or bypass eligibility, independence, exact-head, or verdict safeguards",
+    "do not edit another session's branch, worktree, or evidence"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/lib/reviewer-capabilities.test.mjs scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "assumptions": [
+    "The source branch starts at the unmerged StepFun rotation pull request #3556; this pull request targets that branch until #3556 lands on main",
+    "A discarded prototype of this preference policy exists on a separate branch; this contract is published before any implementation changes on the current branch"
+  ],
+  "stop_conditions": [
+    "stop if StepFun's roster identity or governed capability changes upstream",
+    "stop if the policy requires a file outside allowed_paths"
+  ],
+  "generation": 1
+}

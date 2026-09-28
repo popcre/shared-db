@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3592,
+  "outcome": "ready-for-merge",
+  "pr": 3593,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3592/1",
+  "contract_sha256": "ea198eda5e81c9fa959384083c7e1f65cf9a20d008b4d0ce5ea86bdb124af2c5",
+  "head_sha": "7074b5f02ec9d8ed75bfe1e1800436cb0fd60d00",
+  "base_sha": "ed0603578654911c337652bd060e3470b96c322d",
+  "files_changed": [
+    "docs/agents/active-contracts-and-plans.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/lib/reviewer-capabilities.test.mjs scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "818 focused tests passed, zero failed, at implementation head 7074b5f02ec9d8ed75bfe1e1800436cb0fd60d00 on 2026-09-27 EDT."
+    }
+  ],
+  "assumptions_resolved": [
+    "The implementation starts at StepFun rotation PR #3556 head ed0603578654911c337652bd060e3470b96c322d and targets that branch until it lands on main.",
+    "A separate prototype was discarded; this branch's contract ref was published before its implementation commit.",
+    "No database read, write, migration, or production dispatch was performed."
+  ],
+  "stop_conditions_hit": []
+}

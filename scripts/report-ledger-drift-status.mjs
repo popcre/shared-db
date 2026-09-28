@@ -69,6 +69,9 @@ export function validateDriftResult(result) {
   if (!Number.isSafeInteger(drift.mergedCount) || drift.mergedCount < 1 || !Number.isSafeInteger(drift.appliedCount) || drift.appliedCount < 1) throw new Unknown('merged and applied counts must both be positive; an empty read is UNKNOWN')
   for (const field of ['mergedNotApplied', 'intentionallyExcluded', 'foreignTarget', 'actionableMergedNotApplied']) assertVersions(drift[field], `drift.${field}`)
   assertOrphanVersions(drift.appliedNotMerged)
+  if (drift.mergedCount - drift.appliedCount !== drift.mergedNotApplied.length - drift.appliedNotMerged.length) {
+    throw new Unknown('drift counts disagree with version gaps; refusing a possibly partial read')
+  }
   const merged = new Set(drift.mergedNotApplied)
   const partitions = [...drift.intentionallyExcluded, ...drift.foreignTarget, ...drift.actionableMergedNotApplied]
   if (partitions.length !== merged.size || new Set(partitions).size !== merged.size || partitions.some((v) => !merged.has(v))) throw new Unknown('drift classification lists disagree with mergedNotApplied')

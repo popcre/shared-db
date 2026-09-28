@@ -44,7 +44,7 @@ test('returns null when no PR number is present', () => {
 // --- status rows ------------------------------------------------------------
 
 const sampleDrift = {
-  mergedCount: 706,
+  mergedCount: 679,
   appliedCount: 676,
   mergedNotApplied: ['20260911212849', '20260817150944', '20260909121403'],
   appliedNotMerged: [],
@@ -203,6 +203,7 @@ test('validation refuses incomplete, empty, contradictory, and unsafe reads', ()
   validateDriftResult(sampleResult)
   const invalid = [
     { ...sampleResult, drift: { ...sampleResult.drift, appliedCount: 0 } },
+    { ...sampleResult, drift: { ...sampleResult.drift, mergedCount: 706 } },
     { ...sampleResult, target: undefined },
     { ...sampleResult, baseRef: '--output=/tmp/oops' },
     { ...sampleResult, drift: { ...sampleResult.drift, driftFound: false } },
@@ -213,7 +214,7 @@ test('validation refuses incomplete, empty, contradictory, and unsafe reads', ()
 })
 
 test('malformed orphan ledger versions remain visible and escaped', () => {
-  const result = { ...sampleResult, drift: { ...sampleResult.drift, appliedNotMerged: ['bad|version'], driftFound: true } }
+  const result = { ...sampleResult, drift: { ...sampleResult.drift, mergedCount: 678, appliedNotMerged: ['bad|version'], driftFound: true } }
   validateDriftResult(result)
   const report = formatStatusReport({ ...result, rows: [] })
   assert.match(report, /bad\\\|version.*malformed ledger version/)
@@ -256,11 +257,23 @@ test('CLI consumes producer-shaped stdin and preserves drift exit 1', async () =
 })
 
 test('CLI reports a verified clean read with exit 0 and non-actionable counts', async () => {
-  const clean = { ...sampleResult, drift: { ...sampleResult.drift, mergedNotApplied: ['20260817150944', '20260909121403'], actionableMergedNotApplied: [], driftFound: false }, pendingClassifications: Object.fromEntries(Object.entries(sampleResult.pendingClassifications).filter(([version]) => version !== '20260911212849')) }
+  const clean = { ...sampleResult, drift: { ...sampleResult.drift, mergedCount: 678, mergedNotApplied: ['20260817150944', '20260909121403'], actionableMergedNotApplied: [], driftFound: false }, pendingClassifications: Object.fromEntries(Object.entries(sampleResult.pendingClassifications).filter(([version]) => version !== '20260911212849')) }
   const harness = cliHarness(JSON.stringify(clean))
   assert.equal(await main(['--json', '-'], harness.options), 0)
   assert.match(harness.printed[0], /No actionable drift/)
   assert.match(harness.printed[0], /\*\*1\*\* retired/)
+})
+
+test('CLI refuses a truncated gap list instead of printing no actionable drift', async () => {
+  const partial = {
+    ...sampleResult,
+    drift: { ...sampleResult.drift, mergedNotApplied: [], intentionallyExcluded: [], foreignTarget: [], actionableMergedNotApplied: [], driftFound: false },
+    pendingClassifications: {},
+  }
+  const harness = cliHarness(JSON.stringify(partial))
+  assert.equal(await main(['--json', '-'], harness.options), 2)
+  assert.deepEqual(harness.printed, [])
+  assert.match(harness.errors[0], /counts disagree with version gaps/)
 })
 
 test('CLI refuses broken git attribution with exit 2', async () => {

@@ -134,10 +134,15 @@ test('#2301 a retirement record refuses an unknown field, a short head SHA, a ba
   assert.throws(() => validateRetirementRecord(record({ worktree_state: 'vanished' })), /worktree_state must be one of/)
 })
 
-test('#2301 retiring unmerged work needs a durable owner decision, not a typed sentence', () => {
-  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty' })), /requires an owner-decision record/)
-  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'remote' })), /requires an owner-decision record/)
-  assert.throws(() => validateRetirementRecord(record({ owner_decision: 'the owner said fine' })), /allowed only for a dirty or remote/)
+test('#3675 retiring unmerged work needs preservation evidence and an AI reviewer APPROVE, never an owner decision', () => {
+  const art = 'artifact:' + 'a'.repeat(40)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty' })), /requires a preservation artifact/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'remote' })), /requires a preservation artifact/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: art })), /AI reviewer APPROVE artifact/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: 'rescued it', review_approval: art })), /retirement preservation must be artifact/)
+  assert.equal(validateRetirementRecord(record({ worktree_state: 'remote', preservation: art, review_approval: art })).review_approval, art)
+  assert.throws(() => validateRetirementRecord(record({ preservation: art })), /allowed only for a dirty or remote/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: art, review_approval: art, owner_decision: art })), /unknown field owner_decision/)
 })
 
 test('#2301 a retirement record survives a format and parse round trip', () => {

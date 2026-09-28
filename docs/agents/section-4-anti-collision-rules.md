@@ -383,7 +383,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    | `curated-master-data` | `fork` | a fresh session **dispatched by this orchestrator**, under §6.4 |
    | `application-data`, `source-data` | `reject` | the owning application repository, after being forwarded |
    | `repo-maintenance`, `documentation` | `repo-session` | a **separately started** repository session — not an orchestrator assignment at all |
-   | `security-settings` | `return-to-owner` | Albert |
+   | `security-settings` | `repo-session` | a **separately started** AI session that obtains the needed access itself (owner ruling 2026-09-28, #3675: never ask a human to approve) |
 
    **Owner ruling, 2026-08-21 (issue #1366).** The orchestrator does database
    structure and schema only. `repo-maintenance` and `documentation` are not

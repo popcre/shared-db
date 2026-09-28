@@ -106,8 +106,11 @@ export const RETIREMENT_RECORD_PREFIX = 'db-claim-retirement '
 export const RETIREMENT_DECISIONS = Object.freeze(['abandoned-worktree', 'superseded-by-successor', 'owner-terminated'])
 // A worktree that is dirty or on another machine holds unmerged author work, so
 // retiring it destroys something nobody in this process can see. Those two states
-// require a durable owner-decision artifact; clean and absent do not.
-export const RETIREMENT_OWNER_DECISION_STATES = Object.freeze(['dirty', 'remote'])
+// require durable preservation evidence (a rescue branch or patch artifact) plus
+// the allocator-assigned AI reviewer's APPROVE artifact; clean and absent do not.
+// Owner ruling 2026-09-28 (#3675): never ask a human to approve, so this is no
+// longer an owner decision.
+export const RETIREMENT_PRESERVATION_STATES = Object.freeze(['dirty', 'remote'])
 // Sized like REVIEW_REF_ROW_LIMIT: one version per retirement, and this
 // repository has spent a few hundred versions in its whole history. At this
 // ceiling a silently truncated listing becomes plausible, and a truncated
@@ -901,14 +904,16 @@ export const NON_STRUCTURAL_EXITS = Object.freeze({
   // takes no action at all: it does not work them and it does not dispatch them.
   'repo-maintenance': 'repo-session',
   documentation: 'repo-session',
-  // RETURN-TO-OWNER. A security-settings change needs authority the orchestrator
-  // does not have, so it goes to Albert rather than to any session.
-  'security-settings': 'return-to-owner',
+  // REPO-SESSION. A security-settings change needs access the orchestrator does
+  // not have. Owner ruling 2026-09-28 (#3675, "never ask a human to approve"):
+  // it goes to a separately started AI session that obtains that access itself,
+  // never back to Albert.
+  'security-settings': 'repo-session',
 })
 
 // Exits that mean "this is not the orchestrator's work AND the orchestrator has
 // nothing to do about it" - visible to an audit, never a worklist.
-export const OUTSIDE_ORCHESTRATOR_EXITS = Object.freeze(['repo-session', 'return-to-owner'])
+export const OUTSIDE_ORCHESTRATOR_EXITS = Object.freeze(['repo-session'])
 
 // A REJECT exit must MOVE the task, never merely decline it. `return_to` is the
 // forwarding address: the repository whose session owns the work. Rejecting
@@ -1957,6 +1962,7 @@ export function normalizeRetirementIdentity(value) {
   return String(value ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
+const RETIREMENT_PRESERVATION_FIELDS = Object.freeze(['preservation', 'review_approval'])
 const RETIREMENT_REQUIRED_FIELDS = Object.freeze(['schema_version', 'claim', 'pr', 'head_sha', 'branch', 'version', 'worktree', 'worktree_state', 'decision', 'evidence', 'successor_issue', 'created_at'])
 
 /**
@@ -1971,7 +1977,7 @@ export function validateRetirementRecord(record) {
   // Unknown keys are refused for the same reason the work contract refuses them:
   // a typo silently drops a binding, and a dropped binding is indistinguishable
   // from one that was never required.
-  for (const key of Object.keys(record)) if (!RETIREMENT_REQUIRED_FIELDS.includes(key) && key !== 'owner_decision') throw new LaneError(`retirement record has unknown field ${key}`)
+  for (const key of Object.keys(record)) if (!RETIREMENT_REQUIRED_FIELDS.includes(key) && !RETIREMENT_PRESERVATION_FIELDS.includes(key)) throw new LaneError(`retirement record has unknown field ${key}`)
   if (record.schema_version !== RETIREMENT_SCHEMA_VERSION) throw new LaneError(`retirement record schema_version must be ${RETIREMENT_SCHEMA_VERSION}`)
   if (!Number.isInteger(record.claim) || record.claim <= 0) throw new LaneError('retirement record claim must be a positive issue number')
   if (!Number.isInteger(record.pr) || record.pr <= 0) throw new LaneError('retirement record pr must be a positive pull request number')
@@ -1985,13 +1991,17 @@ export function validateRetirementRecord(record) {
   if (record.successor_issue !== null && (!Number.isInteger(record.successor_issue) || record.successor_issue <= 0)) throw new LaneError('retirement record successor_issue must be a positive issue number or null')
   if (record.decision === 'superseded-by-successor' && record.successor_issue === null) throw new LaneError('a superseded-by-successor retirement must name its successor issue')
   if (Number.isNaN(Date.parse(String(record.created_at)))) throw new LaneError('retirement record created_at must be a valid ISO timestamp')
-  // Unmerged work on a dirty or remote tree is destroyed by retirement, so the
-  // decision must be durable and dereferenceable, never a sentence typed at the
-  // command line.
-  if (RETIREMENT_OWNER_DECISION_STATES.includes(record.worktree_state)) {
-    if (!record.owner_decision) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires an owner-decision record`)
-    validateImmutableArtifactReference(record.owner_decision, 'retirement owner_decision')
-  } else if (record.owner_decision !== undefined) throw new LaneError('owner_decision is allowed only for a dirty or remote worktree retirement')
+  // Unmerged work on a dirty or remote tree would be destroyed by retirement, so
+  // it must first be preserved (rescue branch or patch) and an allocator-assigned
+  // AI reviewer must APPROVE the retirement. Both are durable, dereferenceable
+  // artifacts, never a sentence typed at the command line, and never a human
+  // approval (owner ruling 2026-09-28, #3675).
+  if (RETIREMENT_PRESERVATION_STATES.includes(record.worktree_state)) {
+    if (!record.preservation) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires a preservation artifact (rescue branch or patch)`)
+    validateImmutableArtifactReference(record.preservation, 'retirement preservation')
+    if (!record.review_approval) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires an allocator-assigned AI reviewer APPROVE artifact`)
+    validateImmutableArtifactReference(record.review_approval, 'retirement review_approval')
+  } else if (RETIREMENT_PRESERVATION_FIELDS.some((key) => record[key] !== undefined)) throw new LaneError('preservation and review_approval are allowed only for a dirty or remote worktree retirement')
   return record
 }
 
@@ -9120,7 +9130,7 @@ function parseArgs(argv) {
       if (!RETIREMENT_DECISIONS.includes(decision)) throw new LaneError(`--retire must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
       out.retire = decision
     }
-    else if (['--successor-issue','--owner-decision'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (['--successor-issue','--preservation','--review-approval'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if (a === '--release-duplicate-claim') out.releaseDuplicateClaim = next(i), i++
     else if (a === '--confirm-finished') out.confirmFinished = true
     else if (a === '--recover-author-mutex') out.recoverMutex = true
@@ -9635,7 +9645,8 @@ export function main(argv, now = new Date(), io = githubIo) {
             successor_issue:o.successorIssue?Number(o.successorIssue):null,
             created_at:now.toISOString(),
           }
-          if(o.ownerDecision)record.owner_decision=o.ownerDecision
+          if(o.preservation)record.preservation=o.preservation
+          if(o.reviewApproval)record.review_approval=o.reviewApproval
           requireOwnedRef(MUTEX_REF,ownerSha,io)
           const tombstone=createRetirementTombstone(record,io)
           requireOwnedRef(MUTEX_REF,ownerSha,io)

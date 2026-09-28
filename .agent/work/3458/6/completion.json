@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "work_issue": 3458,
+  "outcome": "ready-for-merge",
+  "pr": 3487,
+  "migration_versions": [
+    "20260928003740"
+  ],
+  "contract_ref": "refs/db-contracts/3458/6",
+  "contract_sha256": "e2e04f7ab97aac79a0b5438d674cabca905f56f163a586538df63a95c5d62f75",
+  "head_sha": "4aaa42d262019354486c3bac68fdd89897e0f885",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "files_changed": [
+    "docs/agents/3458-caller-contract.md",
+    "scripts/test_3458_index_guard.test.mjs",
+    "supabase/migrations/20260928003740_popsg_refresh_steps_under_ceiling.sql",
+    "supabase/tests/issue_3458_steppable_refresh_ephemeral.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed at implementation checkpoint 4aaa42d2 on base 4b91483c."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "44 migration derivation tests passed at checkpoint 4aaa42d2."
+    },
+    {
+      "command": "node --test scripts/test_3458_index_guard.test.mjs",
+      "exit_code": 0,
+      "evidence": "5 of 5 tests passed: file_groups guard keeps unique/valid/plain/nonpartial without an exact name; folders guard unchanged; regression fixtures present; no statement timeout raised."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in 4b91483c...4aaa42d2."
+    },
+    {
+      "command": "Database Contract Tests on isolated ephemeral database",
+      "exit_code": 0,
+      "evidence": "workflow_dispatch run 36420339366 succeeded on disposable branch claude/3458-gen6-ephemeral-proof at exact checkpoint 4aaa42d2; issue_3458_steppable_refresh_ephemeral.sql reported all 6 checks passed after the four index-guard fixtures. Migration SHA-256 c8387167cbd822ac8df8c0def3fb7d778cd24f0c8877427a33b7bc4d1d7769a5, test SHA-256 3aa0789306356075c8db344c944bfb9c2e20b2f8b4424fbd48f072af697b68e7."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 6 succeeds immutable generation 5 (contract e0782142) under claim #3483, version 20260928003740, object function public.refresh_style_guide_matviews.",
+    "Only the exact-name requirement for style_guide_file_groups was removed; unique, valid, plain-column and non-partial requirements remain, and the folders guard is unchanged.",
+    "The legacy (uuid,integer) body is untouched by this generation's diff.",
+    "Failed preview apply 36414234942 left preview ledger 697 unchanged; old f5 PREVIEW_READY, dry-run and reviews are void for this head."
+  ],
+  "stop_conditions_hit": []
+}

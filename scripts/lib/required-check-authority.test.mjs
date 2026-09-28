@@ -103,6 +103,10 @@ test('probe proves both authority reads; a denial names the missing permission a
   const result = probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: okRead })
   assert.equal(result.ok, true)
   assert.deepEqual(result.proven, ['GraphQL branchProtectionRule', 'REST /rules/branches'])
+  assert.throws(() => probeAuthorityReadPermissions({ repo: 'popcre/shared-db', read: (args) => {
+    if (args.includes('graphql')) return { data: { repository: { ref: { name: 'main', branchProtectionRule: null } } } }
+    return [[]]
+  } }), /null or incomplete protection/)
   const deny = (args) => {
     const err = Error('gh: Resource not accessible by integration (HTTP 403)')
     err.stderr = 'gh: Resource not accessible by integration (HTTP 403)'

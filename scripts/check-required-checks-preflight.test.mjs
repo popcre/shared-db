@@ -81,6 +81,29 @@ test('gather checks effective settings before and after paginated statuses and r
   assert.throws(() => gatherPreflightInput({ REQUESTED_SHA: sha }, { repo: 'popcre/shared-db', json: liveRead({ deny: true }) }), /no snapshot fallback/)
   assert.throws(() => gatherPreflightInput({ REQUESTED_SHA: sha }, { repo: 'popcre/shared-db', json: liveRead({ truncate: true }) }), /pagination returned only/)
 })
+test('authority reads use AUTHORITY_TOKEN only and restore GH_TOKEN for status reads', () => {
+  const previous = process.env.GH_TOKEN
+  process.env.GH_TOKEN = 'ordinary-test-token'
+  const observed = []
+  const source = liveRead()
+  try {
+    const input = gatherPreflightInput({ REQUESTED_SHA: sha, AUTHORITY_TOKEN: 'authority-test-token' }, {
+      repo: 'popcre/shared-db',
+      json(args) {
+        observed.push({ authority: args.includes('graphql') || args.some((arg) => String(arg).includes('/rules/branches/')), token: process.env.GH_TOKEN })
+        return source(args)
+      },
+    })
+    assert.equal(evaluatePreflight(input).required, 1)
+    assert.ok(observed.some(({ authority, token }) => authority && token === 'authority-test-token'))
+    assert.ok(observed.some(({ authority, token }) => !authority && token === 'ordinary-test-token'))
+    assert.ok(observed.every(({ authority, token }) => token === (authority ? 'authority-test-token' : 'ordinary-test-token')))
+    assert.equal(process.env.GH_TOKEN, 'ordinary-test-token')
+  } finally {
+    if (previous === undefined) delete process.env.GH_TOKEN
+    else process.env.GH_TOKEN = previous
+  }
+})
 test('pagination preserves all pages and refuses incomplete totals', () => {
   assert.deepEqual(collectPages([{ check_runs: [1] }, { check_runs: [2] }], 'check_runs'), [1, 2])
   assert.throws(() => collectPages([{}], 'check_runs'), /no usable/)

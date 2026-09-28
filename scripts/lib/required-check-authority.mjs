@@ -136,6 +136,7 @@ export function probeAuthorityReadPermissions({ repo, branch = 'main', read }) {
     const response = read(['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-f', `ref=refs/heads/${branch}`])
     if (response?.errors?.length) actionable(`GraphQL branchProtectionRule read returned errors: ${JSON.stringify(response.errors).slice(0, 200)}`)
     if (response?.data?.repository?.ref?.name !== branch) actionable('GraphQL branchProtectionRule read did not return the requested branch identity')
+    if (!named(response.data.repository.ref.branchProtectionRule?.id)) actionable('GraphQL branchProtectionRule read returned null or incomplete protection; cannot prove authority')
   } catch (error) {
     const message = String(error?.message ?? error?.stderr ?? '')
     if (/403|Forbidden|401|Unauthorized|Resource not accessible/i.test(message)) actionable(`GraphQL branchProtectionRule read denied: ${message.slice(0, 200)}`)

@@ -195,16 +195,21 @@ def verify_review(*, run_id: int, digest: str, sha: str, allowlist: list[str],
 
 
 def risk_vector(*, sha: str, allowlist: list[str], repo_root: Path) -> dict:
-    try:
-        from production_business_risk_gate import classify_sql, RISK_TEXT
-    except ImportError:
-        from .production_business_risk_gate import classify_sql, RISK_TEXT
+    # production_business_risk_gate imports its siblings by bare name, so it is
+    # only importable with this directory on sys.path, including when this module
+    # is loaded as ``scripts.production_independent_review`` from a workflow.
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from production_business_risk_gate import classify_sql, RISK_TEXT
     reasons = classify_sql(repo_root, allowlist)
+    # classify_sql returns RISK_TEXT values (the human wording), never its keys.
     expected_sql_risks = {
-        "permanent_data_rewrite_or_loss", "expected_downtime", "material_access_change"
+        RISK_TEXT[key]
+        for key in ("permanent_data_rewrite_or_loss", "expected_downtime", "material_access_change")
     }
     if (not isinstance(reasons, list) or len(reasons) != len(set(reasons))
-            or any(reason not in expected_sql_risks or reason not in RISK_TEXT for reason in reasons)):
+            or any(reason not in expected_sql_risks for reason in reasons)):
         raise EvidenceError("SQL risk classifier returned an unrecognized or ambiguous conclusion")
     return {
         "schema_version": DRY_RUN_SCHEMA,

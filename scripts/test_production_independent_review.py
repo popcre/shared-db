@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -163,6 +164,34 @@ class IndependentReviewTests(unittest.TestCase):
             self.assertEqual(vector["ordered_allowlist"], ALLOWLIST)
             self.assertIsInstance(vector["sql_risk_reasons"], list)
             self.assertEqual(json.loads(gate.canonical_json(vector)), vector)
+
+    def test_risk_vector_accepts_real_risk_reasons_from_the_classifier(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp, "supabase", "migrations")
+            folder.mkdir(parents=True)
+            (folder / f"{ALLOWLIST[0]}_risk.sql").write_text(
+                "drop table public.review_test;\n", encoding="utf-8",
+            )
+            vector = gate.risk_vector(sha=SHA, allowlist=ALLOWLIST,
+                                      repo_root=Path(temp))
+            self.assertTrue(vector["sql_risk_reasons"])
+
+    def test_package_style_workflow_import_reaches_the_risk_gate(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp, "supabase", "migrations")
+            folder.mkdir(parents=True)
+            (folder / f"{ALLOWLIST[0]}_risk.sql").write_text(
+                "drop table public.review_test;\n", encoding="utf-8",
+            )
+            code = ("import sys; from pathlib import Path\n"
+                    "sys.path[:] = [p for p in sys.path if not p.rstrip('/').endswith('scripts')]\n"
+                    "from scripts.production_independent_review import risk_vector\n"
+                    f"v = risk_vector(sha={SHA!r}, allowlist={ALLOWLIST!r}, repo_root=Path({temp!r}))\n"
+                    "assert v['sql_risk_reasons'], v\n")
+            result = subprocess.run([sys.executable, "-c", code], cwd=root,
+                                    capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_dry_run_digest_and_recomputed_risk_are_both_required(self):
         vector = {"sql_risk_reasons": ["material_access_change"]}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "generation": 6,
+  "work_issue": 3642,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Carry the bounded GitHub ZIP proof reader, historic-throughput retirement, and protected invalidator registration in one fresh PR with one evidence pair after superseding an invalid multi-pair PR",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "dispatcher": "Codex orchestrator successor chat 01a0e65a-82f1-7d93-b8fb-4440da47884d",
+  "worker": "codex",
+  "branch": "codex/3642-github-zip-proof-v2",
+  "worktree": "/home/ahazan/repos/shared-db-3642-github-zip-proof-v2",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-retired-identity-sites-*.json",
+    "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+    ".agent/work/3642/6/contract.json",
+    ".agent/work/3642/6/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-retired-identity-sites-*.json",
+    "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+    ".agent/work/3642/6/contract.json",
+    ".agent/work/3642/6/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database write or manual outcome event",
+    "No weaker run/artifact provenance or digest checks",
+    "Do not merge while root holds main"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "GitHub Actions artifact downloads are ZIP and existing run/artifact identity checks remain authoritative"
+  ],
+  "stop_conditions": [
+    "Stop on source collision or unproven artifact trust"
+  ],
+  "evidence_parent": {
+    "work_issue": 3642,
+    "generation": 5,
+    "contract_sha256": "3f0b2379e3c57cd826102c7162e1221a707ffbdfa3c419729eb026d1e46f88bb"
+  }
+}

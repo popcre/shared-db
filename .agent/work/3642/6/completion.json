@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "work_issue": 3642,
+  "outcome": "ready-for-merge",
+  "pr": 3644,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3642/6",
+  "contract_sha256": "4d87bba717169f5b18c687eac2469cc34f1c24b95bdb95fd27f2edb23b9d07e9",
+  "head_sha": "4b845e2a6b58ea3ff939eec8534befcedf33e689",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "files_changed": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-retired-identity-sites-3644.json",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+      "exit_code": 0,
+      "evidence": "741 tests pass, 0 failed, using local Python3 alias for pre-existing python-only throughput subprocesses."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=319 sources=81 derived_digest=912962ddedfb"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in final implementation diff against base 4b91483c85da7bac3421219b40252c169a455087"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "71 tests pass with local PATH alias to python3; existing python command gap is separately tracked by #3629."
+    }
+  ],
+  "assumptions_resolved": [
+    "Contract generation 6 published before any implementation commit on this fresh branch; it binds prior immutable generation 5 and this PR carries exactly one evidence pair.",
+    "The original live and production ZIP artifact bytes and SHA-256 digests were not changed. Reader smoke checks succeeded locally with the original archived bytes.",
+    "No database write, production dispatch, live_verified event, or issue closure is claimed."
+  ],
+  "stop_conditions_hit": []
+}

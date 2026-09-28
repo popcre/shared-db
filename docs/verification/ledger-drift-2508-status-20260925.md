@@ -1,6 +1,6 @@
 # Ledger drift status — issue #2508
 
-**Date:** 2026-09-25 (4:22 AM EST)  
+**Date:** 2026-09-25 (2:22 AM EDT)
 **Scope:** detection/reporting tooling and documentation. No production apply.  
 **Work type:** repo-maintenance / non-orchestrator.
 
@@ -13,7 +13,7 @@ NOT RUN") and not an orphan-ledger-row case.
 
 Evidence: run
 [36102579956](https://github.com/popcre/shared-db/actions/runs/36102579956)
-at main `4b74a8696`, 2026-09-25 06:22 UTC.
+at main `4b74a86965e937917a99d05fd5e427b7ac4388b3`, 2:22 AM EDT on 2026-09-25.
 
 ## Current drift state
 
@@ -28,7 +28,7 @@ at main `4b74a8696`, 2026-09-25 06:22 UTC.
 
 ### Promotion candidates — 6 genuinely-pending versions
 
-| version | source PR | file |
+| version | commit reference (PR or issue; unverified) | file |
 |---|---|---|
 | `20260911212849` | #2746 | `20260911212849_shared_style_group_sku_key.sql` |
 | `20260914061331` | #2882 | `20260914061331_classify_dcp_inventory_families.sql` |
@@ -40,6 +40,9 @@ at main `4b74a8696`, 2026-09-25 06:22 UTC.
 Each version needs a production apply through the bounded Shared Supabase
 Migrations workflow. That lane is the orchestrator's single production lane.
 **No production action was taken by this session.**
+The references above were recovered from historical commit subjects; this
+snapshot does not independently prove that each number names a PR. Re-run the
+drift check and reporter for current counts and attribution before quoting it.
 
 The 23 retired/deliberately-held versions and 1 foreign-target version are
 listed in the check output for visibility but do not make the check fail. The
@@ -52,12 +55,13 @@ live catalog is not proof that work was never done (issue #892).
 attribution recovered from git first-parent history. It is read-only: no
 database write, no workflow dispatch, no production touch.
 
-Usage:
+Usage in Bash (both commands preserve the check's drift exit status):
 
+    set -o pipefail
     node scripts/check-migration-ledger-drift.mjs --target production --json \
       | node scripts/report-ledger-drift-status.mjs --json -
 
-Tests: `node --test scripts/report-ledger-drift-status.test.mjs` (16 tests).
+Tests: `node --test scripts/report-ledger-drift-status.test.mjs`.
 
 ## Issue #2508 disposition
 

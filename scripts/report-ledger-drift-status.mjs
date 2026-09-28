@@ -19,12 +19,11 @@
 // never dispatches a workflow, and never touches production.
 //
 //   node scripts/report-ledger-drift-status.mjs --json drift.json
+//   set -o pipefail  # Bash: preserve both commands' failure status
 //   node scripts/check-migration-ledger-drift.mjs --target production --json \
 //     | node scripts/report-ledger-drift-status.mjs --json -
 //
-// Exit 0 = report generated. Exit 2 = COULD NOT generate (missing input, bad JSON,
-// or no actionable versions to attribute — which is a clean-drift answer, not this
-// tool's failure mode; use the drift check itself for that verdict).
+// Exit 0 = no actionable drift. Exit 1 = actionable drift. Exit 2 = UNKNOWN.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -32,8 +31,55 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+async function readStdin() {
+  if (process.stdin.isTTY) throw new Unknown('stdin is a terminal; supply drift JSON or a file path')
+  let raw = ''
+  for await (const chunk of process.stdin) raw += chunk
+  return raw
+}
 
-export class Unknown extends Error {}
+export class Unknown extends Error {
+  constructor(message) { super(message); this.name = 'Unknown' }
+}
+
+const VERSION = /^\d{14}$/
+const REF = /^[A-Za-z0-9_./-]+$/
+const safeText = (value) => String(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/`/g, "'").replace(/\|/g, '\\|')
+
+function assertVersions(values, field) {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'string' || !VERSION.test(value)) || new Set(values).size !== values.length) {
+    throw new Unknown(`${field} must be an array of unique 14-digit versions`)
+  }
+}
+
+/** Refuse partial, contradictory, or unsafe JSON rather than reporting it as clean. */
+export function validateDriftResult(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Unknown('drift JSON must be an object')
+  if (!['production', 'preview'].includes(result.target)) throw new Unknown('drift JSON has no supported target')
+  if (typeof result.projectRef !== 'string' || !/^[a-z0-9]+$/.test(result.projectRef)) throw new Unknown('drift JSON has no valid projectRef')
+  if (typeof result.baseRef !== 'string' || !REF.test(result.baseRef) || result.baseRef.startsWith('-') || result.baseRef.includes('..')) throw new Unknown('drift JSON has no safe baseRef')
+  const { drift, fileByVersion, pendingClassifications } = result
+  if (!drift || typeof drift !== 'object' || Array.isArray(drift)) throw new Unknown('drift JSON has no drift object')
+  if (!Number.isSafeInteger(drift.mergedCount) || drift.mergedCount < 1 || !Number.isSafeInteger(drift.appliedCount) || drift.appliedCount < 1) throw new Unknown('merged and applied counts must both be positive; an empty read is UNKNOWN')
+  for (const field of ['mergedNotApplied', 'appliedNotMerged', 'intentionallyExcluded', 'foreignTarget', 'actionableMergedNotApplied']) assertVersions(drift[field], `drift.${field}`)
+  const merged = new Set(drift.mergedNotApplied)
+  const partitions = [...drift.intentionallyExcluded, ...drift.foreignTarget, ...drift.actionableMergedNotApplied]
+  if (partitions.length !== merged.size || new Set(partitions).size !== merged.size || partitions.some((v) => !merged.has(v))) throw new Unknown('drift classification lists disagree with mergedNotApplied')
+  const found = drift.actionableMergedNotApplied.length > 0 || drift.appliedNotMerged.length > 0
+  if (typeof drift.driftFound !== 'boolean' || drift.driftFound !== found) throw new Unknown('driftFound disagrees with actionable and orphan rows')
+  if (!fileByVersion || typeof fileByVersion !== 'object' || Array.isArray(fileByVersion)) throw new Unknown('drift JSON has no fileByVersion')
+  if (!pendingClassifications || typeof pendingClassifications !== 'object' || Array.isArray(pendingClassifications)) throw new Unknown('drift JSON has no pendingClassifications')
+  if (Object.keys(pendingClassifications).length !== merged.size || [...merged].some((v) => !Object.hasOwn(pendingClassifications, v))) throw new Unknown('pending classifications do not match mergedNotApplied')
+  for (const version of merged) {
+    const row = pendingClassifications[version]
+    if (!row || typeof row.kind !== 'string' || !['genuinely-pending', 'guarded-batch', 'deliberately-held', 'retired', 'base-absent', 'foreign-target'].includes(row.kind) || typeof row.reason !== 'string' || !row.reason.trim()) throw new Unknown(`pending migration ${version} has no valid classification`)
+  }
+  for (const version of drift.actionableMergedNotApplied) {
+    const file = fileByVersion[version]
+    if (typeof file !== 'string' || !file.startsWith(`supabase/migrations/${version}`) || !file.endsWith('.sql')) throw new Unknown(`actionable migration ${version} has no valid file`)
+  }
+  return result
+}
 
 // ---------------------------------------------------------------------------
 // Pure logic — no network, no filesystem.
@@ -43,9 +89,7 @@ export class Unknown extends Error {}
  * Recover a GitHub PR number from a commit subject.
  *
  * Merge commits carry `Merge pull request #1234 from ...`. Squash and rebase
- * merges carry a trailing `(#1234)`. A bare `#1234` anywhere in the subject is
- * accepted as a last resort because several migrations reference their work
- * issue that way and the number is still the right pointer for a human.
+ * merges carry a trailing `(#1234)`. A bare issue reference is not a PR.
  */
 export function prNumberFromSubject(subject) {
   const text = String(subject ?? '')
@@ -53,25 +97,22 @@ export function prNumberFromSubject(subject) {
   if (merge) return Number(merge[1])
   const squash = text.match(/\(#(\d+)\)\s*$/)
   if (squash) return Number(squash[1])
-  const any = text.match(/#(\d+)/)
-  if (any) return Number(any[1])
   return null
 }
 
 /**
  * One status row per actionable version. `attribution` is a map of version ->
- * { commit, subject, pr } as recovered from git; missing entries are tolerated
- * and rendered as "unattributed" rather than failing the whole report.
+ * { commit, subject, pr } as recovered from git.
  */
 export function buildStatusRows(drift, attribution = {}) {
   const rows = []
-  for (const version of drift.actionableMergedNotApplied ?? []) {
+  for (const version of drift.actionableMergedNotApplied) {
     const info = attribution[version] ?? {}
     rows.push({
       version,
-      file: drift.fileByVersion?.[version] ?? '',
-      kind: drift.pendingClassifications?.[version]?.kind ?? 'genuinely-pending',
-      reason: drift.pendingClassifications?.[version]?.reason ?? '',
+      file: drift.fileByVersion[version],
+      kind: drift.pendingClassifications[version].kind,
+      reason: drift.pendingClassifications[version].reason,
       commit: info.commit ?? '',
       subject: info.subject ?? '',
       pr: info.pr ?? null,
@@ -88,35 +129,35 @@ export function buildStatusRows(drift, attribution = {}) {
 export function formatStatusReport({ target, projectRef, baseRef, drift, rows }) {
   const lines = []
   const actionable = rows.length
-  const excluded = (drift.intentionallyExcluded ?? []).length
-  const foreign = (drift.foreignTarget ?? []).length
-  const orphans = (drift.appliedNotMerged ?? []).length
+  const excluded = drift.intentionallyExcluded.length
+  const foreign = drift.foreignTarget.length
+  const orphans = drift.appliedNotMerged.length
 
-  lines.push(`## Ledger drift status — ${target} (\`${projectRef}\`)`)
+  lines.push(`## Ledger drift status — ${safeText(target)} (\`${safeText(projectRef)}\`)`)
   lines.push('')
-  lines.push(`Merged on \`${baseRef}\`: **${drift.mergedCount}**. Applied in \`supabase_migrations.schema_migrations\`: **${drift.appliedCount}**.`)
+  lines.push(`Merged on \`${safeText(baseRef)}\`: **${drift.mergedCount}**. Applied in \`supabase_migrations.schema_migrations\`: **${drift.appliedCount}**.`)
   lines.push('')
 
   if (actionable === 0 && orphans === 0) {
-    lines.push('**No actionable drift.** Every merged version has a ledger row (retired/held/foreign-target versions may still appear in the check output for visibility).')
-    return lines.join('\n')
+    lines.push('**No actionable drift.**')
+    lines.push('')
   }
 
   if (actionable > 0) {
     lines.push(`### Promotion candidates — ${actionable} genuinely-pending version(s)`)
     lines.push('')
-    lines.push('| version | source PR | file |')
-    lines.push('|---|---|---|')
+    lines.push('| version | merge/squash PR reference | introducing commit | file | classification |')
+    lines.push('|---|---|---|---|---|')
     for (const row of rows) {
-      const pr = row.pr ? `#${row.pr}` : 'unattributed'
-      const file = row.file ? `\`${row.file.split('/').pop()}\`` : '—'
-      lines.push(`| \`${row.version}\` | ${pr} | ${file} |`)
+      const pr = row.pr ? `#${row.pr}` : 'no PR in commit subject'
+      const file = `\`${safeText(row.file.split('/').pop())}\``
+      lines.push(`| \`${row.version}\` | ${pr} | \`${safeText(row.commit || 'unattributed')}\` | ${file} | ${safeText(row.kind)}: ${safeText(row.reason)} |`)
     }
     lines.push('')
     lines.push('These are reviewed, merged migrations that are **not** switched on in this database.')
     lines.push('⚠️ Any object they create is **absent from the live catalog**. Do not read that absence as "the work was never done" (issue #892).')
     lines.push('')
-    lines.push(`**Holders:** each version above needs a ${target} apply through the bounded Shared Supabase Migrations workflow. That lane is the orchestrator's single ${target} lane, not this session's. This report is detection only — no production action was taken.`)
+    lines.push(`**Holders:** each version above needs a ${safeText(target)} apply through the bounded Shared Supabase Migrations workflow. That lane is the orchestrator's single ${safeText(target)} lane, not this session's. This report is detection only — no production action was taken.`)
     lines.push('')
   }
 
@@ -128,7 +169,7 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
   if (orphans > 0) {
     lines.push(`### Orphan ledger rows — ${orphans}`)
     lines.push('')
-    for (const version of drift.appliedNotMerged ?? []) lines.push(`- \`${version}\``)
+    for (const version of drift.appliedNotMerged) lines.push(`- \`${version}\``)
     lines.push('')
     lines.push('An orphan ledger row means DDL reached this database from outside reviewed, merged history. Supabase keys the ledger on the version alone, so a later migration that legitimately takes one of these versions will be silently skipped.')
     lines.push('')
@@ -156,24 +197,24 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
  * Only the versions the caller actually needs attributed are queried — the
  * actionable pending list, never all 700+ merged versions.
  */
-export function attributeVersions(fileByVersion, run = execFileSync, baseRef = 'origin/main') {
+export function attributeVersions(fileByVersion, run = execFileSync, baseRef = 'origin/main', root = repoRoot) {
+  if (typeof baseRef !== 'string' || !REF.test(baseRef) || baseRef.startsWith('-') || baseRef.includes('..')) throw new Unknown('unsafe baseRef for git attribution')
   const attribution = {}
   for (const [version, file] of Object.entries(fileByVersion ?? {})) {
     if (!file) continue
     let out = ''
     try {
-      out = run('git', ['-C', repoRoot, 'log', '--first-parent', '--format=%H%x09%s', '--reverse', baseRef, '--', file], {
+      out = run('git', ['-C', root, 'log', '--first-parent', '--format=%H%x09%s', '--reverse', baseRef, '--', file], {
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
       })
-    } catch {
-      // A file git cannot attribute is not a reason to refuse the whole report.
-      continue
+    } catch (error) {
+      throw new Unknown(`git attribution unavailable for ${version} at ${baseRef}: ${error.message}`)
     }
     // Prefer the oldest first-parent entry whose subject carries a PR number;
     // fall back to the oldest entry if none does.
     const lines = String(out).trim().split(/\r?\n/).filter(Boolean)
-    if (lines.length === 0) continue
+    if (lines.length === 0) throw new Unknown(`git attribution unavailable for ${version} at ${baseRef}: no introducing commit`)
     let chosen = lines[0]
     for (const line of lines) {
       const tab = line.indexOf('\t')
@@ -212,6 +253,7 @@ const USAGE = `
 Turn a check-migration-ledger-drift --json result into an issue-comment-ready
 status report with per-version PR attribution.
 
+  set -o pipefail  # Bash: preserve both commands' failure status
   node scripts/check-migration-ledger-drift.mjs --target production --json \\
     | node scripts/report-ledger-drift-status.mjs --json -
 
@@ -221,33 +263,33 @@ Options:
   --json <path|->   Drift-check JSON output. Use - to read stdin.
   --help            Show this help.
 
-Exit 0 = report generated. Exit 2 = COULD NOT generate.
+Exit 0 = no actionable drift. Exit 1 = actionable drift. Exit 2 = UNKNOWN.
 `.trim()
 
-export async function main(argv) {
+export async function main(argv, { read = readFileSync, stdin = readStdin, run = execFileSync, root = repoRoot, log = console.log, errorLog = console.error } = {}) {
   let options
   try {
     options = parseArgs(argv)
   } catch (error) {
-    console.error(String(error.message))
-    console.error(USAGE)
+    errorLog(String(error.message))
+    errorLog(USAGE)
     return 2
   }
   if (options.help) {
-    console.log(USAGE)
+    log(USAGE)
     return 0
   }
   if (!options.jsonPath) {
-    console.error('UNKNOWN: --json is required (a file path, or - for stdin).')
-    console.error(USAGE)
+    errorLog('UNKNOWN: --json is required (a file path, or - for stdin).')
+    errorLog(USAGE)
     return 2
   }
 
   let raw
   try {
-    raw = options.jsonPath === '-' ? readFileSync(0, 'utf8') : readFileSync(options.jsonPath, 'utf8')
+    raw = options.jsonPath === '-' ? await stdin() : read(options.jsonPath, 'utf8')
   } catch (error) {
-    console.error(`UNKNOWN: could not read drift JSON: ${error.message}`)
+    errorLog(`UNKNOWN: could not read drift JSON: ${error.message}`)
     return 2
   }
 
@@ -255,39 +297,43 @@ export async function main(argv) {
   try {
     result = JSON.parse(raw)
   } catch {
-    console.error('UNKNOWN: drift input is not valid JSON.')
+    errorLog('UNKNOWN: drift input is not valid JSON.')
     return 2
   }
-  if (!result?.drift || typeof result.drift.mergedCount !== 'number' || typeof result.drift.appliedCount !== 'number') {
-    console.error('UNKNOWN: drift JSON is missing the expected shape (drift.mergedCount, drift.appliedCount).')
-    return 2
-  }
-  if (!Array.isArray(result.drift.actionableMergedNotApplied) || !Array.isArray(result.drift.mergedNotApplied)) {
-    console.error('UNKNOWN: drift JSON is missing the expected arrays (drift.mergedNotApplied, drift.actionableMergedNotApplied).')
+  try {
+    validateDriftResult(result)
+  } catch (error) {
+    errorLog(`UNKNOWN: ${error.message}`)
     return 2
   }
 
   // Attribute ONLY the actionable pending versions — never all 700+ merged ones.
   const actionable = result.drift.actionableMergedNotApplied
-  const fileByVersion = result.fileByVersion ?? {}
+  const fileByVersion = result.fileByVersion
   const actionableFiles = {}
   for (const v of actionable) {
     if (fileByVersion[v]) actionableFiles[v] = fileByVersion[v]
   }
-  const baseRef = result.baseRef ?? 'origin/main'
-  const attribution = attributeVersions(actionableFiles, execFileSync, baseRef)
+  const baseRef = result.baseRef
+  let attribution
+  try {
+    attribution = attributeVersions(actionableFiles, run, baseRef, root)
+  } catch (error) {
+    errorLog(`UNKNOWN: ${error.message}`)
+    return 2
+  }
   const rows = buildStatusRows(
-    { ...result.drift, fileByVersion, pendingClassifications: result.pendingClassifications ?? {} },
+    { ...result.drift, fileByVersion, pendingClassifications: result.pendingClassifications },
     attribution,
   )
-  console.log(formatStatusReport({
-    target: result.target ?? 'production',
-    projectRef: result.projectRef ?? 'unknown',
+  log(formatStatusReport({
+    target: result.target,
+    projectRef: result.projectRef,
     baseRef,
     drift: result.drift,
     rows,
   }))
-  return 0
+  return result.drift.driftFound ? 1 : 0
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)

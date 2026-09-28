@@ -13,7 +13,9 @@ import {
   attributeVersions,
   buildStatusRows,
   formatStatusReport,
+  main,
   prNumberFromSubject,
+  validateDriftResult,
 } from './report-ledger-drift-status.mjs'
 
 // --- PR number extraction ---------------------------------------------------
@@ -26,7 +28,7 @@ test('extracts PR from a squash-merge trailing reference', () => {
   assert.equal(prNumberFromSubject('fix(#2478): static anon/authenticated revokes on SKU helper (#2846)'), 2846)
 })
 
-test('falls back to any #N in the subject', () => {
+test('trailing squash reference is marked by its commit convention', () => {
   assert.equal(prNumberFromSubject('migration: re-reserve 20260911204023 as 20260911212849 (#2746)'), 2746)
   assert.equal(prNumberFromSubject('feat: add leased HTS classification jobs (#3382)'), 3382)
 })
@@ -35,6 +37,7 @@ test('returns null when no PR number is present', () => {
   assert.equal(prNumberFromSubject('migration: re-reserve 20260911204023 as 20260911212849'), null)
   assert.equal(prNumberFromSubject(''), null)
   assert.equal(prNumberFromSubject(undefined), null)
+  assert.equal(prNumberFromSubject('migration work for issue #2746'), null)
 })
 
 // --- status rows ------------------------------------------------------------
@@ -58,6 +61,12 @@ const sampleDrift = {
     '20260817150944': { kind: 'deliberately-held', reason: 'Preview-only historical restoration.' },
     '20260909121403': { kind: 'foreign-target', reason: 'Targets a different database.' },
   },
+}
+const sampleResult = {
+  target: 'production', projectRef: 'qsllyeztdwjgirsysgai', baseRef: 'origin/main',
+  drift: Object.fromEntries(Object.entries(sampleDrift).filter(([key]) => !['fileByVersion', 'pendingClassifications'].includes(key))),
+  fileByVersion: sampleDrift.fileByVersion,
+  pendingClassifications: sampleDrift.pendingClassifications,
 }
 
 test('buildStatusRows lists only actionable versions with attribution', () => {
@@ -138,6 +147,7 @@ test('formatStatusReport renders unattributed rows honestly', () => {
     rows,
   })
   assert.match(report, /unattributed/)
+  assert.match(report, /No retirement names this version/)
 })
 
 // --- attribution I/O --------------------------------------------------------
@@ -173,10 +183,83 @@ test('attributeVersions prefers the entry that carries a PR number', () => {
   assert.equal(attribution['20260101000000'].pr, 42)
 })
 
-test('attributeVersions skips files git cannot attribute rather than failing', () => {
+test('attributeVersions refuses git failures instead of hiding attribution loss', () => {
   const run = () => { throw new Error('bad path') }
-  const attribution = attributeVersions({ '20260911212849': 'supabase/migrations/missing.sql' }, run)
-  assert.deepEqual(attribution, {})
+  assert.throws(() => attributeVersions({ '20260911212849': 'supabase/migrations/missing.sql' }, run), /git attribution unavailable/)
+})
+
+test('attributeVersions refuses a Git option as baseRef', () => {
+  assert.throws(() => attributeVersions({}, () => '', '--output=/tmp/oops'), /unsafe baseRef/)
+})
+
+test('attributeVersions falls back to oldest commit when no PR appears', () => {
+  const attribution = attributeVersions({ '20260101000000': 'a.sql' }, () => 'aaa\tfirst change\nbbb\tlater change\n')
+  assert.equal(attribution['20260101000000'].commit, 'aaa')
+  assert.equal(attribution['20260101000000'].pr, null)
+})
+
+test('validation refuses incomplete, empty, contradictory, and unsafe reads', () => {
+  validateDriftResult(sampleResult)
+  const invalid = [
+    { ...sampleResult, drift: { ...sampleResult.drift, appliedCount: 0 } },
+    { ...sampleResult, target: undefined },
+    { ...sampleResult, baseRef: '--output=/tmp/oops' },
+    { ...sampleResult, drift: { ...sampleResult.drift, driftFound: false } },
+    { ...sampleResult, pendingClassifications: {} },
+    { ...sampleResult, fileByVersion: {} },
+    { ...sampleResult, drift: { ...sampleResult.drift, appliedNotMerged: ['bad|version'] } },
+  ]
+  for (const input of invalid) assert.throws(() => validateDriftResult(input), Unknown)
+})
+
+function cliHarness(input, output = '') {
+  const printed = []
+  const errors = []
+  const options = {
+    stdin: async () => input,
+    run: () => output,
+    root: '/fixture',
+    log: (line) => printed.push(line),
+    errorLog: (line) => errors.push(line),
+  }
+  return { options, printed, errors }
+}
+
+test('CLI consumes producer-shaped stdin and preserves drift exit 1', async () => {
+  const harness = cliHarness(JSON.stringify(sampleResult), 'abc123\tMerge pull request #2746 from x/y\n')
+  assert.equal(await main(['--json', '-'], harness.options), 1)
+  assert.match(harness.printed[0], /Promotion candidates/)
+  assert.match(harness.printed[0], /#2746/)
+  assert.deepEqual(harness.errors, [])
+})
+
+test('CLI reports a verified clean read with exit 0 and non-actionable counts', async () => {
+  const clean = { ...sampleResult, drift: { ...sampleResult.drift, mergedNotApplied: ['20260817150944', '20260909121403'], actionableMergedNotApplied: [], driftFound: false }, pendingClassifications: Object.fromEntries(Object.entries(sampleResult.pendingClassifications).filter(([version]) => version !== '20260911212849')) }
+  const harness = cliHarness(JSON.stringify(clean))
+  assert.equal(await main(['--json', '-'], harness.options), 0)
+  assert.match(harness.printed[0], /No actionable drift/)
+  assert.match(harness.printed[0], /\*\*1\*\* retired/)
+})
+
+test('CLI refuses broken git attribution with exit 2', async () => {
+  const harness = cliHarness(JSON.stringify(sampleResult))
+  harness.options.run = () => { throw new Error('git unavailable') }
+  assert.equal(await main(['--json', '-'], harness.options), 2)
+  assert.match(harness.errors[0], /attribution unavailable/)
+})
+
+test('CLI refuses malformed JSON and never reports it clean', async () => {
+  const harness = cliHarness('{bad')
+  assert.equal(await main(['--json', '-'], harness.options), 2)
+  assert.match(harness.errors[0], /not valid JSON/)
+})
+
+test('report escapes comment-breaking data', () => {
+  const rows = buildStatusRows(sampleDrift, { '20260911212849': { commit: 'abc', pr: 2746 } })
+  rows[0].reason = 'held | forged\n**Holders:** fake `authority`'
+  const report = formatStatusReport({ target: 'production', projectRef: 'qsllyeztdwjgirsysgai', baseRef: 'origin/main', drift: sampleDrift, rows })
+  assert.match(report, /held \\\| forged \*\*Holders:\*\* fake 'authority'/)
+  assert.equal(report.split('\n').filter((line) => line.startsWith('**Holders:**')).length, 1)
 })
 
 // --- CLI refusal paths (the "no silent failures" rule) -----------------------
@@ -193,7 +276,7 @@ test('CLI refuses without --json', async () => {
   }
 })
 
-test('CLI refuses invalid JSON', async () => {
+test('CLI refuses an unreadable input file', async () => {
   const { main } = await import('./report-ledger-drift-status.mjs')
   const originalError = console.error
   console.error = () => {}
@@ -204,6 +287,7 @@ test('CLI refuses invalid JSON', async () => {
   }
 })
 
-test('Unknown is the typed refusal used across the tool', () => {
-  assert.throws(() => { throw new Unknown('x') }, Unknown)
+test('Unknown has a distinct name for refusal reporting', () => {
+  assert.throws(() => validateDriftResult({}), Unknown)
+  assert.equal(new Unknown('x').name, 'Unknown')
 })

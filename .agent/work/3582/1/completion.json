@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "work_issue": 3582,
+  "outcome": "ready-for-merge",
+  "pr": 3583,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3582/1",
+  "contract_sha256": "3b504bb526c6c76e65a4f01ce7a2d4d23e03fe096efac9992ddbe47d260eb8c6",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
+  "head_sha": "abd507719dbbc6864ce64d8acf339a92b59cf880",
+  "files_changed": [".github/workflows/guarded-migration-merge.yml", "scripts/check-merge-queue-workflows.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [{"command": "node --test scripts/check-merge-queue-workflows.test.mjs scripts/check-required-checks-preflight.test.mjs", "exit_code": 0, "evidence": "71 passed, 0 failed at implementation head abd50771"}],
+  "assumptions_resolved": ["Protected-main preflight imports work from its own file location; cwd reads yield 16 protected-main pin and mirror contexts.", "The authority token is scoped to a single trusted-policy step, and the merge step that executes head code has no AUTHORITY_TOKEN binding."],
+  "stop_conditions_hit": []
+}

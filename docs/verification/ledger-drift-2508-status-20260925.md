@@ -1,7 +1,7 @@
 # Ledger drift status — issue #2508
 
 **Date:** 2026-09-25 (2:22 AM EDT)
-**Scope:** detection/reporting tooling and documentation. No production apply.  
+**Scope:** detection/reporting tooling and documentation. No production apply.
 **Work type:** repo-maintenance / non-orchestrator.
 
 ## What the failed alarm said

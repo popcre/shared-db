@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3685/1",
   "contract_sha256": "b9e3bf78c749fc0018b1ca857c82814b56880078ee631853ed567a7fc85f234f",
-  "head_sha": "9d3a9ad450cfe14325c6f9ca1d76d086b7fe6a17",
+  "head_sha": "3781e897597c0afe43b4591675798c30739d625a",
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
   "files_changed": [
     ".agent/work/3685/1/completion.json",
@@ -37,12 +37,12 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "Exit 0 against origin/main at implementation head 9d3a9ad450cfe14325c6f9ca1d76d086b7fe6a17."
+      "evidence": "Exit 0 against origin/main at implementation head 3781e897597c0afe43b4591675798c30739d625a."
     },
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 9d3a9ad450cfe14325c6f9ca1d76d086b7fe6a17; live ledger not configured locally."
+      "evidence": "Static checks passed at 3781e897597c0afe43b4591675798c30739d625a; live ledger not configured locally."
     },
     {
       "command": "node scripts/check-live-proof-probe.mjs",

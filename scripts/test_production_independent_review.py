@@ -70,8 +70,13 @@ class IndependentReviewTests(unittest.TestCase):
         self.assertLess(fetch, check)
         self.assertIn('test "$(git rev-parse origin/main)" = "$MAIN_SHA"', workflow)
 
-    def test_roster_is_empty_until_owner_assigns_authenticated_reviewer(self):
-        self.assertEqual(gate.authorized_reviewers(), set())
+    def test_roster_reads_only_listed_reviewers_and_empty_means_none(self):
+        with tempfile.TemporaryDirectory() as temp:
+            roster = Path(temp, "roster.json")
+            roster.write_text(json.dumps({"schema_version": 1, "authorized_github_reviewers": []}), encoding="utf-8")
+            self.assertEqual(gate.authorized_reviewers(roster), set())
+            roster.write_text(json.dumps({"schema_version": 1, "authorized_github_reviewers": ["Named-Reviewer"]}), encoding="utf-8")
+            self.assertEqual(gate.authorized_reviewers(roster), {"named-reviewer"})
 
     def test_full_packet_and_changed_fields(self):
         validate(packet())

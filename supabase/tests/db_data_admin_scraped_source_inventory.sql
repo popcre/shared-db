@@ -338,6 +338,35 @@ begin
     if v_actual is distinct from 'disney' then
       raise exception 'arm % split Pixar from Disney', v_arm;
     end if;
+    execute format('select %s from (values (%L, %L)) as s(source_system, licensor_key)',
+      v_name_cases[v_arm], 'disney_opa', 'pixar-opa') into v_actual;
+    if v_actual is distinct from 'Disney' then
+      raise exception 'arm % gave Pixar a non-Disney group name: %', v_arm, v_actual;
+    end if;
+
+    -- The DCP override is exact; ordinary OPA conflicts still fall through.
+    execute format('select %s from (values (%L, %L)) as s(source_system, licensor_key)',
+      v_key_cases[v_arm], 'disney_opa', 'opa-scope-conflict') into v_actual;
+    if v_actual is distinct from 'unresolved' then
+      raise exception 'arm % grouped a non-DCP OPA conflict as %', v_arm, v_actual;
+    end if;
+    execute format('select %s from (values (%L, %L)) as s(source_system, licensor_key)',
+      v_name_cases[v_arm], 'disney_opa', 'opa-scope-conflict') into v_actual;
+    if v_actual is distinct from 'Licensor not yet determined' then
+      raise exception 'arm % named a non-DCP OPA conflict as %', v_arm, v_actual;
+    end if;
+
+    -- The existing non-DCP authority branches remain functional.
+    execute format('select %s from (values (%L, %L)) as s(source_system, licensor_key)',
+      v_key_cases[v_arm], 'marvel_asgard', 'marvel-asgard-creative') into v_actual;
+    if v_actual is distinct from 'marvel' then
+      raise exception 'arm % lost the Marvel ASGARD key branch: %', v_arm, v_actual;
+    end if;
+    execute format('select %s from (values (%L, %L)) as s(source_system, licensor_key)',
+      v_name_cases[v_arm], 'marvel_asgard', 'marvel-asgard-creative') into v_actual;
+    if v_actual is distinct from 'Marvel' then
+      raise exception 'arm % lost the Marvel ASGARD name branch: %', v_arm, v_actual;
+    end if;
   end loop;
 end $$;
 
@@ -361,11 +390,14 @@ declare
 begin
   for v_i in 1..array_length(v_tables, 1) loop
     if not exists (
-      select 1 from pg_constraint c
+      select 1
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid
+        and a.attname = 'source_system' and a.attnotnull
       where c.conrelid = v_tables[v_i]::regclass
         and c.contype = 'c' and c.convalidated
-        and pg_get_constraintdef(c.oid) like '%source_system%'
-        and pg_get_constraintdef(c.oid) like '%' || quote_literal(v_sources[v_i]) || '%'
+        and regexp_replace(pg_get_expr(c.conbin, c.conrelid), '[()]', '', 'g')
+          = format('source_system = %L::text', v_sources[v_i])
     ) then
       raise exception 'source-system constraint absent on % for %', v_tables[v_i], v_sources[v_i];
     end if;

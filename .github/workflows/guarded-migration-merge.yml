@@ -116,6 +116,7 @@ jobs:
       - name: Pre-flight the required status checks before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
         run: node scripts/check-required-checks-preflight.mjs
       - name: Acquire the exclusive merge lane
@@ -132,6 +133,7 @@ jobs:
         id: guarded_merge
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           # The merge lane is held: never sit on it waiting for a quota reset.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
           PR_NUMBER: ${{ inputs.pull_request }}

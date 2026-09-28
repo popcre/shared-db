@@ -1,0 +1,75 @@
+{
+  "allowed_paths": [
+    ".agent/work/3361/4/completion.json",
+    ".agent/work/3361/4/contract.json",
+    ".agent/work/3361/6/completion.json",
+    ".agent/work/3361/6/contract.json",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "assumptions": [
+    "Fresh effective settings includes classic protection and applicable inherited rulesets; authority is not a static mirror",
+    "Authority reads require admin-level access: classic PAT with repo scope, Administration:read, or GitHub App with administration permission; contents:read is NOT sufficient (live run 36186790619 proved github.token gets Resource not accessible by integration)",
+    "secrets.SYNC_TOKEN (classic PAT with repo scope) is wired as AUTHORITY_TOKEN for authority-read steps only; github.token is kept for everything else",
+    "probeAuthorityReadPermissions requires non-null branchProtectionRule or the documented REST /protection null-distinction, aligned with the gather",
+    "tokenScopedRead swaps GH_TOKEN to AUTHORITY_TOKEN for authority reads only and restores it immediately",
+    "Issue 3571 supplies AUTHORITY_TOKEN from main workflow YAML before this PR merges. Its code uses live authority only and refuses if that token or settings are unreadable."
+  ],
+  "base_sha": "95c5db5e933e4ca378465fcac895d67c24e744e8",
+  "branch": "codex/workflow-refactor-required-authority",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex parent session fixing PR #3369",
+  "file_writes": [
+    ".agent/work/3361/4/completion.json",
+    ".agent/work/3361/4/contract.json",
+    ".agent/work/3361/6/completion.json",
+    ".agent/work/3361/6/contract.json",
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~update-required-checks.mjs.json",
+    "docs/verification/throughput-guard-truth-audit-20260828.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/lib/merge-self-context.mjs",
+    "scripts/lib/required-check-authority.mjs",
+    "scripts/lib/required-check-authority.test.mjs",
+    "scripts/update-required-checks.mjs",
+    "scripts/update-required-checks.test.mjs"
+  ],
+  "generation": 6,
+  "goal": "Establish live effective required-check authority without stale snapshots or advisory vetoes; prove token permissions at preflight after the guarded workflow token bootstrap in issue 3571 lands.",
+  "prohibited_actions": [
+    "do not change required_status_checks.strict; it is false by owner ruling in issue #1286",
+    "do not touch any migration or database object",
+    "do not edit another session handoff, worktree, branch, or claim"
+  ],
+  "required_checks": [
+    "node --test scripts/check-required-checks-preflight.test.mjs scripts/update-required-checks.test.mjs scripts/lib/required-check-authority.test.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 1,
+  "stop_conditions": [
+    "Refuse authorization if live settings are unreadable; do not broaden credentials",
+    "Do not mutate settings without exact independent approval"
+  ],
+  "work_issue": 3361,
+  "work_type": "repo-maintenance",
+  "worker": "Codex chat unknown on edge-dev3",
+  "worktree": "/home/ahazan/repos/shared-db/.ai/worktrees/repair-3369-linux"
+}

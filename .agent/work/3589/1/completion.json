@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3589,
+  "outcome": "ready-for-merge",
+  "pr": 3590,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3589/1",
+  "contract_sha256": "8e9bed907fbcf24b285dd9b740e93342efef2a47f0bb14aea27f4548f931bfac",
+  "head_sha": "fd0f8bddaed2de536ae6acf9856edbe8bbad0396",
+  "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~apply_attempt_recovery.py.json",
+    "scripts/apply_attempt_recovery.py",
+    "scripts/test_apply_attempt_recovery.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_apply_attempt_recovery.py",
+      "exit_code": 0,
+      "evidence": "20 focused tests passed at implementation head; include ledger content mismatch and target/baseline binding refusals."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Truth audit passed at implementation head: 328 call sites, 77 sources."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors at implementation head."
+    }
+  ],
+  "assumptions_resolved": [
+    "This closes only helper-preparation child #3589; parent #3397 remains open for later integration.",
+    "The new branch was clean at contract publication."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source": ".github/workflows/historical-item-mg-reclassification-tests.yml",
+  "retired_by_issue": 3605,
   "sites": [
     {
       "site": ".github/workflows/historical-item-mg-reclassification-tests.yml:76",
@@ -8,7 +8,8 @@
       "line_sha256": "f59e1294c8137b9ddd86ef3b198be6c3b0645e321ee827ce3d00b50ca8c4597a",
       "disposition": "excluded",
       "reason": "This line is the offline CI assertion that the locked May 14, 2025 historical cutoff is still present in constants.mjs; it reports a missing constant and makes no throughput derivability claim.",
-      "legacy_semantic_key": ".github/workflows/historical-item-mg-reclassification-tests.yml:f59e1294c8137b9ddd86ef3b198be6c3b0645e321ee827ce3d00b50ca8c4597a:1"
+      "legacy_semantic_key": ".github/workflows/historical-item-mg-reclassification-tests.yml:f59e1294c8137b9ddd86ef3b198be6c3b0645e321ee827ce3d00b50ca8c4597a:1",
+      "state": "retired"
     }
   ]
 }

@@ -328,3 +328,11 @@ jobs:
       - name: Verify ColdLion replay proof guards (#3302)
         if: steps.route.outputs.pure_prose != 'true'
         run: node --test scripts/issue-2863-live-proof.test.mjs
+
+      - name: Run exact global role accounting tests (#3398)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          set -euo pipefail
+          test -f scripts/lib/sql-role-operations.test.mjs || {
+            echo "::error::required test file absent: scripts/lib/sql-role-operations.test.mjs"; exit 1; }
+          node --test scripts/lib/sql-role-operations.test.mjs

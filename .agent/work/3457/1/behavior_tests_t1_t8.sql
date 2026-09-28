@@ -125,27 +125,51 @@ do $$
 declare
   dam_uid uuid := '34570000-0000-4000-8000-000000000001';
   qemb extensions.vector(384);
+  fixture_asset_ids uuid[] := array[
+    '34570000-0000-4000-8000-000000000010'::uuid,
+    '34570000-0000-4000-8000-000000000011'::uuid,
+    '34570000-0000-4000-8000-000000000012'::uuid,
+    '34570000-0000-4000-8000-000000000013'::uuid
+  ];
   n int;
   sem real;
 begin
+  -- Query embedding aligned with sem-high (first dim = 1, rest 0).
+  qemb := (select (array_fill(1.0::real, array[1]) || array_fill(0.0::real, array[383]))::extensions.vector(384));
+  -- Prove the three UPDATEs actually established the intended fixture scores.
+  if not exists (
+    select 1 from public.dam_search_documents
+    where asset_id = '34570000-0000-4000-8000-000000000011'
+      and abs((1 - (embedding <=> qemb)) - 0.90) < 0.01
+  ) or not exists (
+    select 1 from public.dam_search_documents
+    where asset_id = '34570000-0000-4000-8000-000000000012'
+      and abs((1 - (embedding <=> qemb)) - 0.20) < 0.01
+  ) or not exists (
+    select 1 from public.dam_search_documents
+    where asset_id = '34570000-0000-4000-8000-000000000013'
+      and abs((1 - (embedding <=> qemb)) - 0.30) < 0.01
+  ) then
+    raise exception 'fixture embeddings do not have the expected semantic scores';
+  end if;
+
   execute 'set local role authenticated';
   perform set_config('request.jwt.claims',
     jsonb_build_object('sub',dam_uid,'role','authenticated')::text, true);
 
-  -- Query embedding aligned with sem-high (first dim = 1, rest 0).
-  qemb := (select (array_fill(1.0::real, array[1]) || array_fill(0.0::real, array[383]))::extensions.vector(384));
 
   ----------------------------------------------------------------
   -- T1: null floor identical to current (no-floor) behaviour.
   ----------------------------------------------------------------
   select count(*) into n
-  from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null);
+  from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null)
+  where asset_id = any(fixture_asset_ids);
   if n < 2 then
     raise exception 'T1 FAIL: null floor returned % rows, expected at least 2 (kw + semantic)', n;
   end if;
   select count(*) into n
   from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null)
-  where semantic_rank is not null;
+  where semantic_rank is not null and asset_id = any(fixture_asset_ids);
   if n < 2 then
     raise exception 'T1 FAIL: null floor should surface semantic ranks, got % semantic rows', n;
   end if;
@@ -212,9 +236,11 @@ begin
   begin
     select total_count, has_more into total1, has1
     from public.search_dam_documents('zz3457','{}'::jsonb,1,0,null,qemb,null,0.0)
+    where asset_id = any(fixture_asset_ids)
     limit 1;
     select total_count, has_more into total2, has2
     from public.search_dam_documents('zz3457','{}'::jsonb,1,1,null,qemb,null,0.0)
+    where asset_id = any(fixture_asset_ids)
     limit 1;
     if total1 is distinct from total2 then
       raise exception 'T5 FAIL: total_count differs across pages (% vs %)', total1, total2;
@@ -223,9 +249,11 @@ begin
       raise exception 'T5 FAIL: has_more should be true on page 0 of a multi-row result';
     end if;
     select count(*) into p1
-    from public.search_dam_documents('zz3457','{}'::jsonb,1,0,null,qemb,null,0.0);
+    from public.search_dam_documents('zz3457','{}'::jsonb,1,0,null,qemb,null,0.0)
+    where asset_id = any(fixture_asset_ids);
     select count(*) into p2
-    from public.search_dam_documents('zz3457','{}'::jsonb,1,1,null,qemb,null,0.0);
+    from public.search_dam_documents('zz3457','{}'::jsonb,1,1,null,qemb,null,0.0)
+    where asset_id = any(fixture_asset_ids);
     if p1 <> 1 or p2 <> 1 then
       raise exception 'T5 FAIL: page sizes wrong (p1=% p2=%)', p1, p2;
     end if;
@@ -240,13 +268,15 @@ begin
   -- what suppresses the rows).
   ----------------------------------------------------------------
   select count(*) into n
-  from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.0);
+  from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.0)
+  where asset_id = any(fixture_asset_ids);
   if n <> 0 then
     raise exception 'T6 FAIL: floor=1 with no exact semantic match returned % rows, expected 0', n;
   end if;
   -- Out-of-range floor 1.5 clamps to 1.0 and must behave identically.
   select count(*) into n
-  from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.5);
+  from public.search_dam_documents('zz3457 absent query','{}'::jsonb,50,0,null,qemb,null,1.5)
+  where asset_id = any(fixture_asset_ids);
   if n <> 0 then
     raise exception 'T6 FAIL: floor=1.5 (clamp 1.0) returned % rows, expected 0', n;
   end if;
@@ -256,11 +286,14 @@ begin
     n0 int; nnull int; nneg int;
   begin
     select count(*) into n0
-    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,0.0);
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,0.0)
+    where asset_id = any(fixture_asset_ids);
     select count(*) into nnull
-    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,null);
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,null)
+    where asset_id = any(fixture_asset_ids);
     select count(*) into nneg
-    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,-0.5);
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,qemb,null,-0.5)
+    where asset_id = any(fixture_asset_ids);
     if n0 <> nnull then
       raise exception 'T6 FAIL: floor=0 (=%) is not equivalent to null floor (=%)', n0, nnull;
     end if;
@@ -277,9 +310,11 @@ begin
     n_floor int; n_nofloor int;
   begin
     select count(*) into n_floor
-    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,null,null,0.99);
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,null,null,0.99)
+    where asset_id = any(fixture_asset_ids);
     select count(*) into n_nofloor
-    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,null,null,null);
+    from public.search_dam_documents('zz3457','{}'::jsonb,50,0,null,null,null,null)
+    where asset_id = any(fixture_asset_ids);
     if n_floor <> n_nofloor then
       raise exception 'T7 FAIL: floor changed results without an embedding (% vs %)', n_floor, n_nofloor;
     end if;

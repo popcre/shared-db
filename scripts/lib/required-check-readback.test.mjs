@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { readRequiredCheckContexts } from './required-check-readback.mjs'
 
 const checks = [{ context: 'A', app_id: 15368 }, { context: 'B', app_id: 15368 }]
@@ -12,6 +13,17 @@ const rule = (type, values = {}) => ({ type, ruleset_id: 24024180, ruleset_sourc
 
 test('falls back to the protected branch readback on the Actions token 403', () => {
   assert.deepEqual(read(), ['A', 'B'])
+})
+
+test('reconciles the checked-in live main authority record with all required checks', () => {
+  const authority = JSON.parse(readFileSync(new URL('../../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8')).authority
+  const recorded = { contexts: authority.checks.map((check) => check.context), checks: authority.checks }
+  const result = read({
+    branch: () => ({ name: 'main', protected: true, commit: { sha: authority.base_sha }, protection: { enabled: true, required_status_checks: recorded } }),
+    branchRules: () => [authority.sources.rulesets],
+  })
+  assert.equal(result.length, 16)
+  assert.ok(result.includes('Merge queue gate'))
 })
 
 test('accepts active merge queue and reconciles required checks from active rulesets', () => {

@@ -1189,10 +1189,11 @@ begin
   else v_pass := v_pass+1; end if;
 
   select count(*) into v_n from pg_class
-   where relnamespace='plm'::regnamespace and relkind='r' and relname like 'nbcu\_%';
-  -- 16 landing tables plus the two #3683 durable-state tables.
-  if v_n <> 18 then v_fail := v_fail+1;
-    raise warning 'I6 FAIL: % plm.nbcu_* tables, expected 18', v_n;
+   where relnamespace='plm'::regnamespace and relkind='r' and relname like 'nbcu\_%'
+     -- #3683 durable-state tables are not landing tables.
+     and relname not in ('nbcu_entity_lifecycle', 'nbcu_lifecycle_publication');
+  if v_n <> 16 then v_fail := v_fail+1;
+    raise warning 'I6 FAIL: % plm.nbcu_* tables, expected 16', v_n;
   else v_pass := v_pass+1; end if;
 
   raise notice 'I: % passed / % failed', v_pass, v_fail;

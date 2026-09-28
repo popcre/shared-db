@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 3587,
+  "outcome": "ready-for-merge",
+  "pr": 3518,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3587/1",
+  "contract_sha256": "ef7c32bcd17339529ffd581f86031d2cec81cdd1fb45984d91db0160e563f965",
+  "head_sha": "60eee730e782943fcd1f04b09b435876d6ab8ba2",
+  "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
+  "files_changed": [
+    "docs/verification/ledger-drift-2508-status-20260925.md",
+    "docs/verification/throughput-dispositions/scripts~report-ledger-drift-status.mjs.json",
+    "scripts/report-ledger-drift-status.mjs",
+    "scripts/report-ledger-drift-status.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/report-ledger-drift-status.test.mjs",
+      "exit_code": 0,
+      "evidence": "18 passed, 0 failed, 0 skipped at implementation head 60eee730e782943fcd1f04b09b435876d6ab8ba2."
+    },
+    {
+      "command": "node --test scripts/check-migration-ledger-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "35 passed, 0 failed, 0 skipped at implementation head 60eee730e782943fcd1f04b09b435876d6ab8ba2; local PATH supplied a temporary python→python3 alias because this Linux host has python3 only. No project or OS binary was changed."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed, 0 skipped at implementation head 60eee730e782943fcd1f04b09b435876d6ab8ba2."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=328 sources=77 derived_digest=57190268630f"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors at implementation head 60eee730e782943fcd1f04b09b435876d6ab8ba2."
+    }
+  ],
+  "assumptions_resolved": [
+    "Reporter delivery is separately tracked by non-orchestrator issue #3587; production drift alarm #2508 stays open.",
+    "Prior #2508 evidence reservations remain published but are absent from this PR net diff; exactly one evidence pair for #3587 follows the implementation.",
+    "Latest completed production drift run remains red; no production action was taken by this PR."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "work_issue": 2457,
+  "outcome": "ready-for-merge",
+  "pr": 3522,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2457/3",
+  "contract_sha256": "bbbb8af017cdfb4f7a06e7c415aa4e92ccfef6ab3b8ca07abc82a5bddf3596ad",
+  "head_sha": "970d1010f2942cf0a7f1807791ac4703f5ef285f",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "715 of 715 passed at 970d1010; with the source fix reverted 714 passed and 1 failed (the #2457 replacement test)."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    }
+  ],
+  "assumptions_resolved": [
+    "Source fix 6754166f predates generation 3; generation 3 covers the refresh and test strengthening"
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "530ffb393c7e129c7b9dbe41e0674835e66d9594"
+}

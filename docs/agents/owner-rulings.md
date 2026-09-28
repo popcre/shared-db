@@ -142,6 +142,10 @@ abstention rule. That gate was bought with an incident: a spreadsheet dump can s
 hand-curated rulings, and nothing in this database records which fields a human set, so an
 ad-hoc session cannot tell curated from untouched.
 
+**OWNER RULING 2026-09-25 (Albert Hazan): the orchestrator is not required.** Curated Master Data
+loads exit by `data-session`. A dedicated curated-data session owns the work end to end under
+§6.4. The protections above are unchanged; what left is only the orchestrator in the middle.
+
 The carve-out is narrow and it is about **provenance and target**, not about volume or verb. It
 applies when outside-sourced content (a spreadsheet, CSV, export, pasted rows, screenshot, chat
 message, or API pull) is written into those Master Data tables. It does **not** turn an

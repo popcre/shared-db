@@ -60,9 +60,9 @@ the map below.
 - **§0.0-A — read-only inspection is open (Albert Hazan, 2026-08-10).** Every application repo may
   inspect this database read-only, with no issue, no handoff, and no dispatch.
   [`owner-rulings.md`](docs/agents/owner-rulings.md)
-- **§0.0-C — the orchestrator gets the minimum (owner ruling 2026-08-21, #1366).** The
-  orchestrator keeps only work that changes the database's SHAPE (plus curated Master Data
-  routing). Repository maintenance, proofs, documentation, tooling, and monitoring are not
+- **§0.0-C — the orchestrator gets the minimum (owner rulings 2026-08-21 and 2026-09-25).** The
+  orchestrator keeps only work that changes the database's SHAPE. Repository maintenance,
+  documentation, curated Master Data loads, proofs, tooling, and monitoring are not
   orchestrator jobs. [`orchestrator.md`](docs/agents/orchestrator.md)
 - **§2.1-W — worktree-only.** Every session, the orchestrator included, works in its own
   `git worktree` cut from `origin/main`. The shared checkout is for reading and `git fetch` only.

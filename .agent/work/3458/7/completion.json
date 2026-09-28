@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/3458/7",
   "contract_sha256": "769242a77fc9a52dbc4800b5c8d6c771eacc91f96348fd59e723cb255dd67127",
   "head_sha": "6bb46b1d804dabe66bba712def8b10d6eb189efb",
-  "base_sha": "08af27c0418488d6b40664853276b63a9b807ee3",
+  "base_sha": "067420b116cbfe53b851ea460a11190607b9b699",
   "files_changed": [
     "HANDOFF.d/2026-09-28T1120Z-edge-dev3-codex-orch-3570-wrapup.md",
     "docs/agents/3458-caller-contract.md",
@@ -33,7 +33,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static SQL guards passed at implementation head 6bb46b1d on current main 08af27c0."
+      "evidence": "Static SQL guards passed at implementation head 6bb46b1d on merge base 067420b1."
     },
     {
       "command": "python3 scripts/test_migration_derivation.py",
@@ -48,7 +48,7 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors in 08af27c0...6bb46b1d."
+      "evidence": "No whitespace errors in 067420b1...6bb46b1d."
     },
     {
       "command": "Database Contract Tests on isolated ephemeral database",
@@ -57,7 +57,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Generation 7 succeeds immutable generation 6 (e2e04f7a) with byte-identical implementation files; only the base (now 08af27c0), the removal of superseded gen5/gen6 evidence from the PR tree, and retirement of the #3458-keyed handoff differ.",
+    "Generation 7 succeeds immutable generation 6 (e2e04f7a) with byte-identical implementation files; only the base (now merge base 067420b1), the removal of superseded gen5/gen6 evidence from the PR tree, and retirement of the #3458-keyed handoff differ.",
     "The file_groups guard still requires unique, valid, plain-column, non-partial; only the exact-name requirement was removed; folders guard and legacy (uuid,integer) body are unchanged.",
     "Failed preview apply 36414234942 left preview ledger 697 unchanged; f5 and 740b0c7c reviews and preview artifacts are void for this head."
   ],

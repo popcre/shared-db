@@ -4,6 +4,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
 import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migration-author-lanes.mjs'
+import { matchesLiveProofProvenance, matchesLiveProofRun } from './manage-migration-author-lanes.mjs'
 import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-author-lanes.mjs'
 import { allocatableReviewers, reconcilePreflightRows } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
@@ -27,6 +28,53 @@ import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAI
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
+
+test('live-proof completion accepts only its exact workflow dispatch and run-owned artifact',()=>{
+  const head='a'.repeat(40),digest=`sha256:${'b'.repeat(64)}`
+  const evidence={work_issue:2478,application_repository:THIS_REPO,application_commit_sha:head,live_artifact_id:123,live_artifact_digest:digest}
+  const run={id:456,repository:{full_name:THIS_REPO},path:'.github/workflows/shared-db-live-proof.yml',event:'workflow_dispatch',status:'completed',conclusion:'success',run_attempt:1,head_sha:head}
+  const artifact={id:123,name:`shared-db-live-proof-2478-${head}`,expired:false,digest,workflow_run:{id:456,head_sha:head}}
+  const valid={repository:THIS_REPO,runId:'456',run,artifact,evidence}
+  assert.equal(matchesLiveProofRun(valid),true)
+  assert.equal(matchesLiveProofProvenance(valid),true)
+  assert.equal(matchesLiveProofProvenance({...valid,artifact:undefined}),false)
+  const mutations=[
+    (v)=>{v.repository='other/repo'},
+    (v)=>{v.evidence.application_repository='other/repo'},
+    (v)=>{v.run.repository.full_name='other/repo'},
+    (v)=>{v.run.id=457},
+    (v)=>{v.run.path='.github/workflows/other.yml'},
+    (v)=>{v.run.event='push'},
+    (v)=>{v.run.status='in_progress'},
+    (v)=>{v.run.conclusion='failure'},
+    (v)=>{v.run.run_attempt=2},
+    (v)=>{v.run.head_sha='c'.repeat(40)},
+    (v)=>{v.artifact.id=124},
+    (v)=>{v.artifact.name='unrelated-artifact'},
+    (v)=>{v.artifact.expired=true},
+    (v)=>{v.artifact.digest=`sha256:${'c'.repeat(64)}`},
+    (v)=>{v.artifact.workflow_run.id=457},
+    (v)=>{v.artifact.workflow_run.head_sha='c'.repeat(40)},
+    (v)=>{v.evidence.application_commit_sha='not-a-sha'},
+  ]
+  for(const mutate of mutations){const changed=structuredClone(valid);mutate(changed);assert.equal(matchesLiveProofProvenance(changed),false)}
+  for(const mutate of mutations.slice(0,10)){
+    const changed=structuredClone(valid);mutate(changed);assert.equal(matchesLiveProofRun(changed),false)
+  }
+})
+
+test('application-owned live proofs retain their existing successful-run and artifact route',()=>{
+  const repository='u2giants/popdam3',head='c'.repeat(40),digest=`sha256:${'d'.repeat(64)}`
+  const evidence={work_issue:41,application_repository:repository,application_commit_sha:head,live_artifact_id:321,live_artifact_digest:digest}
+  const run={id:654,path:'.github/workflows/application-live-proof.yml',event:'push',run_attempt:2,conclusion:'success',head_sha:head}
+  const artifact={id:321,name:`shared-db-live-proof-41-${head}`,expired:false,digest}
+  const valid={repository,runId:'654',run,artifact,evidence}
+  assert.equal(matchesLiveProofRun(valid),true)
+  assert.equal(matchesLiveProofProvenance(valid),true)
+  assert.equal(matchesLiveProofProvenance({...valid,repository:THIS_REPO}),false)
+  assert.equal(matchesLiveProofProvenance({...valid,run:{...run,conclusion:'failure'}}),false)
+  assert.equal(matchesLiveProofProvenance({...valid,artifact:{...artifact,expired:true}}),false)
+})
 
 test('current migration version refreshes live main before reading its tree',()=>{
   const calls=[]

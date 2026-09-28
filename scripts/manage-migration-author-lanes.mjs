@@ -2131,6 +2131,30 @@ export function retiredReopenedClaims(claims, now = new Date(), io = githubIo) {
 export function matchesLiveProof(proof,evidence){
   return proof?.schema_version===1&&proof.work_issue===evidence.work_issue&&proof.application_commit_sha===evidence.application_commit_sha&&proof.live_assertion===evidence.live_assertion&&proof.environment===evidence.environment&&proof.result==='passed'&&proof.observed_at===evidence.verified_at&&!Number.isNaN(Date.parse(proof.observed_at))
 }
+export function matchesLiveProofRun({repository,runId,run,evidence}){
+  const sameSha=(value)=>String(value??'').toLowerCase()===String(evidence?.application_commit_sha??'').toLowerCase()
+  const sameRepo=(value)=>String(value??'').toLowerCase()===REPO.toLowerCase()
+  if(String(repository??'').toLowerCase()!==String(evidence?.application_repository??'').toLowerCase())return false
+  // Application-owned proofs retain their established route. Only this repo's
+  // privileged shared-db producer needs the stricter exact-workflow binding.
+  if(!sameRepo(repository))return run?.conclusion==='success'&&sameSha(run?.head_sha)
+  return /^[0-9a-f]{40}$/i.test(String(evidence?.application_commit_sha??''))
+    &&sameRepo(run?.repository?.full_name)
+    &&Number.isSafeInteger(run?.id)&&run.id>0&&String(run.id)===String(runId)
+    &&run?.path==='.github/workflows/shared-db-live-proof.yml'&&run?.event==='workflow_dispatch'
+    &&run?.status==='completed'&&run?.conclusion==='success'&&run?.run_attempt===1&&sameSha(run?.head_sha)
+}
+export function matchesLiveProofProvenance({repository,runId,run,artifact,evidence}){
+  if(!evidence)return false
+  const expectedName=`shared-db-live-proof-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
+  return matchesLiveProofRun({repository,runId,run,evidence})
+    &&artifact?.name===expectedName&&artifact.expired===false
+    &&String(artifact.digest??'').toLowerCase()===String(evidence.live_artifact_digest??'').toLowerCase()
+    &&(String(repository).toLowerCase()!==REPO.toLowerCase()||(
+      Number.isSafeInteger(artifact.id)&&artifact.id>0&&artifact.id===evidence.live_artifact_id
+      &&Number.isSafeInteger(artifact.workflow_run?.id)&&artifact.workflow_run.id===run.id
+      &&String(artifact.workflow_run?.head_sha??'').toLowerCase()===String(run.head_sha).toLowerCase()))
+}
 export function matchesGeneratedTypesProof(proof,evidence){
   return proof?.schema_version===1&&proof.work_issue===evidence.work_issue&&proof.application_commit_sha===evidence.application_commit_sha&&proof.result==='passed'&&proof.generated_types_sha256===evidence.generated_types_output_digest
 }
@@ -2803,12 +2827,11 @@ export const githubIo = {
     const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.live_evidence??''))
     if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false
     const run=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}`])
-    if(run?.conclusion!=='success'||String(run?.head_sha??'').toLowerCase()!==String(evidence.application_commit_sha).toLowerCase())return false
+    if(!matchesLiveProofRun({repository:match[1],runId:match[2],run,evidence}))return false
     const artifacts=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}/artifacts`])?.artifacts
     if(!Array.isArray(artifacts))return false
     const artifact=artifacts.find((row)=>Number(row.id)===Number(evidence.live_artifact_id))
-    const expectedName=`shared-db-live-proof-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
-    if(!(artifact?.name===expectedName&&artifact.expired===false&&String(artifact.digest??'').toLowerCase()===String(evidence.live_artifact_digest).toLowerCase()))return false
+    if(!matchesLiveProofProvenance({repository:match[1],runId:match[2],run,artifact,evidence}))return false
     const proof=this.readArtifactJson(match[1],artifact.id,'db-live-proof.json')
     return matchesLiveProof(proof,evidence)
   },

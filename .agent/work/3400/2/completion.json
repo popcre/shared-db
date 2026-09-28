@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 3400,
+  "outcome": "ready-for-merge",
+  "pr": 3769,
+  "migration_versions": [
+    "20260928182014"
+  ],
+  "contract_ref": "refs/db-contracts/3400/2",
+  "contract_sha256": "4654d5cba41378c20d75d49259b7c529c38883c9e92eefbe706e1fa988f40623",
+  "base_sha": "a2bf06bcbb6e76fb4939f78ee0d9e38353dceb33",
+  "head_sha": "c6a2537a32c6f442ed724f6b8eea7ca016719813",
+  "files_changed": [
+    "supabase/migrations/20260928182014_hts_product_phrase_columns.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table plm.\"itemHeader\"",
+    "table plm.\"RFQItem\"",
+    "table dflow_prod.\"itemHeader\"",
+    "table dflow_prod.\"RFQItem\""
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed at implementation head c6a2537a."
+    },
+    {
+      "command": "python scripts/migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "exited 0 at implementation head c6a2537a."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check origin/main...HEAD exited 0 at implementation head c6a2537a."
+    }
+  ],
+  "assumptions_resolved": [
+    "Version 20260928182014 absent from preview and production ledgers.",
+    "production_business_risk_gate.classify_sql returns [] for the split file."
+  ],
+  "stop_conditions_hit": []
+}

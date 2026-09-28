@@ -379,6 +379,30 @@ class GuardTests(unittest.TestCase):
         ).read_bytes()
         self.assertEqual(original, reissue)
 
+    def test_issue_3458_reissue_has_identical_executable_sql(self) -> None:
+        """20260928145444 retires 20260928003740 only because it runs the SAME SQL.
+
+        The reissue adds header comments only, so compare every non-comment
+        line. A later edit to either file must fail here.
+        """
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260928003740_popsg_refresh_steps_under_ceiling.sql"),
+            executable("20260928145444_popsg_refresh_steps_reissue.sql"),
+        )
+
+    def test_issue_3458_original_is_blocked_but_reissue_is_allowed(self) -> None:
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740")
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740,20260928145444")
+        self.assertEqual(parse_allowlist("20260928145444"), ["20260928145444"])
+
     def test_stranded_bulk_operation_history_original_is_blocked_but_reissue_is_allowed(
         self,
     ) -> None:

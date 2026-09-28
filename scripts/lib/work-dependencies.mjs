@@ -163,7 +163,8 @@ export function findCompletionRecord(comments,{requireTrustedAuthor=false,reposi
   for (const comment of comments ?? []) {
     const record = parseCompletionComment(comment?.body)
     if (record) {
-      if(requireTrustedAuthor&&!(repository===undefined?isTrustedOperatorComment(comment):isTrustedOperatorComment(comment,repository)))throw new DependencyError(`db-work-completion must be authored by operator ${TRUSTED_OPERATOR_LOGIN} with the ${expectedOperatorAssociation()} association this repository's owner implies`)
+      if(requireTrustedAuthor&&(typeof repository!=='string'||!repository))throw new DependencyError('a trusted completion read requires the explicit current repository identity')
+      if(requireTrustedAuthor&&!isTrustedOperatorComment(comment,repository))throw new DependencyError(`db-work-completion must be authored by operator ${TRUSTED_OPERATOR_LOGIN} with the ${expectedOperatorAssociation(repository)} association this repository's owner implies`)
       found.push(record)
     }
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createStageEvidenceVerifier, publishStageEvent } from './lib/work-stage-evidence.mjs'
+import { createStageEvidenceVerifier } from './lib/work-stage-evidence.mjs'
 import { resolveEvidencePair, isEvidencePath } from './lib/agent-evidence-paths.mjs'
 
 import { execFileSync } from 'node:child_process'
@@ -1110,7 +1110,7 @@ export function readDependencyStates(declarations, io = githubIo) {
         states[number] = { exists: true, unreadable: `comments unreadable: ${String(error?.message ?? error)}` }; continue
       }
     }
-    if (explicit.has(number)) state.verifyStageEvidence = createStageEvidenceVerifier(io, REPO)
+    if (explicit.has(number)) state.verifyStageEvidence = createStageEvidenceVerifier({ ...io, parseScope: parseQueueScope }, REPO)
     states[number] = state
   }
   return states
@@ -8725,7 +8725,7 @@ export function verifyCompletionAcceptance({ issue, record }, io = githubIo) {
   const scope = parseQueueScope(work.body ?? '')
   if (!scope) throw new DependencyError('completion issue has no typed scope')
   const comments = io.issueComments(Number(issue))
-  const stored = findCompletionRecord(comments, { requireTrustedAuthor: true })
+  const stored = findCompletionRecord(comments, { requireTrustedAuthor: true, repository: REPO })
   if (!stored) return { status: scope.workType === 'structural' ? 'awaiting-live-proof' : 'incomplete', workType: scope.workType }
   record = validateCompletionRecord(record ?? stored)
   if (record.work_issue !== Number(issue) || [...new Set([...Object.keys(stored), ...Object.keys(record)])].some(key => JSON.stringify(stored[key]) !== JSON.stringify(record[key]))) throw new DependencyError('completion does not match the immutable trusted record')

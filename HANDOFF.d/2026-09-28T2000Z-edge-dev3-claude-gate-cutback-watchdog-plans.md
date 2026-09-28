@@ -1,0 +1,10 @@
+# Handoff: gate cutback and stuck-work watchdog plans (unstarted)
+
+Written 2026-09-28 4:00 PM EDT by Claude chat a3b25ec9-4d49-4ba1-9623-9db18ddacfa4 on edge-dev3.
+
+Two plans were written and reviewed; no implementation has started.
+
+- [docs/plans/plan_gate_cutback.md](../docs/plans/plan_gate_cutback.md) — start at its STATUS table, Step 1.
+- [docs/plans/plan_stuck_work_watchdog.md](../docs/plans/plan_stuck_work_watchdog.md) — start after the gate plan's Steps 1–2.
+
+Next exact action: open a non-orchestrator tracker issue in popcre/ai-devops for gate-plan Step 1 (poller quota) and execute it. Neither plan changes database structure (non-orchestrator work).

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3675,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Move code-enforced owner-only routes to AI sessions: security-settings exits to repo-session, and dirty/remote retirement needs preservation plus AI reviewer APPROVE artifacts instead of an owner decision",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "dispatcher": "repo-maintenance session for issue #3675 (Claude chat 626c9036-7381-4131-aeee-6e29883153c6)",
+  "worker": "claude",
+  "branch": "claude/3675-no-owner-routes",
+  "worktree": ".claude/worktrees/3675-no-owner-routes",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not touch any migration or database object",
+    "do not remove any technical gate other than the two owner-approval requirements named in #3675",
+    "do not edit another session's handoff, worktree, branch, or claim"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs",
+    "node scripts/check-cancelled-work.mjs"
+  ],
+  "assumptions": [
+    "no retirement tombstone refs exist yet, so dropping owner_decision breaks no stored record",
+    "PR #3673 lands the prose ruling first; this branch refreshes onto it"
+  ],
+  "stop_conditions": [
+    "stop if a test fails for a reason unrelated to these files",
+    "stop if the change would need to touch a file outside allowed_paths"
+  ]
+}

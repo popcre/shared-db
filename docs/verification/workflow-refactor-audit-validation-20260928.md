@@ -1,6 +1,6 @@
 # Delivery-audit evidence validation — September 27, 2026
 
-Owner: [#3597](https://github.com/popcre/shared-db/issues/3597), non-orchestrator work. This repeatable validation protects the audit's captured counts, route classes, owner markers, issue-to-PR provenance, dependency graph, check totals, cohort calculations, superseded heads and stage claims. It is superseded with the audit by a later workflow-refactor acceptance report; it makes no live database or production claim.
+Owner: [#3597](https://github.com/popcre/shared-db/issues/3597), non-orchestrator work. This repeatable validation checks the archived email-redacted values and protects the audit's captured counts, route classes, owner markers, issue-to-PR provenance, dependency graph, check totals, cohort calculations, superseded heads and stage claims. It is superseded with the audit by a later workflow-refactor acceptance report; it makes no live database or production claim.
 
 Run from the repository root with `python3` using the code block below. The recorded local result was `Audit snapshot, provenance, graph, routes and plan reconcile`. The command `node --test scripts/check-current-workflow-policy.test.mjs` passed 7/7 tests (0 failed), and `git diff --check` passed. The paths were classified as six lightweight prose documents by `classifyLightweightMergePaths`. A new capture needs updated expected counts; do not reinterpret this dated snapshot as current GitHub state.
 

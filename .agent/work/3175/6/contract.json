@@ -1,19 +1,17 @@
 {
   "allowed_paths": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260923173656_retire_designflow_taxonomy_health_lane.sql",
+    "supabase/migrations/20260928050320_retire_designflow_taxonomy_health_lane.sql",
     "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
     ".github/live-proofs/3175.sql",
-    ".agent/work/3175/5/contract.json",
-    ".agent/work/3175/5/completion.json"
+    ".agent/work/3175/6/contract.json",
+    ".agent/work/3175/6/completion.json"
   ],
   "assumptions": [
-    "Claim #3307 reserves version 20260923173656 and exactly two function objects.",
-    "DesignFlow sync removal #2794 is production complete. Compatibility designflow_ok true must explicitly identify retired/not-required semantics.",
-    "Version superseded 20260920151128 -> 20260923173656 by --supersede-active-claim-version on claim #3307 (backdated-version guard)."
+    "Claim #3307 now reserves version 20260928050320 for exactly two function objects; old version 20260923173656 remains permanently reserved.",
+    "DesignFlow sync removal #2794 is production complete. Compatibility designflow_ok true explicitly identifies retired/not-required semantics.",
+    "Current main b02d04c7 integrated; the governed claim worktree was rebound and version was superseded without SQL body changes."
   ],
-  "base_sha": "5653b760e445ff27264b82e42596c84afc101ee5",
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15",
   "branch": "codex/3175-retired-taxonomy-916",
   "db_reads": [
     "table ingest.sync_run"
@@ -22,17 +20,15 @@
     "function plm.check_taxonomy_sync_health",
     "function plm.record_taxonomy_parallel_observation"
   ],
-  "dispatcher": "Claude orchestrator aa4791e3-535d-47ad-ac32-a4d0b9323273 (marker #3434)",
+  "dispatcher": "Codex root orchestrator marker #3570, chat 01a0e56c-2e17-78a2-ad57-cd154b990979",
   "file_writes": [
-    ".agent/contract.json",
-    ".agent/completion.json",
-    "supabase/migrations/20260923173656_retire_designflow_taxonomy_health_lane.sql",
+    "supabase/migrations/20260928050320_retire_designflow_taxonomy_health_lane.sql",
     "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
     ".github/live-proofs/3175.sql",
-    ".agent/work/3175/5/contract.json",
-    ".agent/work/3175/5/completion.json"
+    ".agent/work/3175/6/contract.json",
+    ".agent/work/3175/6/completion.json"
   ],
-  "generation": 5,
+  "generation": 6,
   "goal": "Retire only the DesignFlow runtime freshness/status leg in both taxonomy detectors while preserving ColdLion checks, historical source-reference invariants, live-hash refusal, append-only evidence and ACLs.",
   "prohibited_actions": [
     "No direct database apply, promotion, merge, issue closure, or changed columns.",
@@ -44,13 +40,18 @@
     "focused rollback SQL regression contracts"
   ],
   "route": "shared-db-orchestrator",
-  "schema_version": 1,
+  "schema_version": 2,
   "stop_conditions": [
     "Unexpected live definition divergence or claim collision.",
     "Any required change outside admitted function objects or allowed paths."
   ],
   "work_issue": 3175,
   "work_type": "structural",
-  "worker": "codex-01a0bf00-3175",
-  "worktree": "C:/repos/shared-db/.claude/worktrees/claude-3175-resume-aa47"
+  "worker": "Codex subagent chat 01a0e65a-82f1-7d93-b8fb-4440da47884d",
+  "worktree": "/home/ahazan/repos/shared-db-3175-recovery",
+  "evidence_parent": {
+    "work_issue": 3175,
+    "generation": 5,
+    "contract_sha256": "4cddb8b97420d1569f871eac8e8180b835252628e51faca9711bf0e4cd9385d7"
+  }
 }

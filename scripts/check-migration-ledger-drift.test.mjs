@@ -9,6 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   Unknown,
@@ -28,6 +29,12 @@ import {
   PROJECT_REFS,
   sandboxInScopeVersions,
 } from './check-migration-ledger-drift.mjs'
+
+test('scheduled sandbox monitoring retains the reporter regression suite', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/migration-ledger-drift.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /list=\["production","sandbox"\]/)
+  assert.match(workflow, /node --test scripts\/check-migration-ledger-drift\.test\.mjs scripts\/check-worktree-freshness\.test\.mjs scripts\/report-ledger-drift-status\.test\.mjs/)
+})
 
 test('origin/main is refreshed before any migration-tree verification read', () => {
   const calls = []

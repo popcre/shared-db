@@ -9,6 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   GROK_WRAPPER,
@@ -24,6 +25,12 @@ import {
 const POLICY = TURN_BUDGET_POLICY[GROK_WRAPPER]
 const SMALL = 914   // PR #2490 — succeeded on the wrapper default
 const LARGE = 1798  // PR #2409 — returned no recordable terminal verdict, three times
+
+test('reviewer budget CI retains current-main authority tests', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/migration-author-lease.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /scripts\/lib\/required-check-authority\.test\.mjs/)
+  assert.match(workflow, /scripts\/lib\/reviewer-turn-budget\.test\.mjs/)
+})
 
 test('the wrapper default is never LOWERED for any review', () => {
   for (const lines of [0, 1, SMALL, LARGE, 100000, null, undefined, -5, NaN]) {

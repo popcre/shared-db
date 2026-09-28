@@ -1023,6 +1023,37 @@ test('preferred reviewers include StepFun while Grok remains an eligible fallbac
   for(let n=1;n<=10;n++)assert.notEqual(assignNextReviewer({issue:9400+n,pr:9500+n,headSha:`abcdef${n}`},windows).reviewer,'stepfun-step-5-preview')
 })
 
+test('preference applies to the second independent slot and to a failed-reviewer replacement',()=>{
+  const io=withAtomicRefs(reviewIo());delete io.reviewerOrder
+  const headSha='a'.repeat(40),request={issue:3592,pr:3593,headSha}
+  io.requiresExactReviewHeadSha=true
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:headSha,ref:'codex/priority'}})
+  const first=assignNextReviewer(request,io)
+  const second=assignNextReviewer({...request,slot:2},io)
+  assert.notEqual(first.reviewer,second.reviewer)
+  assert.notEqual(first.reviewer,'grok-4.6')
+  assert.notEqual(second.reviewer,'grok-4.6')
+
+  // Every preferred reviewer now refuses locally; Grok must remain a valid
+  // replacement for the failed first slot without reusing its original holder.
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
+  const replaced=replaceFailedReviewer({...request,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.equal(replaced.reviewer,'grok-4.6')
+  assert.ok(replaced.sequence>second.sequence)
+
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:Number(pr)===3595?'b'.repeat(40):headSha,ref:'codex/priority'}})
+  const next=assignNextReviewer({issue:3594,pr:3595,headSha:'b'.repeat(40)},io)
+  assert.notEqual(next.reviewer,'grok-4.6','fallback must not become the first choice for the next review')
+})
+
+test('a test-only reviewer order cannot add, drop, or repeat a roster member',()=>{
+  for(const badOrder of [[],[ACTIVE_REVIEWERS[0]],ACTIVE_REVIEWERS.map(()=>ACTIVE_REVIEWERS[0])]){
+    const io=reviewIo();io.reviewerOrder=()=>badOrder
+    assert.throws(()=>assignNextReviewer({issue:3596,pr:3597,headSha:'abcdef1'},io),/permutation of the active roster/)
+  }
+})
+
 test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous exact-head reviews, each on its own lease',()=>{
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true

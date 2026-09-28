@@ -93,6 +93,9 @@ rules below are the operative summary.
     #849). StepCode has no Windows build and the sandbox is Linux-only, so on any
     other OS `ai-review-preflight usable` reports it `unsupported-platform` and
     the allocator skips it there like any other unusable provider.
+    **Preference as of 2026-09-27 (non-orchestrator issue #3592):** the allocator
+    rotates among eligible non-Grok reviewers first. Grok stays active and is
+    drawn when that preferred pool cannot take the exact review.
     **Codex GPT-5.6 Sol is NOT in the rotation:** the owner retired it
     permanently on 2026-09-06 (issue #2485) once the other providers were
     working, so it sits in `RETIRED_REVIEWERS` and is not drawable. Its

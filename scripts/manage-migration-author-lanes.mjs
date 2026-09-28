@@ -594,15 +594,24 @@ export function reviewerKnownNonReading(name, reviewers=REVIEWERS){
 // `PASS provider=codex sandbox=read-only reasoning=explicit command=codex`.
 export const OVERFLOW_REVIEWERS = Object.freeze([])
 export const ACTIVE_REVIEWERS = Object.freeze(REVIEWERS.filter((row)=>!RETIRED_REVIEWERS.includes(row.name)&&!QUARANTINED_REVIEWERS.includes(row.name)))
-// Rotate among preferred reviewers first. Grok remains eligible when none of
-// them can take this exact review under the existing admission rules.
+// Owner instruction, 2026-09-27 (issue #3592): Grok is expensive, so rotate
+// among the other eligible reviewers first. Grok remains an eligible fallback.
 export const REVIEWER_FALLBACK_PROVIDERS = Object.freeze(['grok'])
 export function orderedReviewers(sequence,reviewers=ACTIVE_REVIEWERS){
   const rotate=(rows)=>rows.length?Array.from({length:rows.length},(_,offset)=>rows[(sequence-1+offset)%rows.length]):[]
   return [...rotate(reviewers.filter((row)=>!REVIEWER_FALLBACK_PROVIDERS.includes(row.provider))),
     ...rotate(reviewers.filter((row)=>REVIEWER_FALLBACK_PROVIDERS.includes(row.provider)))]
 }
-function drawOrder(sequence,io){return io.reviewerOrder?.(sequence)??orderedReviewers(sequence)}
+function drawOrder(sequence,io){
+  // The injected order exists only for historical safety fixtures. Production
+  // always uses the owner policy above; fixtures may reorder but never change
+  // membership, which keeps every admission and exhaustion check meaningful.
+  if(io===githubIo||!io.reviewerOrder)return orderedReviewers(sequence)
+  const rows=io.reviewerOrder(sequence)
+  const names=ACTIVE_REVIEWERS.map((row)=>row.name).sort()
+  if(!Array.isArray(rows)||rows.length!==names.length||JSON.stringify(rows.map((row)=>row?.name).sort())!==JSON.stringify(names))throw new LaneError('injected reviewer order must be a permutation of the active roster')
+  return rows
+}
 
 export function canonicalReviewerAllowlist(value){
   if(value===undefined||value===null)return null
@@ -6116,11 +6125,9 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
     const sequence=(current?.sequence??0)+1
-    // Ordinary path: round-robin over the active roster. The overflow provider
-    // is reached only when EVERY active reviewer is already holding live review
-    // work here and the overflow provider itself is free. The rotation position
-    // is derived from `sequence`, not from who was last assigned, so spending a
-    // sequence on the overflow provider does not move anyone's turn.
+    // Ordinary path: rotate within the preferred pool. Grok is considered after
+    // that pool for this exact assignment. The durable sequence remains monotone;
+    // a fallback draw advances the next preferred starting position by one.
     // Slot >=2 additionally excludes whoever slot 1 already holds for this
     // exact head, so the second reviewer is never the same provider as the
     // first -- on top of, never instead of, the ordinary busy exclusion.
@@ -6868,7 +6875,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // re-deriving it from memory.
     const checkNote=String(failingCheck??'').trim()?` failing-check=${String(failingCheck).trim().replace(/\s+/g,'_')}`:''
     let failureSha
-    // SKIP, DO NOT REFUSE (#1297). The rotation position is only a starting point.
+    // SKIP, DO NOT REFUSE (#1297). The preferred rotation position is only a starting point.
     // Every provider that already failed on THIS exact head is excluded, and the
     // cursor is advanced past each excluded name so the durable sequence still
     // moves forward monotonically and stays consistent with the sequence this

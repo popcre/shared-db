@@ -460,17 +460,19 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
    slot independence still decide who is usable. It creates no concurrency cap.
 
-   For new assignments, the shared cursor (the sequence counter is shared; which
-   reviewer a draw lands on depends on what the drawing machine can run) rotates Grok 4.6 → Qwen
-   3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
-   V4.1 Flash → StepFun Step 5 → repeat,
-   skipping any reviewer whose engine matches the live orchestrator, and on a
+   For new assignments, the shared cursor rotates among Qwen 3.8 Max, Muse
+   Spark 1.3 Contributor, Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and
+   StepFun Step 5 first (owner preference, 2026-09-27, non-orchestrator issue
+   #3592). Grok 4.6 remains active and is selected when none of those preferred
+   reviewers can take the exact review. The sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run. The
+   allocator skips any reviewer whose engine matches the live orchestrator, and on a
    non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
    (paused 2026-09-18) and Kimi K3 (paused 2026-09-22, account out of credit,
    issue #3423) are not drawable until removed from `RETIRED_REVIEWERS`.
    Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
    by owner instruction and is no longer drawable.
-   That is exactly `ACTIVE_REVIEWERS` in
+   The full active membership is `ACTIVE_REVIEWERS` in
    [`scripts/manage-migration-author-lanes.mjs`](../../scripts/manage-migration-author-lanes.mjs),
    which is `REVIEWERS` minus `RETIRED_REVIEWERS` and `QUARANTINED_REVIEWERS`;
    the code is the truth and this sentence must be re-derived from it, never the

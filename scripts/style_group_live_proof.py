@@ -97,7 +97,8 @@ def main(argv=None):
         with psycopg.connect(host=HOST, port=PORT, dbname="postgres", user=USER,
                              password=secret, sslmode="verify-full", sslrootcert=str(CA_FILE),
                              connect_timeout=10, autocommit=True) as connection:
-            if connection.info.host != HOST or connection.info.dbname != "postgres" or connection.info.user != USER:
+            if (connection.info.host != HOST or connection.info.port != PORT
+                    or connection.info.dbname != "postgres" or connection.info.user != USER):
                 raise LiveProofError("production pooler endpoint identity changed")
             proof = build_proof(issue=issue, work_issue=ISSUE, probe_sql=sql,
                                 commit_sha=args.commit_sha,

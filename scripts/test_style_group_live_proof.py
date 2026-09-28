@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Guard issue #2478's one-off production proof route without weakening others."""
 import hashlib
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from shared_db_live_proof import LiveProofError, execute_bounded_probe
-from style_group_live_proof import (CA_FILE, CA_SHA256, PROBE_SHA256,
-                                    execute_style_group_probe)
+from style_group_live_proof import (CA_FILE, CA_SHA256, HOST, PORT, PROBE_SHA256, USER,
+                                    execute_style_group_probe, main)
 from test_shared_db_live_proof import FakeConnection
 
 
@@ -63,6 +68,59 @@ class StyleGroupProofTests(unittest.TestCase):
         self.assertIn("scripts/style_group_live_proof.py", workflow)
         self.assertIn("secrets.SUPABASE_DB_PASSWORD_PRODUCTION", workflow)
         self.assertIn("name: shared-db-live-proof-${{ inputs.work_issue }}-${{ github.sha }}", workflow)
+
+    def test_main_pins_connection_and_rejects_mismatched_identity(self):
+        self.assertEqual(PORT, 5432)
+        calls = []
+        connection = FakeConnection()
+        connection.state = self.connection.state[:]
+        connection.info = SimpleNamespace(host=HOST, port=PORT, dbname="postgres",
+                                          user=USER, transaction_status=0)
+
+        def connect(**kwargs):
+            calls.append(kwargs)
+            return connection
+
+        with tempfile.TemporaryDirectory() as directory:
+            issue_file = Path(directory) / "issue.json"
+            issue_file.write_text(json.dumps({"number": 2478, "body": """
+```db-work-scope
+work_type: structural
+application_return_to: popcre/shared-db
+live_assertion: migration 20260925061508 and derivation controls pass
+```
+"""}))
+            argv = ["--work-issue", "2478", "--issue-json", str(issue_file),
+                    "--probe", ".github/live-proofs/2478.sql", "--commit-sha", "a" * 40,
+                    "--output", str(Path(directory) / "proof.json")]
+            with patch.dict(sys.modules, {"psycopg": SimpleNamespace(connect=connect)}), \
+                 patch.dict(os.environ, {"SUPABASE_DB_PASSWORD_PRODUCTION": "test-only"}):
+                main(argv)
+                self.assertEqual(json.loads(Path(argv[-1]).read_text())["result"], "passed")
+                self.assertEqual(calls[-1]["password"], "test-only")
+                self.assertEqual(calls[-1]["host"], HOST)
+                self.assertEqual(calls[-1]["port"], PORT)
+                self.assertEqual(calls[-1]["user"], USER)
+                self.assertEqual(calls[-1]["dbname"], "postgres")
+                self.assertEqual(calls[-1]["sslmode"], "verify-full")
+                self.assertEqual(calls[-1]["sslrootcert"], str(CA_FILE))
+                for field, wrong in (("host", "wrong.pooler.supabase.com"),
+                                     ("port", 6543), ("dbname", "other"),
+                                     ("user", "other")):
+                    with self.subTest(field=field):
+                        setattr(connection.info, field, wrong)
+                        with self.assertRaises(LiveProofError):
+                            main(argv[:-1] + [str(Path(directory) / f"{field}.json")])
+                        setattr(connection.info, field, {"host": HOST, "port": PORT,
+                                                        "dbname": "postgres", "user": USER}[field])
+                with patch.dict(os.environ, {}, clear=True), self.assertRaises(LiveProofError):
+                    main(argv[:-1] + [str(Path(directory) / "missing-secret.json")])
+                with patch("style_group_live_proof.CA_SHA256", "0" * 64), self.assertRaises(LiveProofError):
+                    main(argv[:-1] + [str(Path(directory) / "changed-ca.json")])
+                with self.assertRaises(LiveProofError):
+                    main(argv[:5] + ["scripts/test_style_group_live_proof.py"] + argv[6:-1]
+                         + [str(Path(directory) / "wrong-probe.json")])
+        self.assertEqual(len(calls), 5)
 
 
 if __name__ == "__main__":

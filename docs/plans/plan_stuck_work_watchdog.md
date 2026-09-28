@@ -13,7 +13,7 @@ Supersedes nothing; extends:
 
 ## STATUS — read first
 
-Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) reviews — see Review record. Start at Step 1 (needs `the watchdog App (§8)`, §8).
+Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) reviews — see Review record. Start at Step 1 (needs the watchdog GitHub App, §8).
 
 | Step | Outcome | Status | Updated | Evidence |
 |---|---|---|---|---|
@@ -125,10 +125,10 @@ Adversarial cases (untrusted input = PR bodies, comments, logs):
 | Check name | a check named like a required one from a fork | classify-failure.test "only required contexts from branch rules count" |
 
 ## 11. Constraints
-Watchdog never merges, never force-pushes, never edits gates, never touches production/database. Uses `the watchdog App (§8)` (§8), never the Actions token for cross-repo work. Sign posts `Posted by stuck-work-watchdog (ai-devops)`. Times in EDT. Code changes go through normal checks and governed review.
+Watchdog never merges, never force-pushes, never edits gates, never touches production/database. Uses the watchdog GitHub App (§8), never the Actions token for cross-repo work. Sign posts `Posted by stuck-work-watchdog (ai-devops)`. Times in EDT. Code changes go through normal checks and governed review.
 
 ## 12. Access
-`gh` as u2giants (popcre admin). One new secret: `the watchdog App (§8)` (1Password vault `vibe_coding`, item "stuck-work-watchdog GitHub token"; creating it needs Albert's approval to mint a token). The fixer routine uses the credentials its cloud environment already has.
+`gh` as u2giants (popcre admin). One new credential: the watchdog GitHub App (1Password vault `vibe_coding`, item "stuck-work-watchdog GitHub App"; creating the App needs Albert's approval). The fixer routine uses the credentials its cloud environment already has.
 
 ## 13. Done / risks
 Done: six STATUS rows cite artifacts; Albert sees the daily stuck issue.

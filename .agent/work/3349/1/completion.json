@@ -5,8 +5,8 @@
   "pr": 3525,
   "contract_ref": "refs/db-contracts/3349/1",
   "contract_sha256": "f5d565ca8fb801b3b1a96e1b90c59f7cded8d167b9d714cf9bc6d955408ef9a5",
-  "head_sha": "bf03f499b566241c83e7c5032fa4fc07ffb2a91f",
-  "base_sha": "84efcba2db06bd8e530b81fb2f4fd08c9118d07b",
+  "head_sha": "62fdf918a33aa3632e0e5f492398689431f302ad",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -18,7 +18,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "715 pass, 0 fail at bf03f499 after refreshing onto origin/main."
+      "evidence": "715 pass, 0 fail at 62fdf918 after refreshing onto origin/main."
     }
   ],
   "assumptions_resolved": [

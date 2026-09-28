@@ -94,6 +94,24 @@ comment on table plm.wildbrain_entity_lifecycle is
   'opaque: an asset uses its retained source hash; every other kind hashes its label '
   '(and, for an inferred guide, its derivation fields) with its raw record.';
 
+-- Serving indexes (review of PR #3731). The publish path finds the latest publication by
+-- source time, and scans durable state by (last_seen_capture_id, entity_kind) for the
+-- bulk-drop guard, the withdrawal counts and the withdrawal itself; the same index serves
+-- the last_seen foreign key. The other foreign-key child columns get their own index so a
+-- publication-row check never scans the whole durable-state table.
+create index wildbrain_lifecycle_publication_latest_idx
+  on plm.wildbrain_lifecycle_publication (source_captured_at desc, published_at desc);
+create index wildbrain_lifecycle_publication_baseline_idx
+  on plm.wildbrain_lifecycle_publication (baseline_capture_id) where baseline_capture_id is not null;
+create index wildbrain_entity_lifecycle_last_seen_idx
+  on plm.wildbrain_entity_lifecycle (last_seen_capture_id, entity_kind);
+create index wildbrain_entity_lifecycle_first_seen_idx
+  on plm.wildbrain_entity_lifecycle (first_seen_capture_id);
+create index wildbrain_entity_lifecycle_last_changed_idx
+  on plm.wildbrain_entity_lifecycle (last_changed_capture_id);
+create index wildbrain_entity_lifecycle_withdrawn_idx
+  on plm.wildbrain_entity_lifecycle (withdrawn_capture_id) where withdrawn_capture_id is not null;
+
 alter table plm.wildbrain_lifecycle_publication enable row level security;
 alter table plm.wildbrain_entity_lifecycle enable row level security;
 revoke all on plm.wildbrain_lifecycle_publication from public, anon, authenticated, service_role;
@@ -198,27 +216,27 @@ begin
   values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_rules, v_scope, v_cap.source_captured_at);
 
   drop table if exists pg_temp.wildbrain_lifecycle_seen;
-  create temporary table wildbrain_lifecycle_seen (
+  create temporary table pg_temp.wildbrain_lifecycle_seen (
     entity_kind text not null, entity_key text not null, change_signal text not null,
     primary key (entity_kind, entity_key)
   ) on commit drop;
 
-  insert into wildbrain_lifecycle_seen
+  insert into pg_temp.wildbrain_lifecycle_seen
   select 'asset', a.asset_source_id, a.source_hash
     from plm.wildbrain_asset a where a.capture_id = p_capture_id;
-  insert into wildbrain_lifecycle_seen
+  insert into pg_temp.wildbrain_lifecycle_seen
   select 'era', v.era_source_id,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(v.era_label, v.parent_era_source_id, v.raw)::text, 'UTF8')), 'hex')
     from plm.wildbrain_era v where v.capture_id = p_capture_id;
-  insert into wildbrain_lifecycle_seen
+  insert into pg_temp.wildbrain_lifecycle_seen
   select 'creative_group', v.creative_group_source_id,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(v.creative_group_label, v.raw)::text, 'UTF8')), 'hex')
     from plm.wildbrain_creative_group v where v.capture_id = p_capture_id;
-  insert into wildbrain_lifecycle_seen
+  insert into pg_temp.wildbrain_lifecycle_seen
   select 'character', v.character_source_id,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(v.character_label, v.raw)::text, 'UTF8')), 'hex')
     from plm.wildbrain_character v where v.capture_id = p_capture_id;
-  insert into wildbrain_lifecycle_seen
+  insert into pg_temp.wildbrain_lifecycle_seen
   select 'guide', v.guide_key,
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
            v.guide_label, v.derivation_method, v.rule_version, v.relationship_truth, v.raw)::text, 'UTF8')), 'hex')
@@ -235,7 +253,7 @@ begin
        where l.entity_kind = v_kind and ((l.entity_kind <> 'guide' and l.last_seen_capture_id = any(v_eligible)) or (l.entity_kind = 'guide' and l.last_seen_capture_id = v_prev.capture_id));
       select pg_catalog.count(*) into v_drop from plm.wildbrain_entity_lifecycle l
        where l.entity_kind = v_kind and l.status = 'active' and ((l.entity_kind <> 'guide' and l.last_seen_capture_id = any(v_eligible)) or (l.entity_kind = 'guide' and l.last_seen_capture_id = v_prev.capture_id))
-         and not exists (select 1 from wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+         and not exists (select 1 from pg_temp.wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
       v_limit := greatest(1, least(100, pg_catalog.floor(v_base * 0.02)::bigint));
       if v_drop > v_limit then
         v_held := true;
@@ -248,20 +266,20 @@ begin
   end if;
 
   foreach v_kind in array array['asset','era','creative_group','character','guide'] loop
-    select pg_catalog.count(*) into v_seen from wildbrain_lifecycle_seen s where s.entity_kind = v_kind;
-    select pg_catalog.count(*) into v_added from wildbrain_lifecycle_seen s where s.entity_kind = v_kind
+    select pg_catalog.count(*) into v_seen from pg_temp.wildbrain_lifecycle_seen s where s.entity_kind = v_kind;
+    select pg_catalog.count(*) into v_added from pg_temp.wildbrain_lifecycle_seen s where s.entity_kind = v_kind
        and not exists (select 1 from plm.wildbrain_entity_lifecycle l where l.entity_kind = s.entity_kind and l.entity_key = s.entity_key);
-    select pg_catalog.count(*) into v_changed from wildbrain_lifecycle_seen s join plm.wildbrain_entity_lifecycle l
+    select pg_catalog.count(*) into v_changed from pg_temp.wildbrain_lifecycle_seen s join plm.wildbrain_entity_lifecycle l
         on l.entity_kind = s.entity_kind and l.entity_key = s.entity_key
      where s.entity_kind = v_kind and l.change_signal <> s.change_signal;
-    select pg_catalog.count(*) into v_back from wildbrain_lifecycle_seen s join plm.wildbrain_entity_lifecycle l
+    select pg_catalog.count(*) into v_back from pg_temp.wildbrain_lifecycle_seen s join plm.wildbrain_entity_lifecycle l
         on l.entity_kind = s.entity_kind and l.entity_key = s.entity_key
      where s.entity_kind = v_kind and l.status = 'withdrawn';
     v_drop := 0;
     if v_mode = 'comparable' and (v_kind <> 'guide' or v_guides) then
       select pg_catalog.count(*) into v_drop from plm.wildbrain_entity_lifecycle l
        where l.entity_kind = v_kind and l.status = 'active' and ((l.entity_kind <> 'guide' and l.last_seen_capture_id = any(v_eligible)) or (l.entity_kind = 'guide' and l.last_seen_capture_id = v_prev.capture_id))
-         and not exists (select 1 from wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+         and not exists (select 1 from pg_temp.wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
     end if;
     v_counts := v_counts || pg_catalog.jsonb_build_object(v_kind, pg_catalog.jsonb_build_object(
       'seen', v_seen, 'added', v_added, 'changed', v_changed, 'reactivated', v_back, 'withdrawn', v_drop));
@@ -274,7 +292,7 @@ begin
            withdrawn_capture_id = p_capture_id
      where (l.entity_kind <> 'guide' or v_guides)
        and l.status = 'active' and ((l.entity_kind <> 'guide' and l.last_seen_capture_id = any(v_eligible)) or (l.entity_kind = 'guide' and l.last_seen_capture_id = v_prev.capture_id))
-       and not exists (select 1 from wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
+       and not exists (select 1 from pg_temp.wildbrain_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
   end if;
 
   insert into plm.wildbrain_entity_lifecycle as l
@@ -282,7 +300,7 @@ begin
      last_seen_capture_id, last_seen_at, last_changed_capture_id, change_signal)
   select s.entity_kind, s.entity_key, p_capture_id, v_cap.source_captured_at,
          p_capture_id, v_cap.source_captured_at, p_capture_id, s.change_signal
-    from wildbrain_lifecycle_seen s
+    from pg_temp.wildbrain_lifecycle_seen s
   on conflict (entity_kind, entity_key) do update
      set last_seen_capture_id = excluded.last_seen_capture_id,
          last_seen_at = excluded.last_seen_at,

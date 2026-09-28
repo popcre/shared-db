@@ -15,7 +15,11 @@ begin
        or has_table_privilege('authenticated', format('plm.%I', v_table), 'insert')
        or has_table_privilege('service_role', format('plm.%I', v_table), 'insert')
        or has_table_privilege('service_role', format('plm.%I', v_table), 'update')
-       or has_table_privilege('service_role', format('plm.%I', v_table), 'delete') then
+       or has_table_privilege('service_role', format('plm.%I', v_table), 'delete')
+       or has_table_privilege('service_role', format('plm.%I', v_table), 'truncate')
+       or has_table_privilege('authenticated', format('plm.%I', v_table), 'update')
+       or has_table_privilege('authenticated', format('plm.%I', v_table), 'delete')
+       or has_table_privilege('authenticated', format('plm.%I', v_table), 'truncate') then
       raise exception 'WildBrain lifecycle grants are incorrect for plm.%', v_table;
     end if;
   end loop;
@@ -234,6 +238,64 @@ begin
   end if;
   if not (select prosecdef from pg_proc where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure) then
     raise exception 'publish function is not SECURITY DEFINER';
+  end if;
+  -- The pinned search_path is the security boundary of a SECURITY DEFINER function, and a
+  -- body that writes tables must stay VOLATILE.
+  if (select proconfig from pg_proc where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure)
+       is distinct from array['search_path=pg_catalog, pg_temp']
+     or (select provolatile from pg_proc where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure) <> 'v' then
+    raise exception 'publish function search_path pin or volatility differs from the reviewed shape';
+  end if;
+  -- Every named CHECK, by exact name and table, and nothing else.
+  if (select string_agg(conname, ',' order by conname) from pg_constraint
+       where conrelid = 'plm.wildbrain_entity_lifecycle'::regclass and contype = 'c')
+     <> 'wildbrain_entity_lifecycle_history_chk,wildbrain_entity_lifecycle_key_chk,wildbrain_entity_lifecycle_kind_chk,wildbrain_entity_lifecycle_status_chk,wildbrain_entity_lifecycle_withdrawn_at_chk'
+     or (select string_agg(conname, ',' order by conname) from pg_constraint
+          where conrelid = 'plm.wildbrain_lifecycle_publication'::regclass and contype = 'c')
+     <> 'wildbrain_lifecycle_publication_baseline_chk,wildbrain_lifecycle_publication_contract_chk,wildbrain_lifecycle_publication_counts_chk,wildbrain_lifecycle_publication_mode_chk,wildbrain_lifecycle_publication_scope_chk' then
+    raise exception 'durable-state CHECK constraints differ from the reviewed shape';
+  end if;
+  -- Foreign keys by child column and parent, not just a count.
+  if (select string_agg(format('%s:%s->%s', c.conrelid::regclass, a.attname, c.confrelid::regclass), ',' order by c.conrelid::regclass::text, a.attname)
+        from pg_constraint c
+        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+       where c.contype = 'f' and cardinality(c.conkey) = 1
+         and c.conrelid in ('plm.wildbrain_entity_lifecycle'::regclass, 'plm.wildbrain_lifecycle_publication'::regclass))
+     <> 'plm.wildbrain_entity_lifecycle:first_seen_capture_id->plm.wildbrain_lifecycle_publication,'
+        'plm.wildbrain_entity_lifecycle:last_changed_capture_id->plm.wildbrain_lifecycle_publication,'
+        'plm.wildbrain_entity_lifecycle:last_seen_capture_id->plm.wildbrain_lifecycle_publication,'
+        'plm.wildbrain_entity_lifecycle:withdrawn_capture_id->plm.wildbrain_lifecycle_publication,'
+        'plm.wildbrain_lifecycle_publication:baseline_capture_id->plm.wildbrain_lifecycle_publication,'
+        'plm.wildbrain_lifecycle_publication:capture_id->plm.wildbrain_capture' then
+    raise exception 'durable-state foreign keys differ from the reviewed shape';
+  end if;
+  -- Serving indexes, by exact definition.
+  if (select string_agg(indexname || '=' || regexp_replace(indexdef, '^.* USING ', ''), ';' order by indexname)
+        from pg_indexes where schemaname = 'plm'
+         and tablename in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication'))
+     <> 'wildbrain_entity_lifecycle_first_seen_idx=btree (first_seen_capture_id);'
+        'wildbrain_entity_lifecycle_last_changed_idx=btree (last_changed_capture_id);'
+        'wildbrain_entity_lifecycle_last_seen_idx=btree (last_seen_capture_id, entity_kind);'
+        'wildbrain_entity_lifecycle_pkey=btree (entity_kind, entity_key);'
+        'wildbrain_entity_lifecycle_withdrawn_idx=btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL);'
+        'wildbrain_lifecycle_publication_baseline_idx=btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);'
+        'wildbrain_lifecycle_publication_latest_idx=btree (source_captured_at DESC, published_at DESC);'
+        'wildbrain_lifecycle_publication_pkey=btree (capture_id)' then
+    raise exception 'durable-state indexes differ from the reviewed shape';
+  end if;
+  -- Read policies: exactly one SELECT policy per table, for authenticated, with the house
+  -- PLM / administrator / sales-licensing audience.
+  if (select count(*) from pg_policies where schemaname = 'plm'
+       and tablename in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication')) <> 2
+     or (select count(*) from pg_policies where schemaname = 'plm'
+          and (tablename, policyname) in (('wildbrain_entity_lifecycle', 'wildbrain_entity_lifecycle_plm_read'),
+                                          ('wildbrain_lifecycle_publication', 'wildbrain_lifecycle_publication_plm_read'))
+          and cmd = 'SELECT' and permissive = 'PERMISSIVE' and roles = array['authenticated']::name[]
+          and with_check is null
+          and qual like '%has_app_access(''plm''%'
+          and qual like '%has_role(''administrator''%'
+          and qual like '%has_any_role(ARRAY[''sales''%''licensing''%') <> 2 then
+    raise exception 'durable-state read policies differ from the reviewed shape';
   end if;
 end
 $exact$;

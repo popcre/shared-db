@@ -99,13 +99,6 @@ jobs:
       - name: Unit-test the dispatch-time collision checker (shares the parser)
         run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
 
-      # The one-time repair creates permanent refs; keep its refusal tests in
-      # this required job until issue #3574 retires the utility and this step.
-      - name: Unit-test the reservation recovery guard
-        run: |
-          test -f scripts/recover-3539-reservation.test.mjs
-          node --test scripts/recover-3539-reservation.test.mjs
-
       - name: Check the GitHub API quota before scanning open pull requests
         env:
           GH_TOKEN: ${{ github.token }}

@@ -12,6 +12,8 @@ import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ACTIVE_REVIEWERS, resolveCommandPath } from './manage-migration-author-lanes.mjs'
+import { VERDICT_CONTRACT_FLAG_WRAPPERS, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
+import { detectReviewCaller } from './lib/reviewer-caller-env.mjs'
 
 // #3764: never hard-code the reviewer name. 'deepseek-chat' was retired and every
 // preflight refused; the active DeepSeek row is whatever the allocator says it is.
@@ -19,6 +21,27 @@ export function activeDeepSeekReviewer(wrapper = 'ai-deepseek-agent', active = A
   const rows = active.filter((row) => row.provider === 'deepseek' && row.wrapper === wrapper)
   if (rows.length !== 1) throw new Error(`expected exactly one active DeepSeek reviewer for ${wrapper}; found ${rows.length}`)
   return rows[0].name
+}
+
+// The model the active DeepSeek row was qualified on (registry evidence for
+// deepseek-v4.1-flash, 2026-09-23). The registry has no model field, so this is
+// the one literal; the test pins it to that row's recorded evidence.
+export const DEEPSEEK_REVIEW_MODEL = 'deepseek-flash'
+
+export function assertVerdictContractWrapper(wrapper) {
+  if (!VERDICT_CONTRACT_FLAG_WRAPPERS.includes(wrapperBaseName(wrapper))) throw new Error('wrapper does not take the --governed-verdict contract')
+}
+
+export function deepSeekLaunchArgs(bundlePath, headSha) {
+  return ['send', 'Review the attached governed evidence packet completely.', '--file', bundlePath, '--review', '--governed-verdict', headSha, '--model', DEEPSEEK_REVIEW_MODEL]
+}
+
+// The caller is named, never guessed wrong: an explicit codex|claude wins, else the
+// harness markers decide, else codex (this launcher's historical caller).
+export function deepSeekCaller(env = process.env) {
+  const named = String(env.AI_DEEPSEEK_CALLER ?? '').trim()
+  if (named && !['codex', 'claude'].includes(named)) throw new Error(`AI_DEEPSEEK_CALLER must be codex or claude, not ${named}`)
+  return named || detectReviewCaller(env) || 'codex'
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -124,17 +147,19 @@ export function runReview(options, deps = {}) {
   if (fs.existsSync(bundlePath)) {
     if (!fs.readFileSync(bundlePath).equals(bundle.payload)) throw new Error('existing evidence bundle digest path has different bytes')
   } else fs.writeFileSync(bundlePath, bundle.payload, { flag: 'wx' })
-  const wrapperArgs = ['send', 'Review the attached governed evidence packet completely.', '--file', bundlePath, '--review', '--governed-verdict', options.headSha, '--model', 'deepseek-flash']
+  const wrapperArgs = deepSeekLaunchArgs(bundlePath, options.headSha)
   if (commandLineLength(wrapper, wrapperArgs) > 7000) throw new Error('review launch still exceeds the safe Windows command-line budget')
+  assertVerdictContractWrapper(wrapper)
   const preflightArgs = ['scripts/manage-migration-author-lanes.mjs', '--reviewer-preflight', '--reviewer', activeDeepSeekReviewer(wrapper, deps.activeReviewers), '--wrapper', wrapper, '--worktree', worktree, '--head-sha', options.headSha]
   ;(deps.preflight ?? ((args) => execFileSync(process.execPath, args, { cwd: worktree, stdio: 'inherit' })))(preflightArgs)
+  const caller = deepSeekCaller(deps.env ?? process.env)
   const run = deps.spawn ?? ((command, args) => {
     const resolved = resolveCommandPath(command)
     if (!resolved) return { status: null, error: new Error(`cannot resolve reviewer wrapper: ${command}`) }
     const plan = reviewSpawnPlan(resolved, args)
-    return spawnSync(plan.file, plan.args, { cwd: worktree, stdio: 'inherit', env: { ...process.env, AI_DEEPSEEK_CALLER: process.env.AI_DEEPSEEK_CALLER || 'codex' } })
+    return spawnSync(plan.file, plan.args, { cwd: worktree, stdio: 'inherit', env: { ...process.env, AI_DEEPSEEK_CALLER: caller } })
   })
-  const result = run(wrapper, wrapperArgs)
+  const result = run(wrapper, wrapperArgs, caller)
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`DeepSeek review exited ${result.status}`)
   return { headSha: options.headSha, bundlePath, bundleSha256: bundle.digest, manifest: bundle.manifest, argumentCharacters: commandLineLength(wrapper, wrapperArgs) }

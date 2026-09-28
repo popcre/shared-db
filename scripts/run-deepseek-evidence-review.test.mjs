@@ -3,7 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { activeDeepSeekReviewer, buildEvidenceBundle, requireRegularNonSymlink, reviewSpawnPlan, runReview, safeEvidenceDirectory } from './run-deepseek-evidence-review.mjs'
+import { ACTIVE_REVIEWERS, REVIEWERS } from './manage-migration-author-lanes.mjs'
+import { activeDeepSeekReviewer, deepSeekCaller, DEEPSEEK_REVIEW_MODEL, buildEvidenceBundle, requireRegularNonSymlink, reviewSpawnPlan, runReview, safeEvidenceDirectory } from './run-deepseek-evidence-review.mjs'
 
 const head = 'a'.repeat(40)
 function fixture() {
@@ -95,13 +96,42 @@ test('launcher keeps allocation, replacement, verdict, and lease ownership outsi
   assert.match(source, /--review/)
 })
 
-test('preflight names the ACTIVE DeepSeek reviewer, never the retired deepseek-chat (#3764)', () => {
-  assert.notEqual(activeDeepSeekReviewer(), 'deepseek-chat')
-  assert.equal(activeDeepSeekReviewer('ai-deepseek-agent', [{ name: 'deepseek-x', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }]), 'deepseek-x')
+test('runReview preflights and launches the ACTIVE DeepSeek reviewer with the governed flags and caller (#3764)', () => {
+  const dir = fixture()
+  let preflightArgs, launched
+  runReview({ issue: 1772, pr: 1853, headSha: head, worktree: dir, promptFile: 'prompt.txt', evidenceFiles: ['test.sql'] }, {
+    git: (args) => args.includes('status') ? '' : `${head}\n`,
+    activeReviewers: [{ name: 'deepseek-probe', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }],
+    env: { AI_DEEPSEEK_CALLER: 'claude' },
+    preflight: (args) => { preflightArgs = args },
+    spawn: (command, args, caller) => { launched = { command, args, caller }; return { status: 0 } }
+  })
+  assert.equal(preflightArgs[preflightArgs.indexOf('--reviewer') + 1], 'deepseek-probe')
+  const at = launched.args.indexOf('--governed-verdict')
+  assert.equal(launched.args[at + 1], head)
+  assert.equal(launched.args[launched.args.indexOf('--model') + 1], DEEPSEEK_REVIEW_MODEL)
+  assert.ok(launched.args.includes('--review'))
+  assert.equal(launched.caller, 'claude')
+})
+
+test('the real active DeepSeek reviewer is an ACTIVE_REVIEWERS member on ai-deepseek-agent, qualified on the pinned model', () => {
+  const name = activeDeepSeekReviewer()
+  const row = ACTIVE_REVIEWERS.find((r) => r.name === name)
+  assert.equal(row.wrapper, 'ai-deepseek-agent')
+  assert.equal(row.readsRepository, true)
+  assert.ok(REVIEWERS.find((r) => r.name === name).readsRepositoryVerified.evidence.includes(`model ${DEEPSEEK_REVIEW_MODEL}`), 'model literal must match the qualified row')
   assert.throws(() => activeDeepSeekReviewer('ai-deepseek-agent', []), /exactly one active DeepSeek reviewer/)
   assert.throws(() => activeDeepSeekReviewer('ai-deepseek-agent', [{ name: 'a', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }, { name: 'b', provider: 'deepseek', wrapper: 'ai-deepseek-agent' }]), /found 2/)
-  const source = fs.readFileSync(new URL('./run-deepseek-evidence-review.mjs', import.meta.url), 'utf8')
-  assert.equal(source.includes("'--reviewer', 'deepseek-chat'"), false)
-  assert.match(source, /'--governed-verdict', options\.headSha, '--model', 'deepseek-flash'/)
-  assert.match(source, /AI_DEEPSEEK_CALLER: process\.env\.AI_DEEPSEEK_CALLER \|\| 'codex'/)
+})
+
+test('a wrapper without the verdict contract flag is refused before preflight', () => {
+  const dir = fixture()
+  assert.throws(() => runReview({ issue: 1, pr: 2, headSha: head, worktree: dir, promptFile: 'prompt.txt', evidenceFiles: ['test.sql'], wrapper: 'ai-muse' }, { git: (args) => args.includes('status') ? '' : `${head}\n`, preflight: () => assert.fail('no preflight'), spawn: () => assert.fail('no spawn') }), /--governed-verdict contract/)
+})
+
+test('caller is validated, never an arbitrary value', () => {
+  assert.equal(deepSeekCaller({ AI_DEEPSEEK_CALLER: 'codex' }), 'codex')
+  assert.equal(deepSeekCaller({ CLAUDECODE: '1' }), 'claude')
+  assert.equal(deepSeekCaller({}), 'codex')
+  assert.throws(() => deepSeekCaller({ AI_DEEPSEEK_CALLER: 'someone' }), /codex or claude/)
 })

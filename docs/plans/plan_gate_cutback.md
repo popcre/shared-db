@@ -24,7 +24,7 @@ Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJ
 | 3 | Quota-failed gates re-run automatically after reset (fail-closed kept) | ⬜ open | 2026-09-28 | — |
 | 4 | Agent work contract failures classified; missing-file failures made impossible by tooling | ⬜ open | 2026-09-28 | — |
 | 5 | Required-set reduction proposal decided by Albert via refactor Step 6 owner | ⬜ open | 2026-09-28 | — |
-| 6 | ai-devops `verify`: #1006 fixed; Windows shards off the per-PR path | ⬜ open | 2026-09-28 | — |
+| 6 | ai-devops `verify`: #1006 shard failures fixed; Windows-shard move proposed to Albert (owner ruling) | ⬜ open | 2026-09-28 | — |
 | 7 | Local poller hygiene (secondary) | ⬜ open | 2026-09-28 | — |
 | 8 | Re-measure: gate-caused (quota/paperwork) failures < 5% for 7 days | ⬜ open | 2026-09-28 | — |
 
@@ -100,15 +100,15 @@ Open: whether a separate GitHub App token for gates is needed — decide from St
 ## 9. Steps
 
 ### Step 1 — Measure API spend per workflow (attributable)
-The installation-wide `X-RateLimit-Used` counter cannot be attributed per workflow (every concurrent run shares it). Instead add a per-process request counter inside `scripts/lib/github-transport.mjs` (it already wraps every `gh` call) and print one line at exit: `api_requests workflow=<GITHUB_WORKFLOW> job=<GITHUB_JOB> count=<n>`. Reuse the existing `GitHub API quota: <remaining> of <limit>` line from `scripts/check-actions-quota.mjs` for budget context. Over 48 h, tabulate per workflow, and split the 14-day failures into quota vs genuine via `gh run view --log-failed` patterns (`rate limit exceeded`, `installation quota low`). Record in `docs/verification/gate-api-spend-<date>.md` and on shared-db #3617.
+The installation-wide `X-RateLimit-Used` counter cannot be attributed per workflow (every concurrent run shares it). Instead add a per-process counter inside `scripts/lib/github-transport.mjs` that counts HTTP requests including retries and probes (latch-blocked calls counted separately), not `gh` invocations: for `--paginate` calls count pages. Print one line at exit: `api_requests workflow=<GITHUB_WORKFLOW> job=<GITHUB_JOB> requests=<n> invocations=<m> blocked=<k>`. Coverage: only calls routed through the transport; inline `gh` calls in workflows (e.g. `shared-supabase-migrations.yml`, `reviewer-start-watch.yml`, `guarded-migration-merge.yml`) are not counted, so also do a one-off audit listing every inline `gh` call and its per-run count, and state the uncovered share in the report. Reuse the existing `GitHub API quota: <remaining> of <limit>` line from `scripts/check-actions-quota.mjs` for budget context. Over 48 h, tabulate per workflow, and split the 14-day failures into quota vs genuine via `gh run view --log-failed` patterns (`rate limit exceeded`, `installation quota low`). Record in `docs/verification/gate-api-spend-<date>.md` and on shared-db #3617.
 Gate: the file lists requests per run for every PR workflow and the quota/genuine split for the five gates.
 
 ### Step 2 — Durable cross-run cache refreshed on `main` (the real lever)
 The collision job already gathers the open-PR snapshot once per run (`scripts/lib/open-pr-files.mjs`, ~110–130 calls per push); the lease and marker gates read little, so do NOT merge workflows. Persist per-PR data across runs instead:
-- `actions/cache` is branch-scoped (a run restores only its own branch's, its base's and the default branch's caches). So a scheduled job **on `main`** (every 10 min) refreshes per-PR entries; PR runs are read-only consumers. Eviction: 10 GB per repo, entries unused for 7 days removed — a miss just means a full gather.
+- `actions/cache` is branch-scoped (a run restores only its own branch's, its base's and the default branch's caches). So a new workflow `.github/workflows/open-pr-files-cache.yml` runs on `main` every 15 min as a **delta writer**: one `pulls?state=open` list (1–2 calls; returns head SHA, base SHA and draft) and file-list fetches only for PRs whose key changed since the previous run. PR runs of `pr-object-collision.yml` gain a cache-restore step and become read-only consumers. Eviction: 10 GB per repo, entries unused for 7 days removed — a miss just means a full gather.
 - Key each entry `open-pr-files-<pr>-<headSha>-<baseSha>-<isDraft>` and store the whole `pullWithFiles` record including `changed_files`; a consumer re-validates `files.length == changed_files` and that head, base and draft still match a fresh single-PR detail read (1 call per PR, not the paginated file list). Any mismatch, missing or unreadable entry → gather that PR fresh exactly as today. A partial snapshot never passes (§11).
-- Leave every workflow file, job name, self-test suite (collision's 6, marker's 2, lease's ~28 incl. `scripts/orchestrator-flow/*.test.mjs`), `merge_group` trigger and `scripts/check-merge-queue-workflows.test.mjs` assertions unchanged.
-Gate: Step 1 counter shows `Cross-PR object collision` requests per run reduced by at least half on a day with more than 10 open PRs; tests "base retarget invalidates entry" and "draft→ready invalidates entry" pass; all existing suites green.
+- `pr-object-collision.yml` gains only the restore step. Leave every job name, the `pull_request` / `merge_group: checks_requested` triggers, every self-test suite (collision's 6, marker's 2, lease's ~28 incl. `scripts/orchestrator-flow/*.test.mjs`), `merge_group` trigger and `scripts/check-merge-queue-workflows.test.mjs` assertions unchanged.
+Gate: installation-wide spend of collision **plus** the new writer (Step 1 counter, summed per day) is at most half of the pre-change daily collision spend on a day with more than 10 open PRs; tests "base retarget invalidates entry" and "draft→ready invalidates entry" pass; all existing suites green.
 
 ### Step 3 — Automatic re-run after quota reset
 Owned by the companion watchdog (its Step 2): `gh run rerun <run-id> --failed` with a token that has `actions:write` on shared-db, only when the failed log matches the quota patterns exactly, once per head SHA, and only after `rate_limit` shows reset. No `workflow_dispatch` retries (they carry no PR payload and evaluate nothing).
@@ -137,7 +137,7 @@ Gate: quota/paperwork failures < 5% of PR runs.
 
 ## 10. Tests required
 - `tests/gh-poll-budget.test.mjs` (ai-devops): shared cache, ETag 304 path, one-poller lock.
-- `scripts/lib/github-conditional.test.mjs` extensions: snapshot reuse across jobs; partial pagination never treated as complete.
+- `scripts/open-pr-files-cache.test.mjs`: delta writer fetches only changed keys; base retarget and draft→ready invalidate; unreadable cache → full gather; partial pagination never treated as complete.
 - `tests/task-gates-evidence-pair.test.mjs` (ai-devops): `ai-task-gates` always writes both `contract.json` and `completion.json`.
 - Existing: `Tools offline tests`, `scripts/check-review-parallelism-brief.mjs`, `scripts/check-exact-head-approval.mjs` stay green.
 
@@ -178,3 +178,5 @@ Second round (2026-09-28): Grok re-review confirmed all 8 first-round defects re
 Third round (2026-09-28): Qwen REJECT on round 3 — handoff frontmatter missing; single-run snapshot sharing saves ~4% not 50%; merged workflow would be a shared failure point and orphan self-tests; Step 5 conflicted with §5.0-C and production_business_risk_gate.py; per-workflow attribution impossible from the shared counter. Fixed: frontmatter added; Step 2 is now a durable per-head cross-run cache with per-job fallback, no workflow merge; Step 5 is an owner-ruling proposal naming all couplings; Step 1 uses a per-process counter.
 
 Fourth round (2026-09-28): Qwen REJECT — cache key missed base/draft changes (fail-open risk), actions/cache is branch-scoped, Agent work contract masks quota as missing files, counter counted invocations, Windows-shard move needs an owner ruling. All fixed in Steps 1, 2, 4, 6. Qwen confirmed all round-3 defects resolved.
+
+Fifth round (2026-09-28): Qwen REJECT (Grok APPROVE on the same head) — refresh job could cost more than it saves; constraint sentence contradicted the mechanism; counter coverage overstated and the round-4 counter fix had not actually been applied; §10 test named the rejected design; STATUS row 6 overstated. Fixed: delta writer every 15 min with a combined-spend gate, explicit file edits, counter counts requests with stated coverage plus inline-`gh` audit, test renamed, row 6 reworded.

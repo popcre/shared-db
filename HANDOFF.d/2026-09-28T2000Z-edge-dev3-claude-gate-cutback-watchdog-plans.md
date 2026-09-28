@@ -7,4 +7,4 @@ Two plans were written and reviewed; no implementation has started.
 - [docs/plans/plan_gate_cutback.md](../docs/plans/plan_gate_cutback.md) — start at its STATUS table, Step 1.
 - [docs/plans/plan_stuck_work_watchdog.md](../docs/plans/plan_stuck_work_watchdog.md) — start after the gate plan's Steps 1–2.
 
-Next exact action: open a non-orchestrator tracker issue in popcre/ai-devops for gate-plan Step 1 (poller quota) and execute it. Neither plan changes database structure (non-orchestrator work).
+Next exact action: gate-plan Step 1 — extend shared-db #3617 with per-gate Actions-token spend (after PR #3742 for #3743 lands). Neither plan changes database structure (non-orchestrator work).

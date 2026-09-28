@@ -3,6 +3,14 @@
 Handoff backlink: [HANDOFF.d/2026-09-28T2000Z-edge-dev3-claude-gate-cutback-watchdog-plans.md](../../HANDOFF.d/2026-09-28T2000Z-edge-dev3-claude-gate-cutback-watchdog-plans.md)
 Companion plan: [plan_gate_cutback.md](plan_gate_cutback.md) (do its Step 1–2 first; a watchdog that re-runs quota-starved checks would only burn more quota).
 
+## Relationship to existing issues (read before starting)
+
+Supersedes nothing; extends:
+- popcre/ai-devops #1002 "Self-clearing stuck locks and merge-queue settings drift check" (plan_self-healing-locks-and-settings-drift.md in ai-devops) — that plan clears stuck *locks*; this one clears stuck *PRs*. Build the watchdog in the same ai-devops area and reuse its alerting; track Steps 1–4 as a child of #1002.
+- popcre/ai-devops #198 "proactive reviewer-assisted problem solving for stuck sessions" — the fixer routine (§8) should call that reviewer-assist path when its own fix attempt fails.
+- shared-db `orchestrator-no-progress-alarm.yml` (issue #3027) — unchanged; it covers orchestrator outcomes, this covers PRs.
+- Quota fixes it depends on: shared-db #3743 / PR #3742, #3735, ai-devops #658.
+
 ## STATUS — read first
 
 Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) reviews — see Review record. Start at Step 1 (needs `WATCHDOG_TOKEN`, §8).
@@ -71,8 +79,8 @@ Open: whether Albert also wants a phone push (ntfy/Pushover) — default off; de
 ## 9. Steps
 
 ### Step 1 — Detector
-`scripts/stuck-work/detect.mjs` (ai-devops): GraphQL `search(query:"repo:X is:pr is:open -is:draft")` with `statusCheckRollup`, `mergeStateStatus`, `updatedAt`, latest commit date, last comment date. Output `stuck-report.json` artifact and a job summary table.
-Gate: fixture test with PR #3567-shaped data classifies it stuck; a green PR and a 10-min-old red PR are not.
+`scripts/stuck-work/detect.mjs` (ai-devops): GraphQL `repository(owner,name){pullRequests(states:OPEN,first:100){... isDraft, mergeStateStatus, headRefOid, commits(last:1){committedDate}, statusCheckRollup, reviews(last:1){submittedAt}, comments(last:20){author{login} createdAt}}}` — never `search`, never `updatedAt`. Owner activity = latest of head commit date, last review, last non-bot comment (§8). Output `stuck-report.json` artifact and a job summary table.
+Gate: fixture test with PR #3567-shaped data classifies it stuck; a PR whose only recent comment is the watchdog's own stays stuck; a green PR and a 10-min-old red PR are not.
 
 ### Step 2 — Auto re-run of infrastructure failures
 For each failed check, fetch the failed step log tail (1 call), match patterns (`API rate limit exceeded`, `quota`, `The runner has received a shutdown`, `HTTP 5\d\d`). Patterns are exact strings only: `API rate limit exceeded`, `installation quota low`, `The runner has received a shutdown signal` (no bare `quota` or `5xx`, which match real test output). If matched, `rate_limit` shows the reset has passed, and no re-run yet for this head SHA (tracked via a hidden PR comment marker `<!-- watchdog-rerun:SHA -->`), `gh run rerun <run-id> --failed` (never `workflow_dispatch`). For a `merge_group` run, do not re-run; the queue re-forms the group itself.
@@ -136,3 +144,5 @@ Options considered:
 
 ## Review record (2026-09-28)
 Grok REVISE / Qwen REJECT findings on this plan: SLA/idle/notify timings contradicted each other and `updatedAt` is bumped by the watchdog's own comments; `search` is eventually consistent; repo-scoped `GITHUB_TOKEN` cannot act across repos; fixer route unnamed; loose log patterns would re-run real failures; merge_group re-runs; §14 should frame the recommendation as finishing refactor Steps 6/8. All incorporated in §1, §8, §9, §11, §12, §14. The §5 inventory and adversarial table were confirmed accurate by Qwen.
+
+Second round (2026-09-28): Grok confirmed first-round watchdog defects resolved except Step 1 still naming `search`/`updatedAt`; fixed in Step 1.

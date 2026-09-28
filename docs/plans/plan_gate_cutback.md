@@ -4,6 +4,15 @@ Handoff backlink: [HANDOFF.d/2026-09-28T2000Z-edge-dev3-claude-gate-cutback-watc
 Companion plan: [plan_stuck_work_watchdog.md](plan_stuck_work_watchdog.md)
 Relationship to the operating route: this plan is a concrete input to Step 6 ("trustworthy required-check set") and Step 8 (native merge queue) of [plan_shared_db_workflow_refactor.md](../../plan_shared_db_workflow_refactor.md). It does not replace that plan; whoever executes a step here updates that plan's STATUS row too.
 
+## Relationship to existing issues (read before starting — this plan extends, it does not compete)
+
+Supersedes nothing. Each step is executed under an existing issue where one exists:
+- Step 1 (measure spend) → extends shared-db #3617 "Measure preview-ready GitHub request cost"; add the per-gate split there.
+- Steps 2–3 (quota) → extend shared-db #3743 (preflight trusts `/rate_limit`; fix in PR #3742), #3735 (no retry after rate limit) and #3718 (merge drain after Actions rate limit). Land #3742 first.
+- Step 5 (required set) → refactor plan Step 6 (issue #3361, now closed) and the #3306 tracker; post the proposal on #3306.
+- Step 7 (local pollers, user token) → belongs wholly to popcre/ai-devops #658 "Reduce GitHub requests at source"; do it there, not here.
+- Protected-source overlap failing PRs against each other → shared-db #3721 (not duplicated here).
+
 ## STATUS — read first
 
 Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) plan reviews — see "Review record" at the end. Start at Step 1.
@@ -66,10 +75,10 @@ Required contexts on shared-db `main` (16): SQL migration guards; supabase/tests
    - Migration author lease: `REFUSED: GitHub read failed: gh: API rate limit exceeded for installation`.
    The investigating session itself hit the limit twice during this survey. **Correction after review:** these gates run on the repository's **Actions installation token** (`GH_TOKEN: ${{ github.token }}`), whose budget is separate from any person's login; `scripts/lib/github-transport.mjs` keys its latch by token identity and lives in the runner's tmpdir. So the consumer is CI itself — ~49 workflows, several paginating every open PR/issue per run (`scripts/lib/open-pr-files.mjs`) — not the local pollers. Local pollers exhaust the *user* token (this session hit that limit too), which starves sessions and `ai-pr-wait`, a separate but real problem. The 14-day totals are not yet split quota-vs-genuine; Step 1 does that split. Gates correctly fail closed on quota (`docs/agents/merge-protocol.md` §5.2-B rule 4); the defect is that nobody re-runs them afterwards.
 2. **A quota-failed gate stays red forever.** Failing closed is correct doctrine; what is missing is an automatic re-run after the quota resets. Nobody re-runs (see companion plan).
-3. **Agent work contract often fails on missing evidence files (sampled, not yet classified across all 24):** `Enforced mode requires this pull request to change both .agent/work/<issue>/<gen>/contract.json and .../report.json` — PRs missing one of two evidence files. It is 56% red. It is an owner-activated control (#1403, #2591 exemption for prose only; rulebook files keep full treatment) — so the fix is tooling that always writes both files, not weakening it.
+3. **Agent work contract often fails on missing evidence files (sampled, not yet classified across all 24):** `Enforced mode requires this pull request to change both .agent/work/<issue>/<gen>/contract.json and .../completion.json` — PRs missing one of two evidence files. It is 56% red. It is an owner-activated control (#1403, #2591 exemption for prose only; rulebook files keep full treatment) — so the fix is tooling that always writes both files, not weakening it.
 4. **Documents-only merge authorization is NOT redundant** (corrected after review): it is the only producer of the required status `Migration guarded merge authorization` on prose-only PRs (`scripts/manage-migration-author-lanes.mjs --authorize-repository-maintenance-status`, context in `scripts/lib/merge-self-context.mjs`), under the coordination mutex. It fails only because of quota. Keep it; fix quota.
 5. Seventeen guards never failed in 14 days. That means they do not false-fail — they are not the blocker and are kept. (Intake pointer and Domain ownership are designed to be required; see their headers.)
-6. **The required-context mirror may only grow:** `scripts/update-required-checks.mjs` refuses removals; `docs/verification/main-required-status-checks.json` is tool-written; `scripts/check-merge-queue-workflows.test.mjs` fails if coverage shrinks. Required-check authority is owned in-flight by refactor Step 6 (#3361, owner: Codex required-check authority session) and native queue by Step 8 (PR #3567, independent REVISE on #2530). Shrinking the set is an owner decision.
+6. **The required-context mirror may only grow:** `scripts/update-required-checks.mjs` refuses removals; `docs/verification/main-required-status-checks.json` is tool-written; `scripts/check-merge-queue-workflows.test.mjs` fails if coverage shrinks. Required-check authority is owned in-flight by refactor Step 6 (#3361, closed; follow-up on the #3306 tracker) and native queue by Step 8 (PR #3567, independent REVISE on #2530). Shrinking the set is an owner decision.
 
 ## 7. Rejected approaches
 
@@ -85,7 +94,7 @@ Locked (2026-09-28, after review):
 - **No gate is deleted and none becomes advisory in this plan.** Every blocking gate measured fails for quota or missing-file reasons; fix those causes. Documents-only merge authorization stays (it produces a required status). Agent work contract stays enforced (owner-activated). Domain ownership, Handoff contract, Intake pointer stay required.
 - Gates keep failing closed on API unavailability (merge-protocol §5.2-B). Recovery is an automatic re-run with the correct token after reset (Step 3, executed by the companion watchdog).
 - Consolidation reduces API spend inside existing workflows, keeping every required context name, the marker guard's `schedule`/`push` legs, and the merge-time re-proofs in `merge-queue-gate.yml` and `guarded-migration-merge.yml`.
-- Reducing the 16 required contexts is proposed only, through refactor Step 6's owner (#3361) and Albert; candidate: combine Cross-PR collision + Migration author lease + Orchestrator marker guard into one context once Step 2 has run green 7 days.
+- Reducing the 16 required contexts is proposed only, through the refactor tracker #3306 and Albert; candidate: combine Cross-PR collision + Migration author lease + Orchestrator marker guard into one context once Step 2 has run green 7 days.
 Open: whether a separate GitHub App token for gates is needed — decide from Step 1 numbers (if Actions-token spend stays above 70% of budget after Step 2, yes).
 
 ## 9. Steps
@@ -95,7 +104,7 @@ Add `X-RateLimit-Used`/`remaining` logging to `scripts/lib/github-transport.mjs`
 Gate: file lists each workflow's hourly spend and the quota/genuine split for the five gates.
 
 ### Step 2 — One conditional snapshot inside existing workflows
-Make collision, lease and marker PR legs read open PRs/issues through `scripts/lib/github-conditional.mjs` (already implements ETag 304 + host single-flight) and a shared per-run snapshot artifact produced by one job and consumed by the others via `needs:`. Keep each job name (= required context) unchanged; keep `orchestrator-marker-guard.yml` `schedule`/`push` legs; keep `merge-queue-gate.yml:147` and `guarded-migration-merge.yml:185,201-202` merge-time calls untouched. Cancelled work guard is offline and is not touched.
+`needs:` only works inside one workflow file, and `github-conditional.mjs` single-flight is local to one runner VM. So: create one workflow file `.github/workflows/coordination-gates.yml` with a `snapshot` job (paginates open PRs + issues once through `scripts/lib/github-conditional.mjs`, uploads `snapshot.json` as an artifact) and three jobs with `needs: snapshot` whose `name:` strings are exactly the existing required contexts (`Cross-PR object collision`, `Migration author lease`, `Orchestrator marker guard`) and which read the artifact instead of calling the API. Remove only the PR/merge_group triggers of the three old files after 3 days of identical results; keep each unchanged context name; keep `orchestrator-marker-guard.yml` `schedule`/`push` legs; keep `merge-queue-gate.yml:147` and `guarded-migration-merge.yml:185,201-202` merge-time calls untouched. Cancelled work guard is offline and is not touched.
 Gate: Step 1 logging shows per-PR spend for these gates at least halved; existing tests `scripts/check-merge-queue-workflows.test.mjs`, `migration-author-lease.yml` suite and `Tools offline tests` green.
 
 ### Step 3 — Automatic re-run after quota reset
@@ -103,18 +112,18 @@ Owned by the companion watchdog (its Step 2): `gh run rerun <run-id> --failed` w
 Gate: a quota-failed gate on a live PR goes green with no human re-run.
 
 ### Step 4 — Agent work contract: fix the cause of missing files
-Classify all 24 failures (Step 1 method). For missing-contract/report failures, make `ai-task-gates` (ai-devops) always write both `.agent/work/<issue>/<gen>/contract.json` and `report.json` on `start`/`check --before pr`, and have the gate's error print the exact command that creates the missing file. Do not widen the #2591 exemption.
+Classify all 24 failures (Step 1 method). For missing-contract/report failures, make `ai-task-gates` (ai-devops) always write both `.agent/work/<issue>/<gen>/contract.json` and `completion.json` on `start`/`check --before pr`, and have the gate's error print the exact command that creates the missing file. Do not widen the #2591 exemption.
 Gate: failures of type "contract without report / report without contract" = 0 over 7 days.
 
 ### Step 5 — Proposal for a smaller required set
-Post the Step 1–4 evidence on #3361 (refactor Step 6) proposing one combined coordination context; Albert decides. Only after approval, change via a tool change to `scripts/update-required-checks.mjs` reviewed under §5.0-C, never a hand-written protection PUT.
-Gate: a decision comment on #3361.
+Post the Step 1–4 evidence on #3306 (refactor tracker, Step 6 row) proposing one combined coordination context; Albert decides. Only after approval, change via a tool change to `scripts/update-required-checks.mjs` reviewed under §5.0-C, never a hand-written protection PUT.
+Gate: a decision comment on #3306.
 
 ### Step 6 — ai-devops `verify`
 Fix the classifier/offline shard failures on #1006 from `gh run view --log-failed` (a real test fix). Then move Windows shards to `merge_group` + nightly; PRs run Linux shards.
 Gate: #1006 green; median PR `verify` < 10 min.
 
-### Step 7 — Local poller hygiene (user token)
+### Step 7 — Local poller hygiene (user token) — executed under ai-devops #658
 `bin/ai-pr-wait` and `bin/ai-blocker-watch` reuse the same conditional-request approach (port `github-conditional.mjs` semantics) and one poller per PR per host (lock file). Reviewer wrappers do not poll GitHub.
 Gate: 10 waiters on 3 PRs spend < 100 user-token requests/hour (`tests/gh-poll-budget.test.mjs`).
 
@@ -159,3 +168,5 @@ Open: whether GitHub App quota should be split per repo (decide after Step 1 mea
 
 ## Review record (2026-09-28)
 Grok (grok-4.6-build) VERDICT: REVISE; Qwen (qwen3.8-max) VERDICT: REJECT. Both found: deleting Documents-only authorization strands a required status; advisory Agent work contract widens an owner exemption; neutral+dispatch retry is not implementable and breaks fail-closed doctrine; merged gate dropped the marker schedule and merge-time re-proofs; required set cannot shrink via the existing tool and collides with #3361/#2530/PR #3567; quota root cause was the Actions token, not local pollers. All incorporated above: no deletions or advisory changes, re-run instead of neutral, consolidation inside existing contexts, shrink only as a proposal to Albert via #3361. Reports: `.ai/reviews/grok-gate-plans-e10415-*.md`, `.ai/reviews/qwen-gate-plans-e10415-*.md` (local, edge-dev3).
+
+Second round (2026-09-28): Grok re-review confirmed all 8 first-round defects resolved and raised 3 more — `needs:` is same-workflow only, evidence file is `completion.json` not `report.json`, handoff next action stale. All fixed.

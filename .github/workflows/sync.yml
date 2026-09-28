@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A manual workflow_dispatch takes whatever ref the caller names; without
     # this gate a write collaborator (or any actions:write token) could
     # dispatch this job on an unmerged branch and push it straight to every

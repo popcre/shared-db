@@ -2,6 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { acceptableEvidencePairs, EvidencePathError, evidencePaths, isEvidencePath, LEGACY_PAIR, resolveEvidencePair } from './agent-evidence-paths.mjs'
 
+test('canonical task identifiers reject numeric aliases and precision loss', () => {
+  for (const bad of ['01', '1e2', ' 1', '+1', true, 9007199254740992, '9007199254740993']) {
+    assert.throws(() => evidencePaths(bad, 1), EvidencePathError)
+    assert.throws(() => evidencePaths(1, bad), EvidencePathError)
+  }
+  assert.throws(() => resolveEvidencePair(['.agent/work/9007199254740993/1/contract.json', '.agent/work/9007199254740993/1/completion.json']), EvidencePathError)
+})
+
 test('#2708: the pair is keyed by work issue and generation, mirroring the contract ref', () => {
   assert.deepEqual(evidencePaths(2708, 1), {
     key: '2708/1',
@@ -48,4 +56,20 @@ test('#2708: the legacy pair stays acceptable so open pull requests need not all
   assert.deepEqual(pairs[0], ['.agent/work/42/2/completion.json', '.agent/work/42/2/contract.json'])
   assert.deepEqual(pairs.at(-1), [...LEGACY_PAIR])
   assert.deepEqual(acceptableEvidencePairs({}), [[...LEGACY_PAIR]])
+})
+
+test('#3380: a schema_version 2 contract accepts only its keyed pair, never the legacy paths', () => {
+  // The tail predicate and resolveCurrentPair must agree: a v2 contract is not
+  // allowed to fall back to the legacy pair at the first join.
+  const v2 = acceptableEvidencePairs({ schema_version: 2, work_issue: 42, generation: 2 })
+  assert.equal(v2.length, 1)
+  assert.deepEqual(v2[0], ['.agent/work/42/2/completion.json', '.agent/work/42/2/contract.json'])
+
+  const v2Root = acceptableEvidencePairs({ schema_version: 2, work_issue: 42, generation: 1 })
+  assert.equal(v2Root.length, 1)
+  assert.deepEqual(v2Root[0], ['.agent/work/42/1/completion.json', '.agent/work/42/1/contract.json'])
+
+  // v1 keeps both, so open pull requests need not rewrite at once.
+  const v1 = acceptableEvidencePairs({ schema_version: 1, work_issue: 42, generation: 2 })
+  assert.equal(v1.length, 2)
 })

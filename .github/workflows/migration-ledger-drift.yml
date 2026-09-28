@@ -71,7 +71,7 @@ concurrency:
 jobs:
   drift:
     name: Migration ledger drift
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       # fetch-depth: 0 is REQUIRED. The script resolves origin/main to read the
@@ -89,7 +89,7 @@ jobs:
       # These specifically prove it REFUSES to report "no drift" on an empty or
       # unreachable ledger.
       - name: Prove the guard fails loudly on an unreadable ledger
-        run: node --test scripts/check-migration-ledger-drift.test.mjs scripts/check-worktree-freshness.test.mjs
+        run: node --test scripts/check-migration-ledger-drift.test.mjs scripts/check-worktree-freshness.test.mjs scripts/report-ledger-drift-status.test.mjs
 
       - name: Compare origin/main against the applied ledger
         id: check

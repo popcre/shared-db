@@ -1,51 +1,45 @@
 {
   "schema_version": 1,
-  "work_issue": 3305,
+  "generation": 5,
+  "work_issue": 3295,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Accept only provenance-verified automatic-review companion artifacts without weakening preview evidence checks",
-  "base_sha": "843bc60de498edadbb3276b2fffa30a5898aab05",
-  "dispatcher": "Codex orchestrator parent 01a0bf00-fa7b-73d1-b447-fc4c89c50b96",
-  "worker": "01a0bf43-3c49-7812-b4d9-b3cb6e89e1c1",
-  "branch": "codex/sku2478-recovery-audit-0920",
-  "worktree": "D:\\repos\\shared-db-worktrees\\sku2478-recovery-audit-0920",
+  "goal": "Validate recovered ColdLion timeout repair against current main, preserving source repair, with fresh tests and truthful evidence. Prior production investigation remains historical evidence.",
+  "base_sha": "70b0cad2ff730732866e6cd1c9f9b128262877b6",
+  "dispatcher": "Codex non-orchestrator repository-maintenance session for issue #3295",
+  "worker": "Codex chat 01a0bf3f-596f-7e20-be04-2d2d8eb12320 on 916-ALIEN (coldlion_recovery subagent)",
+  "branch": "codex/3295-recovery-01a0bf00",
+  "worktree": "D:\\repos\\shared-db-coldlion-recovery-01a0bf00",
   "allowed_paths": [
-    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
-    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
-    ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "file_writes": [
-    "scripts/orchestrator-flow/preview-artifact-selection.mjs",
-    "scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
-    ".agent/contract.json",
     ".agent/completion.json",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs"
+    ".agent/contract.json",
+    "tools/coldlion-landing/lib/load-masters.mjs",
+    "tools/coldlion-landing-masters.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
   "prohibited_actions": [
-    "No database or production writes",
-    "Lane-manager edits only import and validateOriginalPreviewApplyEvidence artifact-selection block; tests only related fixtures",
-    "Do not weaken manifest or ledger evidence"
+    "Do not change any migration, database object, timeout, workflow schedule, or live database row.",
+    "Do not weaken or remove change-log audit payloads, target proof, transaction atomicity, or failure reporting.",
+    "Do not touch issue #3179, issue #3180, or the prepack loader."
   ],
   "required_checks": [
-    "node --test scripts/orchestrator-flow/preview-artifact-selection.test.mjs",
-    "node --test scripts/manage-migration-author-lanes.test.mjs"
+    "node --test tools/coldlion-landing-masters.test.mjs",
+    "node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs"
   ],
   "assumptions": [
-    "Existing successful preview with automatic companion is reproducibly rejected",
-    "Current-main refresh d5285ef3 preserves implementation; 639 tests re-run successfully before final evidence binding",
-    "Refreshed onto70b0cad2 reviewer allowlist changes without overlapping selector code;673 tests passed",
-    "Refreshed onto current main c477c8e8 (docs-only movement, no overlap with this diff); selector tests re-run green before evidence binding",
-    "Refreshed onto current main 473ba697 (no overlap with this diff outside .agent evidence); selector tests re-run green before evidence binding",
-    "Refreshed onto current main 843bc60d; 30 selector tests and 643 lane-manager tests re-run green on 916-alien at implementation head c3462769"
+    "Production keeps its existing 120-second statement timeout.",
+    "The latest prior new_raw row remains the preferred previous_raw audit payload, falling back to the current table projection when no prior change exists."
   ],
   "stop_conditions": [
-    "Stop before overlapping another agent files"
-  ],
-  "generation": 8
+    "Stop if preserving audit semantics requires a database-structure change.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
+  ]
 }

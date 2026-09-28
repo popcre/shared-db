@@ -16,7 +16,7 @@ const fixtureFiles=[{filename:'source.txt',status:'modified'}]
 const fixtureSource=(input)=>({repository:THIS_REPO,pr:input.pr,baseRef:'develop',targetSha:'b'.repeat(40),headSha:input.headSha,mergeBase:'c'.repeat(40),files:fixtureFiles,fileSetSha256:createHash('sha256').update(JSON.stringify(fixtureFiles)).digest('hex'),sourceDigest:'d'.repeat(64)})
 const fixtureReceipt=(input)=>({schema_version:1,identity:{repository:input.worktree,base:'c'.repeat(40),head:input.headSha,source_digest:'d'.repeat(64)},packet_sha256:'e'.repeat(64)})
 const fixturePaths={platform:'win32',realpath:(path)=>path,lstat:()=>({isSymbolicLink:()=>false,isDirectory:()=>true})}
-function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
+function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,briefPreparer:(input)=>({wrapperArgs:input.wrapperArgs,env:{}}),sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
 
 test('all qualified wrappers receive immutable source arguments without rewriting prompt values',()=>{
   const source=fixtureSource(options)
@@ -852,6 +852,71 @@ test('review start marker is recorded before the provider spawns, and a failed r
   assert.throws(()=>reviewStartedRef({issue:1,pr:2,headSha:'short'},1),/exact issue/)
 })
 
+// ---------------------------------------------------------------------------
+// ISSUE #2492 — a large migration must not exhaust the reviewer's turn budget,
+// and a round that still ends without a verdict must say what it was given.
+// ---------------------------------------------------------------------------
+
+test('#2492: a grok review is launched with a turn budget sized to the migration',()=>{
+  let launched
+  runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,
+    measureReviewSize:()=>1798,
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c9'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/t',sha:'f'.repeat(40)}),
+  })
+  const index=launched.indexOf('--max-turns')
+  assert.ok(index>0,'the grok wrapper must be told how many turns this review needs')
+  assert.ok(Number(launched[index+1])>20,'a 1798-line migration must not be given the 20-turn default that failed three times')
+})
+
+test('#2492: a size that cannot be measured still launches, on a raised floor',()=>{
+  let launched
+  runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,
+    measureReviewSize:()=>{throw new Error('not a git repository')},
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c10'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/u',sha:'f'.repeat(40)}),
+  })
+  assert.ok(Number(launched[launched.indexOf('--max-turns')+1])>20)
+},{skip:false})
+
+test('#2492: a turn-limit refusal NAMES the budget the reviewer was given',()=>{
+  assert.throws(()=>runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1798,
+    spawn:()=>({status:1,stderr:'turn_limit_cancelled',stdout:''}),
+    record:()=>assert.fail('must not record'),
+  }),(error)=>{
+    assert.match(error.message,/did not produce a recordable terminal verdict/)
+    assert.match(error.message,/turn_limit_cancelled/)
+    assert.match(error.message,/was launched with \d+ turn\(s\)/,'a bare "no verdict" costs a fresh hand investigation every time')
+    assert.match(error.message,/1798 changed migration line/)
+    return true
+  })
+})
+
+test('#2492: reviewers with no per-call turn contract are launched unchanged',()=>{
+  let launched
+  runGovernedReview(options,{
+    preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1798,
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c11'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/v',sha:'f'.repeat(40)}),
+  })
+  assert.ok(!launched.includes('--max-turns'),'ai-glm has no --max-turns contract and must not be handed one')
+})
+
 // ISSUE #2998 item 1 + ISSUE #2923: the brief, checked before a reviewer draw.
 import { PROBE_REVIEW_CHECKLIST } from './run-governed-review.mjs'
 test('#2998-1 a promptless handoff refuses before a draw; #2923 the probe checklist is front-loaded',()=>{
@@ -914,4 +979,132 @@ test('#3338 review: the codex wrapper is exempt from the prompt contract, and eq
   assert.ok(written[copy].startsWith('Review it.'))
   // The stale-head guard still applies to both equals forms.
   assert.throws(()=>promptHeadContract(['--prompt=End with VERDICT: APPROVE bbbbbbbb'],live,undefined,'ai-muse'),/names head bbbbbbbb/)
+})
+
+test('#2831: the runner refuses ai-muse review and passes ai-muse new through',()=>{
+  const head='b'.repeat(40)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-muse',['review','look at this'],head),/ai-muse review subcommand is not one that takes the governed prompt as written[\s\S]*--failure-code reviewer_cannot_emit_governed_verdict/)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-muse',['new','look at this'],head),['new','look at this'])
+})
+
+// Owner requirement 2026-09-24: an out-of-credit reviewer failure is named, and the
+// wrapper's plain-English OUT OF CREDIT line reaches the REFUSED text verbatim.
+import { TERMINAL_FAILURE_CODES } from './manage-migration-author-lanes.mjs'
+const OUT_OF_CREDIT_FIXTURES=[
+  ['grok','OUT OF CREDIT: the xAI (Grok) account has run out of credits or hit its monthly spending limit - add credits at https://console.x.ai'],
+  ['muse','OUT OF CREDIT: the Meta (Muse) account has run out of credits or hit its spending limit - add credits in the Meta developer console'],
+  ['qwen','OUT OF CREDIT: the Alibaba Model Studio (Qwen) account has run out of credits or is in arrears - top up at https://modelstudio.console.alibabacloud.com'],
+  ['gemini','OUT OF CREDIT: the Google Gemini account has run out of prepaid credits - add credits at https://aistudio.google.com'],
+  ['deepseek','OUT OF CREDIT: the DeepSeek account has an insufficient balance - top up at https://platform.deepseek.com'],
+]
+const outOfCreditRun=(stderr)=>{
+  const events=[]
+  let caught
+  assert.throws(()=>runGovernedReview(options,{preflight:()=>{},appendLifecycle:(e)=>events.push(e),resolve:(x)=>x,spawn:()=>({status:92,stderr,stdout:''}),record:()=>assert.fail('must not record')}),(error)=>{caught=error;return true})
+  return {error:caught,events}
+}
+test('out of credit: every rotation provider carries its OUT OF CREDIT line verbatim into REFUSED and reroutes as insufficient_quota',()=>{
+  for(const [provider,human] of OUT_OF_CREDIT_FIXTURES){
+    const stderr=`raw provider body token=private-value\nAI_REVIEWER_OUT_OF_CREDIT provider=${provider} code=insufficient_quota\n${human}\n`
+    const {error,events}=outOfCreditRun(stderr)
+    assert.ok(error instanceof GovernedReviewRerouteError,provider)
+    const refused=`REFUSED: ${error.message}`
+    assert.ok(refused.includes(`insufficient_quota: ${human}`),provider)
+    assert.match(refused,/^REFUSED: review wrapper did not produce a recordable terminal verdict \(exit 92\): insufficient_quota: OUT OF CREDIT: /)
+    assert.ok(!refused.includes('private-value'),provider)
+    assert.ok(!refused.includes('usage limit'),'the precise reason replaces the generic usage-limit text')
+    const d=error.startDecision
+    assert.deepEqual([d.action,d.reason,d.head_sha,d.same_head],['governed-return-and-reroute','insufficient_quota',options.headSha,true])
+    assert.ok(TERMINAL_FAILURE_CODES.includes(d.reason),'the lane accepts --failure-code insufficient_quota')
+    const last=events.at(-1)
+    assert.deepEqual([last.type,last.reason,last.head_sha],['terminal_non_verdict','insufficient_quota',options.headSha])
+  }
+})
+test('out of credit: a machine line without a valid human line gets fixed text naming the provider',()=>{
+  for(const [provider,name] of [['grok','xAI (Grok)'],['muse','Meta (Muse)'],['qwen','Alibaba Model Studio (Qwen)'],['gemini','Google Gemini'],['deepseek','DeepSeek']]){
+    const reason=wrapperFailureReason({stderr:`AI_REVIEWER_OUT_OF_CREDIT provider=${provider} code=insufficient_quota\n`})
+    assert.equal(reason,`insufficient_quota: OUT OF CREDIT: the ${name} reviewer account has run out of credits or hit its spending limit`)
+  }
+})
+test('out of credit: spoofed, overlong, embedded or non-ASCII lines are never echoed',()=>{
+  const machine='AI_REVIEWER_OUT_OF_CREDIT provider=grok code=insufficient_quota'
+  const fixed='insufficient_quota: OUT OF CREDIT: the xAI (Grok) reviewer account has run out of credits or hit its spending limit'
+  for(const bad of [
+    `OUT OF CREDIT: ${'x'.repeat(301)}`,
+    'OUT OF CREDIT: short',
+    'OUT OF CREDIT: add credits at https://console.x.ai — private-value',
+    'OUT OF CREDIT: token\tprivate-value leaked here',
+    ' OUT OF CREDIT: leading space private-value line',
+    'prefix OUT OF CREDIT: private-value embedded in a provider body',
+    'out of credit: lower-case private-value line text',
+  ])assert.equal(wrapperFailureReason({stderr:`${machine}\n${bad}\n`}),fixed,JSON.stringify(bad))
+  // Without an exact, anchored machine line from the allowlist, no OUT OF CREDIT text is echoed at all.
+  for(const spoof of [
+    'AI_REVIEWER_OUT_OF_CREDIT provider=evil code=insufficient_quota',
+    'AI_REVIEWER_OUT_OF_CREDIT provider=grok code=insufficient_quota private-value',
+    'x AI_REVIEWER_OUT_OF_CREDIT provider=grok code=insufficient_quota',
+    'AI_REVIEWER_OUT_OF_CREDIT provider=grok code=rate_limited',
+  ]){
+    const reason=wrapperFailureReason({stderr:`${spoof}\nOUT OF CREDIT: private-value pretending to be the provider\n`})
+    assert.ok(!reason.includes('private-value'),spoof)
+    assert.ok(!reason.startsWith('insufficient_quota:'),spoof)
+  }
+})
+test('out of credit: raw provider billing text alone is recognized without echoing it',()=>{
+  const fixed='insufficient_quota: the provider reported that its account is out of credit or over its spending limit'
+  for(const raw of [
+    'ai-grok-review: 403 {"code":"The caller does not have permission","error":"Your team private-value has either used all available credits or reached its monthly spending limit."}',
+    'Error: monthly spending limit reached for private-value',
+    'DeepSeek 402 Insufficient Balance private-value',
+    'InvalidParameter.Arrearage: Access denied, private-value account overdue',
+    'Your prepayment credits are depleted. private-value',
+  ]){
+    assert.equal(wrapperFailureReason({stderr:raw}),fixed,raw)
+    const {error}=outOfCreditRun(raw)
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.ok(!error.message.includes('private-value'))
+    assert.equal(error.startDecision.reason,'insufficient_quota')
+  }
+})
+
+test('#3479: a governed DeepSeek send carries the brief in an attached file with the verdict instruction',async()=>{
+  const { promptHeadContract: contract, wrapperVerdictContractArgs: verdictArgs, DEEPSEEK_GOVERNED_MESSAGE: MESSAGE } = await import('./run-governed-review.mjs')
+  const live='c'.repeat(40),W='C:/bin/ai-deepseek-agent'
+  const io=(briefs={})=>{const written={};let n=0;return {written,files:{readFile:(p)=>briefs[p],writeFile:(p,v)=>{written[p]=v},tempDir:()=>`T${n++}`}}}
+  const check=(args,expectedTail,expectBrief,briefs)=>{
+    const {written,files}=io(briefs)
+    const out=contract(args,live,files,W)
+    const start=out[0]==='reply'?2:1
+    assert.deepEqual(out.slice(start,start+2),[MESSAGE,'--file'])
+    const body=written[out[start+2]]
+    assert.ok(body.startsWith(expectBrief),body)
+    assert.match(body,/volatilit/i)
+    assert.ok(body.trimEnd().endsWith(`VERDICT: REJECT ${live}`))
+    assert.deepEqual(out.slice(start+3),expectedTail)
+    assert.ok(!out.some((a)=>/^--prompt/.test(a)))
+    assert.ok(out.every((a)=>a.length<200),'argv never carries the brief')
+    return out
+  }
+  // Positional form: the runner used to refuse it outright.
+  check(['send','Review PR 1.','--review'],['--review'],'Review PR 1.')
+  // --prompt-file: the wrapper has no such flag and would have sent the literal path.
+  check(['send','--prompt-file','brief.md','--review'],['--review'],'Brief body.',{'brief.md':'Brief body.'})
+  check(['send','--prompt-file=brief.md','--review'],['--review'],'Brief body.',{'brief.md':'Brief body.'})
+  // Every canonical value flag keeps its value; a value is never taken for the brief.
+  for(const flag of ['--timeout','--decision','--tests','--review-kind','--model','--file','--base','--assert-head'])
+    check(['send',flag,'900','Review this.','--review'],[flag,'900','--review'],'Review this.')
+  // Command-line order is kept when both forms are present.
+  check(['send','--prompt','First.','Second.','--review'],['--review'],'First.\n\nSecond.')
+  // A bare -- ends options; the separator is not forwarded.
+  check(['send','--review','--','--looks-like-a-flag'],['--review'],'--looks-like-a-flag')
+  // reply keeps the session id before the message.
+  const reply=check(['reply','sess-1','--file','d.diff','Again.','--review'],['--file','d.diff','--review'],'Again.')
+  assert.deepEqual(reply.slice(0,2),['reply','sess-1'])
+  // Composes with the runner's later verdict contract.
+  const composed=verdictArgs(W,contract(['send','Go.','--review'],live,io().files,W),live)
+  assert.deepEqual(composed.slice(0,4),['send','--governed-verdict',live,MESSAGE])
+  // The stale-head guard still applies, and a missing brief is still refused.
+  assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,io().files,W),/names head bbbbbbbb/)
+  assert.throws(()=>contract(['send','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
+  assert.throws(()=>contract(['send','--timeout','900','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
 })

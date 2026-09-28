@@ -35,6 +35,8 @@ name: Intake Pointer Guard
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -44,12 +46,13 @@ permissions:
 
 concurrency:
   group: intake-pointer-guard-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   verify:
     name: Intake pointer guard
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:

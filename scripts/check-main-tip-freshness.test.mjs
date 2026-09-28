@@ -27,6 +27,22 @@ function branchFixture() {
 }
 const branch = (repo, headSha, tipSha) => classifyBranchFreshness({ headSha, tipSha, gitRunner: (args) => git(repo, args) })
 
+test('arbitrary .agent code overlap refuses even when distant hunks merge cleanly', () => {
+  const { repo } = makeRepo()
+  try {
+    const lines = Array.from({ length: 40 }, (_, i) => `// line ${i}`)
+    commitFiles(repo, { '.agent/hook.mjs': lines.join('\n') }, 'shared agent code')
+    git(repo, ['switch', '-q', '-c', 'pr'])
+    const authored = [...lines]; authored[1] = '// PR change'
+    const head = commitFiles(repo, { '.agent/hook.mjs': authored.join('\n') }, 'PR changes agent code')
+    git(repo, ['switch', '-q', 'main'])
+    const main = [...lines]; main[38] = '// main change'
+    const tip = commitFiles(repo, { '.agent/hook.mjs': main.join('\n') }, 'main changes agent code')
+    const result = branch(repo, head, tip)
+    assert.equal(result.ok, false); assert.match(result.reason, /main also changed \.agent\/hook.mjs/)
+  } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
 test('#2758: main moved by unrelated code, PR merges cleanly and touches none of it: accepted', () => {
   const { repo, head } = branchFixture()
   try {
@@ -34,6 +50,26 @@ test('#2758: main moved by unrelated code, PR merges cleanly and touches none of
     const result = branch(repo, head, tip)
     assert.equal(result.ok, true, result.reason); assert.equal(result.independent, true)
   } finally { rmSync(repo, { recursive: true, force: true }) }
+})
+
+// #3669: the guarded merge acquires its lane inside a checkout of protected
+// main. At depth 1 that checkout has no merge base, so the same independent
+// move above was always refused; with full history plus the fetched head
+// (what the workflow now does) it is accepted. The refusal is the control.
+test('#3669: independent main move is refused from a depth-1 clone and accepted once history and head are fetched', () => {
+  const { repo, head } = branchFixture()
+  const clone = mkdtempSync(join(tmpdir(), 'main-tip-clone-'))
+  try {
+    const tip = commitFiles(repo, { 'scripts/other.mjs': 'export const x = 1\n' }, 'main moves')
+    git(repo, ['config', 'uploadpack.allowAnySHA1InWant', 'true'])
+    git(clone, ['clone', '-q', '--depth', '1', '--branch', 'main', `file://${repo}`, '.'])
+    const shallow = branch(clone, head, tip)
+    assert.equal(shallow.ok, false); assert.match(shallow.reason, /could not compute the merge base/)
+    git(clone, ['fetch', '-q', '--unshallow', 'origin', 'main'])
+    git(clone, ['fetch', '-q', '--no-tags', 'origin', 'main', head])
+    const full = branch(clone, head, tip)
+    assert.equal(full.ok, true, full.reason); assert.equal(full.independent, true)
+  } finally { rmSync(repo, { recursive: true, force: true }); rmSync(clone, { recursive: true, force: true }) }
 })
 
 test('#2758: a branch that already merged main, with its own diff unchanged, is accepted', () => {

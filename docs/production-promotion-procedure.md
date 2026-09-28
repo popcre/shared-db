@@ -128,6 +128,17 @@ exact `sha256:` artifact digest; #2716 removes transcription only from the ordin
    subset or superset allowlist. It runs both before and after the environment wait. Because
    GitHub artifacts expire, the second check copies the verified JSON into the final apply
    evidence. This contract is provider- and model-neutral. Never add a provider or model name.
+   The recorded `reviewer_actor` is the authenticated GitHub operator who records the recovery
+   decision; it is not a claim that this person read the SQL. The technical review is the
+   allocator-assigned exact-head review APPROVE on the source pull request, which the merge gate
+   already enforces.
+
+   **OWNER RULING, 2026-09-28 (#3656):** Albert Hazan, verbatim: "i don't need an independent
+   production reviewer. remove that requirement". The separately registered independent reviewer
+   identity added by #3641 (`config/production-independent-reviewers.json`, the
+   `production-independent-review.yml` workflow and the v3 operator record) is removed. Manual
+   recovery again uses this v1 record. Every other gate stays: exact-head AI review, exact main,
+   ordered allowlist, preview proof, target proof, business-risk evidence and the environment.
 3. **`environment: production`.** Keep this binding. It remains the deployment boundary even
    after its separate manual-reviewer rule is removed.
 

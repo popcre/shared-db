@@ -38,8 +38,9 @@ export const KEYED_EVIDENCE_PATTERN = /^\.agent\/work\/([1-9]\d*)\/([1-9]\d*)\/(
 export class EvidencePathError extends Error {}
 
 function positiveInteger(value, what) {
+  if ((typeof value !== 'number' && typeof value !== 'string') || !/^[1-9]\d*$/.test(String(value))) throw new EvidencePathError(`${what} must be a canonical positive integer, not ${JSON.stringify(value)}`)
   const number = Number(value)
-  if (!Number.isInteger(number) || number < 1) throw new EvidencePathError(`${what} must be a positive integer, not ${JSON.stringify(value)}`)
+  if (!Number.isSafeInteger(number) || number < 1) throw new EvidencePathError(`${what} must be a safe positive integer, not ${JSON.stringify(value)}`)
   return number
 }
 
@@ -52,7 +53,10 @@ export function evidencePaths(workIssue, generation = 1) {
 }
 
 export function isEvidencePath(path) {
-  return path === LEGACY_CONTRACT_PATH || path === LEGACY_COMPLETION_PATH || KEYED_EVIDENCE_PATTERN.test(String(path ?? ''))
+  if (path === LEGACY_CONTRACT_PATH || path === LEGACY_COMPLETION_PATH) return true
+  const match = KEYED_EVIDENCE_PATTERN.exec(String(path ?? ''))
+  if (!match) return false
+  try { evidencePaths(match[1], match[2]); return true } catch { return false }
 }
 
 /**
@@ -93,15 +97,22 @@ export function resolveEvidencePair(changedFiles) {
  * The pair a checked-in contract declares it should live at. A pull request may
  * use the keyed path for its own issue/generation, or the legacy pair; it may
  * never write another pull request's keyed path.
+ *
+ * A schema_version 2 contract must use its keyed pair only (the same rule
+ * resolveCurrentPair enforces). The legacy pair stays acceptable for v1 so open
+ * pull requests need not all rewrite at once.
  */
 export function acceptableEvidencePairs(contract) {
-  const pairs = [LEGACY_PAIR]
+  const pairs = []
   try {
     const keyed = evidencePaths(contract?.work_issue, contract?.generation ?? 1)
-    pairs.unshift(Object.freeze([keyed.completion, keyed.contract].sort()))
+    pairs.push(Object.freeze([keyed.completion, keyed.contract].sort()))
   } catch {
     // A contract with no usable work_issue fails its own validation elsewhere;
     // it does not get a keyed path here.
+  }
+  if (contract?.schema_version !== 2) {
+    pairs.push(LEGACY_PAIR)
   }
   return pairs
 }

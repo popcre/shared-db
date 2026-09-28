@@ -218,6 +218,11 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
             parse_allowlist("20260824150630")
 
+    def test_empty_allowlist_entries_require_the_exact_empty_refusal(self):
+        for raw in ("", " ", "20260907131728,", "20260907131728, ,20260907152838"):
+            with self.subTest(raw=raw), self.assertRaisesRegex(GuardError, "production allowlist is empty"):
+                parse_allowlist(raw)
+
     def test_issue_2509_historical_restoration_remains_production_eligible(self):
         self.assertEqual(parse_allowlist("20260907131728"), ["20260907131728"])
 
@@ -254,6 +259,11 @@ class GuardTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(GuardError):
                 parse_allowlist(value)
 
+    def test_allowlist_rejects_whitespace_entries_and_non_version_text(self) -> None:
+        for value in (" ", "20260727010000, ", "not-a-version"):
+            with self.subTest(value=value), self.assertRaises(GuardError):
+                parse_allowlist(value)
+
     def test_the_block_list_matches_the_governed_retirements(self) -> None:
         # Three kinds, deliberately together. 20260726190000/20260726200000 are the
         # already-applied Master Data pair. 20260729120000 is the third kind:
@@ -264,6 +274,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20260911212849",
+                "20260917112129",
                 "20260906222338",
                 "20260814170749",
                 "20260726190000",
@@ -299,6 +311,43 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "20260903200951"):
             parse_allowlist("20260903200951,20260905024139")
         self.assertEqual(parse_allowlist("20260905024139"), ["20260905024139"])
+
+    def test_issue_2478_stranded_originals_remain_retired(self) -> None:
+        for version in ("20260911212849", "20260917112129"):
+            for allowlist in (version, f"{version},20260907031246"):
+                with self.subTest(version=version, allowlist=allowlist):
+                    with self.assertRaisesRegex(GuardError, version):
+                        parse_allowlist(allowlist)
+            for applied in (set(), {version}):
+                with self.subTest(version=version, applied=applied):
+                    self.assertEqual(classify_pending_version(version, applied, REPO)["kind"], "retired")
+
+    def test_issue_2478_retirement_preserves_historical_sql(self) -> None:
+        import hashlib
+        hashes = {'20260911212849': '78391d7d8e3b803c0998a407876872fa8006030742edce9a45c0724a3c75ecdf', '20260917112129': '33f1c60ca671be24bde8c78dfa218821398d73c5c1011025a434aff52111470e'}
+        for version, digest in hashes.items():
+            with self.subTest(version=version):
+                original = REPO / "supabase/migrations" / f"{version}_shared_style_group_sku_key.sql"
+                self.assertEqual(hashlib.sha256(original.read_text(encoding="utf-8").encode()).hexdigest(), digest)
+
+    def test_issue_2478_reissue_is_byte_identical_to_original(self) -> None:
+        """The reissue is only safe because it is the SAME executable SQL.
+
+        Nothing else in the suite pins that. If a later edit touches either
+        file, the hard block on 20260917112129 would be retiring a version
+        whose replacement no longer matches it.  Comparison excludes the
+        version-header line and normalises newlines, matching the contract's
+        "after newline normalization" caveat.
+        """
+        migrations = REPO / "supabase" / "migrations"
+        original = (
+            migrations / "20260917112129_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        reissue = (
+            migrations / "20260925061508_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        self.assertEqual(original.split(b"\n", 1)[1], reissue.split(b"\n", 1)[1])
+
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
             with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20260906222338"):
@@ -552,6 +601,22 @@ class GuardTests(unittest.TestCase):
                     with self.subTest(subset=subset), self.assertRaises(GuardError) as caught:
                         parse_allowlist(",".join(subset))
                     self.assertIn("6.5", str(caught.exception))
+
+    def test_fr_ship_set_is_unassemblable_when_no_removal_version_exists(self) -> None:
+        held = sorted(FR_SHIP_SET_HOLD)[0]
+        with patch("production_migration_guard.FR_REMOVAL_VERSIONS", set()):
+            with self.assertRaises(GuardError) as caught:
+                parse_allowlist(held)
+        self.assertIn("No FR removal migration exists yet", str(caught.exception))
+
+    def test_local_migrations_rejects_a_non_version_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "not-a-version.sql").write_text("select 1;", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "invalid migration filename"):
+                local_migrations(repo)
 
     def test_the_real_fr_removal_version_is_registered_by_name(self) -> None:
         """Issue #1339: the hold releases by DATA, and this is that data.
@@ -869,6 +934,54 @@ class GuardTests(unittest.TestCase):
                 ],
             )
 
+    def test_prepare_refuses_an_existing_output_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "already-there"
+            output.mkdir()
+            ledger = root / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
+            with (
+                patch("production_migration_guard.parse_remote_versions", return_value=set()),
+                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
+                patch("production_migration_guard.local_migrations", return_value={"20260727020000": root / "migration.sql"}),
+                patch("production_migration_guard.validate_candidates"),
+                patch("production_migration_guard.preflight_batch"),
+                self.assertRaisesRegex(GuardError, "bounded checkout already exists"),
+            ):
+                prepare(root, output, "a" * 40, "20260727020000", ledger)
+
+    def test_prepare_refuses_a_pruned_checkout_with_the_wrong_file_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            output = root / "bounded"
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            for name in (
+                "20260727010000_applied.sql",
+                "20260727020000_approved.sql",
+                "20260727030000_unapproved.sql",
+            ):
+                (migrations / name).write_text("select 1;\n", encoding="utf-8")
+            ledger = root / "ledger.txt"
+            ledger.write_text(
+                "Local | Remote | Time\n"
+                "20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+
+            def fake_worktree(*_args, **_kwargs):
+                import shutil
+                shutil.copytree(repo, output)
+
+            with (
+                patch("production_migration_guard.subprocess.run", side_effect=fake_worktree),
+                patch.object(Path, "unlink", autospec=True),
+                self.assertRaisesRegex(GuardError, "does not match the approved file set"),
+            ):
+                prepare(repo, output, "a" * 40, "20260727020000", ledger)
+
 
 class AssertBoundedTests(unittest.TestCase):
     """The re-check that licenses --include-all at the point of use."""
@@ -1118,6 +1231,14 @@ class ContentManifestTests(unittest.TestCase):
             with self.assertRaises(GuardError) as caught:
                 assert_bounded(root, "20260727020000", ledger)
             self.assertIn("unreadable/corrupt", str(caught.exception))
+
+    def test_a_non_object_manifest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._prepared(root, ("20260727010000_applied.sql",))
+            manifest_path(root).write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "not a JSON object"):
+                assert_content_manifest(root)
 
     def test_compute_content_manifest_is_byte_precise(self) -> None:
         # A line-ending change is real byte drift and must register as one.
@@ -2897,6 +3018,14 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             {"core.character"},
         )
 
+    def test_f5_duplicate_restoration_declaration_is_rejected(self) -> None:
+        raw = (
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+        )
+        with self.assertRaisesRegex(GuardError, "duplicate retired-object restoration"):
+            retired_object_restorations(raw)
+
     def test_f5_restoration_declaration_requires_the_exact_prior_drop(self) -> None:
         raw = (
             "-- restores-retired-object: core.character dropped-by: 20260101000000\n"
@@ -3909,7 +4038,18 @@ ABANDONMENT_RECORD_HEADINGS = (
 class AbandonmentDocumentationAgreementTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.agents = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+        # AGENTS.md is a router since #3481; its section text moved verbatim
+        # into docs/agents/. The "AGENTS.md" venue is the router plus the files
+        # it routes to, excluding the separate long-form section 4 venue below.
+        cls.agents = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [REPO / "AGENTS.md"]
+            + sorted(
+                p
+                for p in (REPO / "docs" / "agents").glob("*.md")
+                if p.name != "section-4-anti-collision-rules.md"
+            )
+        )
         cls.rules = (
             REPO / "docs" / "agents" / "section-4-anti-collision-rules.md"
         ).read_text(encoding="utf-8")

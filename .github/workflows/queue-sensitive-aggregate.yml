@@ -11,14 +11,18 @@ name: Queue-Sensitive Checks Aggregate
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
   checks: read
 
 concurrency:
-  group: queue-sensitive-aggregate-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # The merge_group payload has no pull_request number; the queue ref is the
+  # unique key there. Never cancel a merge_group run (#2530).
+  group: queue-sensitive-aggregate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   aggregate:
@@ -34,5 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # On merge_group the asserted head is the synthetic group commit,
+          # which is where the lane jobs report when triggered by the group.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: node scripts/orchestrator-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50

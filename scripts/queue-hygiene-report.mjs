@@ -85,7 +85,7 @@ export function dependencyHygiene(issues, io, repository) {
       const comments = io.getIssueComments(number).map(c => ({ ...c, author: c.user?.login ?? c.author }))
       state = { exists: true, open: issue.state !== 'closed', closedAt: issue.closed_at ?? issue.closedAt,
         comments, repository, owner: owner(issue), verifyStageEvidence: createStageEvidenceVerifier({ ...io, parseScope: parseQueueScope }, repository) }
-      const completion = findCompletionRecord(comments, { requireTrustedAuthor: true })
+      const completion = findCompletionRecord(comments, { requireTrustedAuthor: true, repository })
       if (completion) state.completionAcceptance = verifyCompletionAcceptance({ issue: number, record: completion }, {
         ...io, getIssue: n => Number(n) === number ? issue : io.getIssue(n),
         issueComments: n => Number(n) === number ? comments : io.issueComments(n),

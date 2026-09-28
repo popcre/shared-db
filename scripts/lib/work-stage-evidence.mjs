@@ -79,7 +79,7 @@ export const stageRevocationRef = event => `refs/db-work-stage-revocations/${eve
 const sameEvent = (a, b) => EVENT_FIELDS.every(field => a[field] === b[field])
 
 function assertFinalConsistency(event, io) {
-  const final = findCompletionRecord(io.issueComments(event.work_issue), { requireTrustedAuthor: true })
+  const final = findCompletionRecord(io.issueComments(event.work_issue), { requireTrustedAuthor: true, repository: event.repository })
   if (final && (final.work_issue !== event.work_issue || !isSuccessful(final) || (final.pr !== undefined && final.pr !== event.pr) || (final.merge_sha !== undefined && final.merge_sha !== event.merge_sha))) throw new Error('stage event contradicts immutable final completion')
 }
 

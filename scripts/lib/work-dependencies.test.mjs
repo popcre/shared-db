@@ -250,3 +250,13 @@ test('the cutoff never rescues an unsuccessful outcome', () => {
   assert.equal(result.satisfied, false)
   assert.equal(result.status, 'completed-unsuccessfully')
 })
+
+test('#3396 review: a completion record is judged against the explicit repository, not ambient identity', () => {
+  // u2giants-owned repository expects OWNER; popcre-owned expects MEMBER.
+  const owned = comment(merged(), { author_association: 'OWNER' })
+  const member = comment(merged(), { author_association: 'MEMBER' })
+  assert.deepEqual(findCompletionRecord([owned], { requireTrustedAuthor: true, repository: 'u2giants/example' }), merged())
+  assert.throws(() => findCompletionRecord([owned], { requireTrustedAuthor: true, repository: 'popcre/shared-db' }), /must be authored by operator/)
+  assert.deepEqual(findCompletionRecord([member], { requireTrustedAuthor: true, repository: 'popcre/shared-db' }), merged())
+  assert.throws(() => findCompletionRecord([member], { requireTrustedAuthor: true, repository: 'u2giants/example' }), /must be authored by operator/)
+})

@@ -8698,7 +8698,7 @@ function verifyMergedWorkRecord(record, io, { verifyLinkage = false } = {}) {
     // GitHub's own merge_commit_sha, which is the squash commit when the repo
     // squashes. The source branch head is NOT what lands on main.
     const actual = pr.merge_commit_sha
-    if (!actual || !actual.startsWith(record.merge_sha) && !record.merge_sha.startsWith(actual)) {
+    if (!actual || String(actual).toLowerCase() !== String(record.merge_sha).toLowerCase()) {
       throw new DependencyError(`report merge_sha ${record.merge_sha} does not match GitHub's merge_commit_sha ${actual ?? 'none'} for PR #${record.pr}`)
     }
     assertMergeCommitInMainHistory(actual, io.readRef('refs/heads/main'), io)

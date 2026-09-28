@@ -30,6 +30,10 @@ concurrency:
 jobs:
   label:
     name: Issue orchestrator label
+    # A title-only edit cannot change the classification (it reads the body), so it
+    # never needs a runner or API calls against the shared GITHUB_TOKEN budget; the
+    # two-hourly sweep still catches anything an event missed (#3732).
+    if: github.event_name != 'issues' || github.event.action != 'edited' || github.event.changes.body != null
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:

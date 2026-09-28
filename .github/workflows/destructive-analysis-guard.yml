@@ -33,7 +33,10 @@ concurrency:
 jobs:
   proposal-checklist:
     name: Destructive proposal checklist
-    if: github.event_name == 'issues'
+    # Only a `destructive-proposal` issue needs the checklist (the script no-ops on
+    # every other issue). Skipping here spares a runner on every ordinary issue
+    # open/edit/label, which agents generate constantly (#3732).
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'destructive-proposal')
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:

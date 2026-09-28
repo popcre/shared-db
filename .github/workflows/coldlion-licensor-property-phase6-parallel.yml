@@ -1,8 +1,9 @@
 # Phase 6 parallel-run workflow (PREVIEW ONLY).
 #
 # workflow_dispatch is enabled now for manual dry-runs and apply after migration
-# deploy + forced-failure proof. Scheduled execution is present but GUARDED:
-# set repository variable PHASE6_SCHEDULE_ENABLED=true only after:
+# deploy + forced-failure proof. The schedule: triggers were removed by the #3536
+# CI audit (they were idle); workflow_dispatch is the only trigger. If schedules are
+# ever re-added they stay GUARDED: set PHASE6_SCHEDULE_ENABLED=true only after:
 #   1) Phase 6 migration applied to the CURRENT preview branch (repository variable
 #      PREVIEW_PROJECT_REF; the old rjyboqwcdzcocqgmsyel was deleted on 2026-08-18)
 #   2) forced-failure health+comparison drills succeeded
@@ -10,8 +11,8 @@
 #      (the DesignFlow lane was removed by #2794; see "Host PLM Import" in README.md)
 #
 # Readiness is INVARIANT-BASED, never elapsed-time-based. The old 14-day / 2026-08-09
-# waiting rule was retired on 2026-07-26 and is not an exit condition anywhere. These
-# scheduled runs are supporting evidence; the exit gate is the readiness command
+# waiting rule was retired on 2026-07-26 and is not an exit condition anywhere. Runs of
+# this workflow are supporting evidence; the exit gate is the readiness command
 # (tools/evaluate-coldlion-licensor-property-cutover-readiness.mjs), which proves the
 # 542-row mapping identity, a closed circuit breaker, and green health/comparison.
 # Counting days proves nothing about slow-moving source data.

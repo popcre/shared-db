@@ -15,6 +15,7 @@ import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-mig
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
 import { SLOT_INDEPENDENCE_CONFLICT } from './manage-migration-author-lanes.mjs'
 import { canonicalReviewerAllowlist } from './manage-migration-author-lanes.mjs'
+import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
@@ -5775,6 +5776,27 @@ test('#3427 batched peer read includes an occupied slot above 64 without an extr
   const second=assignNextReviewer({...request,slot:2},io)
   assert.notEqual(second.reviewer,first.reviewer)
   assert.notEqual(second.reviewer,occupied)
+})
+
+test('#3427 legacy unsuffixed slot-one replacement excludes its live holder in fallback and batched reads',()=>{
+  for(const batched of [false,true]){
+    const io=reviewIo(),request={issue:3438,pr:3439,headSha:'a'.repeat(40)}
+    const first=assignNextReviewer(request,io)
+    const live=ACTIVE_REVIEWERS.find((row)=>row.name!==first.reviewer).name
+    const legacyRef=`${REVIEW_REPLACEMENT_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`
+    const legacySha=io.makeOwnerCommit(`db-coordination reviewer-failure-replacement sequence=${first.sequence+1} reviewer=${live} issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=1 failed-sequence=${first.sequence} prior-sequence=${first.sequence} failure-ref=self failed-reviewer=${first.reviewer} code=turn_limit_cancelled verdict=none artifact=none`)
+    io.refs.set(legacyRef,legacySha)
+    assert.equal(parseAssignmentRef(legacyRef),null,'the shared ref parser keeps its strict contract')
+    assert.equal(parseAssignmentRef(`${legacyRef}-slot2`),null,'unsuffixed replacement is legacy slot one only')
+    if(batched)io.readReviewRecords=(refs,prefix,_failurePrefix,assignmentPrefix)=>{
+      const matching=[...io.refs.entries()].filter(([ref])=>prefix&&ref.startsWith(prefix)||assignmentPrefix&&ref.startsWith(assignmentPrefix)).map(([ref,sha])=>({ref,sha,commit:io.getCommit(sha)}))
+      const records=new Map(refs.map((ref)=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:io.getCommit(sha)}:null]}))
+      Object.defineProperty(records,'matching',{value:matching})
+      return records
+    }
+    const second=assignNextReviewer({...request,slot:2},io)
+    assert.notEqual(second.reviewer,live,`slot two must exclude the live legacy replacement (${batched?'batched':'fallback'})`)
+  }
 })
 
 test('#3427 a slot-one replacement with a conflicting durable allowlist refuses the next peer draw',()=>{

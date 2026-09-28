@@ -5690,6 +5690,10 @@ function resolvePeerSlots(issue,pr,headSha,slot,io){
   if(!Number.isInteger(requesting)||requesting<1)throw new LaneError('review assignment slot must be a positive integer')
   const assignmentBase=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-${head}`
   const replacementBase=`${REVIEW_REPLACEMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-${head}`
+  // The first slot-one replacement writer used this exact unsuffixed ref.
+  // Other consumers intentionally keep the shared parser strict, so only this
+  // peer resolver admits that legacy link into slot-one history.
+  const namedPeerRef=(ref)=>parseAssignmentRef(ref)??(ref===replacementBase?{replacement:true,issue:Number(issue),pr:Number(pr),headSha:head,slot:1,replacementSequence:null}:null)
   const missingSlotOne=()=>new LaneError(`slot ${requesting} requires slot 1 to already be assigned for issue #${issue} PR #${pr} head ${head}. Run --assign-reviewer --issue ${issue} --pr ${pr} --head-sha ${head} (default --review-slot 1) first, then request --review-slot ${requesting}.`)
   const returned=new Set()
   const peers=new Map()
@@ -5723,7 +5727,7 @@ function resolvePeerSlots(issue,pr,headSha,slot,io){
     const probeRefs=[assignmentBase]
     const records=io.readReviewRecords(probeRefs,replacementBase,null,assignmentBase)
     for(const row of (records.matching??[])){
-      const named=parseAssignmentRef(row.ref)
+      const named=namedPeerRef(row.ref)
       if(!named||named.headSha!==head)continue
       if(named.slot===requesting&&!named.replacement)continue
       if(returned.has(row.sha))continue
@@ -5746,13 +5750,13 @@ function resolvePeerSlots(issue,pr,headSha,slot,io){
   if(typeof io.listRefs!=='function')throw new LaneError('peer review slot records cannot be listed; independent draw refused')
   const assignmentRows=io.listRefs(assignmentBase)
   for(const row of assignmentRows){
-    const named=parseAssignmentRef(row.ref)
+    const named=namedPeerRef(row.ref)
     if(named?.replacement||named?.slot===requesting)continue
     accept(row,named,parseReviewCursor(row.commit??io.getCommit(row.sha)))
   }
   const replacementRows=io.listRefs(replacementBase)
   for(const row of replacementRows){
-    const named=parseAssignmentRef(row.ref)
+    const named=namedPeerRef(row.ref)
     if(!named?.replacement)continue
     accept(row,named,parseReviewCursor(row.commit??io.getCommit(row.sha)))
   }

@@ -63,12 +63,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Capture trusted executable path before pull-request code runs
+        id: trusted_tools
+        run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
       - name: Check out protected main policy separately from the pull request
         uses: actions/checkout@v4
         with:
           ref: main
           path: trusted-policy
           fetch-depth: 1
+      - name: Pre-flight the required status checks before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          export GH_TOKEN="$AUTHORITY_TOKEN"
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Protected-main checkout is stale' >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo 'Protected-main checkout is dirty' >&2
+            exit 1
+          fi
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
       - name: Require current main and rerun every applicable coordination guard
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,25 +127,15 @@ jobs:
           # doubt, any unrecognized statement, any object outside {crm,pim,dam,plm}
           # refuses.
           node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
-      # `github.token` cannot read branch protection (there is no `administration`
-      # permission scope), so this falls back to the committed mirror. It reads that
-      # mirror only from trusted `origin/main`; the checked-out pull request cannot
-      # alter the list that judges it. This first mirror merge has an exact-head-bound,
-      # immutable bootstrap floor. The step above fetches and proves current main.
-      # Before the lane is taken, so a low quota waits (or fails plainly) while
-      # holding nothing, instead of failing half-way through under the lock.
+      # The protected-main preflight above fetches and proves current main before
+      # any pull-request script runs. The quota check remains outside the lock,
+      # so exhaustion waits or fails while holding nothing.
       - name: Check the GitHub API quota before taking the merge lane
         env:
           GH_TOKEN: ${{ github.token }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-actions-quota.mjs
-      - name: Pre-flight the required status checks before taking the merge lane
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
-          REQUESTED_SHA: ${{ inputs.head_sha }}
-        run: node scripts/check-required-checks-preflight.mjs
       - name: Acquire the exclusive merge lane
         id: merge_lock
         env:
@@ -133,7 +150,6 @@ jobs:
         id: guarded_merge
         env:
           GH_TOKEN: ${{ github.token }}
-          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           # The merge lane is held: never sit on it waiting for a quota reset.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
           PR_NUMBER: ${{ inputs.pull_request }}

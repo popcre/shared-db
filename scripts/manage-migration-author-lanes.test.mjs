@@ -4,7 +4,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
 import { namedHold, urgentHoldDetail, urgentHoldReason } from './manage-migration-author-lanes.mjs'
-import { matchesLiveProofProvenance, matchesLiveProofRun } from './manage-migration-author-lanes.mjs'
+import { matchesLiveProofProvenance, matchesLiveProofRun, verifyLiveAssertionWith } from './manage-migration-author-lanes.mjs'
 import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-author-lanes.mjs'
 import { allocatableReviewers, reconcilePreflightRows } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
@@ -63,6 +63,47 @@ test('live-proof completion accepts only its exact workflow dispatch and run-own
   }
 })
 
+test('historical-slug shared-db live evidence gets every strict check, never the application route (#3636 H1)',()=>{
+  const OLD='u2giants/shared-db',head='a'.repeat(40),digest=`sha256:${'b'.repeat(64)}`
+  const evidence={work_issue:2478,application_repository:OLD,application_commit_sha:head,live_artifact_id:123,live_artifact_digest:digest}
+  const run={id:456,repository:{full_name:THIS_REPO},path:'.github/workflows/shared-db-live-proof.yml',event:'workflow_dispatch',status:'completed',conclusion:'success',run_attempt:1,head_sha:head}
+  const artifact={id:123,name:`shared-db-live-proof-2478-${head}`,expired:false,digest,workflow_run:{id:456,head_sha:head}}
+  const valid={repository:OLD,runId:'456',run,artifact,evidence}
+  assert.equal(matchesLiveProofProvenance(valid),true)
+  for(const mutate of [(v)=>{v.run.path='.github/workflows/other.yml'},(v)=>{v.run.event='push'},(v)=>{v.run.run_attempt=2},(v)=>{v.run.id=457},(v)=>{v.artifact.workflow_run.id=457},(v)=>{delete v.run.repository}]){
+    const changed=structuredClone(valid);mutate(changed);assert.equal(matchesLiveProofProvenance(changed),false)
+  }
+  // A run GitHub reports in this repository is never judged by application rules.
+  const loose={id:654,repository:{full_name:THIS_REPO},path:'.github/workflows/other.yml',event:'push',run_attempt:2,conclusion:'success',head_sha:head}
+  assert.equal(matchesLiveProofRun({repository:'someone/else',runId:'654',run:loose,evidence:{...evidence,application_repository:'someone/else'}}),false)
+})
+
+test('absent evidence fields never match equally absent reads (#3636 M1)',()=>{
+  const repository='u2giants/popdam3'
+  assert.equal(matchesLiveProofRun({repository,runId:'1',run:{conclusion:'success'},evidence:{application_repository:repository}}),false)
+  const head='c'.repeat(40)
+  const evidence={work_issue:41,application_repository:repository,application_commit_sha:head,live_artifact_id:321}
+  const run={id:1,conclusion:'success',head_sha:head}
+  assert.equal(matchesLiveProofProvenance({repository,runId:'1',run,artifact:{id:321,name:`shared-db-live-proof-41-${head}`,expired:false},evidence}),false)
+})
+
+test('verifyLiveAssertion wiring: reads go to the current slug and route selection is end to end (#3636 M3)',()=>{
+  const head='a'.repeat(40),digest=`sha256:${'b'.repeat(64)}`,verified='2026-09-28T00:00:00Z'
+  const evidence={work_issue:2478,application_repository:'u2giants/shared-db',application_commit_sha:head,live_artifact_id:123,live_artifact_digest:digest,
+    live_evidence:'https://github.com/u2giants/shared-db/actions/runs/456',live_assertion:'x',environment:'production',verified_at:verified}
+  const run={id:456,repository:{full_name:THIS_REPO},path:'.github/workflows/shared-db-live-proof.yml',event:'workflow_dispatch',status:'completed',conclusion:'success',run_attempt:1,head_sha:head}
+  const artifact={id:123,name:`shared-db-live-proof-2478-${head}`,expired:false,digest,workflow_run:{id:456,head_sha:head}}
+  const proof={schema_version:1,work_issue:2478,application_commit_sha:head,live_assertion:'x',environment:'production',result:'passed',observed_at:verified}
+  const reads=[]
+  const io=(r)=>({getJson:(path)=>{reads.push(path);return path.endsWith('/artifacts')?{artifacts:[artifact]}:r},readArtifactJson:(repo,id,file)=>{reads.push(`${repo}#${id}#${file}`);return proof}})
+  assert.equal(verifyLiveAssertionWith(evidence,io(run)),true)
+  assert.deepEqual(reads,[`repos/${THIS_REPO}/actions/runs/456`,`repos/${THIS_REPO}/actions/runs/456/artifacts`,`${THIS_REPO}#123#db-live-proof.json`])
+  assert.equal(verifyLiveAssertionWith(evidence,io({...run,event:'push'})),false)
+  assert.equal(verifyLiveAssertionWith(evidence,io({...run,run_attempt:2})),false)
+  assert.equal(verifyLiveAssertionWith({...evidence,application_repository:'other/repo'},io(run)),false)
+  assert.equal(verifyLiveAssertionWith({...evidence,live_evidence:'not a url'},io(run)),false)
+})
+
 test('application-owned live proofs retain their existing successful-run and artifact route',()=>{
   const repository='u2giants/popdam3',head='c'.repeat(40),digest=`sha256:${'d'.repeat(64)}`
   const evidence={work_issue:41,application_repository:repository,application_commit_sha:head,live_artifact_id:321,live_artifact_digest:digest}
@@ -72,6 +113,8 @@ test('application-owned live proofs retain their existing successful-run and art
   assert.equal(matchesLiveProofRun(valid),true)
   assert.equal(matchesLiveProofProvenance(valid),true)
   assert.equal(matchesLiveProofProvenance({...valid,repository:THIS_REPO}),false)
+  // Shared-db identity on BOTH sides still refuses a non-dispatch, retried run (#3636 L5).
+  assert.equal(matchesLiveProofProvenance({...valid,repository:THIS_REPO,evidence:{...evidence,application_repository:THIS_REPO}}),false)
   assert.equal(matchesLiveProofProvenance({...valid,run:{...run,conclusion:'failure'}}),false)
   assert.equal(matchesLiveProofProvenance({...valid,artifact:{...artifact,expired:true}}),false)
 })

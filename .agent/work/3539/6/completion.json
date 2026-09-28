@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3539,
+  "outcome": "ready-for-merge",
+  "pr": 3557,
+  "migration_versions": [
+    "20260925223300"
+  ],
+  "contract_ref": "refs/db-contracts/3539/6",
+  "contract_sha256": "4a48cdecce2f208a95baa3b5dc3782fe00b8ed9208aa2f829dba85166308fb8b",
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15",
+  "head_sha": "361b9e5df42a4853be91d600a93c78fe46fed3c6",
+  "files_changed": [
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260925223300_scraped_source_inventory_pixar_disney_dcpvault_licensor.sql",
+    "supabase/tests/db_data_admin_scraped_source_inventory.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL, version order, JSON count, cost and EOL guards passed. Guard B2 live-ledger check lacked local disposable ledger; required database CI will run."
+    },
+    {
+      "command": "python scripts/migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Derived-from declaration passed with a shell-local python alias to installed python3."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No working-tree whitespace errors; committed branch diff also passed git diff --check origin/main...HEAD."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #3546 remains open at version 20260925223300 with permanent reservation ref.",
+    "Production SQL grouping and identity expressions are unchanged from reviewed generation 4 implementation.",
+    "Installed CASE expressions are executed for all three arms with four DCP sources, Pixar key and name, non-DCP unresolved negative control, and Marvel ASGARD positive control.",
+    "Twelve source tables require a validated exact equality constraint and NOT NULL discriminator.",
+    "Qwen prior verdict is excluded due to 1Password review-policy violation; fresh exact-head governed review is required."
+  ],
+  "stop_conditions_hit": []
+}

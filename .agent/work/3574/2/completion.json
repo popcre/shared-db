@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3574,
+  "outcome": "ready-for-merge",
+  "pr": 3578,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3574/2",
+  "contract_sha256": "67ed1289a37c2b491febf928aa60c87b7c948faee66cd702d2ef090e8486873d",
+  "head_sha": "f702199726eb3f3806d67c1d7b4cc6ef70996e06",
+  "base_sha": "d963e931bba66098e1bf7f6f735da7a602bf764f",
+  "files_changed": [
+    ".agent/work/3574/2/contract.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "717 passed, 0 failed at implementation f7021997"
+    }
+  ],
+  "assumptions_resolved": [
+    "Exact claim and PR head were verified live; the recovery rechecks both under its mutex",
+    "The old permanent reservation remains present"
+  ],
+  "stop_conditions_hit": []
+}

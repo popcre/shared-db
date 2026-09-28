@@ -621,6 +621,9 @@ function usableAdmission(row){return {provider:row.provider,status:'ready',usabl
 
 function reviewIo(){
   const io=memoryIo(), commits=new Map();let seq=0
+  // Existing safety fixtures keep their historical sequence assertions; the
+  // preference behavior is tested separately with the production draw order.
+  io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
   io.resolveOrchestratorEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
@@ -1006,6 +1009,20 @@ test('reviewer cursor advances atomically through the durable round robin',()=>{
   assert.ok(io.refs.has(REVIEW_CURSOR_REF))
 })
 
+test('preferred reviewers include StepFun while Grok remains an eligible fallback',()=>{
+  const preferred=reviewIo();delete preferred.reviewerOrder
+  const chosen=[]
+  for(let n=1;n<=10;n++)chosen.push(assignNextReviewer({issue:9000+n,pr:9100+n,headSha:`abcdef${n}`},preferred).reviewer)
+  assert.ok(chosen.includes('stepfun-step-5-preview'))
+  assert.ok(!chosen.includes('grok-4.6'))
+  const fallback=reviewIo();delete fallback.reviewerOrder
+  fallback.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
+  assert.equal(assignNextReviewer({issue:9201,pr:9301,headSha:'abcdef1'},fallback).reviewer,'grok-4.6')
+  const windows=reviewIo();delete windows.reviewerOrder
+  windows.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider!=='stepfun',status:row.provider==='stepfun'?'unsupported-platform':'ready'}]))
+  for(let n=1;n<=10;n++)assert.notEqual(assignNextReviewer({issue:9400+n,pr:9500+n,headSha:`abcdef${n}`},windows).reviewer,'stepfun-step-5-preview')
+})
+
 test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous exact-head reviews, each on its own lease',()=>{
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true
@@ -1389,7 +1406,7 @@ test('legacy short-head protocol cannot store a second lease for one reviewer',(
 test('a live review never moves the rotation off a busy provider (no same-reviewer ceiling)',()=>{
   const {io}=busyIo()
   assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
-  ACTIVE_REVIEWERS.forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
+  ACTIVE_REVIEWERS.filter((row)=>row.provider!=='grok').forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
 })
 
 test('a recorded verdict and a moved head both free the reviewer that held them',()=>{

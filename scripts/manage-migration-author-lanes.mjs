@@ -594,6 +594,15 @@ export function reviewerKnownNonReading(name, reviewers=REVIEWERS){
 // `PASS provider=codex sandbox=read-only reasoning=explicit command=codex`.
 export const OVERFLOW_REVIEWERS = Object.freeze([])
 export const ACTIVE_REVIEWERS = Object.freeze(REVIEWERS.filter((row)=>!RETIRED_REVIEWERS.includes(row.name)&&!QUARANTINED_REVIEWERS.includes(row.name)))
+// Rotate among preferred reviewers first. Grok remains eligible when none of
+// them can take this exact review under the existing admission rules.
+export const REVIEWER_FALLBACK_PROVIDERS = Object.freeze(['grok'])
+export function orderedReviewers(sequence,reviewers=ACTIVE_REVIEWERS){
+  const rotate=(rows)=>rows.length?Array.from({length:rows.length},(_,offset)=>rows[(sequence-1+offset)%rows.length]):[]
+  return [...rotate(reviewers.filter((row)=>!REVIEWER_FALLBACK_PROVIDERS.includes(row.provider))),
+    ...rotate(reviewers.filter((row)=>REVIEWER_FALLBACK_PROVIDERS.includes(row.provider)))]
+}
+function drawOrder(sequence,io){return io.reviewerOrder?.(sequence)??orderedReviewers(sequence)}
 
 export function canonicalReviewerAllowlist(value){
   if(value===undefined||value===null)return null
@@ -5652,8 +5661,8 @@ export function describeMovedAssignmentHead(request,recorded){
 export function pickReviewer(sequence,io){
   const {eligible}=allocatableReviewers(io)
   if(!eligible.length)throw new LaneError('no reviewer is independent from the live orchestrator engine')
-  const eligibleNames=new Set(eligible.map((row)=>row.name)),start=(sequence-1)%ACTIVE_REVIEWERS.length
-  const ordered=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).filter((row)=>eligibleNames.has(row.name))
+  const eligibleNames=new Set(eligible.map((row)=>row.name))
+  const ordered=orderedReviewers(sequence).filter((row)=>eligibleNames.has(row.name))
   return ordered[0]??OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name))
 }
 
@@ -6116,13 +6125,12 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // exact head, so the second reviewer is never the same provider as the
     // first -- on top of, never instead of, the ordinary busy exclusion.
     const busy=preflightBusy
-    const start=(sequence-1)%ACTIVE_REVIEWERS.length
     // Provider capacity is deliberately not a draw constraint for the exact
     // production protocol.  Lightweight historical fixtures may use short
     // heads, which cannot name a parallel lease and retain old serial rules.
     // #2831: a reviewer whose wrapper cannot emit a governed verdict is never drawn.
     const notTaken=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
-    const reviewer=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
+    const reviewer=drawOrder(sequence,io).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
       // fixed menu of causes, and `notTaken` implements only some of them: for
@@ -6871,8 +6879,8 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     const failedNames=new Set([original.reviewer])
     for(const row of parsedReplacements){const name=bySequence.get(row.failedSequence);if(name)failedNames.add(name)}
     let sequence=null, reviewer=null
-    for(let offset=0;offset<ACTIVE_REVIEWERS.length;offset+=1){
-      const candidateSequence=cursor.sequence+1+offset, candidate=ACTIVE_REVIEWERS[(candidateSequence-1)%ACTIVE_REVIEWERS.length]
+    for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
+      const candidateSequence=cursor.sequence+1+offset
       if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
       sequence=candidateSequence;reviewer=candidate;break
     }

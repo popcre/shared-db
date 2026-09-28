@@ -254,7 +254,7 @@ export function isLeaseReadFailure(error){return Boolean(error?.leaseReadFailure
 function leaseReadFailureError(detail){
   const kind=detail.kind==='determinate'?'determinate':'transient'
   const guidance=kind==='determinate'
-    ?'This is a determinate failure: no retry will clear it. Delete the offending ref manually (git update-ref -d <ref>) or retire it with --reap-abandoned-review-leases --apply-recovery once the probe can read the namespace.'
+    ?'This is a determinate failure: no retry will clear it. The named remote reviewer lease ref needs governed recovery. Resolve the malformed lease before retiring abandoned leases with --reap-abandoned-review-leases --apply-recovery.'
     :'Retry the operation.'
   const where=detail.ref?` on ${detail.ref}`:''
   const cause=detail.cause??'unknown error'

@@ -1446,7 +1446,9 @@ test('#3349 transient lease-probe failures carry cause, ref, and retry guidance'
   malformed.getCommit=(sha)=>{const commit=originalGetCommit(sha);if(commit?.message?.includes('reviewer-lease'))return {...commit,message:'db-coordination reviewer-lease generation=1 reviewer=unknown-person issue=1 pr=1 head=not-a-sha sequence=1'};return commit}
   assert.throws(()=>findBusyReviewers(malformed),(error)=>{
     assert.match(error.message,/determinate lease commit parse failure|determinate lease ref structure failure/)
-    assert.match(error.message,/--reap-abandoned-review-leases --apply-recovery|git update-ref -d/)
+    assert.match(error.message,/named remote reviewer lease ref needs governed recovery/)
+    assert.match(error.message,/--reap-abandoned-review-leases --apply-recovery/)
+    assert.doesNotMatch(error.message,/git update-ref/)
     return true
   })
   // Production snapshot reader marks determinate parse failures via markLeaseReadFailure

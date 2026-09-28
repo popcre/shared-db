@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "work_issue": 3618,
+  "outcome": "ready-for-merge",
+  "pr": 3620,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3618/2",
+  "contract_sha256": "0ab40253327d7b2eb97824986ff288646484c603640d0617bd283de97b89bca3",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "head_sha": "dc407e1ec15ac1a197c72b557e4dba9c59efa8e2",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/claim-author-transfer.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/claim-author-transfer.test.mjs",
+      "exit_code": 0,
+      "evidence": "741 pass, 0 fail at f48efe37 on main adfe4cd5."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=321 sources=80 derived_digest=b17d185e22e7 at f48efe37 on main adfe4cd5."
+    }
+  ],
+  "assumptions_resolved": [
+    "Normal newline-terminated quote files work; immutable adoption records have exact schema and valid reservation commit identity.",
+    "A retired target worktree and former-author resume, renew, and rebind paths refuse; partial writes can be retried safely."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Re-bound by Claude chat 1b699f56 on edge-dev3 after merging current main c0708496 into implementation head dc407e1e; clean merge; required checks rerun: 741 tests pass, throughput truth audit exit 0, diff --check 0."
+}

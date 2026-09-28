@@ -9,7 +9,8 @@
 //
 // The context list is derived from TWO sources and must cover both:
 //   1. the committed mirror docs/verification/main-required-status-checks.json
-//      (the list the guarded merge pre-flight enforces);
+//      (informational only; the guarded merge pre-flight enforces fresh live
+//      effective settings, and the mirror cannot authorize a merge);
 //   2. KNOWN_LIVE_ADDITIONS below — contexts already live but not yet mirrored.
 // The mirror must never shrink this coverage, and this test fails the moment a
 // mirrored context has no mapped merge-group-capable emitter.
@@ -21,9 +22,22 @@ const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name
 const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8'))
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
-// scripts/update-required-checks.mjs from the live read-back at activation; an
-// entry here must then move OUT of this list only by the mirror catching up.
-const KNOWN_LIVE_ADDITIONS = ['Queue-sensitive checks (aggregate)']
+// scripts/update-required-checks.mjs from the live read-back; it now equals the
+// dated readback artifact below (16 contexts, strict false), so nothing is pending.
+const KNOWN_LIVE_ADDITIONS = []
+
+// The exact job-level display names a workflow emits. A literal `name:` emits
+// itself; a lane-capable name EXPRESSION emits its `|| '<default>'` branch on
+// every non-lane run, which is the only form a required context can take.
+function emittedJobNames(text) {
+  const names = new Set()
+  for (const [, raw] of text.matchAll(/^ {4}name: (.+)$/gm)) {
+    const value = raw.trim()
+    const expr = /^\$\{\{.*\|\| '([^']+)' \}\}$/.exec(value)
+    names.add(expr ? expr[1] : value)
+  }
+  return names
+}
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the
@@ -34,6 +48,7 @@ const CONTEXT_MAP = {
   'Agent work contract': { workflow: 'agent-work-contract.yml', kind: 'check-run', job: 'Agent work contract' },
   'Cancelled work guard': { workflow: 'cancelled-work-guard.yml', kind: 'check-run', job: 'Cancelled work guard' },
   'Cross-PR object collision': { workflow: 'pr-object-collision.yml', kind: 'check-run', job: 'Cross-PR object collision' },
+  'Destructive SQL outside migrations': { workflow: 'destructive-analysis-guard.yml', kind: 'check-run', job: 'Destructive SQL outside migrations' },
   'Domain ownership': { workflow: 'domain-ownership.yml', kind: 'check-run', job: 'Domain ownership' },
   'Handoff contract': { workflow: 'handoff-contract-guard.yml', kind: 'check-run', job: 'Handoff contract' },
   'Intake pointer guard': { workflow: 'intake-pointer-guard.yml', kind: 'check-run', job: 'Intake pointer guard' },
@@ -43,6 +58,7 @@ const CONTEXT_MAP = {
   'Promotion contract tests (offline)': { workflow: 'coldlion-promotion-contract-tests.yml', kind: 'check-run', job: 'Promotion contract tests (offline)' },
   'Queue-sensitive checks (aggregate)': { workflow: 'queue-sensitive-aggregate.yml', kind: 'check-run', job: 'Queue-sensitive checks (aggregate)' },
   'SQL migration guards': { workflow: 'shared-supabase-migrations.yml', kind: 'check-run', job: 'SQL migration guards' },
+  'supabase/tests against an ephemeral database': { workflow: 'database-contract-tests.yml', kind: 'check-run', job: 'supabase/tests against an ephemeral database' },
   'Tools offline tests': { workflow: 'tools-offline-tests.yml', kind: 'check-run', job: 'Tools offline tests' },
   'Merge queue gate': { workflow: 'merge-queue-gate.yml', kind: 'check-run', job: 'Merge queue gate' },
 }
@@ -50,9 +66,50 @@ const CONTEXT_MAP = {
 test('every mirrored or known-live required context has a mapped emitter', () => {
   const mirrored = MIRROR.contexts
   assert.ok(Array.isArray(mirrored) && mirrored.length > 0, 'the committed mirror carries no contexts; the required list is unknown')
-  for (const context of [...mirrored, ...KNOWN_LIVE_ADDITIONS, 'Merge queue gate']) {
+  for (const context of [...mirrored, ...KNOWN_LIVE_ADDITIONS]) {
     assert.ok(CONTEXT_MAP[context], `no merge-group-capable emitter is mapped for required context "${context}"`)
   }
+})
+
+// Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
+// branch protection. The mirror must carry exactly its contexts and strictness.
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+
+test('the committed mirror equals the dated live readback artifact', () => {
+  assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())
+  assert.equal(READBACK.contextCount, READBACK.contexts.length)
+  assert.equal(MIRROR.strict, READBACK.strict)
+  assert.ok(MIRROR.contexts.includes('Queue-sensitive checks (aggregate)'), 'the restored aggregate context left the mirror')
+})
+
+// #3562 review M-1: the required context "Destructive SQL outside migrations" must
+// actually SCAN on merge_group, not merely run green. Pin the step, its event gate,
+// its group base and its fail-closed base resolution.
+test('destructive SQL guard scans the queued group against merge_group.base_sha, fail-closed', () => {
+  const text = readWorkflow('destructive-analysis-guard.yml')
+  const job = text.slice(text.indexOf('    name: Destructive SQL outside migrations'))
+  const at = job.indexOf('      - name: Scan SQL added by the queued group')
+  assert.ok(at >= 0, 'the merge_group scan step is missing from the Destructive SQL job')
+  const step = job.slice(at, (job.indexOf('\n      - name:', at + 1) + 1 || job.length + 1) - 1)
+  assert.match(step, /^ {8}if: github\.event_name == 'merge_group'$/m)
+  assert.match(step, /^ {10}BASE_SHA: \$\{\{ github\.event\.merge_group\.base_sha \}\}$/m)
+  assert.match(step, /git cat-file -e "\$\{BASE_SHA\}\^\{commit\}"/)
+  assert.match(step, /exit 1/)
+  assert.match(step, /node scripts\/check-destructive-analysis\.mjs --diff-base "\$\{BASE_SHA\}"/)
+  assert.match(job, /^ {6}- uses: actions\/checkout@v4\n {8}with:\n {10}fetch-depth: 0$/m, 'the group base must be fetchable (full history)')
+})
+
+test('the emitter check matches exact job names, not substrings or comments', () => {
+  const names = emittedJobNames([
+    'jobs:',
+    '  a:',
+    '    name: Not Destructive SQL outside migrations',
+    '    # name: Destructive SQL outside migrations',
+    '  b:',
+    "    name: ${{ inputs.lane && format('Tools offline tests [lane {0}]', inputs.lane) || 'Tools offline tests' }}",
+  ].join('\n'))
+  assert.equal(names.has('Destructive SQL outside migrations'), false)
+  assert.equal(names.has('Tools offline tests'), true)
 })
 
 test('every check-run emitter triggers on pull_request AND merge_group checks_requested', () => {
@@ -62,9 +119,9 @@ test('every check-run emitter triggers on pull_request AND merge_group checks_re
     assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
     assert.match(text, /^ {2}merge_group:$/m, `${spec.workflow} (${context}) does not trigger for merge_group`)
     assert.match(text, /^ {4}types: \[checks_requested\]$/m, `${spec.workflow} (${context}) does not pin merge_group checks_requested`)
-    // Lane-capable jobs emit the context through a name EXPRESSION whose default
-    // branch is the exact context string; asserting the string is present covers both.
-    assert.ok(text.includes(spec.job), `${spec.workflow} does not emit a job named "${spec.job}"`)
+    // Exact object: a job whose display name (literal, or the default branch of a
+    // lane-capable name expression) equals the context. A substring or comment is not enough.
+    assert.ok(emittedJobNames(text).has(spec.job), `${spec.workflow} does not emit a job named exactly "${spec.job}"`)
   }
 })
 
@@ -200,6 +257,60 @@ test('the guarded merge lane is dual-mode and never uses --admin', () => {
   assert.ok(text.includes('--queue-mode'), 'the guarded lane does not read live queue state')
   assert.ok(!text.includes('--admin'), 'the guarded lane must never bypass with --admin')
   assert.ok(text.includes('--match-head-commit'), 'the guarded lane dropped exact-head matching')
+})
+
+test('both authority reads precede every pull-request script and run from protected main', () => {
+  const workflow = readWorkflow('guarded-migration-merge.yml')
+  const start = workflow.indexOf('      - name: Pre-flight the required status checks before taking the merge lane')
+  const classifier = workflow.indexOf('      - name: Refuse out-of-boundary self-service changes before taking the merge lane', start)
+  const quota = workflow.indexOf('      - name: Check the GitHub API quota before taking the merge lane', classifier)
+  const lock = workflow.indexOf('      - name: Acquire the exclusive merge lane', quota)
+  const reread = workflow.indexOf('      - name: Re-read required-check authority under the merge lock from protected main', lock)
+  const guard = workflow.indexOf('      - name: Require current main and rerun every applicable coordination guard', reread)
+  assert.ok(start >= 0 && start < classifier && classifier < quota && quota < lock && lock < reread && reread < guard, 'both authority reads and lock acquisition must precede every pull-request script')
+  const preflight = workflow.slice(start, classifier)
+  const protectedClassifier = workflow.slice(classifier, quota)
+  const protectedQuota = workflow.slice(quota, lock)
+  const protectedLock = workflow.slice(lock, reread)
+  const underlock = workflow.slice(reread, guard)
+  const outside = workflow.slice(0, start) + protectedClassifier + protectedQuota + protectedLock + workflow.slice(guard)
+  assert.equal((workflow.match(/\$\{\{ secrets\.SYNC_TOKEN \}\}/g) ?? []).length, 2, 'the authority secret must occur only in the two protected preflight steps')
+  assert.equal((outside.match(/\$\{\{ secrets\.SYNC_TOKEN \}\}/g) ?? []).length, 0, 'no head-code step may receive the authority secret')
+  for (const step of [preflight, underlock]) {
+    assert.match(step, /working-directory: trusted-policy/)
+    assert.match(step, /AUTHORITY_TOKEN: \$\{\{ secrets\.SYNC_TOKEN \}\}/)
+    assert.match(step, /GH_TOKEN: \$\{\{ github\.token \}\}/, 'ordinary status reads must retain the limited token')
+    assert.doesNotMatch(step, /export GH_TOKEN="\$AUTHORITY_TOKEN"/, 'the authority token must be selected for authority calls only')
+    assert.match(step, /export PATH="\$TRUSTED_PATH"/)
+    assert.match(step, /NODE_OPTIONS: ''/)
+    assert.match(step, /git rev-parse HEAD[\s\S]*git rev-parse origin\/main/)
+    assert.match(step, /git status --porcelain/)
+    assert.match(step, /node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/check-required-checks-preflight\.mjs"/)
+  }
+  assert.match(protectedClassifier, /working-directory: trusted-policy/)
+  assert.match(protectedClassifier, /node scripts\/check-self-service-additive-lane\.mjs --pr/)
+  assert.match(protectedQuota, /working-directory: trusted-policy/)
+  assert.match(protectedLock, /working-directory: trusted-policy/)
+  assert.match(protectedLock, /node scripts\/manage-migration-author-lanes\.mjs --acquire-merge/)
+  // #3669: the lock's "main moved independently" re-check needs the merge base
+  // of the head and the main tip, so protected main must carry full history and
+  // both commits must be fetched before acquisition.
+  const trustedCheckout = workflow.slice(workflow.indexOf('      - name: Check out protected main policy separately from the pull request'), start)
+  assert.match(trustedCheckout, /path: trusted-policy[\s\S]*fetch-depth: 0/, 'a shallow trusted-policy checkout has no merge base, so main moving independently is always refused')
+  assert.doesNotMatch(trustedCheckout, /fetch-depth: 1/)
+  assert.match(protectedLock, /HEAD_SHA: \$\{\{ inputs\.head_sha \}\}/)
+  assert.match(protectedLock, /git fetch --no-tags --quiet origin main "\$HEAD_SHA"\n\s*node scripts\/manage-migration-author-lanes\.mjs --acquire-merge/, 'the head and main tip must be fetched immediately before acquisition')
+  assert.match(preflight, /GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'/)
+  assert.match(preflight, /id: trusted_preflight/)
+  assert.match(preflight, /echo "sha=\$\(git rev-parse HEAD\)" >> "\$GITHUB_OUTPUT"/)
+  assert.match(underlock, /PREFLIGHT_WAIT_SECONDS: '0'/)
+  const release = workflow.slice(workflow.indexOf('      - name: Release the exclusive merge lane with ownership proof'))
+  assert.match(release, /working-directory: trusted-policy/)
+  assert.match(release, /TRUSTED_MAIN_SHA: \$\{\{ steps\.trusted_preflight\.outputs\.sha \}\}/)
+  assert.match(release, /test "\$\(git rev-parse HEAD\)" = "\$TRUSTED_MAIN_SHA"/)
+  assert.match(release, /NODE_OPTIONS: ''/)
+  assert.match(release, /node scripts\/manage-migration-author-lanes\.mjs --release-merge/)
+  assert.doesNotMatch(outside, /^\s*AUTHORITY_TOKEN:/m, 'head code outside the protected reads must not receive the authority token')
 })
 
 test('the preview rehearsal publishes the exact rehearsed main SHA, and only on success', () => {

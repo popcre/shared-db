@@ -132,6 +132,49 @@ The flag is only as good as its maintenance. Until the source data is corrected,
 excluding on the flag alone removes far fewer entries than it should - see the
 evidence note at the end of this topic.
 
+Flag census, 2026-09-25: `coldlion.item_header.non_inventory_item` is `Y` on
+36 of 18,990 current items and `N` on the rest — still heavily under-used (only
+one of the two HANG TAB items is flagged, for example). **Settled — Albert
+Hazan, 2026-09-25 (issue #3024 review):** items flagged non-inventory are also
+ignored for product-type reading; no product type is stored for them.
+
+## Prepack parents: how to identify them, and how they get their MG codes
+
+**Settled — Albert Hazan, 2026-09-25 (issue #3024 review).** An item that is a
+prepack parent (a set sold as one item) does **not** get its `mgCategory` or
+MG01–MG04 codes derived from its own description. It inherits them from its
+child items. Parent descriptions typically name several products at once
+("Mixed Pack …", "… Asst") and must never drive code derivation.
+
+The live `/items` feed carries no prepack marker on the item row — but the
+SKU-level endpoint does. **Correction, 2026-09-28 (owner-prompted
+re-investigation): the authoritative live parent marker is
+`GET /itemDetails` → `prePackCode`** (one row per item; pull with
+`companyCode=EDGEHOME` only — the endpoint refuses `page`/`size` and returns
+a plain JSON array). Measured live 2026-09-28: **2,513 distinct items carry a
+prePackCode; 2,516 rows' items are current** in `coldlion.item_header`. Do
+not use these fallbacks as primary sources:
+
+- `archive.erp_items_current.prepack_code IS NOT NULL` finds only ~1,454
+  sets (1,437 current) — the archive **undercounts by ~1,000** because it is
+  a DesignFlow-era snapshot.
+- `coldlion.prepack_detail.item_no` lists the **component** items inside
+  prepack recipes (6,515 distinct, 2026-09-25) — real single products, NOT
+  the parents. Excluding `prepack_detail` item numbers from a catalogue
+  would remove real products, not sets.
+
+The item-master mirror tables (`coldlion.item_header`,
+`plm.item_import`) do not carry `prePackCode`; a database-resident parent
+flag requires reading `/itemDetails` in the sync.
+
+**Assortment-worded items — same treatment.** Owner ruling, Albert Hazan
+2026-09-25 (issue #3024 review): items whose description says assortment
+("Asst", "Assorted", e.g. "ASST LIC MDF WALL PLAQUES") are assortments even
+when they carry no prepack code. (Corrected census, 2026-09-28: **661 of
+714** assortment-worded live items DO carry a live `prePackCode`; only 53
+rely on the wording rule alone.) They are excluded from product-type review
+lists exactly like prepack parents — no independently derived product type.
+
 ## What is left after the exclusions is still not a catalogue
 
 **Unknown, measured 2026-09-07.** It is tempting to define the product

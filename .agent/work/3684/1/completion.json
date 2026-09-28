@@ -11,6 +11,8 @@
   "head_sha": "1427a1c3c2d7e088d4045de966524958361f9ee1",
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
   "files_changed": [
+    ".agent/work/3684/1/completion.json",
+    ".agent/work/3684/1/contract.json",
     ".github/live-proofs/3684.sql",
     "supabase/migrations/20260928181047_peanuts_durable_entity_lifecycle.sql",
     "supabase/tests/peanuts_durable_entity_lifecycle_contracts.sql",

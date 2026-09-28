@@ -99,6 +99,35 @@ comment on table plm.peanuts_entity_lifecycle is
   'plm.peanuts_publish_lifecycle. change_signal is opaque: an asset hashes the portal '
   'update time, checksum, size and version; a vocabulary value hashes its label and raw record.';
 
+-- Serving indexes (review of #3730). The publish function filters durable state by
+-- (entity_kind, last_seen_capture_id[, status]) and picks the newest publication by
+-- (source_captured_at, published_at, capture_id); every referencing FK column is indexed
+-- so on-delete-restrict checks against a publication never scan the child table.
+create index idx_peanuts_entity_lifecycle_last_seen
+  on plm.peanuts_entity_lifecycle (last_seen_capture_id, entity_kind, status);
+create index idx_peanuts_entity_lifecycle_first_seen
+  on plm.peanuts_entity_lifecycle (first_seen_capture_id);
+create index idx_peanuts_entity_lifecycle_last_changed
+  on plm.peanuts_entity_lifecycle (last_changed_capture_id);
+create index idx_peanuts_entity_lifecycle_withdrawn_capture
+  on plm.peanuts_entity_lifecycle (withdrawn_capture_id) where withdrawn_capture_id is not null;
+create index idx_peanuts_lifecycle_publication_baseline
+  on plm.peanuts_lifecycle_publication (baseline_capture_id) where baseline_capture_id is not null;
+create index idx_peanuts_lifecycle_publication_latest
+  on plm.peanuts_lifecycle_publication (source_captured_at desc, published_at desc, capture_id desc);
+
+comment on column plm.peanuts_entity_lifecycle.first_withdrawn_at is
+  'Immutable first confirmed withdrawal time, retained across every reactivation.';
+comment on column plm.peanuts_entity_lifecycle.change_signal is
+  'Opaque hash of the entity''s content fields in its latest sighting; compare for equality only.';
+comment on column plm.peanuts_entity_lifecycle.status is
+  'active, withdrawn (non-initiative, absent from a comparable run) or retired (initiative only). '
+  'After an account/endpoint rebaseline, entities seen only under the old scope stay active '
+  'until they reappear: withdrawal is never inferred across scopes.';
+comment on column plm.peanuts_entity_lifecycle.last_changed_capture_id is
+  'Capture in which change_signal last changed (content change only; reactivation and '
+  'withdrawal do not advance it).';
+
 alter table plm.peanuts_lifecycle_publication enable row level security;
 alter table plm.peanuts_entity_lifecycle enable row level security;
 revoke all on plm.peanuts_lifecycle_publication from public, anon, authenticated, service_role;
@@ -165,7 +194,7 @@ begin
   end if;
 
   select * into v_prev from plm.peanuts_lifecycle_publication
-   order by source_captured_at desc, published_at desc limit 1;
+   order by source_captured_at desc, published_at desc, capture_id desc limit 1;
   if found and v_prev.source_captured_at >= v_cap.source_captured_at then
     raise exception 'peanuts_publish_lifecycle: capture % is not newer than published capture %',
       p_capture_id, v_prev.capture_id using errcode = '22023';
@@ -202,7 +231,7 @@ begin
   values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
 
   drop table if exists pg_temp.peanuts_lifecycle_seen;
-  create temporary table peanuts_lifecycle_seen (
+  create temporary table pg_temp.peanuts_lifecycle_seen (
     entity_kind text not null, entity_key text not null, change_signal text not null,
     primary key (entity_kind, entity_key)
   ) on commit drop;
@@ -318,4 +347,5 @@ comment on function plm.peanuts_publish_lifecycle(uuid) is
   'Publishes one complete zero-failure Peanuts capture into plm.peanuts_entity_lifecycle '
   'under an advisory lock (#3684). Withdraws only baseline-seen entities absent from a run '
   'with the same account, endpoint and key contract; retires, never withdraws, initiatives; '
-  'never deletes.';
+  'never deletes. Uses a transaction-local scratch table pg_temp.peanuts_lifecycle_seen '
+  '(dropped if present, then created on commit drop) in the calling session.';

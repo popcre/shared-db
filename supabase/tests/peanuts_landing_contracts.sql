@@ -30,7 +30,7 @@
 --   insert here, and section F exercises the functions on their own terms.
 --
 -- WHAT IT ASSERTS
---   A. The 19 tables exist, RLS is enabled on every one, and each carries exactly 2 read
+--   A. The 19 landing tables (the 2 #3684 durable-state tables are counted separately) exist, RLS is enabled on every one, and each carries exactly 2 read
 --      policies. No media column. No art-program-to-character table, in any form.
 --   B. Append-only privilege separation genuinely DENIES update, delete AND truncate --
 --      proven by executing them as service_role, not merely by reading a grant table --
@@ -164,7 +164,7 @@ begin
   end loop;
 
   if v_fail > 0 then raise exception 'A FAILED (% failures)', v_fail; end if;
-  raise notice 'A passed: 19 tables, RLS, 38 policies, no media, no art-program/character link';
+  raise notice 'A passed: 19 landing tables (+2 durable-state), RLS, 38 policies, no media, no art-program/character link';
 end;
 $$;
 

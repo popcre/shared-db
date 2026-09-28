@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "work_issue": 3458,
+  "outcome": "ready-for-merge",
+  "pr": 3487,
+  "migration_versions": [
+    "20260928003740"
+  ],
+  "contract_ref": "refs/db-contracts/3458/3",
+  "contract_sha256": "05c5f794a15faa5d43ceaa670fc7b869fe932c28d0e18f2db504031ec6405c1e",
+  "head_sha": "d8cdb6d9c0c8675231a4d84a1b5431cdbbec6bf8",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
+  "files_changed": [
+    ".agent/work/3458/1/behavior_tests.sql",
+    ".agent/work/3458/1/caller_contract.md",
+    "supabase/migrations/20260928003740_popsg_refresh_steps_under_ceiling.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_sync_queue",
+    "table public.style_guide_search_documents",
+    "table public.style_guide_pdf_text",
+    "table public.style_guide_crawl_runs",
+    "table public.style_guide_files",
+    "materialized view public.style_guide_file_groups",
+    "materialized view public.style_guide_folders"
+  ],
+  "db_writes": [
+    "function public.refresh_style_guide_matviews"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static guards passed on generation-3 implementation head d8cdb6d9; base max version 20260925193145, new reservation 20260928003740."
+    },
+    {
+      "command": "python3 scripts/test_migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "44 tests passed on generation-3 implementation head d8cdb6d9."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on generation-3 implementation head d8cdb6d9."
+    },
+    {
+      "command": "Database Contract Tests workflow_dispatch on disposable proof branch",
+      "exit_code": 0,
+      "evidence": "Run https://github.com/popcre/shared-db/actions/runs/36363022780 job 108743837116 passed at proof head acc295f9; exact migration bytes matched implementation head. Log: issue #3458 steppable refresh tests: all 6 checks passed; batches synced 10, 10, 5."
+    }
+  ],
+  "assumptions_resolved": [
+    "Governed claim #3483 superseded migration version 20260925171844 to 20260928003740; immutable generation-3 contract was published before implementation.",
+    "New overload remains the only claimed database object; legacy (uuid,integer) body remains byte-identical.",
+    "Disposable Database Contract Tests run 36363022780 executed the exact behavior file with matching migration bytes and passed all six checks.",
+    "Zero-size batch behavior is documented; completion and queue gates are pinned; CONCURRENTLY indexes must be valid."
+  ],
+  "stop_conditions_hit": []
+}

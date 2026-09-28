@@ -1,4 +1,5 @@
 -- Issue #2873. Version reserved by migration-author claim #3739.
+-- derived-from: none
 -- Least-privilege dflow_prod service identities for the DesignFlow production
 -- cutover (popcre/designflow-backend#94): one NOLOGIN grant role and one LOGIN
 -- runtime identity for each of backend, Item Master, Tracking and Data Sync.

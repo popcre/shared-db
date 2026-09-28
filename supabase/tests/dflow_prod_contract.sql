@@ -42,7 +42,8 @@ begin
       where table_schema = 'dflow_prod'
         and table_name in ('sample_import_job', 'sample_import_row', 'sample_movement',
                            'sample_shipment_line', 'sample_stop_closeout')) <> 5
-     or to_regclass('dflow_prod.sample_visit_plan') is null
+     or not exists (select 1 from pg_class c where c.relnamespace = 'dflow_prod'::regnamespace
+                    and c.relname = 'sample_visit_plan' and c.relkind = 'v')
      or to_regclass('dflow_prod.sample_visit') is not null
      or to_regclass('dflow_prod.sample_visit_event') is not null then
     raise exception 'dflow_prod Tracking surface does not match #2875';

@@ -24,10 +24,32 @@ begin;
 do $pre$
 begin
   if to_regnamespace('dflow_prod') is null then raise exception '#2875: schema dflow_prod is missing'; end if;
-  if to_regclass('dflow_prod.sample') is null then raise exception '#2875: dependency dflow_prod.sample is missing'; end if;
-  if to_regclass('dflow_prod.sample_attachment') is null then raise exception '#2875: dependency dflow_prod.sample_attachment is missing'; end if;
-  if to_regclass('dflow_prod.sample_box') is null then raise exception '#2875: dependency dflow_prod.sample_box is missing'; end if;
-  if to_regclass('dflow_prod.sample_shipment_item') is null then raise exception '#2875: dependency dflow_prod.sample_shipment_item is missing'; end if;
+  -- Every dependency must be an ordinary table carrying the columns the new
+  -- foreign keys, views and functions read.
+  if exists (
+    select 1 from (values
+      ('sample', 'sample_id_pk'),
+      ('sample', 'box_id_fk'),
+      ('sample_attachment', 'sample_attachment_id'),
+      ('sample_attachment', 'sample_id_fk'),
+      ('sample_box', 'box_id_pk'),
+      ('sample_box', 'box_label'),
+      ('sample_box', 'status'),
+      ('sample_shipment_item', 'shipment_item_id_pk'),
+      ('sample_shipment_item', 'sample_id_fk'),
+      ('sample_shipment_item', 'box_id_fk'),
+      ('Factory', 'id'),
+      ('Factory', 'factory_name'),
+      ('Factory', 'factory_nickname'),
+      ('vendor', 'vendor_id')
+    ) as need(rel, col)
+    where not exists (
+      select 1 from pg_class c join pg_attribute a on a.attrelid = c.oid
+      where c.relnamespace = 'dflow_prod'::regnamespace and c.relname = need.rel and c.relkind = 'r'
+        and a.attname = need.col and a.attnum > 0 and not a.attisdropped)
+  ) then
+    raise exception '#2875: a dflow_prod dependency table or column is missing or is not an ordinary table';
+  end if;
   if exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
              where n.nspname = 'dflow_prod' and c.relname = any (array['sample_approval_event', 'sample_carrier', 'sample_creation_batch', 'sample_factory_visit', 'sample_factory_visit_event', 'sample_import_job', 'sample_import_row', 'sample_inventory_balance', 'sample_movement', 'sample_path_revision', 'sample_piece_lineage', 'sample_remote_request', 'sample_remote_request_history', 'sample_remote_request_item', 'sample_reservation', 'sample_shipment', 'sample_shipment_line', 'sample_stop_closeout', 'sample_workflow', 'sample_approval_current', 'sample_balance_by_location', 'sample_global_status', 'sample_in_transit', 'sample_inventory', 'sample_open_stop_work', 'sample_receipt_discrepancy', 'sample_visit_plan']::text[])) then
     raise exception '#2875: a target dflow_prod Tracking relation already exists';
@@ -45,6 +67,12 @@ begin
       ,('dflow_prod.sample_shipment_item'::regclass, 'quantity_intended')
     )) then
     raise exception '#2875: a target Tracking column already exists on an existing dflow_prod table';
+  end if;
+  if exists (select 1 from pg_constraint co join pg_class c on c.oid = co.conrelid
+             where c.relnamespace = 'dflow_prod'::regnamespace and co.conname = any (array['sample_quantity_migration_state_check', 'sample_box_custody_pair_check', 'sample_box_ownership_state_check', 'sample_box_owner_factory_fkey', 'sample_shipment_item_quantity_positive', 'sample_shipment_item_sample_box_uniq']::name[]))
+     or exists (select 1 from pg_class i where i.relnamespace = 'dflow_prod'::regnamespace
+             and i.relname = any (array['sample_box_active_name_custody_uniq', 'sample_box_owner_factory_idx', 'sample_quantity_migration_state_idx', 'sample_shipment_item_box_id_fk_idx', 'sample_shipment_item_sample_id_fk_idx', 'sample_shipment_item_sample_box_uniq']::name[])) then
+    raise exception '#2875: a target Tracking constraint or index already exists on an existing dflow_prod table';
   end if;
 end
 $pre$;
@@ -65,7 +93,7 @@ alter table dflow_prod.sample_box add constraint sample_box_ownership_state_chec
 alter table dflow_prod.sample_box add constraint sample_box_owner_factory_fkey FOREIGN KEY (owner_factory_id_fk) REFERENCES dflow_prod.vendor(vendor_id) ON UPDATE CASCADE ON DELETE RESTRICT NOT VALID;
 alter table dflow_prod.sample_shipment_item add constraint sample_shipment_item_quantity_positive CHECK (((quantity_intended IS NULL) OR (quantity_intended > 0)));
 alter table dflow_prod.sample_shipment_item add constraint sample_shipment_item_sample_box_uniq UNIQUE (sample_id_fk, box_id_fk);
-CREATE UNIQUE INDEX sample_box_active_name_custody_uniq ON dflow_prod.sample_box USING btree (lower(btrim((box_label)::text)), current_custody_type, current_custody_id) WHERE ((current_custody_type IS NOT NULL) AND ((status)::text <> ALL ((ARRAY['closed'::character varying, 'cancelled'::character varying])::text[])));
+CREATE UNIQUE INDEX sample_box_active_name_custody_uniq ON dflow_prod.sample_box USING btree (lower(btrim(box_label)), current_custody_type, current_custody_id) WHERE current_custody_type IS NOT NULL AND status NOT IN ('closed', 'cancelled');
 CREATE INDEX sample_box_owner_factory_idx ON dflow_prod.sample_box USING btree (owner_factory_id_fk);
 CREATE INDEX sample_quantity_migration_state_idx ON dflow_prod.sample USING btree (quantity_migration_state);
 CREATE INDEX sample_shipment_item_box_id_fk_idx ON dflow_prod.sample_shipment_item USING btree (box_id_fk);

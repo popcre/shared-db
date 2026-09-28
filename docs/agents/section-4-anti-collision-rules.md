@@ -444,11 +444,18 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    migration files.
 
    After an issue reaches an exact reviewed head, atomically assign its external
-   reviewer with:
+   reviewer only after a passing delivery preflight is registered to that head.
+   Use the repository-maintenance recipe in
+   [`reviewer-delivery-preflight.md`](../verification/reviewer-delivery-preflight.md)
+   for zero-migration pull requests; structural changes retain their migration
+   bundle and claim. Supply the same registered record, bundle, and actual PR
+   changed-file inventory to assignment or replacement:
 
    ```bash
    node scripts/manage-migration-author-lanes.mjs --assign-reviewer \
-     --issue <issue> --pr <pr> --head-sha <exact-head>
+     --issue <issue> --pr <pr> --head-sha <exact-head> \
+     --delivery-preflight-record <record.json> --evidence-bundle <registered-bundle.json> \
+     --changed-files-file <pr-changed-files.json>
    ```
 
    When the owner restricts one workstream to named reviewers, add

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 3624,
+  "outcome": "ready-for-merge",
+  "pr": 3626,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3624/4",
+  "contract_sha256": "00671cd9a3469de1945e8abc6270eb5ff24856f1de484d81c1831e3d6f482963",
+  "base_sha": "d122004a6f29ee1d1aeb4db9ec14febca5705c66",
+  "head_sha": "0eb12b067829c9c2203b456f5d2fb2b6742c21a3",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/reviewer-delivery-preflight.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 wire-budget tests pass with registered exact-head preflight and unchanged 10-request ceiling"
+    },
+    {
+      "command": "node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs",
+      "exit_code": 0,
+      "evidence": "833 tests passed, 0 failed at implementation head 0eb12b067829c9c2203b456f5d2fb2b6742c21a3"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in implementation diff"
+    }
+  ],
+  "assumptions_resolved": [
+    "Reviewer wire-budget tests now provide locally registered exact-head preflight evidence for initial and replacement draws.",
+    "All four budget cases pass without raising the 10-request limit.",
+    "Generation 4 declares the full cumulative PR file scope and binds the new implementation head."
+  ],
+  "stop_conditions_hit": []
+}

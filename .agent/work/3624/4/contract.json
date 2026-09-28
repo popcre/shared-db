@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "work_issue": 3624,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Finish mandatory reviewer preflight with exact-head wire-budget fixture under the full cumulative pull-request scope.",
+  "base_sha": "d122004a6f29ee1d1aeb4db9ec14febca5705c66",
+  "dispatcher": "Codex shared-db orchestrator session for non-orchestrator issue 3624",
+  "worker": "Codex chat 01a0e65a-82f1-7d93-b8fb-4440da47884d on edge-dev3",
+  "branch": "codex/3624-mandatory-review-preflight",
+  "worktree": "/home/ahazan/repos/shared-db-3624-review-preflight",
+  "allowed_paths": [
+    ".agent/work/3624/2/completion.json",
+    ".agent/work/3624/2/contract.json",
+    ".agent/work/3624/3/contract.json",
+    ".agent/work/3624/4/completion.json",
+    ".agent/work/3624/4/contract.json",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/reviewer-delivery-preflight.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/3624/2/completion.json",
+    ".agent/work/3624/2/contract.json",
+    ".agent/work/3624/3/contract.json",
+    ".agent/work/3624/4/completion.json",
+    ".agent/work/3624/4/contract.json",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/reviewer-delivery-preflight.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change database structure or data",
+    "Do not weaken migration author claims, reviewer rotation, or exact-head approval",
+    "Do not merge while a structural preview or production sequence is pinned to current main"
+  ],
+  "required_checks": [
+    "node --test scripts/reviewer-wire-budget.test.mjs",
+    "node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Mandatory preflight is enforced before GitHub access; wire-budget tests need a valid exact-head local preflight fixture.",
+    "The fixture can create trusted sidecar and producer registrations locally without changing request-count expectations."
+  ],
+  "stop_conditions": [
+    "Stop if the required API budgets increase",
+    "Stop if fixture bypasses or weakens the mandatory preflight",
+    "Stop if the current parent preflight change no longer applies cleanly"
+  ],
+  "evidence_parent": {
+    "work_issue": 3624,
+    "generation": 3,
+    "contract_sha256": "2d6c1648400bb28ea7dd1a0ffa8c4b099afe64bbcc548a79b68281624c6d5519"
+  }
+}

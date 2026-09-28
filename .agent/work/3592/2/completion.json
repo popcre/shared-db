@@ -9,6 +9,8 @@
   "head_sha": "0de0e780403246747504caede0738e6754559aef",
   "base_sha": "ed0603578654911c337652bd060e3470b96c322d",
   "files_changed": [
+    ".agent/work/3592/2/completion.json",
+    ".agent/work/3592/2/contract.json",
     "docs/agents/active-contracts-and-plans.md",
     "docs/agents/anti-collision-summary.md",
     "docs/agents/section-4-anti-collision-rules.md",

@@ -103,16 +103,19 @@ Open: whether a separate GitHub App token for gates is needed — decide from St
 The installation-wide `X-RateLimit-Used` counter cannot be attributed per workflow (every concurrent run shares it). Instead add a per-process request counter inside `scripts/lib/github-transport.mjs` (it already wraps every `gh` call) and print one line at exit: `api_requests workflow=<GITHUB_WORKFLOW> job=<GITHUB_JOB> count=<n>`. Reuse the existing `GitHub API quota: <remaining> of <limit>` line from `scripts/check-actions-quota.mjs` for budget context. Over 48 h, tabulate per workflow, and split the 14-day failures into quota vs genuine via `gh run view --log-failed` patterns (`rate limit exceeded`, `installation quota low`). Record in `docs/verification/gate-api-spend-<date>.md` and on shared-db #3617.
 Gate: the file lists requests per run for every PR workflow and the quota/genuine split for the five gates.
 
-### Step 2 — Durable cross-run snapshot cache (the real lever)
-The collision job already gathers the open-PR snapshot once per run (`scripts/lib/open-pr-files.mjs`, ~110–130 calls per push); the lease and marker gates read little. Sharing within one run saves only a few percent, so do NOT merge the three workflows. Instead persist per-PR file lists across runs: key each open PR's file list by its head SHA in `actions/cache` (key `open-pr-files-<pr>-<headSha>`), so a run only fetches PRs whose head changed since the last run. If the cache is missing or unreadable, the job gathers its own data exactly as today (no shared failure point; a partial or unreadable snapshot never passes). Leave every workflow file, job name, self-test suite (collision's 6, marker's 2, lease's ~28 incl. `scripts/orchestrator-flow/*.test.mjs`), `merge_group` trigger and the assertions in `scripts/check-merge-queue-workflows.test.mjs` unchanged.
-Gate: Step 1 counter shows `Cross-PR object collision` requests per run reduced by at least half on a day with more than 10 open PRs; all existing suites green.
+### Step 2 — Durable cross-run cache refreshed on `main` (the real lever)
+The collision job already gathers the open-PR snapshot once per run (`scripts/lib/open-pr-files.mjs`, ~110–130 calls per push); the lease and marker gates read little, so do NOT merge workflows. Persist per-PR data across runs instead:
+- `actions/cache` is branch-scoped (a run restores only its own branch's, its base's and the default branch's caches). So a scheduled job **on `main`** (every 10 min) refreshes per-PR entries; PR runs are read-only consumers. Eviction: 10 GB per repo, entries unused for 7 days removed — a miss just means a full gather.
+- Key each entry `open-pr-files-<pr>-<headSha>-<baseSha>-<isDraft>` and store the whole `pullWithFiles` record including `changed_files`; a consumer re-validates `files.length == changed_files` and that head, base and draft still match a fresh single-PR detail read (1 call per PR, not the paginated file list). Any mismatch, missing or unreadable entry → gather that PR fresh exactly as today. A partial snapshot never passes (§11).
+- Leave every workflow file, job name, self-test suite (collision's 6, marker's 2, lease's ~28 incl. `scripts/orchestrator-flow/*.test.mjs`), `merge_group` trigger and `scripts/check-merge-queue-workflows.test.mjs` assertions unchanged.
+Gate: Step 1 counter shows `Cross-PR object collision` requests per run reduced by at least half on a day with more than 10 open PRs; tests "base retarget invalidates entry" and "draft→ready invalidates entry" pass; all existing suites green.
 
 ### Step 3 — Automatic re-run after quota reset
 Owned by the companion watchdog (its Step 2): `gh run rerun <run-id> --failed` with a token that has `actions:write` on shared-db, only when the failed log matches the quota patterns exactly, once per head SHA, and only after `rate_limit` shows reset. No `workflow_dispatch` retries (they carry no PR payload and evaluate nothing).
 Gate: a quota-failed gate on a live PR goes green with no human re-run.
 
-### Step 4 — Agent work contract: fix the cause of missing files
-Classify all 24 failures (Step 1 method). For missing-contract/report failures, make `ai-task-gates` (ai-devops) always write both `.agent/work/<issue>/<gen>/contract.json` and `completion.json` on `start`/`check --before pr`, and have the gate's error print the exact command that creates the missing file. Do not widen the #2591 exemption.
+### Step 4 — Agent work contract: add quota handling, then fix missing files
+First: `agent-work-contract.yml` is the only one of the five without `scripts/check-actions-quota.mjs` and `GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS`, and its documents-only classifier treats a quota refusal as "not documents-only", which then prints the missing-files message. Add the same quota preflight and bounded wait the other four use, and make a classifier read failure print a distinct quota error. Only then classify all 24 failures (Step 1 method). For missing-contract/report failures, make `ai-task-gates` (ai-devops) always write both `.agent/work/<issue>/<gen>/contract.json` and `completion.json` on `start`/`check --before pr`, and have the gate's error print the exact command that creates the missing file. Do not widen the #2591 exemption.
 Gate: failures of type "contract without report / report without contract" = 0 over 7 days.
 
 ### Step 5 — Proposal for a smaller required set (owner ruling required; not executable by a session)
@@ -121,7 +124,7 @@ Gate: a recorded owner decision (yes or no) on #3306.
 
 ### Step 6 — ai-devops `verify` (Windows: see ai-devops #185, #961, #963, #1008)
 Windows shards run on self-hosted runners that share Albert's Windows PC-class machines with interactive sessions (#185); PR #1008 covers the protected Windows install. Do not duplicate those; this step fixes only the fast-classifier and linux-offline shard failures (new child issue).
-Fix the classifier/offline shard failures on #1006 from `gh run view --log-failed` (a real test fix). Then move Windows shards to `merge_group` + nightly; PRs run Linux shards.
+Fix the classifier/offline shard failures on #1006 from `gh run view --log-failed` (a real test fix). Moving Windows shards off the PR path changes what the required `verify` context proves, so it needs the same kind of owner ruling as Step 5 (ai-devops rulesets): propose it on #1014 with Step 1-style evidence; do it only after Albert's recorded yes. Until then, only the test fixes land.
 Gate: #1006 green; median PR `verify` < 10 min.
 
 ### Step 7 — Local poller hygiene (user token) — executed under ai-devops #658
@@ -173,3 +176,5 @@ Grok (grok-4.6-build) VERDICT: REVISE; Qwen (qwen3.8-max) VERDICT: REJECT. Both 
 Second round (2026-09-28): Grok re-review confirmed all 8 first-round defects resolved and raised 3 more — `needs:` is same-workflow only, evidence file is `completion.json` not `report.json`, handoff next action stale. All fixed.
 
 Third round (2026-09-28): Qwen REJECT on round 3 — handoff frontmatter missing; single-run snapshot sharing saves ~4% not 50%; merged workflow would be a shared failure point and orphan self-tests; Step 5 conflicted with §5.0-C and production_business_risk_gate.py; per-workflow attribution impossible from the shared counter. Fixed: frontmatter added; Step 2 is now a durable per-head cross-run cache with per-job fallback, no workflow merge; Step 5 is an owner-ruling proposal naming all couplings; Step 1 uses a per-process counter.
+
+Fourth round (2026-09-28): Qwen REJECT — cache key missed base/draft changes (fail-open risk), actions/cache is branch-scoped, Agent work contract masks quota as missing files, counter counted invocations, Windows-shard move needs an owner ruling. All fixed in Steps 1, 2, 4, 6. Qwen confirmed all round-3 defects resolved.

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3592/2",
   "contract_sha256": "cc70938b3ebdd5c61ca91ac1a208cf63a740668fb83f804a643f181e4c1dbc77",
-  "head_sha": "c4dd72589b0294728683e6f62d0fe0e5d824f348",
+  "head_sha": "0de0e780403246747504caede0738e6754559aef",
   "base_sha": "ed0603578654911c337652bd060e3470b96c322d",
   "files_changed": [
     "docs/agents/active-contracts-and-plans.md",
@@ -21,12 +21,17 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/lib/reviewer-capabilities.test.mjs scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/reviewer-wire-budget.test.mjs",
       "exit_code": 0,
-      "evidence": "820 focused tests passed, zero failed, at implementation head c4dd72589b0294728683e6f62d0fe0e5d824f348."
+      "evidence": "820 focused tests passed, zero failed, at implementation head 0de0e780403246747504caede0738e6754559aef."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=322 sources=75 derived_digest=605a2266b160 at implementation head 0de0e780403246747504caede0738e6754559aef."
     }
   ],
   "assumptions_resolved": [
     "StepFun rotation PR #3556 remains the stacked base; this pull request must be retargeted to main after #3556 merges.",
-    "The independent StepFun review of the discarded prototype returned REVISE. This implementation validates its test-only order injection, covers the second slot and failed-reviewer fallback, updates both operator documents, and names owner authority. Its separate StepFun caller-identity concern is already addressed by #3556.",
+    "Independent StepFun review at a0827fafc70fd5d3af00a2ba8e4ca6edd761e801 returned REVISE. This follow-up clarifies the roster wording, marks historical full-roster test fixtures, validates test-only reviewer objects, and rechecks the focused suite. A new exact-head review is required before merge.",
     "Generation 2 replaced the generation-1 evidence pair; its immutable contract was published before these follow-up edits.",
     "No database read, write, migration, or production dispatch was performed."
   ],

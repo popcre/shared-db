@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3539,
+  "outcome": "ready-for-merge",
+  "pr": 3557,
+  "migration_versions": [
+    "20260925223300"
+  ],
+  "contract_ref": "refs/db-contracts/3539/4",
+  "contract_sha256": "011784a141772fbced19cf5841c3f693cd76b9649a2f47ca74ec625cb05d556e",
+  "base_sha": "13d0d888a77eba476bc8282f652ad425645b7e33",
+  "head_sha": "2cafea34a6813a4603dbdda7a312be5ba9f8c1db",
+  "files_changed": [
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260925223300_scraped_source_inventory_pixar_disney_dcpvault_licensor.sql",
+    "supabase/tests/db_data_admin_scraped_source_inventory.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed after correcting the test extraction; Guard B version order passed. Live ledger check did not run locally because no disposable database URL or ledger was configured; database CI remains required."
+    },
+    {
+      "command": "python scripts/migration_derivation.py",
+      "exit_code": 0,
+      "evidence": "Declaration check passed using a shell-local python alias to installed python3; no output or error."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against current main base 13d0d888."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #3546 is open at version 20260925223300 and reservation ref exists following merged repair PR #3581.",
+    "All three group-key and group-name CASE pairs now test the four DCP Vault source systems before licensor_key branches; Pixar/pixar-opa still groups Disney; row_key and licensor_key expressions unchanged.",
+    "SQL contract test extracts and evaluates the installed CASE expressions for each of three arms with four synthetic contradictory known licensor keys, checks Pixar, and verifies validated source-system constraints on twelve actual source tables; existing response scan still checks every page. The earlier regex extractor failed ephemeral CI and was replaced before this report.",
+    "Canonical docs no longer say authoritative Marvel scope overrides a DCP Vault source system.",
+    "Earlier generation-3 completion at d2738471 described the implementation head; later f104888f was its own .agent evidence tail, so that head difference was not itself a gate defect."
+  ],
+  "stop_conditions_hit": []
+}

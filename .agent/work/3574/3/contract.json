@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "generation": 3,
+  "work_issue": 3574,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Recover the one missing permanent reservation for claim #3546 after an out-of-band migration rename",
+  "base_sha": "1660f92020a132d15465c1da5e860fdd281b7e24",
+  "dispatcher": "Codex repository-maintenance session for issue #3574",
+  "worker": "codex",
+  "branch": "codex/repair-reservation-3574-v3",
+  "worktree": "/home/ahazan/repos/shared-db-3574-repair-v3",
+  "allowed_paths": ["scripts/recover-3539-reservation.mjs", "scripts/recover-3539-reservation.test.mjs", ".agent/work/3574/3/contract.json"],
+  "file_writes": ["scripts/recover-3539-reservation.mjs", "scripts/recover-3539-reservation.test.mjs", ".agent/work/3574/3/contract.json"],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["do not change migrations or database objects", "do not merge structural PR #3557 or dispatch preview or production", "do not delete the old permanent reservation"],
+  "required_checks": ["node --test scripts/recover-3539-reservation.test.mjs", "node --test scripts/manage-migration-author-lanes.test.mjs"],
+  "assumptions": ["The recorded Windows author worktree is remote; a clean local checkout at exact PR head proves the content", "The old permanent reservation remains present", "This one-time utility is owned by issue #3574 and should be retired by a follow-up repository-maintenance PR after recovery and audit closure"],
+  "stop_conditions": ["stop on any conflicting claim, pull request, reservation, or changed head", "stop if the exact PR-head checkout cannot be verified"]
+}

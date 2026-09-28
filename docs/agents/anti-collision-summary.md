@@ -63,9 +63,9 @@ rules below are the operative summary.
    - Probe reviewer process/session updates and a non-empty output stream before waiting. Replace
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
-    not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
-    Grok 4.6, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
-    Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and StepFun Step 5 (Linux machines only), minus the live orchestrator's own engine — exactly
+    not failed on the exact head, then fail closed with the exact blocker. The configured roster is
+    Qwen 3.8 Max, Muse Spark 1.3 Contributor,
+    Gemini 3.8 Flash High, DeepSeek V4.1 Flash, StepFun Step 5 (Linux machines only), and Grok 4.6 as fallback, minus the live orchestrator's own engine — exactly
     `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`. Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
     was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
@@ -93,6 +93,9 @@ rules below are the operative summary.
     #849). StepCode has no Windows build and the sandbox is Linux-only, so on any
     other OS `ai-review-preflight usable` reports it `unsupported-platform` and
     the allocator skips it there like any other unusable provider.
+    **Preference as of 2026-09-27 (non-orchestrator issue #3592):** the allocator
+    rotates among eligible non-Grok reviewers first. Grok stays active and is
+    drawn when that preferred pool cannot take the exact review.
     **Codex GPT-5.6 Sol is NOT in the rotation:** the owner retired it
     permanently on 2026-09-06 (issue #2485) once the other providers were
     working, so it sits in `RETIRED_REVIEWERS` and is not drawable. Its

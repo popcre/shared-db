@@ -621,6 +621,9 @@ function usableAdmission(row){return {provider:row.provider,status:'ready',usabl
 
 function reviewIo(){
   const io=memoryIo(), commits=new Map();let seq=0
+  // Legacy fixtures below pin the historical full-roster order. Tests that
+  // exercise the production preference order delete this test-only override.
+  io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
   io.resolveOrchestratorEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
@@ -1006,6 +1009,51 @@ test('reviewer cursor advances atomically through the durable round robin',()=>{
   assert.ok(io.refs.has(REVIEW_CURSOR_REF))
 })
 
+test('preferred reviewers include StepFun while Grok remains an eligible fallback',()=>{
+  const preferred=reviewIo();delete preferred.reviewerOrder
+  const chosen=[]
+  for(let n=1;n<=10;n++)chosen.push(assignNextReviewer({issue:9000+n,pr:9100+n,headSha:`abcdef${n}`},preferred).reviewer)
+  assert.ok(chosen.includes('stepfun-step-5-preview'))
+  assert.ok(!chosen.includes('grok-4.6'))
+  const fallback=reviewIo();delete fallback.reviewerOrder
+  fallback.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
+  assert.equal(assignNextReviewer({issue:9201,pr:9301,headSha:'abcdef1'},fallback).reviewer,'grok-4.6')
+  const windows=reviewIo();delete windows.reviewerOrder
+  windows.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider!=='stepfun',status:row.provider==='stepfun'?'unsupported-platform':'ready'}]))
+  for(let n=1;n<=10;n++)assert.notEqual(assignNextReviewer({issue:9400+n,pr:9500+n,headSha:`abcdef${n}`},windows).reviewer,'stepfun-step-5-preview')
+})
+
+test('preference applies to the second independent slot and to a failed-reviewer replacement',()=>{
+  const io=withAtomicRefs(reviewIo());delete io.reviewerOrder
+  const headSha='a'.repeat(40),request={issue:3592,pr:3593,headSha}
+  io.requiresExactReviewHeadSha=true
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:headSha,ref:'codex/priority'}})
+  const first=assignNextReviewer(request,io)
+  const second=assignNextReviewer({...request,slot:2},io)
+  assert.notEqual(first.reviewer,second.reviewer)
+  assert.notEqual(first.reviewer,'grok-4.6')
+  assert.notEqual(second.reviewer,'grok-4.6')
+
+  // Every preferred reviewer now refuses locally; Grok must remain a valid
+  // replacement for the failed first slot without reusing its original holder.
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
+  const replaced=replaceFailedReviewer({...request,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.equal(replaced.reviewer,'grok-4.6')
+  assert.ok(replaced.sequence>second.sequence)
+
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
+  io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:Number(pr)===3595?'b'.repeat(40):headSha,ref:'codex/priority'}})
+  const next=assignNextReviewer({issue:3594,pr:3595,headSha:'b'.repeat(40)},io)
+  assert.notEqual(next.reviewer,'grok-4.6','fallback must not become the first choice for the next review')
+})
+
+test('a test-only reviewer order cannot add, drop, or repeat a roster member',()=>{
+  for(const badOrder of [[],[ACTIVE_REVIEWERS[0]],ACTIVE_REVIEWERS.map(()=>ACTIVE_REVIEWERS[0]),ACTIVE_REVIEWERS.map((row)=>({...row,provider:'grok'}))]){
+    const io=reviewIo();io.reviewerOrder=()=>badOrder
+    assert.throws(()=>assignNextReviewer({issue:3596,pr:3597,headSha:'abcdef1'},io),/permutation of the active roster/)
+  }
+})
+
 test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous exact-head reviews, each on its own lease',()=>{
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true
@@ -1389,7 +1437,7 @@ test('legacy short-head protocol cannot store a second lease for one reviewer',(
 test('a live review never moves the rotation off a busy provider (no same-reviewer ceiling)',()=>{
   const {io}=busyIo()
   assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
-  ACTIVE_REVIEWERS.forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
+  ACTIVE_REVIEWERS.filter((row)=>row.provider!=='grok').forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
 })
 
 test('a recorded verdict and a moved head both free the reviewer that held them',()=>{
@@ -2588,8 +2636,10 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
   assert.throws(()=>replaceFailedReviewer({...replacementRequest,failedSequence:99},io),/does not match/)
 })
 
-// THE SAME-PROVIDER WRAPAROUND, NOW SKIPPED (#1297). replaceFailedReviewer starts at
-// ACTIVE_REVIEWERS[(sequence-1) % N] but SKIPS any provider that already failed on
+// HISTORICAL FULL-ROSTER ORDER FIXTURES (#1297). These use reviewIo's injected
+// order to preserve the original wraparound regression. Production-order
+// preference and replacement behavior is covered separately above.
+// The historical draw starts at ACTIVE_REVIEWERS[(sequence-1) % N] but SKIPS any provider that already failed on
 // this exact head, advancing the durable cursor past it. It used to REFUSE instead,
 // which stranded a failed review with no replacement at all after N-1 assignments,
 // for ANY N -- and after the #1290 roster change that was TWO intervening

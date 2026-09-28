@@ -33,7 +33,7 @@ function io(sequence) {
     root: '/nowhere',
     readEffective() {
       const last = sequence.at(-1)
-      return { mode: 'live-effective-settings', revision: 'a'.repeat(64), checks: last.contexts.map((context) => ({ context, app_id: null })), sources: { classic: { requiredStatusCheckContexts: last.contexts } } }
+      return { mode: 'live-effective-settings', revision: 'a'.repeat(64), checks: last.contexts.map((context) => ({ context, app_id: null })), sources: { classic: { requiresStatusChecks: true, requiresStrictStatusChecks: last.strict, requiredStatusCheckContexts: last.contexts } } }
     },
     write: (path, body) => written.push([String(path), body]),
     run(args, options) {
@@ -300,4 +300,17 @@ test('mirror keeps classic contexts as merge-queue baseline while recording inhe
   const doc = JSON.parse(mirrorDocument({ strict: false, contexts: ['classic'] }, DEFAULT_REPO, 'main', new Date(0), { checks: [{ context: 'classic', app_id: null }, { context: 'ruleset', app_id: null }] }))
   assert.deepEqual(doc.contexts, ['classic'])
   assert.deepEqual(doc.authority.checks.map((check) => check.context), ['classic', 'ruleset'])
+})
+test('refresh mirror keeps a ruleset-only context out of the classic coverage baseline', async () => {
+  const transport = io([LIVE])
+  transport.readEffective = () => ({
+    mode: 'live-effective-settings', revision: 'a'.repeat(64),
+    sources: { classic: { requiresStatusChecks: true, requiresStrictStatusChecks: false, requiredStatusCheckContexts: ['classic'] }, rulesets: [{ type: 'required_status_checks' }] },
+    checks: [{ context: 'classic', app_id: null }, { context: 'ruleset-only', app_id: null }],
+  })
+  assert.equal(await main(['--refresh-mirror'], transport), 0)
+  const mirror = JSON.parse(transport.written[0][1])
+  assert.deepEqual(mirror.contexts, ['classic'])
+  assert.deepEqual(mirror.authority.checks.map((check) => check.context), ['classic', 'ruleset-only'])
+  assert.equal(transport.calls.length, 0)
 })

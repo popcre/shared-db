@@ -295,7 +295,9 @@ export async function main(argv, io = {}) {
     if (options.apply || options.add.length) { error('--refresh-mirror cannot be combined with --apply or --add'); return 2 }
     try {
       const authority = effective()
-      writeMirror({ strict: authority.sources.classic?.requiresStrictStatusChecks ?? false, contexts: authority.checks.map((check) => check.context) }, options, { ...io, authority })
+      const classic = authority.sources?.classic
+      if (!classic?.requiresStatusChecks || !Array.isArray(classic.requiredStatusCheckContexts) || classic.requiredStatusCheckContexts.length === 0) throw new RequiredChecksError('cannot refresh classic coverage baseline without readable classic required checks')
+      writeMirror({ strict: classic.requiresStrictStatusChecks, contexts: classic.requiredStatusCheckContexts }, options, { ...io, authority })
       log(`Refreshed informational mirror from live effective settings (${authority.checks.length} requirements, revision ${authority.revision}); no settings changed.`)
       return 0
     } catch (readError) { error(readError.message); return 2 }

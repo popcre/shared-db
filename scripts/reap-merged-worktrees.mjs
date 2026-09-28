@@ -28,6 +28,7 @@ import { execSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runGitHubCommand } from './lib/github-transport.mjs';
 import { resolveRepositoryIdentity } from './lib/repository-identity.mjs';
 
 // Issue #1868. The reaper refused to run AT ALL while any orchestrator marker was
@@ -175,6 +176,12 @@ function sh(cmd, opts = {}) {
   return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }).trim();
 }
 
+export function readGitHubArray(args, run = runGitHubCommand) {
+  const rows = JSON.parse(run(args));
+  if (!Array.isArray(rows)) throw new Error('GitHub returned a non-array listing');
+  return rows;
+}
+
 function readWorktrees() {
   const out = [];
   let current = null;
@@ -258,11 +265,9 @@ function main() {
     process.exit(2);
   }
 
-  const merged = new Set(
-    JSON.parse(sh(`gh pr list --repo ${repo} --state merged --limit 400 --json headRefName`)).map(
-      (p) => p.headRefName,
-    ),
-  );
+  const merged = new Set(readGitHubArray(
+    ['pr', 'list', '--repo', repo, '--state', 'merged', '--limit', '400', '--json', 'headRefName'],
+  ).map((p) => p.headRefName));
 
   // The positive liveness signals, read BEFORE anything is planned so a dry run
   // shows exactly what an --apply would do. A failed read is recorded, never
@@ -270,8 +275,8 @@ function main() {
   let markers = [];
   let markersReadable = true;
   try {
-    markers = JSON.parse(
-      sh(`gh issue list --repo ${repo} --state open --label orchestrator-marker --limit 20 --json number,title`),
+    markers = readGitHubArray(
+      ['issue', 'list', '--repo', repo, '--state', 'open', '--label', 'orchestrator-marker', '--limit', '20', '--json', 'number,title'],
     );
   } catch (err) {
     markersReadable = false;
@@ -280,8 +285,8 @@ function main() {
   let claims = [];
   let claimsReadable = true;
   try {
-    claims = JSON.parse(
-      sh(`gh issue list --repo ${repo} --state open --label db-claim --limit 200 --json number,body`),
+    claims = readGitHubArray(
+      ['issue', 'list', '--repo', repo, '--state', 'open', '--label', 'db-claim', '--limit', '200', '--json', 'number,body'],
     );
   } catch (err) {
     claimsReadable = false;

@@ -19,6 +19,7 @@ import {
   lastActivityMs,
   normalizeWorktreePath,
   plan,
+  readGitHubArray,
   DEFAULT_IDLE_HOURS,
   MIN_IDLE_HOURS,
 } from "./reap-merged-worktrees.mjs";
@@ -37,6 +38,18 @@ const wt = (over = {}) => ({
 });
 
 const merged = new Set(["feature/x"]);
+
+test('GitHub listings use the shared read transport and preserve argv', () => {
+  const args = ['pr', 'list', '--repo', 'popcre/shared-db', '--state', 'merged'];
+  let received;
+  const rows = readGitHubArray(args, (actual) => {
+    received = actual;
+    return '[{"headRefName":"feature/x"}]';
+  });
+  assert.deepEqual(received, args);
+  assert.deepEqual(rows, [{ headRefName: 'feature/x' }]);
+  assert.throws(() => readGitHubArray(args, () => '{}'), /non-array listing/);
+});
 
 test("a clean worktree whose pull request merged is retireable", () => {
   const { remove, keep } = plan([wt()], merged);

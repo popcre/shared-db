@@ -244,6 +244,22 @@ export const REVIEW_REF_ROW_LIMIT = 1000
 // what lets a fail-open catch re-raise instead of reporting "unreadable".
 export function markReviewRefListingRefusal(error,detail){error.reviewRefListingRefusal=detail;return error}
 export function isReviewRefListingRefusal(error){return Boolean(error?.reviewRefListingRefusal)}
+
+// Issue #3349. A transient read failure in the lease probe carries its cause --
+// which read, which ref, and the transport error -- so the caller names the real
+// reason instead of the generic "active reviewer leases are unreadable".
+export function markLeaseReadFailure(error,detail){error.leaseReadFailure=detail;return error}
+export function isLeaseReadFailure(error){return Boolean(error?.leaseReadFailure)}
+
+function leaseReadFailureError(detail){
+  const kind=detail.kind==='determinate'?'determinate':'transient'
+  const guidance=kind==='determinate'
+    ?'This is a determinate failure: no retry will clear it. The named remote reviewer lease ref needs governed recovery. Resolve the malformed lease before retiring abandoned leases with --reap-abandoned-review-leases --apply-recovery.'
+    :'Retry the operation.'
+  const where=detail.ref?` on ${detail.ref}`:''
+  const cause=detail.cause??'unknown error'
+  return markLeaseReadFailure(new LaneError(`active reviewer leases are unreadable (${kind} ${detail.read} failure${where}): ${cause}. ${guidance}`),detail)
+}
 // Issue #2711. A lease snapshot too large for one process argument fails at
 // spawn (E2BIG / ENAMETOOLONG / "argument list too long"). No retry can clear
 // that, so it is a determinate refusal naming the reap command, never the
@@ -2178,7 +2194,9 @@ export const githubIo = {
     const issueEvidence=reviewWireBudget?' comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}}':''
     const query=`query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){state merged mergedAt headRefOid${evidence} files(first:100){pageInfo{hasNextPage} nodes{path changeType}} closingIssuesReferences(first:2){pageInfo{hasNextPage} nodes{... on Issue{number state body createdAt${issueEvidence}}}}}}}`
     const data=ghJson(['api','graphql','-f',`query=${query}`,'-F',`owner=${REPO_OWNER}`,'-F',`name=${REPO_NAME}`,'-F',`pr=${Number(pr)}`])
-    const snapshot=projectReviewerOperationRouteSnapshot(data)
+    // The caller's admission gate uses its own request counter, while the
+    // bounded-pagination refusal and mutex single-attempt policy remain active.
+    const snapshot=completeReviewerOperationRouteSnapshot(data,()=>githubIo.getPrFiles(Number(pr)))
     const row=data.data.repository.pullRequest,linked=row.closingIssuesReferences.nodes
     if(reviewWireBudget&&linked.length===1&&Number.isInteger(linked[0]?.number)){
       try{primeReviewStates([[`${linked[0].number}:${Number(pr)}`,reviewStateEntry(row,linked[0])]])}catch{}
@@ -2213,7 +2231,7 @@ export const githubIo = {
     return rest&&graph?{remaining:Number(rest.remaining),limit:Number(rest.limit),reset:Number(rest.reset),graphRemaining:Number(graph.remaining),graphLimit:Number(graph.limit),graphReset:Math.floor(new Date(graph.resetAt).getTime()/1000)}:null
   },previewApplyRun(runId){return{run:ghJson(['api',`repos/${REPO}/actions/runs/${runId}`]),jobs:ghJson(['api',`repos/${REPO}/actions/runs/${runId}/jobs`]),artifacts:ghJson(['api',`repos/${REPO}/actions/runs/${runId}/artifacts`]),logs:runGitHubCommand(['run','view',String(runId),'--repo',REPO,'--log'])}},
   verifyPreviewApplyArtifact(request){
-    return JSON.parse(execFileSync('python',[path.join(path.dirname(fileURLToPath(import.meta.url)),'verify_preview_apply_artifact.py')],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:1024*1024,stdio:['pipe','pipe','pipe']}))
+    return JSON.parse(execFileSync(process.platform==='win32'?'python':'python3',[path.join(path.dirname(fileURLToPath(import.meta.url)),'verify_preview_apply_artifact.py')],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:1024*1024,stdio:['pipe','pipe','pipe']}))
   },
   readActiveReviewLeases(){
     if(reviewWireBudget)return this.readActiveReviewLeasesOverGit()
@@ -2233,12 +2251,13 @@ export const githubIo = {
     const entries=[],leases=[]
     for(const [ref,sha] of present){
       const commit=commits.get(sha)
-      if(!commit?.message)throw new LaneError('active reviewer lease snapshot is unreadable')
+      if(!commit?.message)throw markLeaseReadFailure(new LaneError('active reviewer lease snapshot is unreadable'),{read:'lease snapshot commit',ref,kind:'determinate',cause:'commit has no message'})
       let lease
-      try{lease=parseReviewLease({message:commit.message})}catch{throw new LaneError('active reviewer lease snapshot is unreadable')}
-      if(!lease||!allowed.has(lease.reviewer))throw new LaneError('active reviewer lease snapshot is unreadable')
+      try{lease=parseReviewLease({message:commit.message})}
+      catch(error){throw markLeaseReadFailure(new LaneError(`active reviewer lease snapshot is unreadable: ${error.message}`),{read:'lease snapshot parse',ref,kind:'determinate',cause:error.message})}
+      if(!lease||!allowed.has(lease.reviewer))throw markLeaseReadFailure(new LaneError('active reviewer lease snapshot is unreadable'),{read:'lease snapshot reviewer',ref,kind:'determinate',cause:`reviewer ${lease?.reviewer??'unknown'} not in allowed set`})
       const legacy=reviewActiveRef(lease.reviewer),parallelRef=/^[0-9a-f]{40}$/i.test(lease.headSha)?reviewLeaseRefForAssignment(lease,true):null
-      if(ref!==legacy&&ref!==parallelRef)throw new LaneError('active reviewer lease ref does not match its durable assignment identity')
+      if(ref!==legacy&&ref!==parallelRef)throw markLeaseReadFailure(new LaneError('active reviewer lease ref does not match its durable assignment identity'),{read:'lease ref identity',ref,kind:'determinate',cause:`ref ${ref} does not match reviewer ${lease.reviewer} assignment identity`})
       entries.push([ref,{sha,commit:{message:commit.message,committedDate:commit.committedDate??null}}])
       leases.push(lease)
     }
@@ -2289,14 +2308,15 @@ export const githubIo = {
     const entries=[]
     refs.forEach((ref,index)=>{
       const target=repo[`r${index}`]
-      if(target===undefined)throw new LaneError('active reviewer lease snapshot is unreadable')
+      if(target===undefined)throw markLeaseReadFailure(new LaneError('active reviewer lease snapshot is unreadable'),{read:'lease snapshot target',ref,kind:'transient',cause:'GraphQL target is undefined'})
       if(target===null)return
-      if(!target?.oid||!target?.message)throw new LaneError('active reviewer lease snapshot is unreadable')
+      if(!target?.oid||!target?.message)throw markLeaseReadFailure(new LaneError('active reviewer lease snapshot is unreadable'),{read:'lease snapshot target',ref,kind:'determinate',cause:'target has no oid or message'})
       let lease
-      try{lease=parseReviewLease({message:target.message})}catch{throw new LaneError('active reviewer lease snapshot is unreadable')}
-      if(!allowed.has(lease.reviewer))throw new LaneError('active reviewer lease snapshot is unreadable')
+      try{lease=parseReviewLease({message:target.message})}
+      catch(error){throw markLeaseReadFailure(new LaneError(`active reviewer lease snapshot is unreadable: ${error.message}`),{read:'lease snapshot parse',ref,kind:'determinate',cause:error.message})}
+      if(!allowed.has(lease.reviewer))throw markLeaseReadFailure(new LaneError('active reviewer lease snapshot is unreadable'),{read:'lease snapshot reviewer',ref,kind:'determinate',cause:`reviewer ${lease?.reviewer??'unknown'} not in allowed set`})
       const legacy=reviewActiveRef(lease.reviewer),parallelRef=/^[0-9a-f]{40}$/i.test(lease.headSha)?reviewLeaseRefForAssignment(lease,true):null
-      if(ref!==legacy&&ref!==parallelRef)throw new LaneError('active reviewer lease ref does not match its durable assignment identity')
+      if(ref!==legacy&&ref!==parallelRef)throw markLeaseReadFailure(new LaneError('active reviewer lease ref does not match its durable assignment identity'),{read:'lease ref identity',ref,kind:'determinate',cause:`ref ${ref} does not match reviewer ${lease.reviewer} assignment identity`})
       entries.push([ref,{sha:target.oid,commit:{message:target.message,committedDate:target.committedDate??null}}])
     })
     return new Map(entries)
@@ -5136,9 +5156,9 @@ function isReviewAssignmentLive(assignment,states,io){
 // availability. (Before issue #3130 the test-only rotation helper kept rotating on
 // null; it no longer reads this at all.)
 export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={}){
-  if(typeof io.readRef!=='function')return null
+  if(typeof io.readRef!=='function')throw leaseReadFailureError({read:'readRef capability check',kind:'determinate',cause:'io.readRef is not a function'})
   let cutover
-  try{cutover=io.readRef(REVIEW_ACTIVE_CUTOVER_REF)}catch{return null}
+  try{cutover=io.readRef(REVIEW_ACTIVE_CUTOVER_REF)}catch(error){throw leaseReadFailureError({read:'cutover read',ref:REVIEW_ACTIVE_CUTOVER_REF,kind:'transient',cause:error?.message??String(error)})}
   if(!cutover)throw new LaneError('active reviewer lease cutover is incomplete; assignment refused')
   const busy=new Set()
   const stale=[]
@@ -5153,31 +5173,41 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
   try{snapshot=typeof io.readActiveReviewLeases==='function'?io.readActiveReviewLeases():null}
   catch(error){
     if(isReviewRefListingRefusal(error))throw new LaneError(`active reviewer lease namespace cannot be listed: ${error.message}`)
-    return null
+    if(isLeaseReadFailure(error)){const d=error.leaseReadFailure;throw leaseReadFailureError({read:d.read??'lease snapshot read',ref:d.ref,kind:d.kind,cause:d.cause??error.message})}
+    throw leaseReadFailureError({read:'lease snapshot read',kind:'transient',cause:error?.message??String(error)})
   }
   const records=[]
   const refs=snapshot?[...snapshot.keys()]:[...ACTIVE_REVIEWERS,...OVERFLOW_REVIEWERS].map((reviewer)=>reviewActiveRef(reviewer.name))
   for(const ref of refs){
     let sha
-    try{sha=snapshot?snapshot.get(ref)?.sha??null:io.readRef(ref)}catch{return null}
+    try{sha=snapshot?snapshot.get(ref)?.sha??null:io.readRef(ref)}catch(error){throw leaseReadFailureError({read:'lease ref read',ref,kind:'transient',cause:error?.message??String(error)})}
     if(!sha)continue
     let assignment,commit
-    try{commit=snapshot?.get(ref)?.commit??io.getCommit(sha);assignment=parseReviewLease(commit)}catch{return null}
+    try{commit=snapshot?.get(ref)?.commit??io.getCommit(sha);assignment=parseReviewLease(commit)}
+    catch(error){
+      // A malformed lease is determinate: no retry parses it. A transport error
+      // (getCommit) is transient. Issue #3349. The production snapshot readers
+      // mark their parse failures via markLeaseReadFailure; the fallback reader
+      // path catches parseReviewLease directly.
+      if(isLeaseReadFailure(error)){const d=error.leaseReadFailure;throw leaseReadFailureError({read:d.read??'lease commit parse',ref:d.ref??ref,kind:d.kind,cause:d.cause??error.message})}
+      const isParse=error instanceof LaneError&&/malformed/i.test(error.message)
+      throw leaseReadFailureError({read:'lease commit parse',ref,kind:isParse?'determinate':'transient',cause:error?.message??String(error)})
+    }
     const reviewer=REVIEWERS.find((row)=>row.name===assignment?.reviewer)
     const legacy=reviewer?reviewActiveRef(reviewer.name):null
     const parallel=reviewer&&/^[0-9a-f]{40}$/i.test(assignment.headSha)?reviewLeaseRefForAssignment(assignment,true):null
-    if(!reviewer||ref!==legacy&&ref!==parallel||(io.requiresExactReviewHeadSha&&!/^[0-9a-f]{40}$/i.test(assignment.headSha)))return null
+    if(!reviewer||ref!==legacy&&ref!==parallel||(io.requiresExactReviewHeadSha&&!/^[0-9a-f]{40}$/i.test(assignment.headSha)))throw leaseReadFailureError({read:'lease ref structure',ref,kind:'determinate',cause:`lease ref does not match a recognized reviewer assignment (reviewer=${assignment?.reviewer??'unknown'})`})
     const heldSince=commit?.committedDate??commit?.committer?.date??commit?.commit?.committer?.date??null
     records.push({reviewer,ref,sha,assignment,heldSince})
   }
   let states=null
-    try{states=typeof io.readReviewStates==='function'?io.readReviewStates([...records.map((row)=>row.assignment),...requested]):null}catch{return null}
+    try{states=typeof io.readReviewStates==='function'?io.readReviewStates([...records.map((row)=>row.assignment),...requested]):null}catch(error){throw leaseReadFailureError({read:'review states read',kind:'transient',cause:error?.message??String(error)})}
   for(const {reviewer,ref,sha,assignment} of records){
     let prRow
     try{
       const state=states?.get(`${assignment.issue}:${assignment.pr}`)
       prRow=state?.pr??io.getPr(assignment.pr)
-    }catch{return null}
+    }catch(error){throw leaseReadFailureError({read:'lease PR read',ref,kind:'transient',cause:error?.message??String(error)})}
     if(prRow?.state!=='open'||prRow?.head?.sha!==assignment.headSha){stale.push({ref,sha,assignment});continue}
     let verdict
     try{verdict=hasVerdictForHead(assignment.issue,assignment.pr,assignment.headSha,io,leaseVerdictOptions(assignment))}catch(error){
@@ -5187,7 +5217,7 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
       // Capacity reporting must retain the readable lease row so it can expose
       // the verdict read error on that row. Mutation callers keep the existing
       // fail-closed whole-probe behavior.
-      if(!keepUnreadableLeases)return null
+      if(!keepUnreadableLeases)throw leaseReadFailureError({read:'verdict read',ref,kind:'transient',cause:error?.message??String(error)})
       busy.add(assignment.reviewer)
       continue
     }
@@ -5793,6 +5823,31 @@ export function projectReviewerOperationRouteSnapshot(data){
     files:files.nodes.map((file)=>({filename:file?.path,status:String(file?.changeType??'').toLowerCase()})),
     linkedIssues:linked.nodes.map((item)=>({number:item?.number,state:String(item?.state??'').toLowerCase(),body:item?.body,createdAt:item?.createdAt})),
   }
+}
+
+export function completeReviewerOperationRouteSnapshot(data,readRestFiles){
+  let snapshot=projectReviewerOperationRouteSnapshot(data)
+  // GraphQL has no prior filename. A rename needs the complete REST inventory
+  // before either side of its path can be classified under the reviewer mutex.
+  // The REST read is gated on GraphQL reporting a rename. A file GraphQL reports
+  // as ADDED/MODIFIED is routed exactly as it was before rename support existed,
+  // so this gate adds no new trust: it only lets a GraphQL-reported rename use
+  // the maintenance route once REST proves both of its paths are non-migration.
+  if(snapshot.files.some((file)=>file.status==='renamed'))snapshot=reconcileReviewerOperationRouteFiles(snapshot,readRestFiles())
+  return snapshot
+}
+
+export function reconcileReviewerOperationRouteFiles(snapshot,restFiles){
+  if(!Array.isArray(snapshot?.files)||!Array.isArray(restFiles)||snapshot.files.length!==restFiles.length)throw new LaneError('reviewer rename routing GraphQL and REST file inventories disagree')
+  const key=(file)=>{
+    if(typeof file?.filename!=='string'||!file.filename.trim()||typeof file?.status!=='string'||!file.status.trim())throw new LaneError('reviewer rename routing file inventory is unreadable')
+    const status=file.status.toLowerCase()==='deleted'?'removed':file.status.toLowerCase()
+    return `${file.filename}\0${status}`
+  }
+  const graph=snapshot.files.map(key).sort(),rest=restFiles.map(key).sort()
+  if(new Set(graph).size!==graph.length||new Set(rest).size!==rest.length||graph.some((value,index)=>value!==rest[index]))throw new LaneError('reviewer rename routing GraphQL and REST file inventories disagree')
+  for(const file of restFiles)if(file.status.toLowerCase()==='renamed'&&(typeof file.previous_filename!=='string'||!file.previous_filename.trim()))throw new LaneError('reviewer rename routing prior filename is unreadable')
+  return {...snapshot,files:restFiles.map(({filename,status,previous_filename})=>previous_filename===undefined?{filename,status}:{filename,status,previous_filename})}
 }
 
 // GitHub does not include repository association unless it is requested. The
@@ -6670,6 +6725,11 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   const failureBase=`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`
   const fixedRecords=io.readReviewRecords?.([replacementRef,assignmentRef,REVIEW_CURSOR_REF,assignmentVerdictRef,failureRef],replacementBase,failureBase)??null
   let ownerSha=null,mutexAcquired=false
+  // Issue #2457: the replacement that this function draws is COMPLETED before the
+  // mutex is released. Carried on a refused release so the operator learns which
+  // reviewer was drawn instead of being sent to a guarded recovery against a
+  // mutex that the atomic deletion already removed.
+  let completedResult=null
   try{
     let priorReplacement=fixedRecords?(fixedRecords.get(replacementRef)?.sha??null):io.readRef(replacementRef)
     // The first implementation used one unsuffixed immutable ref. Preserve it
@@ -6738,7 +6798,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
         if(rollback.length)throw new LaneError(`${error.message}; idempotent lease rollback incomplete: ${rollback.join('; ')}`)
         throw error
       }
-      return {...parsed,slot:request.slot,wrapper:reviewer.wrapper,failureCode:String(failureCode),replacementSha:priorReplacement,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
+      return completedResult={...parsed,slot:request.slot,wrapper:reviewer.wrapper,failureCode:String(failureCode),replacementSha:priorReplacement,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
     }
     const assignmentSha=fixedRecords?.get(assignmentRef)?.sha??io.readRef(assignmentRef)
     if(!assignmentSha){
@@ -6862,8 +6922,12 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     const failedLease=failedLeaseMatches?liveFailedLease:null
     // What the failed reviewer's lease ref must read AFTER a successful
     // replacement: empty when we released our own lease, unchanged when the ref
-    // belongs to somebody else's review.
-    const failedLeaseAfter=unrelatedFailedLeaseSha
+    // belongs to somebody else's review. When the replacement is the SAME
+    // reviewer re-drawn onto the same head and slot (a silence-released name
+    // restored by the #3492 capacity fix), the failed and replacement lease
+    // refs are ONE ref: after the transition it holds the replacement lease,
+    // so that is what the readback must expect -- not emptiness.
+    // Defined after replacementLeaseRef/replacementLeaseSha below.
     // The failing check rides along in the immutable evidence, so a later reader
     // can tell a real provider outage from a stopped local service without
     // re-deriving it from memory.
@@ -6876,9 +6940,34 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // replacement allocates. (Byte-identical retries come from the create-only
     // replacement ref read above, not from this advancement.)
     // Refuse only when no other active reviewer is left.
+    //
+    // A `silent_worker_observed` failure released with immutable evidence is a
+    // WORKER silence, not a provider judgment: the provider never produced a
+    // review or a verdict, and the release proves the silence was probed,
+    // confirmed and the lease reclaimed. Permanently excluding that name -- the
+    // #2224 shape, a claim about the world recorded as permanent -- deadlocks
+    // the slot once every other name has failed on the same head (#3492 on PR
+    // #3309: 4 of 5 failed, the fifth holds the other slot). Such a sequence is
+    // re-eligible here. Every other terminal failure code, and any failure whose
+    // evidence is the replacement record itself (`failure-ref=self`), stays
+    // excluded fail-closed.
+    const silenceReleasedSequences=new Set()
+    if(releasedFailure?.failureCode==='silent_worker_observed')silenceReleasedSequences.add(request.failedSequence)
     const bySequence=new Map([[initial.sequence,initial.reviewer],...parsedReplacements.map((row)=>[row.sequence,row.reviewer])])
-    const failedNames=new Set([original.reviewer])
-    for(const row of parsedReplacements){const name=bySequence.get(row.failedSequence);if(name)failedNames.add(name)}
+    for(const row of parsedReplacements){
+      if(!row.failureSha||row.failureSha===row.assignmentSha)continue
+      const record=fixedRecords?.get?.(`${failureBase}-${row.failedSequence}`)??null
+      let release=null
+      try{release=parseReviewRelease(record?.commit??io.getCommit(row.failureSha))}catch{continue}
+      // Bind the predecessor release to its exact identity, exactly as the
+      // current-request release is bound above: a record whose issue, PR, head,
+      // failed sequence or reviewer differs never restores a name.
+      if(release.issue!==request.issue||release.pr!==request.pr||release.headSha!==request.headSha||release.failedSequence!==row.failedSequence||release.reviewer!==bySequence.get(row.failedSequence))continue
+      if(release.failureCode==='silent_worker_observed')silenceReleasedSequences.add(row.failedSequence)
+    }
+    const failedNames=new Set()
+    if(!silenceReleasedSequences.has(request.failedSequence))failedNames.add(original.reviewer)
+    for(const row of parsedReplacements){const name=bySequence.get(row.failedSequence);if(name&&!silenceReleasedSequences.has(row.failedSequence))failedNames.add(name)}
     let sequence=null, reviewer=null
     for(let offset=0;offset<ACTIVE_REVIEWERS.length;offset+=1){
       const candidateSequence=cursor.sequence+1+offset, candidate=ACTIVE_REVIEWERS[(candidateSequence-1)%ACTIVE_REVIEWERS.length]
@@ -6911,6 +7000,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     const cursorReplacementSha=replacementSha
     const replacementLeaseRef=reviewLeaseRefForAssignment({...request,reviewer:reviewer.name,sequence},concurrentLeases)
     const replacementLeaseSha=cursorReplacementSha
+    const failedLeaseAfter=unrelatedFailedLeaseSha??(failedLeaseRef===replacementLeaseRef?replacementLeaseSha:null)
     const replacementStale=preflightBusy.stale.find((row)=>row.ref===replacementLeaseRef)
     let failureCreated=false, cursorUpdated=false,failedLeaseReleased=false,replacementStaleReleased=false,replacementLeaseCreated=false
     requireReviewWireCapacity(12);acquireReviewMutex(ownerSha,io);mutexAcquired=true
@@ -6944,7 +7034,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
         io.atomicReviewRefs(changes)
         const refs=io.readReviewRefs([MUTEX_REF,failureRef,REVIEW_CURSOR_REF,replacementRef,failedLeaseRef,replacementLeaseRef,...(stoppedStartRef?[stoppedStartRef]:[])])
         if(refs.get(MUTEX_REF)!==ownerSha||refs.get(failureRef)!==failureSha||refs.get(REVIEW_CURSOR_REF)!==cursorReplacementSha||refs.get(replacementRef)!==replacementSha||refs.get(failedLeaseRef)!==failedLeaseAfter||refs.get(replacementLeaseRef)!==replacementLeaseSha||(stoppedStartRef&&refs.get(stoppedStartRef)!==replacementSha))throw new LaneError('atomic review replacement readback mismatch')
-        return {sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...(effectiveAllowlist?{reviewerAllowlist:effectiveAllowlist}:{}),priorSequence:cursor.sequence,failureCode:String(failureCode),failureSha,replacementSha,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
+        return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...(effectiveAllowlist?{reviewerAllowlist:effectiveAllowlist}:{}),priorSequence:cursor.sequence,failureCode:String(failureCode),failureSha,replacementSha,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
       }
       if(io.readReviewRefs){
         const locked=io.readReviewRefs([MUTEX_REF,REVIEW_CURSOR_REF,failedLeaseRef,...(replacementStale?[replacementLeaseRef]:[])])
@@ -6967,7 +7057,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
         const refs=io.readReviewRefs([MUTEX_REF,failureRef,REVIEW_CURSOR_REF,replacementRef,failedLeaseRef,replacementLeaseRef])
         if(refs.get(MUTEX_REF)!==ownerSha||refs.get(failureRef)!==failureSha||refs.get(REVIEW_CURSOR_REF)!==cursorReplacementSha||refs.get(replacementRef)!==replacementSha||refs.get(failedLeaseRef)!==failedLeaseAfter||refs.get(replacementLeaseRef)!==replacementLeaseSha)throw new LaneError('batched review replacement readback mismatch')
       }
-      return {sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...(effectiveAllowlist?{reviewerAllowlist:effectiveAllowlist}:{}),priorSequence:cursor.sequence,failureCode:String(failureCode),failureSha,replacementSha,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
+      return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...(effectiveAllowlist?{reviewerAllowlist:effectiveAllowlist}:{}),priorSequence:cursor.sequence,failureCode:String(failureCode),failureSha,replacementSha,replacementSequence:request.failedSequence,assignmentRef:replacementRef}
     }catch(error){
       const rollback=[]
       try{if(replacementLeaseCreated&&io.readRef(replacementLeaseRef)===replacementLeaseSha)releaseOwnedRef(replacementLeaseRef,replacementLeaseSha,io)}catch(e){rollback.push(e.message)}
@@ -6979,7 +7069,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       if(rollback.length)throw new LaneError(`review replacement failed (${error.message}) and rollback was incomplete: ${rollback.join('; ')}`)
       throw error
     }
-  }finally{if(mutexAcquired)finalizeReviewMutex(ownerSha,io)}
+  }finally{if(mutexAcquired)finalizeReviewMutexPreservingResult(ownerSha,io,completedResult)}
 }
 
 export function replaceFailedReviewer(request,io=githubIo){return withReviewRequestBudget(()=>replaceFailedReviewerOperation(request,reviewOperationIo(io)))}
@@ -7558,12 +7648,15 @@ export function derivePrOperationRoute(pr, io = githubIo, { headSha = null, issu
   const linkedNumber=Number(linked[0]?.number)
   if(!Number.isInteger(linkedNumber)||linkedNumber<1)throw new LaneError('pull request linked work issue identity is unreadable')
   if(issue!==null&&Number(issue)!==linkedNumber)throw new LaneError(`operation issue #${issue} does not match pull request #${pr} linked issue #${linkedNumber}`)
-  // GraphQL exposes no prior filename. Only the statuses whose current path is
-  // a complete description can enter repository-maintenance routing; copies,
-  // renames, CHANGED/UNCHANGED, and future enum values stay structural so the
-  // DDL admission check either proves them or refuses them.
+  // A verified rename supplies both paths. Copies, CHANGED/UNCHANGED, future
+  // enum values, and renames without a readable prior path stay structural.
+  // Either migration-side path also stays structural below.
   const completeCurrentPathStatuses=new Set(['added','modified','removed','deleted'])
-  const structural=files.some((file)=>file.previous_filename!==undefined||!completeCurrentPathStatuses.has(String(file.status).toLowerCase()))||paths.some((value)=>MIGRATION_PATH.test(String(value).replace(/\\/g,'/')))
+  const structural=files.some((file)=>{
+    const status=String(file.status).toLowerCase()
+    if(status==='renamed')return typeof file.previous_filename!=='string'||!file.previous_filename.trim()
+    return file.previous_filename!==undefined||!completeCurrentPathStatuses.has(status)
+  })||paths.some((value)=>MIGRATION_PATH.test(String(value).replace(/\\/g,'/')))
   if(structural)return {route:'structural',issue:linkedNumber,pr:Number(pr),headSha:livePr.head.sha}
 
   const work=snapshot?.linkedIssues?.[0]??io.getIssue(linkedNumber),scope=parseQueueScope(work?.body??'')

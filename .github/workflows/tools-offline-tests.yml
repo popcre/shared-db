@@ -324,3 +324,7 @@ jobs:
         run: |
           node --test scripts/check-skill-drift.test.mjs
           node scripts/check-skill-drift.mjs --require-skills
+
+      - name: Verify ColdLion replay proof guards (#3302)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/issue-2863-live-proof.test.mjs

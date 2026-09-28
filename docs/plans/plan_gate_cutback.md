@@ -6,18 +6,18 @@ Relationship to the operating route: this plan is a concrete input to Step 6 ("t
 
 ## STATUS — read first
 
-Written 2026-09-28 (EDT). Start at Step 1.
+Written 2026-09-28 (EDT); revised the same day after Grok (REVISE) and Qwen (REJECT) plan reviews — see "Review record" at the end. Start at Step 1.
 
 | Step | Outcome | Status | Updated | Evidence |
 |---|---|---|---|---|
-| 1 | GitHub API quota no longer exhausted by local pollers | ⬜ open | 2026-09-28 | — |
-| 2 | Quota-starved gates report "retry", not "fail", and retry themselves | ⬜ open | 2026-09-28 | — |
-| 3 | Four API-scanning gates merged into one job with one snapshot | ⬜ open | 2026-09-28 | — |
-| 4 | Required-check list cut from 16 to the set in section 8 | ⬜ open | 2026-09-28 | — |
-| 5 | Documents-only merge authorization removed as a separate gate | ⬜ open | 2026-09-28 | — |
-| 6 | Agent work contract made advisory for non-structural PRs | ⬜ open | 2026-09-28 | — |
-| 7 | ai-devops `verify` Windows shards off the per-PR path | ⬜ open | 2026-09-28 | — |
-| 8 | Re-measure: gate-caused failure rate below 5% for 7 days | ⬜ open | 2026-09-28 | — |
+| 1 | Actions-token API spend per workflow measured and attributed | ⬜ open | 2026-09-28 | — |
+| 2 | API-scanning gates share one conditional (ETag) snapshot; spend halved | ⬜ open | 2026-09-28 | — |
+| 3 | Quota-failed gates re-run automatically after reset (fail-closed kept) | ⬜ open | 2026-09-28 | — |
+| 4 | Agent work contract failures classified; missing-file failures made impossible by tooling | ⬜ open | 2026-09-28 | — |
+| 5 | Required-set reduction proposal decided by Albert via refactor Step 6 owner | ⬜ open | 2026-09-28 | — |
+| 6 | ai-devops `verify`: #1006 fixed; Windows shards off the per-PR path | ⬜ open | 2026-09-28 | — |
+| 7 | Local poller hygiene (secondary) | ⬜ open | 2026-09-28 | — |
+| 8 | Re-measure: gate-caused (quota/paperwork) failures < 5% for 7 days | ⬜ open | 2026-09-28 | — |
 
 ## 1. Ultimate goal
 
@@ -64,11 +64,12 @@ Required contexts on shared-db `main` (16): SQL migration guards; supabase/tests
    - Cross-PR object collision: `installation quota low: the GitHub API refused the quota probe itself`.
    - Orchestrator marker guard: `UNKNOWN: gh api --paginate .../issues?state=open failed: API rate limit exceeded`.
    - Migration author lease: `REFUSED: GitHub read failed: gh: API rate limit exceeded for installation`.
-   The investigating session itself hit the limit twice during this survey. The quota is burned by the dozens of local `ai-pr-wait` / reviewer / blocker-watch processes all polling, plus each gate independently paginating every open PR and issue.
-2. **Gates treat "could not ask GitHub" as "the change is bad".** They exit 1/2 (red) instead of neutral + retry, so a PR stays red until someone pushes or re-runs — and nobody does (see companion plan).
-3. **Agent work contract fails on paperwork, not substance:** `Enforced mode requires this pull request to change both .agent/work/<issue>/<gen>/contract.json and .../report.json` — PRs missing one of two evidence files. It is 56% red, the worst gate, and proves nothing about database safety.
-4. **Documents-only merge authorization duplicates the global rule** that docs-only PRs merge with `gh pr merge --squash --admin`; it adds a mutex and API re-proof that fails under quota pressure.
-5. Seventeen required/PR guards never failed in 14 days. Zero failures does not prove uselessness, but each one costs a runner and API calls on every PR.
+   The investigating session itself hit the limit twice during this survey. **Correction after review:** these gates run on the repository's **Actions installation token** (`GH_TOKEN: ${{ github.token }}`), whose budget is separate from any person's login; `scripts/lib/github-transport.mjs` keys its latch by token identity and lives in the runner's tmpdir. So the consumer is CI itself — ~49 workflows, several paginating every open PR/issue per run (`scripts/lib/open-pr-files.mjs`) — not the local pollers. Local pollers exhaust the *user* token (this session hit that limit too), which starves sessions and `ai-pr-wait`, a separate but real problem. The 14-day totals are not yet split quota-vs-genuine; Step 1 does that split. Gates correctly fail closed on quota (`docs/agents/merge-protocol.md` §5.2-B rule 4); the defect is that nobody re-runs them afterwards.
+2. **A quota-failed gate stays red forever.** Failing closed is correct doctrine; what is missing is an automatic re-run after the quota resets. Nobody re-runs (see companion plan).
+3. **Agent work contract often fails on missing evidence files (sampled, not yet classified across all 24):** `Enforced mode requires this pull request to change both .agent/work/<issue>/<gen>/contract.json and .../report.json` — PRs missing one of two evidence files. It is 56% red. It is an owner-activated control (#1403, #2591 exemption for prose only; rulebook files keep full treatment) — so the fix is tooling that always writes both files, not weakening it.
+4. **Documents-only merge authorization is NOT redundant** (corrected after review): it is the only producer of the required status `Migration guarded merge authorization` on prose-only PRs (`scripts/manage-migration-author-lanes.mjs --authorize-repository-maintenance-status`, context in `scripts/lib/merge-self-context.mjs`), under the coordination mutex. It fails only because of quota. Keep it; fix quota.
+5. Seventeen guards never failed in 14 days. That means they do not false-fail — they are not the blocker and are kept. (Intake pointer and Domain ownership are designed to be required; see their headers.)
+6. **The required-context mirror may only grow:** `scripts/update-required-checks.mjs` refuses removals; `docs/verification/main-required-status-checks.json` is tool-written; `scripts/check-merge-queue-workflows.test.mjs` fails if coverage shrinks. Required-check authority is owned in-flight by refactor Step 6 (#3361, owner: Codex required-check authority session) and native queue by Step 8 (PR #3567, independent REVISE on #2530). Shrinking the set is an owner decision.
 
 ## 7. Rejected approaches
 
@@ -80,60 +81,61 @@ Required contexts on shared-db `main` (16): SQL migration guards; supabase/tests
 
 ## 8. Design decisions
 
-Locked (2026-09-28, this plan):
-- Target required set for shared-db `main` (9): SQL migration guards; supabase/tests against an ephemeral database; Destructive SQL outside migrations; Migration guarded merge authorization; Merge queue gate; **Shared-db coordination gate** (new, merges Cross-PR collision + Migration author lease + Orchestrator marker guard + Cancelled work guard); Promotion contract tests (offline); Tools offline tests; Queue-sensitive checks (aggregate).
-- Become advisory (run, comment, never block): Agent work contract (for PRs touching no `supabase/migrations/**`), Domain ownership, Handoff contract, Intake pointer guard.
-- Deleted: Documents-only merge authorization (its job is done by the docs-only admin-merge rule plus Merge queue gate).
-- API-unavailable is never a red result: gates exit neutral with a `retry-after` and re-dispatch themselves once quota resets.
-Open (implementer judgment): whether Queue-sensitive aggregate can absorb Promotion contract tests; decide by whether both run in under 5 minutes combined.
+Locked (2026-09-28, after review):
+- **No gate is deleted and none becomes advisory in this plan.** Every blocking gate measured fails for quota or missing-file reasons; fix those causes. Documents-only merge authorization stays (it produces a required status). Agent work contract stays enforced (owner-activated). Domain ownership, Handoff contract, Intake pointer stay required.
+- Gates keep failing closed on API unavailability (merge-protocol §5.2-B). Recovery is an automatic re-run with the correct token after reset (Step 3, executed by the companion watchdog).
+- Consolidation reduces API spend inside existing workflows, keeping every required context name, the marker guard's `schedule`/`push` legs, and the merge-time re-proofs in `merge-queue-gate.yml` and `guarded-migration-merge.yml`.
+- Reducing the 16 required contexts is proposed only, through refactor Step 6's owner (#3361) and Albert; candidate: combine Cross-PR collision + Migration author lease + Orchestrator marker guard into one context once Step 2 has run green 7 days.
+Open: whether a separate GitHub App token for gates is needed — decide from Step 1 numbers (if Actions-token spend stays above 70% of budget after Step 2, yes).
 
 ## 9. Steps
 
-### Step 1 — Stop local pollers burning the quota (ai-devops)
-Change `bin/ai-pr-wait` and `bin/ai-blocker-watch` to share one per-host cache (`~/.cache/ai-devops/gh-poll/<repo>-<pr>.json`, 60 s TTL, file-locked) and to use conditional requests (`If-None-Match` ETags return 304 and do not count against quota). Cap one poller per PR per host (lock file keyed by PR). Reviewer wrappers must not poll GitHub at all during a review.
-Gate: with 10 waiters on 3 PRs, `gh api rate_limit --jq .resources.core.used` rises by < 100 per hour (test script `tests/gh-poll-budget.test.mjs` with a stubbed `gh`).
+### Step 1 — Measure Actions-token spend
+Add `X-RateLimit-Used`/`remaining` logging to `scripts/lib/github-transport.mjs` (one line per workflow run: `api_spend workflow=<name> used=<n>`), then over 48 h tabulate spend per workflow and split the 14-day failures into quota vs genuine using `gh run view --log-failed` patterns (`rate limit exceeded`, `installation quota low`). Record in `docs/verification/gate-api-spend-<date>.md`.
+Gate: file lists each workflow's hourly spend and the quota/genuine split for the five gates.
 
-### Step 2 — Quota-aware gate outcome (shared-db)
-In each API-reading gate script (`scripts/` entrypoints called by `pr-object-collision.yml`, `migration-author-lease.yml`, `orchestrator-marker-guard.yml`), map rate-limit / 5xx errors to exit code 78 → workflow step sets conclusion neutral via a check-run and schedules `gh workflow run` retry at the reset time (one retry job, `retry-on-quota` composite action in `.github/actions/`). Merge queue treats neutral as not-yet-passed, so safety is unchanged; but the check re-runs itself.
-Gate: unit test injecting a 403 rate-limit response yields "retry scheduled", not failure; live: one PR survives a forced quota trip and goes green with no human re-run.
+### Step 2 — One conditional snapshot inside existing workflows
+Make collision, lease and marker PR legs read open PRs/issues through `scripts/lib/github-conditional.mjs` (already implements ETag 304 + host single-flight) and a shared per-run snapshot artifact produced by one job and consumed by the others via `needs:`. Keep each job name (= required context) unchanged; keep `orchestrator-marker-guard.yml` `schedule`/`push` legs; keep `merge-queue-gate.yml:147` and `guarded-migration-merge.yml:185,201-202` merge-time calls untouched. Cancelled work guard is offline and is not touched.
+Gate: Step 1 logging shows per-PR spend for these gates at least halved; existing tests `scripts/check-merge-queue-workflows.test.mjs`, `migration-author-lease.yml` suite and `Tools offline tests` green.
 
-### Step 3 — One coordination gate, one snapshot
-New workflow `shared-db-coordination-gate.yml` gathers the open-PR file list and open-issue list **once** (two paginated calls), writes `snapshot.json`, and runs the collision, lease, marker and cancelled-work checks as functions over that snapshot. Delete the four separate workflows after it has run green in parallel for 3 days.
-Gate: per-PR API calls for these four checks drop from ~4×pages to 2×pages (log line `api_calls=`); decisions identical on the replay corpus (`scripts/throughput-guard` fixtures).
+### Step 3 — Automatic re-run after quota reset
+Owned by the companion watchdog (its Step 2): `gh run rerun <run-id> --failed` with a token that has `actions:write` on shared-db, only when the failed log matches the quota patterns exactly, once per head SHA, and only after `rate_limit` shows reset. No `workflow_dispatch` retries (they carry no PR payload and evaluate nothing).
+Gate: a quota-failed gate on a live PR goes green with no human re-run.
 
-### Step 4 — Apply the required-check list
-Update branch protection to the 9 contexts in section 8 through the repository's governed route (branch-protection config file if present per Step 6 of the refactor plan; otherwise an issue with the exact `gh api` call reviewed by an independent reviewer — production-infrastructure rule). Also update `docs/agents/merge-protocol.md` §5 check list.
-Gate: `gh api repos/popcre/shared-db/branches/main/protection --jq '.required_status_checks.contexts|length'` = 9.
+### Step 4 — Agent work contract: fix the cause of missing files
+Classify all 24 failures (Step 1 method). For missing-contract/report failures, make `ai-task-gates` (ai-devops) always write both `.agent/work/<issue>/<gen>/contract.json` and `report.json` on `start`/`check --before pr`, and have the gate's error print the exact command that creates the missing file. Do not widen the #2591 exemption.
+Gate: failures of type "contract without report / report without contract" = 0 over 7 days.
 
-### Step 5 — Remove Documents-only merge authorization
-Delete `.github/workflows/documents-only-merge-authorization.yml` and its scripts; keep `documents-fast-ci.yml`. Update references (`grep -rn "Documents-only merge authorization"`).
-Gate: a docs-only PR merges via `gh pr merge --squash --admin` with no red check.
+### Step 5 — Proposal for a smaller required set
+Post the Step 1–4 evidence on #3361 (refactor Step 6) proposing one combined coordination context; Albert decides. Only after approval, change via a tool change to `scripts/update-required-checks.mjs` reviewed under §5.0-C, never a hand-written protection PUT.
+Gate: a decision comment on #3361.
 
-### Step 6 — Agent work contract advisory for non-structural PRs
-In `agent-work-contract.yml`, if no file under `supabase/migrations/**` changed, post the finding as a PR comment and exit 0. Structural PRs stay enforced.
-Gate: its 14-day failure rate on non-migration PRs is 0 blocked merges.
+### Step 6 — ai-devops `verify`
+Fix the classifier/offline shard failures on #1006 from `gh run view --log-failed` (a real test fix). Then move Windows shards to `merge_group` + nightly; PRs run Linux shards.
+Gate: #1006 green; median PR `verify` < 10 min.
 
-### Step 7 — ai-devops `verify`
-Split Windows shards into a merge_group-only and nightly job; PRs run Linux shards only. Fix the classifier/offline shard failures seen on #1006 first (read `gh run view --log-failed` on its latest run) — that is a real test fix, not a skip.
-Gate: median PR `verify` time < 10 min; #1006 green.
+### Step 7 — Local poller hygiene (user token)
+`bin/ai-pr-wait` and `bin/ai-blocker-watch` reuse the same conditional-request approach (port `github-conditional.mjs` semantics) and one poller per PR per host (lock file). Reviewer wrappers do not poll GitHub.
+Gate: 10 waiters on 3 PRs spend < 100 user-token requests/hour (`tests/gh-poll-budget.test.mjs`).
 
 ### Step 8 — Re-measure
-Re-run the section 5 command for the 7 days after Step 6. Record in `docs/verification/gate-cutback-remeasure-<date>.md`.
-Gate: gate-caused failures (quota / paperwork) < 5% of PR runs.
+Repeat the section 5 command for 7 days after Step 4. Record in `docs/verification/gate-cutback-remeasure-<date>.md`.
+Gate: quota/paperwork failures < 5% of PR runs.
 
 ## 10. Tests required
 - `tests/gh-poll-budget.test.mjs` (ai-devops): shared cache, ETag 304 path, one-poller lock.
-- `scripts/coordination-gate.test.mjs` (shared-db): collision, lease, marker, cancelled cases each positive and negative; rate-limit → retry.
+- `scripts/lib/github-conditional.test.mjs` extensions: snapshot reuse across jobs; partial pagination never treated as complete.
+- `tests/task-gates-evidence-pair.test.mjs` (ai-devops): `ai-task-gates` always writes both contract and report.
 - Existing: `Tools offline tests`, `scripts/check-review-parallelism-brief.mjs`, `scripts/check-exact-head-approval.mjs` stay green.
 
 Adversarial cases (trust boundary = GitHub API responses):
 
 | Input | Hostile case | Test |
 |---|---|---|
-| API response | 403 rate limit | coordination-gate.test "quota → retry, not fail" |
-| API response | partial pagination (page 2 fails) | "partial snapshot → retry, never pass" |
+| API response | 403 rate limit | github-conditional.test "quota → fail closed, marked quota for rerun" |
+| API response | partial pagination (page 2 fails) | github-conditional.test "partial snapshot never passes" |
 | API response | stale ETag cache after new push | gh-poll-budget.test "head SHA change busts cache" |
-| PR body | forged lease claim text | coordination-gate.test "lease requires ref reservation, not text" |
+| PR body | forged lease claim text | existing lease suite "lease requires ref reservation, not text" stays green |
 
 ## 11. Constraints and gotchas
 - Never push to `main`; branch + PR + merge queue. Workflow/script changes are code: normal checks, governed review (AGENTS.md §5.0-C), not the docs-only admin merge.
@@ -143,14 +145,17 @@ Adversarial cases (trust boundary = GitHub API responses):
 - Times in EDT.
 
 ## 12. Access
-`gh` authenticated as u2giants with popcre admin. No secrets needed beyond the existing Actions `GITHUB_TOKEN`/App token. Run `ai-task-gates start --class <class>` first.
+`gh` authenticated as u2giants with popcre admin. Reading branch protection needs `secrets.SYNC_TOKEN` (the Actions token cannot; run 36186790619). Any new token is stored in 1Password vault `vibe_coding` by title, never pasted. Run `ai-task-gates start --class <class>` first.
 
 ## 13. Done, risks, open questions
 Done: all 8 STATUS rows cite a PR/run artifact; refactor plan Step 6 row updated; re-measure file committed.
-Risks: merged coordination gate has a bug → collisions slip. Mitigation: 3-day parallel run with decision diff before deleting old workflows. Rollback: restore protection contexts from section 5 list.
+Risks: snapshot sharing bug → collisions slip. Mitigation: merge-time re-proofs untouched; snapshot partial = fail. Rollback: revert the workflow PR.
 Open: whether GitHub App quota should be split per repo (decide after Step 1 measurement).
 
 ## Self-audit
 1. Fresh session can execute? Yes — goal (§1), system (§2), exact files/commands per step (§9), gates per step.
 2. Carries background and rejected paths? Yes — §5 measurements with reproduction command, §6 log quotes, §7 rejections including owner-refused ones.
 3. Goal clear enough for judgment? Yes — §1 "merged the same hour without a person unsticking it; database safety checks stay".
+
+## Review record (2026-09-28)
+Grok (grok-4.6-build) VERDICT: REVISE; Qwen (qwen3.8-max) VERDICT: REJECT. Both found: deleting Documents-only authorization strands a required status; advisory Agent work contract widens an owner exemption; neutral+dispatch retry is not implementable and breaks fail-closed doctrine; merged gate dropped the marker schedule and merge-time re-proofs; required set cannot shrink via the existing tool and collides with #3361/#2530/PR #3567; quota root cause was the Actions token, not local pollers. All incorporated above: no deletions or advisory changes, re-run instead of neutral, consolidation inside existing contexts, shrink only as a proposal to Albert via #3361. Reports: `.ai/reviews/grok-gate-plans-e10415-*.md`, `.ai/reviews/qwen-gate-plans-e10415-*.md` (local, edge-dev3).

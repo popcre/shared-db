@@ -1,6 +1,10 @@
 -- #3457 behaviour tests T1–T8 for public.search_dam_documents semantic score floor.
--- Preview-only. Each block is independent and uses a transaction rollback.
+-- Each block is independent and uses a transaction rollback.
 -- Asserts objects with to_regprocedure / pg_get_functiondef, never ledger rows alone.
+-- expand_dam_search_queries returns whole-query variants only (raw + hyphen-normalized
+-- + synonym passes); it never unigram-splits, so T3's sem-low document with title
+-- 'alpha beta gamma delta' and path 'zz3457-sem-low.ai' does not keyword-match query
+-- 'zz3457 sem low'. Verified against supabase/migrations/20260714173500_dam_search_synonyms.sql.
 -- Posted by MiMo chat unknown on edge-dev
 
 begin;
@@ -78,23 +82,23 @@ insert into public.assets (id, filename, relative_path, file_type, quick_hash, m
 --   sem-high cosine similarity 0.90  -> semantic_rank 0.90
 --   sem-low  cosine similarity 0.20  -> semantic_rank 0.20
 --   mixed    cosine similarity 0.30  -> semantic_rank 0.30
+delete from public.dam_search_documents where entity_id in (
+  '34570000-0000-4000-8000-000000000010','34570000-0000-4000-8000-000000000011',
+  '34570000-0000-4000-8000-000000000012','34570000-0000-4000-8000-000000000013'
+);
 insert into public.dam_search_documents
-  (document_type, entity_id, asset_id, style_group_id, title, path, customer, program, search_tsv, embedding)
+  (document_type, entity_id, asset_id, style_group_id, title, path, customer, program, embedding)
 values
   ('asset','34570000-0000-4000-8000-000000000010','34570000-0000-4000-8000-000000000010',null,
-   'zz3457 kw only canvas','zz3457-kw-only.ai',null,null,
-   to_tsvector('simple','zz3457 kw only canvas'), null),
+   'zz3457 kw only canvas','zz3457-kw-only.ai',null,null, null),
   ('asset','34570000-0000-4000-8000-000000000011','34570000-0000-4000-8000-000000000011',null,
    'zz3457 sem high unrelated','zz3457-sem-high.ai',null,null,
-   to_tsvector('simple','zz3457 sem high unrelated'),
    (select array_fill(0.0::real, array[384])::extensions.vector)),
   ('asset','34570000-0000-4000-8000-000000000012','34570000-0000-4000-8000-000000000012',null,
    'alpha beta gamma delta','zz3457-sem-low.ai',null,null,
-   to_tsvector('simple','alpha beta gamma delta'),
    (select array_fill(0.5::real, array[384])::extensions.vector)),
   ('asset','34570000-0000-4000-8000-000000000013','34570000-0000-4000-8000-000000000013',null,
    'zz3457 mixed canvas','zz3457-mixed.ai',null,null,
-   to_tsvector('simple','zz3457 mixed canvas'),
    (select array_fill(0.5::real, array[384])::extensions.vector));
 
 -- Make the embeddings distinguishable unit vectors along known angles to qemb=e0.

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3563,
+  "outcome": "ready-for-merge",
+  "pr": 3627,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3563/2",
+  "contract_sha256": "51b947f6a9754f3843f4c97dd064751bef4f73ade4d1e814a5a9a77b9f3026c5",
+  "base_sha": "a096bccd0c112d92cc9b6be4010e8f019f9db083",
+  "head_sha": "cd4716232da8a4de765d80bbb84f02272ca5a271",
+  "files_changed": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "722 pass, 0 fail on implementation cd4716232da8a4de765d80bbb84f02272ca5a271"
+    }
+  ],
+  "assumptions_resolved": [
+    "The original PR #3564 and generation-1 ref remain intact for audit; this recovery change was reapplied after generation-2 publication.",
+    "Curated Master Data work exits by data-session while section 6.4 safeguards remain unchanged."
+  ],
+  "stop_conditions_hit": []
+}

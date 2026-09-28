@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "generation": 2,
+  "work_issue": 3563,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Recover the authorized 2026-09-25 owner ruling from PR #3564 on a fresh main branch: route curated Master Data loads to a dedicated data session outside the orchestrator, while retaining all section 6.4 curation protections and migration-author lane rules.",
+  "base_sha": "a096bccd0c112d92cc9b6be4010e8f019f9db083",
+  "dispatcher": "Codex takeover of non-orchestrator issue #3563",
+  "worker": "Codex chat 01a0e5f4-71fc-7f92-b772-54599d98d2dc on edge-dev3",
+  "branch": "codex/3563-curated-data-recovery",
+  "worktree": "/home/ahazan/repos/shared-db-3563-recovery",
+  "allowed_paths": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/2/contract.json",
+    ".agent/work/3563/2/completion.json"
+  ],
+  "file_writes": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/2/contract.json",
+    ".agent/work/3563/2/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not touch any migration or database object.",
+    "Do not weaken section 6.4 curation protections, including matched-row abstention and binding the session doing the typing.",
+    "Do not route curated Master Data to an application repository.",
+    "Do not change structural routing or the self-service additive lane boundary."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "assumptions": [
+    "Generation 1 in PR #3564 candidly disclosed publication after its implementation. This fresh branch re-applies the same authorized net change only after generation 2 is published; the original branch and ref remain available for audit.",
+    "Owner ruling 2026-09-25 (Albert Hazan, as recorded in issue #3563): curated Master Data loads do not need an orchestrator."
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the change needs a file outside allowed_paths.",
+    "Stop if section 6.4 curation protections would be weakened."
+  ]
+}

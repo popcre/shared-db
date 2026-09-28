@@ -21,6 +21,7 @@ declare
   v_col text;
   v_role text;
   v_privilege text;
+  v_expected_config text[];
 begin
   foreach v_fn in array array[
     'plm.begin_wb_capture(text,date,text,text,integer,text,text,text)'::regprocedure,
@@ -35,11 +36,11 @@ begin
     if (select provolatile from pg_proc where oid = v_fn) <> 'v' then
       raise exception 'Warner capture function is no longer VOLATILE: %', v_fn;
     end if;
-    if (select proconfig from pg_proc where oid = v_fn) is distinct from
-       case when v_fn in ('plm.load_wb_chunk(uuid,integer,text,text)'::regprocedure,
-                          'plm.fail_wb_capture(uuid,text)'::regprocedure)
-            then array['search_path=plm, core, app, public, extensions']
-            else array['search_path=pg_catalog, extensions'] end then
+    v_expected_config := case when v_fn in ('plm.load_wb_chunk(uuid,integer,text,text)'::regprocedure,
+                                            'plm.fail_wb_capture(uuid,text)'::regprocedure)
+                              then array['search_path=plm, core, app, public, extensions']
+                              else array['search_path=pg_catalog, extensions'] end;
+    if (select proconfig from pg_proc where oid = v_fn) is distinct from v_expected_config then
       raise exception 'Warner capture function search_path changed: %', v_fn;
     end if;
     if has_function_privilege('anon', v_fn, 'execute')

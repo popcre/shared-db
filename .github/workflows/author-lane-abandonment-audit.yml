@@ -68,8 +68,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  require-main:
+    name: Refuse abandonment audit outside main
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - name: Require the protected main ref
+        env:
+          AUDIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$AUDIT_REF" != 'refs/heads/main' ]; then
+            echo '::error::Abandonment audit credentials are available only on main.' >&2
+            exit 1
+          fi
+
   audit:
     name: Author lane abandonment audit
+    needs: require-main
+    if: github.ref == 'refs/heads/main'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
@@ -90,6 +105,8 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ABANDONMENT_AUDIT_PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -uo pipefail
           set +e

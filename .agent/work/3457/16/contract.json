@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "work_issue": 3457,
+  "generation": 16,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Refresh approved #3457 migration onto current main and remove the obsolete duplicate T1-T8 SQL under .agent/work/3457/1, which the newly merged evidence-lineage gate correctly rejects as non-inert evidence. Keep the executed supabase/tests behavior test and all migration/API semantics unchanged. Only generation-16 contract/completion form the final PR evidence pair.",
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15",
+  "dispatcher": "Codex root chat 01a0e56c-2e17-78a2-ad57-cd154b990979",
+  "worker": "Codex root chat 01a0e56c-2e17-78a2-ad57-cd154b990979",
+  "branch": "codex/3489-landing",
+  "worktree": "/home/ahazan/repos/shared-db-3489-landing",
+  "allowed_paths": [
+    "supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    "supabase/tests/popdam_semantic_score_floor_behavior.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20260925222432.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    ".agent/work/3457/16/",
+    ".agent/work/3457/15/"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql",
+    "supabase/tests/popdam_semantic_score_floor_behavior.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20260925222432.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/3457/1/behavior_tests_t1_t8.sql",
+    ".agent/work/3457/16/contract.json",
+    ".agent/work/3457/16/completion.json",
+    ".agent/work/3457/15/contract.json",
+    ".agent/work/3457/15/completion.json"
+  ],
+  "db_reads": [
+    "public.dam_search_documents",
+    "public.assets",
+    "public.style_groups",
+    "public.asset_effective_tags",
+    "public.admin_config"
+  ],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.search_assets_full_text",
+    "function public.search_style_groups_full_text"
+  ],
+  "prohibited_actions": [
+    "no production writes",
+    "no preview apply without explicit orchestrator permission",
+    "do not edit AGENTS.md or HANDOFF.md",
+    "do not merge the PR"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python3 scripts/migration_derivation.py supabase/migrations/20260925222432_popdam_search_semantic_score_floor.sql",
+    "python3 -m pytest scripts/test_check_production_verification_sidecars.py scripts/test_production_catalog_verification.py",
+    "node --test scripts/orchestrator-flow/sidecar-registry-evidence.test.mjs",
+    "node scripts/check-production-verification-sidecars.mjs"
+  ],
+  "assumptions": [
+    "prior definition of search_dam_documents is migration 20260901130428",
+    "existing supabase/tests contract files pin the 7-arg signature and must be updated in the same PR or CI fails",
+    "REVISE H1 requires post-apply catalog contracts and their unit tests to probe the surviving 8-arg signature",
+    "REVISE H2 requires the hash-bound sidecar and its registry declaration for 20260925222432",
+    "REVISE M1/T6 requires behavior fixtures with no exact 1.0 semantic match so floor=1 is a stable zero",
+    "detector baseline regenerated after production_catalog_verification.py 8-arg probe change",
+    "generation-14 completion evidence is stale after version supersession and must be regenerated from the final implementation head",
+    "The current main 15f18e1b max migration version is 20260925193145; new version 20260925222432 is later, and unrelated main changes do not overlap this file set."
+  ],
+  "stop_conditions": [
+    "stop if the reserved version 20260925222432 is not the only new migration file",
+    "stop if check-sql.sh refuses the migration",
+    "stop if the sidecar hash does not bind the migration bytes",
+    "stop if final PR diff contains any agent evidence pair other than generation 16",
+    "stop if remote PR branch or exclusive claim changes before leased push"
+  ]
+}

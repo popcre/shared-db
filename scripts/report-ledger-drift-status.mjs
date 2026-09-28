@@ -43,12 +43,18 @@ export class Unknown extends Error {
 }
 
 const VERSION = /^\d{14}$/
-const REF = /^[A-Za-z0-9_./-]+$/
+const REF = /^[A-Za-z0-9_./~^:{}@-]+$/
 const safeText = (value) => String(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/`/g, "'").replace(/\|/g, '\\|')
 
 function assertVersions(values, field) {
   if (!Array.isArray(values) || values.some((value) => typeof value !== 'string' || !VERSION.test(value)) || new Set(values).size !== values.length) {
     throw new Unknown(`${field} must be an array of unique 14-digit versions`)
+  }
+}
+
+function assertOrphanVersions(values) {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'string' || !value || value.length > 128) || new Set(values).size !== values.length) {
+    throw new Unknown('drift.appliedNotMerged must be an array of unique nonempty ledger values')
   }
 }
 
@@ -61,7 +67,8 @@ export function validateDriftResult(result) {
   const { drift, fileByVersion, pendingClassifications } = result
   if (!drift || typeof drift !== 'object' || Array.isArray(drift)) throw new Unknown('drift JSON has no drift object')
   if (!Number.isSafeInteger(drift.mergedCount) || drift.mergedCount < 1 || !Number.isSafeInteger(drift.appliedCount) || drift.appliedCount < 1) throw new Unknown('merged and applied counts must both be positive; an empty read is UNKNOWN')
-  for (const field of ['mergedNotApplied', 'appliedNotMerged', 'intentionallyExcluded', 'foreignTarget', 'actionableMergedNotApplied']) assertVersions(drift[field], `drift.${field}`)
+  for (const field of ['mergedNotApplied', 'intentionallyExcluded', 'foreignTarget', 'actionableMergedNotApplied']) assertVersions(drift[field], `drift.${field}`)
+  assertOrphanVersions(drift.appliedNotMerged)
   const merged = new Set(drift.mergedNotApplied)
   const partitions = [...drift.intentionallyExcluded, ...drift.foreignTarget, ...drift.actionableMergedNotApplied]
   if (partitions.length !== merged.size || new Set(partitions).size !== merged.size || partitions.some((v) => !merged.has(v))) throw new Unknown('drift classification lists disagree with mergedNotApplied')
@@ -101,7 +108,8 @@ export function prNumberFromSubject(subject) {
 }
 
 /**
- * One status row per actionable version. `attribution` is a map of version ->
+ * The caller adds producer top-level fileByVersion and pendingClassifications
+ * to drift before calling. `attribution` is a map of version ->
  * { commit, subject, pr } as recovered from git.
  */
 export function buildStatusRows(drift, attribution = {}) {
@@ -126,7 +134,7 @@ export function buildStatusRows(drift, attribution = {}) {
  * is a tracker, not a whitepaper. Every line must survive being read six weeks
  * later by a session that has none of this conversation.
  */
-export function formatStatusReport({ target, projectRef, baseRef, drift, rows }) {
+export function formatStatusReport({ target, projectRef, baseRef, baseSha, drift, rows }) {
   const lines = []
   const actionable = rows.length
   const excluded = drift.intentionallyExcluded.length
@@ -136,6 +144,7 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
   lines.push(`## Ledger drift status — ${safeText(target)} (\`${safeText(projectRef)}\`)`)
   lines.push('')
   lines.push(`Merged on \`${safeText(baseRef)}\`: **${drift.mergedCount}**. Applied in \`supabase_migrations.schema_migrations\`: **${drift.appliedCount}**.`)
+  if (baseSha) lines.push(`Attribution history resolved to commit \`${safeText(baseSha)}\` when this report was generated; recheck saved JSON against current history before using it as a live snapshot.`)
   lines.push('')
 
   if (actionable === 0 && orphans === 0) {
@@ -154,7 +163,7 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
       lines.push(`| \`${row.version}\` | ${pr} | \`${safeText(row.commit || 'unattributed')}\` | ${file} | ${safeText(row.kind)}: ${safeText(row.reason)} |`)
     }
     lines.push('')
-    lines.push('These are reviewed, merged migrations that are **not** switched on in this database.')
+    lines.push('The supplied drift-check result lists these reviewed, merged migrations as **not applied** in this database.')
     lines.push('⚠️ Any object they create is **absent from the live catalog**. Do not read that absence as "the work was never done" (issue #892).')
     lines.push('')
     lines.push(`**Holders:** each version above needs a ${safeText(target)} apply through the bounded Shared Supabase Migrations workflow. That lane is the orchestrator's single ${safeText(target)} lane, not this session's. This report is detection only — no production action was taken.`)
@@ -169,7 +178,7 @@ export function formatStatusReport({ target, projectRef, baseRef, drift, rows })
   if (orphans > 0) {
     lines.push(`### Orphan ledger rows — ${orphans}`)
     lines.push('')
-    for (const version of drift.appliedNotMerged) lines.push(`- \`${version}\``)
+    for (const version of drift.appliedNotMerged) lines.push(`- \`${safeText(version)}\`${VERSION.test(version) ? '' : ' — malformed ledger version'}`)
     lines.push('')
     lines.push('An orphan ledger row means DDL reached this database from outside reviewed, merged history. Supabase keys the ledger on the version alone, so a later migration that legitimately takes one of these versions will be silently skipped.')
     lines.push('')
@@ -229,6 +238,18 @@ export function attributeVersions(fileByVersion, run = execFileSync, baseRef = '
   return attribution
 }
 
+export function resolveBaseCommit(baseRef, run = execFileSync, root = repoRoot) {
+  if (typeof baseRef !== 'string' || !REF.test(baseRef) || baseRef.startsWith('-') || baseRef.includes('..')) throw new Unknown('unsafe baseRef for git attribution')
+  let sha
+  try {
+    sha = String(run('git', ['-C', root, 'rev-parse', '--verify', `${baseRef}^{commit}`], { encoding: 'utf8' })).trim()
+  } catch (error) {
+    throw new Unknown(`attribution history unavailable at ${baseRef}: ${error.message}`)
+  }
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Unknown(`attribution history at ${baseRef} did not resolve to a commit`)
+  return sha
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -238,8 +259,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--json') {
+      if (options.jsonPath !== null) throw new Unknown('--json may be supplied only once')
       options.jsonPath = argv[(i += 1)]
-      if (!options.jsonPath) throw new Unknown('--json requires a file path or - for stdin')
+      if (!options.jsonPath || options.jsonPath.startsWith('-') && options.jsonPath !== '-') throw new Unknown('--json requires a file path or - for stdin')
     } else if (arg === '--help' || arg === '-h') {
       options.help = true
     } else {
@@ -316,8 +338,10 @@ export async function main(argv, { read = readFileSync, stdin = readStdin, run =
   }
   const baseRef = result.baseRef
   let attribution
+  let baseSha
   try {
-    attribution = attributeVersions(actionableFiles, run, baseRef, root)
+    baseSha = resolveBaseCommit(baseRef, run, root)
+    attribution = attributeVersions(actionableFiles, run, baseSha, root)
   } catch (error) {
     errorLog(`UNKNOWN: ${error.message}`)
     return 2
@@ -330,6 +354,7 @@ export async function main(argv, { read = readFileSync, stdin = readStdin, run =
     target: result.target,
     projectRef: result.projectRef,
     baseRef,
+    baseSha,
     drift: result.drift,
     rows,
   }))

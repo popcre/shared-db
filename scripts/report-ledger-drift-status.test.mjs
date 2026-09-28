@@ -15,6 +15,7 @@ import {
   formatStatusReport,
   main,
   prNumberFromSubject,
+  resolveBaseCommit,
   validateDriftResult,
 } from './report-ledger-drift-status.mjs'
 
@@ -207,9 +208,24 @@ test('validation refuses incomplete, empty, contradictory, and unsafe reads', ()
     { ...sampleResult, drift: { ...sampleResult.drift, driftFound: false } },
     { ...sampleResult, pendingClassifications: {} },
     { ...sampleResult, fileByVersion: {} },
-    { ...sampleResult, drift: { ...sampleResult.drift, appliedNotMerged: ['bad|version'] } },
   ]
   for (const input of invalid) assert.throws(() => validateDriftResult(input), Unknown)
+})
+
+test('malformed orphan ledger versions remain visible and escaped', () => {
+  const result = { ...sampleResult, drift: { ...sampleResult.drift, appliedNotMerged: ['bad|version'], driftFound: true } }
+  validateDriftResult(result)
+  const report = formatStatusReport({ ...result, rows: [] })
+  assert.match(report, /bad\\\|version.*malformed ledger version/)
+})
+
+test('base ref expressions resolve to a pinned commit without git option injection', () => {
+  const sha = 'a'.repeat(40)
+  assert.equal(resolveBaseCommit('origin/main~1', (_cmd, args) => {
+    assert.equal(args.at(-1), 'origin/main~1^{commit}')
+    return `${sha}\n`
+  }), sha)
+  assert.throws(() => resolveBaseCommit('--output=/tmp/oops', () => sha), /unsafe baseRef/)
 })
 
 function cliHarness(input, output = '') {
@@ -217,7 +233,7 @@ function cliHarness(input, output = '') {
   const errors = []
   const options = {
     stdin: async () => input,
-    run: () => output,
+    run: (_cmd, args) => args.includes('rev-parse') ? `${'a'.repeat(40)}\n` : output,
     root: '/fixture',
     log: (line) => printed.push(line),
     errorLog: (line) => errors.push(line),
@@ -227,9 +243,15 @@ function cliHarness(input, output = '') {
 
 test('CLI consumes producer-shaped stdin and preserves drift exit 1', async () => {
   const harness = cliHarness(JSON.stringify(sampleResult), 'abc123\tMerge pull request #2746 from x/y\n')
+  const originalRun = harness.options.run
+  harness.options.run = (cmd, args) => {
+    if (args.includes('log')) assert.ok(args.includes('a'.repeat(40)), 'attribution must use the resolved commit, not a moving ref')
+    return originalRun(cmd, args)
+  }
   assert.equal(await main(['--json', '-'], harness.options), 1)
   assert.match(harness.printed[0], /Promotion candidates/)
   assert.match(harness.printed[0], /#2746/)
+  assert.match(harness.printed[0], /attribution history resolved to commit/i)
   assert.deepEqual(harness.errors, [])
 })
 
@@ -245,7 +267,7 @@ test('CLI refuses broken git attribution with exit 2', async () => {
   const harness = cliHarness(JSON.stringify(sampleResult))
   harness.options.run = () => { throw new Error('git unavailable') }
   assert.equal(await main(['--json', '-'], harness.options), 2)
-  assert.match(harness.errors[0], /attribution unavailable/)
+  assert.match(harness.errors[0], /attribution history unavailable/)
 })
 
 test('CLI refuses malformed JSON and never reports it clean', async () => {

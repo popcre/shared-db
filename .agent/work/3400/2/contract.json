@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "generation": 2,
+  "work_issue": 3400,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Issue #3400: split the merged-but-unapplied migration 20260928182014 into one nullable ADD COLUMN per statement so the automatic production business-risk gate classifies it as clear; same twelve columns, same objects, no semantic change.",
+  "base_sha": "a2bf06bcbb6e76fb4939f78ee0d9e38353dceb33",
+  "dispatcher": "Claude orchestrator chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3",
+  "worker": "Claude helper chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3",
+  "branch": "claude/3400-hts-phrase",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/hts-3400",
+  "allowed_paths": [
+    "supabase/migrations/20260928182014_hts_product_phrase_columns.sql",
+    ".agent/work/3400/2/contract.json",
+    ".agent/work/3400/2/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260928182014_hts_product_phrase_columns.sql",
+    ".agent/work/3400/2/contract.json",
+    ".agent/work/3400/2/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table plm.\"itemHeader\"",
+    "table plm.\"RFQItem\"",
+    "table dflow_prod.\"itemHeader\"",
+    "table dflow_prod.\"RFQItem\""
+  ],
+  "prohibited_actions": [
+    "No manual production dispatch; production only via automatic promotion",
+    "No data change to existing rows",
+    "No change to dflow schema"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python scripts/migration_derivation.py",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Version 20260928182014 is absent from preview and production ledgers (read-only check 2026-09-28 ~5:25 PM EDT).",
+    "Claim #3733 remains open."
+  ],
+  "stop_conditions": [
+    "Stop on claim or reservation change.",
+    "Stop if any target table is absent in preview."
+  ],
+  "evidence_parent": {
+    "work_issue": 3400,
+    "generation": 1,
+    "contract_sha256": "c77b8009f4e409a6c8a1688ba28f66ef8158487fb55dce9fecd31eee69e6d539"
+  }
+}

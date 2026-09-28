@@ -5,13 +5,14 @@ No workflow activation and no database write. The workflow owner supplies
 trusted adapters and integration under the existing exclusive lock.
 
 Guarantees:
-  * A recovery claim binds source, ordered migration hashes, target, baseline
-    and producer. Caller assertions are not trusted.
+  * A recovery claim binds source, ordered migration hashes, target, baseline,
+    expected catalog digest and producer to a trusted qualification record.
   * Stable verification claims exclude observation metadata (timestamps, run
     ids) so a retry cannot mint a new "verified" claim from the same apply.
   * An ambiguous prepared-write response never authorizes another apply.
-  * Ledger CONTENT plus catalog verification are required under the exclusive
-    lock before an attempt is marked recovered.
+  * Ledger CONTENT plus catalog verification are required before recovery.
+    The workflow adapter must hold one exclusive lock throughout the reads;
+    this helper checks its owner before and after but cannot make the reads atomic.
   * Every unknown state is a refusal, never a guessed recovery.
 """
 
@@ -49,9 +50,9 @@ OBSERVATION_KEYS = frozenset(
 
 def _require_sha40(value: Any, what: str) -> str:
     text = str(value or "")
-    if len(text) != 40 or any(c not in "0123456789abcdef" for c in text.lower()):
+    if not re.fullmatch(r"[0-9a-f]{40}", text):
         raise ApplyRecoveryError(f"{what} must be an exact 40-character sha, not {value!r}")
-    return text.lower()
+    return text
 
 
 def _require_sha256(value: Any, what: str) -> str:
@@ -96,6 +97,7 @@ class RecoveryClaim:
     target: str
     baseline_sha: str
     producer: str
+    expected_catalog_sha256: str
     claim_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -103,6 +105,7 @@ class RecoveryClaim:
         object.__setattr__(self, "target", _require_nonempty(self.target, "target"))
         object.__setattr__(self, "baseline_sha", _require_sha256(self.baseline_sha, "baseline_sha"))
         object.__setattr__(self, "producer", _require_nonempty(self.producer, "producer"))
+        object.__setattr__(self, "expected_catalog_sha256", _require_sha256(self.expected_catalog_sha256, "expected_catalog_sha256"))
         hashes = []
         for i, pair in enumerate(self.migration_hashes):
             if not isinstance(pair, (tuple, list)) or len(pair) != 2:
@@ -113,6 +116,8 @@ class RecoveryClaim:
             raise ApplyRecoveryError("migration_hashes must name at least one migration")
         if len({version for version, _ in hashes}) != len(hashes):
             raise ApplyRecoveryError("migration_hashes has a duplicate version")
+        if [version for version, _ in hashes] != sorted(version for version, _ in hashes):
+            raise ApplyRecoveryError("migration_hashes must follow ascending version order")
         object.__setattr__(self, "migration_hashes", tuple(hashes))
         digest = stable_claim_digest(
             {
@@ -121,6 +126,7 @@ class RecoveryClaim:
                 "target": self.target,
                 "baseline_sha": self.baseline_sha,
                 "producer": self.producer,
+                "expected_catalog_sha256": self.expected_catalog_sha256,
             }
         )
         object.__setattr__(self, "claim_digest", digest)
@@ -132,6 +138,7 @@ class RecoveryClaim:
             "target": self.target,
             "baseline_sha": self.baseline_sha,
             "producer": self.producer,
+            "expected_catalog_sha256": self.expected_catalog_sha256,
             "claim_digest": self.claim_digest,
         }
 
@@ -144,6 +151,7 @@ class ApplyAttemptEvidence:
     catalog_result: Mapping[str, Any] | None
     prepared_write_status: str  # 'landed' | 'absent' | 'ambiguous'
     exclusive_lock_held: bool
+    qualification: Mapping[str, Any] = field(default_factory=dict)
     observation: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -171,6 +179,10 @@ def evaluate_recovery(claim: RecoveryClaim, evidence: ApplyAttemptEvidence) -> d
         raise ApplyRecoveryError("evidence must be an ApplyAttemptEvidence from trusted adapters")
     if not evidence.exclusive_lock_held:
         raise ApplyRecoveryError("recovery verification requires the existing exclusive lock; refusing without it")
+    expected_qualification = {k: claim.as_dict()[k] for k in
+                              ("source", "migration_hashes", "target", "baseline_sha", "producer", "expected_catalog_sha256")}
+    if not isinstance(evidence.qualification, Mapping) or dict(evidence.qualification) != expected_qualification:
+        raise ApplyRecoveryError("trusted qualification differs from recovery claim")
 
     if evidence.prepared_write_status == "ambiguous":
         raise ApplyRecoveryError(
@@ -181,7 +193,10 @@ def evaluate_recovery(claim: RecoveryClaim, evidence: ApplyAttemptEvidence) -> d
             f"unknown prepared_write_status {evidence.prepared_write_status!r}; only 'landed' or 'absent' are decided states"
         )
 
+    ledger = _normalized_ledger_content(evidence.ledger_rows)
     if evidence.prepared_write_status == "absent":
+        if ledger or (isinstance(evidence.catalog_result, Mapping) and evidence.catalog_result.get("passed") is True):
+            raise ApplyRecoveryError("prepared write is absent but ledger or catalog shows applied content")
         # Nothing landed. Recovery is a clean 'not applied', not a re-apply grant.
         return {
             "disposition": "not-applied",
@@ -191,8 +206,10 @@ def evaluate_recovery(claim: RecoveryClaim, evidence: ApplyAttemptEvidence) -> d
         }
 
     # Landed: require ledger CONTENT for every claimed migration, plus catalog.
-    ledger = _normalized_ledger_content(evidence.ledger_rows)
     ledger_by_version = dict(ledger)
+    extra = sorted(set(ledger_by_version) - {version for version, _ in claim.migration_hashes})
+    if extra:
+        raise ApplyRecoveryError(f"ledger has extra migration(s) outside the claimed attempt {extra}")
     missing = [version for version, _ in claim.migration_hashes if version not in ledger_by_version]
     if missing:
         raise ApplyRecoveryError(
@@ -212,6 +229,8 @@ def evaluate_recovery(claim: RecoveryClaim, evidence: ApplyAttemptEvidence) -> d
     if evidence.catalog_result.get("baseline_sha256") != claim.baseline_sha:
         raise ApplyRecoveryError("catalog verification baseline differs from claim")
     catalog_sha256 = _require_sha256(evidence.catalog_result.get("catalog_sha256"), "catalog verification digest")
+    if catalog_sha256 != claim.expected_catalog_sha256:
+        raise ApplyRecoveryError("catalog verification digest differs from trusted qualification")
 
     stable = {
         "source": claim.source,
@@ -219,6 +238,7 @@ def evaluate_recovery(claim: RecoveryClaim, evidence: ApplyAttemptEvidence) -> d
         "target": claim.target,
         "baseline_sha": claim.baseline_sha,
         "producer": claim.producer,
+        "expected_catalog_sha256": claim.expected_catalog_sha256,
         "ledger_content": [list(pair) for pair in ledger],
         "catalog_sha256": catalog_sha256,
         "catalog_passed": True,
@@ -240,35 +260,45 @@ def recover_apply_attempt(
     target: str,
     baseline_sha: str,
     producer: str,
+    expected_catalog_sha256: str,
+    read_qualification: Callable[[], Mapping[str, Any]],
     read_ledger: Callable[[], Sequence[Mapping[str, Any]]],
     read_catalog: Callable[[], Mapping[str, Any] | None],
     read_prepared_write: Callable[[], str],
     lock_is_held: Callable[[], bool],
+    read_lock_owner: Callable[[], str],
 ) -> dict[str, Any]:
     """Trusted-adapter entry point. Callers supply adapters, not assertions."""
-    if not callable(read_ledger) or not callable(read_catalog) or not callable(read_prepared_write) or not callable(lock_is_held):
-        raise ApplyRecoveryError("recovery requires trusted callables for ledger, catalog, prepared-write, and lock")
+    if not all(callable(fn) for fn in (read_qualification, read_ledger, read_catalog,
+                                      read_prepared_write, lock_is_held, read_lock_owner)):
+        raise ApplyRecoveryError("recovery requires trusted callables for qualification, ledger, catalog, prepared-write, and lock")
     claim = RecoveryClaim(
         source=source,
         migration_hashes=tuple(migration_hashes),
         target=target,
         baseline_sha=baseline_sha,
         producer=producer,
+        expected_catalog_sha256=expected_catalog_sha256,
     )
     initial_lock = lock_is_held()
     if initial_lock is not True:
         raise ApplyRecoveryError("recovery verification requires the existing exclusive lock before reads")
+    initial_owner = _require_sha40(read_lock_owner(), "exclusive lock owner")
+    qualification = read_qualification()
     ledger_rows = tuple(read_ledger() or ())
     catalog_result = read_catalog()
     prepared_write_status = read_prepared_write()
     final_lock = lock_is_held()
     if final_lock is not True:
         raise ApplyRecoveryError("recovery lost the existing exclusive lock during reads")
+    if _require_sha40(read_lock_owner(), "exclusive lock owner") != initial_owner:
+        raise ApplyRecoveryError("exclusive lock owner changed during recovery reads")
     evidence = ApplyAttemptEvidence(
         ledger_rows=ledger_rows,
         catalog_result=catalog_result,
         prepared_write_status=str(prepared_write_status or "").strip().lower(),
         exclusive_lock_held=True,
+        qualification=qualification,
         observation={},
     )
     return evaluate_recovery(claim, evidence)

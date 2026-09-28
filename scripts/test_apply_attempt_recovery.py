@@ -26,6 +26,7 @@ def _claim(**overrides):
         target="preview",
         baseline_sha="c" * 64,
         producer="trusted-producer",
+        expected_catalog_sha256="d" * 64,
     )
     base.update(overrides)
     return RecoveryClaim(**base)
@@ -77,12 +78,15 @@ class TestRecoveryClaim(unittest.TestCase):
 
 class TestEvaluateRecovery(unittest.TestCase):
     def _evidence(self, **overrides):
+        claim = overrides.pop("claim", _claim())
         base = dict(
             ledger_rows=({"version": "20260920000001", "sha256": "a" * 64}, {"version": "20260920000002", "sha256": "b" * 64}),
             catalog_result={"passed": True, "target": "preview", "baseline_sha256": "c" * 64,
                             "catalog_sha256": "d" * 64},
             prepared_write_status="landed",
             exclusive_lock_held=True,
+            qualification={k: claim.as_dict()[k] for k in
+                           ("source", "migration_hashes", "target", "baseline_sha", "producer", "expected_catalog_sha256")},
         )
         base.update(overrides)
         return ApplyAttemptEvidence(**base)
@@ -102,9 +106,15 @@ class TestEvaluateRecovery(unittest.TestCase):
             evaluate_recovery(_claim(), self._evidence(prepared_write_status="maybe"))
 
     def test_absent_is_not_applied_and_does_not_authorize_reapply(self):
-        result = evaluate_recovery(_claim(), self._evidence(prepared_write_status="absent"))
+        result = evaluate_recovery(_claim(), self._evidence(prepared_write_status="absent", ledger_rows=(), catalog_result=None))
         self.assertEqual(result["disposition"], "not-applied")
         self.assertFalse(result["authorizes_reapply"])
+
+    def test_absent_with_ledger_or_catalog_proof_refused(self):
+        for patch in ({"ledger_rows": self._evidence().ledger_rows, "catalog_result": None},
+                      {"ledger_rows": (), "catalog_result": self._evidence().catalog_result}):
+            with self.subTest(patch=patch), self.assertRaisesRegex(ApplyRecoveryError, "absent but ledger or catalog"):
+                evaluate_recovery(_claim(), self._evidence(prepared_write_status="absent", **patch))
 
     def test_missing_ledger_content_refused(self):
         evidence = self._evidence(
@@ -122,7 +132,7 @@ class TestEvaluateRecovery(unittest.TestCase):
 
     def test_catalog_target_baseline_and_digest_are_bound(self):
         for patch in ({"target": "production"}, {"baseline_sha256": "e" * 64},
-                      {"catalog_sha256": "bad"}):
+                      {"catalog_sha256": "bad"}, {"catalog_sha256": "e" * 64}):
             with self.subTest(patch=patch), self.assertRaises(ApplyRecoveryError):
                 evaluate_recovery(_claim(), self._evidence(catalog_result={**self._evidence().catalog_result, **patch}))
 
@@ -140,6 +150,23 @@ class TestEvaluateRecovery(unittest.TestCase):
         with self.assertRaisesRegex(ApplyRecoveryError, "content hash differs"):
             evaluate_recovery(_claim(), evidence)
 
+    def test_extra_ledger_migration_refused(self):
+        rows = self._evidence().ledger_rows + ({"version": "20260920000003", "sha256": "e" * 64},)
+        with self.assertRaisesRegex(ApplyRecoveryError, "extra migration"):
+            evaluate_recovery(_claim(), self._evidence(ledger_rows=rows))
+
+    def test_untrusted_source_or_producer_refused(self):
+        for field in ("source", "producer"):
+            claim = _claim(**{field: ("e" * 40 if field == "source" else "another-producer")})
+            with self.subTest(field=field), self.assertRaisesRegex(ApplyRecoveryError, "qualification differs"):
+                evaluate_recovery(claim, self._evidence())
+
+    def test_migration_order_and_uppercase_digests_refused(self):
+        with self.assertRaisesRegex(ApplyRecoveryError, "ascending version order"):
+            _claim(migration_hashes=(("20260920000002", "b" * 64), ("20260920000001", "a" * 64)))
+        with self.assertRaisesRegex(ApplyRecoveryError, "sha256"):
+            _claim(expected_catalog_sha256="D" * 64)
+
     def test_unhashed_ledger_content_refused(self):
         evidence = self._evidence(ledger_rows=({"version": "20260920000001", "hash": "a" * 64},))
         with self.assertRaisesRegex(ApplyRecoveryError, "sha256"):
@@ -154,11 +181,17 @@ class TestTrustedAdapters(unittest.TestCase):
             target="preview",
             baseline_sha="b" * 64,
             producer="p",
+            expected_catalog_sha256="d" * 64,
+            read_qualification=lambda: {"source": "f" * 40,
+                                        "migration_hashes": [["20260920000001", "a" * 64]],
+                                        "target": "preview", "baseline_sha": "b" * 64,
+                                        "producer": "p", "expected_catalog_sha256": "d" * 64},
             read_ledger=lambda: ({"version": "20260920000001", "sha256": "a" * 64},),
             read_catalog=lambda: {"passed": True, "target": "preview", "baseline_sha256": "b" * 64,
                                   "catalog_sha256": "d" * 64},
             read_prepared_write=lambda: "landed",
             lock_is_held=lambda: True,
+            read_lock_owner=lambda: "e" * 40,
         )
         self.assertEqual(result["disposition"], "recovered")
 
@@ -170,10 +203,13 @@ class TestTrustedAdapters(unittest.TestCase):
                 target="preview",
                 baseline_sha="b" * 64,
                 producer="p",
+                expected_catalog_sha256="d" * 64,
+                read_qualification=lambda: {},
                 read_ledger=None,
                 read_catalog=lambda: {"passed": True},
                 read_prepared_write=lambda: "landed",
                 lock_is_held=lambda: True,
+                read_lock_owner=lambda: "e" * 40,
             )
 
     def test_refuses_before_adapter_reads_without_lock(self):
@@ -183,12 +219,28 @@ class TestTrustedAdapters(unittest.TestCase):
                 source="f" * 40,
                 migration_hashes=(("20260920000001", "a" * 64),),
                 target="preview", baseline_sha="b" * 64, producer="p",
+                expected_catalog_sha256="d" * 64,
+                read_qualification=lambda: calls.append("qualification"),
                 read_ledger=lambda: calls.append("ledger"),
                 read_catalog=lambda: calls.append("catalog"),
                 read_prepared_write=lambda: calls.append("prepared"),
                 lock_is_held=lambda: False,
+                read_lock_owner=lambda: calls.append("owner"),
             )
         self.assertEqual(calls, [])
+
+    def test_refuses_lock_loss_or_owner_change_after_reads(self):
+        for statuses, owners, expected in ((iter((True, False)), iter(("e" * 40, "e" * 40)), "lost"),
+                                           (iter((True, True)), iter(("e" * 40, "f" * 40)), "owner changed")):
+            with self.subTest(expected=expected), self.assertRaisesRegex(ApplyRecoveryError, expected):
+                recover_apply_attempt(
+                    source="f" * 40, migration_hashes=(("20260920000001", "a" * 64),),
+                    target="preview", baseline_sha="b" * 64, producer="p",
+                    expected_catalog_sha256="d" * 64,
+                    read_qualification=lambda: {}, read_ledger=lambda: (), read_catalog=lambda: None,
+                    read_prepared_write=lambda: "absent", lock_is_held=lambda: next(statuses),
+                    read_lock_owner=lambda: next(owners),
+                )
 
 
 if __name__ == "__main__":

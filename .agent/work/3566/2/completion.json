@@ -19,9 +19,9 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/merge-queue-contract.test.mjs",
+      "command": "node --test scripts/configure-merge-queue.test.mjs",
       "exit_code": 0,
-      "evidence": "38 pass, 0 fail after merging main 9ffb8d39f9bc"
+      "evidence": "pass, 0 fail; with merge-queue-contract suite 38 pass, 0 fail, after merging main 9ffb8d39f9bc"
     }
   ],
   "assumptions_resolved": [

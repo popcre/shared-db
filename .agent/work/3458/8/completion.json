@@ -54,7 +54,7 @@
     {
       "command": "Database Contract Tests on isolated ephemeral database",
       "exit_code": 0,
-      "evidence": "workflow_dispatch run 36433428235 succeeded at exact implementation head 90644803 on disposable branch claude/3458-gen8-ephemeral-proof; issue_3458 suite reported all 6 checks passed with the public-role denial added. Ephemeral test SHA-256 3c383837a996a6638c718c6c8fb0b8e3b626004d68a5dc73773f15c2a16e71bd; migration SHA-256 c8387167cbd822ac8df8c0def3fb7d778cd24f0c8877427a33b7bc4d1d7769a5 unchanged since gen6."
+      "evidence": "workflow_dispatch run 36433428235 succeeded at gen8 implementation commit 0450fc3c on disposable branch claude/3458-gen8-ephemeral-proof; issue_3458 suite reported all 6 checks passed with the public-role denial added. git diff 0450fc3c 90644803 is empty for the migration, ephemeral test, guard test, caller document and workflow. Ephemeral test SHA-256 3c383837a996a6638c718c6c8fb0b8e3b626004d68a5dc73773f15c2a16e71bd; migration SHA-256 c8387167cbd822ac8df8c0def3fb7d778cd24f0c8877427a33b7bc4d1d7769a5 unchanged since gen6."
     },
     {
       "command": "Tools offline tests runs node --test scripts/test_3458_index_guard.test.mjs",

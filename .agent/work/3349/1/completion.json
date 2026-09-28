@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "work_issue": 3349,
+  "outcome": "ready-for-merge",
+  "pr": 3525,
+  "contract_ref": "refs/db-contracts/3349/1",
+  "contract_sha256": "f5d565ca8fb801b3b1a96e1b90c59f7cded8d167b9d714cf9bc6d955408ef9a5",
+  "head_sha": "bf03f499b566241c83e7c5032fa4fc07ffb2a91f",
+  "base_sha": "84efcba2db06bd8e530b81fb2f4fd08c9118d07b",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "migration_versions": [],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "715 pass, 0 fail at bf03f499 after refreshing onto origin/main."
+    }
+  ],
+  "assumptions_resolved": [
+    "PR #3338 is closed unmerged and does not cover this defect; the bare return-null paths are present on origin/main.",
+    "Fail-closed behaviour is preserved: every former return-null site now throws, so every caller that refused still refuses."
+  ],
+  "stop_conditions_hit": []
+}

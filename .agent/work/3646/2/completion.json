@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "work_issue": 3646,
+  "outcome": "ready-for-merge",
+  "pr": 3648,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3646/2",
+  "contract_sha256": "04338625579d40f9f900dafd9e68284a7ed05425c7873452d2a36255b84c264d",
+  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
+  "head_sha": "f29607885da0f205c037e60e67a257f27617af12",
+  "files_changed": [
+    "scripts/reap-merged-worktrees.mjs",
+    "scripts/reap-merged-worktrees.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/reap-merged-worktrees.test.mjs",
+      "exit_code": 0,
+      "evidence": "31 passed, 0 failed on implementation head f2960788"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "335 files scanned; every GitHub call went through shared transport on implementation head f2960788"
+    }
+  ],
+  "assumptions_resolved": [
+    "The shared transport accepts the reaper's unchanged gh argv shapes in focused tests.",
+    "Closed PR 3645 and abandoned generation 1 remain separate history; this implementation followed publication of generation 2."
+  ],
+  "stop_conditions_hit": []
+}

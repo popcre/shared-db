@@ -104,9 +104,10 @@ begin
   -- Nothing outside the claim may have appeared under this prefix.
   select count(*) into v_n from information_schema.tables
    where table_schema = 'plm' and table_name like 'peanuts\_%' and table_type = 'BASE TABLE';
-  if v_n <> 19 then
+  -- 19 landing tables plus the two #3684 durable-state tables.
+  if v_n <> 21 then
     v_fail := v_fail + 1;
-    raise warning 'A FAIL: plm holds % peanuts tables, expected exactly 19', v_n;
+    raise warning 'A FAIL: plm holds % peanuts tables, expected exactly 21', v_n;
   end if;
 
   -- THE REFUSED RELATIONSHIP. The art-program field is multi-select, so pairing art
@@ -186,8 +187,8 @@ begin
   select count(*) into v_n from information_schema.role_table_grants
    where table_schema = 'plm' and table_name like 'peanuts\_%'
      and grantee = 'service_role' and privilege_type = 'SELECT';
-  if v_n <> 19 then
-    raise exception 'B FAILED: expected 19 service_role SELECT grants, found %', v_n;
+  if v_n <> 21 then  -- includes the two #3684 durable-state tables
+    raise exception 'B FAILED: expected 21 service_role SELECT grants, found %', v_n;
   end if;
 
   select count(*) into v_n from information_schema.role_table_grants
@@ -210,8 +211,8 @@ begin
   select count(*) into v_n from information_schema.role_table_grants
    where table_schema = 'plm' and table_name like 'peanuts\_%'
      and grantee = 'authenticated' and privilege_type = 'SELECT';
-  if v_n <> 19 then
-    raise exception 'B FAILED: expected 19 authenticated SELECT grants, found %', v_n;
+  if v_n <> 21 then  -- includes the two #3684 durable-state tables
+    raise exception 'B FAILED: expected 21 authenticated SELECT grants, found %', v_n;
   end if;
 
   raise notice 'B (catalog) passed';
@@ -1366,8 +1367,8 @@ begin
   -- inserted above one of these instead of beside it, this goes red.
   select count(*) into v_before from api.source_capture_inventory
    where source_system = 'peanuts';
-  if v_before <> 19 then
-    raise exception 'G FAILED: % peanuts tables classified, expected 19', v_before;
+  if v_before <> 21 then  -- 19 landing + 2 #3684 durable-state tables
+    raise exception 'G FAILED: % peanuts tables classified, expected 21', v_before;
   end if;
 
   -- EVERY plm table, against the classification rule restated here independently. Walking

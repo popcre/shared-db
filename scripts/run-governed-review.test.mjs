@@ -20,7 +20,7 @@ function runGovernedReview(input,deps){return executeGovernedReview(input,{recor
 
 test('all qualified wrappers receive immutable source arguments without rewriting prompt values',()=>{
   const source=fixtureSource(options)
-  for(const name of ['ai-claude-review','ai-codex-review','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen']){
+  for(const name of ['ai-claude-review','ai-codex-review','ai-gemini','ai-glm','ai-grok-review','ai-kimi','ai-muse','ai-qwen','ai-stepfun']){
     for(const wrapper of [name,`C:\\tools\\${name.toUpperCase()}.CMD`,`/usr/bin/${name}.exe`]){
       assert.deepEqual(wrapperSourceContractArgs(wrapper,['new','session','--prompt','--base'],source),['new','session','--prompt','--base','--base',source.mergeBase,'--assert-head',source.headSha])
       assert.deepEqual(wrapperSourceContractArgs(wrapper,['new',`--base=${source.mergeBase}`,'--assert-head',source.headSha],source),['new','--base',source.mergeBase,'--assert-head',source.headSha])
@@ -33,6 +33,13 @@ test('all qualified wrappers receive immutable source arguments without rewritin
     assert.throws(()=>wrapperSourceContractArgs(wrapper,['send','advisory'],source),/requires a formal/)
     assert.throws(()=>wrapperSourceContractArgs(wrapper,['send','advisory','--file','--review'],source),/requires a formal/)
   }
+})
+
+test('StepFun governed reviews accept only its formal review subcommand',()=>{
+  const head='a'.repeat(40)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-stepfun',['review','--prompt','check this'],head),['review','--prompt','check this'])
+  assert.throws(()=>wrapperVerdictContractArgs('ai-stepfun',['ask','check this'],head),/cannot end with a recordable VERDICT/)
+  assert.throws(()=>wrapperVerdictContractArgs('ai-stepfun',['implement','--prompt','change this'],head),/cannot end with a recordable VERDICT/)
 })
 
 function sourceIo(overrides={}){
@@ -931,6 +938,7 @@ const OUT_OF_CREDIT_FIXTURES=[
   ['qwen','OUT OF CREDIT: the Alibaba Model Studio (Qwen) account has run out of credits or is in arrears - top up at https://modelstudio.console.alibabacloud.com'],
   ['gemini','OUT OF CREDIT: the Google Gemini account has run out of prepaid credits - add credits at https://aistudio.google.com'],
   ['deepseek','OUT OF CREDIT: the DeepSeek account has an insufficient balance - top up at https://platform.deepseek.com'],
+  ['stepfun','OUT OF CREDIT: the StepFun (Step 5) API account is out of credit - add credits at https://platform.stepfun.ai'],
 ]
 const outOfCreditRun=(stderr)=>{
   const events=[]
@@ -956,7 +964,7 @@ test('out of credit: every rotation provider carries its OUT OF CREDIT line verb
   }
 })
 test('out of credit: a machine line without a valid human line gets fixed text naming the provider',()=>{
-  for(const [provider,name] of [['grok','xAI (Grok)'],['muse','Meta (Muse)'],['qwen','Alibaba Model Studio (Qwen)'],['gemini','Google Gemini'],['deepseek','DeepSeek']]){
+  for(const [provider,name] of [['grok','xAI (Grok)'],['muse','Meta (Muse)'],['qwen','Alibaba Model Studio (Qwen)'],['gemini','Google Gemini'],['deepseek','DeepSeek'],['stepfun','StepFun (Step 5)']]){
     const reason=wrapperFailureReason({stderr:`AI_REVIEWER_OUT_OF_CREDIT provider=${provider} code=insufficient_quota\n`})
     assert.equal(reason,`insufficient_quota: OUT OF CREDIT: the ${name} reviewer account has run out of credits or hit its spending limit`)
   }

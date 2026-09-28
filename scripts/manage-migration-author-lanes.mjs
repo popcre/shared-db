@@ -307,6 +307,8 @@ export const REVIEWERS = Object.freeze([
   // durable refs record reviews made without repository access (#2078).
   { name:'deepseek-v4.1-flash', provider:'deepseek', wrapper:'ai-deepseek-agent', readsRepository:true,
     readsRepositoryVerified:{ date:'2026-09-23', evidence:'ai-devops/bin/ai-deepseek-agent --review (PR #730 plus dd46fa46, model deepseek-flash): read-only list_dir/read_file/grep over the exact-head review snapshot, secret and .git paths refused, bounded loop; ai-review-preflight check deepseek --live PASSED and the live review of merged commit e2e41104 cited tools/ci/runner-router.cjs and verify.yml line numbers and ended VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970' } },
+  { name:'stepfun-step-5', provider:'stepfun', wrapper:'ai-stepfun', readsRepository:true,
+    readsRepositoryVerified:{ date:'2026-09-27', evidence:'ai-devops/bin/ai-stepfun review: sealed exact-head evidence packet in a disposable copy, read-only read/grep/find/ls tools, unchanged-copy digest and packet verification, terminal head-bound VERDICT' } },
 ])
 // Keep REVIEWERS as the historical evidence registry. Paused providers remain
 // readable forever, but only ACTIVE_REVIEWERS can receive new work.
@@ -593,6 +595,15 @@ export function reviewerKnownNonReading(name, reviewers=REVIEWERS){
 // `PASS provider=codex sandbox=read-only reasoning=explicit command=codex`.
 export const OVERFLOW_REVIEWERS = Object.freeze([])
 export const ACTIVE_REVIEWERS = Object.freeze(REVIEWERS.filter((row)=>!RETIRED_REVIEWERS.includes(row.name)&&!QUARANTINED_REVIEWERS.includes(row.name)))
+// Draw the lower-cost pool first, rotating within it. Grok remains eligible
+// when every preferred reviewer is unavailable for this exact assignment.
+export const REVIEWER_FALLBACK_PROVIDERS = Object.freeze(['grok'])
+export function orderedReviewers(sequence,reviewers=ACTIVE_REVIEWERS){
+  const rotate=(rows)=>rows.length?Array.from({length:rows.length},(_,offset)=>rows[(sequence-1+offset)%rows.length]):[]
+  return [...rotate(reviewers.filter((row)=>!REVIEWER_FALLBACK_PROVIDERS.includes(row.provider))),
+    ...rotate(reviewers.filter((row)=>REVIEWER_FALLBACK_PROVIDERS.includes(row.provider)))]
+}
+function drawOrder(sequence,io){return io.reviewerOrder?.(sequence)??orderedReviewers(sequence)}
 
 export function canonicalReviewerAllowlist(value){
   if(value===undefined||value===null)return null
@@ -5651,8 +5662,8 @@ export function describeMovedAssignmentHead(request,recorded){
 export function pickReviewer(sequence,io){
   const {eligible}=allocatableReviewers(io)
   if(!eligible.length)throw new LaneError('no reviewer is independent from the live orchestrator engine')
-  const eligibleNames=new Set(eligible.map((row)=>row.name)),start=(sequence-1)%ACTIVE_REVIEWERS.length
-  const ordered=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).filter((row)=>eligibleNames.has(row.name))
+  const eligibleNames=new Set(eligible.map((row)=>row.name))
+  const ordered=orderedReviewers(sequence).filter((row)=>eligibleNames.has(row.name))
   return ordered[0]??OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name))
 }
 
@@ -6115,13 +6126,12 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // exact head, so the second reviewer is never the same provider as the
     // first -- on top of, never instead of, the ordinary busy exclusion.
     const busy=preflightBusy
-    const start=(sequence-1)%ACTIVE_REVIEWERS.length
     // Provider capacity is deliberately not a draw constraint for the exact
     // production protocol.  Lightweight historical fixtures may use short
     // heads, which cannot name a parallel lease and retain old serial rules.
     // #2831: a reviewer whose wrapper cannot emit a governed verdict is never drawn.
     const notTaken=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
-    const reviewer=Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(start+offset)%ACTIVE_REVIEWERS.length]).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
+    const reviewer=drawOrder(sequence,io).find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
       // fixed menu of causes, and `notTaken` implements only some of them: for
@@ -6870,8 +6880,8 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     const failedNames=new Set([original.reviewer])
     for(const row of parsedReplacements){const name=bySequence.get(row.failedSequence);if(name)failedNames.add(name)}
     let sequence=null, reviewer=null
-    for(let offset=0;offset<ACTIVE_REVIEWERS.length;offset+=1){
-      const candidateSequence=cursor.sequence+1+offset, candidate=ACTIVE_REVIEWERS[(candidateSequence-1)%ACTIVE_REVIEWERS.length]
+    for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
+      const candidateSequence=cursor.sequence+1+offset
       if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
       sequence=candidateSequence;reviewer=candidate;break
     }

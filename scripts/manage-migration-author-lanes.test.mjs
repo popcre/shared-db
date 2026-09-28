@@ -621,6 +621,9 @@ function usableAdmission(row){return {provider:row.provider,status:'ready',usabl
 
 function reviewIo(){
   const io=memoryIo(), commits=new Map();let seq=0
+  // Most safety fixtures assert the historical round-robin sequence. Preference
+  // behavior has separate tests below and uses the production order by default.
+  io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
   io.resolveOrchestratorEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
@@ -1006,6 +1009,20 @@ test('reviewer cursor advances atomically through the durable round robin',()=>{
   assert.ok(io.refs.has(REVIEW_CURSOR_REF))
 })
 
+test('preferred reviewers include StepFun and reserve Grok as an eligible fallback',()=>{
+  const preferred=reviewIo();delete preferred.reviewerOrder
+  const chosen=[]
+  for(let n=1;n<=10;n++)chosen.push(assignNextReviewer({issue:9000+n,pr:9100+n,headSha:`abcdef${n}`},preferred).reviewer)
+  assert.ok(chosen.includes('stepfun-step-5'))
+  assert.ok(!chosen.includes('grok-4.6'))
+  const fallback=reviewIo();delete fallback.reviewerOrder
+  fallback.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
+  assert.equal(assignNextReviewer({issue:9201,pr:9301,headSha:'abcdef1'},fallback).reviewer,'grok-4.6')
+  const windows=reviewIo();delete windows.reviewerOrder
+  windows.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider!=='stepfun',status:row.provider==='stepfun'?'unsupported-platform':'ready'}]))
+  for(let n=1;n<=10;n++)assert.notEqual(assignNextReviewer({issue:9400+n,pr:9500+n,headSha:`abcdef${n}`},windows).reviewer,'stepfun-step-5')
+})
+
 test('owner ruling 2026-09-16: one reviewer holds more than eight simultaneous exact-head reviews, each on its own lease',()=>{
   const io=withAtomicRefs(reviewIo()),heads=new Map()
   io.requiresExactReviewHeadSha=true
@@ -1389,7 +1406,7 @@ test('legacy short-head protocol cannot store a second lease for one reviewer',(
 test('a live review never moves the rotation off a busy provider (no same-reviewer ceiling)',()=>{
   const {io}=busyIo()
   assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length)
-  ACTIVE_REVIEWERS.forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
+  ACTIVE_REVIEWERS.filter((row)=>row.provider!=='grok').forEach((row,index)=>assert.equal(pickReviewer(index+1,io).name,row.name))
 })
 
 test('a recorded verdict and a moved head both free the reviewer that held them',()=>{
@@ -1444,10 +1461,8 @@ test('the active rotation is exactly the current models, in a stable order',()=>
   // glm-5.3 was paused on 2026-09-18 (owner instruction, chat directive) for
   // weekly account-usage rotation; restoring it is a one-line deletion from
   // RETIRED_REVIEWERS and this assertion reverts with it.
-  // kimi-k3 was paused again on 2026-09-22 (owner instruction): the account has
-  // been out of credit since 2026-09-17. With deepseek-v4.1-flash added on
-  // 2026-09-23 (issue #3468) the live pool is exactly five.
-  assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash'])
+  // kimi-k3 was paused again on 2026-09-22. StepFun joined on 2026-09-27.
+  assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash','stepfun-step-5'])
   assert.ok(RETIRED_REVIEWERS.includes('kimi-k3'),'kimi-k3 stays paused until its account has credit again')
   assert.equal(reviewerReadsRepository('kimi-k3'),true,'pausing the account must not invalidate the verdicts it already recorded')
   assert.ok(RETIRED_REVIEWERS.includes('glm-5.3'),'glm-5.3 stays paused until the owner rotates it back in')
@@ -2112,6 +2127,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   for(const name of ['readRef','listRefs','getCommit','createRef']){const fn=io[name];io[name]=(...args)=>{wire(1,`${name}:${String(args[0])}`);return fn(...args)}}
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
 
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider!=='stepfun',status:row.provider==='stepfun'?'unsupported-platform':'ready'}]))
   const replacement=replaceFailedReviewer(releasedRequest,io)
   assert.equal(replacement.reviewer,'grok-4.6','the reinstated independent reviewer must be drawable again')
   assert.equal(replacement.failureSha,released.failureSha,'the replacement must adopt the immutable release record')
@@ -2601,7 +2617,7 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
 // is a false invariant, and it is deliberately not asserted here. Both halves are
 // pinned below, with the exact successor named in each case.
 test('one intervening assignment gives a failed reviewer a named replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,5,'this test describes the approved five-reviewer rotation (glm-5.3 paused 2026-09-18; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the six-reviewer rotation after StepFun joined')
   const io=failedReviewIo()
   assignNextReviewer({issue:10,pr:110,headSha:'abcdefa'},io)
   const replacement=replaceFailedReviewer(replacementRequest,io)
@@ -2609,7 +2625,7 @@ test('one intervening assignment gives a failed reviewer a named replacement',()
 })
 
 test('N-1 intervening assignments skip the failed provider instead of stranding the replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,5,'this test describes the approved five-reviewer rotation (glm-5.3 paused 2026-09-18; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the six-reviewer rotation after StepFun joined')
   const io=failedReviewIo()
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1){
     assignNextReviewer({issue:20+n,pr:120+n,headSha:`abcde${n}f`},io)
@@ -2751,7 +2767,7 @@ test('review lease age is truthful for known and unknown commit dates',()=>{
 
 test('capacity report classifies free, live, stale, aged, and unknown leases without mutation',()=>{
   const io=reviewIo(),snapshot=new Map(),states=new Map(),now=new Date('2026-09-02T12:00:00Z')
-  // One case per active reviewer: five since deepseek-v4.1-flash was added on 2026-09-23; four after kimi-k3 was paused on 2026-09-22 (was five after codex-gpt-5.6-sol was retired on
+  // One case per active reviewer: six since StepFun joined on 2026-09-27 (five after DeepSeek was added on 2026-09-23; four after kimi-k3 was paused on 2026-09-22; five after codex-gpt-5.6-sol was retired on
   // 2026-09-06, kimi-k3 was unpaused on 2026-09-07, qwen-3.8-max was
   // unquarantined on 2026-09-07 and glm-5.3 was paused on 2026-09-18. 'moved'
   // and 'verdict' both reach 'stale-reclaimable' but by different routes, and
@@ -2762,6 +2778,7 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
     {kind:'verdict',date:'2026-09-02T10:00:00Z'},
     {kind:'aged',date:'2026-08-31T00:00:00Z'},
     {kind:'unknown',date:null},
+    {kind:'live',date:'2026-09-02T11:30:00Z'},
     {kind:'live',date:'2026-09-02T11:30:00Z'},
   ]
   const heads=new Map()
@@ -2776,22 +2793,22 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
   io.readActiveReviewLeases=()=>snapshot
   io.readReviewStates=()=>states
   const before=new Map(io.refs),report=reviewerCapacityReport(io,now)
-  assert.deepEqual(report.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live'])
-  assert.deepEqual(report.summary,{total:5,free:0,live:3,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
+  assert.deepEqual(report.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','live'])
+  assert.deepEqual(report.summary,{total:6,free:0,live:4,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
   assert.deepEqual(io.refs,before,'capacity report must be read-only')
   // The OTHER route to 'stale-reclaimable': the reviewed head moved out from
   // under a lease this same pass just called live. No recorded verdict involved.
   const livePair=states.get(heads.get(0))
   states.set(heads.get(0),{...livePair,pr:{...livePair.pr,head:{sha:'f'.repeat(40)}}})
-  assert.deepEqual(reviewerCapacityReport(io,now).reviewers.map((row)=>row.classification),['stale-reclaimable','stale-reclaimable','suspect-aged','unknown','live'])
+  assert.deepEqual(reviewerCapacityReport(io,now).reviewers.map((row)=>row.classification),['stale-reclaimable','stale-reclaimable','suspect-aged','unknown','live','live'])
   states.set(heads.get(0),livePair)
-  // 'free' is the fifth classification and it is a property of an ABSENT lease, so
+  // 'free' is a property of an ABSENT lease, so
   // it is proved by removing one rather than by needing a spare roster name.
   const freed=ACTIVE_REVIEWERS.at(-1).name
   snapshot.delete(reviewActiveRef(freed));io.refs.delete(reviewActiveRef(freed))
   const withFree=reviewerCapacityReport(io,now)
-  assert.deepEqual(withFree.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','free'])
-  assert.deepEqual(withFree.summary,{total:5,free:1,live:2,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
+  assert.deepEqual(withFree.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','free'])
+  assert.deepEqual(withFree.summary,{total:6,free:1,live:3,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
 })
 
 function silentLeaseIo({heldSince='2026-09-04T10:00:00Z',activity=[]}={}){

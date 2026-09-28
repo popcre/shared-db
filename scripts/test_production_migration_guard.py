@@ -402,6 +402,30 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "20260928003740"):
             parse_allowlist("20260928003740,20260928145444")
         self.assertEqual(parse_allowlist("20260928145444"), ["20260928145444"])
+        for applied in (set(), {"20260928003740"}):
+            with self.subTest(applied=applied):
+                result = classify_pending_version("20260928003740", applied, REPO)
+                self.assertEqual(result["kind"], "retired")
+                self.assertIn("20260928145444", result["reason"])
+        self.assertNotEqual(
+            classify_pending_version("20260928145444", set(), REPO)["kind"], "retired"
+        )
+
+    def test_issue_3458_reissue_declares_only_the_production_base(self) -> None:
+        """The comment-blind SQL identity test cannot see `-- derived-from:`.
+
+        The reissue must derive from 20260917005221 (live in production) and
+        never from the retired 20260928003740, which production will never hold.
+        """
+        from migration_derivation import declared_bases
+
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260928145444_popsg_refresh_steps_reissue.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260928145444", path=path), frozenset({"20260917005221"})
+        )
 
     def test_stranded_bulk_operation_history_original_is_blocked_but_reissue_is_allowed(
         self,

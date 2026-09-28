@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3592,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Complete reviewer preference policy after independent review: keep Grok as a validated fallback, prove slot-2 and replacement behavior, and align operator documentation",
+  "base_sha": "ed0603578654911c337652bd060e3470b96c322d",
+  "dispatcher": "Codex chat for owner request on 2026-09-27",
+  "worker": "codex",
+  "branch": "codex/grok-priority-3592",
+  "worktree": "/home/ahazan/repos/shared-db-grok-3592",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/active-contracts-and-plans.md",
+    ".agent/work/3592/2/contract.json",
+    ".agent/work/3592/2/completion.json",
+    "docs/agents/anti-collision-summary.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/work/3592/1/contract.json",
+    ".agent/work/3592/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/agents/active-contracts-and-plans.md",
+    ".agent/work/3592/2/contract.json",
+    ".agent/work/3592/2/completion.json",
+    "docs/agents/anti-collision-summary.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    ".agent/work/3592/1/contract.json",
+    ".agent/work/3592/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not touch migrations or database objects",
+    "do not retire Grok or bypass eligibility, independence, exact-head, or verdict safeguards",
+    "do not edit another session's branch, worktree, or evidence"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/lib/reviewer-capabilities.test.mjs scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "assumptions": [
+    "StepFun PR #3556 remains the stacked base until it merges",
+    "A StepFun independent review of the discarded prototype returned REVISE on 2026-09-27 EDT for the unvalidated test seam, missing production-order coverage, and stale operator docs; generation 2 admits those repairs",
+    "Generation 1 was published before the first implementation; generation 2 is published before this follow-up code and documentation work and replaces its evidence pair"
+  ],
+  "stop_conditions": [
+    "stop if StepFun's roster identity or governed capability changes upstream",
+    "stop if the policy requires a file outside allowed_paths"
+  ],
+  "generation": 2
+}

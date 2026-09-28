@@ -9200,6 +9200,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.deliveryPreflight){
       if(!o.evidenceBundle)throw new LaneError('--delivery-preflight requires --evidence-bundle')
       if(!o.preflightInput&&!o.priorPreflightRecord)throw new LaneError('--delivery-preflight requires --preflight-input, or a prior record to reuse')
+      if(!o.changedFilesFile)throw new LaneError('--delivery-preflight requires --changed-files-file')
       const gate=runDeliveryPreflightGate({currentBundle:readJsonArg(o.evidenceBundle,'--evidence-bundle'),priorBundle:o.priorEvidenceBundle?readJsonArg(o.priorEvidenceBundle,'--prior-evidence-bundle'):null,priorRecord:o.priorPreflightRecord?readJsonArg(o.priorPreflightRecord,'--prior-preflight-record'):null,changedFiles:o.changedFilesFile?readJsonArg(o.changedFilesFile,'--changed-files-file'):[],integration:o.integrationFacts?readJsonArg(o.integrationFacts,'--integration-facts'):null,input:o.preflightInput?readJsonArg(o.preflightInput,'--preflight-input'):null},preflightAdapters())
       if(!gate.reused&&!o.preflightInput)throw new LaneError(`the prior delivery preflight cannot be reused (${gate.plan.reason}); pass --preflight-input to re-run it`)
       console.log(JSON.stringify(gate,null,2));return 0
@@ -9208,8 +9209,9 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.proposeTrain||o.validateTrain||o.authorizeTrain||o.dispatchTrain||o.closeTrain||o.verifyTrainDispatch){
       console.log(JSON.stringify(runTrainCommand(o,trainIo(io),readJsonArg),null,2));return 0
     }
-    if(o.assignReviewer&&(o.deliveryPreflightRecord||o.evidenceBundle)){
-      if(!o.deliveryPreflightRecord||!o.evidenceBundle)throw new LaneError('--assign-reviewer needs both --delivery-preflight-record and --evidence-bundle')
+    if(o.assignReviewer||o.replaceFailedReviewer){
+      if(!o.deliveryPreflightRecord||!o.evidenceBundle)throw new LaneError('reviewer draw needs both --delivery-preflight-record and --evidence-bundle')
+      if(!o.changedFilesFile)throw new LaneError('reviewer draw needs --changed-files-file')
       assertDeliveryPreflightBeforeReview({record:readJsonArg(o.deliveryPreflightRecord,'--delivery-preflight-record'),bundle:readJsonArg(o.evidenceBundle,'--evidence-bundle'),issue:o.issue,pr:o.pr,headSha:o.headSha,priorBundle:o.priorEvidenceBundle?readJsonArg(o.priorEvidenceBundle,'--prior-evidence-bundle'):null,changedFiles:o.changedFilesFile?readJsonArg(o.changedFilesFile,'--changed-files-file'):[],integration:o.integrationFacts?readJsonArg(o.integrationFacts,'--integration-facts'):null},preflightAdapters())
     }
     const previewAdmission=databasePreviewAdmission(o,io)

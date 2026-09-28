@@ -28,6 +28,38 @@ test('dirty, missing, unknown and mismatched evidence fails closed',()=>{
   const bundle=buildEvidenceBundle(input,adapters());bundle.extra=true;assert.throws(()=>validateEvidenceBundle(bundle),/unknown/)
   delete bundle.extra;bundle.bundle_id='0'.repeat(64);assert.throws(()=>validateEvidenceBundle(bundle),EvidenceBundleError)
 })
+test('a code-only repo-maintenance bundle is explicit, content-bound, and has no database claim',()=>{
+  const codeOnly={...input,workType:'repo-maintenance',migrations:[],writes:[],reads:[],claim:undefined,migrationOrderDigest:undefined}
+  const bundle=buildEvidenceBundle(codeOnly,adapters())
+  assert.equal(bundle.identity.work_type,'repo-maintenance')
+  assert.deepEqual(bundle.identity.migrations,[])
+  assert.equal(bundle.identity.migration_order_digest,sha256('[]'))
+  assert.equal(bundle.metadata.claim,null)
+  assert.equal(validateEvidenceBundle(bundle),bundle)
+  assert.throws(()=>buildEvidenceBundle({...codeOnly,focusedFiles:[],verificationFiles:[]},adapters()),/focused or verification/)
+  assert.throws(()=>buildEvidenceBundle({...codeOnly,writes:['table public.x']},adapters()),/cannot claim database/)
+  assert.throws(()=>buildEvidenceBundle({...codeOnly,claim:3},adapters()),/cannot name a database claim/)
+  assert.throws(()=>buildEvidenceBundle({...codeOnly,migrations:input.migrations},adapters()),/cannot include migrations/)
+  assert.throws(()=>buildEvidenceBundle({...codeOnly,migrationOrderDigest:sha256('not-empty')},adapters()),/migration order must be empty/)
+  assert.throws(()=>buildEvidenceBundle({...input,migrations:[]},adapters()),/at least one migration/)
+  const fabricated=structuredClone(bundle);delete fabricated.identity.work_type;fabricated.bundle_id=sha256(JSON.stringify(fabricated.identity))
+  assert.throws(()=>validateEvidenceBundle(fabricated),/at least one migration/)
+})
+test('validation refuses forged file records even with a recalculated bundle identity',()=>{
+  const base=buildEvidenceBundle(input,adapters())
+  const recalculate=(mutate)=>{
+    const forged=structuredClone(base)
+    mutate(forged.identity)
+    forged.bundle_id=sha256(JSON.stringify(forged.identity))
+    assert.throws(()=>validateEvidenceBundle(forged),EvidenceBundleError)
+  }
+  recalculate((identity)=>{identity.focused_files[0]={path:'tests/focused.sql'}})
+  recalculate((identity)=>{identity.focused_files[0].path='../outside.sql'})
+  recalculate((identity)=>{identity.focused_files[0].path='C:/outside.sql'})
+  recalculate((identity)=>{identity.verification_files[0].sha256='not-a-hash'})
+  recalculate((identity)=>{identity.global_invalidators[0].extra='unsealed'})
+  recalculate((identity)=>{identity.migrations[0].version='00000000000000'})
+})
 test('import discovery finds executable helpers and fails when inventory omits them',()=>{
   const discovered=discoverModuleImports(['scripts/guard.mjs'],adapters());assert.deepEqual(discovered,['scripts/guard.mjs','scripts/helper.mjs'])
   const inventory=new Set(JSON.parse(files.get('config/orchestrator-global-invalidators-v1.json')).files)

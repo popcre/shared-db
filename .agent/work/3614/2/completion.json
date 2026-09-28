@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "work_issue": 3614,
   "outcome": "ready-for-merge",
   "pr": 3615,
@@ -46,10 +46,5 @@
     "The original audit disposition retains its reason and line hash; only its semantic-key suffix was updated to the current context-hash checker format."
   ],
   "stop_conditions_hit": [],
-  "notes": "Read-only repository maintenance; no migration version and no production write. Hold merge until the currently pinned #3457 production verification no longer depends on fixed main. Retire observer after #2870 acceptance is archived.",
-  "evidence_parent": {
-    "work_issue": 3614,
-    "generation": 1,
-    "contract_sha256": "ff070a617c72a947d872c4b47fe586fdd59b421bbbe73129237c362fda006a30"
-  }
+  "notes": "Read-only repository maintenance; no migration version and no production write. Hold merge until the currently pinned #3457 production verification no longer depends on fixed main. Retire observer after #2870 acceptance is archived."
 }

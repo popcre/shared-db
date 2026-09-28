@@ -270,8 +270,8 @@ begin
   select count(*) into v_n from information_schema.role_table_grants
    where table_schema = 'plm' and table_name like 'wildbrain\_%'
      and grantee = 'service_role' and privilege_type = 'SELECT';
-  if v_n <> 11 then
-    v_fail := v_fail + 1; raise warning 'FAIL expected 11 SELECT grants, found %', v_n;
+  if v_n <> 13 then  -- 11 landing + 2 #3685 durable-state tables
+    v_fail := v_fail + 1; raise warning 'FAIL expected 13 SELECT grants, found %', v_n;
   end if;
 
   select count(*) into v_n from information_schema.role_table_grants
@@ -306,9 +306,9 @@ begin
   select count(*) into v_n from information_schema.role_table_grants
    where table_schema = 'plm' and table_name like 'wildbrain\_%'
      and grantee = 'authenticated' and privilege_type = 'SELECT';
-  if v_n <> 11 then
+  if v_n <> 13 then  -- 11 landing + 2 #3685 durable-state tables
     v_fail := v_fail + 1;
-    raise warning 'FAIL expected 11 SELECT grants to authenticated (issue #1249), found %', v_n;
+    raise warning 'FAIL expected 13 SELECT grants to authenticated (issue #1249), found %', v_n;
   end if;
 
   select count(*) into v_n from information_schema.role_table_grants
@@ -323,8 +323,8 @@ begin
   -- RLS enabled on all eleven, and one read policy each.
   select count(*) into v_n from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'plm' and c.relname like 'wildbrain\_%' and c.relkind = 'r' and c.relrowsecurity;
-  if v_n <> 11 then
-    v_fail := v_fail + 1; raise warning 'FAIL expected RLS enabled on 11 tables, found %', v_n;
+  if v_n <> 13 then  -- 11 landing + 2 #3685 durable-state tables
+    v_fail := v_fail + 1; raise warning 'FAIL expected RLS enabled on 13 tables, found %', v_n;
   end if;
 
   -- NO TRIGGER may be doing this job. If one appears, someone replaced an inspectable
@@ -1900,9 +1900,9 @@ begin
   select count(*) into v_tables
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'plm' and c.relkind = 'r' and c.relname like 'wildbrain\_%';
-  if v_tables <> 11 then
+  if v_tables <> 13 then  -- 11 landing + 2 #3685 durable-state tables
     raise exception
-      'I1 FAILED: % plm.wildbrain_* base tables exist, expected 11. If the WildBrain table set legitimately changed, update this number AND check that api.source_capture_inventory still classifies every one of them.',
+      'I1 FAILED: % plm.wildbrain_* base tables exist, expected 13. If the WildBrain table set legitimately changed, update this number AND check that api.source_capture_inventory still classifies every one of them.',
       v_tables;
   end if;
   select count(*) into v_n from api.source_capture_inventory
@@ -1961,12 +1961,15 @@ begin
   --     'retained_only' fall-through with the generic note that made the old answer
   --     misleading rather than absent.
   select count(*) into v_n from api.source_capture_inventory
-   where table_name like 'wildbrain\_%' and count_basis <> 'latest_complete';
+   where table_name like 'wildbrain\_%' and count_basis <> 'latest_complete'
+     -- #3685 durable cross-capture state is not a per-capture snapshot.
+     and table_name not in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication');
   if v_n <> 0 then
     raise exception 'I4 FAILED: % wildbrain tables are not on the latest_complete basis', v_n;
   end if;
   select count(*) into v_n from api.source_capture_inventory
    where table_name like 'wildbrain\_%'
+     and table_name not in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication')
      and count_note like 'Retained rows only%';
   if v_n <> 0 then
     raise exception
@@ -1974,6 +1977,7 @@ begin
   end if;
   select count(*) into v_n from api.source_capture_inventory
    where table_name like 'wildbrain\_%'
+     and table_name not in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication')
      and count_note not like '%WildBrain capture%';
   if v_n <> 0 then
     raise exception

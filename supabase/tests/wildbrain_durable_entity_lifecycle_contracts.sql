@@ -1,0 +1,207 @@
+-- #3685: synthetic, rollback-only WildBrain durable entity state contracts.
+-- No licensed value is used; every identity below is invented.
+
+begin;
+
+do $catalog$
+declare v_table text;
+begin
+  foreach v_table in array array['wildbrain_entity_lifecycle','wildbrain_lifecycle_publication'] loop
+    if not (select relrowsecurity from pg_class where oid = format('plm.%I', v_table)::regclass) then
+      raise exception 'RLS is disabled for plm.%', v_table;
+    end if;
+    if has_table_privilege('anon', format('plm.%I', v_table), 'select')
+       or not has_table_privilege('authenticated', format('plm.%I', v_table), 'select')
+       or has_table_privilege('authenticated', format('plm.%I', v_table), 'insert')
+       or has_table_privilege('service_role', format('plm.%I', v_table), 'insert')
+       or has_table_privilege('service_role', format('plm.%I', v_table), 'update')
+       or has_table_privilege('service_role', format('plm.%I', v_table), 'delete') then
+      raise exception 'WildBrain lifecycle grants are incorrect for plm.%', v_table;
+    end if;
+  end loop;
+  if has_function_privilege('anon', 'plm.wildbrain_publish_lifecycle(uuid)', 'execute')
+     or has_function_privilege('authenticated', 'plm.wildbrain_publish_lifecycle(uuid)', 'execute')
+     or not has_function_privilege('service_role', 'plm.wildbrain_publish_lifecycle(uuid)', 'execute') then
+    raise exception 'WildBrain publish function execute grants are incorrect';
+  end if;
+end
+$catalog$;
+
+-- A..D complete; C uses another portal; E complete but short of its reported total
+-- (partial coverage); R rejected (authentication loss); O older than A.
+insert into plm.wildbrain_capture (id, capture_key, source_repository, source_commit_sha,
+  source_manifest_sha256, portal_base_url, source_captured_at, status, load_completed_at,
+  pagination_verified, reported_total, expected_counts, error_summary, raw_summary, created_by)
+select v.id::uuid, 'contract:' || v.id, 'synthetic/repo', repeat('a', 40), repeat('b', 64),
+       v.portal, v.at::timestamptz, v.status, case when v.status = 'complete' then now() end,
+       v.status = 'complete', v.total, '{}'::jsonb,
+       case when v.status = 'complete' then '[]' else '[{"code":"synthetic"}]' end::jsonb,
+       '{}'::jsonb, 'contract'
+  from (values
+    ('36850000-0000-4000-8000-00000000000a', '2026-09-01T00:00:00Z', 'complete', 'https://p1.invalid', 2),
+    ('36850000-0000-4000-8000-00000000000b', '2026-09-02T00:00:00Z', 'complete', 'https://p1.invalid', 1),
+    ('36850000-0000-4000-8000-00000000000c', '2026-09-03T00:00:00Z', 'complete', 'https://p2.invalid', 3),
+    ('36850000-0000-4000-8000-00000000000d', '2026-09-04T00:00:00Z', 'complete', 'https://p2.invalid', 1),
+    ('36850000-0000-4000-8000-0000000000ee', '2026-09-05T00:00:00Z', 'complete', 'https://p2.invalid', 5),
+    ('36850000-0000-4000-8000-0000000000ff', '2026-09-06T00:00:00Z', 'rejected', 'https://p2.invalid', 1),
+    ('36850000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', 'https://p1.invalid', 0)
+  ) v(id, at, status, portal, total);
+
+insert into plm.wildbrain_era (capture_id, era_source_id, era_label, normalized_era_label, is_root, raw)
+select c::uuid, 'era-1', 'Era One', 'era one', true, '{}'::jsonb
+  from unnest(array['36850000-0000-4000-8000-00000000000a','36850000-0000-4000-8000-00000000000b',
+                    '36850000-0000-4000-8000-00000000000c','36850000-0000-4000-8000-00000000000d',
+                    '36850000-0000-4000-8000-0000000000ee']) c;
+
+insert into plm.wildbrain_asset (capture_id, asset_source_id, asset_uuid, asset_name, era_source_id,
+  universe_label, source_hash, raw)
+select v.cap::uuid, v.id, 'uuid-' || v.id, 'n', 'era-1', 'u', v.hash, '{}'::jsonb
+  from (values
+    ('36850000-0000-4000-8000-00000000000a', 'a-1', 'h1'),
+    ('36850000-0000-4000-8000-00000000000a', 'a-2', 'h1'),
+    ('36850000-0000-4000-8000-00000000000b', 'a-1', 'h2'),
+    ('36850000-0000-4000-8000-00000000000c', 'a-2', 'h1'),
+    ('36850000-0000-4000-8000-00000000000c', 'a-3', 'h1'),
+    ('36850000-0000-4000-8000-00000000000c', 'a-4', 'h1'),
+    ('36850000-0000-4000-8000-00000000000d', 'a-5', 'h1'),
+    ('36850000-0000-4000-8000-0000000000ee', 'a-5', 'h1')
+  ) v(cap, id, hash);
+
+-- Inferred guides: A and B use different rule versions, so B must not withdraw A's guide.
+insert into plm.wildbrain_guide (capture_id, guide_key, guide_label, normalized_guide_label, rule_version, raw)
+values ('36850000-0000-4000-8000-00000000000a', 'guide a', 'Guide A', 'Guide A', 'rule@1', '{}'::jsonb),
+       ('36850000-0000-4000-8000-00000000000b', 'guide b', 'Guide B', 'Guide B', 'rule@2', '{}'::jsonb);
+
+set local role service_role;
+do $refusals$
+declare v_id text;
+begin
+  foreach v_id in array array['36850000-0000-4000-8000-0000000000ff','36850000-0000-4000-8000-0000000000ee'] loop
+    begin
+      perform plm.wildbrain_publish_lifecycle(v_id::uuid);
+      raise exception 'publish accepted an unqualified capture %', v_id;
+    exception when sqlstate '22023' then null;
+    end;
+  end loop;
+  begin
+    perform plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000abcd');
+    raise exception 'publish accepted an unknown capture';
+  exception when sqlstate 'P0002' then null;
+  end;
+end
+$refusals$;
+
+select plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000000a');
+reset role;
+
+do $bootstrap$
+begin
+  if (select mode from plm.wildbrain_lifecycle_publication where capture_id = '36850000-0000-4000-8000-00000000000a') <> 'bootstrap' then
+    raise exception 'first publication is not a bootstrap';
+  end if;
+  if (select count(*) from plm.wildbrain_entity_lifecycle) <> 4 then
+    raise exception 'bootstrap did not record two assets, one era and one guide';
+  end if;
+  if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
+    raise exception 'publication did not hold its transaction advisory lock';
+  end if;
+end
+$bootstrap$;
+
+set local role service_role;
+do $order$
+begin
+  begin
+    perform plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000000a');
+    raise exception 'publish accepted a capture twice';
+  exception when unique_violation then null;
+  end;
+  begin
+    perform plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-000000000001');
+    raise exception 'publish accepted an older capture';
+  exception when sqlstate '22023' then null;
+  end;
+end
+$order$;
+
+-- B: comparable portal. a-2 is withdrawn; guide a is NOT (rule version changed).
+select plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000000b');
+reset role;
+
+do $comparable$
+begin
+  if (select mode from plm.wildbrain_lifecycle_publication where capture_id = '36850000-0000-4000-8000-00000000000b') <> 'comparable' then
+    raise exception 'same portal did not compare';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_kind = 'asset' and entity_key = 'a-2'
+                 and status = 'withdrawn' and first_withdrawn_at = '2026-09-02T00:00:00Z') then
+    raise exception 'absent baseline asset was not withdrawn';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_kind = 'guide' and entity_key = 'guide a' and status = 'active') then
+    raise exception 'an inferred guide was withdrawn across a rule-version change';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_key = 'a-1'
+                 and last_changed_capture_id = '36850000-0000-4000-8000-00000000000b'
+                 and first_seen_capture_id = '36850000-0000-4000-8000-00000000000a') then
+    raise exception 'changed asset lost first sighting or change marker';
+  end if;
+end
+$comparable$;
+
+set local role service_role;
+select plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000000c');
+reset role;
+
+do $rebaseline$
+begin
+  if (select mode from plm.wildbrain_lifecycle_publication where capture_id = '36850000-0000-4000-8000-00000000000c') <> 'rebaseline' then
+    raise exception 'different portal was compared';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_key = 'a-1' and status = 'active') then
+    raise exception 'incomparable run withdrew an entity';
+  end if;
+  if not exists (select 1 from plm.wildbrain_entity_lifecycle where entity_key = 'a-2'
+                 and status = 'active' and first_withdrawn_at = '2026-09-02T00:00:00Z') then
+    raise exception 'reappearing asset was not reactivated with history kept';
+  end if;
+end
+$rebaseline$;
+
+set local role service_role;
+select plm.wildbrain_publish_lifecycle('36850000-0000-4000-8000-00000000000d');
+reset role;
+
+do $held$
+begin
+  if (select mode from plm.wildbrain_lifecycle_publication where capture_id = '36850000-0000-4000-8000-00000000000d') <> 'withdrawal_held' then
+    raise exception 'bulk drop was not held';
+  end if;
+  if exists (select 1 from plm.wildbrain_entity_lifecycle where withdrawn_capture_id = '36850000-0000-4000-8000-00000000000d') then
+    raise exception 'held publication withdrew an entity';
+  end if;
+end
+$held$;
+
+set local role service_role;
+do $direct$
+begin
+  begin
+    delete from plm.wildbrain_entity_lifecycle;
+    raise exception 'service_role deleted lifecycle rows';
+  exception when insufficient_privilege then null;
+  end;
+end
+$direct$;
+reset role;
+
+do $constraint$
+begin
+  begin
+    update plm.wildbrain_entity_lifecycle set status = 'withdrawn' where entity_key = 'a-5';
+    raise exception 'withdrawn status without a withdrawal time was accepted';
+  exception when check_violation then null;
+  end;
+end
+$constraint$;
+
+rollback;

@@ -132,6 +132,7 @@ declare
   v_drop       bigint;
   v_limit      bigint;
   v_held       boolean := false;
+  v_eligible   uuid[] := '{}';
 begin
   -- Concurrent publication locking: every publication for this licensor is serial.
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('plm.nbcu_publish_lifecycle', 0));
@@ -175,6 +176,21 @@ begin
     v_mode := 'rebaseline';
   end if;
 
+  -- Withdrawal-eligible sightings: the baseline itself, plus -- across a run of held
+  -- publications -- each held publication's own baseline. A held drop is therefore
+  -- re-evaluated by the next comparable run instead of being orphaned.
+  if v_prev.capture_id is not null then
+    with recursive chain as (
+      select p.capture_id, p.baseline_capture_id, p.mode
+        from plm.nbcu_lifecycle_publication p where p.capture_id = v_prev.capture_id
+      union all
+      select p.capture_id, p.baseline_capture_id, p.mode
+        from chain c join plm.nbcu_lifecycle_publication p on p.capture_id = c.baseline_capture_id
+       where c.mode = 'withdrawal_held'
+    )
+    select pg_catalog.array_agg(chain.capture_id) into v_eligible from chain;
+  end if;
+
   insert into plm.nbcu_lifecycle_publication
     (capture_id, baseline_capture_id, mode, derivation_contract, scope_sha256, source_captured_at)
   values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
@@ -190,7 +206,7 @@ begin
   insert into nbcu_lifecycle_seen
   select distinct on (k.dam_path) 'asset', k.dam_path, 'dam_path',
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(k.display_modified, k.display_size)::text, 'UTF8')), 'hex')
-    from (select pg_catalog.regexp_replace(a.asset_path, '^/content/asset-share-commons/en/details/[a-z]+[.]html(?=/content/dam/)', '') as dam_path,
+    from (select pg_catalog.regexp_replace(a.asset_path, '^/content/asset-share-commons/en/details/[^/]+[.]html(?=/content/dam/)', '') as dam_path,
                  a.asset_path, a.display_modified, a.display_size
             from plm.nbcu_asset a where a.capture_id = p_capture_id) k
    order by k.dam_path, k.asset_path;
@@ -214,15 +230,16 @@ begin
          pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(f.raw::text, 'UTF8')), 'hex')
     from plm.nbcu_ip_family f where f.capture_id = p_capture_id;
 
-  -- Bulk-drop guard, evaluated before any write. Denominator: entities of the kind seen
-  -- in the baseline publication. Held when drops exceed the smaller of 100 rows or 2%
+  -- Bulk-drop guard, evaluated before any write. Denominator: entities of the kind whose
+  -- last sighting is withdrawal-eligible (see above). A persistent mass drop keeps being
+  -- held and recorded; applying it needs a separately reviewed change. Held when drops exceed the smaller of 100 rows or 2%
   -- of that denominator (never below one row).
   if v_mode = 'comparable' then
     foreach v_kind in array array['asset','property','character','style_guide','ip_family'] loop
       select pg_catalog.count(*) into v_base from plm.nbcu_entity_lifecycle l
-       where l.entity_kind = v_kind and l.last_seen_capture_id = v_prev.capture_id;
+       where l.entity_kind = v_kind and l.last_seen_capture_id = any(v_eligible);
       select pg_catalog.count(*) into v_drop from plm.nbcu_entity_lifecycle l
-       where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = v_prev.capture_id
+       where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
          and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
       v_limit := greatest(1, least(100, pg_catalog.floor(v_base * 0.02)::bigint));
       if v_drop > v_limit then
@@ -248,7 +265,7 @@ begin
     v_drop := 0;
     if v_mode = 'comparable' then
       select pg_catalog.count(*) into v_drop from plm.nbcu_entity_lifecycle l
-       where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = v_prev.capture_id
+       where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
          and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
     end if;
     v_counts := v_counts || pg_catalog.jsonb_build_object(v_kind, pg_catalog.jsonb_build_object(
@@ -260,7 +277,7 @@ begin
        set status = 'withdrawn', withdrawn_at = v_cap.source_captured_at,
            first_withdrawn_at = coalesce(l.first_withdrawn_at, v_cap.source_captured_at),
            withdrawn_capture_id = p_capture_id
-     where l.status = 'active' and l.last_seen_capture_id = v_prev.capture_id
+     where l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
        and not exists (select 1 from nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
   end if;
 

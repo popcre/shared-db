@@ -9,12 +9,12 @@ select (
   and to_regclass('plm.nbcu_entity_lifecycle') is not null
   and to_regclass('plm.nbcu_lifecycle_publication') is not null
   and (select bool_and(relrowsecurity) from pg_class
-        where oid in ('plm.nbcu_entity_lifecycle'::regclass, 'plm.nbcu_lifecycle_publication'::regclass))
+        where oid in (to_regclass('plm.nbcu_entity_lifecycle'), to_regclass('plm.nbcu_lifecycle_publication'))) is true
   and not has_table_privilege('service_role', 'plm.nbcu_entity_lifecycle', 'INSERT')
   and not has_table_privilege('service_role', 'plm.nbcu_entity_lifecycle', 'DELETE')
   and has_table_privilege('authenticated', 'plm.nbcu_entity_lifecycle', 'SELECT')
   and not has_table_privilege('anon', 'plm.nbcu_entity_lifecycle', 'SELECT')
-  and (select prosecdef from pg_proc where oid = to_regprocedure('plm.nbcu_publish_lifecycle(uuid)'))
+  and coalesce((select prosecdef from pg_proc where oid = to_regprocedure('plm.nbcu_publish_lifecycle(uuid)')), false)
   and has_function_privilege('service_role', 'plm.nbcu_publish_lifecycle(uuid)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'plm.nbcu_publish_lifecycle(uuid)', 'EXECUTE')
   and not has_function_privilege('anon', 'plm.nbcu_publish_lifecycle(uuid)', 'EXECUTE')

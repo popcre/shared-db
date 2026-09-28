@@ -43,7 +43,8 @@ select v.id::uuid, 'contract:' || v.id, 'synthetic/repo', repeat('a', 40), repea
     ('36830000-0000-4000-8000-00000000000d', '2026-09-04T00:00:00Z', 'complete', '[]'),
     ('36830000-0000-4000-8000-00000000000e', '2026-09-05T00:00:00Z', 'complete', '[{"code":"synthetic"}]'),
     ('36830000-0000-4000-8000-0000000000ff', '2026-09-06T00:00:00Z', 'rejected', '[{"code":"synthetic"}]'),
-    ('36830000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', '[]')
+    ('36830000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', '[]'),
+    ('36830000-0000-4000-8000-000000000006', '2026-09-07T00:00:00Z', 'complete', '[]')
   ) v(id, at, status, err);
 
 insert into plm.nbcu_scope (capture_id, scope_key, scope_label, scope_href, page_count,
@@ -57,7 +58,8 @@ select v.cap::uuid, 'href-sha256:' || repeat(v.k, 64), 'scope ' || v.k, 'https:/
     ('36830000-0000-4000-8000-00000000000d','1'),
     ('36830000-0000-4000-8000-00000000000e','1'),
     ('36830000-0000-4000-8000-0000000000ff','1'),
-    ('36830000-0000-4000-8000-000000000001','1')
+    ('36830000-0000-4000-8000-000000000001','1'),
+    ('36830000-0000-4000-8000-000000000006','1')
   ) v(cap, k);
 
 insert into plm.nbcu_asset (capture_id, asset_source_key, asset_path, file_name, display_size,
@@ -73,7 +75,10 @@ select v.cap::uuid, v.path, v.path, 'f', '1 KB', v.modified, '[]', '[]', '[]', '
     ('36830000-0000-4000-8000-00000000000c', '/content/dam/synthetic/three.png', 'm1'),
     ('36830000-0000-4000-8000-00000000000c', '/content/dam/synthetic/four.png', 'm1'),
     ('36830000-0000-4000-8000-00000000000d', '/content/dam/synthetic/five.png', 'm1'),
-    ('36830000-0000-4000-8000-00000000000e', '/content/dam/synthetic/five.png', 'm1')
+    ('36830000-0000-4000-8000-00000000000e', '/content/dam/synthetic/five.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000006', '/content/asset-share-commons/en/details/stream.html/content/dam/synthetic/five.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/three.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/four.png', 'm1')
   ) v(cap, path, modified);
 
 insert into plm.nbcu_property (capture_id, property_key, property_source_id, property_label,
@@ -117,7 +122,9 @@ begin
   if (select count(*) from plm.nbcu_entity_lifecycle) <> 3 then
     raise exception 'bootstrap did not record exactly two assets and one property';
   end if;
-  if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted) then
+  if not exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+                 and objsubid = 1
+                 and ((classid::bigint << 32) | objid::bigint) = hashtextextended('plm.nbcu_publish_lifecycle', 0)) then
     raise exception 'publication did not hold its transaction advisory lock';
   end if;
 end
@@ -204,6 +211,56 @@ end
 $held$;
 
 -- Direct writes are refused for the loader role; withdrawal state is constrained.
+-- After a held publication, the next comparable run re-evaluates the held drop instead
+-- of orphaning it: /content/dam/synthetic/two.png was last seen before the hold and is now withdrawn.
+set local role service_role;
+select plm.nbcu_publish_lifecycle('36830000-0000-4000-8000-000000000006');
+reset role;
+
+do $after_hold$
+begin
+  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-000000000006') <> 'comparable' then
+    raise exception 'run after a held publication did not compare';
+  end if;
+  if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/two.png'
+                 and status = 'withdrawn' and withdrawn_capture_id = '36830000-0000-4000-8000-000000000006') then
+    raise exception 'drop held earlier was orphaned instead of re-evaluated';
+  end if;
+  if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/five.png' and status = 'active') then
+    raise exception 'entity seen after the hold is not active';
+  end if;
+end
+$after_hold$;
+
+-- Exact objects: column order and named constraints, not just names that resolve.
+do $exact$
+begin
+  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+       where attrelid = 'plm.nbcu_entity_lifecycle'::regclass and attnum > 0 and not attisdropped)
+     <> 'entity_kind,entity_key,identity_basis,first_seen_capture_id,first_seen_at,last_seen_capture_id,last_seen_at,last_changed_capture_id,change_signal,status,withdrawn_at,first_withdrawn_at,withdrawn_capture_id' then
+    raise exception 'plm.nbcu_entity_lifecycle columns differ from the reviewed shape';
+  end if;
+  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+       where attrelid = 'plm.nbcu_lifecycle_publication'::regclass and attnum > 0 and not attisdropped)
+     <> 'capture_id,baseline_capture_id,mode,derivation_contract,scope_sha256,source_captured_at,counts,published_at' then
+    raise exception 'plm.nbcu_lifecycle_publication columns differ from the reviewed shape';
+  end if;
+  if (select count(*) from pg_constraint where conrelid = 'plm.nbcu_entity_lifecycle'::regclass
+       and conname in ('nbcu_entity_lifecycle_pkey','nbcu_entity_lifecycle_kind_chk','nbcu_entity_lifecycle_status_chk',
+                       'nbcu_entity_lifecycle_withdrawn_at_chk','nbcu_entity_lifecycle_history_chk')) <> 5
+     or (select count(*) from pg_constraint where conrelid = 'plm.nbcu_entity_lifecycle'::regclass
+          and contype = 'f' and confrelid = 'plm.nbcu_lifecycle_publication'::regclass) <> 4
+     or (select count(*) from pg_constraint where conrelid = 'plm.nbcu_lifecycle_publication'::regclass
+          and conname in ('nbcu_lifecycle_publication_pkey','nbcu_lifecycle_publication_mode_chk',
+                          'nbcu_lifecycle_publication_baseline_chk','nbcu_lifecycle_publication_scope_chk')) <> 4 then
+    raise exception 'durable-state constraints differ from the reviewed shape';
+  end if;
+  if not (select prosecdef from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure) then
+    raise exception 'publish function is not SECURITY DEFINER';
+  end if;
+end
+$exact$;
+
 set local role service_role;
 do $direct$
 begin

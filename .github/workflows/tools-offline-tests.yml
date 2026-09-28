@@ -246,6 +246,15 @@ jobs:
           done
           node --test scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs
 
+      - name: Run the Supabase MCP launcher tests (#3659)
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the
+        # production-bound .mcp.json (--read-only, pinned version, no secret).
+        # node --test exits non-zero if the file is absent.
+        run: |
+          set -euo pipefail
+          node --test scripts/mcp-supabase-launch.test.mjs
+
       - name: Refuse to run with any production authorization present
         run: |
           set -euo pipefail

@@ -55,6 +55,16 @@ No refresh hard-deletes licensing Master Data.
 - Inactive or non-license Creative Assets identities remain preserved as source evidence, but they must not create canonical Property, Asset, or Style Guide links. Portal-presence status is separate: a source record may remain active in a capture manifest while its licensing status is inactive.
 - A future signed amendment changes Warner entitlement only after the private contract schedule and mappings are updated and revalidated. A portal refresh, ColdLion change, or newly visible asset cannot supersede the signed schedule by itself.
 
+## WildBrain Strawberry Shortcake property scope
+
+**Status: Settled. Authority: Laura, POP licensing team, confirmed 2026-09-25 and relayed by Albert Hazan the same day.**
+
+- For POP Creations, the Licensor WildBrain has exactly **one** Strawberry Shortcake Property: **Strawberry Shortcake Classic**, the option of that name in WildBrain CPLG's MediaBox Product Approvals (Submissions) system.
+- The Submissions system also offers `Strawberry Shortcake Bitty` and `Strawberry Shortcake Publishing`, and the rest of the WildBrain CPLG agency roster. None of these is ingested as a POP Property. The capture is kept only as private source evidence.
+- From the WildBrain Creative site (the WildBrain DAM Franchise / Era hierarchy), the eras `Strawberry Shortcake: 2003`, `Strawberry Shortcake: Berry in the Big City`, and `Strawberry Shortcake: Bitty` are **not ingested**.
+- The Creative-site root `Strawberry Shortcake`, and `Strawberry Shortcake: Classic`, both map to the Submissions Property `Strawberry Shortcake Classic`. This is an explicit owner-reviewed equivalence, not a name match.
+- The exact source identities and decisions live only in the private `u2giants/licensor-source-data` repository at `wildbrain/creative-to-submissions-strawberry-shortcake.csv` and `wildbrain/submissions/README.md`.
+
 ## Relationships
 
 - One Licensor may own many Properties; each Property has one owning Licensor at a time.
@@ -141,6 +151,37 @@ an explicit reviewed decision. Similar names are not a mapping. Every
 unresolved Creative Property stays visible and is highlighted red in DB Data
 Admin. Contract evidence remains separate and reports incomplete document
 chains explicitly rather than inferring missing terms.
+
+## Disney DCP Vault artwork withdrawal signals
+
+**Settled: operational practice reported by Ilona, 2026-09-25** (Licensing;
+relayed by Albert Hazan). Provenance and full quotation: issue
+[#3347](https://github.com/popcre/shared-db/issues/3347)
+(orchestrator work: DCP capture qualification). This is how POP confirms that
+Disney withdrew style-guide artwork. It is not a Disney written policy document
+and is not a legal-rights ruling.
+
+- Disney usually sends **no formal withdrawal notice**. A notice is the
+  exception for a huge change, not the normal path. Do not design process
+  around waiting for a letter.
+- The normal operational signal is a style-guide image marked **"UPDATED"**.
+  POP must notice what got removed and then **manually remove** the
+  corresponding item. Withdrawal confirmation is that observation plus our
+  manual action — not a vendor message.
+- Alternate path: the style guide carries a **sunset date from the moment it
+  is created**. That pre-existing date is the withdrawal signal.
+
+**Separation of facts still in force:** disappearance from a portal is not by
+itself verified Disney withdrawal, nor proof of legal entitlement, termination
+or lack of rights. Observed source absence, confirmed vendor withdrawal (the
+UPDATED-removal or sunset-date signals above), and legal rights remain three
+separate facts. Missing identities are marked, never deleted; reappearance
+preserves first-seen and first-withdrawal history.
+
+This rule does not weaken the #3347 engineering contract (authenticated
+exhaustive coverage, immutable retained provenance, zero failed fetches,
+rejection of incomparable captures). It settles only what the business treats
+as withdrawal confirmation.
 
 ## Talent likeness and royalty
 

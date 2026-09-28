@@ -77,7 +77,7 @@ jobs:
   relay-check:
     name: Relay liveness check
     if: ${{ github.event_name == 'schedule' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
       needed: ${{ steps.look.outputs.needed }}
@@ -100,7 +100,7 @@ jobs:
     name: Reviewer start watch
     needs: relay-check
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.relay-check.outputs.needed == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 355
     # One leg at a time, and never cancel a leg mid-reroute: the next one waits (pending).
     concurrency:

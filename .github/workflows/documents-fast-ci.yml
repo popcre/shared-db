@@ -1,0 +1,118 @@
+name: Documents fast CI route
+
+# TRUSTED PURE-PROSE FAST CI ROUTE (issue #3383).
+#
+# A true prose-only pull request may use a trusted fast CI path and skip the
+# engineering suites. Anything else -- code, migrations, executable agent
+# instructions, symlinks, executable modes -- retains the full path. The proof
+# is an EXACT base/head Git inventory including file modes. Misclassification
+# fails closed: anything the classifier does not positively recognise as pure
+# prose takes the full engineering path.
+#
+# This workflow runs TRUSTED BASE CODE ONLY. It never checks out or executes the
+# pull request head. The head is fetched as a git object and diffed; nothing
+# from the head runs. A head therefore cannot rewrite its own classifier.
+#
+# It is NOT a required status context and it is NOT a merge authorization. It
+# publishes no commit status at all, so it cannot collide with the documents-only
+# merge-authorization context (issue #3505) and it cannot satisfy or stand in for
+# the guarded migration merge authorization (issue #3488). Branch protection is
+# unchanged.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documents-fast-ci-route-${{ github.event.pull_request.number || github.ref }}
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  route:
+    name: Documents fast CI route
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Prove the protected base identity before checkout
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'pull_request_target' ]; then
+            test "$BASE_REF" = main
+            test "$BASE_REPO" = "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Check out trusted base code only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prove the classifier and its tests before trusting them
+        run: >-
+          node --test
+          scripts/check-documents-ci-route.test.mjs
+          scripts/documents-fast-ci-workflow.test.mjs
+          scripts/lib/documents-only-change.test.mjs
+
+      - name: Read the head as a git object and classify the route
+        id: route
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          # Fail closed: no comparable base/head pair means the full path.
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo 'route=full' >> "$GITHUB_OUTPUT"
+            echo 'Full engineering path: no base/head pair to prove an inventory against.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Fetch the head OBJECTS only. Nothing from the head is checked out
+          # or executed; it exists here solely as the right-hand side of a diff.
+          # Fail closed: an unfetchable head is a full path, never a red job
+          # and never a silent fast route.
+          if ! git fetch --no-tags --depth=1 origin "$HEAD_SHA"; then
+            echo 'route=full' >> "$GITHUB_OUTPUT"
+            echo 'Full engineering path: head objects could not be fetched.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if node scripts/check-documents-ci-route.mjs "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'route=pure-prose' >> "$GITHUB_OUTPUT"
+            echo 'Pure-prose fast CI route proven from an exact base/head inventory.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'route=full' >> "$GITHUB_OUTPUT"
+            echo 'Full engineering path: the change is not proven pure prose.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish the routing decision
+        env:
+          ROUTE: ${{ steps.route.outputs.route }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Documents fast CI route'
+            echo ''
+            echo "- base: \`$BASE_SHA\`"
+            echo "- head: \`$HEAD_SHA\`"
+            echo "- decision: \`$ROUTE\`"
+            echo ''
+            echo 'This is a routing decision only. It is not a merge authorization and it never'
+            echo 'stands in for the guarded migration merge authorization.'
+          } >> "$GITHUB_STEP_SUMMARY"

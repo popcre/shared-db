@@ -30,7 +30,7 @@ concurrency:
 jobs:
   label:
     name: Issue orchestrator label
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

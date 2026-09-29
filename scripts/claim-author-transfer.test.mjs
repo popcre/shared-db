@@ -121,7 +121,8 @@ test('retry after the claim write confirms the exact prior adoption',()=>{
   const update=io.updateIssue
   io.updateIssue=(number,change)=>{update(number,change);wrote=true}
   io.getIssue=(number)=>{if(wrote){wrote=false;throw new Error('readback interrupted')}return original(number)}
-  assert.throws(()=>transferClaimAuthor(args,NOW,io),/readback interrupted/)
+  const first=transferClaimAuthor(args,NOW,io)
+  assert.ok(first.applied_with_warning,'readback interruption is reported as applied_with_warning')
   io.getIssue=original
   assert.equal(transferClaimAuthor(args,NOW,io).idempotent,true)
 })
@@ -152,10 +153,11 @@ test('an old author cannot resume, renew, or rebind after adoption',()=>{
   assert.equal(io.issues.get(3378).body,body)
 })
 
-test('a changed permanent reservation after claim mutation refuses success',()=>{
+test('a changed permanent reservation after claim mutation reports applied_with_warning',()=>{
   const io=fixture(),original=io.updateIssue
   io.updateIssue=(number,change)=>{original(number,change);io.refs.set('refs/db-claims/'+VERSION,'e'.repeat(40))}
-  assert.throws(()=>transferClaimAuthor(args,NOW,io),/reservation changed after adoption/)
+  const result=transferClaimAuthor(args,NOW,io)
+  assert.ok(result.applied_with_warning&&/reservation changed|permanent version reservation/.test(result.applied_with_warning),'reservation warning is informative')
   assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
 })
 

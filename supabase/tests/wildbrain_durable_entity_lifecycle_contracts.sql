@@ -246,6 +246,25 @@ begin
      or (select provolatile from pg_proc where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure) <> 'v' then
     raise exception 'publish function search_path pin or volatility differs from the reviewed shape';
   end if;
+  -- The upstream columns the publish function reads, pinned by exact type (review of PR
+  -- #3731): a rename fails the fixture inserts, but a type change would not.
+  if (select string_agg(table_name || '.' || column_name || '=' || data_type, ',' order by table_name, column_name)
+        from information_schema.columns
+       where table_schema = 'plm'
+         and (table_name, column_name) in (
+               ('wildbrain_capture','status'), ('wildbrain_capture','load_completed_at'),
+               ('wildbrain_capture','error_summary'), ('wildbrain_capture','media_downloaded'),
+               ('wildbrain_capture','pagination_verified'), ('wildbrain_capture','truncated_child_lists'),
+               ('wildbrain_capture','reported_total'), ('wildbrain_capture','source_captured_at'),
+               ('wildbrain_capture','portal_base_url'), ('wildbrain_guide','rule_version')))
+     is distinct from (select string_agg(x, ',' order by x) from unnest(array[
+       'wildbrain_capture.error_summary=jsonb', 'wildbrain_capture.load_completed_at=timestamp with time zone',
+       'wildbrain_capture.media_downloaded=integer', 'wildbrain_capture.pagination_verified=boolean',
+       'wildbrain_capture.portal_base_url=text', 'wildbrain_capture.reported_total=integer',
+       'wildbrain_capture.source_captured_at=timestamp with time zone', 'wildbrain_capture.status=text',
+       'wildbrain_capture.truncated_child_lists=integer', 'wildbrain_guide.rule_version=text']) x) then
+    raise exception 'upstream columns read by the publish function differ from the reviewed types';
+  end if;
   -- Every named CHECK, by exact name and table, and nothing else.
   if (select string_agg(conname, ',' order by conname) from pg_constraint
        where conrelid = 'plm.wildbrain_entity_lifecycle'::regclass and contype = 'c')

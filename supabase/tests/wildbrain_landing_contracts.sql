@@ -49,7 +49,7 @@
 
 
 -- =====================================================================================
--- A. OBJECT EXISTENCE -- 11 tables and 2 functions, read from the catalog. No views.
+-- A. OBJECT EXISTENCE -- 13 tables and 2 functions, read from the catalog. No views.
 -- =====================================================================================
 do $$
 declare
@@ -298,8 +298,8 @@ begin
 
   -- CHANGED BY MIGRATION 20260819151510 (issue #1249, the owner ruling "scrape data
   -- should be visible to Licensing department users"). This block asserted that
-  -- `authenticated` held NOTHING on the eleven wildbrain tables. It now holds SELECT on
-  -- all eleven and nothing else, and an RLS policy -- not the grant -- decides who that
+  -- `authenticated` held NOTHING on the thirteen wildbrain tables. It now holds SELECT on
+  -- all thirteen and nothing else, and an RLS policy -- not the grant -- decides who that
   -- SELECT actually returns rows to. The behavioural half of that ruling lives in
   -- supabase/tests/wildbrain_nbcu_licensing_read_access_contracts.sql; what stays here is
   -- the half this file has always owned: the grant must not have widened past reads.
@@ -320,7 +320,7 @@ begin
       '#1249 widened READS only', v_n;
   end if;
 
-  -- RLS enabled on all eleven, and one read policy each.
+  -- RLS enabled on all thirteen, and one read policy each.
   select count(*) into v_n from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'plm' and c.relname like 'wildbrain\_%' and c.relkind = 'r' and c.relrowsecurity;
   if v_n <> 13 then  -- 11 landing + 2 #3685 durable-state tables
@@ -1895,7 +1895,7 @@ begin
   raise notice '=== I. api.source_capture_inventory CLASSIFIES WILDBRAIN ===';
 
   -- I1. Every wildbrain table is classified 'wildbrain', and the count is the real number
-  --     of base tables rather than a literal that would drift. The literal 11 is asserted
+  --     of base tables rather than a literal that would drift. The literal 13 is asserted
   --     separately below so this cannot pass vacuously on an empty schema.
   select count(*) into v_tables
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -2008,7 +2008,7 @@ begin
     raise exception 'I6 FAILED: the view no longer reports one row per plm table';
   end if;
 
-  raise notice 'I: 11 wildbrain tables classified, every other source unchanged, columns and grants intact.';
+  raise notice 'I: 13 wildbrain tables classified, every other source unchanged, columns and grants intact.';
 end;
 $$;
 

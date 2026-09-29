@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "work_issue": 3786,
+  "outcome": "ready-for-merge",
+  "pr": 3787,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3786/2",
+  "contract_sha256": "b6141afe546d78d2eea66f8064fb1d87a4ea93b699423a52d994a46c575d3d41",
+  "base_sha": "5d7940597e7343f42e6c906b72da263934754148",
+  "head_sha": "5db252d999214b577f00e9b132926752bd7b643d",
+  "files_changed": [
+    "scripts/lib/zip-entries.mjs",
+    "scripts/lib/zip-entries.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/zip-entries.test.mjs",
+      "exit_code": 0,
+      "evidence": "5 passed, 0 failed on Linux (GNU tar); stored and deflated Python-built zips"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes*.test.mjs",
+      "exit_code": 0,
+      "evidence": "744 passed, 0 failed"
+    }
+  ],
+  "assumptions_resolved": [
+    "GitHub Actions artifact zips use stored/deflate entries; zip64 and encrypted entries are refused explicitly"
+  ],
+  "stop_conditions_hit": []
+}

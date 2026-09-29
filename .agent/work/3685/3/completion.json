@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/3685/3",
   "contract_sha256": "9a6d699595f739a11676ec4c97a6575ee7e6932211ac2fcc96f443e6a310822f",
   "head_sha": "a211550fe3c2f8f7fd4145862b47b495ff08ea5e",
-  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "base_sha": "7adeb4618ef0f7bd87df6ebd867f39d6230dd237",
   "files_changed": [
     ".github/live-proofs/3685.sql",
     "supabase/migrations/20260929010844_wildbrain_durable_entity_lifecycle.sql",

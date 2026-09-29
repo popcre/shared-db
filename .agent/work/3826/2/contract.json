@@ -1,7 +1,11 @@
 {
   "schema_version": 2,
-  "generation": 1,
-  "evidence_parent": null,
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 3826,
+    "generation": 1,
+    "contract_sha256": "ba1ed2561c03ff42e33a3de44cca04c17f029049340e13116cca834f93b7836e"
+  },
   "work_issue": 3826,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
@@ -14,8 +18,11 @@
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    ".agent/work/3821/1/contract.json",
-    ".agent/work/3821/1/completion.json"
+    "docs/verification/throughput-dispositions/scripts~production_business_risk_gate.py.json",
+    ".agent/work/3826/1/contract.json",
+    ".agent/work/3826/1/completion.json",
+    ".agent/work/3826/2/contract.json",
+    ".agent/work/3826/2/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -26,7 +33,8 @@
   ],
   "required_checks": [
     "python3 -m unittest scripts/test_production_business_risk_gate.py",
-    "python3 -m unittest scripts/test_production_business_risk_gate_preview_contents_mutations.py"
+    "python3 -m unittest scripts/test_production_business_risk_gate_preview_contents_mutations.py",
+    "node scripts/check-throughput-truth-audit.mjs"
   ],
   "assumptions": [
     "ALTER FUNCTION with only a volatility flag (immutable/stable/volatile) and no other clause is catalog-only",
@@ -39,7 +47,10 @@
   "file_writes": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    ".agent/work/3821/1/contract.json",
-    ".agent/work/3821/1/completion.json"
+    "docs/verification/throughput-dispositions/scripts~production_business_risk_gate.py.json",
+    ".agent/work/3826/1/contract.json",
+    ".agent/work/3826/1/completion.json",
+    ".agent/work/3826/2/contract.json",
+    ".agent/work/3826/2/completion.json"
   ]
 }

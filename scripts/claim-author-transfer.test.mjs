@@ -162,7 +162,7 @@ test('a changed permanent reservation after claim mutation refuses success',()=>
 test('retired successor worktree identity is refused',()=>{
   const io=fixture(),retiredVersion='20260901000000',retiredSha='e'.repeat(40)
   io.refs.set('refs/db-claims-retired/'+retiredVersion,retiredSha)
-  io.commits.set(retiredSha,{message:formatRetirementRecord({schema_version:1,claim:12,pr:13,head_sha:'b'.repeat(40),branch:'old-branch',version:retiredVersion,worktree:'/TMP/NEW-AUTHOR/',worktree_state:'clean',decision:'owner-terminated',evidence:'artifact:'+'f'.repeat(40),successor_issue:null,created_at:'2026-09-20T00:00:00Z'})})
+  io.commits.set(retiredSha,{message:formatRetirementRecord({schema_version:2,claim:12,pr:13,head_sha:'b'.repeat(40),branch:'old-branch',version:retiredVersion,worktree:'/TMP/NEW-AUTHOR/',worktree_state:'clean',decision:'owner-terminated',evidence:'artifact:'+'f'.repeat(40),successor_issue:null,created_at:'2026-09-20T00:00:00Z'})})
   assert.throws(()=>transferClaimAuthor(args,NOW,io),/terminally retired claim/)
 })
 

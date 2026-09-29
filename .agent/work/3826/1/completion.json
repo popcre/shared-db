@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3826,
+  "outcome": "ready-for-merge",
+  "pr": 3825,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3826/1",
+  "contract_sha256": "ba1ed2561c03ff42e33a3de44cca04c17f029049340e13116cca834f93b7836e",
+  "base_sha": "755bd33cdcefe3f7b0e236c32408668f2d7aac16",
+  "head_sha": "9b21a4ca58742e70aff642533b77e515a62f8725",
+  "files_changed": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py",
+    "docs/verification/throughput-dispositions/scripts~production_business_risk_gate.py.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "Ran 192 tests OK on implementation head 9b21a4ca; includes test_allowlist_entry_alter_function_volatility, test_a_do_assertion_block_reports_no_risk, test_the_real_3725_migration_is_routine"
+    },
+    {
+      "command": "python3 -m unittest scripts/test_production_business_risk_gate_preview_contents_mutations.py",
+      "exit_code": 0,
+      "evidence": "Ran 12 tests OK on implementation head 9b21a4ca"
+    }
+  ],
+  "assumptions_resolved": [
+    "classify_sql reports 0 findings for 20260929005943 with the fix (all three before).",
+    "DO blocks containing DELETE/INSERT/UPDATE/DROP/GRANT/EXECUTE/PERFORM or any non-whitelisted call still report every risk."
+  ],
+  "stop_conditions_hit": []
+}

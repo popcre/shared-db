@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
   LaneError,
+  REVIEW_ASSIGNMENT_REF_PREFIX,
   RETIRED_CLAIM_REF_PREFIX,
   RETIREMENT_SCHEMA_VERSION,
   RETIREMENT_CLOSE_REASON,
@@ -143,6 +144,8 @@ test('#3675 retiring unmerged work needs preservation evidence and an AI reviewe
   assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: 'rescued it', review_approval: art })), /retirement preservation must be artifact/)
   assert.equal(validateRetirementRecord(record({ worktree_state: 'remote', preservation: art, review_approval: art })).review_approval, art)
   assert.throws(() => validateRetirementRecord(record({ preservation: art })), /allowed only for a dirty or remote/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: 'artifact:https://example.com/x', review_approval: art })), /immutable object hash/)
+  assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: art, review_approval: 'artifact:https://example.com/x' })), /immutable object hash/)
   assert.throws(() => validateRetirementRecord(record({ worktree_state: 'dirty', preservation: art, review_approval: art, owner_decision: art })), /unknown field owner_decision/)
 })
 
@@ -453,6 +456,43 @@ test('#3675 a dirty retirement with preservation still refuses without the durab
   assert.notEqual(main([...DIRTY_ARGV, '--preservation', 'artifact:' + 'f'.repeat(40)], NOW, io), 0)
   assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined, 'no tombstone without the durable APPROVE')
   assert.equal(io.closed, undefined)
+})
+
+// A durable single-slot APPROVE keyed exactly as the allocator and governed
+// runner key it: <work issue>-<pr>-<head>. The claim title names the work
+// issue, which differs from the claim's own issue number (Grok REVISE at c6cc3145).
+function approvedDirtyIo({ verdictIssue = 4100 } = {}) {
+  const io = releaseIo(); io.verifyArtifact = () => ({ kind: 'git-object' })
+  io.openClaims = () => [{ number: 4101, title: 'db-claim: work for #4100', body: claimBody(LEASE) }]
+  const findingsBody = 'review findings', assignment = '1'.repeat(40), verdictSha = '4'.repeat(40)
+  const commits = new Map([[assignment, { message: `db-coordination reviewer-cursor sequence=1 reviewer=grok-4.6 issue=${verdictIssue} pr=4102 head=${HEAD} slot=1` }]])
+  io.refs.set(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${verdictIssue}-4102-${HEAD}`, assignment)
+  const record = { verdict: 'APPROVE', head_sha: HEAD, issue: verdictIssue, pr: 4102, slot: 1, reviewer: 'grok-4.6', assignment_sha: assignment, findings_digest: createHash('sha256').update(findingsBody).digest('hex'), findings_ref: 'https://github.com/u2giants/shared-db/pull/4102#issuecomment-1' }
+  io.refs.set(`refs/db-review-verdicts/${verdictIssue}-4102-${HEAD}`, verdictSha)
+  commits.set(verdictSha, { message: `db-review-verdict ${JSON.stringify(record)}`, parents: [{ sha: assignment }] })
+  const baseList = io.listRefs
+  io.listRefs = (prefix) => (prefix.startsWith('refs/db-review') ? [...io.refs].filter(([ref]) => ref.startsWith(prefix)).map(([ref, sha]) => ({ ref, sha })) : baseList(prefix))
+  io.getCommit = (sha) => commits.get(sha)
+  io.readFindings = () => findingsBody
+  return { io, verdictSha }
+}
+
+test('#3675 a dirty retirement succeeds with dereferenceable preservation plus the durable APPROVE under the work issue', () => {
+  resetRetirementSnapshot()
+  const { io, verdictSha } = approvedDirtyIo()
+  const preservation = 'artifact:' + 'f'.repeat(40)
+  assert.equal(main([...DIRTY_ARGV, '--preservation', preservation], NOW, io), 0)
+  const tombstone = readRetirementRecord(VERSION, io)
+  assert.equal(tombstone.preservation, preservation)
+  assert.equal(tombstone.review_approval, `artifact:${verdictSha}`, 'review_approval is written from the durable verdict ref')
+  assert.equal(io.closed.number, 4101)
+})
+
+test('#3675 an APPROVE filed under the claim number instead of the work issue does not satisfy retirement', () => {
+  resetRetirementSnapshot()
+  const { io } = approvedDirtyIo({ verdictIssue: 4101 })
+  assert.notEqual(main([...DIRTY_ARGV, '--preservation', 'artifact:' + 'f'.repeat(40)], NOW, io), 0)
+  assert.equal(io.refs.get(retiredClaimRef(VERSION)), undefined)
 })
 
 test('#3675 this suite is wired into the lane-test CI step', async () => {

@@ -2056,8 +2056,10 @@ export function validateRetirementRecord(record) {
   } else if (RETIREMENT_PRESERVATION_STATES.includes(record.worktree_state)) {
     if (!record.preservation) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires a preservation artifact (rescue branch or patch)`)
     validateImmutableArtifactReference(record.preservation, 'retirement preservation')
+    if (!/^artifact:[0-9a-f]{40,64}$/i.test(String(record.preservation))) throw new LaneError('retirement preservation must be an immutable object hash (artifact:<40-64 hex>), never a URL')
     if (!record.review_approval) throw new LaneError(`terminal retirement from a ${record.worktree_state} worktree requires an allocator-assigned AI reviewer APPROVE artifact`)
     validateImmutableArtifactReference(record.review_approval, 'retirement review_approval')
+    if (!/^artifact:[0-9a-f]{40,64}$/i.test(String(record.review_approval))) throw new LaneError('retirement review_approval must be an immutable object hash (artifact:<40-64 hex>), never a URL')
   } else if (RETIREMENT_PRESERVATION_FIELDS.some((key) => record[key] !== undefined)) throw new LaneError('preservation and review_approval are allowed only for a dirty or remote worktree retirement')
   return record
 }
@@ -9720,7 +9722,7 @@ export function main(argv, now = new Date(), io = githubIo) {
             let resolved
             try{resolved=typeof io.verifyArtifact==='function'?io.verifyArtifact(preservation):null}catch(error){throw new LaneError(`preservation artifact verification is ambiguous: ${error.message}`)}
             if(!resolved)throw new LaneError(`preservation artifact ${preservation} cannot be dereferenced`)
-            const verdicts=assertDurableReviewApproval(claim.number,o.pr,record.head_sha,io)
+            const verdicts=assertDurableReviewApproval(claimWorkIssue(claim),o.pr,record.head_sha,io)
             const approve=(verdicts??[]).find((row)=>row.verdict==='APPROVE')
             const approveSha=approve?String(io.readRef(approve.ref)??'').toLowerCase():''
             if(!/^[0-9a-f]{40}$/.test(approveSha))throw new LaneError(`no dereferenceable durable APPROVE verdict for pull request #${o.pr} at ${record.head_sha}`)

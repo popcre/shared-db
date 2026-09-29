@@ -213,17 +213,17 @@ begin
 end
 $after_hold$;
 
--- Exact objects: column order and named constraints, not just names that resolve.
+-- Exact objects: column order, types and nullability, and named constraints, not just names that resolve.
 do $exact$
 begin
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+  if (select string_agg(attname || ':' || format_type(atttypid, atttypmod) || case when attnotnull then '!' else '' end, ',' order by attnum) from pg_attribute
        where attrelid = 'plm.wildbrain_entity_lifecycle'::regclass and attnum > 0 and not attisdropped)
-     <> 'entity_kind,entity_key,first_seen_capture_id,first_seen_at,last_seen_capture_id,last_seen_at,last_changed_capture_id,change_signal,status,withdrawn_at,first_withdrawn_at,withdrawn_capture_id' then
+     <> 'entity_kind:text!,entity_key:text!,first_seen_capture_id:uuid!,first_seen_at:timestamp with time zone!,last_seen_capture_id:uuid!,last_seen_at:timestamp with time zone!,last_changed_capture_id:uuid!,change_signal:text!,status:text!,withdrawn_at:timestamp with time zone,first_withdrawn_at:timestamp with time zone,withdrawn_capture_id:uuid' then
     raise exception 'plm.wildbrain_entity_lifecycle columns differ from the reviewed shape';
   end if;
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
+  if (select string_agg(attname || ':' || format_type(atttypid, atttypmod) || case when attnotnull then '!' else '' end, ',' order by attnum) from pg_attribute
        where attrelid = 'plm.wildbrain_lifecycle_publication'::regclass and attnum > 0 and not attisdropped)
-     <> 'capture_id,baseline_capture_id,mode,derivation_contract,guide_rule_versions,scope_sha256,source_captured_at,counts,published_at' then
+     <> 'capture_id:uuid!,baseline_capture_id:uuid,mode:text!,derivation_contract:text!,guide_rule_versions:text!,scope_sha256:text!,source_captured_at:timestamp with time zone!,counts:jsonb!,published_at:timestamp with time zone!' then
     raise exception 'plm.wildbrain_lifecycle_publication columns differ from the reviewed shape';
   end if;
   if (select count(*) from pg_constraint where conrelid = 'plm.wildbrain_entity_lifecycle'::regclass
@@ -264,6 +264,12 @@ begin
        'wildbrain_capture.source_captured_at=timestamp with time zone', 'wildbrain_capture.status=text',
        'wildbrain_capture.truncated_child_lists=integer', 'wildbrain_guide.rule_version=text']) x) then
     raise exception 'upstream columns read by the publish function differ from the reviewed types';
+  end if;
+  -- Return type and argument name, not just a signature that resolves (review of #3731).
+  if (select prorettype::regtype::text || '|' || array_to_string(proargnames, ',') from pg_proc
+       where oid = 'plm.wildbrain_publish_lifecycle(uuid)'::regprocedure)
+     is distinct from 'jsonb|p_capture_id' then
+    raise exception 'publish function return type or argument name differs from the reviewed shape';
   end if;
   -- Every named CHECK, by exact name and table, and nothing else.
   if (select string_agg(conname, ',' order by conname) from pg_constraint

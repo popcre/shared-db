@@ -43,7 +43,7 @@ select (
          select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
           where p.oid = to_regprocedure('plm.wildbrain_publish_lifecycle(uuid)')
             and a.grantee = 0 and a.privilege_type = 'EXECUTE')
-  and coalesce((select prosecdef and provolatile = 'v'
+  and coalesce((select prosecdef and provolatile = 'v' and prorettype = 'jsonb'::regtype
                        and proconfig = array['search_path=pg_catalog, pg_temp']
                   from pg_proc where oid = to_regprocedure('plm.wildbrain_publish_lifecycle(uuid)')), false)
   and has_function_privilege('service_role', 'plm.wildbrain_publish_lifecycle(uuid)', 'EXECUTE')

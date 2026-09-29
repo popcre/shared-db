@@ -118,7 +118,7 @@ print(json.dumps({v: classify_pending_version(v, applied, root, migrations, targ
 `
   let raw
   try {
-    raw = execFileSync('python', ['-c', program, repoRoot, JSON.stringify(versions), JSON.stringify(appliedVersions), String(target)], {
+    raw = execFileSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', program, repoRoot, JSON.stringify(versions), JSON.stringify(appliedVersions), String(target)], {
       cwd: repoRoot,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

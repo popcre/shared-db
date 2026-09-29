@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/3826/2",
   "contract_sha256": "ad059e32dc2f035475897c1a3c2516685082de8fd94bf546c73c75ee006760ee",
   "base_sha": "755bd33cdcefe3f7b0e236c32408668f2d7aac16",
-  "head_sha": "9b21a4ca58742e70aff642533b77e515a62f8725",
+  "head_sha": "4a4bffd5a8fbfe2544a4e934b2888f495135862d",
   "files_changed": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",

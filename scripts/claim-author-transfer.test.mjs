@@ -102,6 +102,26 @@ test('takeover never changes claim when evidence-ref creation fails',()=>{
   assert.equal(io.refs.get('refs/db-claims/'+VERSION),RESERVATION)
 })
 
+test('an evidence record that cannot be read back is deleted and leaves no claim change',()=>{
+  const io=fixture(),before=io.issues.get(3378).body,read=io.readRef
+  let reads=0
+  io.readRef=(ref)=>{
+    if(ref.startsWith('refs/db-claim-author-transfers/')&&++reads<=13)return null
+    return read(ref)
+  }
+  assert.throws(()=>transferClaimAuthor(args,NOW,io),/could not be read back/)
+  assert.equal(io.issues.get(3378).body,before)
+  assert.equal([...io.refs.keys()].some((key)=>key.startsWith('refs/db-claim-author-transfers/')),false)
+})
+
+test('branch injection characters are refused before any claim change',()=>{
+  for(const branch of ['codex/2110 old','codex/2110`old','codex/2110\nold']){
+    const io=fixture(),before=io.issues.get(3378).body
+    assert.throws(()=>transferClaimAuthor({...args,branch},NOW,io),/forbidden character/)
+    assert.equal(io.issues.get(3378).body,before)
+  }
+})
+
 test('created evidence can finish an interrupted claim write without a second record',()=>{
   const io=fixture(),original=io.updateIssue
   io.updateIssue=()=>{throw new Error('interrupted')}
@@ -115,16 +135,20 @@ test('created evidence can finish an interrupted claim write without a second re
   assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
 })
 
-test('retry after the claim write confirms the exact prior adoption',()=>{
+test('a failed post-write readback rolls the claim back and retries with the same record',()=>{
   const io=fixture(),original=io.getIssue
   let wrote=false
   const update=io.updateIssue
   io.updateIssue=(number,change)=>{update(number,change);wrote=true}
   io.getIssue=(number)=>{if(wrote){wrote=false;throw new Error('readback interrupted')}return original(number)}
-  const first=transferClaimAuthor(args,NOW,io)
-  assert.ok(first.applied_with_warning,'readback interruption is reported as applied_with_warning')
+  assert.throws(()=>transferClaimAuthor(args,NOW,io),/readback interrupted/)
+  assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.oldOwner)
   io.getIssue=original
-  assert.equal(transferClaimAuthor(args,NOW,io).idempotent,true)
+  const ref=[...io.refs.keys()].find((key)=>key.startsWith('refs/db-claim-author-transfers/'))
+  const result=transferClaimAuthor(args,NOW,io)
+  assert.equal(result.idempotent,false)
+  assert.equal(result.ref,ref)
+  assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
 })
 
 test('malformed adoption records cannot authorize a partial retry',()=>{
@@ -132,6 +156,12 @@ test('malformed adoption records cannot authorize a partial retry',()=>{
     (record)=>{record.human_identity_authenticated=true},
     (record)=>{delete record.authorization_quote},
     (record)=>{record.reservation_sha='not-a-commit'},
+    (record)=>{record.old_owner=record.new_owner},
+    (record)=>{record.branch=''},
+    (record)=>{record.abandonment_issue=0},
+    (record)=>{record.authorization_quote=' padded quote that is long enough '},
+    (record)=>{record.old_worktree_state='not-a-state'},
+    (record)=>{record.recovery_artifact=null},
   ]){
     const io=fixture();io.updateIssue=()=>{throw new Error('interrupted')}
     assert.throws(()=>transferClaimAuthor(args,NOW,io),/interrupted/)
@@ -153,12 +183,11 @@ test('an old author cannot resume, renew, or rebind after adoption',()=>{
   assert.equal(io.issues.get(3378).body,body)
 })
 
-test('a changed permanent reservation after claim mutation reports applied_with_warning',()=>{
+test('a changed permanent reservation after claim mutation rolls the claim back',()=>{
   const io=fixture(),original=io.updateIssue
   io.updateIssue=(number,change)=>{original(number,change);io.refs.set('refs/db-claims/'+VERSION,'e'.repeat(40))}
-  const result=transferClaimAuthor(args,NOW,io)
-  assert.ok(result.applied_with_warning&&/reservation changed|permanent version reservation/.test(result.applied_with_warning),'reservation warning is informative')
-  assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
+  assert.throws(()=>transferClaimAuthor(args,NOW,io),/reservation changed after adoption/)
+  assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.oldOwner)
 })
 
 test('retired successor worktree identity is refused',()=>{

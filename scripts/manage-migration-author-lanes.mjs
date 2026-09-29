@@ -6591,13 +6591,14 @@ function transferRecord(ref,io){
   let record
   try{record=JSON.parse(message.slice(prefix.length))}catch{throw new LaneError('operator adoption record is malformed')}
   const fields=['kind','human_identity_authenticated','issue','claim','pr','head_sha','version','old_owner','new_owner','branch','old_worktree','target_worktree','abandonment_issue','old_worktree_state','reservation_sha','authorization_chat_id','authorization_quote','recovery_artifact','lease_hours']
-  if(!record||typeof record!=='object'||Array.isArray(record)||Object.keys(record).length!==fields.length||Object.keys(record).some((key)=>!fields.includes(key))||record.kind!=='operator-adoption'||record.human_identity_authenticated!==false||!Number.isSafeInteger(record.issue)||!Number.isSafeInteger(record.claim)||!Number.isSafeInteger(record.pr)||!Number.isSafeInteger(record.abandonment_issue)||!/^[0-9a-f]{40}$/.test(String(record.head_sha))||!/^[0-9a-f]{40}$/.test(String(record.reservation_sha))||!/^\d{14}$/.test(String(record.version))||typeof record.authorization_quote!=='string'||record.authorization_quote.trim().length<20||!record.authorization_chat_id||!(record.lease_hours>0&&record.lease_hours<=24))throw new LaneError('operator adoption record has invalid exact fields')
+  if(!record||typeof record!=='object'||Array.isArray(record)||Object.keys(record).length!==fields.length||Object.keys(record).some((key)=>!fields.includes(key))||record.kind!=='operator-adoption'||record.human_identity_authenticated!==false||!Number.isSafeInteger(record.issue)||record.issue<=0||!Number.isSafeInteger(record.claim)||record.claim<=0||!Number.isSafeInteger(record.pr)||record.pr<=0||!Number.isSafeInteger(record.abandonment_issue)||record.abandonment_issue<=0||!/^[0-9a-f]{40}$/.test(String(record.head_sha))||!/^[0-9a-f]{40}$/.test(String(record.reservation_sha))||!/^\d{14}$/.test(String(record.version))||typeof record.old_owner!=='string'||!record.old_owner||typeof record.new_owner!=='string'||!record.new_owner||record.old_owner===record.new_owner||typeof record.branch!=='string'||!record.branch||typeof record.old_worktree!=='string'||!record.old_worktree||typeof record.target_worktree!=='string'||!record.target_worktree||normalizeWorktreePath(record.old_worktree)===normalizeWorktreePath(record.target_worktree)||!WORKTREE_STATES.includes(record.old_worktree_state)||typeof record.recovery_artifact!=='string'||typeof record.authorization_quote!=='string'||record.authorization_quote.trim().length<20||record.authorization_quote!==record.authorization_quote.trim()||!record.authorization_chat_id||!(record.lease_hours>0&&record.lease_hours<=24))throw new LaneError('operator adoption record has invalid exact fields')
   return {sha,record}
 }
 export function transferClaimAuthor(options,now=new Date(),io=githubIo){
   const request={issue:Number(options.issue),claim:Number(options.claim),pr:Number(options.pr),headSha:String(options.headSha??''),oldOwner:String(options.oldOwner??''),newOwner:String(options.newOwner??''),branch:String(options.branch??''),oldWorktree:String(options.worktree??''),targetWorktree:String(options.targetWorktree??''),abandonmentIssue:Number(options.abandonmentIssue),oldWorktreeState:String(options.worktreeState??''),authorizationChatId:String(options.authorizationChatId??''),authorizationQuote:String(options.authorizationQuote??''),recoveryArtifact:String(options.recoveryArtifact??''),leaseHours:Number(options.leaseHours)}
   if(![request.issue,request.claim,request.pr,request.abandonmentIssue].every((n)=>Number.isSafeInteger(n)&&n>0)||!/^[0-9a-f]{40}$/.test(request.headSha)||!request.oldOwner||!request.newOwner||request.oldOwner===request.newOwner||!request.branch||!request.oldWorktree||!request.targetWorktree||!WORKTREE_STATES.includes(request.oldWorktreeState)||!(request.leaseHours>0&&request.leaseHours<=24))throw new LaneError('author transfer requires exact issue, claim, PR, head, old/new owner, branch, old/new worktree, old worktree state, abandonment issue, and lease hours')
-  if(/[\r\n`]/.test(request.newOwner+request.targetWorktree)||/[\s`]/.test(request.branch)||request.newOwner!==request.newOwner.trim()||request.targetWorktree!==request.targetWorktree.trim()||normalizeWorktreePath(request.oldWorktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('successor identity is invalid or reuses the old worktree')
+  if(/[\s`]/.test(request.branch))throw new LaneError('claim branch contains a forbidden character')
+  if(/[\r\n`]/.test(request.newOwner+request.targetWorktree)||request.newOwner!==request.newOwner.trim()||request.targetWorktree!==request.targetWorktree.trim()||normalizeWorktreePath(request.oldWorktree)===normalizeWorktreePath(request.targetWorktree))throw new LaneError('successor identity is invalid or reuses the old worktree')
   if(!request.authorizationChatId||request.authorizationQuote.trim().length<20||request.authorizationQuote!==request.authorizationQuote.trim())throw new LaneError('operator adoption requires current-chat ID and verbatim user authorization quote')
   const proofOptions={claim:request.claim,blockedOn:`issue:#${request.abandonmentIssue}`,worktreeState:request.oldWorktreeState}
   const verify=(allowAdopted=false)=>{
@@ -6635,32 +6636,39 @@ export function transferClaimAuthor(options,now=new Date(),io=githubIo){
   }
   const ownerSha=io.makeOwnerCommit(`db-coordination claim-author-transfer-mutex claim=${request.claim}`)
   acquireMutex(ownerSha,io)
+  let bodyChanged=false,evidenceCreated=false,beforeBody=null,ref=null,transferSha=null
   try{
     const current=io.getIssue(request.claim),currentLease=parseAuthorLease(current?.body??'',now)
     const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,abandonment_issue:request.abandonmentIssue,old_worktree_state:request.oldWorktreeState}
-    const ref=`${CLAIM_AUTHOR_TRANSFER_REF_PREFIX}${request.claim}-${currentLease.version}-${sha256(canonicalJson(identity)).slice(0,20)}`
+    ref=`${CLAIM_AUTHOR_TRANSFER_REF_PREFIX}${request.claim}-${currentLease.version}-${sha256(canonicalJson(identity)).slice(0,20)}`
     const prior=transferRecord(ref,io),fresh=verify(Boolean(prior))
     if(fresh.lease.version!==identity.version)throw new LaneError('claim version changed during operator adoption')
     const record={kind:'operator-adoption',human_identity_authenticated:false,...identity,reservation_sha:fresh.reservationSha,authorization_chat_id:request.authorizationChatId,authorization_quote:request.authorizationQuote,recovery_artifact:request.recoveryArtifact,lease_hours:request.leaseHours}
     if(prior&&JSON.stringify(prior.record)!==JSON.stringify(record))throw new LaneError('existing operator adoption record differs from exact request')
     if(fresh.adopted){if(!prior)throw new LaneError('claim was adopted without immutable evidence');return {claim:request.claim,version:fresh.lease.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:prior.sha,idempotent:true}}
-    let transferSha=prior?.sha
+    transferSha=prior?.sha
     if(!transferSha){
       transferSha=io.makeOwnerCommit(`db-coordination claim-author-operator-adoption ${JSON.stringify(record)}`)
       if(!io.createRef(ref,transferSha))throw new LaneError('immutable operator adoption record could not be created')
+      evidenceCreated=true
       if(readRefAfterWrite(ref,transferSha,io)!==transferSha)throw new LaneError('immutable operator adoption record could not be read back')
     }
     requireOwnedRef(MUTEX_REF,ownerSha,io)
+    beforeBody=fresh.claim.body
     const newBody=replaceLeaseAuthor(fresh.claim.body,request.newOwner,request.targetWorktree,new Date(now.valueOf()+request.leaseHours*3600000))
-    let postWriteWarning=null
-    io.updateIssue(request.claim,{body:newBody})
-    try{
-      const after=io.getIssue(request.claim),newLease=parseAuthorLease(after?.body??'',now)
-      if(after?.body!==newBody||newLease.owner!==request.newOwner||newLease.worktree!==request.targetWorktree||newLease.version!==fresh.lease.version||newLease.branch!==request.branch||JSON.stringify(newLease.objects)!==JSON.stringify(fresh.lease.objects))postWriteWarning='author transfer claim readback failed after proved mutation'
-      else if(io.readRef(`refs/db-claims/${fresh.lease.version}`)!==fresh.reservationSha||!io.getCommit(fresh.reservationSha))postWriteWarning='permanent version reservation changed after adoption'
-    }catch(error){postWriteWarning=`post-write verification errored after proved mutation: ${error.message}`}
+    bodyChanged=true;io.updateIssue(request.claim,{body:newBody})
+    const after=io.getIssue(request.claim),newLease=parseAuthorLease(after?.body??'',now)
+    if(after?.body!==newBody||newLease.owner!==request.newOwner||newLease.worktree!==request.targetWorktree||newLease.version!==fresh.lease.version||newLease.branch!==request.branch||JSON.stringify(newLease.objects)!==JSON.stringify(fresh.lease.objects))throw new LaneError('author transfer claim readback failed')
+    if(io.readRef(`refs/db-claims/${fresh.lease.version}`)!==fresh.reservationSha||!io.getCommit(fresh.reservationSha))throw new LaneError('permanent version reservation changed after adoption')
     requireOwnedRef(MUTEX_REF,ownerSha,io)
-    return {claim:request.claim,version:fresh.lease.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:transferSha,idempotent:false,...(postWriteWarning?{applied_with_warning:postWriteWarning}:{})}
+    return {claim:request.claim,version:fresh.lease.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:transferSha,idempotent:false}
+  }catch(error){
+    if(io.readRef(MUTEX_REF)!==ownerSha)throw new LaneError(`${error.message}; ROLLBACK NOT ATTEMPTED because mutex ownership was lost`)
+    const failures=[]
+    if(bodyChanged)try{io.updateIssue(request.claim,{body:beforeBody});if(io.getIssue(request.claim)?.body!==beforeBody)throw new LaneError('claim body rollback readback failed')}catch(e){failures.push(e.message)}
+    if(evidenceCreated&&/could not be read back/.test(error.message))try{if(io.readRef(ref)===transferSha)releaseOwnedRef(ref,transferSha,io)}catch(e){failures.push(e.message)}
+    if(failures.length)throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${failures.join('; ')}`)
+    throw error
   }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
 }
 

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3545,
+  "outcome": "ready-for-merge",
+  "pr": 3775,
+  "migration_versions": [
+    "20260929031536"
+  ],
+  "contract_ref": "refs/db-contracts/3545/6",
+  "contract_sha256": "f11061655261700f9d392d87188381d7eb99a694b8d81a963c2b5793a8b1a9b0",
+  "head_sha": "94419c68c9e2fdc27aa2721eb71f05c588be5968",
+  "base_sha": "26fe20370b595b5b5a2e889dff8cb3e38a918aab",
+  "files_changed": [
+    ".github/live-proofs/3545.sql",
+    "supabase/migrations/20260929031536_wildbrain_submissions_classic_option.sql",
+    "supabase/tests/wildbrain_submissions_classic_option.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table plm.wildbrain_submission_property_option",
+    "function api.db_data_admin_scraped_source_inventory"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "evidence": "Classic-only seed, positive inventory row, and live proof.",
+      "command": "database-contract-tests wildbrain_submissions_classic_option.sql"
+    }
+  ],
+  "assumptions_resolved": [
+    "Only Classic is loaded.",
+    "service_role has SELECT, INSERT only after REVOKE ALL.",
+    "Scope is Classic under Submissions only per owner."
+  ],
+  "stop_conditions_hit": []
+}

@@ -4,7 +4,7 @@
   "outcome": "ready-for-merge",
   "pr": 3731,
   "migration_versions": [
-    "20260929010844"
+    "20260928210844"
   ],
   "contract_ref": "refs/db-contracts/3685/3",
   "contract_sha256": "9a6d699595f739a11676ec4c97a6575ee7e6932211ac2fcc96f443e6a310822f",
@@ -14,7 +14,7 @@
     ".agent/work/3685/3/completion.json",
     ".agent/work/3685/3/contract.json",
     ".github/live-proofs/3685.sql",
-    "supabase/migrations/20260929010844_wildbrain_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260928210844_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/wildbrain_landing_contracts.sql"
   ],
@@ -57,7 +57,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Claim #3729 superseded 20260928181124 -> 20260929010844 and expanded to the eleven declared writes",
+    "Claim #3729 superseded 20260928181124 -> 20260928210844 and expanded to the eleven declared writes",
     "No database write performed by the author; preview, merge and production follow the serialized lanes",
     "Ephemeral Supabase replay (supabase db start, 17.6.1.171) at a211550fe3c2f8f7fd4145862b47b495ff08ea5e: wildbrain_durable_entity_lifecycle_contracts.sql passed; wildbrain_landing_contracts.sql passed sections A-G and stopped at H on the #2123 character promotion contract, whose migration does not replay from empty locally (environmental, outside this change)"
   ],

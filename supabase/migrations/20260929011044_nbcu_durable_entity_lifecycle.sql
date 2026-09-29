@@ -9,7 +9,7 @@
 --   * Authenticated coverage boundary. Only a capture that finalize_nbcu_capture marked
 --     complete can publish. This function re-checks every scope terminal, no missing
 --     paging offset and zero failures; every expected count met is enforced by
---     plm.finalize_nbcu_capture before it sets status 'complete' (20260819123658). Withdrawal needs the SAME licensed scope set as
+--     plm.finalize_nbcu_capture before it sets status 'complete' (current body: 20260825130924). Withdrawal needs the SAME licensed scope set as
 --     the baseline publication; a different set publishes sightings only.
 --   * Derivation compatibility. Every publication names the key-derivation contract; a
 --     different contract never compares against an older baseline.
@@ -23,10 +23,10 @@
 --     is held, not applied; the held publication records how many withdrawals it held.
 
 create table plm.nbcu_lifecycle_publication (
-  capture_id              uuid        not null primary key
+  published_capture_id    uuid        not null primary key
                                       references plm.nbcu_capture(id) on delete restrict,
   baseline_capture_id     uuid            null
-                                      references plm.nbcu_lifecycle_publication(capture_id)
+                                      references plm.nbcu_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   mode                    text        not null,
   derivation_contract     text        not null,
@@ -38,7 +38,7 @@ create table plm.nbcu_lifecycle_publication (
     check (mode in ('bootstrap', 'comparable', 'rebaseline', 'withdrawal_held')),
   constraint nbcu_lifecycle_publication_baseline_chk
     check ((mode = 'bootstrap') = (baseline_capture_id is null)
-           and (baseline_capture_id is null or baseline_capture_id <> capture_id)),
+           and (baseline_capture_id is null or baseline_capture_id <> published_capture_id)),
   constraint nbcu_lifecycle_publication_scope_chk
     check (scope_sha256 ~ '^[0-9a-f]{64}$'),
   constraint nbcu_lifecycle_publication_contract_chk
@@ -48,7 +48,10 @@ create table plm.nbcu_lifecycle_publication (
 );
 
 comment on table plm.nbcu_lifecycle_publication is
-  'One row per NBCU capture published into durable entity state (#3683). mode records '
+  'One row per NBCU capture published into durable entity state (#3683). Its key is '
+  'published_capture_id, deliberately not capture_id: api.source_capture_inventory treats an '
+  'nbcu_ table with a capture_id column as a latest-complete capture snapshot, and this '
+  'mutable ledger must be reported as retained rows only. mode records '
   'whether withdrawals were compared (comparable), skipped because the licensed scope '
   'set or derivation contract differed (rebaseline), or held by the bulk-drop guard.';
 
@@ -57,22 +60,22 @@ create table plm.nbcu_entity_lifecycle (
   entity_key              text        not null,
   identity_basis          text        not null,
   first_seen_capture_id   uuid        not null
-                                      references plm.nbcu_lifecycle_publication(capture_id)
+                                      references plm.nbcu_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   first_seen_at           timestamptz not null,
   last_seen_capture_id    uuid        not null
-                                      references plm.nbcu_lifecycle_publication(capture_id)
+                                      references plm.nbcu_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   last_seen_at            timestamptz not null,
   last_changed_capture_id uuid        not null
-                                      references plm.nbcu_lifecycle_publication(capture_id)
+                                      references plm.nbcu_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   change_signal           text        not null,
   status                  text        not null default 'active',
   withdrawn_at            timestamptz     null,
   first_withdrawn_at      timestamptz     null,
   withdrawn_capture_id    uuid            null
-                                      references plm.nbcu_lifecycle_publication(capture_id)
+                                      references plm.nbcu_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   constraint nbcu_entity_lifecycle_pkey primary key (entity_kind, entity_key),
   constraint nbcu_entity_lifecycle_kind_chk
@@ -181,7 +184,7 @@ begin
     raise exception 'nbcu_publish_lifecycle: capture % has no complete licensed scope coverage', p_capture_id
       using errcode = '22023';
   end if;
-  if exists (select 1 from plm.nbcu_lifecycle_publication where capture_id = p_capture_id) then
+  if exists (select 1 from plm.nbcu_lifecycle_publication where published_capture_id = p_capture_id) then
     raise exception 'nbcu_publish_lifecycle: capture % is already published', p_capture_id
       using errcode = '23505';
   end if;
@@ -190,14 +193,14 @@ begin
    order by source_captured_at desc, published_at desc limit 1;
   if found and v_prev.source_captured_at >= v_cap.source_captured_at then
     raise exception 'nbcu_publish_lifecycle: capture % is not newer than published capture %',
-      p_capture_id, v_prev.capture_id using errcode = '22023';
+      p_capture_id, v_prev.published_capture_id using errcode = '22023';
   end if;
 
   select pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
            pg_catalog.string_agg(s.scope_key, E'\n' order by s.scope_key), 'UTF8')), 'hex')
     into v_scope from plm.nbcu_scope s where s.capture_id = p_capture_id;
 
-  if v_prev.capture_id is null then
+  if v_prev.published_capture_id is null then
     v_mode := 'bootstrap';
   elsif v_prev.scope_sha256 = v_scope and v_prev.derivation_contract = c_contract then
     v_mode := 'comparable';
@@ -208,21 +211,21 @@ begin
   -- Withdrawal-eligible sightings: the baseline itself, plus -- across a run of held
   -- publications -- each held publication's own baseline. A held drop is therefore
   -- re-evaluated by the next comparable run instead of being orphaned.
-  if v_prev.capture_id is not null then
+  if v_prev.published_capture_id is not null then
     with recursive chain as (
-      select p.capture_id, p.baseline_capture_id, p.mode
-        from plm.nbcu_lifecycle_publication p where p.capture_id = v_prev.capture_id
+      select p.published_capture_id, p.baseline_capture_id, p.mode
+        from plm.nbcu_lifecycle_publication p where p.published_capture_id = v_prev.published_capture_id
       union all
-      select p.capture_id, p.baseline_capture_id, p.mode
-        from chain c join plm.nbcu_lifecycle_publication p on p.capture_id = c.baseline_capture_id
+      select p.published_capture_id, p.baseline_capture_id, p.mode
+        from chain c join plm.nbcu_lifecycle_publication p on p.published_capture_id = c.baseline_capture_id
        where c.mode = 'withdrawal_held'
     )
-    select pg_catalog.array_agg(chain.capture_id) into v_eligible from chain;
+    select pg_catalog.array_agg(chain.published_capture_id) into v_eligible from chain;
   end if;
 
   insert into plm.nbcu_lifecycle_publication
-    (capture_id, baseline_capture_id, mode, derivation_contract, scope_sha256, source_captured_at)
-  values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
+    (published_capture_id, baseline_capture_id, mode, derivation_contract, scope_sha256, source_captured_at)
+  values (p_capture_id, v_prev.published_capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
 
   drop table if exists pg_temp.nbcu_lifecycle_seen;
   create temporary table pg_temp.nbcu_lifecycle_seen (
@@ -277,7 +280,7 @@ begin
     end loop;
     if v_held then
       v_mode := 'withdrawal_held';
-      update plm.nbcu_lifecycle_publication set mode = v_mode where capture_id = p_capture_id;
+      update plm.nbcu_lifecycle_publication set mode = v_mode where published_capture_id = p_capture_id;
     end if;
   end if;
 
@@ -329,10 +332,10 @@ begin
 
   update plm.nbcu_lifecycle_publication
      set counts = v_counts, published_at = v_now
-   where capture_id = p_capture_id;
+   where published_capture_id = p_capture_id;
 
   return pg_catalog.jsonb_build_object('capture_id', p_capture_id, 'mode', v_mode,
-    'baseline_capture_id', v_prev.capture_id, 'counts', v_counts);
+    'baseline_capture_id', v_prev.published_capture_id, 'counts', v_counts);
 end
 $function$;
 

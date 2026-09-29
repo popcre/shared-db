@@ -123,7 +123,7 @@ reset role;
 
 do $bootstrap$
 begin
-  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-00000000000a') <> 'bootstrap' then
+  if (select mode from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-00000000000a') <> 'bootstrap' then
     raise exception 'first publication is not a bootstrap';
   end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_kind = 'asset'
@@ -163,7 +163,7 @@ reset role;
 
 do $comparable$
 begin
-  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-00000000000b') <> 'comparable' then
+  if (select mode from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-00000000000b') <> 'comparable' then
     raise exception 'same scope set did not compare';
   end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/two.png'
@@ -189,7 +189,7 @@ reset role;
 
 do $rebaseline$
 begin
-  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-00000000000c') <> 'rebaseline' then
+  if (select mode from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-00000000000c') <> 'rebaseline' then
     raise exception 'different scope set was compared';
   end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/one.png' and status = 'active') then
@@ -209,7 +209,7 @@ reset role;
 
 do $held$
 begin
-  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-00000000000d') <> 'withdrawal_held' then
+  if (select mode from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-00000000000d') <> 'withdrawal_held' then
     raise exception 'bulk drop was not held';
   end if;
   if exists (select 1 from plm.nbcu_entity_lifecycle where withdrawn_capture_id = '36830000-0000-4000-8000-00000000000d') then
@@ -217,7 +217,7 @@ begin
   end if;
   -- The held publication keeps the magnitude of what it held (three baseline assets).
   if (select counts #> '{asset}' from plm.nbcu_lifecycle_publication
-       where capture_id = '36830000-0000-4000-8000-00000000000d')
+       where published_capture_id = '36830000-0000-4000-8000-00000000000d')
      is distinct from '{"seen": 1, "added": 1, "changed": 0, "reactivated": 0, "withdrawn": 0, "withdrawal_held": 3}'::jsonb then
     raise exception 'held publication did not record the size of the held drop';
   end if;
@@ -249,7 +249,7 @@ reset role;
 
 do $after_hold$
 begin
-  if (select mode from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-000000000006') <> 'comparable' then
+  if (select mode from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-000000000006') <> 'comparable' then
     raise exception 'run after a held publication did not compare';
   end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/two.png'
@@ -291,7 +291,7 @@ begin
         from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
        where a.attrelid = 'plm.nbcu_lifecycle_publication'::regclass and a.attnum > 0 and not a.attisdropped)
      is distinct from
-       'capture_id uuid not null -, baseline_capture_id uuid null -, mode text not null -, '
+       'published_capture_id uuid not null -, baseline_capture_id uuid null -, mode text not null -, '
        'derivation_contract text not null -, scope_sha256 text not null -, '
        'source_captured_at timestamp with time zone not null -, counts jsonb not null ''{}''::jsonb, '
        'published_at timestamp with time zone not null now()' then
@@ -309,11 +309,11 @@ begin
        'nbcu_entity_lifecycle_pkey PRIMARY KEY (entity_kind, entity_key)',
        'nbcu_entity_lifecycle_status_chk CHECK ((status = ANY (ARRAY[''active''::text, ''withdrawn''::text])))',
        'nbcu_entity_lifecycle_withdrawn_at_chk CHECK ((((status = ''withdrawn''::text) = (withdrawn_at IS NOT NULL)) AND ((status = ''withdrawn''::text) = (withdrawn_capture_id IS NOT NULL))))',
-       'nbcu_lifecycle_publication_baseline_chk CHECK ((((mode = ''bootstrap''::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> capture_id))))',
+       'nbcu_lifecycle_publication_baseline_chk CHECK ((((mode = ''bootstrap''::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id))))',
        'nbcu_lifecycle_publication_contract_chk CHECK ((btrim(derivation_contract) <> ''''::text))',
        'nbcu_lifecycle_publication_counts_chk CHECK ((jsonb_typeof(counts) = ''object''::text))',
        'nbcu_lifecycle_publication_mode_chk CHECK ((mode = ANY (ARRAY[''bootstrap''::text, ''comparable''::text, ''rebaseline''::text, ''withdrawal_held''::text])))',
-       'nbcu_lifecycle_publication_pkey PRIMARY KEY (capture_id)',
+       'nbcu_lifecycle_publication_pkey PRIMARY KEY (published_capture_id)',
        'nbcu_lifecycle_publication_scope_chk CHECK ((scope_sha256 ~ ''^[0-9a-f]{64}$''::text))') then
     raise exception 'durable-state primary keys or CHECK bodies differ from the reviewed shape';
   end if;
@@ -321,15 +321,15 @@ begin
   if (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
        where conrelid = 'plm.nbcu_entity_lifecycle'::regclass and contype = 'f')
      is distinct from
-       'FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-       'FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-       'FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-       'FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT'
+       'FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT'
      or (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
        where conrelid = 'plm.nbcu_lifecycle_publication'::regclass and contype = 'f')
      is distinct from
-       'FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-       'FOREIGN KEY (capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT' then
+       'FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (published_capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT' then
     raise exception 'durable-state foreign keys differ from the reviewed column mapping';
   end if;
   -- Indexes: the withdrawal index leads with last_seen_capture_id (#3695 review, H2/H3).
@@ -414,7 +414,7 @@ reset role;
 
 do $viewer_boundary$
 begin
-  if not exists (select 1 from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-000000000008') then
+  if not exists (select 1 from plm.nbcu_lifecycle_publication where published_capture_id = '36830000-0000-4000-8000-000000000008') then
     raise exception 'later capture did not publish';
   end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_kind = 'asset'

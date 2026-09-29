@@ -1210,9 +1210,20 @@ begin
      or (select pg_get_constraintdef(oid) from pg_constraint
           where conname = 'nbcu_lifecycle_publication_pkey'
             and conrelid = to_regclass('plm.nbcu_lifecycle_publication'))
-        is distinct from 'PRIMARY KEY (capture_id)' then
+        is distinct from 'PRIMARY KEY (published_capture_id)' then
     v_fail := v_fail+1;
     raise warning 'I6 FAIL: % plm.nbcu_* tables (expected 18) or the excluded #3683 durable tables differ from their reviewed keys', v_n;
+  else v_pass := v_pass+1; end if;
+  -- #3695 review: the two #3683 durable-state tables are mutable ledgers, not capture
+  -- snapshots. api.source_capture_inventory must report them as retained rows only,
+  -- never as a latest-complete capture count; neither carries a column named capture_id.
+  if (select count(*) from api.source_capture_inventory
+       where table_name in ('nbcu_entity_lifecycle', 'nbcu_lifecycle_publication')
+         and count_basis = 'retained_only' and latest_complete_status is null
+         and latest_complete_row_count is null
+         and count_note = 'Retained rows only; no source-specific latest-complete contract is defined for this table.') <> 2 then
+    v_fail := v_fail+1;
+    raise warning 'I6 FAIL: #3683 durable-state tables are not classified as retained-only ledgers';
   else v_pass := v_pass+1; end if;
 
   raise notice 'I: % passed / % failed', v_pass, v_fail;

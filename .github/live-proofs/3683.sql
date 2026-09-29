@@ -37,9 +37,9 @@ select (
   and not has_function_privilege('anon', 'plm.nbcu_publish_lifecycle(uuid)', 'EXECUTE')
   and not exists (
     select 1 from plm.nbcu_entity_lifecycle l
-      join plm.nbcu_lifecycle_publication ls on ls.capture_id = l.last_seen_capture_id
-      join plm.nbcu_lifecycle_publication fs on fs.capture_id = l.first_seen_capture_id
-      left join plm.nbcu_lifecycle_publication w on w.capture_id = l.withdrawn_capture_id
+      join plm.nbcu_lifecycle_publication ls on ls.published_capture_id = l.last_seen_capture_id
+      join plm.nbcu_lifecycle_publication fs on fs.published_capture_id = l.first_seen_capture_id
+      left join plm.nbcu_lifecycle_publication w on w.published_capture_id = l.withdrawn_capture_id
      where l.last_seen_at <> ls.source_captured_at
         or l.first_seen_at <> fs.source_captured_at
         or (l.status = 'withdrawn' and l.withdrawn_at is distinct from w.source_captured_at)

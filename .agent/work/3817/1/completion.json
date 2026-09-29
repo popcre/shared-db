@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "work_issue": 3817,
+  "outcome": "ready-for-merge",
+  "pr": 3818,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3817/1",
+  "contract_sha256": "267c59a4f77e6d7da5ddcde4edf96ea4185751828064452d733e30eccc704283",
+  "base_sha": "58836647e5645bb7e96049a8b72b5ded768a9010",
+  "head_sha": "31d690aa12eeffbdf9b22696d55592a5a705c178",
+  "files_changed": ["scripts/manage-migration-author-lanes.mjs", "scripts/manage-migration-author-lanes.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "745 pass, 0 fail; new #3730 regression test fails on main and passes here"}
+  ],
+  "assumptions_resolved": ["The fix was drafted before the contract was published; it was set aside, the contract published, then re-applied unchanged as the implementation commit."],
+  "stop_conditions_hit": []
+}

@@ -421,7 +421,8 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
         // caller for a short bounded window rather than guess a reset time.
         try { if ((quotaLatch.read(args) ?? 0) <= now()) quotaLatch.write(args, now() + UNKNOWN_RESET_LATCH_MS) } catch { /* best-effort */ }
       }
-      if (!transient || attempt >= allowed - 1) {
+      // A timed-out child is never replayed, even if its stderr looks transient (#3791).
+      if (!transient || isCommandTimeout(error) || attempt >= allowed - 1) {
         const captured = String(error?.stderr ?? '').trim()
         const timedOut = isCommandTimeout(error)
         const detail = timedOut

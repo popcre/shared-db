@@ -1604,10 +1604,12 @@ export function parseGitRemoteRefs(text){
   }
   return refs
 }
+// #3791: a stalled git child inside a lock's release must not hang it forever.
+export const GIT_COMMAND_TIMEOUT_MS = 60 * 1000
 export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}={}){
   if(!gitRemoteRepositoryProved){
     let url
-    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim()}
+    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})).trim()}
     catch(error){throw new LaneError(`git origin remote is unreadable; refusing git ref reads (${String(error?.message??error).split('\n')[0]})`)}
     const slug=url.replace(/\.git$/i,'').replace(/\/+$/,'').replace(/^.*github\.com[:/]/i,'')
     if(!/github\.com[:/]/i.test(url)||slug.toLowerCase()!==String(REPO).toLowerCase())throw new LaneError(`git origin remote does not point at ${REPO}; refusing git ref reads`)
@@ -1616,7 +1618,7 @@ export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>A
   let lastError
   for(let attempt=1;attempt<=attempts;attempt++){
     let text
-    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe']})}
+    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})}
     catch(error){lastError=error;if(attempt<attempts)wait(500*attempt);continue}
     return parseGitRemoteRefs(text)
   }
@@ -3588,7 +3590,7 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
     if(age<minAgeMs)throw new LaneError(`refusing recovery: mutex is only ${Math.max(0,Math.floor(age/1000))} seconds old`)
     releaseOwnedRef(MUTEX_REF,expectedSha,io)
     return { released:expectedSha, ageSeconds:Math.floor(age/1000) }
-    } finally { if(io.readRef(MUTEX_RECOVERY_ACTIVE_REF)===expectedSha)releaseOwnedRef(MUTEX_RECOVERY_ACTIVE_REF,expectedSha,io) }
+    } finally { releaseRefOnExit(MUTEX_RECOVERY_ACTIVE_REF,expectedSha,io) }
 }
 
 // Issue #3791 (Shared Supabase Migrations run 36506351098): a rate-limit refusal
@@ -3599,19 +3601,27 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
 // quota: an owner-verified ls-remote read and a --force-with-lease delete that
 // removes the ref only while it still points at THIS owner. If both fail, the
 // error names the held SHA and the recovery command instead of failing silently.
-export function releaseMutexOnExit(ownerSha, io = githubIo) {
+export function releaseMutexOnExit(ownerSha, io = githubIo, options = {}) {
+  return releaseRefOnExit(MUTEX_REF, ownerSha, io, options)
+}
+
+// strict: a ref held by ANOTHER owner is an error (the caller must know it lost the
+// lock), exactly as a direct releaseOwnedRef call reports it; it never falls back.
+export function releaseRefOnExit(ref, ownerSha, io = githubIo, { strict = false } = {}) {
   try {
-    if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io)
+    if (strict) releaseOwnedRef(ref, ownerSha, io)
+    else if (io.readRef(ref) === ownerSha) releaseOwnedRef(ref, ownerSha, io)
     return
   } catch (apiError) {
+    if (/belongs to another owner/.test(String(apiError?.message))) throw apiError
     if (typeof io.releaseRefOverGit !== 'function') throw apiError
     const first = (error) => String(error?.message ?? error).split('\n')[0]
     try {
-      const released = io.releaseRefOverGit(MUTEX_REF, ownerSha)
-      if (released) process.stderr.write(`released ${MUTEX_REF} (${ownerSha}) over git after the API release failed: ${first(apiError)}\n`)
+      const released = io.releaseRefOverGit(ref, ownerSha)
+      if (released) process.stderr.write(`released ${ref} (${ownerSha}) over git after the API release failed: ${first(apiError)}\n`)
       return
     } catch (gitError) {
-      throw new LaneError(`${MUTEX_REF} may still be held by ${ownerSha}: the API release failed (${first(apiError)}) and the git release failed (${first(gitError)}); if it is still held, recover it with --recover-author-mutex naming exactly ${ownerSha}`)
+      throw new LaneError(`${ref} may still be held by ${ownerSha}: the API release failed (${first(apiError)}) and the git release failed (${first(gitError)}); if it is still held, recover it with --recover-author-mutex naming exactly ${ownerSha}`)
     }
   }
 }
@@ -3621,7 +3631,7 @@ export function releaseMutexOnExit(ownerSha, io = githubIo) {
 export function releaseRefOverGit(ref, ownerSha, { run = execFileSync, listRefs = (patterns) => gitRemoteRefs(patterns, { run }) } = {}) {
   if (!/^[0-9a-f]{40}$/.test(String(ownerSha))) throw new LaneError('refusing git release: owner SHA is malformed')
   if (listRefs([ref]).get(ref) !== ownerSha) return false
-  run('git', ['push', '--porcelain', `--force-with-lease=${ref}:${ownerSha}`, 'origin', `:${ref}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, killSignal: 'SIGKILL' })
+  run('git', ['push', '--porcelain', `--force-with-lease=${ref}:${ownerSha}`, 'origin', `:${ref}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: GIT_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
   const after = listRefs([ref]).get(ref) ?? null
   if (after === ownerSha) throw new LaneError(`git release of ${ref} did not take effect`)
   return true
@@ -8936,7 +8946,7 @@ export function recoverExclusive(kind, { holderId, apply = false, now = new Date
       throw new LaneError(`recovery of ${ref} did not read back; do NOT treat this lane as owned`)
     }
     return { kind, ref, recovered: true, holderId, generation: next.generation, previousOwnerSha: current.sha, reason: verdict.reason }
-  } finally { if (io.readRef(MUTEX_REF) === ownerCommit) releaseOwnedRef(MUTEX_REF, ownerCommit, io) }
+  } finally { releaseMutexOnExit(ownerCommit, io) }
 }
 
 export function acquireExclusive(kind, metadata, io = githubIo) {
@@ -9138,7 +9148,7 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
     throw error
   }
   finally{
-    try{releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+    try{releaseMutexOnExit(ownerSha,io,{strict:true})}
     catch(releaseError){
       if(posted){
         try{io.postCommitStatus(headSha,{state:'failure',context,description:'Repository-maintenance mutex release failed; authorization revoked',targetUrl})}

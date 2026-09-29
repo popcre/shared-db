@@ -3,7 +3,7 @@
 // owner-check read was refused too -- the mutex was never released.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { withAuthorMutex, releaseMutexOnExit, releaseRefOverGit, MUTEX_REF } from './manage-migration-author-lanes.mjs'
+import { withAuthorMutex, releaseMutexOnExit, releaseRefOnExit, releaseRefOverGit, gitRemoteRefs, GIT_COMMAND_TIMEOUT_MS, MUTEX_REF, MUTEX_RECOVERY_ACTIVE_REF } from './manage-migration-author-lanes.mjs'
 
 const rateLimited = () => { const e = new Error('GitHub command failed: GitHub API rate limit exceeded (host-wide latch; no request sent)'); e.rateLimitExhausted = true; return e }
 
@@ -62,4 +62,27 @@ test('releaseRefOverGit deletes only with a lease on our exact SHA', () => {
   current = 'b'.repeat(40); calls.length = 0
   assert.equal(releaseRefOverGit(MUTEX_REF, 'a'.repeat(40), { run, listRefs }), false)
   assert.equal(calls.length, 0, 'another owner: no push at all')
+})
+
+test('the recovery-active marker is released over git when the API refuses (review L5)', () => {
+  const io = fakeIo(); io.refs.set(MUTEX_RECOVERY_ACTIVE_REF, 'c'.repeat(40)); io.exhaust()
+  releaseRefOnExit(MUTEX_RECOVERY_ACTIVE_REF, 'c'.repeat(40), io)
+  assert.equal(io.refs.has(MUTEX_RECOVERY_ACTIVE_REF), false)
+})
+
+test('strict release still reports a lost lock and never falls back for it (review H2)', () => {
+  const io = fakeIo(); io.refs.set(MUTEX_REF, 'b'.repeat(40))
+  assert.throws(() => releaseMutexOnExit('a'.repeat(40), io, { strict: true }), /belongs to another owner/)
+  assert.deepEqual(io.gitCalls, [])
+  const io2 = fakeIo(); io2.refs.set(MUTEX_REF, 'a'.repeat(40)); io2.exhaust()
+  releaseMutexOnExit('a'.repeat(40), io2, { strict: true })
+  assert.equal(io2.refs.has(MUTEX_REF), false, 'strict + API refusal still releases over git')
+})
+
+test('every git child on the fallback path carries a timeout (review H3)', () => {
+  const seen = []
+  const run = (bin, args, options) => { seen.push([args[0], options]); if (args[0] === 'remote') return 'https://github.com/' + process.env.GITHUB_REPOSITORY + '.git\n'; return '' }
+  try { gitRemoteRefs(['refs/x'], { run, wait: () => {} }) } catch { /* repository identity may differ in a sandbox */ }
+  assert.ok(seen.length > 0)
+  for (const [, options] of seen) { assert.equal(options.timeout, GIT_COMMAND_TIMEOUT_MS); assert.equal(options.killSignal, 'SIGKILL') }
 })

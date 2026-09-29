@@ -409,3 +409,10 @@ test('the default gh timeout applies with no option, and the env can shorten but
   for (const raw of ['0', '-5', 'abc']) assert.equal(ghCommandTimeoutMs({ GITHUB_COMMAND_TIMEOUT_SECONDS: raw }), DEFAULT_GH_COMMAND_TIMEOUT_MS)
   assert.equal(ghCommandTimeoutMs({ GITHUB_COMMAND_TIMEOUT_SECONDS: '999999' }), MAX_GH_COMMAND_TIMEOUT_MS)
 })
+
+test('a timed-out read is never retried even when its stderr looks transient (review L4)', () => {
+  let calls = 0
+  const executor = () => { calls += 1; const e = new Error('ETIMEDOUT'); e.code = 'ETIMEDOUT'; e.stderr = 'connection timed out'; throw e }
+  assert.throws(() => runGitHubCommand(['api', 'repos/o/r'], { executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 1000 }), /was killed/)
+  assert.equal(calls, 1)
+})

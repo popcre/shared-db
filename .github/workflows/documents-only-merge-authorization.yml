@@ -60,10 +60,26 @@ jobs:
         run: |
           if [ -f scripts/check-actions-quota.mjs ]; then node scripts/check-actions-quota.mjs; fi
 
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Classify the complete pull request file list
         id: classify
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
@@ -84,7 +100,7 @@ jobs:
       - name: Report the no-database-preview route decision
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           if [ -f scripts/orchestrator-flow/preview-route-canary.mjs ]; then

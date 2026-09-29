@@ -67,6 +67,7 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { pythonInterpreter } from './lib/python-interpreter.mjs'
 import { APPLIED_VERSIONS_SQL, fetchAppliedVersions, PROJECT_REFS, Unknown } from './orchestrator-flow/read-preview-ledger.mjs'
 export { APPLIED_VERSIONS_SQL, fetchAppliedVersions, PROJECT_REFS, Unknown }
 
@@ -118,7 +119,7 @@ print(json.dumps({v: classify_pending_version(v, applied, root, migrations, targ
 `
   let raw
   try {
-    raw = execFileSync('python', ['-c', program, repoRoot, JSON.stringify(versions), JSON.stringify(appliedVersions), String(target)], {
+    raw = execFileSync(pythonInterpreter(), ['-c', program, repoRoot, JSON.stringify(versions), JSON.stringify(appliedVersions), String(target)], {
       cwd: repoRoot,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

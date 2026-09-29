@@ -32,14 +32,13 @@
 # starting — a marker is claimed outside any pull request. It makes a collision VISIBLE,
 # not impossible.
 
+# The pull_request / merge_group / push-to-main run of the required context
+# "Orchestrator marker guard" is the `orchestrator-marker-guard` job of
+# pr-guards.yml (#3746). This file keeps the scheduled run and its alarm issue.
+
 name: Orchestrator Marker Guard
 
 on:
-  pull_request:
-  merge_group:
-    types: [checks_requested]
-  push:
-    branches: [main]
   schedule:
     # Every two hours. Collisions happen between PRs, not at them.
     - cron: "17 */2 * * *"

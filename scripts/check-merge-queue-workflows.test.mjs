@@ -33,7 +33,6 @@ const KNOWN_LIVE_ADDITIONS = []
 // an explicit SHA — by the guarded merge lane on the reviewed PR head, and by
 // the queue gate on the synthetic group SHA.
 const CONTEXT_MAP = {
-  'Agent work contract': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Agent work contract' },
   'Cancelled work guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cancelled work guard' },
   'Cross-PR object collision': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cross-PR object collision' },
   'Destructive SQL outside migrations': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Destructive SQL outside migrations' },
@@ -42,7 +41,6 @@ const CONTEXT_MAP = {
   'Intake pointer guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Intake pointer guard' },
   'Migration author lease': { workflow: 'migration-author-lease.yml', kind: 'check-run', job: 'Migration author lease' },
   'Migration guarded merge authorization': { kind: 'commit-status' },
-  'Orchestrator marker guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Orchestrator marker guard' },
   'Promotion contract tests (offline)': { workflow: 'coldlion-promotion-contract-tests.yml', kind: 'check-run', job: 'Promotion contract tests (offline)' },
   'Queue-sensitive checks (aggregate)': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Queue-sensitive checks (aggregate)' },
   'SQL migration guards': { workflow: 'shared-supabase-migrations.yml', kind: 'check-run', job: 'SQL migration guards' },
@@ -61,7 +59,7 @@ test('every mirrored or known-live required context has a mapped emitter', () =>
 
 // Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
 // branch protection. The mirror must carry exactly its contexts and strictness.
-const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260929.json', import.meta.url), 'utf8'))
 
 test('the committed mirror equals the dated live readback artifact', () => {
   assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())

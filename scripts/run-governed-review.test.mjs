@@ -3,7 +3,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
+import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -206,6 +206,11 @@ test('typed terminal reasons require complete tokens rather than diagnostic subs
     }
   }
   assert.equal(wrapperFailureReason({stderr:'start_failed: not-caller_identity_missing'}),'start_failed: the wrapper refused before the provider turn started')
+})
+
+test('source drift and denied-tool wrapper refusals are named, not unrecognized',()=>{
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini changed the protected source checkout; response rejected'}),/^source_drift: the reviewed checkout changed during the reviewer turn/)
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini ended its turn after the headless runtime denied a tool (RunCommand); no usable verdict; evidence preserved'}),/^tool_denied: /)
 })
 
 test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
@@ -806,6 +811,46 @@ test('#498-16 caller variable is kept, detected, or named in a pre-start refusal
   assert.throws(()=>reviewCallerEnvironment('ai-muse',{}),/needs AI_MUSE_CALLER set.*No reviewer was started.*AI_MUSE_CALLER=claude/)
   assert.deepEqual(reviewCallerEnvironment('unlisted-wrapper',{}),{})
 })
+// Issue #2678 -- THE WRAPPER THIS RUNNER SPAWNS MUST BE TOLD WHO IS CALLING.
+// The doctor probe already carries its own end-to-end proof; this closes the
+// other half: the governed runner's own wrapper spawn. A wrapper spawned
+// without its own `AI_<PROVIDER>_CALLER` refuses before printing any check line,
+// and that refusal reads as a local dependency fault on a healthy machine. The
+// captured spawn environment is asserted here so the caller can never be
+// dropped from this path again, and no caller is ever invented when the
+// environment genuinely has none (the CLI refusal above stays the fail-closed
+// gate in that case).
+test('issue 2678: the wrapper spawn carries AI_*_CALLER, and no caller is ever invented',()=>{
+  // Every marker detectReviewCaller reads, so a machine that carries Claude Code
+  // or Codex markers cannot leak a caller into the negative case below.
+  const MARKERS=['AI_GLM_CALLER','CLAUDECODE','CLAUDE_CODE_SESSION_ID','CODEX_THREAD_ID','CODEX_SANDBOX']
+  const originals=Object.fromEntries(MARKERS.map((key)=>[key,process.env[key]]))
+  const restore=()=>{
+    for(const key of MARKERS){if(originals[key]===undefined)delete process.env[key];else process.env[key]=originals[key]}
+  }
+  const spawnEnv=()=>{
+    let env
+    runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,
+      spawn:(command,_args,spawnOptions)=>{
+        if(command!=='gh'){env=spawnOptions.env;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}}
+        return{status:0,stdout:JSON.stringify({id:123,html_url:`https://github.com/${THIS_REPO}/pull/2000#issuecomment-123`})}
+      },
+      record:()=>({ref:'refs/db-review-verdicts/x',sha:'f'.repeat(40)})})
+    return env
+  }
+  try{
+    for(const key of MARKERS)delete process.env[key]
+    process.env.CLAUDECODE='1'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'claude','the runner spawn must carry the detected caller')
+    process.env.AI_GLM_CALLER='codex'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'codex','an explicitly exported caller is never overruled by detection')
+    for(const key of MARKERS)delete process.env[key]
+    const bare=spawnEnv()
+    assert.equal(bare.AI_GLM_CALLER,undefined,'with no detectable caller the runner must not invent one')
+    const live='a'.repeat(40)
+    assert.throws(()=>prepareGovernedReview({pr:3031,wrapper:'ai-glm',wrapperArgs:['review']},{env:{},github:()=>({status:0,stdout:JSON.stringify({head:{sha:live}})}),files:{readFile:()=>'x',writeFile:()=>{},tempDir:()=>'T'}}),/needs AI_GLM_CALLER set.*No reviewer was started/)
+  }finally{restore()}
+})
 test('#498-17 live head is injected, a stale named head or stale prompt verdict line refuses before start', () => {
   const live='a'.repeat(40),stale='b'.repeat(40)
   const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
@@ -1114,4 +1159,32 @@ test('#3479: a governed DeepSeek send carries the brief in an attached file with
   assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,io().files,W),/names head bbbbbbbb/)
   assert.throws(()=>contract(['send','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
   assert.throws(()=>contract(['send','--timeout','900','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
+})
+
+const rsHead='a'.repeat(40)
+const rsBase=`refs/db-review-replacements/3741-3741-${rsHead}-`
+const rsMsg=(seq,rev,slot=1)=>`db-coordination reviewer-replacement sequence=${seq} reviewer=${rev} issue=3741 pr=3741 head=${rsHead} slot=${slot} failed-sequence=41 prior-sequence=41 failure-ref=${'b'.repeat(40)}`
+function rsIo(rows){return {listRefs:(p)=>rows.filter((r)=>r.ref.startsWith(p)),getCommit:(sha)=>({message:rows.find((r)=>r.sha===sha).message})}}
+const rsOpts=(n,reviewer='deepseek')=>({issue:3741,pr:3741,headSha:rsHead,slot:1,reviewer,replacementSequence:n})
+// DeepSeek (draw 44) replaced Gemini (draw 41); the ref is keyed by 41.
+const rsLive=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')}])
+
+test('#3799 the replacement reviewer\'s own draw sequence resolves to the replaced-sequence key',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44),rsLive).replacementSequence,41)
+})
+test('#3799 the replaced sequence still resolves unchanged',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(41),rsLive).replacementSequence,41)
+})
+test('#3799 binding: another reviewer, rsHead or slot never resolves',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44,'gemini'),rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),headSha:'d'.repeat(40)},rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),slot:2},rsLive).replacementSequence,44)
+})
+test('#3799 two refs matching the two readings are refused as ambiguous',()=>{
+  const both=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')},{ref:`${rsBase}44`,sha:'c2',message:rsMsg(47,'deepseek')}])
+  assert.throws(()=>resolveReplacementSequence(rsOpts(44),both),/ambiguous/)
+})
+test('#3799 no replacement sequence is left alone',()=>{
+  const o={issue:1,pr:1,headSha:rsHead}
+  assert.equal(resolveReplacementSequence(o,rsLive),o)
 })

@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { contractHash, contractRef, validateContract } from './agent-work-contract.mjs'
 import { acceptableEvidencePairs, isEvidencePath, resolveEvidencePair } from './lib/agent-evidence-paths.mjs'
+import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 import { validateGenerationLineage, classifyAgentPaths, resolveCurrentPair, refuseCommittedMutation, verifyPredecessorBinding, EvidenceLineageError } from './lib/evidence-generation-lineage.mjs'
 
 export class GitEvidenceError extends Error {}
@@ -46,50 +47,60 @@ export function verifyGitEvidence({ contract, report, prBaseSha, prHeadSha }, io
   if (!SHA_PATTERN.test(String(mergeBase ?? ''))) throw new GitEvidenceError('could not resolve an exact merge base for this pull request')
   const evidenceBase = String(report.base_sha ?? contract.base_sha)
   if (!SHA_PATTERN.test(evidenceBase)) throw new GitEvidenceError('PR evidence requires an exact 40-character base SHA')
-  if (!io.isAncestor(mergeBase, report.head_sha) && report.head_sha !== prHeadSha) throw new GitEvidenceError('the current merge base is not an ancestor of the reported implementation head; refresh the branch before relying on its evidence')
 
-  const actualFiles = [...io.changedFiles(mergeBase, report.head_sha === prHeadSha ? prHeadSha : report.head_sha)].sort()
-  // Evidence paths may sit on the implementation commit itself (content-preserving
-  // fold). files_changed names the pull request's own implementation only.
+  // CONTENT-PRESERVING PROOF (#3751). A fold leaves report.head_sha at the
+  // pre-fold implementation head and puts the pair on the tip together with
+  // whatever main contributed. Accept that layout only when the pull request's
+  // own implementation digest is unchanged; never on the tail shape alone.
+  const contentPreserving = typeof io.isContentPreserving === 'function'
+    ? io.isContentPreserving({ approvedHead: report.head_sha, head: prHeadSha, mainRef: mergeBase })
+    : { ok: false, reason: 'no content-preserving prover on this io' }
+  const foldedShape = evidenceBase !== mergeBase
+    || report.head_sha !== prHeadSha
+    || !io.isAncestor(mergeBase, report.head_sha)
+  const useFoldedBase = contentPreserving.ok && foldedShape
+
+  if (!io.isAncestor(mergeBase, report.head_sha) && !useFoldedBase) {
+    throw new GitEvidenceError('the current merge base is not an ancestor of the reported implementation head; refresh the branch before relying on its evidence')
+  }
+
+  // Compare implementation files at the base the pair names when a fold left
+  // that base behind; otherwise at the live merge base (#2845).
+  const filesBase = useFoldedBase ? evidenceBase : mergeBase
+  const actualFiles = [...io.changedFiles(filesBase, report.head_sha)].sort()
   const actualImplementation = actualFiles.filter((file) => !isEvidencePath(file)).sort()
   const reportedFiles = [...report.files_changed].sort()
   if (JSON.stringify(actualImplementation) !== JSON.stringify(reportedFiles)) {
     const toAdd = actualImplementation.filter((file) => !reportedFiles.includes(file))
     const extra = reportedFiles.filter((file) => !actualImplementation.includes(file))
-    // Name which side is which: Git is the truth, the report is what to fix (#498 item 11).
     throw new GitEvidenceError(`reported files_changed does not match Git: Git changed [${actualImplementation.join(', ')}] but .agent/completion.json files_changed lists [${reportedFiles.join(', ')}]; add to the report [${toAdd.join(', ')}], remove from the report [${extra.join(', ')}]`)
   }
 
-  // THE TAIL IS THIS PULL REQUEST'S OWN PAIR, AND NOBODY ELSE'S (#2708). The
-  // keyed path for this contract's issue and generation is preferred; the
-  // legacy fixed pair is still accepted so open pull requests do not all have
-  // to rewrite their evidence at once. A content-preserving fold carries the
-  // pair on the tip itself, so the tail may be empty or may also contain the
-  // files main contributed in the merge.
+  // THE TAIL IS THIS PULL REQUEST'S OWN PAIR, AND NOBODY ELSE'S (#2708).
+  // A content-preserving fold may also carry files main contributed in the
+  // merge; those are identified by byte-equality with main at the tip, not by
+  // appearing in the PR diff (which would swallow real author edits).
   const afterImplementation = [...io.changedFiles(report.head_sha, prHeadSha)].sort()
   const allowed = acceptableEvidencePairs(contract)
-  const fromMain = new Set(io.changedFiles(mergeBase, prHeadSha).filter((file) => !isEvidencePath(file)))
+  const fromMain = (file) => {
+    if (typeof io.blobEquals !== 'function') return false
+    try { return io.blobEquals(mergeBase, prHeadSha, file) } catch { return false }
+  }
   const evidenceTail = afterImplementation.filter((file) => isEvidencePath(file))
-  const authorTail = afterImplementation.filter((file) => !isEvidencePath(file) && !fromMain.has(file))
+  const authorTail = afterImplementation.filter((file) => !isEvidencePath(file) && !fromMain(file))
   const matches = allowed.some((pair) => evidenceTail.length === pair.length && evidenceTail.every((file, index) => file === pair[index]))
-  const folded = evidenceTail.length === 0 && afterImplementation.every((file) => fromMain.has(file) || isEvidencePath(file))
+  const pairOnTip = allowed.some((pair) => pair.every((file) => afterImplementation.includes(file) || isEvidencePath(file)))
   if (authorTail.length) {
     throw new GitEvidenceError(`implementation changed after the reported head; expected only evidence or main's merge files but found [${authorTail.join(', ')}]`)
   }
-  if (!matches && !folded && evidenceTail.length) {
+  if (!matches && !(useFoldedBase && pairOnTip && contentPreserving.ok)) {
     const expectedList = allowed.map((pair) => `[${pair.join(', ')}]`).join(' or ')
     throw new GitEvidenceError(`only this pull request's own two evidence files may follow report.head_sha; expected ${expectedList} but found [${afterImplementation.join(', ')}]`)
   }
-  if (!matches && !folded && !evidenceTail.length && report.head_sha !== prHeadSha) {
-    // Empty tail with a distinct tip and no pair on the tip is a missing pair.
-    const expectedList = allowed.map((pair) => `[${pair.join(', ')}]`).join(' or ')
-    throw new GitEvidenceError(`the evidence pair is not present after the reported head; expected ${expectedList}`)
-  }
-  // #2845: the pair must name the base its checks were measured against, unless
-  // a content-preserving fold left the implementation identical and the pair
-  // untouched (no new evidence commit was required).
-  if (evidenceBase !== mergeBase && !folded) {
-    throw new GitEvidenceError(`agent evidence is anchored to a superseded base: it records ${evidenceBase} but this pull request's merge base with main is ${mergeBase}. Regenerate the evidence pair at the current head after refreshing (node scripts/refresh-code-pr-branch.mjs), so its recorded checks name the commit under review (#2845).`)
+  // #2845: the pair must name the base its checks were measured against unless
+  // a proven content-preserving fold left the implementation identical.
+  if (evidenceBase !== mergeBase && !contentPreserving.ok) {
+    throw new GitEvidenceError(`agent evidence is anchored to a superseded base: it records ${evidenceBase} but this pull request's merge base with main is ${mergeBase}. Regenerate the evidence pair at the current head after refreshing (node scripts/refresh-code-pr-branch.mjs), so its recorded checks name the commit under review (#2845). ${contentPreserving.reason ?? ''}`.trim())
   }
   const expectedRef = contractRef(contract.work_issue, contract.generation ?? 1)
   if (report.contract_ref !== expectedRef) throw new GitEvidenceError(`completion report must name its contract's exact immutable ref ${expectedRef}`)
@@ -149,6 +160,18 @@ export const gitIo = {
   },
   revParse(ref) {
     return execFileSync('git', ['rev-parse', ref], { encoding: 'utf8' }).trim()
+  },
+  blobEquals(from, to, file) {
+    const read = (commit) => {
+      try { return execFileSync('git', ['rev-parse', `${commit}:${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() }
+      catch { return null }
+    }
+    const a = read(from), b = read(to)
+    return a !== null && a === b
+  },
+  isContentPreserving({ approvedHead, head, mainRef = 'origin/main' }) {
+    const gitRunner = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 512 * 1024 * 1024 })
+    return isContentPreservingRefresh({ approvedHead, head, mainRef, gitRunner })
   },
   readPublishedContract(ref) {
     return readPublishedContractFromGit(ref)

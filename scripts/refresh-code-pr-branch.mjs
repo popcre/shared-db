@@ -132,7 +132,9 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
     }
     const preserve = isContentPreservingRefresh({ approvedHead: report.head_sha, head, mainRef: 'origin/main', gitRunner })
     if (preserve.ok) {
-      ok(git('reset', '-q', '--soft', before), 'soft-resetting for a content-preserving fold')
+      // Fold into the EXISTING merge commit with --amend so the merge keeps both
+      // parents (main stays an ancestor). Never soft-reset: that would drop
+      // MERGE_HEAD and squash the merge onto one parent.
       for (const file of EVIDENCE) ok(git('checkout', before, '--', file), `restoring ${file} unchanged`)
       ok(git('add', '--', ...EVIDENCE), 'git add')
       const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
@@ -141,11 +143,11 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
       if (tests.length) {
         const t = run('node', ['--test', '--test-reporter=spec', ...tests], { cwd })
         const s = summarizeNodeTest(`${t.stdout}\n${t.stderr}`)
-        if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); nothing was pushed`)
+        if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); the merge commit ${head} is local and nothing was pushed`)
         testSummary = `${tests.map((f) => f.replace(/^scripts\/|\.test\.mjs$/g, '')).join(', ')} ${s.pass}/${s.pass + s.fail} pass, ${s.fail} fail, ${s.skipped} skipped`
       }
       ok(git('diff', '--check', 'origin/main...HEAD'), 'git diff --check')
-      ok(git('commit', '-q', '--allow-empty', '-m', `Merge origin/main; content-preserving refresh for #${options.issue} (no new evidence commit)`), 'committing the content-preserving fold')
+      ok(git('commit', '-q', '--amend', '--no-edit'), 'folding the pair into the refresh merge commit')
       const tip = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
       log(`Refreshed (content-preserving, no new evidence commit): tip ${tip}. ${testSummary}.`)
       if (!options.push) return { head: tip, tip, pushed: false, evidenceCommitSkipped: true }

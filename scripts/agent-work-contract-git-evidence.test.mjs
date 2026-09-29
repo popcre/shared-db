@@ -33,30 +33,56 @@ test('a self-reported file list cannot hide a changed file', () => {
   assert.throws(() => verifyGitEvidence({ contract, report, prBaseSha: prBase, prHeadSha: prHead }, io({ changedFiles: (from) => from === base ? ['scripts/fix.mjs', 'scripts/hidden.mjs'] : ['.agent/contract.json', '.agent/completion.json'] })), /does not match Git/)
 })
 
-test('unchanged_implementation_needs_no_new_evidence_commit: a content-preserving fold is accepted without a rebind', () => {
-  // Folded shape: tip equals the reported head, pair sits on the tip, and the
-  // evidence still names the pre-refresh base (no trailing evidence commit).
-  const foldedReport = { ...report, head_sha: prHead, base_sha: 'e'.repeat(40) }
+test('unchanged_implementation_needs_no_new_evidence_commit: a real post-fold layout is accepted with content proof', () => {
+  // REAL fold shape from refresh(): report.head_sha stays the pre-fold
+  // implementation head; the tip is a merge commit that carries the pair plus
+  // whatever main contributed. evidenceBase may lag mergeBase only when
+  // isContentPreserving proves the PR-own digest is unchanged.
+  const oldBase = 'e'.repeat(40)
   const newBase = 'f'.repeat(40)
+  const foldedReport = { ...report, head_sha: implementation, base_sha: oldBase }
   const foldedIo = io({
     mergeBase: () => newBase,
+    isAncestor: (a, b) => !(a === newBase && b === implementation),
     changedFiles: (from, to) => {
-      if (to === prHead && from === newBase) return ['scripts/fix.mjs', '.agent/contract.json', '.agent/completion.json']
-      if (to === prHead && from === prHead) return []
-      return ['.agent/contract.json', '.agent/completion.json']
+      if (from === oldBase && to === implementation) return ['scripts/fix.mjs']
+      if (from === implementation && to === prHead) return ['.agent/contract.json', '.agent/completion.json', 'base.txt']
+      if (from === newBase && to === prHead) return ['scripts/fix.mjs', '.agent/contract.json', '.agent/completion.json', 'base.txt']
+      return []
     },
-    isAncestor: () => true,
+    blobEquals: (from, to, file) => file === 'base.txt',
+    isContentPreserving: () => ({ ok: true, reason: 'same head' }),
   })
   assert.equal(verifyGitEvidence({ contract, report: foldedReport, prBaseSha: prBase, prHeadSha: prHead }, foldedIo), true)
 })
 
-test('changed_implementation_invalidates_receipt: a superseded base still refuses when implementation is not folded', () => {
+test('changed_implementation_invalidates_receipt: lagging base without content proof is refused', () => {
   const stale = { ...report, base_sha: 'e'.repeat(40) }
   const newBase = 'f'.repeat(40)
   assert.throws(() => verifyGitEvidence({ contract, report: stale, prBaseSha: prBase, prHeadSha: prHead }, io({
     mergeBase: () => newBase,
     changedFiles: (from) => (from === newBase ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json']),
+    isContentPreserving: () => ({ ok: false, reason: 'the pull request\'s own diff changed' }),
   })), /superseded base|#2845/)
+})
+
+test('implementation edit after the reported head is refused even when main also moved (H3)', () => {
+  const oldBase = 'e'.repeat(40)
+  const newBase = 'f'.repeat(40)
+  const foldedReport = { ...report, head_sha: implementation, base_sha: oldBase }
+  assert.throws(() => verifyGitEvidence({ contract, report: foldedReport, prBaseSha: prBase, prHeadSha: prHead }, io({
+    mergeBase: () => newBase,
+    isAncestor: () => true,
+    changedFiles: (from, to) => {
+      if (from === oldBase && to === implementation) return ['scripts/fix.mjs']
+      if (from === implementation && to === prHead) return ['.agent/contract.json', '.agent/completion.json', 'base.txt', 'scripts/late.mjs']
+      return []
+    },
+    // late.mjs is NOT from main (blob differs) — the old fromMain set would
+    // have swallowed it because it appeared in the PR diff.
+    blobEquals: (from, to, file) => file === 'base.txt',
+    isContentPreserving: () => ({ ok: true, reason: 'same head' }),
+  })), /implementation changed after the reported head|scripts\/late\.mjs/)
 })
 
 test('code changed after the reported head is refused', () => {

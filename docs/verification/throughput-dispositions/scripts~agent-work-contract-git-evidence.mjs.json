@@ -9,14 +9,6 @@
       "line_sha256": "c915117abf87e885648c019dc117ff1da695b5fa66b03d0c07221cc85c997ba2",
       "disposition": "enriched",
       "reason": "Distinguishes a missing immutable contract ref from transport failure and refuses both with a specific error."
-    },
-    {
-      "site": "scripts/agent-work-contract-git-evidence.mjs:84",
-      "semantic_key": "scripts/agent-work-contract-git-evidence.mjs:d3db3f0e69740005107d4ac9b66fd0b5346ddecdacb598ef74fd0a35ecc8ee94:context-ef7a6f0939214d89121867dea0b56ea1c393c7703f02f5349df159fa58755bf4",
-      "legacy_semantic_key": "scripts/agent-work-contract-git-evidence.mjs:d3db3f0e69740005107d4ac9b66fd0b5346ddecdacb598ef74fd0a35ecc8ee94:1",
-      "line_sha256": "d3db3f0e69740005107d4ac9b66fd0b5346ddecdacb598ef74fd0a35ecc8ee94",
-      "disposition": "enriched",
-      "reason": "Content-preserving fold accepts a lagging base and an empty author tail when the pair sits on the tip (#3751)."
     }
   ]
 }

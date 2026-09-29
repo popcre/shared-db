@@ -195,6 +195,9 @@ test('unchanged_implementation_needs_no_new_evidence_commit: a content-preservin
     const evidenceAfter = readFileSync(join(r.work, r.pair[1]), 'utf8')
     assert.equal(evidenceAfter, evidenceBefore)
     assert.match(logs.join('\n'), /content-preserving, no new evidence commit/)
+    // M1: the fold amends the merge commit, so both parents survive.
+    const parents = r.g(r.work, 'rev-list', '--parents', '-n', '1', result.tip).split(' ')
+    assert.equal(parents.length, 3, `fold tip must be a merge commit (got parents ${parents.slice(1).join(' ')})`)
     assert.equal(r.g(r.work, 'status', '--porcelain'), '')
     assert.equal(r.g(r.work, 'show', 'HEAD:base.txt'), '2')
   } finally { rmSync(r.root, { recursive: true, force: true }) }

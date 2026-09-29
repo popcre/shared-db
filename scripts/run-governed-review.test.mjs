@@ -3,7 +3,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
+import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -209,6 +209,13 @@ test('typed terminal reasons require complete tokens rather than diagnostic subs
 })
 
 test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
+  {
+    const evidenceOnly=wrapperFailureReason({stderr:'ai-grok-review: Grok stopped WITHOUT a final answer\n  reason: turn_limit_cancelled\nincomplete provider evidence retained for invocation f57a260c\n'})
+    assert.ok(!evidenceOnly.includes('retained or active work'),evidenceOnly)
+    assert.ok(evidenceOnly.startsWith('turn_limit_cancelled:'),evidenceOnly)
+    for(const stderr of ['ai-grok-review: error: this exact Grok review submission is already active or retained: x','ai-gemini: error: review already active or recovery required: session','  Do not retry while this paid turn is unconfirmed; reconcile the retained lock first.'])
+      assert.ok(wrapperFailureReason({stderr}).includes('retained or active work'),stderr)
+  }
   const reason=wrapperFailureReason({stderr:'turn_limit_cancelled: Grok cancelled without a final answer. provider_cancelled'})
   assert.equal(reason,'turn_limit_cancelled: the provider exhausted its declared turn budget')
 })
@@ -1107,4 +1114,32 @@ test('#3479: a governed DeepSeek send carries the brief in an attached file with
   assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,io().files,W),/names head bbbbbbbb/)
   assert.throws(()=>contract(['send','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
   assert.throws(()=>contract(['send','--timeout','900','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
+})
+
+const rsHead='a'.repeat(40)
+const rsBase=`refs/db-review-replacements/3741-3741-${rsHead}-`
+const rsMsg=(seq,rev,slot=1)=>`db-coordination reviewer-replacement sequence=${seq} reviewer=${rev} issue=3741 pr=3741 head=${rsHead} slot=${slot} failed-sequence=41 prior-sequence=41 failure-ref=${'b'.repeat(40)}`
+function rsIo(rows){return {listRefs:(p)=>rows.filter((r)=>r.ref.startsWith(p)),getCommit:(sha)=>({message:rows.find((r)=>r.sha===sha).message})}}
+const rsOpts=(n,reviewer='deepseek')=>({issue:3741,pr:3741,headSha:rsHead,slot:1,reviewer,replacementSequence:n})
+// DeepSeek (draw 44) replaced Gemini (draw 41); the ref is keyed by 41.
+const rsLive=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')}])
+
+test('#3799 the replacement reviewer\'s own draw sequence resolves to the replaced-sequence key',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44),rsLive).replacementSequence,41)
+})
+test('#3799 the replaced sequence still resolves unchanged',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(41),rsLive).replacementSequence,41)
+})
+test('#3799 binding: another reviewer, rsHead or slot never resolves',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44,'gemini'),rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),headSha:'d'.repeat(40)},rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),slot:2},rsLive).replacementSequence,44)
+})
+test('#3799 two refs matching the two readings are refused as ambiguous',()=>{
+  const both=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')},{ref:`${rsBase}44`,sha:'c2',message:rsMsg(47,'deepseek')}])
+  assert.throws(()=>resolveReplacementSequence(rsOpts(44),both),/ambiguous/)
+})
+test('#3799 no replacement sequence is left alone',()=>{
+  const o={issue:1,pr:1,headSha:rsHead}
+  assert.equal(resolveReplacementSequence(o,rsLive),o)
 })

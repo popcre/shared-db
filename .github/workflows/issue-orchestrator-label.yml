@@ -1,7 +1,7 @@
 # Every shared-db issue carries exactly one of `orchestrator` / `non-orchestrator`.
 #
-# Owner rule (Albert, 2026-09-17): "nothing blank". Runs on every issue open, edit,
-# reopen, and label removal, and sweeps all issues every two hours (at least daily) so anything an event missed is
+# Owner rule (Albert, 2026-09-17): "nothing blank". Runs on every issue open, body
+# edit (a title-only edit is skipped, #3745), reopen, and label removal, and sweeps all issues every two hours (at least daily) so anything an event missed is
 # caught. Classification lives in scripts/sync-issue-orchestrator-label.mjs; its tests
 # run first in the same job.
 
@@ -30,6 +30,11 @@ concurrency:
 jobs:
   label:
     name: Issue orchestrator label
+    # A title-only edit cannot change the classification (it reads the body), so it
+    # never needs a runner or API calls against the shared GITHUB_TOKEN budget; the
+    # two-hourly sweep still fills any issue left blank or double-labelled (it does not
+    # reclassify an already single-labelled issue, which a title edit cannot change) (#3745).
+    if: github.event_name != 'issues' || github.event.action != 'edited' || github.event.changes.body != null
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:

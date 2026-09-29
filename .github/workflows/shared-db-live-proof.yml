@@ -2,7 +2,10 @@ name: Shared DB Live Proof
 
 # Produces the durable live-proof artifact that --complete-outcome re-derives
 # for an outcome whose application_return_to is popcre/shared-db (#2906).
-# Read-only: the probe runs through the Management API with read_only: true.
+# Read-only: general probes use the Management API with read_only: true.
+# Issue #2478 alone uses its exact pinned probe through a verified-TLS,
+# force-rollback transaction because its helper intentionally denies the
+# Management API's supabase_read_only_user EXECUTE permission.
 on:
   workflow_dispatch:
     inputs:
@@ -32,12 +35,29 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           node scripts/gh-read.mjs --out "$RUNNER_TEMP/issue.json" api "repos/$GITHUB_REPOSITORY/issues/$WORK_ISSUE"
       - name: Run the committed probe read-only against production
+        if: ${{ inputs.work_issue != '2478' }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           WORK_ISSUE: ${{ inputs.work_issue }}
         run: |
           set -euo pipefail
           python scripts/shared_db_live_proof.py \
+            --work-issue "$WORK_ISSUE" \
+            --issue-json "$RUNNER_TEMP/issue.json" \
+            --probe ".github/live-proofs/$WORK_ISSUE.sql" \
+            --commit-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/live-proof/db-live-proof.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Install the bounded PostgreSQL client for issue 2478
+        if: ${{ inputs.work_issue == '2478' }}
+        run: python -m pip install 'psycopg[binary]==3.2.13'
+      - name: Run the exact issue 2478 probe in a verified read-only transaction
+        if: ${{ inputs.work_issue == '2478' }}
+        env:
+          SUPABASE_DB_PASSWORD_PRODUCTION: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
+          WORK_ISSUE: ${{ inputs.work_issue }}
+        run: |
+          set -euo pipefail
+          python scripts/style_group_live_proof.py \
             --work-issue "$WORK_ISSUE" \
             --issue-json "$RUNNER_TEMP/issue.json" \
             --probe ".github/live-proofs/$WORK_ISSUE.sql" \

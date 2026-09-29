@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3827,
+  "outcome": "ready-for-merge",
+  "pr": 3828,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3827/1",
+  "contract_sha256": "fe3cb7300ffe11ca324e68ed8eaa76ac0bfd42c08e72bcbfe10ed6b9ab6546b9",
+  "head_sha": "ffa38f1cff8bcede03f7dd5a11e9b86544643cb1",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --check scripts/manage-migration-author-lanes.mjs",
+      "exit_code": 0,
+      "evidence": "syntax ok at ffa38f1c"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "745 of 745 tests passed, 0 failed, 0 skipped at ffa38f1c"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors between base 339359bd and ffa38f1c"
+    }
+  ],
+  "assumptions_resolved": [
+    "Existing tests match the amended error phrases without end anchors; 745 tests still pass"
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "339359bde6337379a5c2216808fc9b60303eb3d5"
+}

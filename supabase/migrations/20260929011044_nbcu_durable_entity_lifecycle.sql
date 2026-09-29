@@ -13,10 +13,13 @@
 --   * Derivation compatibility. Every publication names the key-derivation contract; a
 --     different contract never compares against an older baseline.
 --   * Concurrent publication locking. One transaction-scoped advisory lock serializes
---     every publication, and chronology refuses an older or equal capture.
+--     every publication, and chronology refuses an older or equal capture. An equal
+--     source_captured_at is refused on purpose: two captures cannot be ordered, so the
+--     second is never merged. Recovery is a fresh capture, which always carries a later
+--     source_captured_at; nothing needs to be edited or deleted.
 --   * A withdrawn row is marked, never deleted. Withdrawal needs the entity seen in the
 --     baseline and absent from a comparable run. A bulk drop above the named threshold
---     is held, not applied.
+--     is held, not applied; the held publication records how many withdrawals it held.
 
 create table plm.nbcu_lifecycle_publication (
   capture_id              uuid        not null primary key
@@ -93,12 +96,18 @@ comment on table plm.nbcu_entity_lifecycle is
   'opaque: an asset hashes the portal display_modified and display_size; every other '
   'kind hashes its retained raw source record.';
 
--- Serving indexes (#3695 review): the bulk-drop guard, withdrawal counts and withdrawal
--- filter on (entity_kind, last_seen_capture_id[, status]); the latest-publication lookup
--- orders by (source_captured_at desc, published_at desc); the remaining publication FK
--- child columns get their own index so a publication-row check never scans.
+-- Serving indexes (#3695 review). The function's two lookups:
+--   * nbcu_entity_lifecycle_kind_last_seen_idx leads with last_seen_capture_id, the column
+--     every withdrawal statement constrains (= any(eligible)); the per-kind guard and
+--     count statements add entity_kind and status, and the kind-less withdrawal UPDATE
+--     still uses the leading column. It is also the referenced-side index for the
+--     last_seen_capture_id foreign key.
+--   * nbcu_lifecycle_publication_latest_idx serves the latest-publication lookup.
+-- Foreign-key support only (no function predicate uses them): first_seen, last_changed,
+-- withdrawn_capture and baseline indexes keep a publication-row RESTRICT check from
+-- scanning the child table.
 create index nbcu_entity_lifecycle_kind_last_seen_idx
-  on plm.nbcu_entity_lifecycle (entity_kind, last_seen_capture_id, status);
+  on plm.nbcu_entity_lifecycle (last_seen_capture_id, entity_kind, status);
 create index nbcu_entity_lifecycle_first_seen_idx
   on plm.nbcu_entity_lifecycle (first_seen_capture_id);
 create index nbcu_entity_lifecycle_last_changed_idx
@@ -280,13 +289,15 @@ begin
         on l.entity_kind = s.entity_kind and l.entity_key = s.entity_key
      where s.entity_kind = v_kind and l.status = 'withdrawn';
     v_drop := 0;
-    if v_mode = 'comparable' then
+    if v_mode in ('comparable', 'withdrawal_held') then
       select pg_catalog.count(*) into v_drop from plm.nbcu_entity_lifecycle l
        where l.entity_kind = v_kind and l.status = 'active' and l.last_seen_capture_id = any(v_eligible)
          and not exists (select 1 from pg_temp.nbcu_lifecycle_seen s where s.entity_kind = l.entity_kind and s.entity_key = l.entity_key);
     end if;
     v_counts := v_counts || pg_catalog.jsonb_build_object(v_kind, pg_catalog.jsonb_build_object(
-      'seen', v_seen, 'added', v_added, 'changed', v_changed, 'reactivated', v_back, 'withdrawn', v_drop));
+      'seen', v_seen, 'added', v_added, 'changed', v_changed, 'reactivated', v_back,
+      'withdrawn', case when v_mode = 'comparable' then v_drop else 0 end,
+      'withdrawal_held', case when v_mode = 'withdrawal_held' then v_drop else 0 end));
   end loop;
 
   if v_mode = 'comparable' then

@@ -44,7 +44,9 @@ select v.id::uuid, 'contract:' || v.id, 'synthetic/repo', repeat('a', 40), repea
     ('36830000-0000-4000-8000-00000000000e', '2026-09-05T00:00:00Z', 'complete', '[{"code":"synthetic"}]'),
     ('36830000-0000-4000-8000-0000000000ff', '2026-09-06T00:00:00Z', 'rejected', '[{"code":"synthetic"}]'),
     ('36830000-0000-4000-8000-000000000001', '2026-08-01T00:00:00Z', 'complete', '[]'),
-    ('36830000-0000-4000-8000-000000000006', '2026-09-07T00:00:00Z', 'complete', '[]')
+    ('36830000-0000-4000-8000-000000000006', '2026-09-07T00:00:00Z', 'complete', '[]'),
+    ('36830000-0000-4000-8000-000000000007', '2026-09-07T00:00:00Z', 'complete', '[]'),
+    ('36830000-0000-4000-8000-000000000008', '2026-09-08T00:00:00Z', 'complete', '[]')
   ) v(id, at, status, err);
 
 insert into plm.nbcu_scope (capture_id, scope_key, scope_label, scope_href, page_count,
@@ -59,7 +61,9 @@ select v.cap::uuid, 'href-sha256:' || repeat(v.k, 64), 'scope ' || v.k, 'https:/
     ('36830000-0000-4000-8000-00000000000e','1'),
     ('36830000-0000-4000-8000-0000000000ff','1'),
     ('36830000-0000-4000-8000-000000000001','1'),
-    ('36830000-0000-4000-8000-000000000006','1')
+    ('36830000-0000-4000-8000-000000000006','1'),
+    ('36830000-0000-4000-8000-000000000007','1'),
+    ('36830000-0000-4000-8000-000000000008','1')
   ) v(cap, k);
 
 insert into plm.nbcu_asset (capture_id, asset_source_key, asset_path, file_name, display_size,
@@ -80,7 +84,12 @@ select v.cap::uuid, v.path, v.path, 'f', '1 KB', v.modified, '[]', '[]', '[]', '
     -- Same capture, same DAM object through two viewer forms (#3695 M2): one identity.
     ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/five.png', 'm9'),
     ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/three.png', 'm1'),
-    ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/four.png', 'm1')
+    ('36830000-0000-4000-8000-000000000006', '/content/dam/synthetic/four.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000008', '/content/dam/synthetic/three.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000008', '/content/dam/synthetic/four.png', 'm1'),
+    ('36830000-0000-4000-8000-000000000008', '/content/dam/synthetic/five.png', 'm1'),
+    -- A viewer form the rule does not name is kept verbatim, never guessed into a DAM path.
+    ('36830000-0000-4000-8000-000000000008', '/content/asset-share-commons/en/details/image.html/content/other/six.png', 'm1')
   ) v(cap, path, modified);
 
 insert into plm.nbcu_property (capture_id, property_key, property_source_id, property_label,
@@ -206,6 +215,12 @@ begin
   if exists (select 1 from plm.nbcu_entity_lifecycle where withdrawn_capture_id = '36830000-0000-4000-8000-00000000000d') then
     raise exception 'held publication withdrew an entity';
   end if;
+  -- The held publication keeps the magnitude of what it held (three baseline assets).
+  if (select counts #> '{asset}' from plm.nbcu_lifecycle_publication
+       where capture_id = '36830000-0000-4000-8000-00000000000d')
+     is distinct from '{"seen": 1, "added": 1, "changed": 0, "reactivated": 0, "withdrawn": 0, "withdrawal_held": 3}'::jsonb then
+    raise exception 'held publication did not record the size of the held drop';
+  end if;
   if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_key = '/content/dam/synthetic/five.png' and status = 'active') then
     raise exception 'held publication did not record sightings';
   end if;
@@ -217,6 +232,19 @@ $held$;
 -- of orphaning it: /content/dam/synthetic/two.png was last seen before the hold and is now withdrawn.
 set local role service_role;
 select plm.nbcu_publish_lifecycle('36830000-0000-4000-8000-000000000006');
+reset role;
+
+-- An equal source_captured_at cannot be ordered and is refused, never merged.
+set local role service_role;
+do $tie$
+begin
+  begin
+    perform plm.nbcu_publish_lifecycle('36830000-0000-4000-8000-000000000007');
+    raise exception 'publish accepted a capture with an equal source_captured_at';
+  exception when sqlstate '22023' then null;
+  end;
+end
+$tie$;
 reset role;
 
 do $after_hold$
@@ -238,91 +266,163 @@ begin
 end
 $after_hold$;
 
--- Exact objects: column order and named constraints, not just names that resolve.
+-- Exact objects (#3695 review): column type, nullability and default; every CHECK body
+-- as the catalog renders it; FK mappings; index definitions; the full policy USING
+-- expression; and the function's shape.
 do $exact$
+declare
+  c_audience constant text := '(app.has_app_access(''plm''::app.app_name) OR app.has_role(''administrator''::app.app_role) OR app.has_any_role(ARRAY[''sales''::app.app_role, ''licensing''::app.app_role]))';
 begin
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
-       where attrelid = 'plm.nbcu_entity_lifecycle'::regclass and attnum > 0 and not attisdropped)
-     <> 'entity_kind,entity_key,identity_basis,first_seen_capture_id,first_seen_at,last_seen_capture_id,last_seen_at,last_changed_capture_id,change_signal,status,withdrawn_at,first_withdrawn_at,withdrawn_capture_id' then
+  if (select string_agg(format('%s %s %s %s', a.attname, format_type(a.atttypid, a.atttypmod),
+            case when a.attnotnull then 'not null' else 'null' end, coalesce(pg_get_expr(d.adbin, d.adrelid), '-')), ', ' order by a.attnum)
+        from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+       where a.attrelid = 'plm.nbcu_entity_lifecycle'::regclass and a.attnum > 0 and not a.attisdropped)
+     is distinct from
+       'entity_kind text not null -, entity_key text not null -, identity_basis text not null -, '
+       'first_seen_capture_id uuid not null -, first_seen_at timestamp with time zone not null -, '
+       'last_seen_capture_id uuid not null -, last_seen_at timestamp with time zone not null -, '
+       'last_changed_capture_id uuid not null -, change_signal text not null -, '
+       'status text not null ''active''::text, withdrawn_at timestamp with time zone null -, '
+       'first_withdrawn_at timestamp with time zone null -, withdrawn_capture_id uuid null -' then
     raise exception 'plm.nbcu_entity_lifecycle columns differ from the reviewed shape';
   end if;
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
-       where attrelid = 'plm.nbcu_lifecycle_publication'::regclass and attnum > 0 and not attisdropped)
-     <> 'capture_id,baseline_capture_id,mode,derivation_contract,scope_sha256,source_captured_at,counts,published_at' then
+  if (select string_agg(format('%s %s %s %s', a.attname, format_type(a.atttypid, a.atttypmod),
+            case when a.attnotnull then 'not null' else 'null' end, coalesce(pg_get_expr(d.adbin, d.adrelid), '-')), ', ' order by a.attnum)
+        from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+       where a.attrelid = 'plm.nbcu_lifecycle_publication'::regclass and a.attnum > 0 and not a.attisdropped)
+     is distinct from
+       'capture_id uuid not null -, baseline_capture_id uuid null -, mode text not null -, '
+       'derivation_contract text not null -, scope_sha256 text not null -, '
+       'source_captured_at timestamp with time zone not null -, counts jsonb not null ''{}''::jsonb, '
+       'published_at timestamp with time zone not null now()' then
     raise exception 'plm.nbcu_lifecycle_publication columns differ from the reviewed shape';
   end if;
-  -- Every named constraint on both tables, exactly (#3695 review): no missing and no extra.
-  if (select string_agg(conname, ',' order by conname) from pg_constraint
-       where conrelid = 'plm.nbcu_entity_lifecycle'::regclass and contype in ('p','c'))
-     <> 'nbcu_entity_lifecycle_basis_chk,nbcu_entity_lifecycle_history_chk,nbcu_entity_lifecycle_key_chk,'
-        'nbcu_entity_lifecycle_kind_chk,nbcu_entity_lifecycle_pkey,nbcu_entity_lifecycle_status_chk,'
-        'nbcu_entity_lifecycle_withdrawn_at_chk'
-     or (select string_agg(conname, ',' order by conname) from pg_constraint
-       where conrelid = 'plm.nbcu_lifecycle_publication'::regclass and contype in ('p','c'))
-     <> 'nbcu_lifecycle_publication_baseline_chk,nbcu_lifecycle_publication_contract_chk,'
-        'nbcu_lifecycle_publication_counts_chk,nbcu_lifecycle_publication_mode_chk,'
-        'nbcu_lifecycle_publication_pkey,nbcu_lifecycle_publication_scope_chk' then
-    raise exception 'durable-state named constraints differ from the reviewed set';
-  end if;
-  if pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_entity_lifecycle_basis_chk'
-         and conrelid = 'plm.nbcu_entity_lifecycle'::regclass)) not like '%dam_path%source_id%label_sha256%id_fallback%folder_path%'
-     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_entity_lifecycle_key_chk'
-         and conrelid = 'plm.nbcu_entity_lifecycle'::regclass)) not like '%btrim(entity_key)%'
-     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_lifecycle_publication_contract_chk'
-         and conrelid = 'plm.nbcu_lifecycle_publication'::regclass)) not like '%btrim(derivation_contract)%'
-     or pg_get_constraintdef((select oid from pg_constraint where conname = 'nbcu_lifecycle_publication_counts_chk'
-         and conrelid = 'plm.nbcu_lifecycle_publication'::regclass)) not like '%jsonb_typeof(counts)%object%' then
-    raise exception 'durable-state CHECK bodies differ from the reviewed shape';
+  -- Every primary key and CHECK on both tables, by name AND body: no missing, no extra.
+  if (select string_agg(conname || ' ' || pg_get_constraintdef(oid), E'\n' order by conname) from pg_constraint
+       where conrelid in ('plm.nbcu_entity_lifecycle'::regclass, 'plm.nbcu_lifecycle_publication'::regclass)
+         and contype in ('p','c'))
+     is distinct from concat_ws(E'\n',
+       'nbcu_entity_lifecycle_basis_chk CHECK ((identity_basis = ANY (ARRAY[''dam_path''::text, ''source_id''::text, ''label_sha256''::text, ''id_fallback''::text, ''folder_path''::text])))',
+       'nbcu_entity_lifecycle_history_chk CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at)))',
+       'nbcu_entity_lifecycle_key_chk CHECK ((btrim(entity_key) <> ''''::text))',
+       'nbcu_entity_lifecycle_kind_chk CHECK ((entity_kind = ANY (ARRAY[''asset''::text, ''property''::text, ''character''::text, ''style_guide''::text, ''ip_family''::text])))',
+       'nbcu_entity_lifecycle_pkey PRIMARY KEY (entity_kind, entity_key)',
+       'nbcu_entity_lifecycle_status_chk CHECK ((status = ANY (ARRAY[''active''::text, ''withdrawn''::text])))',
+       'nbcu_entity_lifecycle_withdrawn_at_chk CHECK ((((status = ''withdrawn''::text) = (withdrawn_at IS NOT NULL)) AND ((status = ''withdrawn''::text) = (withdrawn_capture_id IS NOT NULL))))',
+       'nbcu_lifecycle_publication_baseline_chk CHECK ((((mode = ''bootstrap''::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> capture_id))))',
+       'nbcu_lifecycle_publication_contract_chk CHECK ((btrim(derivation_contract) <> ''''::text))',
+       'nbcu_lifecycle_publication_counts_chk CHECK ((jsonb_typeof(counts) = ''object''::text))',
+       'nbcu_lifecycle_publication_mode_chk CHECK ((mode = ANY (ARRAY[''bootstrap''::text, ''comparable''::text, ''rebaseline''::text, ''withdrawal_held''::text])))',
+       'nbcu_lifecycle_publication_pkey PRIMARY KEY (capture_id)',
+       'nbcu_lifecycle_publication_scope_chk CHECK ((scope_sha256 ~ ''^[0-9a-f]{64}$''::text))') then
+    raise exception 'durable-state primary keys or CHECK bodies differ from the reviewed shape';
   end if;
   -- Foreign keys by exact column mapping, restrict on delete.
   if (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
        where conrelid = 'plm.nbcu_entity_lifecycle'::regclass and contype = 'f')
-     <> 'FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-        'FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-        'FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-        'FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT'
+     is distinct from
+       'FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT'
      or (select string_agg(pg_get_constraintdef(oid), ' | ' order by pg_get_constraintdef(oid)) from pg_constraint
        where conrelid = 'plm.nbcu_lifecycle_publication'::regclass and contype = 'f')
-     <> 'FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
-        'FOREIGN KEY (capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT' then
+     is distinct from
+       'FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(capture_id) ON DELETE RESTRICT | '
+       'FOREIGN KEY (capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT' then
     raise exception 'durable-state foreign keys differ from the reviewed column mapping';
   end if;
-  -- Serving indexes named in the #3695 review.
+  -- Indexes: the withdrawal index leads with last_seen_capture_id (#3695 review, H2/H3).
   if (select string_agg(pg_get_indexdef(indexrelid), ' | ' order by pg_get_indexdef(indexrelid)) from pg_index
        where indrelid in ('plm.nbcu_entity_lifecycle'::regclass, 'plm.nbcu_lifecycle_publication'::regclass)
          and not indisprimary)
-     <> 'CREATE INDEX nbcu_entity_lifecycle_first_seen_idx ON plm.nbcu_entity_lifecycle USING btree (first_seen_capture_id) | '
-        'CREATE INDEX nbcu_entity_lifecycle_kind_last_seen_idx ON plm.nbcu_entity_lifecycle USING btree (entity_kind, last_seen_capture_id, status) | '
-        'CREATE INDEX nbcu_entity_lifecycle_last_changed_idx ON plm.nbcu_entity_lifecycle USING btree (last_changed_capture_id) | '
-        'CREATE INDEX nbcu_entity_lifecycle_withdrawn_capture_idx ON plm.nbcu_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL) | '
-        'CREATE INDEX nbcu_lifecycle_publication_baseline_idx ON plm.nbcu_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL) | '
-        'CREATE INDEX nbcu_lifecycle_publication_latest_idx ON plm.nbcu_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC)' then
-    raise exception 'durable-state serving indexes differ from the reviewed set';
+     is distinct from
+       'CREATE INDEX nbcu_entity_lifecycle_first_seen_idx ON plm.nbcu_entity_lifecycle USING btree (first_seen_capture_id) | '
+       'CREATE INDEX nbcu_entity_lifecycle_kind_last_seen_idx ON plm.nbcu_entity_lifecycle USING btree (last_seen_capture_id, entity_kind, status) | '
+       'CREATE INDEX nbcu_entity_lifecycle_last_changed_idx ON plm.nbcu_entity_lifecycle USING btree (last_changed_capture_id) | '
+       'CREATE INDEX nbcu_entity_lifecycle_withdrawn_capture_idx ON plm.nbcu_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL) | '
+       'CREATE INDEX nbcu_lifecycle_publication_baseline_idx ON plm.nbcu_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL) | '
+       'CREATE INDEX nbcu_lifecycle_publication_latest_idx ON plm.nbcu_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC)' then
+    raise exception 'durable-state indexes differ from the reviewed set';
   end if;
-  -- Policies: exactly one permissive SELECT policy per table, for authenticated, with the
-  -- PLM / administrator / sales-licensing audience.
-  if (select count(*) from pg_policies where schemaname = 'plm'
-       and tablename in ('nbcu_entity_lifecycle','nbcu_lifecycle_publication')) <> 2
-     or (select count(*) from pg_policies where schemaname = 'plm'
-       and (tablename, policyname) in (('nbcu_entity_lifecycle','nbcu_entity_lifecycle_plm_read'),
-                                       ('nbcu_lifecycle_publication','nbcu_lifecycle_publication_plm_read'))
-       and cmd = 'SELECT' and permissive = 'PERMISSIVE' and roles = array['authenticated']::name[]
-       and with_check is null
-       and qual like '%app.has_app_access(''plm''%'
-       and qual like '%app.has_role(''administrator''%'
-       and qual like '%app.has_any_role(%sales%licensing%') <> 2 then
+  -- Policies: exactly one permissive SELECT policy per table, for authenticated, whose
+  -- full USING expression is the catalog rendering of the PLM / administrator /
+  -- sales-licensing audience (typed casts included).
+  if (select string_agg(format('%s %s %s %s %s %s', tablename, policyname, permissive, cmd, roles, coalesce(with_check, '-')), ' | ' order by tablename)
+        from pg_policies where schemaname = 'plm' and tablename in ('nbcu_entity_lifecycle','nbcu_lifecycle_publication'))
+     is distinct from
+       'nbcu_entity_lifecycle nbcu_entity_lifecycle_plm_read PERMISSIVE SELECT {authenticated} - | '
+       'nbcu_lifecycle_publication nbcu_lifecycle_publication_plm_read PERMISSIVE SELECT {authenticated} -'
+     or exists (select 1 from pg_policies where schemaname = 'plm'
+                  and tablename in ('nbcu_entity_lifecycle','nbcu_lifecycle_publication')
+                  and qual is distinct from c_audience) then
     raise exception 'durable-state read policies differ from the reviewed audience';
   end if;
-  if (select provolatile from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure) <> 'v'
-     or (select proconfig from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure)
-        is distinct from array['search_path=pg_catalog, pg_temp'] then
-    raise exception 'publish function volatility or search_path differs from the reviewed shape';
-  end if;
-  if not (select prosecdef from pg_proc where oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure) then
-    raise exception 'publish function is not SECURITY DEFINER';
+  if (select format('%s %s %s %s %s', provolatile, prosecdef, l.lanname, pg_get_function_result(p.oid), proconfig)
+        from pg_proc p join pg_language l on l.oid = p.prolang
+       where p.oid = 'plm.nbcu_publish_lifecycle(uuid)'::regprocedure)
+     is distinct from 'v t plpgsql jsonb {"search_path=pg_catalog, pg_temp"}' then
+    raise exception 'publish function volatility, security, language, result or search_path differs from the reviewed shape';
   end if;
 end
 $exact$;
+
+-- Two-session contention (#3695 review): this transaction has published, so it holds the
+-- publication lock until it ends. A second session that calls the publish function must
+-- wait on that lock (it times out with lock_not_available before it can even look up
+-- its capture) instead of running concurrently. Runs through dblink when the extension
+-- can be created inside this rolled-back transaction and a second connection opens (the
+-- connection string may be supplied as the nbcu.contention_dsn setting); otherwise it
+-- SKIPS loudly, as coldlion_promotion_serialization_lock.sql does.
+do $contention$
+declare
+  v_ok boolean := false;
+  v_state text;
+begin
+  begin
+    create extension if not exists dblink with schema extensions;
+    perform extensions.dblink_connect('nbcu_lock',
+      coalesce(nullif(current_setting('nbcu.contention_dsn', true), ''), 'dbname=' || current_database()));
+    v_ok := true;
+  exception when others then
+    raise notice 'contention SKIP: no second session through dblink (%)', sqlerrm;
+  end;
+  if not v_ok then return; end if;
+  perform extensions.dblink_exec('nbcu_lock', 'set lock_timeout = ''500ms''');
+  begin
+    perform 1 from extensions.dblink('nbcu_lock',
+      'select 1 from (select plm.nbcu_publish_lifecycle(''36830000-0000-4000-8000-00000000abcd'')) s') as t(c int);
+    raise exception 'a second session ran the publish function while this one held the lock';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if sqlerrm not like '%lock timeout%' then
+      raise exception 'second session failed for a reason other than waiting on the lock: % %', v_state, sqlerrm;
+    end if;
+  end;
+  perform extensions.dblink_disconnect('nbcu_lock');
+  raise notice 'contention PASS: second session waited on the publication lock';
+exception when others then
+  begin perform extensions.dblink_disconnect('nbcu_lock'); exception when others then null; end;
+  raise;
+end
+$contention$;
+
+-- H: a later capture publishes; an unnamed viewer form stays verbatim.
+set local role service_role;
+select plm.nbcu_publish_lifecycle('36830000-0000-4000-8000-000000000008');
+reset role;
+
+do $viewer_boundary$
+begin
+  if not exists (select 1 from plm.nbcu_lifecycle_publication where capture_id = '36830000-0000-4000-8000-000000000008') then
+    raise exception 'later capture did not publish';
+  end if;
+  if not exists (select 1 from plm.nbcu_entity_lifecycle where entity_kind = 'asset'
+                 and entity_key = '/content/asset-share-commons/en/details/image.html/content/other/six.png') then
+    raise exception 'a non-DAM viewer path was rewritten instead of kept verbatim';
+  end if;
+end
+$viewer_boundary$;
 
 set local role service_role;
 do $direct$

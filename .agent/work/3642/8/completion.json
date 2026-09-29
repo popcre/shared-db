@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3642,
+  "outcome": "ready-for-merge",
+  "pr": 3647,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3642/8",
+  "contract_sha256": "80b3058d054a5e218c399a7f4b04c38cc79d6e4470a2967a2fb8acd51cd0c80a",
+  "head_sha": "558f17a29fedb5f1c1c6a3008c4de8557d1139cc",
+  "base_sha": "5d7940597e7343f42e6c906b72da263934754148",
+  "files_changed": [
+    ".agent/work/3642/8/completion.json",
+    ".agent/work/3642/8/contract.json",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "docs/verification/throughput-retired-identity-sites-3647.json",
+    "scripts/fixtures/github-proof-zip/live-proof-2870.zip",
+    "scripts/lib/github-proof-zip.mjs",
+    "scripts/lib/github-proof-zip.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/github-proof-zip.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+      "exit_code": 0,
+      "evidence": "All tests pass, 0 failed, after merging current main."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "All throughput-guard tests pass (local python alias; gap tracked by non-orchestrator issue 3629)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=321 sources=82 derived_digest=c1b800f1b719"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors against base 5d7940597e7343f42e6c906b72da263934754148"
+    }
+  ],
+  "assumptions_resolved": [
+    "Contract generation 8 re-anchors generation 7 to current main after the base moved; this PR carries exactly one evidence pair.",
+    "Original ZIP fixture digest sha256:5522462b5f03bdd138fa3b399a657eb572ae9fead030ec5293c91b89aa69fc5d is mandatory in tests.",
+    "No production action, database write, live_verified event, or issue closure is claimed."
+  ],
+  "stop_conditions_hit": []
+}

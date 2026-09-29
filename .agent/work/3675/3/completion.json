@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "work_issue": 3675,
+  "outcome": "ready-for-merge",
+  "pr": 3757,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3675/3",
+  "contract_sha256": "b858c00a4e787d81824bda4186de572fbe7edc230434cc56a3985e0137c1cd30",
+  "base_sha": "58836647e5645bb7e96049a8b72b5ded768a9010",
+  "head_sha": "b5deb7a88fe41a5770805ff86f03df32d1578df2",
+  "files_changed": [
+    ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
+    ".github/workflows/migration-author-lease.yml",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "plan_author_lane_abandonment_lifecycle.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/migration-retirement-tombstones.test.mjs",
+    "scripts/test_production_migration_guard.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs scripts/lib/reviewer-turn-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "797 pass on implementation head b5deb7a8"
+    },
+    {
+      "command": "node scripts/check-cancelled-work.mjs",
+      "exit_code": 0,
+      "evidence": "run on implementation head b5deb7a8"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_production_migration_guard",
+      "exit_code": 0,
+      "evidence": "289 tests OK on implementation head b5deb7a8"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 pass on implementation head b5deb7a8"
+    }
+  ],
+  "assumptions_resolved": [
+    "refs/db-claims-retired/* had 0 refs on 2026-09-28; v1 records remain readable"
+  ],
+  "stop_conditions_hit": []
+}

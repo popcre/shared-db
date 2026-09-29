@@ -6,12 +6,12 @@
   "route": "shared-db-orchestrator",
   "goal": "Add durable peanuts entity state and a serialized, coverage-qualified publish function beside the immutable capture snapshots, without altering any snapshot table.",
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
-  "dispatcher": "Claude chat 1b699f56-bfb1-4801-a2b9-db91edbc98f6 on edge-dev3 (orchestrator marker 3653); generation 2 by Claude chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3 (orchestrator admission of index scope, version re-reserved 20260928210932)",
+  "dispatcher": "Claude chat 1b699f56-bfb1-4801-a2b9-db91edbc98f6 on edge-dev3 (orchestrator marker 3653); generation 2 by Claude chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3 (orchestrator admission of index scope, version re-reserved 20260929010932)",
   "worker": "1b699f56-bfb1-4801-a2b9-db91edbc98f6",
   "branch": "claude/3684-peanuts-durable-state",
   "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/fix-3730",
   "allowed_paths": [
-    "supabase/migrations/20260928210932_peanuts_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929010932_peanuts_durable_entity_lifecycle.sql",
     "supabase/tests/peanuts_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/peanuts_landing_contracts.sql",
     ".github/live-proofs/3684.sql",
@@ -19,7 +19,7 @@
     ".agent/work/3684/2/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260928210932_peanuts_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929010932_peanuts_durable_entity_lifecycle.sql",
     "supabase/tests/peanuts_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/peanuts_landing_contracts.sql",
     ".github/live-proofs/3684.sql",
@@ -59,7 +59,7 @@
     "node scripts/check-live-proof-probe.mjs"
   ],
   "assumptions": [
-    "Claim #3728 re-reserved as 20260928210932 and expanded to exactly the eleven declared writes",
+    "Claim #3728 re-reserved as 20260929010932 and expanded to exactly the eleven declared writes",
     "The ephemeral database contract job executes the new contract test"
   ],
   "stop_conditions": [

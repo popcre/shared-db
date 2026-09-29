@@ -89,7 +89,9 @@ export function verifyGitEvidence({ contract, report, prBaseSha, prHeadSha }, io
   const evidenceTail = afterImplementation.filter((file) => isEvidencePath(file))
   const authorTail = afterImplementation.filter((file) => !isEvidencePath(file) && !fromMain(file))
   const matches = allowed.some((pair) => evidenceTail.length === pair.length && evidenceTail.every((file, index) => file === pair[index]))
-  const pairOnTip = allowed.some((pair) => pair.every((file) => afterImplementation.includes(file) || isEvidencePath(file)))
+  // The pair must actually appear in the tail. Do not accept an evidence path
+  // merely because it is an evidence path — that made the check tautological.
+  const pairOnTip = allowed.some((pair) => pair.every((file) => afterImplementation.includes(file)))
   if (authorTail.length) {
     throw new GitEvidenceError(`implementation changed after the reported head; expected only evidence or main's merge files but found [${authorTail.join(', ')}]`)
   }

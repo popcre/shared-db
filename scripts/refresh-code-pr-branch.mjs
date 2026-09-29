@@ -135,19 +135,25 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
       // Fold into the EXISTING merge commit with --amend so the merge keeps both
       // parents (main stays an ancestor). Never soft-reset: that would drop
       // MERGE_HEAD and squash the merge onto one parent.
-      for (const file of EVIDENCE) ok(git('checkout', before, '--', file), `restoring ${file} unchanged`)
-      ok(git('add', '--', ...EVIDENCE), 'git add')
-      const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
-      const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))
       let testSummary = 'no changed scripts test file'
-      if (tests.length) {
-        const t = run('node', ['--test', '--test-reporter=spec', ...tests], { cwd })
-        const s = summarizeNodeTest(`${t.stdout}\n${t.stderr}`)
-        if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); the merge commit ${head} is local and nothing was pushed`)
-        testSummary = `${tests.map((f) => f.replace(/^scripts\/|\.test\.mjs$/g, '')).join(', ')} ${s.pass}/${s.pass + s.fail} pass, ${s.fail} fail, ${s.skipped} skipped`
+      try {
+        for (const file of EVIDENCE) ok(git('checkout', before, '--', file), `restoring ${file} unchanged`)
+        ok(git('add', '--', ...EVIDENCE), 'git add')
+        const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
+        const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))
+        if (tests.length) {
+          const t = run('node', ['--test', '--test-reporter=spec', ...tests], { cwd })
+          const s = summarizeNodeTest(`${t.stdout}\n${t.stderr}`)
+          if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); the merge commit ${head} is local and nothing was pushed`)
+          testSummary = `${tests.map((f) => f.replace(/^scripts\/|\.test\.mjs$/g, '')).join(', ')} ${s.pass}/${s.pass + s.fail} pass, ${s.fail} fail, ${s.skipped} skipped`
+        }
+        ok(git('diff', '--check', 'origin/main...HEAD'), 'git diff --check')
+        ok(git('commit', '-q', '--amend', '--no-edit'), 'folding the pair into the refresh merge commit')
+      } catch (foldError) {
+        // Leave a retryable tree: hard-reset to the merge commit just created.
+        git('reset', '-q', '--hard', head)
+        throw new RefreshError(`${foldError.message}. The worktree is reset to the merge commit ${head}; fix the cause and re-run refresh.`)
       }
-      ok(git('diff', '--check', 'origin/main...HEAD'), 'git diff --check')
-      ok(git('commit', '-q', '--amend', '--no-edit'), 'folding the pair into the refresh merge commit')
       const tip = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
       log(`Refreshed (content-preserving, no new evidence commit): tip ${tip}. ${testSummary}.`)
       if (!options.push) return { head: tip, tip, pushed: false, evidenceCommitSkipped: true }

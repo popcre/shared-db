@@ -1,10 +1,10 @@
 -- #3725 read-only production proof: plm.wb_validate_normalized_row(text,jsonb)
--- is STABLE after 20260928183916, with body, search_path, security mode,
+-- is STABLE after 20260929005943, with body, search_path, security mode,
 -- return type and grants unchanged.
 SELECT (
   EXISTS (
     SELECT 1 FROM supabase_migrations.schema_migrations
-    WHERE version = '20260928183916'
+    WHERE version = '20260929005943'
   )
   AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_proc p

@@ -49,7 +49,10 @@ create table plm.peanuts_lifecycle_publication (
 comment on table plm.peanuts_lifecycle_publication is
   'One row per Peanuts capture published into durable entity state (#3684). mode records '
   'whether withdrawals were compared (comparable), skipped because the account/endpoint '
-  'or key contract differed (rebaseline), or held by the bulk-drop guard.';
+  'or key contract differed (rebaseline), or held by the bulk-drop guard. The key is '
+  'published_capture_id, deliberately not capture_id: api.source_capture_inventory treats a '
+  'peanuts_ table with a capture_id column as a latest-complete capture snapshot, and this '
+  'mutable ledger must be reported as retained rows only.';
 
 create table plm.peanuts_entity_lifecycle (
   entity_kind             text        not null,
@@ -120,11 +123,6 @@ create index idx_peanuts_lifecycle_publication_baseline
 create index idx_peanuts_lifecycle_publication_latest
   on plm.peanuts_lifecycle_publication (source_captured_at desc, published_at desc, published_capture_id desc);
 
-comment on column plm.peanuts_lifecycle_publication.published_capture_id is
-  'The plm.peanuts_capture published by this row. Deliberately not named capture_id: '
-  'api.source_capture_inventory treats a peanuts_ table with a capture_id column as a '
-  'latest-complete capture snapshot, and this table is a mutable publication ledger, so it '
-  'is reported as retained rows only.';
 comment on column plm.peanuts_entity_lifecycle.first_withdrawn_at is
   'Immutable first confirmed withdrawal time, retained across every reactivation.';
 comment on column plm.peanuts_entity_lifecycle.change_signal is

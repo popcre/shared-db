@@ -23,16 +23,16 @@ select (
          and has_table_privilege('authenticated', t, 'SELECT')
          and not has_table_privilege('anon', t, 'SELECT'))
        from unnest(array['plm.wildbrain_entity_lifecycle', 'plm.wildbrain_lifecycle_publication']) t) is true
-  and (select string_agg(indexname || '=' || regexp_replace(indexdef, '^.* USING ', ''), ';' order by indexname)
+  and (select string_agg(indexname || '=' || regexp_replace(indexdef, '^.* USING ', ''), '|' order by indexname)
          from pg_indexes where schemaname = 'plm'
           and tablename in ('wildbrain_entity_lifecycle', 'wildbrain_lifecycle_publication'))
-      = 'wildbrain_entity_lifecycle_first_seen_idx=btree (first_seen_capture_id);'
-        'wildbrain_entity_lifecycle_last_changed_idx=btree (last_changed_capture_id);'
-        'wildbrain_entity_lifecycle_last_seen_idx=btree (last_seen_capture_id, entity_kind);'
-        'wildbrain_entity_lifecycle_pkey=btree (entity_kind, entity_key);'
-        'wildbrain_entity_lifecycle_withdrawn_idx=btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL);'
-        'wildbrain_lifecycle_publication_baseline_idx=btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);'
-        'wildbrain_lifecycle_publication_latest_idx=btree (source_captured_at DESC, published_at DESC);'
+      = 'wildbrain_entity_lifecycle_first_seen_idx=btree (first_seen_capture_id)|'
+        'wildbrain_entity_lifecycle_last_changed_idx=btree (last_changed_capture_id)|'
+        'wildbrain_entity_lifecycle_last_seen_idx=btree (last_seen_capture_id, entity_kind)|'
+        'wildbrain_entity_lifecycle_pkey=btree (entity_kind, entity_key)|'
+        'wildbrain_entity_lifecycle_withdrawn_idx=btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL)|'
+        'wildbrain_lifecycle_publication_baseline_idx=btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL)|'
+        'wildbrain_lifecycle_publication_latest_idx=btree (source_captured_at DESC, published_at DESC)|'
         'wildbrain_lifecycle_publication_pkey=btree (capture_id)'
   and not exists (
          select 1 from information_schema.role_table_grants

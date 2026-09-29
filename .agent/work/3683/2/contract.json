@@ -11,7 +11,7 @@
   "branch": "claude/3683-nbcu-durable-state",
   "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/sdb-3683-nbcu",
   "allowed_paths": [
-    "supabase/migrations/20260928211044_nbcu_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929011044_nbcu_durable_entity_lifecycle.sql",
     "supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/nbcu_landing_contracts.sql",
     ".github/live-proofs/3683.sql",
@@ -21,7 +21,7 @@
     ".agent/work/3683/2/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260928211044_nbcu_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929011044_nbcu_durable_entity_lifecycle.sql",
     "supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/nbcu_landing_contracts.sql",
     ".github/live-proofs/3683.sql",
@@ -64,7 +64,7 @@
     "node scripts/check-live-proof-probe.mjs"
   ],
   "assumptions": [
-    "Claim #3694 was expanded with the six serving indexes and its version superseded 20260928160635 -> 20260928211044 by the claim tool (supersession 85c13612)",
+    "Claim #3694 was expanded with the six serving indexes and its version superseded 20260928160635 -> 20260929011044 by the claim tool (supersession 85c13612)",
     "The ephemeral database contract job executes supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql"
   ],
   "stop_conditions": [

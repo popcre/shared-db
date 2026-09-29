@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3684/3",
   "contract_sha256": "223d65fcdc885cdfd80ed70c4b7121feee2370ac84a3fefbba719644bf44d303",
-  "head_sha": "09ee7653dff98544618bfca9a00bb580340091b7",
+  "head_sha": "6708a9b11d9ad00f0e0ee346d398e6ac6f0c457c",
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
   "files_changed": [
     ".agent/work/3684/3/completion.json",
@@ -43,17 +43,17 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "Exit 0 against origin/main at implementation head 09ee7653dff98544618bfca9a00bb580340091b7."
+      "evidence": "Exit 0 against origin/main at implementation head 6708a9b11d9ad00f0e0ee346d398e6ac6f0c457c."
     },
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 09ee7653dff98544618bfca9a00bb580340091b7, including the backdating guard; live ledger not configured locally."
+      "evidence": "Static checks passed at 6708a9b11d9ad00f0e0ee346d398e6ac6f0c457c, including the backdating guard; live ledger not configured locally."
     },
     {
       "command": "node scripts/check-live-proof-probe.mjs",
       "exit_code": 0,
-      "evidence": "Exit 0 at 09ee7653dff98544618bfca9a00bb580340091b7. The probe also returned passed=true on an ephemeral Supabase stack with the migration applied, both empty and after the contract fixture (10 publications, 5307 entities, 6 withdrawn), and false after a planted last_seen_at mutation."
+      "evidence": "Exit 0 at 6708a9b11d9ad00f0e0ee346d398e6ac6f0c457c. The probe also returned passed=true on an ephemeral Supabase stack with the migration applied, both empty and after the contract fixture (10 publications, 5307 entities, 6 withdrawn), and false after a planted last_seen_at mutation."
     }
   ],
   "assumptions_resolved": [

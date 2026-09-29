@@ -172,6 +172,10 @@ ALLOWLIST = {
     "create_index_on_new_table": re.compile(
         rf"create (?:unique )?index (?:(?!concurrently )(?!if )(?!on ){_ALLOW_IDENT} )?on ({_ALLOW_QUALIFIED}) ?(?:using [a-z]+ ?)?\([^;]*\)"),
     "comment_on": re.compile(r"comment on [a-z ]+ [^;]+ is (?:''|null)"),
+    # A volatility flag alone: catalog-only. No CASCADE, RENAME, OWNER, SET,
+    # SUPPORT, COST, ROWS, PARALLEL, LEAKPROOF, or security clause may follow.
+    "alter_function_volatility": re.compile(
+        rf"alter function {_ALLOW_QUALIFIED} ?{_ALLOW_ARGS} (?:immutable|stable|volatile)"),
 }
 
 
@@ -2229,8 +2233,13 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         if len(matches) != 1:
             raise RiskGateError(f"expected one migration for {version}, found {len(matches)}")
         raw = matches[0].read_text(encoding="utf-8")
+        statements = sql_top_level_statements(raw)
+        bodies = sql_top_level_statements(raw, keep_dollar_quoted=True)
+        excused: set[int] = set()
+        if statements is not None and bodies is not None and len(statements) == len(bodies):
+            excused = {i for i, s in enumerate(statements) if _is_assertion_do_block(s, bodies[i])}
         reasons.update(_classify_statements(
-            sql_top_level_statements(raw), prior=_PriorMigrations(repo_root, version, raw)))
+            statements, prior=_PriorMigrations(repo_root, version, raw), excused_do=excused))
     return sorted(reasons)
 
 
@@ -2386,7 +2395,122 @@ def new_column_check_risks(statement: str) -> frozenset | None:
     return NEW_COLUMN_CHECK_RISKS if checked else frozenset()
 
 
-def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None) -> set[str]:
+# DO ASSERTION BLOCKS (#3725). A post-apply `DO $$ ... $$` that only reads
+# catalogs and RAISEs on mismatch writes nothing, holds no lock, and changes
+# no access. The tokenizer empties dollar-quoted bodies, so the body is checked
+# separately via keep_dollar_quoted output. Fail-closed: any DML/DDL/DCL
+# keyword, any non-whitelisted function call, or a missing RAISE refuses the
+# whole block. Table reads are not restricted to pg_catalog; the forbidden-
+# keyword and call-whitelist checks are the enforced safety boundary.
+_DO_FORBIDDEN = re.compile(
+    r"\b(?:insert|update|delete|truncate|merge|create|alter|drop|grant|revoke"
+    r"|execute|call|perform|copy|lock|notify|listen|commit|rollback|prepare"
+    r"|deallocate|refresh|vacuum|analyze|cluster|reindex|rename|discard"
+    r"|fetch|move|close|open|return|set|reset|comment|security|owner"
+    r"|set_config|nextval|setval|currval|lastval"
+    r"|analyse|load|checkpoint|unlisten|savepoint|release|explain"
+    r"|pg_terminate_backend|pg_cancel_backend|pg_sleep|pg_reload_conf"
+    r"|pg_advisory_lock|pg_advisory_unlock|pg_try_advisory_lock"
+    r"|lo_import|lo_export|lo_create|lo_unlink"
+    r"|dblink|dblink_exec|dblink_connect"
+    r"|pg_switch_wal|pg_rotate_logfile"
+    r"|pg_create_logical_replication_slot|pg_create_physical_replication_slot"
+    r"|pg_drop_replication_slot|pg_logical_emit_message"
+    r"|pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|pg_write_file"
+    r"|pg_import_system_collations|pg_reload_conf|pg_rotate_logfileold"
+    r")\b")
+# Function calls allowed in an assertion body: catalog readers and pure
+# expressions. Anything else (including every user-defined name) is refused.
+_DO_SAFE_CALLS = frozenset({
+    "to_regprocedure", "to_regclass", "to_regtype", "to_regoper", "to_regoperator", "to_regproc",
+    "pg_get_functiondef", "pg_get_function_identity_arguments", "pg_get_function_result",
+    "pg_get_function_arguments", "pg_get_viewdef", "pg_get_indexdef", "pg_get_constraintdef",
+    "pg_get_serial_sequence", "pg_get_triggerdef", "pg_get_ruledef", "pg_get_expr",
+    "obj_description", "col_description", "shobj_description",
+    "md5", "sha256", "encode", "decode",
+    "row_to_json", "to_json", "to_jsonb", "json_build_object", "jsonb_build_object",
+    "json_extract_path", "jsonb_extract_path", "json_extract_path_text", "jsonb_extract_path_text",
+    "array_length", "array_agg", "array_append", "array_remove", "array_position",
+    "coalesce", "nullif", "greatest", "least",
+    "format", "quote_ident", "quote_literal", "quote_nullable",
+    "substring", "trim", "overlay", "position", "extract", "cast", "normalize",
+    "pg_typeof", "current_setting", "current_schema", "current_user", "session_user",
+    "current_database", "current_catalog",
+    "count", "sum", "avg", "min", "max",
+    "unnest", "generate_series",
+})
+# Keywords that may precede '(' without being a function call.
+_DO_HARMLESS_CALLS = frozenset({
+    "in", "not", "exists", "between", "like", "ilike", "similar", "escape",
+    "any", "all", "some", "distinct", "on", "using", "returning", "with",
+    "recursive", "union", "intersect", "except", "from", "where", "group",
+    "having", "order", "limit", "offset", "for", "window", "over", "partition",
+    "rows", "range", "preceding", "following", "unbounded", "current", "row",
+    "lateral", "only", "table", "values", "into", "as", "case", "when", "then",
+    "else", "end", "if", "elsif", "loop", "while", "exit", "continue",
+    "declare", "begin", "raise", "null", "true", "false", "unknown",
+    "and", "or", "is", "isnull", "notnull",
+    # type names that take a parameter list in DECLARE
+    "numeric", "decimal", "varchar", "character", "char", "bit", "varbit",
+    "timestamp", "timestamptz", "time", "timetz", "interval", "precision",
+    "double", "float", "real", "smallint", "integer", "bigint", "int",
+    "int2", "int4", "int8", "text", "boolean", "bool", "json", "jsonb",
+    "xml", "bytea", "uuid", "date", "money", "inet", "cidr", "macaddr",
+    "tsvector", "regtype", "regclass", "regproc", "regprocedure",
+    "regoper", "regoperator", "regrole", "regnamespace", "record", "void",
+    "pg_catalog",
+})
+_DO_CALL = re.compile(
+    r"(?:([a-z_][a-z0-9_]*|\"[^\"]+\")\.)?([a-z_][a-z0-9_]*|\"[^\"]+\")\s*\(")
+
+
+def _do_body_is_assertion_only(body: str) -> bool:
+    """True when a DO body has no DML/DDL/DCL, no side-effecting calls, and a RAISE."""
+    without_comments = re.sub(r"--[^\n]*|/\*.*?\*/", " ", body, flags=re.S)
+    # Strip E-strings first (backslash escapes), then standard strings. A
+    # standard-string regex alone lets e'a\'' consume code past the real end
+    # of the literal and hide DML from the forbidden-keyword scan.
+    without_strings = re.sub(r"[eE]'(?:[^'\\]|\\.|'')*'", "''", without_comments)
+    without_strings = re.sub(r"[uU]&'(?:[^'\\]|\\.|'')*'", "''", without_strings)
+    without_strings = re.sub(r"'(?:[^']|'')*'", "''", without_strings)
+    lowered = without_strings.lower()
+    if not re.search(r"\braise\b", lowered):
+        return False
+    if _DO_FORBIDDEN.search(lowered):
+        return False
+    for m in _DO_CALL.finditer(lowered):
+        schema, name = m.group(1), m.group(2)
+        if schema is not None:
+            if schema != "pg_catalog":
+                return False
+            if name not in _DO_SAFE_CALLS:
+                return False
+        elif name not in _DO_SAFE_CALLS and name not in _DO_HARMLESS_CALLS:
+            return False
+    return True
+
+
+def _is_assertion_do_block(statement: str, body_statement: str | None) -> bool:
+    """True when a normalised DO statement is an assertion-only block.
+
+    ``statement`` is the tokeniser output with dollar-quoted bodies emptied to
+    ``$$ $$``; ``body_statement`` is the keep_dollar_quoted form whose body is
+    still present.  Either may be None-safe: a missing body refuses.
+    """
+    if not re.fullmatch(r"do(?: language (?:plpgsql))?(?: as)? \$\$ \$\$", statement):
+        return False
+    if body_statement is None:
+        return False
+    m = re.fullmatch(
+        r"do(?: language (?:plpgsql))?(?: as)? (\$(?:[a-z_][a-z0-9_]*)?\$|\$\$)(.*?)\1",
+        body_statement, flags=re.S)
+    if not m:
+        return False
+    return _do_body_is_assertion_only(m.group(2))
+
+
+def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None,
+                         excused_do: set[int] | None = None) -> set[str]:
     """All three risks unless EVERY statement is recognised. Unparsed is all."""
     every = {RISK_TEXT["permanent_data_rewrite_or_loss"],
              RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]}
@@ -2396,7 +2520,7 @@ def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations 
     reasons: set[str] = set()
     reestablished = _reestablished_functions(statements, prior)
     for index, s in enumerate(statements):
-        if index in reestablished or NARROWING_REVOKE.fullmatch(s):
+        if index in reestablished or (excused_do and index in excused_do) or NARROWING_REVOKE.fullmatch(s):
             continue
         entry = allowlist_entry(s, new_tables)
         if entry is None:

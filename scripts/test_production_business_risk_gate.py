@@ -3650,7 +3650,8 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         from production_business_risk_gate import ALLOWLIST
         self.assertEqual(set(ALLOWLIST), {
             "create_function", "drop_function_if_exists", "add_nullable_column",
-            "create_table", "create_index_on_new_table", "comment_on"})
+            "create_table", "create_index_on_new_table", "comment_on",
+            "alter_function_volatility"})
 
     def test_the_two_refused_production_migrations_are_allowed(self):
         """Runs 34987389408 (#2934, PR #2958) and 34989644100 (#2911) were refused."""
@@ -3815,6 +3816,96 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter table public.t add column a text, add column b text references public.u(id);",
             "alter table public.t add column a text, add column b serial;",
         ])
+
+    def test_allowlist_entry_alter_function_volatility(self):
+        """#3725: a volatility flag alone is catalog-only — no data rewrite,
+        no lock, no grant change. Anything beside the flag stays refused."""
+        self.assert_allowed([
+            "alter function plm.wb_validate_normalized_row(text, jsonb) stable;",
+            "ALTER FUNCTION public.f() IMMUTABLE;",
+            "alter function public.f(text) volatile;",
+            "alter function plm.f(a bigint, b text[]) stable;",
+        ], [
+            "alter function plm.f(text) stable cascade;",
+            "alter function plm.f(text) stable restrict;",
+            "alter function plm.f(text) rename to g;",
+            "alter function plm.f(text) owner to app_owner;",
+            "alter function plm.f(text) set search_path = '';",
+            "alter function plm.f(text) stable, immutable;",
+            "alter function plm.f(text) immutable leakproof;",
+            "alter function plm.f(text) stable security definer;",
+            "alter function plm.f(text) cost 100;",
+            "alter function f(text) stable;",
+            "alter function plm.f(text) depends on extension pg_trgm;",
+        ])
+
+    def test_a_do_assertion_block_reports_no_risk(self):
+        """#3725: a post-apply DO that reads catalogs and RAISEs on mismatch
+        writes nothing, so it is not a business risk. Anything with DML/DDL
+        or a non-whitelisted call still reports every risk."""
+        allowed = [
+            # the exact #3725 shape
+            "do $postapply$\ndeclare p record;\nbegin\n"
+            "  select provolatile, proconfig into p from pg_proc where oid = to_regprocedure('plm.f(text,jsonb)');\n"
+            "  if not found then raise exception 'missing'; end if;\n"
+            "  if p.provolatile <> 's' then raise exception 'bad %%'; end if;\n"
+            "end\n$postapply$;",
+            # minimal assertion
+            "do $$ begin raise exception 'x'; end $$;",
+            # assert with a catalog read
+            "do $$ declare n int; begin select count(*) into n from pg_class; "
+            "if n = 0 then raise exception 'empty'; end if; end $$;",
+            # language plpgsql is fine
+            "do language plpgsql $$ begin raise notice 'ok'; end $$;",
+            "do language plpgsql as $$ begin raise exception 'x'; end $$;",
+        ]
+        refused = [
+            # DML
+            "do $$ begin delete from public.t; end $$;",
+            "do $$ begin insert into public.t values (1); end $$;",
+            "do $$ begin update public.t set v = 1; end $$;",
+            "do $$ begin truncate public.t; end $$;",
+            # DDL
+            "do $$ begin drop table core.character; end $$;",
+            "do $$ begin create table core.n(id int); end $$;",
+            # DCL
+            "do $$ begin grant select on public.t to anon; end $$;",
+            # dynamic SQL
+            "do $$ begin execute 'delete from public.t'; end $$;",
+            # side-effecting calls
+            "do $$ begin perform public.destroy(); end $$;",
+            "do $$ begin select public.destroy() into null; end $$;",
+            "do $$ declare x int; begin x := public.destroy(); raise exception 'x'; end $$;",
+            # no RAISE at all
+            "do $$ declare n int; begin select 1 into n; end $$;",
+            # session change
+            "do $$ begin set search_path = public; raise exception 'x'; end $$;",
+            # E-string backslash escape hides DML from the string stripper
+            "do $$ begin raise notice e'a\\''; delete from public.t; raise notice 'b'; end $$;",
+            # call-free utility keywords
+            "do $$ begin analyse core.character; raise exception 'x'; end $$;",
+            "do $$ begin load '/tmp/x.so'; raise exception 'x'; end $$;",
+            "do $$ begin checkpoint; raise exception 'x'; end $$;",
+            "do $$ begin explain select 1; raise exception 'x'; end $$;",
+            # string-literal body (not dollar-quoted)
+            "do 'begin raise exception \'x\'; end';",
+            # language sql body
+            "do language sql $$ delete from public.t $$;",
+        ]
+        for body in allowed:
+            with self.subTest(allowed=body):
+                self.assertEqual(self.classify(body), [])
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_the_real_3725_migration_is_routine(self):
+        """20260929005943 (#3725): ALTER FUNCTION volatility + DO assertion
+        must both classify clean so automatic promotion is not blocked."""
+        root = Path(__file__).resolve().parents[1]
+        version = "20260929005943"
+        self.assertTrue(list(root.glob(f"supabase/migrations/{version}_*.sql")), version)
+        self.assertEqual(classify_sql(root, [version]), [], version)
 
     def test_an_unknown_statement_reports_every_risk(self):
         """Nothing outside ALLOWLIST is modelled, so nothing outside it is excused."""

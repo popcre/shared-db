@@ -32,14 +32,13 @@
 # starting — a marker is claimed outside any pull request. It makes a collision VISIBLE,
 # not impossible.
 
+# The pull_request / merge_group / push-to-main run of the required context
+# "Orchestrator marker guard" is the `orchestrator-marker-guard` job of
+# pr-guards.yml (#3746). This file keeps the scheduled run and its alarm issue.
+
 name: Orchestrator Marker Guard
 
 on:
-  pull_request:
-  merge_group:
-    types: [checks_requested]
-  push:
-    branches: [main]
   schedule:
     # Every two hours. Collisions happen between PRs, not at them.
     - cron: "17 */2 * * *"
@@ -77,9 +76,25 @@ jobs:
       - name: Prove the admission rules refuse every ground that produced marker #2312
         run: node --test scripts/lib/orchestrator-admission.test.mjs
 
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Check the GitHub API quota before reading markers
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-actions-quota.mjs
@@ -87,7 +102,7 @@ jobs:
       - name: Check how many orchestrator markers are open
         id: check
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/check-orchestrator-marker.mjs
 

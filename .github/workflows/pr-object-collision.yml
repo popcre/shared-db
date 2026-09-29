@@ -37,7 +37,8 @@
 #     day. It is an owner-authorized throughput decision, NOT configuration drift.
 #     Do not "fix" it. Issue #1286 alone governs whether it is ever reconsidered.
 #
-#   * The real re-check for a MIGRATION pull request is
+#   * The real re-check for a MIGRATION pull request (database objects; see
+#     the PROTECTED COORDINATION SOURCES note below for source files) is
 #     `.github/workflows/guarded-migration-merge.yml`, whose required context
 #     `Migration guarded merge authorization` re-runs collision and lease
 #     validation against a head that already contains current `main`, and does so
@@ -49,6 +50,11 @@
 #
 # So: this guard gives early feedback to honest authors; guarded merge is what
 # actually holds the line at merge time.
+#
+# PROTECTED COORDINATION SOURCES are different (#3721): the PR-time step only
+# reports overlap; the merge-time gate is the merge_group step below, which
+# proves the group is its base plus exactly one PR, while this same job
+# runs the lane-manager suites on that tree.
 #
 # NO DATABASE CONTACT: this job reads GitHub pull-request metadata and committed
 # .sql text. It needs no database credentials and must never be given any.
@@ -134,7 +140,7 @@ jobs:
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/lib/open-pr-files.mjs --out "$RUNNER_TEMP/open-pr-files.json"
 
-      - name: No earlier open PR edits the same protected coordination source
+      - name: Report earlier open PRs editing the same protected coordination source (overlap queues; unreadable audit refuses)
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
@@ -142,6 +148,17 @@ jobs:
           OPEN_PR_FILES_SNAPSHOT: ${{ runner.temp }}/open-pr-files.json
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-pr-source-collisions.mjs
+
+      # Merge-time twin of the step above (#3721): overlapping protected-source
+      # pull requests are queued, not refused, so every merge group must be
+      # its base plus exactly one pull request; the lane-manager suites run
+      # above on that same tree. A stacked group or unreadable facts
+      # refuse. Uses only the event payload and local git.
+      - name: Merge group is its base plus exactly one PR (protected-source queueing proof)
+        if: github.event_name == 'merge_group'
+        env:
+          SOURCE_COLLISION_MODE: merge-group
         run: node scripts/check-pr-source-collisions.mjs
 
       - name: No other open PR replaces the same database object

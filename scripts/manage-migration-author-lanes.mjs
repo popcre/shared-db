@@ -1510,6 +1510,29 @@ function withoutReviewRequestBudget(fn){
   reviewWireBudget={count:0,limit:Number.MAX_SAFE_INTEGER,operation:`${suspended.operation??'reviewer-operation'}-admission-gate`,locked:suspended.locked,cleanup:suspended.cleanup}
   try{return fn()}finally{reviewWireBudget=suspended}
 }
+// Issue #3617: per-operation GitHub request-cost accounting. Credential-free: it
+// counts the gh calls this process already makes (every transport attempt,
+// including retries) and fails closed when an operation's derived budget is
+// exceeded. No extra GitHub request is issued to measure or record the cost.
+// Patterned on withReviewRequestBudget; marker, admission, claim, review, preview
+// and lock checks are unchanged — only the accounting is added. The count is
+// readable via currentRequestCost so a preparer can report its own API cost
+// separately from background watchers on the same host.
+let operationRequestCost=null
+export function withRequestCostBudget(fn,limit,operation='operation'){
+  if(operationRequestCost)return fn(operationRequestCost)
+  if(!Number.isInteger(limit)||limit<1)throw new LaneError(`request-cost budget limit must be a positive integer; got ${limit}`)
+  operationRequestCost={count:0,limit,operation}
+  try{return fn(operationRequestCost)}finally{operationRequestCost=null}
+}
+export function currentRequestCost(){
+  return operationRequestCost?{count:operationRequestCost.count,limit:operationRequestCost.limit,operation:operationRequestCost.operation}:null
+}
+function consumeRequestCost(){
+  if(!operationRequestCost)return
+  if(operationRequestCost.count>=operationRequestCost.limit)throw new LaneError(`operation '${operationRequestCost.operation}' exhausted its ${operationRequestCost.limit}-request cost budget before request ${operationRequestCost.count+1}; refusing rather than skipping any marker, admission, claim, review, preview, or lock check`)
+  operationRequestCost.count+=1
+}
 // Issue #2342: the retry loop, the classifier and the stderr policy now live in
 // scripts/lib/github-transport.mjs, which is the ONE transport every governed
 // gate uses. What stays here is the part that is specific to this file: the
@@ -1519,7 +1542,7 @@ function withoutReviewRequestBudget(fn){
 // because they prove the requested end state with an owner-bound readback.
 export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms),attempts=4,expectedFailure=null,reportStderr=(text)=>process.stderr.write(text),idempotentWrite=false,maxBuffer,encoding,input}={}) {
   return sharedRunGitHubCommand(args,{
-    executor:(bin,cmdArgs,options)=>{consumeReviewWireRequest();return executor(bin,cmdArgs,options)},
+    executor:(bin,cmdArgs,options)=>{consumeReviewWireRequest();consumeRequestCost();return executor(bin,cmdArgs,options)},
     wait,
     attempts:reviewWireBudget?.locked?1:attempts,
     idempotentWrite,
@@ -1565,10 +1588,10 @@ function ghJson(args,options) {
   try { return JSON.parse(raw) } catch { throw new LaneError(`GitHub returned unreadable JSON for gh ${args.join(' ')}`) }
 }
 function ghPaginated(endpoint) {
-  if(reviewWireBudget){
+  if(reviewWireBudget||operationRequestCost){
     const page=ghJson(['api',endpoint])
     if(!Array.isArray(page))throw new LaneError(`GitHub page for ${endpoint} was incomplete or malformed`)
-    if(page.length>=100)throw new LaneError(`GitHub page for ${endpoint} reached 100 rows; reviewer operation refuses possible pagination`)
+    if(page.length>=100)throw new LaneError(`GitHub page for ${endpoint} reached 100 rows; ${reviewWireBudget?'reviewer operation':'cost-accounted operation'} refuses possible pagination`)
     return page
   }
   const pages = ghJson(['api', '--paginate', '--slurp', endpoint])

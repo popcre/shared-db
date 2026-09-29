@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3617,
+  "outcome": "ready-for-merge",
+  "pr": 3666,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3617/1",
+  "contract_sha256": "3dc3f991831cbeeb7647d46d698641a9c34f670c0d5f2697ec045c7e698e6d30",
+  "base_sha": "5d6bb13d9b27786c214e505ddd7bf4c756c19219",
+  "head_sha": "a7a4ec8fec5ecc76ab69087fd070dcfb035b8956",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "726 tests, 726 pass, 0 fail at implementation head a7a4ec8fe on merge base 5d6bb13d9; includes the four #3617 request-cost proofs (success, retry, refused admission, stale mutex)"
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 tests, 4 pass, 0 fail at implementation head a7a4ec8fe; reviewer wire budget unchanged by the cost counter"
+    }
+  ],
+  "assumptions_resolved": [
+    "The live measured preparation that identifies its own API cost and the background-call cost separately remains open and is named in the issue comment; this pair covers only the accounting counter and its four focused tests.",
+    "No extra GitHub request is issued to measure cost; the counter rides the existing transport and fails closed when a budget is exceeded."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Per-operation GitHub request-cost accounting for issue #3617 (non-orchestrator: repo-maintenance tooling only, no database structure change). Posted by MiMo chat ses_ffe5f181be6e4fferDgoW5x63k on edge-dev3"
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "work_issue": 3617,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add bounded, credential-free per-operation GitHub request-cost accounting in scripts/manage-migration-author-lanes.mjs transport (runGitHubCommand / ghPaginated), patterned on withReviewRequestBudget. The counter increments per gh call (including retries) and fails closed when a budget is exceeded. Marker, admission, claim, review, preview and lock checks are unchanged. Exactly four focused tests prove exact accounting on success, retry, refused admission and stale mutex.",
+  "base_sha": "5d6bb13d9b27786c214e505ddd7bf4c756c19219",
+  "dispatcher": "MiMo parent session for popcre/shared-db issue 3617, non-orchestrator tooling work",
+  "worker": "MiMo chat ses_ffe5f181be6e4fferDgoW5x63k on edge-dev3",
+  "branch": "fix/3617-request-cost",
+  "worktree": "C:\\repos\\shared-db-wt-3617-cost",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3617/1/contract.json",
+    ".agent/work/3617/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3617/1/contract.json",
+    ".agent/work/3617/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change database structure or data",
+    "Do not change marker, admission, claim, review, preview or exclusive-lock checks",
+    "Do not touch issue #3505, issue #3552, or db-claim leases",
+    "Do not merge the pull request"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "assumptions": [
+    "The live measured preparation that identifies its own API cost and the background-call cost separately remains for a later step; this contract covers only the accounting counter and its four focused tests.",
+    "No extra GitHub request is issued to measure cost; the counter rides the existing transport."
+  ],
+  "stop_conditions": [
+    "Stop if any required check fails for a reason unrelated to request-cost accounting",
+    "Stop if the change would need to touch a file outside allowed_paths"
+  ]
+}

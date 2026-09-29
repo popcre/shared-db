@@ -1,4 +1,4 @@
--- Live proof for #3685 (migration 20260928210844, claim #3729). Read-only.
+-- Live proof for #3685 (migration 20260929034233, claim #3729). Read-only.
 -- Proves on production: the migration is in the ledger; both durable-state tables exist
 -- with RLS on, read-only to authenticated, and not writable (insert, update, delete,
 -- truncate) by the loader role; the serving indexes match their exact definitions; nothing is granted to PUBLIC; the publish function is
@@ -6,7 +6,7 @@
 -- the durable state reconciles with its publications (every capture reference on an
 -- entity row names a recorded publication, and every withdrawal names one).
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260928210844')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260929034233')
   and to_regclass('plm.wildbrain_entity_lifecycle') is not null
   and to_regclass('plm.wildbrain_lifecycle_publication') is not null
   and (select bool_and(relrowsecurity) from pg_class

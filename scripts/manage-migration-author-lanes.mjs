@@ -2175,6 +2175,61 @@ export function retiredReopenedClaims(claims, now = new Date(), io = githubIo) {
 export function matchesLiveProof(proof,evidence){
   return proof?.schema_version===1&&proof.work_issue===evidence.work_issue&&proof.application_commit_sha===evidence.application_commit_sha&&proof.live_assertion===evidence.live_assertion&&proof.environment===evidence.environment&&proof.result==='passed'&&proof.observed_at===evidence.verified_at&&!Number.isNaN(Date.parse(proof.observed_at))
 }
+const LIVE_PROOF_SHA=/^[0-9a-f]{40}$/i
+const LIVE_PROOF_DIGEST=/^sha256:[0-9a-f]{64}$/i
+// One trust-boundary predicate (#3636 review H1/L1): this repository under its
+// current OR historical slug is shared-db-owned, exactly as every other
+// shared-db ownership decision in this file decides it.
+export function liveProofSharedDbOwned({repository,run}={}){
+  return isThisRepositoryOrHistorical(String(repository??''),REPO)||isThisRepositoryOrHistorical(String(run?.repository?.full_name??''),REPO)
+}
+export function matchesLiveProofRun({repository,runId,run,evidence}){
+  // Absent or malformed evidence never matches an equally absent read (#3636 M1).
+  if(!LIVE_PROOF_SHA.test(String(evidence?.application_commit_sha??'')))return false
+  const sameSha=(value)=>String(value??'').toLowerCase()===String(evidence.application_commit_sha).toLowerCase()
+  if(!liveProofSharedDbOwned({repository,run})){
+    if(String(repository??'').toLowerCase()!==String(evidence?.application_repository??'').toLowerCase())return false
+    // Application-owned proofs retain their established route.
+    return run?.conclusion==='success'&&sameSha(run?.head_sha)
+  }
+  // Shared-db-owned, under either slug: the evidence must name this repository
+  // (either slug) and GitHub must report the run in the CURRENT repository.
+  return isThisRepositoryOrHistorical(String(evidence?.application_repository??''),REPO)
+    &&isThisRepositoryOrHistorical(String(repository??''),REPO)
+    &&String(run?.repository?.full_name??'').toLowerCase()===REPO.toLowerCase()
+    &&Number.isSafeInteger(run?.id)&&run.id>0&&String(run.id)===String(runId)
+    &&run?.path==='.github/workflows/shared-db-live-proof.yml'&&run?.event==='workflow_dispatch'
+    &&run?.status==='completed'&&run?.conclusion==='success'&&run?.run_attempt===1&&sameSha(run?.head_sha)
+}
+export function matchesLiveProofProvenance({repository,runId,run,artifact,evidence}){
+  if(!evidence||!LIVE_PROOF_DIGEST.test(String(evidence.live_artifact_digest??'')))return false
+  const expectedName=`shared-db-live-proof-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
+  return matchesLiveProofRun({repository,runId,run,evidence})
+    &&artifact?.name===expectedName&&artifact.expired===false
+    &&String(artifact.digest??'').toLowerCase()===String(evidence.live_artifact_digest).toLowerCase()
+    &&(!liveProofSharedDbOwned({repository,run})||(
+      Number.isSafeInteger(artifact.id)&&artifact.id>0&&artifact.id===evidence.live_artifact_id
+      &&Number.isSafeInteger(artifact.workflow_run?.id)&&artifact.workflow_run.id===run.id
+      &&String(artifact.workflow_run?.head_sha??'').toLowerCase()===String(run.head_sha).toLowerCase()))
+}
+// The whole live-assertion verification with its GitHub reads injected, so the
+// route selection and wiring are testable end to end (#3636 M3).
+export function verifyLiveAssertionWith(evidence,{getJson,readArtifactJson}){
+  const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.live_evidence??''))
+  if(!match)return false
+  const [,repository,runId]=match
+  const owned=isThisRepositoryOrHistorical(repository,REPO)
+  if(owned?!isThisRepositoryOrHistorical(String(evidence?.application_repository??''),REPO):repository.toLowerCase()!==String(evidence?.application_repository??'').toLowerCase())return false
+  // Shared-db reads always go to the current slug, as verifyProductionApply does.
+  const readRepo=owned?REPO:repository
+  const run=getJson(`repos/${readRepo}/actions/runs/${runId}`)
+  if(!matchesLiveProofRun({repository,runId,run,evidence}))return false
+  const artifacts=getJson(`repos/${readRepo}/actions/runs/${runId}/artifacts`)?.artifacts
+  if(!Array.isArray(artifacts))return false
+  const artifact=artifacts.find((row)=>Number(row.id)===Number(evidence.live_artifact_id))
+  if(!matchesLiveProofProvenance({repository,runId,run,artifact,evidence}))return false
+  return matchesLiveProof(readArtifactJson(readRepo,artifact.id,'db-live-proof.json'),evidence)
+}
 export function matchesGeneratedTypesProof(proof,evidence){
   return proof?.schema_version===1&&proof.work_issue===evidence.work_issue&&proof.application_commit_sha===evidence.application_commit_sha&&proof.result==='passed'&&proof.generated_types_sha256===evidence.generated_types_output_digest
 }
@@ -2852,18 +2907,10 @@ export const githubIo = {
     return versions.length>0&&versions.every((version)=>files.get('production-ledger-after.txt').includes(version)&&files.get('migration-content-manifest.json').includes(version))
   },
   verifyLiveAssertion(evidence) {
-    const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.live_evidence??''))
-    if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false
-    const run=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}`])
-    if(run?.conclusion!=='success'||String(run?.head_sha??'').toLowerCase()!==String(evidence.application_commit_sha).toLowerCase())return false
-    const artifacts=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}/artifacts`])?.artifacts
-    if(!Array.isArray(artifacts))return false
-    const artifact=artifacts.find((row)=>Number(row.id)===Number(evidence.live_artifact_id))
-    const expectedName=`shared-db-live-proof-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
-    if(!(artifact?.name===expectedName&&artifact.expired===false&&String(artifact.digest??'').toLowerCase()===String(evidence.live_artifact_digest).toLowerCase()))return false
-    const proof=this.readArtifactJson(match[1],artifact.id,'db-live-proof.json')
-    return matchesLiveProof(proof,evidence)
+    return verifyLiveAssertionWith(evidence,{getJson:(path)=>ghJson(['api',path]),readArtifactJson:(repository,id,file)=>this.readArtifactJson(repository,id,file)})
   },
+  // verifyGeneratedTypes keeps the pre-#3634 successful-run rule; hardening it
+  // to the same exact-workflow provenance is tracked separately (#3636 review M2).
   verifyGeneratedTypes(evidence){
     const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.generated_types_evidence??''))
     if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false

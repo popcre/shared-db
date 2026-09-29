@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3634,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Require authenticated exact workflow-run and artifact provenance before a shared-db live proof can complete a structural outcome",
+  "base_sha": "a096bccd0c112d92cc9b6be4010e8f019f9db083",
+  "dispatcher": "Codex orchestrator chat 01a0e56c-2e17-78a2-ad57-cd154b990979 on edge-dev3",
+  "worker": "Codex subagent cross_repo_blockers on edge-dev3",
+  "branch": "codex/3634-live-proof-provenance",
+  "worktree": "/home/ahazan/repos/shared-db-3634-live-proof-provenance",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3634/1/contract.json",
+    ".agent/work/3634/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3634/1/contract.json",
+    ".agent/work/3634/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not dispatch the live-proof workflow or touch production",
+    "Do not accept another workflow, event, attempt, head, or artifact run as live proof",
+    "Do not weaken the existing proof JSON, name, digest, expiry, or default-branch checks",
+    "Do not merge this pull request"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The shared-db live-proof producer is .github/workflows/shared-db-live-proof.yml under workflow_dispatch on popcre/shared-db",
+    "The authenticated GitHub artifact response carries workflow_run.id and workflow_run.head_sha"
+  ],
+  "stop_conditions": [
+    "Stop if exact run and artifact provenance cannot be verified through GitHub API evidence",
+    "Stop if changes would require database schema, data, or production mutation",
+    "Stop if governed review or required checks refuse"
+  ]
+}

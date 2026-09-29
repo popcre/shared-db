@@ -1,11 +1,11 @@
--- Live proof for #2179 (migration 20260928170501, PR #3711). Read-only.
+-- Live proof for #2179 (migration 20260929032359, PR #3711). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger
 --   2. coldlion.item_image_metadata exists as a table with RLS on and 19 columns (14 source + 5 provenance)
 --   3. its primary key is (company_code, pkey)
 --   4. anon and authenticated hold no privilege on it
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260928170501')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260929032359')
   and exists (
     select 1 from pg_catalog.pg_class
     where oid = pg_catalog.to_regclass('coldlion.item_image_metadata')

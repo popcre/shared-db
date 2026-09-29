@@ -22,10 +22,10 @@
 --     is held, not applied.
 
 create table plm.peanuts_lifecycle_publication (
-  capture_id              uuid        not null primary key
+  published_capture_id    uuid        not null primary key
                                       references plm.peanuts_capture(id) on delete restrict,
   baseline_capture_id     uuid            null
-                                      references plm.peanuts_lifecycle_publication(capture_id)
+                                      references plm.peanuts_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   mode                    text        not null,
   derivation_contract     text        not null,
@@ -37,7 +37,7 @@ create table plm.peanuts_lifecycle_publication (
     check (mode in ('bootstrap', 'comparable', 'rebaseline', 'withdrawal_held')),
   constraint peanuts_lifecycle_publication_baseline_chk
     check ((mode = 'bootstrap') = (baseline_capture_id is null)
-           and (baseline_capture_id is null or baseline_capture_id <> capture_id)),
+           and (baseline_capture_id is null or baseline_capture_id <> published_capture_id)),
   constraint peanuts_lifecycle_publication_scope_chk
     check (scope_sha256 ~ '^[0-9a-f]{64}$'),
   constraint peanuts_lifecycle_publication_contract_chk
@@ -55,22 +55,22 @@ create table plm.peanuts_entity_lifecycle (
   entity_kind             text        not null,
   entity_key              text        not null,
   first_seen_capture_id   uuid        not null
-                                      references plm.peanuts_lifecycle_publication(capture_id)
+                                      references plm.peanuts_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   first_seen_at           timestamptz not null,
   last_seen_capture_id    uuid        not null
-                                      references plm.peanuts_lifecycle_publication(capture_id)
+                                      references plm.peanuts_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   last_seen_at            timestamptz not null,
   last_changed_capture_id uuid        not null
-                                      references plm.peanuts_lifecycle_publication(capture_id)
+                                      references plm.peanuts_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   change_signal           text        not null,
   status                  text        not null default 'active',
   withdrawn_at            timestamptz     null,
   first_withdrawn_at      timestamptz     null,
   withdrawn_capture_id    uuid            null
-                                      references plm.peanuts_lifecycle_publication(capture_id)
+                                      references plm.peanuts_lifecycle_publication(published_capture_id)
                                       on delete restrict,
   retired_at              timestamptz     null,
   constraint peanuts_entity_lifecycle_pkey primary key (entity_kind, entity_key),
@@ -99,12 +99,16 @@ comment on table plm.peanuts_entity_lifecycle is
   'plm.peanuts_publish_lifecycle. change_signal is opaque: an asset hashes the portal '
   'update time, checksum, size and version; a vocabulary value hashes its label and raw record.';
 
--- Serving indexes (review of #3730). The publish function filters durable state by
--- (entity_kind, last_seen_capture_id[, status]) and picks the newest publication by
--- (source_captured_at, published_at, capture_id); every referencing FK column is indexed
--- so on-delete-restrict checks against a publication never scan the child table.
+-- Serving indexes (review of #3730). Every durable-state scan in the publish function
+-- filters by entity_kind = <kind> [and status = 'active'] and last_seen_capture_id =
+-- any(<eligible publications>); idx_peanuts_entity_lifecycle_last_seen leads with those
+-- columns in that order, so the equality columns narrow before the array probe.
+-- idx_peanuts_lifecycle_publication_latest serves the newest-publication pick
+-- (source_captured_at, published_at, published_capture_id). The remaining four indexes are
+-- NOT serving indexes: they back the on-delete-restrict FK checks, so deleting or
+-- re-keying a publication never scans the child table.
 create index idx_peanuts_entity_lifecycle_last_seen
-  on plm.peanuts_entity_lifecycle (last_seen_capture_id, entity_kind, status);
+  on plm.peanuts_entity_lifecycle (entity_kind, status, last_seen_capture_id);
 create index idx_peanuts_entity_lifecycle_first_seen
   on plm.peanuts_entity_lifecycle (first_seen_capture_id);
 create index idx_peanuts_entity_lifecycle_last_changed
@@ -114,8 +118,13 @@ create index idx_peanuts_entity_lifecycle_withdrawn_capture
 create index idx_peanuts_lifecycle_publication_baseline
   on plm.peanuts_lifecycle_publication (baseline_capture_id) where baseline_capture_id is not null;
 create index idx_peanuts_lifecycle_publication_latest
-  on plm.peanuts_lifecycle_publication (source_captured_at desc, published_at desc, capture_id desc);
+  on plm.peanuts_lifecycle_publication (source_captured_at desc, published_at desc, published_capture_id desc);
 
+comment on column plm.peanuts_lifecycle_publication.published_capture_id is
+  'The plm.peanuts_capture published by this row. Deliberately not named capture_id: '
+  'api.source_capture_inventory treats a peanuts_ table with a capture_id column as a '
+  'latest-complete capture snapshot, and this table is a mutable publication ledger, so it '
+  'is reported as retained rows only.';
 comment on column plm.peanuts_entity_lifecycle.first_withdrawn_at is
   'Immutable first confirmed withdrawal time, retained across every reactivation.';
 comment on column plm.peanuts_entity_lifecycle.change_signal is
@@ -188,22 +197,22 @@ begin
     raise exception 'peanuts_publish_lifecycle: capture % asset rows do not equal its captured total', p_capture_id
       using errcode = '22023';
   end if;
-  if exists (select 1 from plm.peanuts_lifecycle_publication where capture_id = p_capture_id) then
+  if exists (select 1 from plm.peanuts_lifecycle_publication where published_capture_id = p_capture_id) then
     raise exception 'peanuts_publish_lifecycle: capture % is already published', p_capture_id
       using errcode = '23505';
   end if;
 
   select * into v_prev from plm.peanuts_lifecycle_publication
-   order by source_captured_at desc, published_at desc, capture_id desc limit 1;
+   order by source_captured_at desc, published_at desc, published_capture_id desc limit 1;
   if found and v_prev.source_captured_at >= v_cap.source_captured_at then
     raise exception 'peanuts_publish_lifecycle: capture % is not newer than published capture %',
-      p_capture_id, v_prev.capture_id using errcode = '22023';
+      p_capture_id, v_prev.published_capture_id using errcode = '22023';
   end if;
 
   v_scope := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
                pg_catalog.jsonb_build_array(v_cap.api_endpoint, v_cap.source_customer_id)::text, 'UTF8')), 'hex');
 
-  if v_prev.capture_id is null then
+  if v_prev.published_capture_id is null then
     v_mode := 'bootstrap';
   elsif v_prev.scope_sha256 = v_scope and v_prev.derivation_contract = c_contract then
     v_mode := 'comparable';
@@ -214,21 +223,21 @@ begin
   -- Withdrawal-eligible sightings: the baseline itself, plus -- across a run of held
   -- publications -- each held publication's own baseline. A held drop is therefore
   -- re-evaluated by the next comparable run instead of being orphaned.
-  if v_prev.capture_id is not null then
+  if v_prev.published_capture_id is not null then
     with recursive chain as (
-      select p.capture_id, p.baseline_capture_id, p.mode
-        from plm.peanuts_lifecycle_publication p where p.capture_id = v_prev.capture_id
+      select p.published_capture_id, p.baseline_capture_id, p.mode
+        from plm.peanuts_lifecycle_publication p where p.published_capture_id = v_prev.published_capture_id
       union all
-      select p.capture_id, p.baseline_capture_id, p.mode
-        from chain c join plm.peanuts_lifecycle_publication p on p.capture_id = c.baseline_capture_id
+      select p.published_capture_id, p.baseline_capture_id, p.mode
+        from chain c join plm.peanuts_lifecycle_publication p on p.published_capture_id = c.baseline_capture_id
        where c.mode = 'withdrawal_held'
     )
-    select pg_catalog.array_agg(chain.capture_id) into v_eligible from chain;
+    select pg_catalog.array_agg(chain.published_capture_id) into v_eligible from chain;
   end if;
 
   insert into plm.peanuts_lifecycle_publication
-    (capture_id, baseline_capture_id, mode, derivation_contract, scope_sha256, source_captured_at)
-  values (p_capture_id, v_prev.capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
+    (published_capture_id, baseline_capture_id, mode, derivation_contract, scope_sha256, source_captured_at)
+  values (p_capture_id, v_prev.published_capture_id, v_mode, c_contract, v_scope, v_cap.source_captured_at);
 
   drop table if exists pg_temp.peanuts_lifecycle_seen;
   create temporary table pg_temp.peanuts_lifecycle_seen (
@@ -276,7 +285,7 @@ begin
     end loop;
     if v_held then
       v_mode := 'withdrawal_held';
-      update plm.peanuts_lifecycle_publication set mode = v_mode where capture_id = p_capture_id;
+      update plm.peanuts_lifecycle_publication set mode = v_mode where published_capture_id = p_capture_id;
     end if;
   end if;
 
@@ -333,10 +342,10 @@ begin
 
   update plm.peanuts_lifecycle_publication
      set counts = v_counts, published_at = now()
-   where capture_id = p_capture_id;
+   where published_capture_id = p_capture_id;
 
   return pg_catalog.jsonb_build_object('capture_id', p_capture_id, 'mode', v_mode,
-    'baseline_capture_id', v_prev.capture_id, 'counts', v_counts);
+    'baseline_capture_id', v_prev.published_capture_id, 'counts', v_counts);
 end
 $function$;
 

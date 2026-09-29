@@ -1370,6 +1370,16 @@ begin
   if v_before <> 21 then  -- 19 landing + 2 #3684 durable-state tables
     raise exception 'G FAILED: % peanuts tables classified, expected 21', v_before;
   end if;
+  -- The two #3684 durable-state tables are mutable ledgers, not capture snapshots. They
+  -- must be reported as retained rows only, never as a latest-complete capture count
+  -- (review of #3730, M5): neither carries a column named capture_id.
+  if (select count(*) from api.source_capture_inventory
+       where table_name in ('peanuts_entity_lifecycle', 'peanuts_lifecycle_publication')
+         and count_basis = 'retained_only' and latest_complete_status is null
+         and latest_complete_row_count is null
+         and count_note = 'Retained rows only; no source-specific latest-complete contract is defined for this table.') <> 2 then
+    raise exception 'G FAILED: #3684 durable-state tables are not classified as retained-only ledgers';
+  end if;
 
   -- EVERY plm table, against the classification rule restated here independently. Walking
   -- only sega_ would let a slip over NBCU, Disney, Paramount, Warner or Coldlion through:

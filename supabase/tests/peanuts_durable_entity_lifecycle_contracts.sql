@@ -99,7 +99,7 @@ reset role;
 
 do $bootstrap$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-00000000000a') <> 'bootstrap' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-00000000000a') <> 'bootstrap' then
     raise exception 'first publication is not a bootstrap';
   end if;
   if (select count(*) from plm.peanuts_entity_lifecycle) <> 4 then
@@ -136,7 +136,7 @@ reset role;
 
 do $comparable$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-00000000000b') <> 'comparable' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-00000000000b') <> 'comparable' then
     raise exception 'same account did not compare';
   end if;
   if not exists (select 1 from plm.peanuts_entity_lifecycle where entity_kind = 'asset' and entity_key = 'obj-2'
@@ -165,7 +165,7 @@ reset role;
 
 do $rebaseline$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-00000000000c') <> 'rebaseline' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-00000000000c') <> 'rebaseline' then
     raise exception 'different account was compared';
   end if;
   if not exists (select 1 from plm.peanuts_entity_lifecycle where entity_key = 'obj-1' and status = 'active') then
@@ -185,7 +185,7 @@ reset role;
 
 do $held$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-00000000000d') <> 'withdrawal_held' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-00000000000d') <> 'withdrawal_held' then
     raise exception 'bulk drop was not held';
   end if;
   if exists (select 1 from plm.peanuts_entity_lifecycle where withdrawn_capture_id = '36840000-0000-4000-8000-00000000000d') then
@@ -202,7 +202,7 @@ reset role;
 
 do $after_hold$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-000000000006') <> 'comparable' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-000000000006') <> 'comparable' then
     raise exception 'run after a held publication did not compare';
   end if;
   if not exists (select 1 from plm.peanuts_entity_lifecycle where entity_key = 'obj-2'
@@ -215,86 +215,121 @@ begin
 end
 $after_hold$;
 
--- Exact objects: column order and named constraints, not just names that resolve.
+-- Exact objects (review of #3730, B1/M2/M3). Every expected string below is the text
+-- PostgreSQL itself stores and renders (format_type, pg_get_expr, pg_get_constraintdef,
+-- pg_get_indexdef, pg_policies.qual), captured from an ephemeral database with this
+-- migration applied -- not a hand-written approximation. Rewriting any check to
+-- `check (true)`, dropping a NOT NULL or a default, reordering an index or changing a
+-- policy predicate turns this block red and prints what the catalog now holds.
 do $exact$
+declare
+  v_got text;
 begin
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
-       where attrelid = 'plm.peanuts_entity_lifecycle'::regclass and attnum > 0 and not attisdropped)
-     <> 'entity_kind,entity_key,first_seen_capture_id,first_seen_at,last_seen_capture_id,last_seen_at,last_changed_capture_id,change_signal,status,withdrawn_at,first_withdrawn_at,withdrawn_capture_id,retired_at' then
-    raise exception 'plm.peanuts_entity_lifecycle columns differ from the reviewed shape';
+  -- plm.peanuts_entity_lifecycle: columns (name, type, nullability, default).
+  v_got := (select string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
+                         || case when a.attnotnull then ' not null' else '' end
+                         || coalesce(' default ' || pg_get_expr(d.adbin, d.adrelid), ''), E'\n' order by a.attnum)
+     from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid = 'plm.peanuts_entity_lifecycle'::regclass and a.attnum > 0 and not a.attisdropped);
+  if v_got is distinct from
+       'entity_kind text not null' || E'\n' ||
+       'entity_key text not null' || E'\n' ||
+       'first_seen_capture_id uuid not null' || E'\n' ||
+       'first_seen_at timestamp with time zone not null' || E'\n' ||
+       'last_seen_capture_id uuid not null' || E'\n' ||
+       'last_seen_at timestamp with time zone not null' || E'\n' ||
+       'last_changed_capture_id uuid not null' || E'\n' ||
+       'change_signal text not null' || E'\n' ||
+       'status text not null default ''active''::text' || E'\n' ||
+       'withdrawn_at timestamp with time zone' || E'\n' ||
+       'first_withdrawn_at timestamp with time zone' || E'\n' ||
+       'withdrawn_capture_id uuid' || E'\n' ||
+       'retired_at timestamp with time zone' then
+    raise exception 'plm.peanuts_entity_lifecycle cols differ from the reviewed shape: %', v_got;
   end if;
-  if (select string_agg(attname, ',' order by attnum) from pg_attribute
-       where attrelid = 'plm.peanuts_lifecycle_publication'::regclass and attnum > 0 and not attisdropped)
-     <> 'capture_id,baseline_capture_id,mode,derivation_contract,scope_sha256,source_captured_at,counts,published_at' then
-    raise exception 'plm.peanuts_lifecycle_publication columns differ from the reviewed shape';
+  -- plm.peanuts_entity_lifecycle: constraints (name and full definition).
+  v_got := (select string_agg(conname || '=' || pg_get_constraintdef(oid), E'\n' order by conname)
+     from pg_constraint where conrelid = 'plm.peanuts_entity_lifecycle'::regclass);
+  if v_got is distinct from
+       'peanuts_entity_lifecycle_first_seen_capture_id_fkey=FOREIGN KEY (first_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT' || E'\n' ||
+       'peanuts_entity_lifecycle_history_chk=CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at)))' || E'\n' ||
+       'peanuts_entity_lifecycle_key_chk=CHECK ((btrim(entity_key) <> ''''::text))' || E'\n' ||
+       'peanuts_entity_lifecycle_kind_chk=CHECK ((entity_kind = ANY (ARRAY[''asset''::text, ''art_program''::text, ''character''::text, ''style_guide''::text, ''initiative''::text])))' || E'\n' ||
+       'peanuts_entity_lifecycle_last_changed_capture_id_fkey=FOREIGN KEY (last_changed_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT' || E'\n' ||
+       'peanuts_entity_lifecycle_last_seen_capture_id_fkey=FOREIGN KEY (last_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT' || E'\n' ||
+       'peanuts_entity_lifecycle_pkey=PRIMARY KEY (entity_kind, entity_key)' || E'\n' ||
+       'peanuts_entity_lifecycle_status_chk=CHECK (((status = ANY (ARRAY[''active''::text, ''withdrawn''::text, ''retired''::text])) AND ((status <> ''withdrawn''::text) OR (entity_kind <> ''initiative''::text)) AND ((status <> ''retired''::text) OR (entity_kind = ''initiative''::text))))' || E'\n' ||
+       'peanuts_entity_lifecycle_withdrawn_at_chk=CHECK ((((status = ''withdrawn''::text) = (withdrawn_at IS NOT NULL)) AND ((status = ''withdrawn''::text) = (withdrawn_capture_id IS NOT NULL)) AND ((status = ''retired''::text) = (retired_at IS NOT NULL))))' || E'\n' ||
+       'peanuts_entity_lifecycle_withdrawn_capture_id_fkey=FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT' then
+    raise exception 'plm.peanuts_entity_lifecycle cons differ from the reviewed shape: %', v_got;
   end if;
-  -- Every constraint on both tables, by name and type; nothing extra, nothing missing.
-  if (select string_agg(conname || ':' || contype, ',' order by conname) from pg_constraint
-       where conrelid = 'plm.peanuts_entity_lifecycle'::regclass)
-     <> 'peanuts_entity_lifecycle_first_seen_capture_id_fkey:f,peanuts_entity_lifecycle_history_chk:c,'
-        'peanuts_entity_lifecycle_key_chk:c,peanuts_entity_lifecycle_kind_chk:c,'
-        'peanuts_entity_lifecycle_last_changed_capture_id_fkey:f,peanuts_entity_lifecycle_last_seen_capture_id_fkey:f,'
-        'peanuts_entity_lifecycle_pkey:p,peanuts_entity_lifecycle_status_chk:c,'
-        'peanuts_entity_lifecycle_withdrawn_at_chk:c,peanuts_entity_lifecycle_withdrawn_capture_id_fkey:f' then
-    raise exception 'plm.peanuts_entity_lifecycle constraints differ from the reviewed shape';
+  -- plm.peanuts_lifecycle_publication: columns (name, type, nullability, default).
+  v_got := (select string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
+                         || case when a.attnotnull then ' not null' else '' end
+                         || coalesce(' default ' || pg_get_expr(d.adbin, d.adrelid), ''), E'\n' order by a.attnum)
+     from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid = 'plm.peanuts_lifecycle_publication'::regclass and a.attnum > 0 and not a.attisdropped);
+  if v_got is distinct from
+       'published_capture_id uuid not null' || E'\n' ||
+       'baseline_capture_id uuid' || E'\n' ||
+       'mode text not null' || E'\n' ||
+       'derivation_contract text not null' || E'\n' ||
+       'scope_sha256 text not null' || E'\n' ||
+       'source_captured_at timestamp with time zone not null' || E'\n' ||
+       'counts jsonb not null default ''{}''::jsonb' || E'\n' ||
+       'published_at timestamp with time zone not null default now()' then
+    raise exception 'plm.peanuts_lifecycle_publication cols differ from the reviewed shape: %', v_got;
   end if;
-  if (select string_agg(conname || ':' || contype, ',' order by conname) from pg_constraint
-       where conrelid = 'plm.peanuts_lifecycle_publication'::regclass)
-     <> 'peanuts_lifecycle_publication_baseline_capture_id_fkey:f,peanuts_lifecycle_publication_baseline_chk:c,'
-        'peanuts_lifecycle_publication_capture_id_fkey:f,peanuts_lifecycle_publication_contract_chk:c,'
-        'peanuts_lifecycle_publication_counts_chk:c,peanuts_lifecycle_publication_mode_chk:c,'
-        'peanuts_lifecycle_publication_pkey:p,peanuts_lifecycle_publication_scope_chk:c' then
-    raise exception 'plm.peanuts_lifecycle_publication constraints differ from the reviewed shape';
+  -- plm.peanuts_lifecycle_publication: constraints (name and full definition).
+  v_got := (select string_agg(conname || '=' || pg_get_constraintdef(oid), E'\n' order by conname)
+     from pg_constraint where conrelid = 'plm.peanuts_lifecycle_publication'::regclass);
+  if v_got is distinct from
+       'peanuts_lifecycle_publication_baseline_capture_id_fkey=FOREIGN KEY (baseline_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT' || E'\n' ||
+       'peanuts_lifecycle_publication_baseline_chk=CHECK ((((mode = ''bootstrap''::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id))))' || E'\n' ||
+       'peanuts_lifecycle_publication_contract_chk=CHECK ((btrim(derivation_contract) <> ''''::text))' || E'\n' ||
+       'peanuts_lifecycle_publication_counts_chk=CHECK ((jsonb_typeof(counts) = ''object''::text))' || E'\n' ||
+       'peanuts_lifecycle_publication_mode_chk=CHECK ((mode = ANY (ARRAY[''bootstrap''::text, ''comparable''::text, ''rebaseline''::text, ''withdrawal_held''::text])))' || E'\n' ||
+       'peanuts_lifecycle_publication_pkey=PRIMARY KEY (published_capture_id)' || E'\n' ||
+       'peanuts_lifecycle_publication_published_capture_id_fkey=FOREIGN KEY (published_capture_id) REFERENCES plm.peanuts_capture(id) ON DELETE RESTRICT' || E'\n' ||
+       'peanuts_lifecycle_publication_scope_chk=CHECK ((scope_sha256 ~ ''^[0-9a-f]{64}$''::text))' then
+    raise exception 'plm.peanuts_lifecycle_publication cons differ from the reviewed shape: %', v_got;
   end if;
-  -- FK column mapping: child column -> parent table(column), ON DELETE RESTRICT.
-  if (select string_agg(a.attname || '->' || c.confrelid::regclass::text || '(' || pa.attname || '):' || c.confdeltype,
-                        ',' order by a.attname)
-        from pg_constraint c
-        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
-        join pg_attribute pa on pa.attrelid = c.confrelid and pa.attnum = c.confkey[1]
-       where c.contype = 'f' and cardinality(c.conkey) = 1
-         and c.conrelid in ('plm.peanuts_entity_lifecycle'::regclass, 'plm.peanuts_lifecycle_publication'::regclass))
-     <> 'baseline_capture_id->plm.peanuts_lifecycle_publication(capture_id):r,'
-        'capture_id->plm.peanuts_capture(id):r,'
-        'first_seen_capture_id->plm.peanuts_lifecycle_publication(capture_id):r,'
-        'last_changed_capture_id->plm.peanuts_lifecycle_publication(capture_id):r,'
-        'last_seen_capture_id->plm.peanuts_lifecycle_publication(capture_id):r,'
-        'withdrawn_capture_id->plm.peanuts_lifecycle_publication(capture_id):r' then
-    raise exception 'durable-state foreign keys differ from the reviewed shape';
+  -- Every non-primary index, exact definition. The durable-state scan index leads with the
+  -- equality columns (entity_kind, status) and ends with the array-probed capture.
+  v_got := (select string_agg(indexrelid::regclass::text || '=' || pg_get_indexdef(indexrelid), E'\n'
+                              order by indexrelid::regclass::text)
+              from pg_index where indrelid in ('plm.peanuts_entity_lifecycle'::regclass,
+                                               'plm.peanuts_lifecycle_publication'::regclass)
+               and not indisprimary);
+  if v_got is distinct from
+       'plm.idx_peanuts_entity_lifecycle_first_seen=CREATE INDEX idx_peanuts_entity_lifecycle_first_seen ON plm.peanuts_entity_lifecycle USING btree (first_seen_capture_id)' || E'\n' ||
+       'plm.idx_peanuts_entity_lifecycle_last_changed=CREATE INDEX idx_peanuts_entity_lifecycle_last_changed ON plm.peanuts_entity_lifecycle USING btree (last_changed_capture_id)' || E'\n' ||
+       'plm.idx_peanuts_entity_lifecycle_last_seen=CREATE INDEX idx_peanuts_entity_lifecycle_last_seen ON plm.peanuts_entity_lifecycle USING btree (entity_kind, status, last_seen_capture_id)' || E'\n' ||
+       'plm.idx_peanuts_entity_lifecycle_withdrawn_capture=CREATE INDEX idx_peanuts_entity_lifecycle_withdrawn_capture ON plm.peanuts_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL)' || E'\n' ||
+       'plm.idx_peanuts_lifecycle_publication_baseline=CREATE INDEX idx_peanuts_lifecycle_publication_baseline ON plm.peanuts_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL)' || E'\n' ||
+       'plm.idx_peanuts_lifecycle_publication_latest=CREATE INDEX idx_peanuts_lifecycle_publication_latest ON plm.peanuts_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC, published_capture_id DESC)' then
+    raise exception 'durable-state indexes differ from the reviewed shape: %', v_got;
   end if;
-  -- Serving indexes, exact definitions.
-  if (select string_agg(indexrelid::regclass::text || '=' || pg_get_indexdef(indexrelid), E'\n' order by indexrelid::regclass::text)
-        from pg_index where indrelid in ('plm.peanuts_entity_lifecycle'::regclass, 'plm.peanuts_lifecycle_publication'::regclass)
-         and not indisprimary)
-     <> 'plm.idx_peanuts_entity_lifecycle_first_seen=CREATE INDEX idx_peanuts_entity_lifecycle_first_seen ON plm.peanuts_entity_lifecycle USING btree (first_seen_capture_id)' || E'\n' ||
-        'plm.idx_peanuts_entity_lifecycle_last_changed=CREATE INDEX idx_peanuts_entity_lifecycle_last_changed ON plm.peanuts_entity_lifecycle USING btree (last_changed_capture_id)' || E'\n' ||
-        'plm.idx_peanuts_entity_lifecycle_last_seen=CREATE INDEX idx_peanuts_entity_lifecycle_last_seen ON plm.peanuts_entity_lifecycle USING btree (last_seen_capture_id, entity_kind, status)' || E'\n' ||
-        'plm.idx_peanuts_entity_lifecycle_withdrawn_capture=CREATE INDEX idx_peanuts_entity_lifecycle_withdrawn_capture ON plm.peanuts_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL)' || E'\n' ||
-        'plm.idx_peanuts_lifecycle_publication_baseline=CREATE INDEX idx_peanuts_lifecycle_publication_baseline ON plm.peanuts_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL)' || E'\n' ||
-        'plm.idx_peanuts_lifecycle_publication_latest=CREATE INDEX idx_peanuts_lifecycle_publication_latest ON plm.peanuts_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC, capture_id DESC)' then
-    raise exception 'durable-state indexes differ from the reviewed shape';
+  -- Policies: exactly one read policy per table, with the predicate exactly as stored.
+  -- app.has_app_access takes app.app_name, so the stored constant is 'plm'::app.app_name.
+  v_got := (select string_agg(tablename || '/' || policyname || '/' || cmd || '/' || roles::text || '/'
+                              || permissive || '/' || coalesce(qual, '') || '/' || coalesce(with_check, ''),
+                              E'\n' order by tablename)
+              from pg_policies where schemaname = 'plm'
+               and tablename in ('peanuts_entity_lifecycle', 'peanuts_lifecycle_publication'));
+  if v_got is distinct from
+       'peanuts_entity_lifecycle/peanuts_entity_lifecycle_plm_read/SELECT/{authenticated}/PERMISSIVE/(app.has_app_access(''plm''::app.app_name) OR app.has_role(''administrator''::app.app_role) OR app.has_any_role(ARRAY[''sales''::app.app_role, ''licensing''::app.app_role]))/' || E'\n' ||
+       'peanuts_lifecycle_publication/peanuts_lifecycle_publication_plm_read/SELECT/{authenticated}/PERMISSIVE/(app.has_app_access(''plm''::app.app_name) OR app.has_role(''administrator''::app.app_role) OR app.has_any_role(ARRAY[''sales''::app.app_role, ''licensing''::app.app_role]))/' then
+    raise exception 'durable-state policies differ from the reviewed shape: %', v_got;
   end if;
-  -- Policies: exactly one read policy per table, SELECT to authenticated, reviewed audience.
-  if (select string_agg(tablename || '/' || policyname || '/' || cmd || '/' || roles::text || '/' || permissive
-                        || '/' || coalesce(qual, '') || '/' || coalesce(with_check, ''), E'\n' order by tablename)
-        from pg_policies where schemaname = 'plm'
-         and tablename in ('peanuts_entity_lifecycle', 'peanuts_lifecycle_publication'))
-     <> (select string_agg(t || '/' || t || '_plm_read/SELECT/{authenticated}/PERMISSIVE/'
-                           || '(app.has_app_access(''plm''::text) OR app.has_role(''administrator''::app.app_role) OR '
-                           || 'app.has_any_role(ARRAY[''sales''::app.app_role, ''licensing''::app.app_role]))/', E'\n' order by t)
-           from unnest(array['peanuts_entity_lifecycle', 'peanuts_lifecycle_publication']) t) then
-    raise exception 'durable-state policies differ from the reviewed shape: %',
-      (select string_agg(policyname || ' ' || coalesce(qual, ''), '; ') from pg_policies where schemaname = 'plm'
-        and tablename in ('peanuts_entity_lifecycle', 'peanuts_lifecycle_publication'));
-  end if;
-  -- Definer function: signature, return type, volatility, definer, pinned search_path.
+  -- Definer function: signature, return type, language, volatility, definer, pinned search_path.
   if not exists (select 1 from pg_proc p where p.oid = 'plm.peanuts_publish_lifecycle(uuid)'::regprocedure
                    and p.prosecdef and p.provolatile = 'v' and p.prorettype = 'jsonb'::regtype
                    and p.prolang = (select oid from pg_language where lanname = 'plpgsql')
                    and p.proconfig = array['search_path=pg_catalog, pg_temp']) then
     raise exception 'publish function attributes differ from the reviewed shape: %',
-      (select row(prosecdef, provolatile, prorettype::regtype, proconfig)::text from pg_proc
-        where oid = 'plm.peanuts_publish_lifecycle(uuid)'::regprocedure);
+      (select format('%s %s %s %s', prosecdef, provolatile::text, prorettype::regtype::text, proconfig::text)
+         from pg_proc where oid = 'plm.peanuts_publish_lifecycle(uuid)'::regprocedure);
   end if;
 end
 $exact$;
@@ -366,21 +401,21 @@ reset role;
 
 do $scope_and_band$
 begin
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-0000000000e1') <> 'rebaseline' then
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-0000000000e1') <> 'rebaseline' then
     raise exception 'same account on a different API endpoint was compared';
   end if;
   if exists (select 1 from plm.peanuts_entity_lifecycle where withdrawn_capture_id = '36840000-0000-4000-8000-0000000000e1') then
     raise exception 'endpoint rebaseline withdrew an entity';
   end if;
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-0000000000e2') <> 'comparable'
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-0000000000e2') <> 'comparable'
      or (select count(*) from plm.peanuts_entity_lifecycle where withdrawn_capture_id = '36840000-0000-4000-8000-0000000000e2') <> 4 then
     raise exception 'a drop at the 2%% band limit was not applied';
   end if;
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-0000000000e3') <> 'withdrawal_held'
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-0000000000e3') <> 'withdrawal_held'
      or exists (select 1 from plm.peanuts_entity_lifecycle where withdrawn_capture_id = '36840000-0000-4000-8000-0000000000e3') then
     raise exception 'a drop above the 2%% band limit was not held';
   end if;
-  if (select mode from plm.peanuts_lifecycle_publication where capture_id = '36840000-0000-4000-8000-0000000000f2') <> 'withdrawal_held'
+  if (select mode from plm.peanuts_lifecycle_publication where published_capture_id = '36840000-0000-4000-8000-0000000000f2') <> 'withdrawal_held'
      or exists (select 1 from plm.peanuts_entity_lifecycle where withdrawn_capture_id = '36840000-0000-4000-8000-0000000000f2') then
     raise exception 'a drop above the 100-row cap (inside 2%%) was not held';
   end if;

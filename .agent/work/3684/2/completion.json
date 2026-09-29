@@ -4,7 +4,7 @@
   "outcome": "ready-for-merge",
   "pr": 3730,
   "migration_versions": [
-    "20260929010932"
+    "20260928210932"
   ],
   "contract_ref": "refs/db-contracts/3684/2",
   "contract_sha256": "f28e26dee9b7c59e52aa5d85f7b0b7662df7f47b9a05be6bd5d29d49eb81cb49",
@@ -14,7 +14,7 @@
     ".agent/work/3684/2/completion.json",
     ".agent/work/3684/2/contract.json",
     ".github/live-proofs/3684.sql",
-    "supabase/migrations/20260929010932_peanuts_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260928210932_peanuts_durable_entity_lifecycle.sql",
     "supabase/tests/peanuts_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/peanuts_landing_contracts.sql"
   ],
@@ -57,7 +57,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Claim #3728 re-reserved as 20260929010932 (supersession 0f19e17c) and expanded from issue scope to exactly the eleven declared writes",
+    "Claim #3728 re-reserved as 20260928210932 (supersession 0f19e17c) and expanded from issue scope to exactly the eleven declared writes",
     "No database write performed by the author; preview, merge and production follow the serialized lanes"
   ],
   "stop_conditions_hit": [],

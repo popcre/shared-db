@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/3388/7",
   "contract_sha256": "7266406651ae2b2421c44b208b562b9ea834289596065dc086acd3679039aad2",
   "base_sha": "bbe08bbeb0f2c8cbefa6da4f6cdf0b8ee1e0fdf0",
-  "head_sha": "ec8cb4a246e212fadd4325839e95087eba4b97de",
+  "head_sha": "0a71f3898c94073aae765eda8b1db2632547d2b0",
   "files_changed": [
     "docs/verification/throughput-dispositions/scripts~lib~work-stage-evidence.mjs.json",
     "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
@@ -47,6 +47,11 @@
       "command": "git diff --check",
       "exit_code": 0,
       "evidence": "no whitespace errors"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed"
     }
   ],
   "assumptions_resolved": [

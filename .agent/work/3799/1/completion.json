@@ -9,6 +9,7 @@
   "base_sha": "bbe08bbeb0f2c8cbefa6da4f6cdf0b8ee1e0fdf0",
   "head_sha": "c80bcab90e22e27d0bac9937bfceba067ae6645b",
   "files_changed": [
+    ".agent/work/3799/1/contract.json",
     "scripts/run-governed-review.mjs",
     "scripts/run-governed-review.test.mjs"
   ],

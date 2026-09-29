@@ -6,6 +6,10 @@
 #   DROP / TRUNCATE / VACUUM FULL / DELETE without WHERE unless marked with
 #   `-- destructive-proposal: #<issue>`.
 #
+# The pull-request half (the required context "Destructive SQL outside
+# migrations") now runs as the `destructive-sql` job of pr-guards.yml (#3746);
+# this file keeps only the issue-event checklist.
+#
 # No `paths:` filter (a filtered guard reports a stale green), unique check names,
 # no secrets, no database contact.
 name: Destructive Analysis Guard
@@ -13,11 +17,6 @@ name: Destructive Analysis Guard
 on:
   issues:
     types: [opened, edited, labeled, reopened]
-  pull_request:
-  merge_group:
-    types: [checks_requested]
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -56,36 +55,3 @@ jobs:
           printf '%s' "$ISSUE_BODY" > "$body_file"
           node scripts/check-destructive-analysis.mjs --issue-body-file "$body_file" --labels "$ISSUE_LABELS"
 
-  destructive-sql:
-    name: Destructive SQL outside migrations
-    if: github.event_name != 'issues'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Prove the guard can fail
-        run: node --test scripts/check-destructive-analysis.test.mjs
-      - name: Scan SQL added by this change
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"
-      - name: Scan SQL added by the queued group
-        if: github.event_name == 'merge_group'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BASE_SHA: ${{ github.event.merge_group.base_sha }}
-        run: |
-          set -euo pipefail
-          # Fail closed when the group base is not a resolvable commit: an
-          # unresolvable base must never read as "no SQL added".
-          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "::error::merge_group base_sha '${BASE_SHA}' does not resolve to a commit; refusing to scan."
-            exit 1
-          fi
-          node scripts/check-destructive-analysis.mjs --diff-base "${BASE_SHA}"

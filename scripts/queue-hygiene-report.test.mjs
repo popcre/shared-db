@@ -38,7 +38,7 @@ const scope = (status, workType, route, priority, objects = []) => '```db-work-s
 
 const MUTATION_HOOKS = [
   'postCommitStatus', 'updateIssue', 'makeOwnerCommit', 'makeReviewVerdictCommit',
-  'createRef', 'deleteRef', 'updateRef', 'atomicReviewRefs', 'atomicReviewMutexRelease',
+  'createRef', 'deleteRef', 'releaseRefOverGit', 'updateRef', 'atomicReviewRefs', 'atomicReviewMutexRelease',
   'reserveVersion', 'createClaim', 'createIssueIn', 'commentIssue', 'closeIssue',
   'closeClaim', 'contentPreservingRefresh', 'rewriteVersion', 'commitAndPushReversion',
 ]
@@ -47,7 +47,7 @@ const MUTATION_HOOKS = [
 // somebody decides which side it is on — the silent-inheritance gap the governed
 // review of head fd7d1327 caught (rewriteVersion, commitAndPushReversion).
 const KNOWN_READ_HOOKS = new Set([
-  'databasePreviewClassification', 'pullRequestFiles', 'readReviewerOperationRoute', 'countLogicalReviewRequests',
+  'databasePreviewClassification', 'pullRequestFiles', 'handoffCollisions', 'readReviewerOperationRoute', 'countLogicalReviewRequests',
   'readPrWithReviewContext', 'observedReviewQuota', 'getRateLimit', 'previewApplyRun', 'verifyPreviewApplyArtifact',
   'readActiveReviewLeases', 'readActiveReviewLeasesOverGit', 'readActiveReviewLeasesOverGraphql', 'readReviewStates',
   'readReviewRefs', 'readReviewRecords', 'openClaims', 'closedClaimsForWork', 'openWorkIssues', 'openIssueNumbers', 'openIssueRows',

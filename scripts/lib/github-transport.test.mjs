@@ -10,6 +10,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   runGitHubCommand,
+  ghCommandTimeoutMs,
+  DEFAULT_GH_COMMAND_TIMEOUT_MS,
+  MAX_GH_COMMAND_TIMEOUT_MS,
   ghJson,
   isTransientGitHubTransport,
   isMutatingCall,
@@ -18,6 +21,7 @@ import {
   isRateLimitExhausted,
   rateLimitMaxWaitMs,
   rateLimitResetDelayMs,
+  realBucketResetDelayMs,
 } from './github-transport.mjs'
 
 const noWait = () => {}
@@ -340,4 +344,75 @@ test('spawnGitHub refuses reads and retry requests', () => {
   const executor = () => assert.fail('executor must not run')
   assert.throws(() => spawnGitHub(['api', 'repos/o/r'], { executor }), /for mutations/)
   assert.throws(() => spawnGitHub(['api', '-X', 'DELETE', 'repos/o/r/git/refs/x'], { executor, idempotentWrite: true }), /never replays/)
+})
+
+// ---------------------------------------------------------------------------
+// #3743: rate_limit reads the wrong bucket for the Actions token
+// ---------------------------------------------------------------------------
+
+test('when rate_limit contradicts the refusal, the reset comes from a real endpoint (#3743)', () => {
+  const nowS = Math.floor(NOW_MS / 1000)
+  const realReset = nowS + 420
+  const calls = []
+  let failed = 0
+  const executor = (_bin, args) => {
+    calls.push(args.join(' '))
+    const joined = args.join(' ')
+    if (joined === 'api -i rate_limit') return rateLimitResponse(nowS + 3600, 5000)
+    if (joined === 'api -i repos/o/r') {
+      const error = new Error('Command failed')
+      error.stdout = `HTTP/2.0 403 Forbidden\nX-Ratelimit-Limit: 1000\nX-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: ${realReset}\n\n{"message":"API rate limit exceeded for installation"}`
+      error.stderr = RATE_LIMITED
+      throw error
+    }
+    if (failed < 1) { failed += 1; const e = new Error('Command failed'); e.stderr = RATE_LIMITED; throw e }
+    return '{"ok":true}'
+  }
+  const waits = []
+  const out = ghJson(['api', 'repos/o/r/pulls'], {
+    executor, wait: (ms) => waits.push(ms), now: () => NOW_MS, maxRateLimitWaitMs: OPTED_MS, reportStderr() {}, repository: 'o/r', quotaLatch: null,
+  })
+  assert.deepEqual(out, { ok: true })
+  assert.deepEqual(calls, ['api repos/o/r/pulls', 'api -i rate_limit', 'api -i repos/o/r', 'api repos/o/r/pulls'])
+  assert.deepEqual(waits, [421000], 'waits for the REAL reset, not 1 second')
+})
+
+test('an unreadable real-bucket probe is never guessed (#3743)', () => {
+  assert.equal(realBucketResetDelayMs(null, NOW_MS), null)
+  assert.equal(realBucketResetDelayMs('garbage', NOW_MS), null)
+  assert.equal(realBucketResetDelayMs('HTTP/2.0 200 OK\nX-Ratelimit-Remaining: 12\nX-Ratelimit-Reset: 1\n\n{}', NOW_MS), null, 'a bucket with quota left states no wait')
+})
+
+// Run 36487949025: a gh child that never answered held the author mutex for hours.
+test('every gh child carries a wall-clock bound, and a timeout fails once without retry', () => {
+  const seen = []
+  const executor = (_bin, _args, options) => {
+    seen.push(options)
+    const error = new Error('spawnSync gh ETIMEDOUT'); error.code = 'ETIMEDOUT'; error.stderr = ''
+    throw error
+  }
+  assert.throws(
+    () => runGitHubCommand(['api', 'repos/o/r'], { executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 5000 }),
+    /did not answer within 5s and was killed/,
+  )
+  assert.equal(seen.length, 1, 'a timed-out read is not retried')
+  assert.equal(seen[0].timeout, 5000)
+  assert.equal(seen[0].killSignal, 'SIGKILL')
+})
+
+test('the default gh timeout applies with no option, and the env can shorten but never disable it', () => {
+  let options = null
+  runGitHubCommand(['api', 'repos/o/r'], { executor: (_b, _a, o) => { options = o; return '{}' } })
+  assert.ok(Number.isFinite(options.timeout) && options.timeout > 0)
+  assert.equal(ghCommandTimeoutMs({}), DEFAULT_GH_COMMAND_TIMEOUT_MS)
+  assert.equal(ghCommandTimeoutMs({ GITHUB_COMMAND_TIMEOUT_SECONDS: '30' }), 30000)
+  for (const raw of ['0', '-5', 'abc']) assert.equal(ghCommandTimeoutMs({ GITHUB_COMMAND_TIMEOUT_SECONDS: raw }), DEFAULT_GH_COMMAND_TIMEOUT_MS)
+  assert.equal(ghCommandTimeoutMs({ GITHUB_COMMAND_TIMEOUT_SECONDS: '999999' }), MAX_GH_COMMAND_TIMEOUT_MS)
+})
+
+test('a timed-out read is never retried even when its stderr looks transient (review L4)', () => {
+  let calls = 0
+  const executor = () => { calls += 1; const e = new Error('ETIMEDOUT'); e.code = 'ETIMEDOUT'; e.stderr = 'connection timed out'; throw e }
+  assert.throws(() => runGitHubCommand(['api', 'repos/o/r'], { executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 1000 }), /was killed/)
+  assert.equal(calls, 1)
 })

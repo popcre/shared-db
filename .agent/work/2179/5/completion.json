@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "work_issue": 2179,
+  "outcome": "ready-for-merge",
+  "pr": 3711,
+  "migration_versions": [
+    "20260929070422"
+  ],
+  "contract_ref": "refs/db-contracts/2179/5",
+  "contract_sha256": "093de3eed05da49d152b4af57819add30fda6da9d132a6bf2d7d9f210e4de65b",
+  "base_sha": "8f0d320a505a541ac57f6798adbb7e1fd91a9b38",
+  "head_sha": "598fd38a010484ec610372ee0cfe57da665c5bce",
+  "files_changed": [
+    ".github/live-proofs/2179.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/coldlion-field-decisions-20260819.csv",
+    "docs/coldlion-item-images-loader-contract.md",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20260929070422.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20260929070422_coldlion_item_image_metadata_landing.sql",
+    "supabase/tests/coldlion_item_image_metadata_landing_contracts.sql",
+    "tools/coldlion-landing-item-images.test.mjs",
+    "tools/coldlion-landing/lib/item-images-spec.mjs"
+  ],
+  "db_reads": [
+    "table coldlion.sync_run"
+  ],
+  "db_writes": [
+    "table coldlion.item_image_metadata"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Run at implementation head 598fd38a010484ec610372ee0cfe57da665c5bce: Static checks passed; 20260929070422 is the newest migration."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "status OK, 63 sidecars; 20260929070422 registered for issue 2179."
+    },
+    {
+      "command": "node --test tools/coldlion-landing-item-images.test.mjs",
+      "exit_code": 0,
+      "evidence": "tests 8, pass 8, fail 0 at the same head."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "No local PostgreSQL on this host; the SQL contract test supabase/tests/coldlion_item_image_metadata_landing_contracts.sql is executed by the Database Contract Tests workflow against an ephemeral database."
+  ],
+  "stop_conditions_hit": []
+}

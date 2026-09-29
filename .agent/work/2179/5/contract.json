@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "generation": 5,
+  "work_issue": 2179,
+  "work_type": "structural",
+  "route": "shared-db-orchestrator",
+  "goal": "Author coldlion.item_image_metadata (ColdLion /itemImages metadata, all 14 fields ingested per owner decision 2026-09-28, image bytes excluded, pkey identity) at reserved version 20260929070422 under claim #3706, with the field-decision register rows, a loader contract module and tests, a SQL contract test, and the production verification sidecar. Structure only: no row loads.",
+  "base_sha": "8f0d320a505a541ac57f6798adbb7e1fd91a9b38",
+  "dispatcher": "Claude shared-db orchestrator chat 1b699f56-bfb1-4801-a2b9-db91edbc98f6 on edge-dev3 (marker #3653); generation 3 by Claude chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3 (version re-reserved 20260929044541); generation 4 corrects the goal version; generation 5 re-reserved version 20260929070422",
+  "worker": "Claude subagent for #2179 on edge-dev3",
+  "branch": "claude/coldlion-item-images-2179",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/cl-2179",
+  "allowed_paths": [
+    "supabase/migrations/20260929070422_coldlion_item_image_metadata_landing.sql",
+    "supabase/tests/coldlion_item_image_metadata_landing_contracts.sql",
+    "docs/coldlion-item-images-loader-contract.md",
+    "docs/coldlion-field-decisions-20260819.csv",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260929070422.json",
+    "scripts/production_catalog_verification.py",
+    "tools/coldlion-landing/lib/item-images-spec.mjs",
+    "tools/coldlion-landing-item-images.test.mjs",
+    ".agent/work/2179/5/contract.json",
+    ".agent/work/2179/5/completion.json",
+    ".github/live-proofs/2179.sql"
+  ],
+  "file_writes": [
+    "supabase/migrations/20260929070422_coldlion_item_image_metadata_landing.sql",
+    "supabase/tests/coldlion_item_image_metadata_landing_contracts.sql",
+    "docs/coldlion-item-images-loader-contract.md",
+    "docs/coldlion-field-decisions-20260819.csv",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20260929070422.json",
+    "scripts/production_catalog_verification.py",
+    "tools/coldlion-landing/lib/item-images-spec.mjs",
+    "tools/coldlion-landing-item-images.test.mjs",
+    ".agent/work/2179/5/contract.json",
+    ".agent/work/2179/5/completion.json",
+    ".github/live-proofs/2179.sql"
+  ],
+  "db_reads": [
+    "table coldlion.sync_run"
+  ],
+  "db_writes": [
+    "table coldlion.item_image_metadata"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "node scripts/check-production-verification-sidecars.mjs",
+    "node --test tools/coldlion-landing-item-images.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The 2026-09-08 census is the grain evidence; pkey is the only proven identity.",
+    "Claim #3706 re-reserved twice by governed supersession (20260928170501 -> 20260929032359 -> 20260929044541) after main landed newer migrations; file content unchanged",
+    "Re-reserved again 20260929044541 -> 20260929070422 after main landed 20260929045102"
+  ],
+  "prohibited_actions": [
+    "No row loads, no preview or production apply outside the governed lanes.",
+    "No image-content column."
+  ],
+  "stop_conditions": [
+    "Stop if the change needs an object outside table coldlion.item_image_metadata."
+  ],
+  "evidence_parent": {
+    "contract_sha256": "8584191e4c2b5b81946a0b22f8ef4d8c949f19f79e2ed00811fd488d456269a7",
+    "generation": 4,
+    "work_issue": 2179
+  }
+}

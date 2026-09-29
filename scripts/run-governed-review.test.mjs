@@ -3,8 +3,8 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -206,6 +206,11 @@ test('typed terminal reasons require complete tokens rather than diagnostic subs
     }
   }
   assert.equal(wrapperFailureReason({stderr:'start_failed: not-caller_identity_missing'}),'start_failed: the wrapper refused before the provider turn started')
+})
+
+test('source drift and denied-tool wrapper refusals are named, not unrecognized',()=>{
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini changed the protected source checkout; response rejected'}),/^source_drift: the reviewed checkout changed during the reviewer turn/)
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini ended its turn after the headless runtime denied a tool (RunCommand); no usable verdict; evidence preserved'}),/^tool_denied: /)
 })
 
 test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
@@ -806,6 +811,46 @@ test('#498-16 caller variable is kept, detected, or named in a pre-start refusal
   assert.throws(()=>reviewCallerEnvironment('ai-muse',{}),/needs AI_MUSE_CALLER set.*No reviewer was started.*AI_MUSE_CALLER=claude/)
   assert.deepEqual(reviewCallerEnvironment('unlisted-wrapper',{}),{})
 })
+// Issue #2678 -- THE WRAPPER THIS RUNNER SPAWNS MUST BE TOLD WHO IS CALLING.
+// The doctor probe already carries its own end-to-end proof; this closes the
+// other half: the governed runner's own wrapper spawn. A wrapper spawned
+// without its own `AI_<PROVIDER>_CALLER` refuses before printing any check line,
+// and that refusal reads as a local dependency fault on a healthy machine. The
+// captured spawn environment is asserted here so the caller can never be
+// dropped from this path again, and no caller is ever invented when the
+// environment genuinely has none (the CLI refusal above stays the fail-closed
+// gate in that case).
+test('issue 2678: the wrapper spawn carries AI_*_CALLER, and no caller is ever invented',()=>{
+  // Every marker detectReviewCaller reads, so a machine that carries Claude Code
+  // or Codex markers cannot leak a caller into the negative case below.
+  const MARKERS=['AI_GLM_CALLER','CLAUDECODE','CLAUDE_CODE_SESSION_ID','CODEX_THREAD_ID','CODEX_SANDBOX']
+  const originals=Object.fromEntries(MARKERS.map((key)=>[key,process.env[key]]))
+  const restore=()=>{
+    for(const key of MARKERS){if(originals[key]===undefined)delete process.env[key];else process.env[key]=originals[key]}
+  }
+  const spawnEnv=()=>{
+    let env
+    runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,
+      spawn:(command,_args,spawnOptions)=>{
+        if(command!=='gh'){env=spawnOptions.env;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}}
+        return{status:0,stdout:JSON.stringify({id:123,html_url:`https://github.com/${THIS_REPO}/pull/2000#issuecomment-123`})}
+      },
+      record:()=>({ref:'refs/db-review-verdicts/x',sha:'f'.repeat(40)})})
+    return env
+  }
+  try{
+    for(const key of MARKERS)delete process.env[key]
+    process.env.CLAUDECODE='1'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'claude','the runner spawn must carry the detected caller')
+    process.env.AI_GLM_CALLER='codex'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'codex','an explicitly exported caller is never overruled by detection')
+    for(const key of MARKERS)delete process.env[key]
+    const bare=spawnEnv()
+    assert.equal(bare.AI_GLM_CALLER,undefined,'with no detectable caller the runner must not invent one')
+    const live='a'.repeat(40)
+    assert.throws(()=>prepareGovernedReview({pr:3031,wrapper:'ai-glm',wrapperArgs:['review']},{env:{},github:()=>({status:0,stdout:JSON.stringify({head:{sha:live}})}),files:{readFile:()=>'x',writeFile:()=>{},tempDir:()=>'T'}}),/needs AI_GLM_CALLER set.*No reviewer was started/)
+  }finally{restore()}
+})
 test('#498-17 live head is injected, a stale named head or stale prompt verdict line refuses before start', () => {
   const live='a'.repeat(40),stale='b'.repeat(40)
   const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
@@ -1142,4 +1187,42 @@ test('#3799 two refs matching the two readings are refused as ambiguous',()=>{
 test('#3799 no replacement sequence is left alone',()=>{
   const o={issue:1,pr:1,headSha:rsHead}
   assert.equal(resolveReplacementSequence(o,rsLive),o)
+})
+
+test('#3810: an unrecognized wrapper failure saves a redacted stderr tail and names the path; verdict logic unchanged',()=>{
+  const secret='sk-'+'A'.repeat(30),gh='ghp_'+'B'.repeat(36)
+  const stderr=`${'x'.repeat(9000)}\nweird provider failure Authorization: Bearer ${'C'.repeat(40)}\nOPENAI_API_KEY=${secret} token ${gh}\n`
+  let saved,meta
+  assert.throws(()=>runGovernedReview({...options},{
+    spawn:(command)=>command==='gh'?{status:0,stdout:'{}'}:{status:7,stdout:'',stderr},
+    resolve:(name)=>name,preflight:()=>{},record:()=>assert.fail('must not record'),
+    writeFailureLog:(text,m)=>{saved=text;meta=m;return '/private/log/path.log'},
+  }),(error)=>{
+    assert.match(error.message,/exit 7\): wrapper stderr was present but its reason was not recognized/)
+    assert.match(error.message,/saved to \/private\/log\/path\.log\./)
+    assert.ok(!error.message.includes('weird provider failure'),'raw stderr never enters the refusal')
+    return true
+  })
+  assert.equal(meta.pr,options.pr)
+  assert.match(saved,/exit_status: 7/)
+  assert.match(saved,/weird provider failure/)
+  for(const s of [secret,gh,'C'.repeat(40)])assert.ok(!saved.includes(s),'secrets are redacted')
+  assert.ok(saved.length<9000,'only a bounded tail is kept')
+  // a failing log writer never changes the refusal's reason
+  assert.throws(()=>runGovernedReview({...options},{
+    spawn:(command)=>command==='gh'?{status:0,stdout:'{}'}:{status:7,stdout:'',stderr:'odd'},
+    resolve:(name)=>name,preflight:()=>{},record:()=>assert.fail('must not record'),
+    writeFailureLog:()=>{throw new Error('disk full')},
+  }),/not recognized; inspect the exact wrapper session\. Wrapper diagnostics could not be saved\./)
+})
+
+test('#3810: the failure log is written privately and without clobbering',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'wf-'))
+  try{
+    const file=writeWrapperFailureLog(wrapperFailureLogText({status:1,stderr:'boom'},{wrapper:'ai-deepseek-agent',pr:3759,headSha:'7'.repeat(40),reason:'r'}),{dir,pr:3759,headSha:'7'.repeat(40)})
+    assert.match(file,/pr3759-7777777-/)
+    assert.match(readFileSync(file,'utf8'),/wrapper: ai-deepseek-agent[\s\S]*boom/)
+    if(process.platform!=='win32')assert.equal(statSync(file).mode&0o777,0o600)
+    assert.equal(redactWrapperStderr('SECRET_X: abcdefgh'),'SECRET_X=[REDACTED]')
+  }finally{rmSync(dir,{recursive:true,force:true})}
 })

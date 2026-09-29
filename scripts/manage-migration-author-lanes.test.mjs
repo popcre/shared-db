@@ -402,7 +402,7 @@ test('status and non-structural routes never consume a migration-author lane',()
 
 test('every non-structural work type has a named exit and never accept',()=>{
   assert.equal(queueExit('structural'),'accept')
-  const allowed=new Set(['reject','fork','repo-session','return-to-owner'])
+  const allowed=new Set(['reject','fork','repo-session'])
   for(const [workType,exit] of Object.entries(NON_STRUCTURAL_EXITS)){
     assert.ok(allowed.has(exit),`${workType} must exit to a named destination, got ${exit}`)
     assert.notEqual(exit,'accept',`${workType} must never be accepted by the orchestrator`)
@@ -418,7 +418,10 @@ test('every non-structural work type has a named exit and never accept',()=>{
 test('the 2026-08-21 owner ruling is enforced: repo work leaves the orchestrator, Master Data does not move',()=>{
   assert.equal(queueExit('repo-maintenance'),'repo-session')
   assert.equal(queueExit('documentation'),'repo-session')
-  assert.equal(queueExit('security-settings'),'return-to-owner')
+  // Owner ruling 2026-09-28 (#3675): never ask a human to approve. Security
+  // settings go to a separately started AI session, never back to Albert.
+  assert.equal(queueExit('security-settings'),'repo-session')
+  assert.equal(OUTSIDE_ORCHESTRATOR_EXITS.includes('return-to-owner'),false)
   // Deliberately unchanged. The ruling did not cover curated Master Data, which
   // AGENTS.md 6.4 still governs inside this repository.
   assert.equal(queueExit('curated-master-data'),'fork')
@@ -445,8 +448,9 @@ test('the queue audit names every open issue that fails the shape test with its 
   ]
   const result=buildDynamicQueues(issues,[],NOW)
   assert.deepEqual(result.notOrchestratorWork.map((x)=>x.issue),[51,52,53])
-  assert.deepEqual(result.notOrchestratorWork.map((x)=>x.exit),['reject','repo-session','return-to-owner'])
-  assert.equal(result.notOrchestratorWork.find((x)=>x.issue===53).blockedOnOwner,true)
+  assert.deepEqual(result.notOrchestratorWork.map((x)=>x.exit),['reject','repo-session','repo-session'])
+  // #3675: a legacy owner-only scope on security-settings is AI-session work, not a human debt.
+  assert.equal(result.notOrchestratorWork.find((x)=>x.issue===53).blockedOnOwner,false)
   assert.equal(result.notOrchestratorWork.some((x)=>x.issue===50),false)
   assert.deepEqual(result.dispatchable,[50])
 })
@@ -6760,6 +6764,8 @@ test('preview preparation classifies migration SQL, not filenames, and binds it 
   // #3418: a claim that over-declares (superset of the SQL's writes) may rehearse; an unclaimed write still refuses.
   assert.equal(deriveLivePreviewCandidate(1769,mergedRehearsalIo({writes:['table plm.wwe_property','table plm.extra_locked']}).io).pr,1809)
   assert.throws(()=>deriveLivePreviewCandidate(1769,mergedRehearsalIo({writes:['table plm.other']}).io),/not all covered by claim #1805 writes/)
+  // #3437: an empty claim still refuses before preview preparation can proceed.
+  assert.throws(()=>deriveLivePreviewCandidate(1769,mergedRehearsalIo({writes:[]}).io),/at least one exact object to write/)
   assert.equal(deriveLivePreviewCandidate(1769,mergedRehearsalIo().io).pr,1809)
   { const noScope=mergedRehearsalIo().io; noScope.getIssue=()=>({body:'no scope fence here'}); assert.throws(()=>deriveLivePreviewCandidate(1769,noScope),/issue #1769 has no db-work-scope block; add exactly one before preparing preview dispatch/) }
 })
@@ -7521,6 +7527,21 @@ function slotTwoReplacementScenario(issue,pr,head){
   const replacementRef=[...io.refs.keys()].find((ref)=>ref.startsWith(`${REVIEW_REPLACEMENT_REF_PREFIX}/${issue}-${pr}-${head}-slot2-`))
   return {io,first,slotTwo,replacement,replacementRef,evidenceSha:io.refs.get(replacementRef)}
 }
+
+test('#3730 a returned self-evidencing slot-2 replacement leaves the slot redrawable, not unreadable',()=>{
+  const head='d'.repeat(40),issue=3684,pr=3730,{io,first,slotTwo,replacement,evidenceSha}=slotTwoReplacementScenario(issue,pr,head)
+  excludeReviewerForPr({issue,pr,reviewer:replacement.reviewer,reason:'independence-conflict',evidenceSha},io)
+  const request={issue,pr,headSha:head,slot:2}
+  // Before #3730 both routes refused with "reviewer release evidence is unreadable".
+  assert.throws(()=>assignNextReviewer(request,io),(error)=>!/unreadable/.test(error.message)&&/--replace-failed-reviewer/.test(error.message))
+  const redrawn=replaceFailedReviewer({...request,failedSequence:slotTwo.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.ok(![first.reviewer,slotTwo.reviewer,replacement.reviewer].includes(redrawn.reviewer),'fresh, independent, non-failed, non-excluded reviewer')
+  assert.equal(io.refs.get(`${REVIEW_FAILURE_REF_PREFIX}/${issue}-${pr}-${head}-${slotTwo.sequence}`),evidenceSha,'immutable failure evidence is unchanged')
+  // The identity stays bound: a mismatched failure code is still refused.
+  const other={issue,pr,headSha:'e'.repeat(40)},s2=slotTwoReplacementScenario(issue,pr,other.headSha)
+  excludeReviewerForPr({issue,pr,reviewer:s2.replacement.reviewer,reason:'independence-conflict',evidenceSha:s2.evidenceSha},s2.io)
+  assert.throws(()=>replaceFailedReviewer({...other,slot:2,failedSequence:s2.slotTwo.sequence,failureCode:'provider_unavailable',confirmNoVerdict:true,confirmNoArtifact:true},s2.io),/does not match the replacement request/)
+})
 
 test('excluding a slot-2 replacement holder charges the return to slot 2, never slot 1',()=>{
   const head='1'.repeat(40),{io,replacement,replacementRef,evidenceSha}=slotTwoReplacementScenario(2077,2100,head)

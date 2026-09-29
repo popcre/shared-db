@@ -295,6 +295,18 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         self.assertEqual(calls, [f"repos/{REPOSITORY}/pulls/1108", "rate_limit", f"repos/{REPOSITORY}/pulls/1108"])
         self.assertEqual(sleeps, [301])
 
+    def test_rate_limit_wait_is_the_shared_module_and_never_exceeds_the_cap(self):
+        # #3735: the gate and the historical recovery proof share one wait.
+        import github_rate_limit
+        import production_business_risk_gate as gate
+        self.assertIs(gate.wait_for_reset_once, github_rate_limit.wait_for_reset_once)
+        self.assertIs(gate.rate_limit_exhausted, github_rate_limit.rate_limit_exhausted)
+        calls, sleeps = [], []
+        runner, clock = self.rate_limit_runner(calls, reset_in=900)
+        self.assertEqual(gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner, sleep=sleeps.append,
+                                 rate_limit_wait_seconds=3600, clock=clock), {"ok": True})
+        self.assertEqual(sleeps, [900])
+
     def test_lane_held_default_fails_fast_on_a_rate_limit(self):
         calls = []
         runner, clock = self.rate_limit_runner(calls, reset_in=60)
@@ -3688,7 +3700,6 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter table public.t add column c public.some_domain;",
             "alter table public.t add column c text collate \"C\";",
             "alter table public.t add column c int generated always as identity;",
-            "alter table public.t add column n text, add column m text;",
             "alter table public.t add column n text, alter column c set not null;",
             "alter table public.t owner to app_owner;",
             "alter table t add column c text;",
@@ -3785,6 +3796,24 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter table public.t add column s text check (public.f(s));",
             "alter table public.t add column s text check (s in ('a')); grant all on public.t to anon;",
             "alter table public.t add column s text check (s in ('a')); delete from public.t;",
+        ])
+
+    def test_a_plain_multi_column_add_reports_no_risk(self):
+        """#3400: 20260928182014 adds three nullable columns per ALTER; each is
+        catalog-only exactly like the single-column entry, so the list is too."""
+        for body in [
+            "alter table plm.\"itemHeader\" add column if not exists a text,"
+            " add column if not exists b text, add column if not exists c timestamptz;",
+            "alter table public.t add column a text null, add column b bigint;",
+        ]:
+            with self.subTest(body=body):
+                self.assertEqual(self.classify(body), [])
+        self.assert_allowed([], [
+            "alter table public.t add column a text, add column b text not null;",
+            "alter table public.t add column a text, add column b text default 'x';",
+            "alter table public.t add column a text, drop column old;",
+            "alter table public.t add column a text, add column b text references public.u(id);",
+            "alter table public.t add column a text, add column b serial;",
         ])
 
     def test_an_unknown_statement_reports_every_risk(self):

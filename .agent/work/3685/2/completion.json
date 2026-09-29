@@ -4,7 +4,7 @@
   "outcome": "ready-for-merge",
   "pr": 3731,
   "migration_versions": [
-    "20260928210844"
+    "20260929010844"
   ],
   "contract_ref": "refs/db-contracts/3685/2",
   "contract_sha256": "218830be77ae77a4ecc368d8d7ecc9890e99c7738496a9c879b97b46a8f28b25",
@@ -12,7 +12,7 @@
   "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
   "files_changed": [
     ".github/live-proofs/3685.sql",
-    "supabase/migrations/20260928210844_wildbrain_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929010844_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/wildbrain_landing_contracts.sql"
   ],
@@ -55,7 +55,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Claim #3729 superseded 20260928181124 -> 20260928210844 and expanded to the eleven declared writes",
+    "Claim #3729 superseded 20260928181124 -> 20260929010844 and expanded to the eleven declared writes",
     "No database write performed by the author; preview, merge and production follow the serialized lanes"
   ],
   "stop_conditions_hit": []

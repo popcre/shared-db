@@ -4,17 +4,17 @@
   "outcome": "ready-for-merge",
   "pr": 3731,
   "migration_versions": [
-    "20260928210844"
+    "20260929034233"
   ],
-  "contract_ref": "refs/db-contracts/3685/3",
-  "contract_sha256": "9a6d699595f739a11676ec4c97a6575ee7e6932211ac2fcc96f443e6a310822f",
-  "head_sha": "a211550fe3c2f8f7fd4145862b47b495ff08ea5e",
+  "contract_ref": "refs/db-contracts/3685/4",
+  "contract_sha256": "e778d7adf8b74b57306a6aee7d0c671979e377c1459a056f57c234e0c9960384",
+  "head_sha": "d16e2afc78878187aef9ff9fe0b986065d8ec47b",
   "base_sha": "7adeb4618ef0f7bd87df6ebd867f39d6230dd237",
   "files_changed": [
-    ".agent/work/3685/3/completion.json",
-    ".agent/work/3685/3/contract.json",
+    ".agent/work/3685/4/completion.json",
+    ".agent/work/3685/4/contract.json",
     ".github/live-proofs/3685.sql",
-    "supabase/migrations/20260928210844_wildbrain_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929034233_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/wildbrain_landing_contracts.sql"
   ],
@@ -43,12 +43,12 @@
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "Exit 0 against the merge base at implementation head a211550fe3c2f8f7fd4145862b47b495ff08ea5e."
+      "evidence": "Exit 0 against the merge base at implementation head d16e2afc78878187aef9ff9fe0b986065d8ec47b."
     },
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at a211550fe3c2f8f7fd4145862b47b495ff08ea5e; live ledger not configured locally."
+      "evidence": "Static checks passed at d16e2afc78878187aef9ff9fe0b986065d8ec47b; live ledger not configured locally."
     },
     {
       "command": "node scripts/check-live-proof-probe.mjs",
@@ -57,9 +57,10 @@
     }
   ],
   "assumptions_resolved": [
-    "Claim #3729 superseded 20260928181124 -> 20260928210844 and expanded to the eleven declared writes",
+    "Claim #3729 superseded 20260928181124 -> 20260929034233 and expanded to the eleven declared writes",
     "No database write performed by the author; preview, merge and production follow the serialized lanes",
-    "Ephemeral Supabase replay (supabase db start, 17.6.1.171) at a211550fe3c2f8f7fd4145862b47b495ff08ea5e: wildbrain_durable_entity_lifecycle_contracts.sql passed; wildbrain_landing_contracts.sql passed sections A-G and stopped at H on the #2123 character promotion contract, whose migration does not replay from empty locally (environmental, outside this change)"
+    "Ephemeral Supabase replay (supabase db start, 17.6.1.171) at a211550fe3c2f8f7fd4145862b47b495ff08ea5e: wildbrain_durable_entity_lifecycle_contracts.sql passed; wildbrain_landing_contracts.sql passed sections A-G and stopped at H on the #2123 character promotion contract, whose migration does not replay from empty locally (environmental, outside this change)",
+    "Claim #3729 version superseded 20260928210844 -> 20260929034233 by --supersede-active-claim-version (supersession 29e4e77c)"
   ],
   "stop_conditions_hit": []
 }

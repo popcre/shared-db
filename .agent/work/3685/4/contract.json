@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 3685,
-  "generation": 3,
+  "generation": 4,
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Add durable wildbrain entity state and a serialized, coverage-qualified publish function beside the immutable capture snapshots, without altering any snapshot table.",
@@ -11,24 +11,26 @@
   "branch": "claude/3685-wildbrain-durable-state",
   "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/sdb-3685-wildbrain",
   "allowed_paths": [
-    "supabase/migrations/20260928210844_wildbrain_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929034233_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/wildbrain_landing_contracts.sql",
     ".github/live-proofs/3685.sql",
-    ".agent/work/3685/3/contract.json",
-    ".agent/work/3685/3/completion.json",
+    ".agent/work/3685/4/contract.json",
+    ".agent/work/3685/4/completion.json",
     ".agent/work/3685/1/contract.json",
     ".agent/work/3685/1/completion.json",
     ".agent/work/3685/2/contract.json",
-    ".agent/work/3685/2/completion.json"
+    ".agent/work/3685/2/completion.json",
+    ".agent/work/3685/3/contract.json",
+    ".agent/work/3685/3/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20260928210844_wildbrain_durable_entity_lifecycle.sql",
+    "supabase/migrations/20260929034233_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",
     "supabase/tests/wildbrain_landing_contracts.sql",
     ".github/live-proofs/3685.sql",
-    ".agent/work/3685/3/contract.json",
-    ".agent/work/3685/3/completion.json"
+    ".agent/work/3685/4/contract.json",
+    ".agent/work/3685/4/completion.json"
   ],
   "db_reads": [
     "table plm.wildbrain_capture",
@@ -63,7 +65,7 @@
     "node scripts/check-live-proof-probe.mjs"
   ],
   "assumptions": [
-    "Claim reserved version 20260928210844 for exactly the eleven declared writes",
+    "Claim reserved version 20260929034233 for exactly the eleven declared writes",
     "The ephemeral database contract job executes the new contract test"
   ],
   "stop_conditions": [

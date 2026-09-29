@@ -3887,6 +3887,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "do $$ begin load '/tmp/x.so'; raise exception 'x'; end $$;",
             "do $$ begin checkpoint; raise exception 'x'; end $$;",
             "do $$ begin explain select 1; raise exception 'x'; end $$;",
+            "do $$ begin reassign owned by app to anon; raise exception 'x'; end $$;",
+            "do $$ begin import foreign schema x; raise exception 'x'; end $$;",
+            "do $$ declare n int; begin select count(*) into n from t for share; raise exception 'x'; end $$;",
             # string-literal body (not dollar-quoted)
             "do 'begin raise exception \'x\'; end';",
             # language sql body

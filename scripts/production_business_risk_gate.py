@@ -2406,9 +2406,10 @@ _DO_FORBIDDEN = re.compile(
     r"\b(?:insert|update|delete|truncate|merge|create|alter|drop|grant|revoke"
     r"|execute|call|perform|copy|lock|notify|listen|commit|rollback|prepare"
     r"|deallocate|refresh|vacuum|analyze|cluster|reindex|rename|discard"
-    r"|fetch|move|close|open|return|set|reset|comment|security|owner"
+    r"|fetch|move|close|open|return|set|reset|comment|security|owner|owned"
     r"|set_config|nextval|setval|currval|lastval"
     r"|analyse|load|checkpoint|unlisten|savepoint|release|explain"
+    r"|reassign|import|foreign|share|key"
     r"|pg_terminate_backend|pg_cancel_backend|pg_sleep|pg_reload_conf"
     r"|pg_advisory_lock|pg_advisory_unlock|pg_try_advisory_lock"
     r"|lo_import|lo_export|lo_create|lo_unlink"
@@ -2417,7 +2418,7 @@ _DO_FORBIDDEN = re.compile(
     r"|pg_create_logical_replication_slot|pg_create_physical_replication_slot"
     r"|pg_drop_replication_slot|pg_logical_emit_message"
     r"|pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|pg_write_file"
-    r"|pg_import_system_collations|pg_reload_conf|pg_rotate_logfileold"
+    r"|pg_import_system_collations"
     r")\b")
 # Function calls allowed in an assertion body: catalog readers and pure
 # expressions. Anything else (including every user-defined name) is refused.
@@ -2458,7 +2459,6 @@ _DO_HARMLESS_CALLS = frozenset({
     "xml", "bytea", "uuid", "date", "money", "inet", "cidr", "macaddr",
     "tsvector", "regtype", "regclass", "regproc", "regprocedure",
     "regoper", "regoperator", "regrole", "regnamespace", "record", "void",
-    "pg_catalog",
 })
 _DO_CALL = re.compile(
     r"(?:([a-z_][a-z0-9_]*|\"[^\"]+\")\.)?([a-z_][a-z0-9_]*|\"[^\"]+\")\s*\(")

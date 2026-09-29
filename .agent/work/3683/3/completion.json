@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "work_issue": 3683,
+  "outcome": "ready-for-merge",
+  "pr": 3695,
+  "migration_versions": [
+    "20260929011044"
+  ],
+  "contract_ref": "refs/db-contracts/3683/3",
+  "contract_sha256": "9f592c7354dca0ce3cd37c70887eec6f4078fa16ff30fcb3fa5a90d0a3edb0fd",
+  "head_sha": "d10294ad2e7fdd8846721cd03d5bb60bbc0e59c3",
+  "base_sha": "7adeb4618ef0f7bd87df6ebd867f39d6230dd237",
+  "files_changed": [
+    ".github/live-proofs/3683.sql",
+    "supabase/migrations/20260929011044_nbcu_durable_entity_lifecycle.sql",
+    "supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql",
+    "supabase/tests/nbcu_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.nbcu_capture",
+    "table plm.nbcu_scope",
+    "table plm.nbcu_asset",
+    "table plm.nbcu_property",
+    "table plm.nbcu_character",
+    "table plm.nbcu_style_guide",
+    "table plm.nbcu_ip_family"
+  ],
+  "db_writes": [
+    "function plm.nbcu_publish_lifecycle",
+    "index plm.nbcu_entity_lifecycle_first_seen_idx",
+    "index plm.nbcu_entity_lifecycle_kind_last_seen_idx",
+    "index plm.nbcu_entity_lifecycle_last_changed_idx",
+    "index plm.nbcu_entity_lifecycle_withdrawn_capture_idx",
+    "index plm.nbcu_lifecycle_publication_baseline_idx",
+    "index plm.nbcu_lifecycle_publication_latest_idx",
+    "policy nbcu_entity_lifecycle_plm_read on plm.nbcu_entity_lifecycle",
+    "policy nbcu_lifecycle_publication_plm_read on plm.nbcu_lifecycle_publication",
+    "table plm.nbcu_entity_lifecycle",
+    "table plm.nbcu_lifecycle_publication"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Exit 0 against base 7adeb4618ef0f7bd87df6ebd867f39d6230dd237 at implementation head d10294ad2e7fdd8846721cd03d5bb60bbc0e59c3."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at d10294ad2e7fdd8846721cd03d5bb60bbc0e59c3."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Exit 0 at d10294ad2e7fdd8846721cd03d5bb60bbc0e59c3."
+    },
+    {
+      "command": "psql -v ON_ERROR_STOP=1 -f supabase/tests/nbcu_durable_entity_lifecycle_contracts.sql (local ephemeral Supabase Postgres 17 after a two-pass migration replay, pre-adoption baseline and fixture seed)",
+      "exit_code": 0,
+      "evidence": "Exit 0 at d10294ad2e7fdd8846721cd03d5bb60bbc0e59c3; nbcu_landing_contracts.sql and plm_maintain_revokes_and_default_privileges.sql also exit 0. With a second-session DSN the contention case reports PASS; a copy of the function without its advisory lock fails. The live probe returns true on published synthetic state and false after a sighting time is corrupted."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #3694 expanded with six serving indexes and version superseded 20260928160635 -> 20260929011044 by the claim tool",
+    "Generation 3 contract replaces generation 2 because the version re-claim changed its paths; db_reads and db_writes are unchanged",
+    "#3695 REVISE findings on 4c6c83f2 addressed at d4514b54: withdrawal index reordered to lead with last_seen_capture_id (name kept, so db-work-scope is unchanged), FK-only indexes labelled, held-drop magnitude recorded, exact column/CHECK/policy/function assertions, equal-timestamp and viewer-boundary tests, two-session dblink contention test, non-tautological live proof",
+    "No database write performed by the author; preview, merge and production follow the serialized lanes"
+  ],
+  "stop_conditions_hit": []
+}

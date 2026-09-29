@@ -11,6 +11,8 @@
   "head_sha": "a211550fe3c2f8f7fd4145862b47b495ff08ea5e",
   "base_sha": "7adeb4618ef0f7bd87df6ebd867f39d6230dd237",
   "files_changed": [
+    ".agent/work/3685/3/completion.json",
+    ".agent/work/3685/3/contract.json",
     ".github/live-proofs/3685.sql",
     "supabase/migrations/20260929010844_wildbrain_durable_entity_lifecycle.sql",
     "supabase/tests/wildbrain_durable_entity_lifecycle_contracts.sql",

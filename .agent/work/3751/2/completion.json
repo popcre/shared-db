@@ -3,8 +3,8 @@
   "pr": 3753,
   "work_issue": 3751,
   "outcome": "ready-for-merge",
-  "head_sha": "29d619d7cd5a06efb002be242c6f88c41e2be1d2",
-  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "head_sha": "c2f7c2f9a1b83791304fd28160df604e7fa76d3f",
+  "base_sha": "82306533bc75ee08c8325958e8777d55518d2138",
   "files_changed": [
     "docs/verification/throughput-dispositions/scripts~agent-work-contract-git-evidence.mjs.json",
     "scripts/agent-work-contract-git-evidence.mjs",
@@ -18,12 +18,12 @@
     {
       "command": "node --test scripts/refresh-code-pr-branch.test.mjs",
       "exit_code": 0,
-      "evidence": "10/10 pass including unchanged_implementation_needs_no_new_evidence_commit"
+      "evidence": "11/11 pass including merge-parent assert and content-preserving fold"
     },
     {
       "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs",
       "exit_code": 0,
-      "evidence": "28/28 pass including fold accept and superseded-base refuse"
+      "evidence": "30/30 pass including real post-fold layout, content-proof refuse, H3 author-edit refuse"
     },
     {
       "command": "git diff --check",

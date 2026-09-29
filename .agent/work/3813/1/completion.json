@@ -9,6 +9,7 @@
   "base_sha": "58836647e5645bb7e96049a8b72b5ded768a9010",
   "head_sha": "dcc7dc4220b1dc122a0e2d7bd1de4d0d87bcaf67",
   "files_changed": [
+    ".agent/work/3813/1/completion.json",
     ".agent/work/3813/1/contract.json",
     "config/preview-ledger-orphan-reconciliations.json",
     "scripts/test_preview_ledger_orphan_reconcile.py"

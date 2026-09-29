@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3621,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Allow the historical preview-ready terminalizer to select its exact preview artifact when the same successful run also emitted the normal automatic production review-evidence artifact; keep all manifest, target, no-ledger-delta and artifact identity refusals.",
+  "base_sha": "08790dcd7c0f54ea8e96721424ef07cec8ff092e",
+  "dispatcher": "Codex orchestrator chat 01a0e56c-2e17-78a2-ad57-cd154b990979 on edge-dev3",
+  "worker": "Codex chat 01a0e56c-2e17-78a2-ad57-cd154b990979 on edge-dev3",
+  "branch": "codex/3621-terminalizer",
+  "worktree": "/home/ahazan/repos/shared-db-3621-terminalizer",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3621/1/contract.json",
+    ".agent/work/3621/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3621/1/contract.json",
+    ".agent/work/3621/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not apply a migration or change production or preview database data",
+    "Do not accept unknown, duplicate, expired, or cross-run artifacts",
+    "Do not relax the exact historical manifest, marker, log, or unchanged-ledger proof"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Successful historical preview rebind run 36388097766 emitted both the exact preview artifact and normal automatic review evidence under the same run and main SHA.",
+    "The terminalizer currently refuses any artifact count other than one, preventing a valid outcome record."
+  ],
+  "stop_conditions": [
+    "Stop if a mismatched or unknown artifact would be accepted",
+    "Stop if the governed review or required checks refuse"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "work_issue": 3621,
+  "outcome": "ready-for-merge",
+  "pr": 3622,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3621/1",
+  "contract_sha256": "aaab4ea0ca4eafd4df3bbf664c1ccddf5d570e870da322d19be6a05d19e9e254",
+  "base_sha": "08790dcd7c0f54ea8e96721424ef07cec8ff092e",
+  "head_sha": "91e71c53e5e142d9a16742cb6170a1b51dab8c3c",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "722 tests passed"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Successful historical rebind may emit the exact preview artifact and one automatic production review-evidence artifact from the same run and main head."
+  ],
+  "stop_conditions_hit": []
+}

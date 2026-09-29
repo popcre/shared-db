@@ -14,10 +14,11 @@
 --   * Derivation compatibility. Every publication names the key-derivation contract; a
 --     different contract never compares against an older baseline.
 --   * Concurrent publication locking. One transaction-scoped advisory lock serializes
---     every publication, and chronology refuses an older or equal capture. An equal
---     source_captured_at is refused on purpose: two captures cannot be ordered, so the
---     second is never merged. Recovery is a fresh capture, which always carries a later
---     source_captured_at; nothing needs to be edited or deleted.
+--     every publication, and chronology refuses an older or equal capture. Refusing an
+--     equal source_captured_at is an intentional technical rule (orchestrator sign-off,
+--     #3695 round 4): equal source timestamps give an ambiguous order, so refusing is the
+--     safe default and the second capture is never merged. Recovery is a fresh capture,
+--     which always carries a later source_captured_at; nothing is edited or deleted.
 --   * A withdrawn row is marked, never deleted. Withdrawal needs the entity seen in the
 --     baseline and absent from a comparable run. A bulk drop above the named threshold
 --     is held, not applied; the held publication records how many withdrawals it held.

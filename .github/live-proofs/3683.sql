@@ -1,14 +1,16 @@
--- Live proof for #3683 (migration 20260929011044, claim #3694). Read-only.
+-- Live proof for #3683 (migration 20260929045102, claim #3694). Read-only.
 -- Proves on production: the migration is in the ledger; both durable-state tables exist
 -- with RLS on, read-only to authenticated, and not writable by the loader role; the
 -- withdrawal index leads with last_seen_capture_id; each table has exactly its one
 -- reviewed read policy; the publish function is SECURITY DEFINER, VOLATILE, has its
--- pinned search_path and is executable only by service_role; and the durable state
--- agrees with its publications on values no foreign key enforces (every sighting and
--- withdrawal time equals the source_captured_at of the publication it names, and no
--- entity row names a withdrawal while active).
+-- pinned search_path and is executable only by service_role. The data comparison (every
+-- sighting and withdrawal time equals the source_captured_at of the publication it
+-- names, and no active row names a withdrawal) is VACUOUSLY TRUE until the loader's
+-- first successful publish: both tables are created empty. Before that, this probe
+-- proves structure and privileges only; after it, the comparison also checks values no
+-- foreign key enforces.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260929011044')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260929045102')
   and to_regclass('plm.nbcu_entity_lifecycle') is not null
   and to_regclass('plm.nbcu_lifecycle_publication') is not null
   and (select bool_and(relrowsecurity) from pg_class

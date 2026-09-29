@@ -1,15 +1,15 @@
 {
   "schema_version": 2,
-  "generation": 7,
+  "generation": 8,
   "work_issue": 3642,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Carry the GitHub ZIP outcome repair with one evidence pair, portable Python interpreter fallback, mandatory original artifact fixture, invalidator registration, and historic-throughput retirement",
-  "base_sha": "4b91483c85da7bac3421219b40252c169a455087",
-  "dispatcher": "Codex orchestrator successor chat 01a0e65a-82f1-7d93-b8fb-4440da47884d",
-  "worker": "codex",
+  "base_sha": "5d7940597e7343f42e6c906b72da263934754148",
+  "dispatcher": "Claude orchestrator helper chat 626c9036-7381-4131-aeee-6e29883153c6 on edge-dev3",
+  "worker": "claude",
   "branch": "codex/3642-github-zip-proof-v3",
-  "worktree": "/home/ahazan/repos/shared-db-3642-github-zip-proof-v3",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/s7-3647",
   "allowed_paths": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/lib/github-proof-zip.mjs",
@@ -20,6 +20,8 @@
     "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
     "docs/verification/throughput-retired-identity-sites-*.json",
     "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+    ".agent/work/3642/8/contract.json",
+    ".agent/work/3642/8/completion.json",
     ".agent/work/3642/7/contract.json",
     ".agent/work/3642/7/completion.json"
   ],
@@ -33,6 +35,8 @@
     "docs/verification/throughput-dispositions/scripts~lib~github-proof-zip.mjs.json",
     "docs/verification/throughput-retired-identity-sites-*.json",
     "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
+    ".agent/work/3642/8/contract.json",
+    ".agent/work/3642/8/completion.json",
     ".agent/work/3642/7/contract.json",
     ".agent/work/3642/7/completion.json"
   ],

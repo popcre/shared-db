@@ -164,8 +164,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    1. Record the evidence that the work is terminal on the audit issue.
    2. For potentially recoverable work, preserve a rescue branch or patch backup,
-      leave the claim protective, and report it `Blocked —` until #3675 lands —
-      see the authority boundary below.
+      leave the claim protective, and retire it only with `--preservation` plus the
+      allocator-assigned AI reviewer's APPROVE — see the authority boundary below.
    3. Close the pull request through the normal authenticated operator flow.
       Never delete its branch or its refs.
    4. Retire the claim with the tombstoning `--release-claim`, which writes an

@@ -1618,10 +1618,12 @@ export function parseGitRemoteRefs(text){
   }
   return refs
 }
+// #3791: a stalled git child inside a lock's release must not hang it forever.
+export const GIT_COMMAND_TIMEOUT_MS = 60 * 1000
 export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}={}){
   if(!gitRemoteRepositoryProved){
     let url
-    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim()}
+    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})).trim()}
     catch(error){throw new LaneError(`git origin remote is unreadable; refusing git ref reads (${String(error?.message??error).split('\n')[0]})`)}
     const slug=url.replace(/\.git$/i,'').replace(/\/+$/,'').replace(/^.*github\.com[:/]/i,'')
     if(!/github\.com[:/]/i.test(url)||slug.toLowerCase()!==String(REPO).toLowerCase())throw new LaneError(`git origin remote does not point at ${REPO}; refusing git ref reads`)
@@ -1630,7 +1632,7 @@ export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>A
   let lastError
   for(let attempt=1;attempt<=attempts;attempt++){
     let text
-    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe']})}
+    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})}
     catch(error){lastError=error;if(attempt<attempts)wait(500*attempt);continue}
     return parseGitRemoteRefs(text)
   }
@@ -2231,6 +2233,7 @@ export function buildDatabasePreviewFileSnapshot(files,base,head,readContent){
 }
 
 export const githubIo = {
+  releaseRefOverGit(ref, ownerSha) { return releaseRefOverGit(ref, ownerSha) },
   enforceAdmission:true,
   // Owner ruling 2026-09-11 (marker #2758): no global FIFO for reviewer draws. Any PR
   // draws any usable provider immediately. There is NO per-reviewer concurrency
@@ -3156,7 +3159,7 @@ function githubFlowAdapter(io,claimNumber=null,admissionOptions=null){
     relinquishCapacity(row){return relinquishAuthorLease({claim:row.claim,owner:row.owner,blockedOn:row.blocker.reference},new Date(),io)},
     resumeCapacity(row){return resumeAuthorLease({claim:row.claim,owner:row.owner,leaseHours:DEFAULT_LEASE_HOURS},new Date(),io)},
     persistReady(row){return persistInitialReady(deriveLivePreviewCandidate(Number(row.issue),io),this)},
-    withMutex(fn){const ownerSha=io.makeOwnerCommit(`db-coordination preview-ready-preparation issue=0`);acquireMutex(ownerSha,io);try{if(admissionOptions)requireAdmission(admissionOptions,io,{pr:admissionOptions.pr??null,mutexOwner:ownerSha});return fn()}finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}},
+    withMutex(fn){const ownerSha=io.makeOwnerCommit(`db-coordination preview-ready-preparation issue=0`);acquireMutex(ownerSha,io);try{if(admissionOptions)requireAdmission(admissionOptions,io,{pr:admissionOptions.pr??null,mutexOwner:ownerSha});return fn()}finally{releaseMutexOnExit(ownerSha,io)}},
     events(issue){return (io.issueComments(issue)??[]).flatMap((comment)=>parseEventComment(comment.body??comment))},
   }
 }
@@ -3615,7 +3618,51 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
     if(age<minAgeMs)throw new LaneError(`refusing recovery: mutex is only ${Math.max(0,Math.floor(age/1000))} seconds old`)
     releaseOwnedRef(MUTEX_REF,expectedSha,io)
     return { released:expectedSha, ageSeconds:Math.floor(age/1000) }
-    } finally { if(io.readRef(MUTEX_RECOVERY_ACTIVE_REF)===expectedSha)releaseOwnedRef(MUTEX_RECOVERY_ACTIVE_REF,expectedSha,io) }
+    } finally { releaseRefOnExit(MUTEX_RECOVERY_ACTIVE_REF,expectedSha,io) }
+}
+
+// Issue #3791 (Shared Supabase Migrations run 36506351098): a rate-limit refusal
+// inside the mutex reached the finally, whose owner-check READ was refused by the
+// same exhausted API quota, so the release threw and refs/db-coordination/
+// author-acquisition stayed held and blocked every reviewer draw until manual
+// recovery. The release now falls back to the git protocol, which spends no API
+// quota: an owner-verified ls-remote read and a --force-with-lease delete that
+// removes the ref only while it still points at THIS owner. If both fail, the
+// error names the held SHA and the recovery command instead of failing silently.
+export function releaseMutexOnExit(ownerSha, io = githubIo, options = {}) {
+  return releaseRefOnExit(MUTEX_REF, ownerSha, io, options)
+}
+
+// strict: a ref held by ANOTHER owner is an error (the caller must know it lost the
+// lock), exactly as a direct releaseOwnedRef call reports it; it never falls back.
+export function releaseRefOnExit(ref, ownerSha, io = githubIo, { strict = false } = {}) {
+  try {
+    if (strict) releaseOwnedRef(ref, ownerSha, io)
+    else if (io.readRef(ref) === ownerSha) releaseOwnedRef(ref, ownerSha, io)
+    return
+  } catch (apiError) {
+    if (/belongs to another owner/.test(String(apiError?.message))) throw apiError
+    if (typeof io.releaseRefOverGit !== 'function') throw apiError
+    const first = (error) => String(error?.message ?? error).split('\n')[0]
+    try {
+      const released = io.releaseRefOverGit(ref, ownerSha)
+      if (released) process.stderr.write(`released ${ref} (${ownerSha}) over git after the API release failed: ${first(apiError)}\n`)
+      return
+    } catch (gitError) {
+      throw new LaneError(`${ref} may still be held by ${ownerSha}: the API release failed (${first(apiError)}) and the git release failed (${first(gitError)}); if it is still held, recover it with --recover-author-mutex naming exactly ${ownerSha}`)
+    }
+  }
+}
+
+// Owner-verified delete over the git protocol (no API quota). Returns true when
+// this call removed our ref, false when the ref is absent or owned by someone else.
+export function releaseRefOverGit(ref, ownerSha, { run = execFileSync, listRefs = (patterns) => gitRemoteRefs(patterns, { run }) } = {}) {
+  if (!/^[0-9a-f]{40}$/.test(String(ownerSha))) throw new LaneError('refusing git release: owner SHA is malformed')
+  if (listRefs([ref]).get(ref) !== ownerSha) return false
+  run('git', ['push', '--porcelain', `--force-with-lease=${ref}:${ownerSha}`, 'origin', `:${ref}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: GIT_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
+  const after = listRefs([ref]).get(ref) ?? null
+  if (after === ownerSha) throw new LaneError(`git release of ${ref} did not take effect`)
+  return true
 }
 
 export function releaseOwnedRef(ref, ownerSha, io = githubIo) {
@@ -6428,7 +6475,7 @@ export function supersedeActiveClaimVersion(options,now=new Date(),io=githubIo){
     if(rewritten)try{io.rewriteVersion(request.worktree,newVersion,request.oldVersion);io.commitAndPushReversion(request.worktree,newVersion,request.oldVersion)}catch(e){failures.push(e.message)}
     if(failures.length)throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${failures.join('; ')}`)
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 export const reversionActiveClaim=supersedeActiveClaimVersion
@@ -6519,7 +6566,7 @@ export function rebindClaimWorktree(options,now=new Date(),io=githubIo){
     if(bodyChanged)try{io.updateIssue(request.claim,{body:before.body});if(io.getIssue(request.claim)?.body!==before.body)throw new LaneError('claim body rollback readback failed')}catch(e){failures.push(e.message)}
     if(failures.length)throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${failures.join('; ')}`)
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 function parseMergedClaimReissue(commit){
@@ -6591,7 +6638,7 @@ export function reissueMergedStrandedClaim(options,now=new Date(),io=githubIo){
     if(evidenceCreated)try{if(io.readRef(evidenceRef)===retirementSha)releaseOwnedRef(evidenceRef,retirementSha,io)}catch(e){failures.push(e.message)}
     if(failures.length)throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${failures.join('; ')}`)
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 function parseReviewReplacement(commit) {
@@ -6674,12 +6721,25 @@ function parseReviewRelease(commit){
   return {reviewer:match[1],issue:Number(match[2]),pr:Number(match[3]),headSha:match[4],failedSequence:Number(match[5]),failureCode:match[6],failingCheck:match[7]??null}
 }
 
+// #3730: a failure ref may hold a `failure-ref=self` replacement record rather
+// than a `--release-failed-reviewer` record -- the replacement IS the immutable
+// failure evidence for its failed sequence. When that replacement is later
+// returned (e.g. by --exclude-reviewer), the failure ref still names it, and a
+// strict release parser left the slot permanently undrawable ("reviewer release
+// evidence is unreadable"). Read either shape, bound to the same exact identity.
+function parseTerminalFailureEvidence(commit){
+  const message=commit?.message??commit?.commit?.message??''
+  const self=/^db-coordination reviewer-failure-replacement sequence=\d+ reviewer=[a-z0-9.-]+ issue=(\d+) pr=(\d+) head=([0-9a-f]{40})(?: slot=\d+)?(?: allowlist=[a-z0-9.,-]+)? failed-sequence=(\d+) prior-sequence=\d+ failure-ref=self failed-reviewer=([a-z0-9.-]+) code=([a-z_]+)(?: failing-check=([^ ]+))? verdict=none artifact=none$/i.exec(message)
+  if(!self)return parseReviewRelease(commit)
+  return {reviewer:self[5],issue:Number(self[1]),pr:Number(self[2]),headSha:self[3],failedSequence:Number(self[4]),failureCode:self[6],failingCheck:self[7]??null,selfReplacement:true}
+}
+
 function assertAssignmentWasNotTerminallyReleased(request,assignment,io){
   if(io.enableReviewerSilence){const silenceRef=silenceReleaseRef({...request,sequence:assignment.sequence}),silenceSha=io.readRef(silenceRef)
     if(silenceSha)throw new LaneError(`reviewer ${assignment.reviewer} silent lease was reclaimed with immutable evidence; assignment retry will not recreate its lease. Draw a new reviewer for this exact head and slot.`)}
   const ref=reviewerFailureRef({...request,failedSequence:assignment.sequence}),sha=io.readRef(ref)
   if(!sha)return
-  const released=parseReviewRelease(io.getCommit(sha))
+  const released=parseTerminalFailureEvidence(io.getCommit(sha))
   if(released.issue===request.issue&&released.pr===request.pr&&released.headSha===request.headSha&&released.failedSequence===assignment.sequence&&released.reviewer===assignment.reviewer)throw new LaneError(`reviewer ${assignment.reviewer} terminal failure was released with immutable evidence; assignment retry will not recreate its lease. Use --replace-failed-reviewer for this sequence after capacity is available.`)
   throw new LaneError('reviewer failure evidence exists but does not match the durable assignment; assignment retry refused')
 }
@@ -6920,7 +6980,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     const releasedFailureSha=fixedRecords?(fixedRecords.get(failureRef)?.sha??null):io.readRef(failureRef)
     let releasedFailure=null
     if(releasedFailureSha){
-      releasedFailure=parseReviewRelease(fixedRecords?.get(failureRef)?.sha===releasedFailureSha?fixedRecords.get(failureRef).commit:io.getCommit(releasedFailureSha))
+      releasedFailure=parseTerminalFailureEvidence(fixedRecords?.get(failureRef)?.sha===releasedFailureSha?fixedRecords.get(failureRef).commit:io.getCommit(releasedFailureSha))
       if(releasedFailure.issue!==request.issue||releasedFailure.pr!==request.pr||releasedFailure.headSha!==request.headSha||releasedFailure.failedSequence!==request.failedSequence||releasedFailure.reviewer!==original.reviewer||releasedFailure.failureCode!==String(failureCode))throw new LaneError('immutable reviewer release evidence does not match the replacement request')
     }
     const cursorSha=fixedRecords?.get(REVIEW_CURSOR_REF)?.sha??io.readRef(REVIEW_CURSOR_REF), cursor=parseReviewCursor(cursorSha?(fixedRecords?.get(REVIEW_CURSOR_REF)?.sha===cursorSha?fixedRecords.get(REVIEW_CURSOR_REF).commit:io.getCommit(cursorSha)):null)
@@ -7555,7 +7615,7 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
   }
 }
 
-function withAuthorMutex(label, io, options, operation) {
+export function withAuthorMutex(label, io, options, operation) {
   const requestId = options.requestId ?? randomUUID()
   const ownerSha = io.makeOwnerCommit(`db-coordination ${label} ${requestId}`)
   acquireMutex(ownerSha, io, options.mutexAttempts ?? 100)
@@ -7563,7 +7623,7 @@ function withAuthorMutex(label, io, options, operation) {
     requireOwnedRef(MUTEX_REF, ownerSha, io)
     return operation(ownerSha)
   } finally {
-    if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io)
+    releaseMutexOnExit(ownerSha,io)
   }
 }
 
@@ -7878,7 +7938,7 @@ export function acquireAuthorLane(options, now = new Date(), io = githubIo) {
   } finally {
     // If recovery already replaced us, never delete the successor's lock and
     // never mask the original lost-ownership refusal.
-    if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io)
+    releaseMutexOnExit(ownerSha,io)
   }
 }
 
@@ -8180,7 +8240,7 @@ export function relinquishAuthorLease(options, now = new Date(), io = githubIo) 
   }catch(error){
     if(changed&&io.readRef(MUTEX_REF)===ownerSha)try{io.updateIssue(options.claim,{body:before.body})}catch(rollback){throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`)}
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
@@ -8234,7 +8294,7 @@ export function resumeAuthorLease(options, now = new Date(), io = githubIo) {
   }catch(error){
     if(changed&&io.readRef(MUTEX_REF)===ownerSha)try{io.updateIssue(options.claim,{body:before.body})}catch(rollback){throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`)}
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 // #3170. REPAIR A CLAIM A RESUME LEFT UNREADABLE. Narrow on purpose: it only
@@ -8278,7 +8338,7 @@ export function repairResumedClaim(options, now = new Date(), io = githubIo) {
   }catch(error){
     if(changed&&io.readRef(MUTEX_REF)===ownerSha)try{io.updateIssue(options.claim,{body:before.body})}catch(rollback){throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`)}
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 export function renewalIssueScope(issue, lease, claimIssues=[],{ allowClaimSuperset=false, allowIssueExpansion=false }={}) {
@@ -8368,7 +8428,7 @@ export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
       catch(rollbackError){throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${rollbackError.message}`)}
     }
     throw error
-  } finally {if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  } finally {releaseMutexOnExit(ownerSha,io)}
 }
 
 function appendClaimObjects(body, version, objects) {
@@ -8441,7 +8501,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
       catch(rollbackError){throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${rollbackError.message}`)}
     }
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 export function expandActiveClaimFromPr(options, now = new Date(), io = githubIo) {
@@ -8493,7 +8553,7 @@ export function expandActiveClaimFromPr(options, now = new Date(), io = githubIo
       catch(rollbackError){throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${rollbackError.message}`)}
     }
     throw error
-  } finally {if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  } finally {releaseMutexOnExit(ownerSha,io)}
 }
 
 export function expandActiveClaimFromIssue(options,now=new Date(),io=githubIo){
@@ -8534,7 +8594,7 @@ export function expandActiveClaimFromIssue(options,now=new Date(),io=githubIo){
       catch(rollbackError){throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${rollbackError.message}`)}
     }
     throw error
-  }finally{if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+  }finally{releaseMutexOnExit(ownerSha,io)}
 }
 
 export function recoverSameOwnerSplit(options, now = new Date(), io = githubIo) {
@@ -8593,7 +8653,7 @@ export function recoverSameOwnerSplit(options, now = new Date(), io = githubIo) 
     if(activeChanged){try{requireOwnedRef(MUTEX_REF,ownerSha,io);io.updateIssue(options.activeClaim,{body:activeBefore.body});rollback.push('active claim')}catch(e){rollback.push(`FAILED active claim: ${e.message}`)}}
     if(rollback.some((x)=>x.startsWith('FAILED')))throw new LaneError(`${error.message}; ROLLBACK INCOMPLETE: ${rollback.join(', ')}`)
     throw error
-  } finally { if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io) }
+  } finally { releaseMutexOnExit(ownerSha,io) }
 }
 
 // Every migration version a pull request ADDED. `added` only, deliberately: a
@@ -8758,7 +8818,7 @@ export function setScopeStatus(options, now = new Date(), io = githubIo) {
       try { io.updateIssue(options.issue, { body: before.body }) } catch (rollback) { throw new LaneError(`${error.message}; rollback failed: ${rollback.message}`) }
     }
     throw error
-  } finally { if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io) }
+  } finally { releaseMutexOnExit(ownerSha,io) }
 }
 
 export function completeWork({ issue, report }, io = githubIo) {
@@ -8878,7 +8938,7 @@ export function releaseExclusive(kind, expected, io = githubIo) {
     requireOwnedRef(MUTEX_REF, ownerSha, io)
     releaseOwnedRef(ref, lease.sha, io)
     return { kind, ref, released: true, holderId: lease.holderId, generation: lease.generation }
-  } finally { if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io) }
+  } finally { releaseMutexOnExit(ownerSha,io) }
 }
 
 /**
@@ -8927,7 +8987,7 @@ export function recoverExclusive(kind, { holderId, apply = false, now = new Date
       throw new LaneError(`recovery of ${ref} did not read back; do NOT treat this lane as owned`)
     }
     return { kind, ref, recovered: true, holderId, generation: next.generation, previousOwnerSha: current.sha, reason: verdict.reason }
-  } finally { if (io.readRef(MUTEX_REF) === ownerCommit) releaseOwnedRef(MUTEX_REF, ownerCommit, io) }
+  } finally { releaseMutexOnExit(ownerCommit, io) }
 }
 
 export function acquireExclusive(kind, metadata, io = githubIo) {
@@ -9066,7 +9126,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     acquireRef(ref, ownerSha, io)
     return { kind, ref, ownerSha, requestId, holderId, generation: metadata.generation ?? 1 }
-  } finally { if (io.readRef(MUTEX_REF) === ownerSha) releaseOwnedRef(MUTEX_REF, ownerSha, io) }
+  } finally { releaseMutexOnExit(ownerSha,io) }
 }
 
 export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
@@ -9129,7 +9189,7 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
     throw error
   }
   finally{
-    try{releaseOwnedRef(MUTEX_REF,ownerSha,io)}
+    try{releaseMutexOnExit(ownerSha,io,{strict:true})}
     catch(releaseError){
       if(posted){
         try{io.postCommitStatus(headSha,{state:'failure',context,description:'Repository-maintenance mutex release failed; authorization revoked',targetUrl})}
@@ -9738,7 +9798,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         }
         requireOwnedRef(MUTEX_REF,ownerSha,io)
         io.closeClaim(claim.number, CLAIM_CLOSE_REASONS.explicitRelease)
-      } finally { if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io) }
+      } finally { releaseMutexOnExit(ownerSha,io) }
       return 0
     }
     // ISSUE #2454 — release a DUPLICATE author claim on a branch that
@@ -9790,7 +9850,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         io.closeClaim(claim.number, CLAIM_CLOSE_REASONS.duplicateRelease)
         const {pr,authority}=proof
         console.error(`Closed duplicate claim #${claim.number} on branch ${lease.branch}. Authority claim #${authority[0].claim.number} holds ${authority[0].lease.version}, the version open pull request #${pr.number} uses. The duplicate's migration version ${lease.version} remains permanently reserved.`)
-      } finally { if(io.readRef(MUTEX_REF)===ownerSha)releaseOwnedRef(MUTEX_REF,ownerSha,io) }
+      } finally { releaseMutexOnExit(ownerSha,io) }
       return 0
     }
     if (o.cleanup) {

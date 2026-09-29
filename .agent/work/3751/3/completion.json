@@ -32,5 +32,9 @@
     }
   ],
   "contract_ref": "refs/db-contracts/3751/3",
-  "contract_sha256": "7936bf2141ec0c6521746ec8a2e438d3fab9bc5b47251bad459827a6637966be"
+  "contract_sha256": "7936bf2141ec0c6521746ec8a2e438d3fab9bc5b47251bad459827a6637966be",
+  "assumptions_resolved": [
+    "Non-orchestrator tooling; DeepSeek H1-H3/M1 and Muse M-NEW1/L-NEW1..4 are addressed at this head."
+  ],
+  "stop_conditions_hit": []
 }

@@ -23,7 +23,10 @@
     "plan_author_lane_abandonment_lifecycle.md",
     ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
     "scripts/test_production_migration_guard.py",
-    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json"
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/check-repository-identity-conformance.mjs",
+    ".agent/work/3675/3/completion.json",
+    ".agent/work/3675/3/contract.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
@@ -38,7 +41,10 @@
     "plan_author_lane_abandonment_lifecycle.md",
     ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
     "scripts/test_production_migration_guard.py",
-    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json"
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/check-repository-identity-conformance.mjs",
+    ".agent/work/3675/3/completion.json",
+    ".agent/work/3675/3/contract.json"
   ],
   "db_reads": [],
   "db_writes": [],

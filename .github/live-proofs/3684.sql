@@ -1,4 +1,4 @@
--- Live proof for #3684 (migration 20260928210932, claim #3728). Read-only.
+-- Live proof for #3684 (migration 20260929034143, claim #3728). Read-only.
 -- Proves on production: the migration is in the ledger; both durable-state tables exist
 -- with RLS on and read-only grants; each carries exactly its one read policy WITH the
 -- stored predicate (review of #3730, M6); the serving index has its reviewed column order
@@ -9,7 +9,7 @@
 -- entity's last_seen_at is its last-seen publication's capture time, and every withdrawal
 -- was made by a comparable publication.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260928210932')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260929034143')
   and to_regclass('plm.peanuts_entity_lifecycle') is not null
   and to_regclass('plm.peanuts_lifecycle_publication') is not null
   and (select bool_and(relrowsecurity) from pg_class

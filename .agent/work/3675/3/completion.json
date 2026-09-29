@@ -26,9 +26,14 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs scripts/lib/reviewer-turn-budget.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/migration-retirement-tombstones.test.mjs scripts/lib/reviewer-turn-budget.test.mjs",
       "exit_code": 0,
-      "evidence": "810 pass on implementation head 5be65314"
+      "evidence": "794 pass on implementation head 5be65314"
+    },
+    {
+      "command": "node scripts/check-cancelled-work.mjs",
+      "exit_code": 0,
+      "evidence": "run on implementation head 5be65314"
     },
     {
       "command": "python3 -m unittest scripts.test_production_migration_guard",
@@ -36,9 +41,9 @@
       "evidence": "286 tests OK on implementation head 5be65314"
     },
     {
-      "command": "node scripts/check-cancelled-work.mjs",
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "run on implementation head 5be65314"
+      "evidence": "16 pass on implementation head 5be65314"
     }
   ],
   "assumptions_resolved": [

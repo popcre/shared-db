@@ -6,7 +6,7 @@
 (`resourceContent`, `thumbnail128`) remain excluded under the standing
 no-image-bytes ruling and have no column anywhere.
 
-**Table:** `coldlion.item_image_metadata`, migration `20260928170501`, claim #3706.
+**Table:** `coldlion.item_image_metadata`, migration `20260929032359`, claim #3706.
 
 ## Grain
 

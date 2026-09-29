@@ -7,8 +7,9 @@
 --     fallback: an asset key is its DAM path with the portal details-viewer prefix
 --     removed, so one DAM object seen through a different viewer is one identity.
 --   * Authenticated coverage boundary. Only a capture that finalize_nbcu_capture marked
---     complete (every scope terminal, no missing paging offset, zero failures, every
---     expected count met) can publish. Withdrawal needs the SAME licensed scope set as
+--     complete can publish. This function re-checks every scope terminal, no missing
+--     paging offset and zero failures; every expected count met is enforced by
+--     plm.finalize_nbcu_capture before it sets status 'complete' (20260819123658). Withdrawal needs the SAME licensed scope set as
 --     the baseline publication; a different set publishes sightings only.
 --   * Derivation compatibility. Every publication names the key-derivation contract; a
 --     different contract never compares against an older baseline.
@@ -167,13 +168,15 @@ begin
   if not found then
     raise exception 'nbcu_publish_lifecycle: no capture %', p_capture_id using errcode = 'P0002';
   end if;
-  if v_cap.status <> 'complete' or v_cap.load_completed_at is null
-     or v_cap.error_summary <> '[]'::jsonb or v_cap.media_downloaded <> 0 then
+  -- NULL-safe by construction: every arm is IS DISTINCT FROM / IS NULL, so a NULL can
+  -- never make the refusal condition NULL and let a capture through.
+  if v_cap.status is distinct from 'complete' or v_cap.load_completed_at is null
+     or v_cap.error_summary is distinct from '[]'::jsonb or v_cap.media_downloaded is distinct from 0 then
     raise exception 'nbcu_publish_lifecycle: capture % is not a complete zero-failure capture', p_capture_id
       using errcode = '22023';
   end if;
   if exists (select 1 from plm.nbcu_scope s where s.capture_id = p_capture_id
-             and (s.terminal is not true or pg_catalog.cardinality(s.missing_offsets) <> 0))
+             and (s.terminal is not true or pg_catalog.cardinality(s.missing_offsets) is distinct from 0))
      or not exists (select 1 from plm.nbcu_scope s where s.capture_id = p_capture_id) then
     raise exception 'nbcu_publish_lifecycle: capture % has no complete licensed scope coverage', p_capture_id
       using errcode = '22023';

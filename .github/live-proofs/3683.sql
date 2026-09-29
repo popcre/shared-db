@@ -15,7 +15,10 @@ select (
         where oid in (to_regclass('plm.nbcu_entity_lifecycle'), to_regclass('plm.nbcu_lifecycle_publication'))) is true
   and not has_table_privilege('service_role', 'plm.nbcu_entity_lifecycle', 'INSERT')
   and not has_table_privilege('service_role', 'plm.nbcu_entity_lifecycle', 'DELETE')
+  and not has_table_privilege('service_role', 'plm.nbcu_entity_lifecycle', 'UPDATE')
   and not has_table_privilege('service_role', 'plm.nbcu_lifecycle_publication', 'INSERT')
+  and not has_table_privilege('service_role', 'plm.nbcu_lifecycle_publication', 'UPDATE')
+  and not has_table_privilege('service_role', 'plm.nbcu_lifecycle_publication', 'DELETE')
   and has_table_privilege('authenticated', 'plm.nbcu_entity_lifecycle', 'SELECT')
   and not has_table_privilege('anon', 'plm.nbcu_entity_lifecycle', 'SELECT')
   and coalesce((select pg_get_indexdef(to_regclass('plm.nbcu_entity_lifecycle_kind_last_seen_idx'))), '')

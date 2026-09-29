@@ -99,8 +99,8 @@ evidence complete.
 Potentially recoverable uncommitted work (any worktree observed dirty or remote)
 is never abandoned as-is and never sent to Albert (owner ruling 2026-09-28):
 preserve a rescue branch or patch backup, leave the claim protective, and report
-it Blocked until #3675 replaces --owner-decision with an assigned AI reviewer's
-APPROVE. Link the preservation here. -->
+it Blocked until retired with --preservation artifact:<object> and the
+allocator-assigned AI reviewer's APPROVE (#3675). Link the preservation here. -->
 
 ## Recovery or successor references
 

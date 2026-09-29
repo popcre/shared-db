@@ -181,9 +181,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    work (any worktree observed `dirty` or
    `remote`) is never abandoned as-is and never sent to Albert (owner ruling
    2026-09-28): preserve a rescue branch or patch backup, leave the claim
-   protective, and report it `Blocked —`. The lane tool still requires
-   `--owner-decision` for a retirement from `dirty`/`remote`; never bypass it.
-   Issue #3675 replaces it with an assigned AI reviewer's APPROVE. An `ambiguous` observation
+   protective, and report it `Blocked —` until retired as follows.
+   A terminal retirement from `dirty`/`remote` takes `--preservation artifact:<rescue commit or patch object>`
+   (dereferenced before anything is written) plus the allocator-assigned AI reviewer's durable
+   exact-head APPROVE for `--pr`/`--head-sha`, read automatically; `--owner-decision` is refused
+   (#3675). An `ambiguous` observation
    is not a state; re-observe, or treat it as `3` and stop.
 
    Audit lanes with `node scripts/manage-migration-author-lanes.mjs --audit`.

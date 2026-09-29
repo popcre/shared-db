@@ -190,6 +190,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      issues: read # openClaims lists open issues; without it the listing returns only PRs and the interlock refuses every group
       pull-requests: read
       statuses: write
       checks: read

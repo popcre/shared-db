@@ -150,9 +150,11 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
         ok(git('diff', '--check', 'origin/main...HEAD'), 'git diff --check')
         ok(git('commit', '-q', '--amend', '--no-edit'), 'folding the pair into the refresh merge commit')
       } catch (foldError) {
-        // Leave a retryable tree: hard-reset to the merge commit just created.
-        git('reset', '-q', '--hard', head)
-        throw new RefreshError(`${foldError.message}. The worktree is reset to the merge commit ${head}; fix the cause and re-run refresh.`)
+        // M2: return to the pre-merge tip (which still carries the pair) so a
+        // retry can run. The merge commit has the pair stripped and must not be
+        // left as HEAD.
+        git('reset', '-q', '--hard', before)
+        throw new RefreshError(`${foldError.message}. The worktree is reset to the pre-refresh tip ${before} (evidence intact); fix the cause and re-run refresh.`)
       }
       const tip = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
       log(`Refreshed (content-preserving, no new evidence commit): tip ${tip}. ${testSummary}.`)

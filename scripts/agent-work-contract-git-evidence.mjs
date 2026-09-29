@@ -51,22 +51,27 @@ export function verifyGitEvidence({ contract, report, prBaseSha, prHeadSha }, io
   // CONTENT-PRESERVING PROOF (#3751). A fold leaves report.head_sha at the
   // pre-fold implementation head and puts the pair on the tip together with
   // whatever main contributed. Accept that layout only when the pull request's
-  // own implementation digest is unchanged; never on the tail shape alone.
+  // own implementation digest is unchanged — and never let an author-written
+  // report.base_sha pick the comparison base (H2).
   const contentPreserving = typeof io.isContentPreserving === 'function'
     ? io.isContentPreserving({ approvedHead: report.head_sha, head: prHeadSha, mainRef: mergeBase })
     : { ok: false, reason: 'no content-preserving prover on this io' }
-  const foldedShape = evidenceBase !== mergeBase
-    || report.head_sha !== prHeadSha
-    || !io.isAncestor(mergeBase, report.head_sha)
-  const useFoldedBase = contentPreserving.ok && foldedShape
+  // The pair's recorded base may lag the live merge base only after a proven
+  // content-preserving forward refresh. It must still be a real ancestor of
+  // the live base (main moved forward), never a sibling or a self-bind.
+  const baseLagsForward = evidenceBase !== mergeBase
+    && SHA_PATTERN.test(evidenceBase)
+    && io.isAncestor(evidenceBase, mergeBase)
+  const useFoldedBase = contentPreserving.ok && baseLagsForward
 
   if (!io.isAncestor(mergeBase, report.head_sha) && !useFoldedBase) {
     throw new GitEvidenceError('the current merge base is not an ancestor of the reported implementation head; refresh the branch before relying on its evidence')
   }
 
-  // Compare implementation files at the base the pair names when a fold left
-  // that base behind; otherwise at the live merge base (#2845).
-  const filesBase = useFoldedBase ? evidenceBase : mergeBase
+  // Compare implementation files at the IMMUTABLE contract base when a fold
+  // left the pair's base behind; otherwise at the live merge base. Never at
+  // report.base_sha, which the author writes (#2845 / H2).
+  const filesBase = useFoldedBase ? String(contract.base_sha) : mergeBase
   const actualFiles = [...io.changedFiles(filesBase, report.head_sha)].sort()
   const actualImplementation = actualFiles.filter((file) => !isEvidencePath(file)).sort()
   const reportedFiles = [...report.files_changed].sort()
@@ -100,8 +105,9 @@ export function verifyGitEvidence({ contract, report, prBaseSha, prHeadSha }, io
     throw new GitEvidenceError(`only this pull request's own two evidence files may follow report.head_sha; expected ${expectedList} but found [${afterImplementation.join(', ')}]`)
   }
   // #2845: the pair must name the base its checks were measured against unless
-  // a proven content-preserving fold left the implementation identical.
-  if (evidenceBase !== mergeBase && !contentPreserving.ok) {
+  // a proven content-preserving fold left the implementation identical AND the
+  // recorded base is a real ancestor of the live merge base (forward main).
+  if (evidenceBase !== mergeBase && !useFoldedBase) {
     throw new GitEvidenceError(`agent evidence is anchored to a superseded base: it records ${evidenceBase} but this pull request's merge base with main is ${mergeBase}. Regenerate the evidence pair at the current head after refreshing (node scripts/refresh-code-pr-branch.mjs), so its recorded checks name the commit under review (#2845). ${contentPreserving.reason ?? ''}`.trim())
   }
   const expectedRef = contractRef(contract.work_issue, contract.generation ?? 1)
@@ -169,6 +175,9 @@ export const gitIo = {
       catch { return null }
     }
     const a = read(from), b = read(to)
+    // Absent on both sides is not an author edit (M1: a main-side deletion
+    // must not be classified as implementation change after the reported head).
+    if (a === null && b === null) return true
     return a !== null && a === b
   },
   isContentPreserving({ approvedHead, head, mainRef = 'origin/main' }) {

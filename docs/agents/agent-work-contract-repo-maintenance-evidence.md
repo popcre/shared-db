@@ -57,7 +57,7 @@ not pick one.
 
 Nothing about the standard changed. This is the filename, never the standard.
 
-## Binding the pair to the head under review (#2845, 2026-09-20)
+## Binding the pair to the head under review (#2845, 2026-09-20; fold exception #3751)
 
 The completion report carries `base_sha`, the merge base its recorded checks were
 measured against, beside `head_sha`, the implementation commit they describe. The
@@ -69,6 +69,15 @@ that is false only in its currency, which is exactly the shape that survives a s
 `node scripts/refresh-code-pr-branch.mjs --issue <n> --pr <n>` rebinds both fields
 and re-runs the checks. A report carrying no `base_sha` is judged on its contract's
 `base_sha`, so a branch that never refreshed passes exactly as it did before.
+
+**Content-preserving fold (#3751).** When a forward refresh from main leaves the
+pull request's own implementation digest unchanged, the helper folds the untouched
+pair into the merge commit and does not add a trailing evidence-only commit. The
+gate then accepts a `base_sha` that lags the live merge base only if (a) a real
+content-preserving proof holds and (b) the recorded base is an ancestor of the live
+merge base. The file list is compared at the immutable contract `base_sha`, never
+at the author-written report `base_sha`. A self-bound or rewritten base still
+refuses.
 
 ## The path, in order
 
@@ -91,7 +100,10 @@ node scripts/agent-work-contract.mjs --publish-contract --contract-file .agent/w
    `head_sha` to the implementation commit, `base_sha` to the current merge base with
    main, `contract_ref` to
    `refs/db-contracts/<work_issue>/<generation>`, and `files_changed` to exactly the output of
-   `git diff --name-only <pr_base_sha>...<implementation_head>`.
+   `git diff --name-only <pr_base_sha>...<implementation_head>` (net-changed
+   implementation paths only — a regenerated disposition file with zero net change
+   is not listed). A content-preserving fold instead leaves the pair on the merge
+   commit itself; main's merge files may then appear beside the pair in the tail.
 
 Step 2 is the one that cannot be moved. Publishing after the work is finished and back-dating
 the claim is fabricating pre-work evidence, and #2830 was right to refuse it. Publishing first

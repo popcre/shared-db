@@ -36,16 +36,20 @@ test('a self-reported file list cannot hide a changed file', () => {
 test('unchanged_implementation_needs_no_new_evidence_commit: a real post-fold layout is accepted with content proof', () => {
   // REAL fold shape from refresh(): report.head_sha stays the pre-fold
   // implementation head; the tip is a merge commit that carries the pair plus
-  // whatever main contributed. evidenceBase may lag mergeBase only when
-  // isContentPreserving proves the PR-own digest is unchanged.
+  // whatever main contributed. The file list is compared at the IMMUTABLE
+  // contract.base_sha, never at the author-written report.base_sha (H2).
   const oldBase = 'e'.repeat(40)
   const newBase = 'f'.repeat(40)
   const foldedReport = { ...report, head_sha: implementation, base_sha: oldBase }
   const foldedIo = io({
     mergeBase: () => newBase,
-    isAncestor: (a, b) => !(a === newBase && b === implementation),
+    isAncestor: (a, b) => {
+      if (a === oldBase && b === newBase) return true
+      if (a === newBase && b === implementation) return false
+      return true
+    },
     changedFiles: (from, to) => {
-      if (from === oldBase && to === implementation) return ['scripts/fix.mjs']
+      if (from === base && to === implementation) return ['scripts/fix.mjs']
       if (from === implementation && to === prHead) return ['.agent/contract.json', '.agent/completion.json', 'base.txt']
       if (from === newBase && to === prHead) return ['scripts/fix.mjs', '.agent/contract.json', '.agent/completion.json', 'base.txt']
       return []
@@ -61,9 +65,43 @@ test('changed_implementation_invalidates_receipt: lagging base without content p
   const newBase = 'f'.repeat(40)
   assert.throws(() => verifyGitEvidence({ contract, report: stale, prBaseSha: prBase, prHeadSha: prHead }, io({
     mergeBase: () => newBase,
-    changedFiles: (from) => (from === newBase ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json']),
+    isAncestor: (a, b) => !(a === newBase && b === implementation),
+    changedFiles: (from) => (from === newBase || from === base ? ['scripts/fix.mjs'] : ['.agent/contract.json', '.agent/completion.json']),
     isContentPreserving: () => ({ ok: false, reason: 'the pull request\'s own diff changed' }),
-  })), /superseded base|#2845/)
+  })), /superseded base|#2845|not an ancestor of the reported implementation head/)
+})
+
+test('H2: a self-bound report.base_sha cannot vacuously pass the fold skip', () => {
+  // base_sha == head_sha and files_changed [] would make a naive comparison
+  // empty. The skip requires the recorded base to be an ancestor of the live
+  // merge base; a self-bind is not, so the fold path is not taken and the
+  // pair/tail rules still refuse.
+  const selfBound = { ...report, head_sha: implementation, base_sha: implementation, files_changed: [] }
+  const newBase = 'f'.repeat(40)
+  assert.throws(() => verifyGitEvidence({ contract, report: selfBound, prBaseSha: prBase, prHeadSha: prHead }, io({
+    mergeBase: () => newBase,
+    isAncestor: (a, b) => !(a === implementation && b === newBase),
+    changedFiles: () => [],
+    isContentPreserving: () => ({ ok: true, reason: 'same head' }),
+  })), /superseded base|#2845|not an ancestor of the reported implementation head|only this pull request's own two evidence files/)
+})
+
+test('M1: a main-side deletion is not an author edit after the reported head', () => {
+  const oldBase = 'e'.repeat(40)
+  const newBase = 'f'.repeat(40)
+  const foldedReport = { ...report, head_sha: implementation, base_sha: oldBase }
+  assert.equal(verifyGitEvidence({ contract, report: foldedReport, prBaseSha: prBase, prHeadSha: prHead }, io({
+    mergeBase: () => newBase,
+    isAncestor: (a, b) => !(a === newBase && b === implementation),
+    changedFiles: (from, to) => {
+      if (from === base && to === implementation) return ['scripts/fix.mjs']
+      if (from === implementation && to === prHead) return ['.agent/contract.json', '.agent/completion.json', 'gone.txt']
+      return []
+    },
+    // gone.txt is absent at both mergeBase and tip (main deleted it) — not an author edit.
+    blobEquals: (from, to, file) => file === 'gone.txt',
+    isContentPreserving: () => ({ ok: true, reason: 'same head' }),
+  })), true)
 })
 
 test('implementation edit after the reported head is refused even when main also moved (H3)', () => {
@@ -72,9 +110,9 @@ test('implementation edit after the reported head is refused even when main also
   const foldedReport = { ...report, head_sha: implementation, base_sha: oldBase }
   assert.throws(() => verifyGitEvidence({ contract, report: foldedReport, prBaseSha: prBase, prHeadSha: prHead }, io({
     mergeBase: () => newBase,
-    isAncestor: () => true,
+    isAncestor: (a, b) => !(a === newBase && b === implementation),
     changedFiles: (from, to) => {
-      if (from === oldBase && to === implementation) return ['scripts/fix.mjs']
+      if (from === base && to === implementation) return ['scripts/fix.mjs']
       if (from === implementation && to === prHead) return ['.agent/contract.json', '.agent/completion.json', 'base.txt', 'scripts/late.mjs']
       return []
     },

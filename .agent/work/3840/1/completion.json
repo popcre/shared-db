@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3840/1",
   "contract_sha256": "fb50ea403fac11ec2f38508debb0ef3c05b3ca0655686d7d0a5f7bdc3bdb7fd6",
-  "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
+  "base_sha": "e838f1527d858d4010428a2e82830ebc928ad4ea",
   "head_sha": "b0e0c03a106d1b08832b84629a1660134828e272",
   "files_changed": [
     "docs/agents/active-contracts-and-plans.md",

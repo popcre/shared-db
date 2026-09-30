@@ -11,8 +11,6 @@
 -- api.db_data_admin_scraped_source_inventory as a Licensing principal and check
 -- the returned rows; they do not string-search the function body.
 
-begin;
-
 -- ---------------------------------------------------------------------------
 -- A. Schema invariants.
 -- ---------------------------------------------------------------------------
@@ -129,7 +127,10 @@ begin
    order by p.created_at, p.id limit 1;
   if v_profile is null then raise exception 'B: fixture requires an active profile'; end if;
   select r.id into v_role from app.role r where r.slug = 'licensing'::app.app_role;
-  insert into app.user_role (profile_id, role_id) values (v_profile, v_role) on conflict do nothing;
+  delete from app.user_role where profile_id = v_profile and role_id = v_role;
+  delete from app.app_access where profile_id = v_profile and app in ('plm', 'admin');
+  insert into app.user_role (profile_id, role_id) values (v_profile, v_role);
+  insert into app.app_access (profile_id, app) values (v_profile, 'plm');
   perform set_config('request.jwt.claim.sub', v_auth::text, true);
 
   v_cursor := null;
@@ -188,5 +189,3 @@ begin
   end if;
   reset role;
 end $$;
-
-rollback;

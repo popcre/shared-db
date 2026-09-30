@@ -8,9 +8,11 @@
   ],
   "contract_ref": "refs/db-contracts/3545/8",
   "contract_sha256": "7d7c20fa60be9573373c258a0107e4278a91a15bceb93875acd449a767b5bb31",
-  "head_sha": "6f25b0a7cd66a2bc246f578c41dbf08650afaa70",
+  "head_sha": "16fb8813f74f4640975a20a31871d57748af6a3d",
   "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
   "files_changed": [
+    ".agent/work/3545/8/completion.json",
+    ".agent/work/3545/8/contract.json",
     ".github/live-proofs/3545.sql",
     "docs/db-data-admin-scraped-properties.md",
     "supabase/migrations/20260930202719_wildbrain_classic_submissions_mapping_exclusion.sql",
@@ -35,17 +37,17 @@
     {
       "command": "database-contract-tests wildbrain_submissions_classic_option.sql",
       "exit_code": 0,
-      "evidence": "Passed in PR #3843 CI job 110085013213 (supabase/tests against an ephemeral database, run 36772833471; 0 FAILED) at implementation head 6f25b0a7cd66a2bc246f578c41dbf08650afaa70."
+      "evidence": "Passed in PR #3843 CI job 110092696167 (supabase/tests against an ephemeral database, run 36775606552; 0 FAILED) at implementation head 16fb8813f74f4640975a20a31871d57748af6a3d."
     },
     {
       "command": "database-contract-tests wildbrain_landing_contracts.sql",
       "exit_code": 0,
-      "evidence": "Passed in PR #3843 CI job 110085013213 (supabase/tests against an ephemeral database, run 36772833471; 0 FAILED) at implementation head 6f25b0a7cd66a2bc246f578c41dbf08650afaa70."
+      "evidence": "Passed in PR #3843 CI job 110092696167 (supabase/tests against an ephemeral database, run 36775606552; 0 FAILED) at implementation head 16fb8813f74f4640975a20a31871d57748af6a3d."
     },
     {
       "command": "database-contract-tests wildbrain_nbcu_licensing_read_access_contracts.sql",
       "exit_code": 0,
-      "evidence": "Passed in PR #3843 CI job 110085013213 (supabase/tests against an ephemeral database, run 36772833471; 0 FAILED) at implementation head 6f25b0a7cd66a2bc246f578c41dbf08650afaa70."
+      "evidence": "Passed in PR #3843 CI job 110092696167 (supabase/tests against an ephemeral database, run 36775606552; 0 FAILED) at implementation head 16fb8813f74f4640975a20a31871d57748af6a3d."
     }
   ],
   "assumptions_resolved": [

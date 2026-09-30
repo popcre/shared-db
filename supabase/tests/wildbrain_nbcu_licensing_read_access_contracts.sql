@@ -22,7 +22,7 @@
 --   as supabase/tests/dam_order_list_item_columns_contract.sql does.
 --
 -- WHAT IT ASSERTS, AND WHY IT IS SHAPED THIS WAY
---   A. CATALOGUE. All 28 tables (11 WildBrain + 17 NBCU) hold the grant, hold ONLY
+--   A. CATALOGUE. All 28 tables (12 WildBrain incl. the #3545 option table + 16 NBCU) hold the grant, hold ONLY
 --      SELECT for authenticated, carry a `<table>_plm_read` policy whose stored
 --      predicate is byte-identical to the already-applied Sega house predicate, still
 --      carry their original `<table>_service_read` policy, and still have RLS enabled.

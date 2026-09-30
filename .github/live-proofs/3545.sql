@@ -32,6 +32,6 @@ select (
       and pg_get_constraintdef(oid) like '%excluded%')
   and position('wildbrain-submissions' in pg_get_functiondef(
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0
-  and position('c.copy_state = ''mapped'') > 0 then ''mapped''' in pg_get_functiondef(
+  and position('in (select x.identity_key from excluded_identity x)' in pg_get_functiondef(
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0
 ) as passed;

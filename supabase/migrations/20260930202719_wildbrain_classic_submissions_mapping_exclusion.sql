@@ -742,6 +742,43 @@ begin
              o.exact_label, null,
              o.source_captured_at, null::text
       from plm.wildbrain_submission_property_option o
+    ), excluded_identity as materialized (
+      -- #3545: identities whose page decision is 'excluded', computed ONCE per call
+      -- with exactly the identity and copy rules of page_creative_decision below:
+      -- a dcpvault:% id is one identity across source systems, otherwise the exact
+      -- copy is the identity; the newest approved/rejected decision per retained
+      -- copy counts; any mapped copy wins; otherwise the newest copy decides. One
+      -- pass over the ledger (served by identity_version_key for the per-copy
+      -- ordering), instead of a correlated probe per Creative row.
+      select g.identity_key
+      from (
+        select
+          case when c.source_property_id like 'dcpvault:%'
+               then c.source_property_id
+               else c.source_table||'|'||c.source_system||'|'||c.source_property_id
+          end as identity_key,
+          c.copy_state, c.decision_version, c.approved_at, c.resolution_id
+        from (
+          select distinct on (t.source_system, t.source_table, t.source_property_id)
+            t.source_system, t.source_table, t.source_property_id,
+            t.decision_version, t.approved_at, t.resolution_id,
+            (case
+              when t.creative_decision_state is not null then t.creative_decision_state
+              when t.approval_status = 'approved' and exists (
+                select 1 from plm.dcp_opa_property_resolution_member m
+                where m.resolution_id = t.resolution_id) then 'mapped'
+              else 'unmapped'
+            end)::text as copy_state
+          from plm.dcp_opa_property_resolution t
+          where t.approval_status in ('approved','rejected')
+          order by t.source_system, t.source_table, t.source_property_id,
+            t.decision_version desc, t.approved_at desc nulls last, t.resolution_id desc
+        ) c
+      ) g
+      group by g.identity_key
+      having count(*) filter (where g.copy_state = 'mapped') = 0
+         and (array_agg(g.copy_state order by g.decision_version desc,
+                g.approved_at desc nulls last, g.resolution_id desc))[1] = 'excluded'
     ), keyed as (
       select
         jsonb_build_array(
@@ -810,36 +847,11 @@ begin
         and (p_cursor is null or k.row_key collate "C" > v_cursor_key collate "C")
         -- #3545: a Creative identity whose page decision is the owner's
         -- 'excluded' (do-not-ingest) decision is not a POP Property. It is omitted
-        -- before paging; the source row itself is kept. The decision is computed
-        -- with exactly the identity and copy rules of page_creative_decision below
-        -- (a dcpvault:% id is one identity across source systems; any mapped copy
-        -- wins; otherwise the newest copy decides), so no retained sibling copy
-        -- can surface as 'excluded'.
-        and not (k.source_purpose = 'Creative' and coalesce((
-          select case when count(*) filter (where c.copy_state = 'mapped') > 0 then 'mapped'
-                      else (array_agg(c.copy_state order by c.decision_version desc,
-                              c.approved_at desc nulls last, c.resolution_id desc))[1] end
-          from (
-            select distinct on (t.source_system, t.source_table)
-              t.resolution_id, t.decision_version, t.approved_at,
-              (case
-                when t.creative_decision_state is not null then t.creative_decision_state
-                when t.approval_status = 'approved' and exists (
-                  select 1 from plm.dcp_opa_property_resolution_member m
-                  where m.resolution_id = t.resolution_id) then 'mapped'
-                else 'unmapped'
-              end)::text as copy_state
-            from plm.dcp_opa_property_resolution t
-            where t.approval_status in ('approved','rejected')
-              and case when k.source_id like 'dcpvault:%'
-                       then t.source_property_id = k.source_id
-                       else t.source_system = k.source_system
-                        and t.source_table = k.source_table
-                        and t.source_property_id = k.source_id
-                  end
-            order by t.source_system, t.source_table, t.decision_version desc,
-              t.approved_at desc nulls last, t.resolution_id desc
-          ) c), '') = 'excluded')
+        -- before paging; the source row itself is kept. See excluded_identity.
+        and not (k.source_purpose = 'Creative'
+          and (case when k.source_id like 'dcpvault:%' then k.source_id
+                    else k.source_table||'|'||k.source_system||'|'||k.source_id end)
+              in (select x.identity_key from excluded_identity x))
     ), ordered as materialized (
       select f.*
       from filtered f
@@ -1628,6 +1640,10 @@ begin
   if has_table_privilege('anon', 'plm.wildbrain_submission_property_option', 'select')
      or has_table_privilege('authenticated', 'plm.wildbrain_submission_property_option', 'insert') then
     raise exception '#3545 self-check: client roles hold more than the sibling read grant';
+  end if;
+  if to_regprocedure('api.db_data_admin_scraped_source_inventory(text,text,text,integer)') is null
+     or to_regprocedure('plm.enforce_dcp_opa_crosswalk_members()') is null then
+    raise exception '#3545 self-check: a replaced function signature is missing';
   end if;
   if (select count(*) from pg_policies where schemaname = 'plm'
         and tablename = 'wildbrain_submission_property_option'

@@ -92,8 +92,8 @@ begin
   raise notice '=== A. CATALOGUE ===';
 
   if array_length(v_tables, 1) <> 28 then
-    raise exception 'A FAILED (fixture): the table list is %, expected 28: the 27 objects '
-      'named in claim #1252 plus the #3545 Classic option table', array_length(v_tables, 1);
+    raise exception 'A FAILED (fixture): the table list is %, expected the 27 objects '
+      'named in claim #1252 plus the #3545 Classic option table (28)', array_length(v_tables, 1);
   end if;
 
   -- The reference predicate is the ALREADY-APPLIED Sega policy, read from the catalog.

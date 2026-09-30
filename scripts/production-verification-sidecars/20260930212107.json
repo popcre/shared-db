@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "migration_version": "20260930212107",
+  "migration_sha256": "c49bce3e3c1c91f4a64f1195666e5394884bd1dc7c24160c07d304fb594d2a5e",
+  "checks": [
+    {
+      "id": "prod_detail_line_seq_unique_absent",
+      "kind": "exact_row_count",
+      "relation": "pg_catalog.pg_constraint",
+      "filters": [
+        {
+          "column": "conrelid",
+          "type": "text",
+          "equals": "coldlion.prod_detail"
+        },
+        {
+          "column": "contype",
+          "type": "text",
+          "equals": "u"
+        }
+      ],
+      "expected_count": 0
+    }
+  ],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 33,
+      "line_end": 47,
+      "disposition": "no_durable_target",
+      "reason": "The DO block's execute format only drops UNIQUE (company_code, prod_order_no, prod_line_seq) if that exact constraint still exists under a non-standard name. The static DROP CONSTRAINT IF EXISTS in the same migration already targets the auto-named constraint, so after apply the durable catalog state is simply the absence of any unique constraint on prod_detail involving prod_line_seq. That absence is asserted by the exact_row_count check in this sidecar, by live proof .github/live-proofs/3234.sql, and by supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql. The execute creates, alters and drops no other object and writes no row."
+    }
+  ]
+}

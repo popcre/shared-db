@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "work_issue": 3545,
+  "outcome": "ready-for-merge",
+  "pr": 3843,
+  "migration_versions": [
+    "20260930202719"
+  ],
+  "contract_ref": "refs/db-contracts/3545/11",
+  "contract_sha256": "32238a4eed4dba525de027a934f329aa33a8b06dfb6d1bc7233cc28433570f66",
+  "head_sha": "d8c4e097f75f149f5c0333fe930090e1dab944a6",
+  "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
+  "files_changed": [
+    ".github/live-proofs/3545.sql",
+    "docs/db-data-admin-scraped-properties.md",
+    "supabase/migrations/20260930202719_wildbrain_classic_submissions_mapping_exclusion.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql",
+    "supabase/tests/wildbrain_nbcu_licensing_read_access_contracts.sql",
+    "supabase/tests/wildbrain_submissions_classic_option.sql"
+  ],
+  "db_reads": [
+    "table plm.coke_approval_vocabulary_value",
+    "table plm.coke_asset_property_option",
+    "table plm.coke_capture",
+    "table plm.coke_vocabulary_value",
+    "table plm.dcp_character",
+    "table plm.dcp_opa_property_resolution_member",
+    "table plm.dcp_property",
+    "table plm.dcp_style_guide",
+    "table plm.lucasfilm_dcp_character",
+    "table plm.lucasfilm_dcp_property",
+    "table plm.lucasfilm_dcp_style_guide",
+    "table plm.marvel_asgard_character",
+    "table plm.marvel_asgard_style_guide",
+    "table plm.marvel_dcp_character",
+    "table plm.marvel_dcp_property",
+    "table plm.marvel_dcp_style_guide",
+    "table plm.nbcu_capture",
+    "table plm.nbcu_character",
+    "table plm.nbcu_property",
+    "table plm.nbcu_style_guide",
+    "table plm.opa_character",
+    "table plm.opa_property",
+    "table plm.opa_property_character",
+    "table plm.opa_property_scope_membership",
+    "table plm.opa_property_studio_resolution",
+    "table plm.peanuts_art_program",
+    "table plm.peanuts_capture",
+    "table plm.peanuts_character",
+    "table plm.peanuts_style_guide",
+    "table plm.pmt_capture",
+    "table plm.pmt_character",
+    "table plm.pmt_property",
+    "table plm.pmt_trackerplus_submission_capture",
+    "table plm.pmt_trackerplus_submission_property",
+    "table plm.sega_capture",
+    "table plm.sega_property",
+    "table plm.sega_submission_capture",
+    "table plm.sega_submission_property",
+    "table plm.sesame_brand",
+    "table plm.sesame_capture",
+    "table plm.sesame_character",
+    "table plm.sesame_style_guide",
+    "table plm.sesame_submission_property_option",
+    "table plm.twentieth_century_dcp_character",
+    "table plm.twentieth_century_dcp_property",
+    "table plm.twentieth_century_dcp_style_guide",
+    "table plm.wb_character_normalized",
+    "table plm.wb_property",
+    "table plm.wb_style_guide_normalized",
+    "table plm.wildbrain_capture",
+    "table plm.wildbrain_character",
+    "table plm.wildbrain_era",
+    "table plm.wwe_creative_brand",
+    "table plm.wwe_creative_capture",
+    "table plm.wwe_property",
+    "table plm.wwe_style_guide",
+    "table plm.wwe_submission_capture"
+  ],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "function plm.enforce_dcp_opa_crosswalk_members",
+    "policy wildbrain_submission_property_option_plm_read on plm.wildbrain_submission_property_option",
+    "policy wildbrain_submission_property_option_service_read on plm.wildbrain_submission_property_option",
+    "table plm.dcp_opa_property_resolution",
+    "table plm.wildbrain_submission_property_option"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests wildbrain_submissions_classic_option.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3843 CI job 110092696167 (run 36775606552; 0 FAILED) at 16fb8813; d8c4e097f75f149f5c0333fe930090e1dab944a6 differs from it only in .agent evidence files (git diff 16fb8813 d8c4e097f75f149f5c0333fe930090e1dab944a6 -- . ':!.agent')."
+    },
+    {
+      "command": "database-contract-tests wildbrain_landing_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3843 CI job 110092696167 (run 36775606552; 0 FAILED) at 16fb8813; d8c4e097f75f149f5c0333fe930090e1dab944a6 differs from it only in .agent evidence files (git diff 16fb8813 d8c4e097f75f149f5c0333fe930090e1dab944a6 -- . ':!.agent')."
+    },
+    {
+      "command": "database-contract-tests wildbrain_nbcu_licensing_read_access_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3843 CI job 110092696167 (run 36775606552; 0 FAILED) at 16fb8813; d8c4e097f75f149f5c0333fe930090e1dab944a6 differs from it only in .agent evidence files (git diff 16fb8813 d8c4e097f75f149f5c0333fe930090e1dab944a6 -- . ':!.agent')."
+    }
+  ],
+  "assumptions_resolved": [
+    "Only Classic is loadable (schema check constraint).",
+    "Excluded decisions carry zero members and omit the whole identity before paging; source rows kept.",
+    "Property Matching passes excluded through verbatim (documented, tested)."
+  ],
+  "stop_conditions_hit": []
+}

@@ -70,7 +70,8 @@ renders these labels in the Mapping column instead of "Mapped" or a dash.
 
 An unmapped Creative Property remains visible and its full row is highlighted
 red. Conflict and unmapped states are explicit; rows are never guessed,
-silently dropped, or presented as matched.
+silently dropped, or presented as matched. The one recorded exception is an
+owner do-not-ingest decision (see below).
 
 Contract Property evidence is a separate privacy-protected source. It may show
 whether reviewed contract evidence exists and whether its document chain is
@@ -107,3 +108,9 @@ is a recorded decision, not a delete. First use: WildBrain Strawberry Shortcake,
 where only Classic is a POP Property (business rule "WildBrain Strawberry
 Shortcake property scope"); the Creative root and Classic eras map to the
 Submissions option Strawberry Shortcake Classic, and the other eras are excluded.
+
+Property Matching (`api.db_data_admin_scraped_properties`) is a separate
+matching workbench and is unchanged: an excluded identity stays listed there,
+and its `mapping_state` carries the value `excluded` verbatim. The Property
+Matching frontend does not read `mapping_state` today (checked 2026-09-30); any
+future consumer must treat `excluded` as a settled owner decision, not unmapped.

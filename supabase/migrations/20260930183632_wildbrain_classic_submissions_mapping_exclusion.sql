@@ -1,7 +1,7 @@
 -- #3545: WildBrain Strawberry Shortcake - Classic under Submissions, the Creative
 -- root/Classic eras mapped to it, and a durable do-not-ingest (excluded) decision.
 --
--- derived-from: 20260925223300
+-- derived-from: 20260925223300, 20260907200221
 -- reserved-version: 20260930183632 (claim #3842; supersedes the never-applied
 --   20260929031536 from closed PR #3775, whose version stays retired)
 --
@@ -808,19 +808,38 @@ begin
         or k.display_label ilike '%' || p_search || '%'
       )
         and (p_cursor is null or k.row_key collate "C" > v_cursor_key collate "C")
-        -- #3545: a Creative source copy whose newest approved/rejected decision is
-        -- the owner's 'excluded' (do-not-ingest) decision is not a POP Property.
-        -- It is omitted before paging; the source row itself is kept.
+        -- #3545: a Creative identity whose page decision is the owner's
+        -- 'excluded' (do-not-ingest) decision is not a POP Property. It is omitted
+        -- before paging; the source row itself is kept. The decision is computed
+        -- with exactly the identity and copy rules of page_creative_decision below
+        -- (a dcpvault:% id is one identity across source systems; any mapped copy
+        -- wins; otherwise the newest copy decides), so no retained sibling copy
+        -- can surface as 'excluded'.
         and not (k.source_purpose = 'Creative' and coalesce((
-          select t.creative_decision_state
-          from plm.dcp_opa_property_resolution t
-          where t.source_system = k.source_system
-            and t.source_table = k.source_table
-            and t.source_property_id = k.source_id
-            and t.approval_status in ('approved','rejected')
-          order by t.decision_version desc, t.approved_at desc nulls last,
-            t.resolution_id desc
-          limit 1), '') = 'excluded')
+          select case when count(*) filter (where c.copy_state = 'mapped') > 0 then 'mapped'
+                      else (array_agg(c.copy_state order by c.decision_version desc,
+                              c.approved_at desc nulls last, c.resolution_id desc))[1] end
+          from (
+            select distinct on (t.source_system, t.source_table)
+              t.resolution_id, t.decision_version, t.approved_at,
+              (case
+                when t.creative_decision_state is not null then t.creative_decision_state
+                when t.approval_status = 'approved' and exists (
+                  select 1 from plm.dcp_opa_property_resolution_member m
+                  where m.resolution_id = t.resolution_id) then 'mapped'
+                else 'unmapped'
+              end)::text as copy_state
+            from plm.dcp_opa_property_resolution t
+            where t.approval_status in ('approved','rejected')
+              and case when k.source_id like 'dcpvault:%'
+                       then t.source_property_id = k.source_id
+                       else t.source_system = k.source_system
+                        and t.source_table = k.source_table
+                        and t.source_property_id = k.source_id
+                  end
+            order by t.source_system, t.source_table, t.decision_version desc,
+              t.approved_at desc nulls last, t.resolution_id desc
+          ) c), '') = 'excluded')
     ), ordered as materialized (
       select f.*
       from filtered f
@@ -1587,7 +1606,7 @@ end;
 $function$;
 
 comment on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) is
-  'Licensing-manager-gated read-only inventory of the raw scraped source vocabularies for Properties, Characters and Style Guides. One entity kind per call (property, character, style_guide), with search text, a deterministic base64 keyset cursor and a page size clamped to 1..1000. Every row carries source-declared identity only: licensor key and name decided by the actual scrape route and source authority, one canonical licensor_group_key and licensor_group_name (a single unresolved group, "Licensor not yet determined", holds rows whose licensor is genuinely undetermined and is not covered by source-system DCP Vault grouping), a source purpose normalized to exactly Creative or Submissions (NBCU Product Submissions picker rows and Warner STARLABS Product catalogue rows are Submissions), the display label, source system/table/id/status, a capture marker, and for Creative Property rows the existing mapped/unmapped indicator (Creative copies whose newest decision is the owner excluded, do-not-ingest, decision are omitted, #3545) plus a submissions array naming the Submissions members of the winning mapped decision, and for Submissions Property rows a mapped_creative array naming the Creative rows mapped to it. Pixar rows group under Disney (#3539); WildBrain MediaBox Submissions rows group with Strawberry Shortcake (#3545); DCP Vault rows group by source system (disney_dcpvault to Disney, marvel_dcpvault to Marvel, lucasfilm_dcpvault to Lucasfilm / Star Wars, twentieth_century_dcpvault to 20th Century) regardless of mapping authority status (#3539); Disney, Marvel, Lucasfilm / Star Wars and 20th Century remain the other separate licensors; retained copies across scrape routes are never deduplicated and identity is never inferred from names. Matching controls, review reasons, evidence basis, review guidance, contract status and authority-derived presentation buckets are deliberately absent, as are the Sega and WWE inferred character and style-guide candidate tables, which their own comments and constraints declare are not source-declared facts. api.db_data_admin_scraped_properties is unchanged and remains the Property Matching contract.';
+  'Licensing-manager-gated read-only inventory of the raw scraped source vocabularies for Properties, Characters and Style Guides. One entity kind per call (property, character, style_guide), with search text, a deterministic base64 keyset cursor and a page size clamped to 1..1000. Every row carries source-declared identity only: licensor key and name decided by the actual scrape route and source authority, one canonical licensor_group_key and licensor_group_name (a single unresolved group, "Licensor not yet determined", holds rows whose licensor is genuinely undetermined and is not covered by source-system DCP Vault grouping), a source purpose normalized to exactly Creative or Submissions (NBCU Product Submissions picker rows and Warner STARLABS Product catalogue rows are Submissions), the display label, source system/table/id/status, a capture marker, and for Creative Property rows the existing mapped/unmapped indicator (Creative copies whose newest decision is the owner excluded, do-not-ingest, decision are omitted, #3545) plus a submissions array naming the Submissions members of the winning mapped decision, and for Submissions Property rows a mapped_creative array naming the Creative rows mapped to it. Pixar rows group under Disney (#3539); WildBrain MediaBox Submissions rows group with Strawberry Shortcake (#3545); DCP Vault rows group by source system (disney_dcpvault to Disney, marvel_dcpvault to Marvel, lucasfilm_dcpvault to Lucasfilm / Star Wars, twentieth_century_dcpvault to 20th Century) regardless of mapping authority status (#3539); Disney, Marvel, Lucasfilm / Star Wars and 20th Century remain the other separate licensors; retained copies across scrape routes are never deduplicated and identity is never inferred from names. Matching controls, review reasons, evidence basis, review guidance, contract status and authority-derived presentation buckets are deliberately absent, as are the Sega and WWE inferred character and style-guide candidate tables, which their own comments and constraints declare are not source-declared facts. api.db_data_admin_scraped_properties is unchanged and remains the Property Matching contract; there an excluded identity stays listed for matching review and its mapping_state passes the value excluded through verbatim (#3545).';
 
 revoke all on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) from public, anon, service_role;
 grant execute on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) to authenticated;

@@ -299,7 +299,7 @@ begin
   -- CHANGED BY MIGRATION 20260819151510 (issue #1249, the owner ruling "scrape data
   -- should be visible to Licensing department users"). This block asserted that
   -- `authenticated` held NOTHING on the thirteen wildbrain tables. It now holds SELECT on
-  -- all thirteen and nothing else, and an RLS policy -- not the grant -- decides who that
+  -- all fourteen (thirteen plus the #3545 option table) and nothing else, and an RLS policy -- not the grant -- decides who that
   -- SELECT actually returns rows to. The behavioural half of that ruling lives in
   -- supabase/tests/wildbrain_nbcu_licensing_read_access_contracts.sql; what stays here is
   -- the half this file has always owned: the grant must not have widened past reads.
@@ -320,7 +320,7 @@ begin
       '#1249 widened READS only', v_n;
   end if;
 
-  -- RLS enabled on all thirteen, and one read policy each.
+  -- RLS enabled on all fourteen, and one read policy each.
   select count(*) into v_n from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'plm' and c.relname like 'wildbrain\_%' and c.relkind = 'r' and c.relrowsecurity;
   if v_n <> 14 then  -- 11 landing + 2 #3685 + 1 Classic option
@@ -2312,4 +2312,3 @@ begin
   raise notice '=== WILDBRAIN LANDING CONTRACT TESTS: ALL SECTIONS PASSED ===';
 end;
 $$;
-

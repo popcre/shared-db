@@ -31,7 +31,17 @@
     {
       "command": "database-contract-tests wildbrain_submissions_classic_option.sql",
       "exit_code": 0,
-      "evidence": "CI database-contract-tests on this PR head; section A and B0 passed on f73135f, principal fix in this head."
+      "evidence": "Passed in PR #3843 CI job 110051033651 (supabase/tests against an ephemeral database, run 36763273487) at implementation head 8e023cbc."
+    },
+    {
+      "command": "database-contract-tests wildbrain_landing_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3843 CI job 110051033651 (supabase/tests against an ephemeral database, run 36763273487) at implementation head 8e023cbc."
+    },
+    {
+      "command": "database-contract-tests wildbrain_nbcu_licensing_read_access_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3843 CI job 110051033651 (supabase/tests against an ephemeral database, run 36763273487) at implementation head 8e023cbc."
     }
   ],
   "assumptions_resolved": [

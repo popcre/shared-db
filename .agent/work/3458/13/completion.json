@@ -11,7 +11,6 @@
   "head_sha": "853b601e3b68a11948b3de4b485abab414241e59",
   "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
   "files_changed": [
-    ".agent/work/3458/13/contract.json",
     "scripts/production_migration_guard.py",
     "scripts/test_3458_index_guard.test.mjs",
     "scripts/test_post_batch_app_verification.py",

@@ -60,7 +60,7 @@ export function parseRiskAssessment(body, { mainSha, allowlist, sourcePr, risks 
   const assessed = data.assessed_risks
   if (!assessed || typeof assessed !== 'object' || Array.isArray(assessed)) throw new RiskAcceptanceError('assessed_risks must be an object')
   if (JSON.stringify(Object.keys(assessed).sort()) !== JSON.stringify(wanted)) throw new RiskAcceptanceError(`assessment covers [${Object.keys(assessed).sort()}], but the gate derived exactly [${wanted}]`)
-  for (const risk of wanted) if (typeof assessed[risk] !== 'string' || assessed[risk].trim().length < MIN_ASSESSMENT_CHARS) throw new RiskAcceptanceError(`assessment of ${risk} is missing or not substantive`)
+  for (const risk of wanted) if (typeof assessed[risk] !== 'string' || assessed[risk].trim().length < MIN_ASSESSMENT_CHARS) throw new RiskAcceptanceError(`assessment of ${risk} is absent or not substantive`)
   return data
 }
 

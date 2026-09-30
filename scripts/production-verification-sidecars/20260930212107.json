@@ -1,22 +1,27 @@
 {
   "schema_version": 1,
   "migration_version": "20260930212107",
-  "migration_sha256": "c49bce3e3c1c91f4a64f1195666e5394884bd1dc7c24160c07d304fb594d2a5e",
+  "migration_sha256": "6aca4dabb0b94fcb653e849512f54f654185325cd8376f522811df114b18fa3b",
   "checks": [
     {
       "id": "prod_detail_line_seq_unique_absent",
       "kind": "exact_row_count",
-      "relation": "pg_catalog.pg_constraint",
+      "relation": "information_schema.table_constraints",
       "filters": [
         {
-          "column": "conrelid",
+          "column": "table_schema",
           "type": "text",
-          "equals": "coldlion.prod_detail"
+          "equals": "coldlion"
         },
         {
-          "column": "contype",
+          "column": "table_name",
           "type": "text",
-          "equals": "u"
+          "equals": "prod_detail"
+        },
+        {
+          "column": "constraint_type",
+          "type": "text",
+          "equals": "UNIQUE"
         }
       ],
       "expected_count": 0

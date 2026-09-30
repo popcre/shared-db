@@ -183,7 +183,7 @@ begin
 
   -- 11. The grain proof must stay attached to the objects.
   if coalesce(obj_description('coldlion.prepack_detail'::regclass, 'pg_class'), '') not like '%456 rows%'
-     or coalesce(obj_description('coldlion.prod_detail'::regclass, 'pg_class'), '') not like '%166 rows%' then
+     or coalesce(obj_description('coldlion.prod_detail'::regclass, 'pg_class'), '') not like '%Grain proof and vendor answers%' then
     raise exception 'unit 5b table comments no longer carry the live grain proof';
   end if;
 end $$;

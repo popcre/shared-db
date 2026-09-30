@@ -2807,9 +2807,8 @@ test('review lease age is truthful for known and unknown commit dates',()=>{
 
 test('capacity report classifies free, live, stale, aged, and unknown leases without mutation',()=>{
   const io=reviewIo(),snapshot=new Map(),states=new Map(),now=new Date('2026-09-02T12:00:00Z')
-  // One case per active reviewer: five since deepseek-v4.1-flash was added on 2026-09-23; four after kimi-k3 was paused on 2026-09-22 (was five after codex-gpt-5.6-sol was retired on
-  // 2026-09-06, kimi-k3 was unpaused on 2026-09-07, qwen-3.8-max was
-  // unquarantined on 2026-09-07 and glm-5.3 was paused on 2026-09-18. 'moved'
+  // One case per active reviewer: six after glm-5.3 was restored on 2026-09-30
+  // (deepseek-v4.1-flash added 2026-09-23; kimi-k3 paused 2026-09-22). 'moved'
   // and 'verdict' both reach 'stale-reclaimable' but by different routes, and
   // both are proved: 'verdict' occupies a slot here, and 'moved' is proved
   // below by moving a head under a lease that this pass classified as live.
@@ -10339,7 +10338,8 @@ test('#3130 slot-2 refusal never reports live leases as busy under per-review le
   assert.ok(refusal,'slot 2 must eventually run out of independent reviewers')
   assert.match(refusal.message,/0 of \d+ hold other live leases \(none\)/)
   assert.ok(refusal.message.includes(`${first.reviewer} (holds another slot on this pull request)`),refusal.message)
-  assert.doesNotMatch(refusal.message,/kimi-k3/)
+  assert.ok(!refusal.message.includes('kimi-k3'),'a retired name must not appear in a live exclusion list')
+  assert.ok(!refusal.message.includes('glm-5.2'),'a historical name must not appear in a live exclusion list')
 })
 
 // Issue #3449 review follow-ups: exercise the legacy predicate directly.

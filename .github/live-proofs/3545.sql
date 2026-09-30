@@ -1,4 +1,4 @@
--- #3545 read-only production proof (migration 20260930183632).
+-- #3545 read-only production proof (migration 20260930202719).
 -- Catalog only: the Management API's supabase_read_only_user cannot read licensed
 -- plm rows or pass the Licensing gate of the inventory RPC, so the row-level page
 -- proof (Classic listed, root/Classic mapped, 2003/Berry/Bitty omitted) is run
@@ -7,7 +7,7 @@
 -- production Licensing profile's JWT subject). The two position() checks below
 -- are catalog corroboration only; that RPC run is the row-level evidence.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260930183632')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20260930202719')
   and to_regclass('plm.wildbrain_submission_property_option') is not null
   and exists (
     select 1 from pg_constraint

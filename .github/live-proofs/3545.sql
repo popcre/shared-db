@@ -3,7 +3,9 @@
 -- plm rows or pass the Licensing gate of the inventory RPC, so the row-level page
 -- proof (Classic listed, root/Classic mapped, 2003/Berry/Bitty omitted) is run
 -- separately through the RPC as an authenticated Licensing principal and recorded
--- on the issue.
+-- on issue #3545 (read-only transaction, set local role authenticated, a
+-- production Licensing profile's JWT subject). The two position() checks below
+-- are catalog corroboration only; that RPC run is the row-level evidence.
 select (
   exists (select 1 from supabase_migrations.schema_migrations where version = '20260930183632')
   and to_regclass('plm.wildbrain_submission_property_option') is not null
@@ -18,6 +20,10 @@ select (
     select 1 from pg_policies
     where schemaname = 'plm' and tablename = 'wildbrain_submission_property_option'
       and policyname = 'wildbrain_submission_property_option_plm_read')
+  and exists (
+    select 1 from pg_policies
+    where schemaname = 'plm' and tablename = 'wildbrain_submission_property_option'
+      and policyname = 'wildbrain_submission_property_option_service_read')
   and not has_table_privilege('anon', 'plm.wildbrain_submission_property_option', 'select')
   and exists (
     select 1 from pg_constraint

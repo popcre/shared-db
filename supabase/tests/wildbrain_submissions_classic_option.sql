@@ -56,7 +56,8 @@ begin
 
   -- A4. excluded is a legal approved decision state and must carry no members.
   if pg_get_constraintdef((select oid from pg_constraint
-       where conname = 'dcp_opa_property_resolution_creative_state_ck')) not like '%excluded%' then
+       where conname = 'dcp_opa_property_resolution_creative_state_ck'
+         and conrelid = 'plm.dcp_opa_property_resolution'::regclass)) not like '%excluded%' then
     raise exception 'A4: excluded state missing from the ledger check';
   end if;
 end $$;
@@ -104,20 +105,27 @@ begin
   set constraints all immediate;
   set constraints all deferred;
 
-  -- B0. An excluded decision with a member is refused at commit-time check.
+  -- B0. The new trigger rule in isolation: a memberless excluded header on its own
+  --     is valid at commit time (fails before this migration: the old CHECK has no
+  --     'excluded'), and adding one member to it is refused by
+  --     plm.enforce_dcp_opa_crosswalk_members, identified by its own message.
+  insert into plm.dcp_opa_property_resolution (resolution_id, source_system, source_table,
+    source_property_id, decision_version, approval_status, evidence_reference, evidence_sha256,
+    decision_reason, approved_at, approved_by, creative_decision_state)
+  values (v_bad, 'wildbrain_tenovos', 'plm.wildbrain_era', 'zztest-b0', 1, 'approved',
+    'synthetic', repeat('e', 64), 'synthetic excluded control', now(), 'contract', 'excluded');
+  set constraints all immediate;
+  set constraints all deferred;
   v_failed := false;
   begin
-    insert into plm.dcp_opa_property_resolution (resolution_id, source_system, source_table,
-      source_property_id, decision_version, approval_status, evidence_reference, evidence_sha256,
-      decision_reason, approved_at, approved_by, creative_decision_state)
-    values (v_bad, 'wildbrain_tenovos', 'plm.wildbrain_era', 'zztest-root', 1, 'approved',
-      'synthetic', repeat('e', 64), 'synthetic bad', now(), 'contract', 'excluded');
     insert into plm.dcp_opa_property_resolution_member (resolution_id, submission_source_system,
       submission_source_table, submission_source_id, member_ordinal)
     values (v_bad, 'wildbrain_mediabox', 'plm.wildbrain_submission_property_option',
             'e608bfe3-a3e2-439a-899d-dc88a59e9b58', 1);
     set constraints all immediate;
-  exception when check_violation then v_failed := true;
+  exception when check_violation then
+    if sqlerrm = 'Creative crosswalk state and exact members disagree' then v_failed := true;
+    else raise; end if;
   end;
   set constraints all deferred;
   if not v_failed then raise exception 'B0: excluded decision with a member was accepted'; end if;

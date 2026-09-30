@@ -62,6 +62,8 @@ comment on table plm.wildbrain_submission_property_option is
 
 alter table plm.wildbrain_submission_property_option enable row level security;
 revoke all on table plm.wildbrain_submission_property_option from public, anon, authenticated, service_role;
+-- select+insert only: unlike the Sesame option table, this one-row, schema-pinned
+-- option is never re-labelled by a loader, so service_role gets no UPDATE.
 grant select, insert on table plm.wildbrain_submission_property_option to service_role;
 grant select on table plm.wildbrain_submission_property_option to authenticated;
 
@@ -94,6 +96,7 @@ alter table plm.dcp_opa_property_resolution
 create or replace function plm.enforce_dcp_opa_crosswalk_members()
  returns trigger
  language plpgsql
+ security invoker
  set search_path to 'pg_catalog'
 as $function$
 declare
@@ -1606,6 +1609,12 @@ begin
   if has_table_privilege('anon', 'plm.wildbrain_submission_property_option', 'select')
      or has_table_privilege('authenticated', 'plm.wildbrain_submission_property_option', 'insert') then
     raise exception '#3545 self-check: client roles hold more than the sibling read grant';
+  end if;
+  if (select count(*) from pg_policies where schemaname = 'plm'
+        and tablename = 'wildbrain_submission_property_option'
+        and policyname in ('wildbrain_submission_property_option_plm_read',
+                           'wildbrain_submission_property_option_service_read')) <> 2 then
+    raise exception '#3545 self-check: read policies are missing';
   end if;
   if pg_get_constraintdef((select oid from pg_constraint
        where conname = 'dcp_opa_property_resolution_creative_state_ck'

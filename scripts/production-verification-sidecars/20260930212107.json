@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20260930212107",
-  "migration_sha256": "6aca4dabb0b94fcb653e849512f54f654185325cd8376f522811df114b18fa3b",
+  "migration_sha256": "b3f5f63c9fb09174877a787dfdd8fbd88aa298bd72de0d21a5e53631186cfc39",
   "checks": [
     {
       "id": "prod_detail_line_seq_unique_absent",

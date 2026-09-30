@@ -96,3 +96,14 @@ Changing database tables, mapping contracts, or the API response is structural
 shared-db work. Changing row styling or other frontend-only presentation is
 ordinary application work in `apps/db-data-admin`. Licensed mapping rows and
 contract evidence remain in the private source-data workflow.
+
+## Owner do-not-ingest decisions (#3545)
+
+A Creative identity can carry an approved `excluded` decision in
+`plm.dcp_opa_property_resolution` (zero Submissions members). The newest decision
+for that exact source copy being `excluded` omits the row from the page: it is
+not a POP Property and is not highlighted red. The source row is kept; exclusion
+is a recorded decision, not a delete. First use: WildBrain Strawberry Shortcake,
+where only Classic is a POP Property (business rule "WildBrain Strawberry
+Shortcake property scope"); the Creative root and Classic eras map to the
+Submissions option Strawberry Shortcake Classic, and the other eras are excluded.

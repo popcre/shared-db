@@ -49,7 +49,7 @@
 
 
 -- =====================================================================================
--- A. OBJECT EXISTENCE -- 13 tables and 2 functions, read from the catalog. No views.
+-- A. OBJECT EXISTENCE -- 13 landing/state tables and 2 functions (the #3545 option table is covered in B1 and I1), read from the catalog. No views.
 -- =====================================================================================
 do $$
 declare
@@ -2011,7 +2011,7 @@ begin
     raise exception 'I6 FAILED: the view no longer reports one row per plm table';
   end if;
 
-  raise notice 'I: 13 wildbrain tables classified, every other source unchanged, columns and grants intact.';
+  raise notice 'I: 14 wildbrain tables classified, every other source unchanged, columns and grants intact.';
 end;
 $$;
 

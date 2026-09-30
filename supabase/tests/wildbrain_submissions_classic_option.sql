@@ -226,7 +226,8 @@ begin
   if not exists (select 1 from jsonb_array_elements(v_result -> 'rows') r
                   where r ->> 'source_table' = 'plm.wildbrain_era'
                     and r ->> 'source_property_id' = 'zztest-excluded'
-                    and r ->> 'mapping_state' = 'excluded') then
+                    and r ->> 'mapping_state' = 'excluded'
+                    and r ->> 'contract_status' = 'unknown') then
     raise exception 'B7: Property Matching does not pass the excluded decision through: %', v_result;
   end if;
 end $$;

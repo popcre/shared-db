@@ -111,6 +111,8 @@ Submissions option Strawberry Shortcake Classic, and the other eras are excluded
 
 Property Matching (`api.db_data_admin_scraped_properties`) is a separate
 matching workbench and is unchanged: an excluded identity stays listed there,
-and its `mapping_state` carries the value `excluded` verbatim. The Property
-Matching frontend does not read `mapping_state` today (checked 2026-09-30); any
+and its `mapping_state` carries the value `excluded` verbatim while its
+`contract_status` is `unknown` (the same as any non-mapped row). The Property
+Matching frontend (`u2giants/popdam3` `apps/db-data-admin`, main `c3f3cb34`)
+contains no reference to `mapping_state` (checked by search 2026-09-30); any
 future consumer must treat `excluded` as a settled owner decision, not unmapped.

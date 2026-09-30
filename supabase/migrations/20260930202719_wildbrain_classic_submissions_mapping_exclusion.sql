@@ -91,7 +91,14 @@ alter table plm.dcp_opa_property_resolution
 alter table plm.dcp_opa_property_resolution
   add constraint dcp_opa_property_resolution_creative_state_ck
   check (creative_decision_state is null or
-    (creative_decision_state in ('mapped','unmapped','conflict','excluded') and approval_status = 'approved'));
+    (creative_decision_state in ('mapped','unmapped','conflict','excluded') and approval_status = 'approved'))
+  not valid;
+-- Strictly wider than the old check, so validation cannot fail; NOT VALID then
+-- VALIDATE keeps the ACCESS EXCLUSIVE window to the catalog change only.
+-- Revert note: once an 'excluded' row exists, restoring the three-value check
+-- needs those rows superseded first (the ledger is append-only).
+alter table plm.dcp_opa_property_resolution
+  validate constraint dcp_opa_property_resolution_creative_state_ck;
 
 create or replace function plm.enforce_dcp_opa_crosswalk_members()
  returns trigger
@@ -1638,7 +1645,10 @@ begin
     raise exception '#3545 self-check: RLS is not enabled on plm.wildbrain_submission_property_option';
   end if;
   if has_table_privilege('anon', 'plm.wildbrain_submission_property_option', 'select')
-     or has_table_privilege('authenticated', 'plm.wildbrain_submission_property_option', 'insert') then
+     or has_table_privilege('authenticated', 'plm.wildbrain_submission_property_option', 'insert')
+     or not has_table_privilege('authenticated', 'plm.wildbrain_submission_property_option', 'select')
+     or not has_table_privilege('service_role', 'plm.wildbrain_submission_property_option', 'select')
+     or has_table_privilege('service_role', 'plm.wildbrain_submission_property_option', 'update') then
     raise exception '#3545 self-check: client roles hold more than the sibling read grant';
   end if;
   if to_regprocedure('api.db_data_admin_scraped_source_inventory(text,text,text,integer)') is null
@@ -1647,8 +1657,14 @@ begin
   end if;
   if (select count(*) from pg_policies where schemaname = 'plm'
         and tablename = 'wildbrain_submission_property_option'
-        and policyname in ('wildbrain_submission_property_option_plm_read',
-                           'wildbrain_submission_property_option_service_read')) <> 2 then
+        and cmd = 'SELECT'
+        and ((policyname = 'wildbrain_submission_property_option_plm_read'
+              and roles = array['authenticated']::name[]
+              and qual = (select p.qual from pg_policies p where p.schemaname = 'plm'
+                            and p.tablename = 'wildbrain_era'
+                            and p.policyname = 'wildbrain_era_plm_read'))
+          or (policyname = 'wildbrain_submission_property_option_service_read'
+              and roles = array['service_role']::name[] and qual = 'true'))) <> 2 then
     raise exception '#3545 self-check: read policies are missing';
   end if;
   if pg_get_constraintdef((select oid from pg_constraint

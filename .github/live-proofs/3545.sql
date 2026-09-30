@@ -30,7 +30,7 @@ select (
     where conname = 'dcp_opa_property_resolution_creative_state_ck'
       and conrelid = to_regclass('plm.dcp_opa_property_resolution')
       and pg_get_constraintdef(oid) like '%excluded%')
-  and position('wildbrain-submissions' in pg_get_functiondef(
+  and position('''plm.wildbrain_submission_property_option'', o.option_key' in pg_get_functiondef(
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0
   and position('in (select x.identity_key from excluded_identity x)' in pg_get_functiondef(
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) > 0

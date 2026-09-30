@@ -453,27 +453,13 @@ select
   d.royalty_code2,
   d.sales_person_code1,
   d.sales_person_code2,
-  d.merch_group01,
-  d.merch_group02,
-  d.merch_group03,
-  d.merch_group04,
-  d.merch_group05,
-  d.merch_group06,
-  d.merch_group07,
-  d.merch_group08,
-  d.merch_group09,
-  d.merch_group10,
-  d.merch_group11,
-  d.merch_group12,
-  d.merch_group13,
-  d.merch_group14,
   d.created_time as erp_created_at,
   d.mod_time    as erp_updated_at,
   d.last_seen_at
 from coldlion.item_detail d;
 
 comment on view plm.coldlion_item_detail is
-  'Consumer contract over coldlion.item_detail (issue #2176 unit 6). One row per ColdLion SKU (item_pkey). Colour and size are deliberately absent from the landing layer and therefore from this contract. UDF fields excluded. Consumers never receive grants on coldlion.item_detail.';
+  'Consumer contract over coldlion.item_detail (issue #2176 unit 6). One row per ColdLion SKU (item_pkey). Colour and size are deliberately absent from the landing layer and therefore from this contract. Merch-group slots are deliberately absent here: they are rows in coldlion.item_merch_group, exposed through plm.coldlion_item_merch_group. UDF fields excluded. Consumers never receive grants on coldlion.item_detail.';
 
 revoke all on plm.coldlion_item_detail from public, anon;
 grant select on plm.coldlion_item_detail to authenticated, service_role;

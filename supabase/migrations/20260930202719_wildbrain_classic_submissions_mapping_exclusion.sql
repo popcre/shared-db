@@ -2,7 +2,7 @@
 -- root/Classic eras mapped to it, and a durable do-not-ingest (excluded) decision.
 --
 -- derived-from: 20260925223300, 20260907200221
--- reserved-version: 20260930183632 (claim #3842; supersedes the never-applied
+-- reserved-version: 20260930202719 (claim #3842; supersedes the never-applied
 --   20260929031536 from closed PR #3775, whose version stays retired)
 --
 -- Owner ruling, Albert Hazan, 2026-09-25 (business rule merged in PR #3544,

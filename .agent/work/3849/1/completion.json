@@ -23,8 +23,8 @@
   "checks": [
     {
       "command": "python -m pytest scripts/test_production_business_risk_gate.py -q",
-      "exit_code": 1,
-      "evidence": "3 failed, 188 passed, 280 subtests passed in 5.59s at e8ae5649f4db23aaa9e4389be640b29dbfcc5746; the 3 failures (test_exact_1722_*, test_exact_2509_*, test_governed_reconciliation_*) fail identically on origin/main b687b3dd4573bedb9f79b4105e137abfab2c2fb7 in this checkout and are unrelated; both new tests pass."
+      "exit_code": 0,
+      "evidence": "191 passed, 284 subtests passed at e8ae5649f4db23aaa9e4389be640b29dbfcc5746 (run from the repository root)."
     },
     {
       "command": "node --test scripts/prove-production-risk-acceptance.test.mjs",

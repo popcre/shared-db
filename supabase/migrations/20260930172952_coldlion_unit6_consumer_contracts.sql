@@ -70,7 +70,7 @@ end $$;
 revoke all on all tables in schema coldlion from public, anon, authenticated;
 revoke usage on schema coldlion from public, anon, authenticated;
 grant usage on schema coldlion to service_role;
-grant all on all tables in schema coldlion to service_role;
+grant select, insert, update, delete on all tables in schema coldlion to service_role;
 
 -- =====================================================================================
 -- 2. Customer / vendor promotion path already on main. Touch the durable contract

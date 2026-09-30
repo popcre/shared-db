@@ -6,8 +6,8 @@
   "migration_versions": [
     "20260930202719"
   ],
-  "contract_ref": "refs/db-contracts/3545/9",
-  "contract_sha256": "6c510f330d545785d918e96d595a62597714464392aa84f11ff5b68df10336c9",
+  "contract_ref": "refs/db-contracts/3545/10",
+  "contract_sha256": "c26e8a0b65c0c16e0965ccfd0823ed8adc68d02dfcdde5319fa93fc7b4009f2c",
   "head_sha": "16fb8813f74f4640975a20a31871d57748af6a3d",
   "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
   "files_changed": [

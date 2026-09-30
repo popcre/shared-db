@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 3234,
+  "outcome": "ready-for-merge",
+  "pr": 3852,
+  "migration_versions": [
+    "20260930212107"
+  ],
+  "contract_ref": "refs/db-contracts/3234/5",
+  "contract_sha256": "fdb0eb79497e39fcd5f81e48c3d52086faf974bdb59eee21be39981987cb923b",
+  "base_sha": "b687b3dd4573bedb9f79b4105e137abfab2c2fb7",
+  "head_sha": "2e93cb62b60249e649ba91a87104a93365d82c0d",
+  "files_changed": [
+    ".github/live-proofs/3234.sql",
+    "supabase/migrations/20260930212107_coldlion_prod_detail_drop_line_seq_unique.sql",
+    "supabase/tests/coldlion_prepack_prod_detail_landing_contracts.sql",
+    "tools/coldlion-landing-prod-details.test.mjs",
+    "tools/coldlion-landing/lib/prod-details.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table coldlion.prod_detail"
+  ],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-landing-prod-details.test.mjs",
+      "exit_code": 0,
+      "evidence": "39/39 pass at 9625e158e"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "static checks passed"
+    },
+    {
+      "command": "supabase db query --linked (preview apply + constraint inventory)",
+      "exit_code": 0,
+      "evidence": "project-ref mvpkijzfmfcxhnzqogzs; unique prod_line_seq constraint absent (count 0); PK (company_code,pkey) remains; grain-proof comment present; version 20260930212107 recorded applied"
+    }
+  ],
+  "assumptions_resolved": [
+    "pkey is the sole /proddetails row identity (ColdLion technical team 2026-09-29)",
+    "prodLineSeq may repeat and is not a unique constraint"
+  ],
+  "stop_conditions_hit": []
+}

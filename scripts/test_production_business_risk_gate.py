@@ -3819,12 +3819,20 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
 
     def test_allowlist_entry_alter_function_volatility(self):
         """#3725: a volatility flag alone is catalog-only — no data rewrite,
-        no lock, no grant change. Anything beside the flag stays refused."""
+        no lock, no grant change. Anything beside the flag stays refused.
+        #3826 (Muse M2): an IMMUTABLE claim additionally needs a pure body;
+        STABLE and VOLATILE need no body proof (the safe direction)."""
         self.assert_allowed([
             "alter function plm.wb_validate_normalized_row(text, jsonb) stable;",
-            "ALTER FUNCTION public.f() IMMUTABLE;",
             "alter function public.f(text) volatile;",
             "alter function plm.f(a bigint, b text[]) stable;",
+            # IMMUTABLE with a body that only computes on its arguments
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return abs(p_x); end $$;"
+            " alter function public.f(int) immutable;",
+            "create or replace function public.g(p_s text) returns text"
+            " language sql immutable as $$ select btrim(p_s) $$;"
+            " alter function public.g(text) immutable;",
         ], [
             "alter function plm.f(text) stable cascade;",
             "alter function plm.f(text) stable restrict;",
@@ -3837,6 +3845,26 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter function plm.f(text) cost 100;",
             "alter function f(text) stable;",
             "alter function plm.f(text) depends on extension pg_trgm;",
+            # IMMUTABLE with no body anyone can inspect: refused (M2)
+            "ALTER FUNCTION public.f() IMMUTABLE;",
+            "alter function public.f(int) immutable;",
+            # IMMUTABLE on a body that reads the clock or a table: refused
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return now()::int + p_x; end $$;"
+            " alter function public.f(int) immutable;",
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ declare n int; begin"
+            " select count(*) into n from pg_class; return n; end $$;"
+            " alter function public.f(int) immutable;",
+            # tz-dependent cast: the exact #3725 defect shape
+            "create or replace function public.f(p_s text) returns text"
+            " language plpgsql immutable as $$ begin perform p_s::timestamptz;"
+            " return p_s; end $$;"
+            " alter function public.f(text) immutable;",
+            # a call to a user-defined name carries unknown volatility
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return public.other(p_x); end $$;"
+            " alter function public.f(int) immutable;",
         ])
 
     def test_a_do_assertion_block_reports_no_risk(self):
@@ -3898,6 +3926,36 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         for body in allowed:
             with self.subTest(allowed=body):
                 self.assertEqual(self.classify(body), [])
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_a_string_delimiter_cannot_hide_dml_from_the_do_checker(self):
+        """#3826 (Muse H1): comment stripping before string stripping let a
+        `--` or `/*` inside a string literal hide real DML from the forbidden
+        keyword scan while PostgreSQL executed it. The checker must see the
+        DELETE in every one of these shapes."""
+        refused = [
+            # the two review payloads, as a complete DO body
+            "do $$ declare v text; begin "
+            "select 'a--b' into v; delete from public.t; raise notice 'x'; end $$;",
+            "do $$ declare v text; begin "
+            "select '/*' into v; delete from public.t; /* */ raise notice 'x'; end $$;",
+            # the same two with the RAISE first (the variant that used to be
+            # excused: the false comment ate only the DML, leaving the raise)
+            "do $$ declare v text; begin "
+            "raise notice 'x'; select 'a--b' into v; delete from public.t; end $$;",
+            "do $$ declare v text; begin "
+            "raise notice 'x'; select '/*' into v; delete from public.t; /* */ end $$;",
+            # a real end-of-line comment must not swallow the next line's DML
+            # (the body arrives line-structured, so `--` ends at its newline)
+            "do $$\nbegin\n  raise notice 'x'; -- note\n  delete from public.t;\nend\n$$;",
+            # doubled-quote and E-string shapes around the delimiters
+            "do $$ declare v text; begin "
+            "raise notice 'a''--b'; select 'c' into v; delete from public.t; end $$;",
+            "do $$ declare v text; begin "
+            "raise notice e'a\\''; delete from public.t; raise notice 'b'; end $$;",
+        ]
         for body in refused:
             with self.subTest(refused=body):
                 self.assertEqual(self.classify(body), self.EVERY_RISK)

@@ -54,7 +54,7 @@ Successor shared-db orchestrator after marker #3832 closed (handover PR #3836, b
 
 | Item | Exact state |
 |---|---|
-| **#3825 whitelist fix** | Agent `general-19` still running at wrap-up (shadowable bare-name whitelist in `_do_body_is_assertion_only` / `_immutable_body_is_safe`). Branch `fix-risk-gate-alter-function-do-3821`, worktree `C:/repos/shared-db/.ai/worktrees/risk-gate-3821-mimo`. After fix: re-review at new head, then Guarded Merge. |
+| **#3825 whitelist fix** | **COMPLETED after handoff draft:** general-19 fixed H1/M1 (bare-name whitelist fails closed when any `CREATE FUNCTION` in the migration set defines that name; `pg_catalog.` stays builtin). Implementation head `6b0feca6758e3dbb29f5b2748c6d7df68f35c372`, evidence tail `8490a6e1eb668beaca7f8a3455458ef9f43977b9`. Tests 197+12 OK, truth audit OK. Next: Muse exact-head review at `8490a6e1e`, then Guarded Merge. |
 | **#3839 reviews** | Slot 1: DeepSeek 4640 → Grok 4641 (turn_limit_cancelled, excluded terminal-unavailable). Further assign/replace refused (`reviewer release evidence is unreadable`). Slot 2: Qwen 4642 → Muse 4643 (wrapper exit 1). Card posted on PR. |
 | **protected-file queue** | #3657 → #3808 → #3396 → #3787 → #3647 → DesignFlow. **Not started.** One open PR at a time on `manage-migration-author-lanes.mjs`. |
 | Claim transfers | #2110 (#3378), #3175 (#3307), #2662 (#3294) — not started. |
@@ -231,3 +231,4 @@ Outstanding items already have open issues or PRs:
 No new `db-work` issues required — all outstanding work is already queued.
 
 Posted by MiMo chat ses_ffe5f0cb4d420ffeIsV74tLSR5 on edge-dev
+

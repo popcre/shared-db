@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "work_issue": 3835,
+  "outcome": "ready-for-merge",
+  "pr": 3389,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3835/7",
+  "contract_sha256": "883c0772a34dfb5015bb0994949bdf505183b19cffa67fcbbb848407d4358dcf",
+  "base_sha": "21e415b399c10e260a885c3f4e15b0e689c1a49f",
+  "head_sha": "3424313852b49c6de4d4a0e09876aadaf46ab2ee",
+  "files_changed": [
+    ".github/workflows/pr-guards.yml",
+    "config/vendor-landing-authority.json",
+    "docs/verification/throughput-dispositions/scripts~check-vendor-identity-authority.mjs.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-vendor-identity-authority.test.mjs",
+      "exit_code": 0,
+      "evidence": "78 tests, 78 pass, 0 fail at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows. Ten more than the previous head. The two scanners now have DIRECT tests rather than only whole-migration ones, which is the gap that let a dead but load-bearing veto survive a green 67-test run earlier in this issue. Two earlier tests were REMOVED, not fixed: they asserted guard behaviour on SQL that PostgreSQL rejects, so they proved nothing."
+    },
+    {
+      "command": "node scripts/check-vendor-identity-authority.mjs",
+      "exit_code": 0,
+      "evidence": "printed \"vendor identity authority OK\" at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows. Still clean with the widened scan, so the accepted over-breadth refuses nothing in the current tree. This is the guard finding no violation; the 67 refusal tests are the evidence that it fires."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "printed \"truth audit OK: call_sites=327 sources=82 derived_digest=4fb6abd56328\" at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows."
+    },
+    {
+      "command": "python -m pytest scripts/test_production_business_risk_gate.py",
+      "exit_code": 0,
+      "evidence": "189 passed, 277 subtests passed at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "exit 0 at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows. No DATABASE_URL is set in this worktree, so the disposable-database replay was not attempted; only the offline SQL guards ran."
+    },
+    {
+      "command": "registerEntryIsOpen against the CURRENT origin/main register and against every concrete case round 5 named",
+      "exit_code": 0,
+      "evidence": "2.36 settled and 2.19 open against both this branch copy of docs/coldlion-open-questions.md and the current origin/main copy (c73c3d50); and all six of the round-5 H1 status-cell cases classify as the review said they should, including \"Closed, awaiting reply.\" now reading OPEN. Checked at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the implementation commit this report follows. CI tests the merge into main, so main copy of the register is the one that decides this check."
+    }
+  ],
+  "assumptions_resolved": [
+    "Round 1 of the governed review (head a5dba125) returned REVISE. Five IDENTITY evasions and two fail-open paths were closed; the activation window and the settled-not-relevant limit were recorded in the config instead, because closing the first would require editing a merged migration and the second is a judgement a regex cannot make.",
+    "Round 2 (head 21bfe963) returned REVISE. The two fail-open paths that turned the guard into a silent no-op (unvalidated activation_migration, absent migrations directory) now refuse; schema detection no longer depends on literal spelling; the removal direction covers drop column/table/schema; comment and header parsing is a scanner rather than a line regex; and a row that shouts both a settled and an open marker reads OPEN. The owner-ruling citation form remains a shape check and is now documented as one.",
+    "Generation 1 assumed the guard would ship as its own workflow file. pr-guards.yml carries the newer, more specific convention that a repo-wide guard is a job there. The job moved, the standalone workflow was deleted, and the check-run name is unchanged so no required context changes.",
+    "A new script under scripts/ requires a reviewed throughput-disposition catalogue; generation 1 did not allow that path, so Tools offline tests refused. The catalogue is added with a written disposition for each of the three comment lines that match the tracked pattern.",
+    "Every check above was re-run at this exact commit. Earlier reports cited runs at earlier SHAs, which round 2 correctly refused as unbound evidence.",
+    "Round 3 (head 24844be6) returned REVISE with two fail-opens in the guard itself. H1: dollar-quoted bodies were blanked before the identity and schema tests, so an identity constraint asserted or dropped inside a DO block or a function body was never tested and the check went green. Bodies are now scanned AS SQL, recursively, so their own comments and strings are still excluded. H2: header detection compared raw and stripped text line by line, and blanking a multi-line construct shortened the stripped side; the drift refused genuine headers and accepted fake ones. Header positions now come from one offset-returning scan. H3, H4, M1, M2, M4, L1 and L2 are also fixed in code. Each has a negative test.",
+    "H4 was fixed by scoping the settled decision to the register row STATUS cell rather than by widening the open-marker veto row-wide. The wide version was implemented first and it read the real register entry 2.36 as OPEN: that entry states the identity question is ANSWERED and, in the same cell, that a separate cost sub-question is still open. A row-wide case-insensitive veto would therefore refuse every citation of a correctly answered entry. The real-register test caught it.",
+    "THIS PACKET RAN NO CHECKS, and every earlier generation said the same of itself. Every result recorded above was produced by the author running the named command in this worktree at 3424313852b49c6de4d4a0e09876aadaf46ab2ee, the single implementation commit this report follows, and written down afterwards. The evidence commit that carries this file is a later commit and executed nothing. A reader who wants an independently executed result should read the CI run for this head.",
+    "L3 answered by superseding, not editing: generation 2 committed a machine name and an absolute local worktree path into a public repository (AGENTS.md 6.14). Generation 3 replaces both with non-identifying equivalents and chains to generation 2 through evidence_parent. Generation 2 stays immutable.",
+    "L4 and L5 accepted as recorded: the non-recursive migrations scan is documented, and the three throughput dispositions are prose about a closed defect rather than suppressed truth claims.",
+    "The previous head passed 55/55 locally and 54/55 in CI, and the single failure was the live-register test. That looked like a platform difference and was not: CI checks out the merge with main, main had reworded entry 2.36 verdict from ANSWERED to Fully answered, and the guard recognised only SHOUTED settled markers. The guard answer therefore moved while the guard itself did not change. Fixed by reading the status cell opening VERDICT in any case, with the open-marker vetoes kept; the config now records that a register rewording can change whether an existing citation passes, and two tests pin both recorded wordings so a third fails in review rather than in a later pull request.",
+    "Round 5 (head 6f633ca5) returned REVISE. H1 (asymmetric settled/open tests, typography deciding the verdict), H2 (EXCLUDE without USING), H3 (dynamic DDL inside string literals), M1 (dollar tag inside a string literal), M2 (WITHDRAWN treated as settled), M3 (status cell on a row with no trailing pipe) and M6a (empty migrations tree printing OK) are all fixed in code with tests. M4 is answered in the config: the suite pins real register verdicts, so a documentation change that reseats one turns this check red and must update the tests in the same pull request. That is intended rather than tolerated.",
+    "M5 was a real error in the previous packet and is corrected here, not explained away: generation 4 inherited an assumptions_resolved bullet from generation 3 that still named 7430c3a7, while every other field named bdd918d4. Two commits were cited for one set of runs. This generation names exactly one commit, 3424313852b49c6de4d4a0e09876aadaf46ab2ee, everywhere.",
+    "The round-6 reviewer produced no verdict: it spent its whole completion budget on reasoning (28,372 reasoning tokens, finish_reason stop, no answer text) and the runner refused the run as having no recordable terminal verdict. That is a truncated-output failure, not a provider outage; nothing was paused and no reviewer was replaced, and the only consequence is a re-draw.",
+    "One remark the reviewer made before it stopped was correct and is fixed here rather than waited on: the round-5 edit left leadingWord, SETTLED_SHOUTED and SETTLED_NEGATED unreferenced. The first two were genuinely dead and are removed. THE THIRD WAS LOAD-BEARING — without it \"Closed with no answer.\" reads settled, because the enumerated open-marker veto only knows the words somebody listed. The veto is restored and pinned by a test. I introduced that regression and no test caught it, which is the second time in this issue that removing a check and re-running a green suite proved nothing.",
+    "Round 7 (head e805e904) returned REVISE. H1 (EXCLUDE unreachable across a line break), H2 (schema name required next to a dot), M1 (stale docstring), M2 (unvalidated file-name stamp), M3 (U& escapes), M4 (open vocabulary) and M5 (no direct scanner tests, stale stated invariant) are fixed with tests. H3 (bolding can still change the answer) is NOT fixed: the config over-claim that it could not is removed and replaced with the limit, its concrete example, and the recommended structural fix.",
+    "Round 5 M1 was wrong about PostgreSQL and my fix for it was worse than the reported defect. That is recorded here rather than quietly reverted: the change made the scanner skip a real closing tag, and two tests encoded the mistaken semantics. A reviewer finding is evidence, not an instruction, and this one needed checking against the language before being acted on."
+  ],
+  "stop_conditions_hit": []
+}

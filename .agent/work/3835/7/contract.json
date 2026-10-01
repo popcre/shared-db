@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "work_issue": 3835,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Refuse a migration that asserts or removes an identity constraint on a vendor landing table unless it cites, in a machine-readable header, a source authority the vendor has actually settled.",
+  "base_sha": "21e415b399c10e260a885c3f4e15b0e689c1a49f",
+  "dispatcher": "repository-maintenance session, self-owned per AGENTS.md 0.0-C REPO-SESSION",
+  "worker": "Claude Code repository-maintenance session",
+  "branch": "guard/vendor-identity-source-authority",
+  "worktree": "an isolated upstream worktree of popcre/shared-db (AGENTS.md 2.1-W)",
+  "allowed_paths": [
+    ".github/workflows/pr-guards.yml",
+    "config/vendor-landing-authority.json",
+    "docs/verification/throughput-dispositions/scripts~check-vendor-identity-authority.mjs.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "file_writes": [
+    ".github/workflows/pr-guards.yml",
+    "config/vendor-landing-authority.json",
+    "docs/verification/throughput-dispositions/scripts~check-vendor-identity-authority.mjs.json",
+    "scripts/check-vendor-identity-authority.mjs",
+    "scripts/check-vendor-identity-authority.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "no database connection, no migration, no schema change of any kind",
+    "never edit an already-merged migration to add a citation to it",
+    "never widen the guard to accept prose in place of the machine-readable header"
+  ],
+  "required_checks": [
+    "node --test scripts/check-vendor-identity-authority.test.mjs",
+    "node scripts/check-vendor-identity-authority.mjs",
+    "python -m pytest scripts/test_production_business_risk_gate.py",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "coldlion is the only vendor landing schema that needs this today",
+    "migrations merged before the activation stamp cannot be edited to add a citation and are grandfathered",
+    "Generation 1 assumed the guard would ship as its own workflow file, following AGENTS.md 5.2. .github/workflows/pr-guards.yml states the newer and more specific convention: a repo-wide guard is added as a job THERE, and splitting one back out is a deliberate reviewed decision. Generation 2 moves the job into pr-guards.yml under the same check-run name and deletes the standalone workflow.",
+    "A new script under scripts/ needs a reviewed throughput-disposition catalogue. Generation 1 did not allow that path, so the Tools offline tests check refused. Generation 2 allows exactly that one catalogue file.",
+    "Round 3 found two fail-opens in the guard itself: a dollar-quoted body was blanked before the identity and schema tests ran, and header detection compared raw and stripped text line by line while blanking shortened the stripped side. Generation 3 covers fixing both inside the already-allowed paths; no new path is needed.",
+    "Generation 2 committed a machine name and an absolute local worktree path into a public repository. Generation 3 replaces both with non-identifying equivalents. Generation 2 stays immutable and is chained through evidence_parent; the L3 finding is answered by superseding the record, not by editing it.",
+    "The PUBLISHED refs/db-contracts blob is the authority for a contract digest, not the working-tree file: git checks these files out with CRLF on Windows, so a digest computed from the checkout does not match the one recorded at publish time. Generation 3 records its parent from the published ref.",
+    "Round 3 was answered at head 37c75ac9 and its CI then failed one test that passed locally. The cause was not the platform: docs/coldlion-open-questions.md moved on main between this branch being cut and that CI run, rewording entry 2.36 verdict from ANSWERED to Fully answered, and the guard read only SHOUTED settled markers. Generation 4 covers reading the status cell opening verdict in any case instead, and recording in the config that a register rewording can change whether an existing citation passes.",
+    "Round 5 found three more fail-opens, all in the guard own reading of SQL: string literals were blanked so dynamic DDL built with EXECUTE was invisible; a dollar tag inside a string literal ended the quoted body early and corrupted the rest of the scan; and EXCLUDE without the optional USING clause was not matched. It also found the settled and open register tests reading different spans in different cases. Generation 5 covers all of them inside the already-allowed paths.",
+    "Scanning string literals is accepted as DELIBERATELY OVER-BROAD. A migration that mentions a guarded table and a uniqueness keyword inside data will be asked for a header it may not need. That is recorded here as a decision rather than a side effect, and it is pinned by a test.",
+    "The round-6 reviewer exhausted its completion budget on reasoning and returned no terminal verdict, so no verdict is recorded at the previous head. One remark it made in passing before stopping was correct and is acted on in generation 6: the round-5 edit had left leadingWord, SETTLED_SHOUTED and SETTLED_NEGATED unused, and the third of those was load-bearing.",
+    "Round 7 found the EXCLUDE pattern unreachable across a line break, the schema detector still requiring the name to sit next to a dot, an unvalidated migration file-name stamp, a U& literal escape gap, an enumerated open-vocabulary gap, a docstring describing a rule the code had stopped implementing, and no direct tests for either scanner. Generation 7 covers all of them inside the already-allowed paths.",
+    "Round 5 M1 is NOT accepted as stated. It reported that a dollar tag inside a string literal wrongly ends the body early; PostgreSQL dollar quoting has no escapes, so a bare $$ inside a $$-tagged body really does close it and such SQL is invalid. The code written to answer it made the scanner skip a genuine closing tag that followed a comment on the same line, and the two tests asserting the reported behaviour were asserting behaviour on invalid SQL. Generation 7 reverts that code, replaces both tests with the valid distinctly-tagged construction, and answers the underlying worry by bounding an unterminated literal to its own line.",
+    "Two limits are RECORDED rather than closed, with the reason, and the config no longer claims otherwise: bolding a verdict can still change whether a caveat written after it is seen, and the open-marker list is an enumeration. Closing either properly means requiring the register to carry an explicit machine-readable status token before an entry is citable, which is a change to the register as well as to this guard and is named as the recommended next step."
+  ],
+  "stop_conditions": [
+    "the guard fails against the repository as it stands on main",
+    "satisfying the guard would require editing an applied migration"
+  ],
+  "generation": 7,
+  "evidence_parent": {
+    "work_issue": 3835,
+    "generation": 6,
+    "contract_sha256": "ca90db74368bd69738f1efea6c9fd7b94aa34f1554786dd1b3ffb445ba314df7"
+  }
+}

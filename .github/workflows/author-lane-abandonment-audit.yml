@@ -36,7 +36,8 @@
 # NO ISSUES, NO COMMENTS, EVER. This job files nothing. An hourly monitor that
 # writes is an hourly monitor that produces duplicates — this repository has
 # already generated 25 of them once. The failing run and its job summary ARE the
-# report, and the token below cannot write even if a future step tried.
+# report. The GitHub token has no write permission; the preview-ledger token is
+# confined to the guarded report step and used only for a fixed SELECT.
 #
 # THREE EXIT CODES, NOT TWO. 0 is a clean hour. 2 means a claim is expired and a
 # human must decide. 3 means the audit COULD NOT READ the state and must never be
@@ -68,9 +69,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  require-main:
+    name: Refuse abandonment audit outside main
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 2
+    steps:
+      - name: Require the protected main ref
+        env:
+          AUDIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$AUDIT_REF" != 'refs/heads/main' ]; then
+            echo '::error::Abandonment audit credentials are available only on main.' >&2
+            exit 1
+          fi
+
   audit:
     name: Author lane abandonment audit
+    needs: require-main
+    if: github.ref == 'refs/heads/main'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: preview
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -90,8 +108,16 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -uo pipefail
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo '::error::PREVIEW_PROJECT_REF is unset; the audit cannot read the preview ledger.' >&2
+            echo '## Author lane abandonment audit' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Unverifiable: PREVIEW_PROJECT_REF is unset; no lane result was proven.' >> "$GITHUB_STEP_SUMMARY"
+            exit 3
+          fi
           set +e
           node scripts/manage-migration-author-lanes.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
           CODE=${PIPESTATUS[0]}

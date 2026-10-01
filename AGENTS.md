@@ -53,6 +53,9 @@ the map below.
 
 - **Never ask a human to approve (Albert Hazan, 2026-09-28).** Allocator-assigned AI review
   gates technical actions; the AI performs every manual step itself. Full text: §1 below.
+- **Albert is not a technical reviewer, now or in the future (Albert Hazan, 2026-09-30).**
+  Production risk classes are accepted by the allocator-assigned AI reviewer's durable exact-head
+  assessment, never by Albert. Full text: [`owner-rulings.md` §6.23](docs/owner-rulings.md).
 
 - **§0.0-B — STRUCTURE, not DATA (Albert Hazan, 2026-08-13).** This repo and its orchestrator
   govern the *shape* of the database (schema, tables, columns, views, functions, triggers, RLS,
@@ -183,8 +186,15 @@ to "spend" only one review.
   changes what the change proves, and a reviewer who never saw it never reviewed
   it. Widening equivalence beyond `.agent/` would be reviewing less, not
   reviewing faster.
-- No required check becomes optional, no gate is skipped, and no reviewer
-  requirement is dropped. Parallelise; do not delete.
+- **Retiring a required check is an AI decision with evidence (owner ruling
+  2026-09-28, see `docs/agents/owner-rulings.md`).** A required check may be
+  retired, merged into another, or made advisory when measured evidence shows it
+  mostly fails for reasons unrelated to the change; the pull request carrying it
+  states the exact before/after required-check list and gets an assigned AI
+  reviewer's APPROVE before branch protection changes. On any single pull
+  request no gate is skipped, and no reviewer
+  requirement is dropped. Speed comes from parallelising; do not delete the
+  exact-head review.
 
 `scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
 place, and fails the tools-offline check if either is removed or contradicted.

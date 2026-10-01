@@ -18,9 +18,9 @@
   "db_writes": [],
   "dispatcher": "MiMo shared-db orchestrator marker #3821 on edge-dev",
   "evidence_parent": {
-    "work_issue": 3826,
+    "contract_sha256": "ba1ed2561c03ff42e33a3de44cca04c17f029049340e13116cca834f93b7836e",
     "generation": 1,
-    "contract_sha256": "ba1ed2561c03ff42e33a3de44cca04c17f029049340e13116cca834f93b7836e"
+    "work_issue": 3826
   },
   "file_writes": [
     "scripts/production_business_risk_gate.py",

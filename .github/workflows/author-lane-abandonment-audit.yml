@@ -108,6 +108,12 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Issue #3857: the audit's required-check authority reads need
+          # admin-level access the workflow token can never have. Same elevated
+          # read token guarded-migration-merge.yml passes, used ONLY for those
+          # two authority reads; the audit's own writes stay structurally
+          # impossible (its write hooks are removed).
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -116,6 +122,16 @@ jobs:
             echo '::error::PREVIEW_PROJECT_REF is unset; the audit cannot read the preview ledger.' >&2
             echo '## Author lane abandonment audit' >> "$GITHUB_STEP_SUMMARY"
             echo 'Unverifiable: PREVIEW_PROJECT_REF is unset; no lane result was proven.' >> "$GITHUB_STEP_SUMMARY"
+            exit 3
+          fi
+          # An unset AUTHORITY_TOKEN would fail closed SILENTLY with the same
+          # undiagnosed exit 3 this workflow's whole repair exists to eliminate
+          # (a misscoped or absent secrets.SYNC_TOKEN interpolates to empty).
+          # Name it instead (issue #3857).
+          if [ -z "${AUTHORITY_TOKEN// /}" ]; then
+            echo '::error::AUTHORITY_TOKEN is unset; the audit cannot read the required-check authority. Check that secrets.SYNC_TOKEN is available to this job (this job runs under the preview environment).' >&2
+            echo '## Author lane abandonment audit' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Unverifiable: AUTHORITY_TOKEN is unset; no lane result was proven.' >> "$GITHUB_STEP_SUMMARY"
             exit 3
           fi
           set +e

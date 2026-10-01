@@ -352,6 +352,29 @@ and it is done by owner decision, never by an automated mapping.
 - **Sub-UPCs are rarely populated**, because UPCs are not usually assigned to prepack components.
   (2026-08-17)
 - **Merchandise groups carry an active/inactive flag**, and it is live. (2026-08-20)
+- **`/proddetails` row identity is `pkey`.** Primarily `pkey`, but consider stage code.
+  Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **`prodLineSeq` on `/proddetails` groups sizes** (one item/color/label/dim). It can repeat and
+  is not a line identity. POP does not use apparel sizes, so the field means nothing for us —
+  never treat it as unique. Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **Ignore `/proddetails` rows with `prodQty` = 0.** They look like a quantity zeroed out instead
+  of cancelled; same effect. Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **Pull `/proddetails` at `ISS` stage and ignore the rest.** Extra production-order lines often
+  exist only to show in-transit and receiving. Authority: ColdLion technical team, 2026-09-29.
+  **Settled for the loader.**
+- **Never sum, merge or de-duplicate `/proddetails` rows on `(prodOrderNo, prodLineSeq)`.**
+  Identical rows and split quantities are the customer PO entered as written. Authority:
+  JamieLynn, 2026-09-24. **Settled.**
+- **A cancelled-quantity field exists on the production side**, but whether the back office
+  cancels or deletes cancelled lines is **Unknown**. Authority: ColdLion technical team, 2026-09-29.
+- **Factory amount owed is the sum of `prodQty` × `prodCost` over every real row.** Split
+  quantities and faithful double-entered PO lines are both valid charges. Authority: JamieLynn,
+  2026-09-29 (answers to the worked examples). **Settled.**
+- **Ikonick production-order rows that do not fit the model are an owner exception.** When the
+  customer on an order is Ikonick, either ignore the awkward rows or squeeze them to fit our
+  system/method. Ikonick POs do not have to make sense. Multi-cost rows under one item on an
+  Ikonick order are this case (the item stood for different things reported under one number).
+  Authority: Albert Hazan, 2026-09-29. **Settled owner ruling.**
 
 ## How ColdLion works — our working model of the ERP
 
@@ -409,6 +432,29 @@ Production lines carry a stage — issued, in transit, received — and a reques
 returns **only the issued lines**. The other stages are not a subset; they are rows that appear
 nowhere in the default response. A production pull that does not iterate the stages is silently
 incomplete. **Settled**, verified live.
+
+### `/proddetails` rows are keyed by `pkey`; `prodLineSeq` is not a line identity
+
+**Settled** (ColdLion technical team, 2026-09-29; identity scan and shapes A–C earlier).
+
+- **`pkey` uniquely identifies a `/proddetails` row.** Look primarily at `pkey`, but consider
+  stage code. The landing primary key `(company_code, pkey)` is the right grain.
+- **`prodLineSeq` groups sizes** of one item/color/label/dim. It **can repeat**. POP does not
+  use size, so the field means nothing here and must never be a unique constraint.
+- **Look-alike rows are real.** A customer PO can carry the same line twice (exact duplicate) or
+  split a quantity across two rows. Do not de-duplicate and do not collapse them into one line.
+  For **payment**, add `prodQty` × `prodCost` across those rows (settled 2026-09-29).
+- **Ignore `prodQty` = 0.** Those rows are zeroed rather than cancelled; same effect as cancel.
+- **Filter to `ISS` when loading production-order detail.** Other rows often only show in-transit
+  and receiving, not extra purchase lines.
+- **Cost impact is settled (JamieLynn, 2026-09-29): each real row is a real charge.** Amount
+  owed to the factory = sum of `prodQty` × `prodCost` across the rows. A split-quantity line
+  (400 + 200 of one item) is 600 units owed. A customer PO that carries the same line twice
+  (1600 + 1600) is 3200 pieces owed, not a duplication. Keep the rows separate; add the money.
+- **Ikonick multi-cost rows are an owner exception, not a cost formula.** Same item at several
+  unit costs on one line is the Ikonick pattern: the item stood for different things reported
+  under one number. Either ignore those rows or squeeze them to fit our method. Do not treat
+  that shape as a general multi-cost rule. Owner ruling, Albert, 2026-09-29.
 
 ### What ColdLion computes, and what it refuses to explain
 

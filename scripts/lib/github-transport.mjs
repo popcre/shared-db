@@ -105,6 +105,25 @@ export const RATE_LIMIT_EXHAUSTED = /rate limit exceeded/i
 const RATE_LIMIT_STATUS = /HTTP (?:403|429)\b/
 export const DEFAULT_RATE_LIMIT_MAX_WAIT_MS = 15 * 60 * 1000
 
+// EVERY gh CHILD HAS A WALL-CLOCK BOUND (Reviewer Start Watch run 36487949025).
+// A gh call that never answers (a stalled connection, not a refusal) used to block
+// execFileSync forever. When that call ran inside a coordination mutex the mutex
+// was never released -- the run sat 3h49m holding refs/db-coordination/author-
+// acquisition and every reviewer draw stalled behind it. A timed-out child is
+// killed and the call FAILS (it is not reclassified as transient and not retried:
+// a timed-out write may have landed), so the caller's finally releases its lock.
+export const DEFAULT_GH_COMMAND_TIMEOUT_MS = 2 * 60 * 1000
+export const MAX_GH_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
+export function ghCommandTimeoutMs(env = process.env) {
+  const raw = env?.GITHUB_COMMAND_TIMEOUT_SECONDS
+  if (raw === undefined || String(raw).trim() === '') return DEFAULT_GH_COMMAND_TIMEOUT_MS
+  const seconds = Number(raw)
+  // Zero, negative or unreadable would disable the bound; refuse to, keep the default.
+  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_GH_COMMAND_TIMEOUT_MS
+  return Math.min(seconds * 1000, MAX_GH_COMMAND_TIMEOUT_MS)
+}
+export const isCommandTimeout = (error) => error?.code === 'ETIMEDOUT'
+
 export function isRateLimitExhausted(error) {
   const text = String(error?.stderr ?? error?.message ?? error ?? '')
   return RATE_LIMIT_EXHAUSTED.test(text) && RATE_LIMIT_STATUS.test(text)
@@ -160,6 +179,35 @@ export function rateLimitResetDelayMs(raw, args, nowMs) {
   }
   if (resetSeconds === null) return null
   return Math.max(0, resetSeconds * 1000 - nowMs)
+}
+
+// REAL-BUCKET RESET (issue #3743)
+// --------------------------------
+// For the Actions token, GET /rate_limit reports a fresh per-token view
+// ("5000 of 5000") while GitHub refuses real calls with "API rate limit exceeded
+// for installation" -- the shared per-repository budget it actually enforces.
+// Reading that probe as "not exhausted" produced a 0ms delay ("waiting 1s"), an
+// immediate second refusal, and a 60-second unknown-reset latch on every rerun.
+// When the free probe contradicts the refusal, one real REST read is made and
+// the reset is taken from ITS x-ratelimit-* headers (gh prints them on stdout
+// with -i, including on a 403). Anything unreadable stays null: never guessed.
+export function realBucketResetDelayMs(raw, nowMs) {
+  const text = String(raw ?? '').replace(/\r\n/g, '\n')
+  const boundary = text.indexOf('\n\n')
+  const head = boundary < 0 ? text : text.slice(0, boundary)
+  if (!/^HTTP\//.test(head)) return null
+  const headers = new Map()
+  for (const line of head.split('\n').slice(1)) {
+    const at = line.indexOf(':')
+    if (at > 0) headers.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim())
+  }
+  const retryAfter = headers.get('retry-after')
+  if (retryAfter !== undefined && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000
+  const remaining = headers.get('x-ratelimit-remaining')
+  const reset = headers.get('x-ratelimit-reset')
+  if (!/^\d+$/.test(remaining ?? '') || !/^\d+$/.test(reset ?? '')) return null
+  if (Number(remaining) > 0) return null
+  return Math.max(0, Number(reset) * 1000 - nowMs)
 }
 
 // HOST-WIDE EXHAUSTION LATCH (issue #2773)
@@ -299,6 +347,9 @@ export function runGitHubCommand(args, {
   // Only the real binary shares the host latch by default. An injected fake
   // executor is a test fixture and must never read or write the machine's latch.
   quotaLatch = executor === execFileSync ? hostQuotaLatch() : null,
+  // Only the real binary probes the real bucket by default; tests inject it.
+  repository = executor === execFileSync ? (process.env.GITHUB_REPOSITORY || null) : null,
+  timeoutMs = ghCommandTimeoutMs(),
 } = {}) {
   const mutating = isMutatingCall(args) || input !== undefined
   const allowed = mutating && !idempotentWrite ? 1 : Math.max(1, attempts)
@@ -309,8 +360,8 @@ export function runGitHubCommand(args, {
   // directly and never exercised the real stdin path. Naming 'ignore' here
   // would silently discard the body, so it is omitted when input is present.
   const spawnOptions = input === undefined
-    ? { encoding, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] }
-    : { encoding, maxBuffer, input }
+    ? { encoding, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' }
+    : { encoding, maxBuffer, input, timeout: timeoutMs, killSignal: 'SIGKILL' }
   let attempt = 0
   let rateLimitWaited = false
   for (;;) {
@@ -337,10 +388,22 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
         let delay = null
         let probe = null
         try {
-          probe = executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] })
+          probe = executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
           delay = rateLimitResetDelayMs(probe, args, now())
         } catch {
           delay = null // an unreadable reset is refused below, never guessed
+        }
+        if (delay === 0 && repository) {
+          // The free probe says "not exhausted" about a call that WAS refused:
+          // it is reading the wrong bucket (#3743). Ask a real endpoint.
+          let real = null
+          try {
+            real = executor('gh', ['api', '-i', `repos/${repository}`], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
+          } catch (probeError) {
+            real = probeError?.stdout ?? null
+          }
+          delay = realBucketResetDelayMs(real, now())
+          probe = null
         }
         if (quotaLatch) {
           const buckets = delay === null ? quotaBucketsFor(args) : exhaustedBuckets(probe, args)
@@ -358,15 +421,22 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
         // caller for a short bounded window rather than guess a reset time.
         try { if ((quotaLatch.read(args) ?? 0) <= now()) quotaLatch.write(args, now() + UNKNOWN_RESET_LATCH_MS) } catch { /* best-effort */ }
       }
-      if (!transient || attempt >= allowed - 1) {
+      // A timed-out child is never replayed, even if its stderr looks transient (#3791).
+      if (!transient || isCommandTimeout(error) || attempt >= allowed - 1) {
         const captured = String(error?.stderr ?? '').trim()
-        const detail = captured || String(error?.message ?? '').trim()
+        const timedOut = isCommandTimeout(error)
+        const detail = timedOut
+          ? `gh did not answer within ${Math.round(timeoutMs / 1000)}s and was killed; the call is failed, not retried${captured ? `\n${captured}` : ''}`
+          : (captured || String(error?.message ?? '').trim())
         const wrapped = wrapError
           ? wrapError(detail, error)
           : new GitHubTransportError(`GitHub command failed: ${detail}`)
         wrapped.transientTransport = transient
         wrapped.rateLimitExhausted = exhausted
         wrapped.stderr = captured
+        // `gh api -i` prints the refused response's headers on stdout; keep them
+        // so a quota preflight can read the real reset (#3743).
+        if (error?.stdout !== undefined) wrapped.stdout = error.stdout
         // Quieter for the expected answers, LOUDER for real faults.
         if (captured && !(expectedFailure && expectedFailure.test(detail))) {
           reportStderr(`gh ${args.join(' ')}\n${captured}\n`)

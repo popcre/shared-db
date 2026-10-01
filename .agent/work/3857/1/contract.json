@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3857,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Give the Author Lane Abandonment Audit's two required-check authority reads the elevated read token they need: pass AUTHORITY_TOKEN (secrets.SYNC_TOKEN, the guarded-merge pattern) in the audit step env, and scope only those two reads to it via a token-scoped helper (scripts/lib/authority-token-read.mjs). Without the token the reads fail closed exactly as before. Proof card for the end-to-end criterion: #3541.",
+  "base_sha": "5deadd0432",
+  "dispatcher": "ZCode repo-maintenance session for issue #3857",
+  "worker": "ZCode chat 636fe0d9-be00-46d6-9f25-59e9e3f33916 on edge-dev",
+  "branch": "audit-authority-token-3541",
+  "worktree": "C:/Users/ahazan/AppData/Local/Temp/sdb-ci-audit/fix2",
+  "allowed_paths": [
+    ".github/workflows/author-lane-abandonment-audit.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/authority-token-read.mjs",
+    "scripts/lib/authority-token-read.test.mjs",
+    ".agent/work/3857/1/contract.json",
+    ".agent/work/3857/1/completion.json"
+  ],
+  "file_writes": [
+    ".github/workflows/author-lane-abandonment-audit.yml",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/lib/authority-token-read.mjs",
+    "scripts/lib/authority-token-read.test.mjs",
+    ".agent/work/3857/1/contract.json",
+    ".agent/work/3857/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not touch any migration, database object, live row, or branch-protection setting.",
+    "Do not use AUTHORITY_TOKEN for anything except the two authority reads; every other GitHub call stays on the ambient token.",
+    "Do not weaken the fail-closed rule: with no elevated token the audit must still refuse rather than report zero."
+  ],
+  "required_checks": [
+    "node --test scripts/lib/authority-token-read.test.mjs",
+    "node --test scripts/lib/required-check-readback.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/orchestrator-flow/reconcile.test.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Disclosed: generation 1 is published before any reviewer is drawn; no prior refs/db-contracts/3857/1 exists.",
+    "secrets.SYNC_TOKEN exists and is the same classic PAT guarded-migration-merge.yml already passes as AUTHORITY_TOKEN."
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the change needs a file outside allowed_paths."
+  ]
+}

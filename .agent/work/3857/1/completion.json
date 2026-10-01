@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 3857,
+  "outcome": "ready-for-merge",
+  "pr": 3858,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3857/1",
+  "base_sha": "5deadd0432",
+  "files_changed": [
+    ".github/workflows/author-lane-abandonment-audit.yml",
+    "scripts/lib/authority-token-read.mjs",
+    "scripts/lib/authority-token-read.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/authority-token-read.test.mjs",
+      "exit_code": 0,
+      "evidence": "2 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/lib/required-check-readback.test.mjs",
+      "exit_code": 0,
+      "evidence": "6 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "745 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/reconcile.test.mjs",
+      "exit_code": 0,
+      "evidence": "32 pass, 0 fail"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "343 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 published before any reviewer was drawn; no prior refs/db-contracts/3857/1 existed.",
+    "secrets.SYNC_TOKEN is the same classic PAT guarded-migration-merge.yml already passes as AUTHORITY_TOKEN."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Live proof card: #3541 — the next scheduled audit run must return exit 0 or 2.",
+  "contract_sha256": "c85577024572881011e716c29e38cf95a5fb75b701c9cda37e9b959702ace723",
+  "head_sha": "d7481f90c2363b79bdac523b991feb3a0b3658a1"
+}

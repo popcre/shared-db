@@ -2235,11 +2235,13 @@ def classify_sql(repo_root: Path, allowlist: list[str]) -> list[str]:
         raw = matches[0].read_text(encoding="utf-8")
         statements = sql_top_level_statements(raw)
         bodies = sql_top_level_statements(raw, keep_dollar_quoted=True)
+        prior = _PriorMigrations(repo_root, version, raw)
+        shadowed = prior.defined_function_names()
         excused: set[int] = set()
         if statements is not None and bodies is not None and len(statements) == len(bodies):
-            excused = {i for i, s in enumerate(statements) if _is_assertion_do_block(s, bodies[i])}
-        reasons.update(_classify_statements(
-            statements, prior=_PriorMigrations(repo_root, version, raw), excused_do=excused))
+            excused = {i for i, s in enumerate(statements)
+                       if _is_assertion_do_block(s, bodies[i], shadowed)}
+        reasons.update(_classify_statements(statements, prior=prior, excused_do=excused))
     return sorted(reasons)
 
 
@@ -2306,6 +2308,30 @@ class _PriorMigrations:
              if re.fullmatch(r"\d{14}", path.name[:14]) and path.name[:14] < version),
             key=lambda path: path.name, reverse=True)
         self._cache: dict[Path, tuple[list[str], list[str]] | None] = {}
+        self._defined_names: set[str] | None = None
+
+    def defined_function_names(self) -> set[str] | None:
+        """Unqualified names of every `create ... function` in the migration set.
+
+        None when any file cannot be tokenised: a name that cannot be read
+        might be defined, so the caller must refuse rather than trust a
+        whitelist entry (H1/M1, #3826).
+        """
+        if self._defined_names is not None:
+            return self._defined_names
+        sources = ([self.current_raw] if self.current_raw is not None else []) + [
+            path.read_text(encoding="utf-8") for path in self.files]
+        names: set[str] = set()
+        for raw in sources:
+            statements = sql_top_level_statements(raw)
+            if statements is None:
+                return None
+            for s in statements:
+                m = _CREATE_FUNCTION_NAME.match(s)
+                if m:
+                    names.add(_function_unqualified_name(m.group(1)))
+        self._defined_names = names
+        return names
 
     def function_bodies(self, name: str) -> list[str]:
         """Every known body of `create ... function name`, current file first.
@@ -2535,6 +2561,23 @@ _CREATE_FUNCTION_BODY = re.compile(
     r"(\$(?:[a-z_][a-z0-9_]*)?\$|\$\$)(.*?)\2",
     re.S)
 
+# H1/M1 (#3826): a bare whitelisted call is only the builtin while nothing in
+# the migration set defines that name. Any `create [or replace] function` of the
+# same unqualified name -- public.md5, pg_catalog.md5, even an overload -- can
+# sit on the search_path ahead of pg_catalog and turn the whitelist exemption
+# into arbitrary-DML cover (CREATE FUNCTION md5 that deletes, then a DO that
+# merely calls bare md5()). The name match is intentionally broader than
+# _CREATE_FUNCTION_BODY: a string-literal or C body shadows just as hard as a
+# dollar-quoted one.
+_CREATE_FUNCTION_NAME = re.compile(
+    rf"create (?:or replace )?function ({_ALLOW_IDENT}(?:\.{_ALLOW_IDENT})*) ?\(")
+
+
+def _function_unqualified_name(qualified: str) -> str:
+    """PostgreSQL unqualified identity of a (possibly schema-qualified) name."""
+    part = qualified.split(".")[-1]
+    return part[1:-1].replace('""', '"') if part.startswith('"') else part
+
 
 def _create_function_body(statement: str, name: str) -> str | None:
     """The body of a kept `create ... function name ... as <body>` statement."""
@@ -2557,6 +2600,7 @@ def _immutable_body_is_safe(statement: str, prior: "_PriorMigrations | None") ->
     bodies = prior.function_bodies(m.group(1))
     if not bodies:
         return False
+    shadowed = prior.defined_function_names()
     for body in bodies:
         code = sql_top_level_statements(body)
         if code is None:
@@ -2570,11 +2614,25 @@ def _immutable_body_is_safe(statement: str, prior: "_PriorMigrations | None") ->
                 return False
             if name not in _IMMUTABLE_SAFE_CALLS and name not in _DO_HARMLESS_CALLS:
                 return False
+            # M1: a whitelist entry is only the builtin while no create
+            # function of that name sits in the migration set. A shadowed
+            # name carries the user body's volatility, not the builtin's.
+            if shadowed is None or name in shadowed:
+                return False
     return True
 
 
-def _do_body_is_assertion_only(body: str) -> bool:
-    """True when a DO body has no DML/DDL/DCL, no side-effecting calls, and a RAISE."""
+def _do_body_is_assertion_only(body: str, shadowed: set[str] | None = None) -> bool:
+    """True when a DO body has no DML/DDL/DCL, no side-effecting calls, and a RAISE.
+
+    ``shadowed`` is the set of unqualified names the migration set defines with
+    `create ... function`, or None when that set cannot be read. A bare
+    whitelisted call is only safe while its name is still the builtin (H1,
+    #3826): a same-file CREATE FUNCTION for the name turns the exemption into
+    arbitrary-DML cover. Fail closed -- an unknown shadow set refuses every
+    bare whitelist entry. `pg_catalog.`-qualified calls stay accepted for a
+    safe name: the explicit schema is the builtin regardless of search_path.
+    """
     # ONE string/comment-aware pass, not comment-first regexes (#3826). A `--`
     # or `/*` inside a string literal is not a comment in PostgreSQL; stripping
     # comments first let `'a--b'` or `'/*'` hide real DML from this scan while
@@ -2599,10 +2657,13 @@ def _do_body_is_assertion_only(body: str) -> bool:
                 return False
         elif name not in _DO_SAFE_CALLS and name not in _DO_HARMLESS_CALLS:
             return False
+        elif shadowed is None or name in shadowed:
+            return False
     return True
 
 
-def _is_assertion_do_block(statement: str, body_statement: str | None) -> bool:
+def _is_assertion_do_block(statement: str, body_statement: str | None,
+                           shadowed: set[str] | None = None) -> bool:
     """True when a normalised DO statement is an assertion-only block.
 
     ``statement`` is the tokeniser output with dollar-quoted bodies emptied to
@@ -2618,7 +2679,7 @@ def _is_assertion_do_block(statement: str, body_statement: str | None) -> bool:
         body_statement, flags=re.S)
     if not m:
         return False
-    return _do_body_is_assertion_only(m.group(2))
+    return _do_body_is_assertion_only(m.group(2), shadowed)
 
 
 def _classify_statements(statements: list[str] | None, prior: "_PriorMigrations | None" = None,

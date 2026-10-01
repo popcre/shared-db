@@ -19,8 +19,8 @@
       "legacy_semantic_key": "scripts/production_business_risk_gate.py:1ce605ffcacbd03b81a3f96e7e3bdc81d5814073cb125c6bb3f22cefd4222417:1"
     },
     {
-      "site": "scripts/production_business_risk_gate.py:2498",
-      "semantic_key": "scripts/production_business_risk_gate.py:1f170e14a12301fb7747ae88b55a18911d97482ed5e6ba7946ce9ba585c17eaf:context-413fdbfad123ac01f0e0363293b6745ff0bc24471f616f720d6007ba922d0624",
+      "site": "scripts/production_business_risk_gate.py:2671",
+      "semantic_key": "scripts/production_business_risk_gate.py:1f170e14a12301fb7747ae88b55a18911d97482ed5e6ba7946ce9ba585c17eaf:context-80fb2f28d9f40401d528ed958e28c1e842d8374d9cb0c77c5fb80ea920d20ed0",
       "line_sha256": "1f170e14a12301fb7747ae88b55a18911d97482ed5e6ba7946ce9ba585c17eaf",
       "disposition": "excluded",
       "reason": "New docstring comment describing the DO assertion-block fail-closed refusal path; no runtime call-site behavior change.",
@@ -75,7 +75,7 @@
       "legacy_semantic_key": "scripts/production_business_risk_gate.py:670a44eb0afd4c0a0ff47b583c426b71a88ddfce627c5d571935a2f4e3bc018d:1"
     },
     {
-      "site": "scripts/production_business_risk_gate.py:3140",
+      "site": "scripts/production_business_risk_gate.py:3409",
       "semantic_key": "scripts/production_business_risk_gate.py:88cc7fb6fc03430c4fdd2485a7faef97f446d5732613153940ea5afd75c105c1:context-aa6284db30e9c247967f00aa10cfb88a52463457238f35b4ac5514359cb99e57",
       "line_sha256": "88cc7fb6fc03430c4fdd2485a7faef97f446d5732613153940ea5afd75c105c1",
       "disposition": "excluded",
@@ -107,7 +107,7 @@
       "legacy_semantic_key": "scripts/production_business_risk_gate.py:b94519be06f87f0be576f961e620698406a20c87ed145700434dd2c81a085bf1:1"
     },
     {
-      "site": "scripts/production_business_risk_gate.py:3229",
+      "site": "scripts/production_business_risk_gate.py:3499",
       "semantic_key": "scripts/production_business_risk_gate.py:b99d695b1fca431f95ebb9600eb241916948a8538042af2e84faf9903fce5f98:context-20ff3e4a3f8bc5768157ee039db0a907244f3171c7df7ef886e8a9e2af5ba502",
       "line_sha256": "b99d695b1fca431f95ebb9600eb241916948a8538042af2e84faf9903fce5f98",
       "disposition": "excluded",
@@ -115,7 +115,7 @@
       "legacy_semantic_key": "scripts/production_business_risk_gate.py:b99d695b1fca431f95ebb9600eb241916948a8538042af2e84faf9903fce5f98:1"
     },
     {
-      "site": "scripts/production_business_risk_gate.py:2402",
+      "site": "scripts/production_business_risk_gate.py:2450",
       "semantic_key": "scripts/production_business_risk_gate.py:bbd32ca139e4dd7dd2a3e0913272c333d036b8dda1d71f5a5aa99c0c060a62eb:context-afd84726f4b3351003c36dd7b693845d33554602e4695193511f91f8f87e8643",
       "line_sha256": "bbd32ca139e4dd7dd2a3e0913272c333d036b8dda1d71f5a5aa99c0c060a62eb",
       "disposition": "excluded",

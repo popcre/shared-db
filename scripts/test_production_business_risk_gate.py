@@ -3677,6 +3677,16 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             (root / "supabase/migrations/20260814000000_x.sql").write_text(body, encoding="utf-8")
             return classify_sql(root, ["20260814000000"])
 
+    def classify_multi(self, migrations):
+        """classify_sql over an ordered [(version, body), ...] migration set."""
+        from production_business_risk_gate import classify_sql
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "supabase/migrations").mkdir(parents=True)
+            for version, body in migrations:
+                (root / f"supabase/migrations/{version}_x.sql").write_text(body, encoding="utf-8")
+            return classify_sql(root, [migrations[-1][0]])
+
     EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
                          RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
 
@@ -4002,6 +4012,59 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         for body in refused:
             with self.subTest(refused=body):
                 self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_a_shadowed_whitelist_name_cannot_cover_dml(self):
+        """#3826 (Muse H1/M1): a bare whitelisted call is only the builtin
+        while no `create ... function` of that name exists in the migration
+        set. The traced exploit is two statements -- CREATE FUNCTION md5 that
+        deletes, then a DO that merely calls bare md5() -- and the exemption
+        must refuse it. The same hole let a shadowed name lie about IMMUTABLE
+        (M1). pg_catalog. qualification stays the builtin; no create function
+        at all leaves the bare call routine."""
+        shadow = (
+            "create or replace function public.md5(t text) returns text"
+            " language plpgsql as $$ begin delete from public.t; return t; end $$;"
+        )
+        select_bare_md5 = (
+            "do $$ declare v text; begin select md5('x') into v;"
+            " raise notice 'ok'; end $$;"
+        )
+        select_qualified_md5 = (
+            "do $$ declare v text; begin select pg_catalog.md5('x') into v;"
+            " raise notice 'ok'; end $$;"
+        )
+        # the exploit: shadowed bare md5() under an otherwise-clean DO
+        self.assert_allowed([], [shadow + select_bare_md5])
+        # the shadow alone is still a recognised create_function
+        self.assert_allowed([shadow], [])
+        # pg_catalog.md5() is the builtin regardless of a public.md5 shadow
+        self.assert_allowed([shadow + select_qualified_md5], [])
+        # with nothing defining md5, the bare builtin call is routine
+        self.assert_allowed([select_bare_md5], [])
+        # a prior-migration shadow counts just like a same-file one
+        prior_shadow = ("20260101000000", shadow)
+        self.assertEqual(self.classify_multi(
+            [prior_shadow, ("20260201000000", select_bare_md5)]), self.EVERY_RISK)
+        self.assertEqual(self.classify_multi(
+            [prior_shadow, ("20260201000000", select_qualified_md5)]), [])
+
+    def test_a_shadowed_whitelist_name_cannot_lie_about_immutable(self):
+        """#3826 (Muse M1): an IMMUTABLE body that calls a name the migration
+        set redefines is not calling the pure builtin, so the volatility claim
+        is unproved and must report every risk."""
+        shadow = (
+            "create or replace function public.md5(t text) returns text"
+            " language plpgsql as $$ begin return now()::text || t; end $$;"
+        )
+        immutable_user = (
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin"
+            " return length(md5(p_x::text)); end $$;"
+            " alter function public.f(int) immutable;"
+        )
+        self.assert_allowed([], [shadow + immutable_user])
+        # without the shadow the body only calls pure builtins
+        self.assert_allowed([immutable_user], [])
 
     def test_the_real_3725_migration_is_routine(self):
         """20260929005943 (#3725): ALTER FUNCTION volatility + DO assertion

@@ -1,5 +1,10 @@
 # AGENTS.md — §0.0-C admission test, §11b to §11d (orchestrator role, routing contract, admission)
 
+> **Historical / reference only.** The orchestrator role was retired by owner ruling
+> (Albert Hazan, 2026-10-02: "there is no longer an orchestrator"; AGENTS.md §0.0-D).
+> Structural work is claim-first. The admission test and safety rules below still apply;
+> marker, routing-to-the-orchestrator, and dispatch-waiting instructions do not.
+
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
 ## 0.0-C The orchestrator admission test — what it may keep in its own context

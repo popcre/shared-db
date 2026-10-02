@@ -22,29 +22,48 @@ export function buildItemImportPayload(items, options = {}) {
 }
 
 // Refuse to promote a sweep that collapses licensor resolution (#3903 review F2): a
-// stale or empty merch-group header dictionary resolves nothing, and the upsert would
-// overwrite previously resolved licensor links with NULL while every row-count guard
-// still passes. The guard compares the RESOLVED SHARE of ColdLion items before and
-// after, so a genuine catalog shrink does not trip it. The script carries its own
+// stale or empty merch-group header dictionary row de-resolves a DIVISION, and the
+// upsert would overwrite previously resolved licensor links with NULL while every
+// row-count guard still passes. So the guard works per division, over the items in
+// CURRENT silver (plm.item_import joined to plm.item by source_id), never over all of
+// plm.item, which only grows and would dilute the signal over time. A division with
+// at least MIN_DIVISION_ITEMS items whose resolved share falls by more than
+// MAX_RESOLVED_SHARE_DROP refuses the whole sweep. The script carries its own
 // begin/commit because the Supabase-CLI (--linked) path does not wrap a file in a
 // transaction (tools/coldlion-landing/lib/db.mjs); the raise rolls the import back.
 // A deliberate, verified drop is promoted by setting allowResolutionDrop (workflow
 // input allow_resolution_drop), which skips only this guard for that one run.
 export const MAX_RESOLVED_SHARE_DROP = 0.1;
+export const MIN_DIVISION_ITEMS = 50;
+
+const DIVISION_SHARE_SQL = [
+  "select ii.division_code,",
+  "       count(*)::numeric as n,",
+  "       count(*) filter (where i.licensor_id is not null)::numeric / count(*) as share",
+  "  from plm.item_import ii",
+  "  join plm.item i on i.source_system = 'coldlion'",
+  "   and i.source_id = ii.company_code || '|' || ii.division_code || '|' || ii.item_no",
+  " group by ii.division_code",
+].join("\n");
 
 export function buildItemImportSql(payload, { allowResolutionDrop = false } = {}) {
-  const share = "select count(*) filter (where licensor_id is not null)::numeric / nullif(count(*), 0) from plm.item where source_system = 'coldlion'";
   return [
     "begin;",
-    `create temp table item_master_resolved_before as select (${share}) as share;`,
+    `create temp table item_master_resolved_before as ${DIVISION_SHARE_SQL};`,
     `select * from plm.import_item_master_data(${sqlDollarQuote("cl_items", payload)}::jsonb);`,
     "do $guard$",
-    "declare v_before numeric; v_after numeric;",
+    "declare v_bad text;",
     "begin",
-    "  select share into v_before from item_master_resolved_before;",
-    `  v_after := (${share});`,
-    `  if ${allowResolutionDrop ? "false" : "true"} and v_before is not null and coalesce(v_after, 0) < v_before - ${MAX_RESOLVED_SHARE_DROP} then`,
-    "    raise exception 'item master resolution collapsed: resolved share % -> %; refusing to promote. If the drop is real, re-run ColdLion Landing Sync with allow_resolution_drop=true', round(v_before, 3), round(coalesce(v_after, 0), 3);",
+    `  if ${allowResolutionDrop ? "false" : "true"} then`,
+    "    select string_agg(format('%s %s -> %s', b.division_code, round(b.share, 3), round(coalesce(a.share, 0), 3)), ', ')",
+    "      into v_bad",
+    "      from item_master_resolved_before b",
+    `      left join (${DIVISION_SHARE_SQL}) a using (division_code)`,
+    `     where b.n >= ${MIN_DIVISION_ITEMS} and a.division_code is not null`,
+    `       and coalesce(a.share, 0) < b.share - ${MAX_RESOLVED_SHARE_DROP};`,
+    "    if v_bad is not null then",
+    "      raise exception 'item master resolution collapsed (resolved share by division: %); refusing to promote. If the drop is real, re-run ColdLion Landing Sync with allow_resolution_drop=true', v_bad;",
+    "    end if;",
     "  end if;",
     "end",
     "$guard$;",

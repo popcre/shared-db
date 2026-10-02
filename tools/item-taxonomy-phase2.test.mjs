@@ -126,7 +126,8 @@ test("#3903: item import rolls back when licensor resolution collapses", async (
   assert.match(sql, /raise exception 'item master resolution collapsed/);
   assert.match(sql, /^begin;\n/);
   assert.match(sql, /\ncommit;\n$/);
-  assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /if false and/);
+  assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /\n  if false then\n/);
+  assert.match(sql, /group by ii\.division_code/);
 });
 
 test("#3903: nightly landing sync runs the Item Master loader in its own guarded step", async () => {
@@ -136,6 +137,7 @@ test("#3903: nightly landing sync runs the Item Master loader in its own guarded
   assert.ok(yml.indexOf("- name: Sync\n") > 0 && yml.indexOf("- name: Sync\n") < yml.indexOf("- name: Refresh Item Master"));
   assert.match(step, /ITEM_MASTER_ALLOW_RESOLUTION_DROP: \$\{\{ github\.event\.inputs\.allow_resolution_drop \}\}/);
   assert.match(step, /steps\.target\.outcome == 'success'/);
+  assert.match(yml, /- name: Refuse to run without an explicit target\n\s+id: target\n/);
   assert.match(step, /COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai/);
   assert.match(step, /node tools\/sync-coldlion-items\.mjs --apply/);
   assert.match(step, /if \[ "\$\{DRY_RUN:-false\}" = "true" \]; then\n\s+node tools\/sync-coldlion-items\.mjs\n/);

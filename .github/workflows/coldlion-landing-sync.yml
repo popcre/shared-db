@@ -24,12 +24,17 @@
 # resolves licensor/property against plm.merch_group_header, which holds curated,
 # owner-approved rows (#539/#1177) and is deliberately NOT refreshed here; the
 # loader instead refuses, inside its own transaction, any sweep that lowers the
-# share of resolved ColdLion items by more than 10 points; after verifying such a
-# drop is real, dispatch this workflow with allow_resolution_drop=true.
-# Known remedy-only case: plm.import_item_master_data refuses a sweep that omits a
-# division already present in plm.item_import (e.g. if ColdLion stops returning
-# EP001). That guard lives in the database function; the step fails loudly on its
-# own without affecting the landing step (follow-up issue tracks a retirement path).
+# resolved-licensor share of any division (50+ items, current silver only) by more
+# than 10 points; after verifying such a drop is real, dispatch this workflow with
+# allow_resolution_drop=true.
+# Known remedy-only case (shared-db issue #3910): plm.import_item_master_data
+# refuses a sweep that omits a division already present in plm.item_import, e.g. if
+# ColdLion stops returning EP001 (out of scope by owner ruling 2026-08-28). The step
+# then fails nightly on its own, without affecting the landing step. Remedy until
+# #3910 lands a retirement path: a reviewed data change deleting that division's
+# rows from plm.item_import, then re-dispatch this workflow.
+# Also tracked in #3910: two runs 90 minutes apart on 2026-10-02 updated 19,360 then
+# 5,777 rows, so a volatile /items field in raw bumps plm.item.updated_at nightly.
 #
 # This workflow WRITES to the shared database. Two rules follow from that:
 #   1. It is never triggered by a pull request or a push. Schedule and manual

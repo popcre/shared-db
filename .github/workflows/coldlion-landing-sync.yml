@@ -78,7 +78,7 @@ jobs:
         run: psql --version
 
       - name: Run the offline contract tests before touching anything
-        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs
+        run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs tools/item-taxonomy-phase2.test.mjs
 
       - name: Refuse to run without an explicit target
         env:
@@ -109,6 +109,16 @@ jobs:
           if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); PROD_DETAIL_ARGS+=(--dry-run); fi
           node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
+          # Item Master (#3903): refresh plm.item from the ColdLion /items sweep through
+          # plm.import_item_master_data. Before this step the loader had only ever been
+          # run by hand (once, 2026-08-26), so the Item Master silently stopped moving.
+          # Placed before the prepack/prod-detail refreshes so their failures cannot
+          # block it. Without --apply the loader only fetches and reports.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            node tools/sync-coldlion-items.mjs
+          else
+            node tools/sync-coldlion-items.mjs --apply
+          fi
           # The prepack refresh re-asks every harvested code daily (2,577 on
           # 2026-09-17). The loader's 3s default pace was sized for the heavy
           # paged history pulls; at that pace this one-at-a-time keyed lookup

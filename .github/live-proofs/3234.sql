@@ -5,7 +5,8 @@
 --   3. the falsified UNIQUE (company_code, prod_order_no, prod_line_seq) is ABSENT
 --   4. landing RLS remains on; anon/authenticated hold no privilege
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20260930212107')
+  (exists (select 1 from supabase_migrations.schema_migrations where version = '20260930212107')
+  or exists (select 1 from supabase_migrations.schema_migrations where version = '20261002144024'))
   and exists (
     select 1 from pg_catalog.pg_class
     where oid = pg_catalog.to_regclass('coldlion.prod_detail')

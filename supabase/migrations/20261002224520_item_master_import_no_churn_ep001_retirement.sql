@@ -1,11 +1,14 @@
 -- derived-from: 20260720121000
 -- Issue #3910 (follow-up of #3903). Body re-derived from the live production
 -- definition of plm.import_item_master_data(jsonb), which matches 20260720121000.
--- 1. The plm.item and plm.item_import upserts update a row only when its content
---    changed, so a repeat nightly sweep no longer bumps updated_at on every item.
+-- 1. The plm.item and plm.item_import upserts, and the item_id/outcome back-fill,
+--    update a row only when its content changed, so a repeat nightly sweep no longer bumps updated_at on every item.
 -- 2. A sweep that omits division EP001 (out of scope by owner ruling 2026-08-28)
 --    promotes and retires it instead of failing every night.
--- ACL, signature, SECURITY DEFINER and search_path are unchanged (create or replace).
+-- ACL, signature, SECURITY DEFINER and search_path are unchanged (create or replace);
+-- the verify block at the end asserts all four.
+-- A retired EP001 item keeps its plm.item row, exactly as any item that leaves the
+-- vendor feed always has: plm.item is the durable Item Master and never deletes.
 
 create or replace function plm.import_item_master_data(import_payload jsonb)
  RETURNS TABLE(sync_run_id uuid, rows_seen integer, rows_inserted integer, rows_updated integer, rows_resolved integer, rows_partially_resolved integer, rows_ambiguous integer, rows_unresolved integer)
@@ -189,7 +192,8 @@ begin
   update plm.item_import i set item_id=p.id,resolution_outcome=r.outcome
   from item_taxonomy_resolution r join plm.item p on p.source_system='coldlion' and
     p.source_id=r.company_code||'|'||r.division_code||'|'||r.item_no
-  where (i.company_code,i.division_code,i.item_no)=(r.company_code,r.division_code,r.item_no);
+  where (i.company_code,i.division_code,i.item_no)=(r.company_code,r.division_code,r.item_no)
+    and (i.item_id,i.resolution_outcome) is distinct from (p.id,r.outcome);
 
   -- Rebuild the current quarantine for this sweep. This deliberately clears a
   -- formerly unresolved (item, slot) when the same slot resolves on re-run.
@@ -263,3 +267,21 @@ begin
   return query select sync_id,seen_count,inserted_count,updated_count,resolved_count,partial_count,ambiguous_count,unresolved_count;
 end;
 $function$;
+
+do $verify$
+declare p record;
+begin
+  select prosecdef, proconfig, proacl, pg_get_function_identity_arguments(oid) as args
+    into p from pg_proc where oid = 'plm.import_item_master_data(jsonb)'::regprocedure;
+  if not p.prosecdef then raise exception '#3910: plm.import_item_master_data lost SECURITY DEFINER'; end if;
+  if p.proconfig is distinct from array['search_path=app, core, ingest, plm, extensions, public'] then
+    raise exception '#3910: unexpected search_path %', p.proconfig;
+  end if;
+  if p.args <> 'import_payload jsonb' then raise exception '#3910: unexpected signature %', p.args; end if;
+  if has_function_privilege('anon', 'plm.import_item_master_data(jsonb)', 'execute')
+     or has_function_privilege('authenticated', 'plm.import_item_master_data(jsonb)', 'execute')
+     or not has_function_privilege('service_role', 'plm.import_item_master_data(jsonb)', 'execute') then
+    raise exception '#3910: execute grants changed';
+  end if;
+end
+$verify$;

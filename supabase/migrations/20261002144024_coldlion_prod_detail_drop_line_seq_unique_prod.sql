@@ -22,6 +22,23 @@
 alter table coldlion.prod_detail
   drop constraint if exists prod_detail_company_code_prod_order_no_prod_line_seq_key;
 
+-- Defensive: drop any UNIQUE (company_code, prod_order_no, prod_line_seq) that
+-- survives under a non-standard name. Static named drop above handles the
+-- auto-name; this keeps the migration correct against a renamed constraint.
+do $$
+declare
+  cname text;
+begin
+  select con.conname into cname
+    from pg_constraint con
+   where con.conrelid = 'coldlion.prod_detail'::regclass
+     and con.contype = 'u'
+     and pg_get_constraintdef(con.oid) = 'UNIQUE (company_code, prod_order_no, prod_line_seq)';
+  if cname is not null then
+    execute format('alter table coldlion.prod_detail drop constraint %I', cname);
+  end if;
+end $$;
+
 comment on table coldlion.prod_detail is
   'ColdLion GET /proddetails landing table (issue #2863 unit 5b; identity corrected #3234). One row per production-order line as the vendor sends it. Identity is (company_code, pkey) ONLY: pkey is the real vendor row id (ColdLion technical team 2026-09-29). prodLineSeq groups sizes and MAY REPEAT — it is not a line identity and must never be unique. Look-alike rows (exact duplicates, split quantities) are intentional customer-PO entry and must not be merged or de-duplicated. Factory amount owed is the sum of prodQty x prodCost over real rows. Bare JSON array; prodOrderNo is a required request parameter. Grain proof and vendor answers: docs/coldlion-unit-5b-grain-proof-20260915.md and docs/coldlion-open-questions.md 2.36.';
 

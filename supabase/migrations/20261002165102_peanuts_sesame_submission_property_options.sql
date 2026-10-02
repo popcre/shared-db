@@ -2,8 +2,9 @@
 -- 2026-10-02, Albert Hazan, recorded in u2giants/licensor-source-data PRs #100 and #105).
 --
 -- reserved-version: 20261002165102 (claim #3898)
--- derived-from: 20260917144950 (plm.sesame_submission_property_option),
---               20260930202719 (plm.wildbrain_submission_property_option shape, grants, policies)
+-- derived-from: 20260930202719
+-- (api.db_data_admin_scraped_source_inventory body; plm.wildbrain_submission_property_option
+-- shape, grants and policies. plm.sesame_submission_property_option is from 20260917144950.)
 --
 -- Owner report (chat 2026-10-02): "when i go to data.designflow.app, both peanuts and
 -- sesame submissions sections have 0 properties in them".

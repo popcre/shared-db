@@ -15,7 +15,10 @@ begin
   end if;
 
   -- Backdate, then repeat the identical sweep: unchanged rows must keep updated_at.
+  -- (set_updated_at would overwrite a plain backdate, so bypass it for this one write)
+  alter table plm.item disable trigger set_updated_at;
   update plm.item set updated_at = '2001-01-01' where source_id like 'EDGEHOME|%|ZZT-%';
+  alter table plm.item enable trigger set_updated_at;
   perform * from plm.import_item_master_data(jsonb_build_object(
     'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,'items',v_items));
   if exists (select 1 from plm.item where source_id like 'EDGEHOME|%|ZZT-%' and updated_at <> '2001-01-01') then

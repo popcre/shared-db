@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "work_issue": 3919,
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 3919,
+    "generation": 1,
+    "contract_sha256": "a53fa8f2146ddf53c3e3e22d0c6942469a331e790055d2f08b4cb50598b37234"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement Albert Hazan's 2026-10-02 owner instructions (verbatim: \"assign someone to pause merges during production runs\"; \"if you can't then you'll have to be ok with using one reviewer twice\"). A: for review slot >= 2 on a MERGED pull request (verified merged-PR issue binding), when no independent reviewer remains, --assign-reviewer and --replace-failed-reviewer may draw a reviewer already holding another slot on that exact head, still excluding failed, unusable, preflight-excluded, independence-conflict and retired reviewers, deterministically; assertDurableReviewApproval accepts that shared reviewer only in that merged slot>=2 case. Open PRs keep strict slot independence. B: a bounded TTL-expiring create-only promotion merge freeze ref (--acquire-promotion-freeze / --release-promotion-freeze) that --acquire-merge and repository-maintenance authorization refuse under, naming holder and expiry; preview and production are never blocked; the production job's always() cleanup releases the freeze for its source PR. Ruling recorded in docs/owner-rulings.md and standing fact 14. Generation 2 answers governed review round 2 (qwen REVISE H1): the merge/promotion approval gate scripts/check-exact-head-approval.mjs enforces the same slot-independence invariant and must accept the shared reviewer only when the pull request is merged at the exact head; plus unreadable-freeze, CLI and workflow-step test pins and doc clarifications.",
+  "base_sha": "0cf19993119fe26378ed7bc85e9f7facc66580ce",
+  "dispatcher": "Claude chat c0f64531-7679-436c-be2c-65c829d345dd on al8960ofc",
+  "worker": "Claude chat c0f64531-7679-436c-be2c-65c829d345dd on al8960ofc",
+  "branch": "tooling/promotion-freeze-reviewer-reuse",
+  "worktree": "C:/repos/shared-db-worktrees/promotion-freeze-reuse",
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/owner-rulings.md",
+    "docs/agents/standing-facts.md",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    ".agent/work/3919/2/contract.json",
+    ".agent/work/3919/2/completion.json"
+  ],
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/owner-rulings.md",
+    "docs/agents/standing-facts.md",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    ".agent/work/3919/2/contract.json",
+    ".agent/work/3919/2/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No migration file and no database structure change",
+    "No weakening of slot independence for open pull requests",
+    "The freeze never blocks preview or production lanes",
+    "No branch-protection change, no forged or hand-edited review artifacts or refs"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "node --test scripts/manage-migration-author-lanes.test.mjs scripts/prove-production-risk-acceptance.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/check-exact-head-approval.test.mjs"
+  ],
+  "assumptions": [
+    "Merged state for reviewer reuse is proven by the existing mergedPrReviewTarget hook installed by SHARED_DB_MERGED_PR_ISSUE_BINDING / withMergedPrIssueBinding",
+    "Generation 2 edits were drafted in the uncommitted worktree before this contract was published; no generation-2 implementation commit exists before publication"
+  ],
+  "stop_conditions": [
+    "Stop if any required check fails at the implementation head",
+    "Stop on a coordination-mutex, contract or guarded-lane refusal that cannot be resolved with evidence"
+  ]
+}

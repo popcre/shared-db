@@ -11016,3 +11016,37 @@ test('2026-10-02 ruling: merged-head shared-reviewer acceptance does not depend 
   fixture.io.getPr=()=>({state:'closed',merged_at:'2026-10-02T00:00:00Z',head:{sha:fixture.headSha}})
   assert.equal(assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io).length,3)
 })
+
+test('an unreadable promotion freeze fails closed, cannot be overwritten, and names its remedy',()=>{
+  const io=freezeIo()
+  io.refs.set(PROMOTION_FREEZE_REF,io.makeOwnerCommit('db-coordination promotion-freeze-record pr=1 issue=2\n{"owner":"","expiresAt":"2026-10-02T00:00:00Z"}'))
+  assert.equal(readPromotionFreeze(io,new Date('2030-01-01T00:00:00Z')).unreadable,true,'an ownerless record is unreadable')
+  assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now:new Date('2030-01-01T00:00:00Z')},io),/is unreadable; clear it with --release-promotion-freeze --pr <n>/)
+  assert.throws(()=>acquirePromotionFreeze({issue:3,pr:4,owner:'x',ttlMinutes:5},io),/already set/)
+  io.refs.set(PROMOTION_FREEZE_REF,io.makeOwnerCommit('garbage'))
+  assert.equal(releasePromotionFreeze({pr:999},io).released,true,'any positive PR releases an unreadable record')
+  assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)
+})
+
+test('promotion freeze CLI acquires and releases through main()',()=>{
+  const io=freezeIo(),oldLog=console.log,oldError=console.error,out=[];console.log=(line)=>out.push(String(line));console.error=()=>{}
+  try{
+    assert.equal(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','claude-session','--ttl-minutes','60'],NOW,io),0)
+    assert.equal(JSON.parse(out.at(-1)).owner,'claude-session')
+    assert.ok(io.refs.has(PROMOTION_FREEZE_REF))
+    assert.notEqual(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','x','--ttl-minutes','181'],NOW,io),0)
+    assert.equal(main(['--release-promotion-freeze','--owner','claude-session'],NOW,io),0)
+    assert.equal(JSON.parse(out.at(-1)).released,true)
+    assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)
+  }finally{console.log=oldLog;console.error=oldError}
+})
+
+test('the production job releases the promotion freeze for its source PR on always(), after the lane release',()=>{
+  const workflow=readFileSync(fileURLToPath(new URL('../.github/workflows/shared-supabase-migrations.yml',import.meta.url)),'utf8')
+  const lane=workflow.indexOf('--release-production --owner-sha "$OWNER_SHA"'),freeze=workflow.indexOf('- name: Release the promotion merge freeze for this source PR')
+  assert.ok(lane>0&&freeze>lane,'freeze release follows the production lane release')
+  const step=workflow.slice(freeze,workflow.indexOf('\n      - name:',freeze+10))
+  assert.match(step,/if: always\(\) && inputs\.source_pr != ''/)
+  assert.match(step,/--release-promotion-freeze --pr "\$SOURCE_PR"/)
+  assert.doesNotMatch(workflow,/--acquire-production[\s\S]{0,400}promotion-freeze/,'acquiring production never consults the freeze')
+})

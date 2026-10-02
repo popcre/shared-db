@@ -42,6 +42,7 @@
 | [6.21](#621-owner-ruling-no-new-direct-database-logins-albert-hazan-2026-09-23) | OWNER RULING — no new direct database logins (Albert Hazan, 2026-09-23) |
 | [6.23](#623-owner-ruling-albert-is-not-a-technical-reviewer-production-risk-classes-are-accepted-by-the-ai-reviewer-albert-hazan-2026-09-30) | OWNER RULING — Albert is not a technical reviewer; production risk classes are accepted by the AI reviewer (Albert Hazan, 2026-09-30) |
 | [6.24](#624-owner-ruling-documentation-only-changes-skip-checks-albert-hazan-2026-10-02) | OWNER RULING — documentation-only changes skip checks (Albert Hazan, 2026-10-02) |
+| [6.25](#625-owner-ruling-ai-sessions-launch-the-merged-preview-run-that-starts-automatic-promotion-albert-hazan-2026-10-02) | OWNER RULING — AI sessions launch the merged-preview run that starts automatic promotion (Albert Hazan, 2026-10-02) |
 | [6.26](#626-owner-ruling-one-reviewer-may-be-used-twice-and-merges-pause-during-production-runs-albert-hazan-2026-10-02) | OWNER RULING — one reviewer may be used twice, and merges pause during production runs (Albert Hazan, 2026-10-02) |
 
 ---
@@ -2118,4 +2119,5 @@ and repository-maintenance authorization refuse, naming the holder and expiry. I
 preview or production. It expires by TTL, so it cannot wedge merges (a corrupt, unreadable freeze record
 fails closed until any holder releases it); `--release-promotion-freeze
 --owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
-freeze for its source PR.
+freeze for its source PR. Release ownership is an accident guard, not a security boundary: the production
+job must be able to release a freeze it did not set.

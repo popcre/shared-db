@@ -402,6 +402,13 @@ test('a returned slot is answered only by an assignment drawn after the returned
 test('two durable approvals from the same reviewer never satisfy independent slots', () => {
   const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
   assert.throws(() => evaluateExactHeadApproval(input), /review slots at exact head .* share reviewer kimi-k3/)
+  assert.equal(input.mergedAtHead, false, 'an open pull request is never merged at its head')
+})
+
+test('2026-10-02 ruling: a shared slot >= 2 reviewer is accepted only when the PR is merged at this exact head', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
+  assert.throws(() => evaluateExactHeadApproval({ ...input, mergedAtHead: false }), /share reviewer kimi-k3/)
+  assert.equal(evaluateExactHeadApproval({ ...input, mergedAtHead: true }).approved, true)
 })
 
 // APPROVAL CARRY-FORWARD (#2758). Head A was approved; the PR then merged main and

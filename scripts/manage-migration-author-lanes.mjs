@@ -5307,6 +5307,9 @@ function assertExactDurableReviewApproval(issue,pr,headSha,io){
     if(!record?.reviewer)throw new LaneError(`review slot ${assignment.slot} has no readable reviewer identity`)
     // Slot 1 is unique, so any shared pair involves a slot >= 2; on a merged head
     // that is the 2026-10-02 reuse ruling, and the check is order-independent.
+    // Merged-at-head is enough here: a verdict on a merged PR is recordable only
+    // through the verified merged-PR issue binding (reviewTargetIsRecordable), and
+    // the allocator draws a shared reviewer only through that same binding.
     if(reviewers.has(record.reviewer)&&!mergedPrAtHead(pr,head,io))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
     reviewers.add(record.reviewer)
   }
@@ -7342,6 +7345,10 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // provider. The approved 2026-08-28 roster has none.
     if(!reviewer){
       const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!excludedProviders.has(row.name)&&!preflightExclusions.has(row.name))
+      if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
+    }
+    if(!reviewer&&mergedReuse()){
+      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!preflightExclusions.has(row.name))
       if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
     }
     if(!reviewer){
@@ -9421,12 +9428,12 @@ export function readPromotionFreeze(io = githubIo, now = new Date()) {
   try { body = JSON.parse(rest.join('\n').trim()) } catch { body = null }
   // An unreadable freeze fails CLOSED (treated as live) and is cleared only by
   // --release-promotion-freeze, never guessed away.
-  if (!match || !body || Number.isNaN(Date.parse(body.expiresAt))) return { sha, unreadable: true, expired: false }
+  if (!match || !body || Number.isNaN(Date.parse(body.expiresAt)) || !String(body.owner ?? '').trim()) return { sha, unreadable: true, expired: false }
   return { sha, pr: Number(match[1]), issue: Number(match[2]), owner: String(body.owner ?? ''), acquiredAt: body.acquiredAt, expiresAt: body.expiresAt, expired: Date.parse(body.expiresAt) <= new Date(now).valueOf() }
 }
 
 function promotionFreezeText(freeze) {
-  return freeze.unreadable ? `promotion freeze ${PROMOTION_FREEZE_REF} at ${freeze.sha} is unreadable` : `promotion merge freeze held by ${JSON.stringify(freeze.owner)} for PR #${freeze.pr} (issue #${freeze.issue}) until ${freeze.expiresAt}`
+  return freeze.unreadable ? `promotion freeze ${PROMOTION_FREEZE_REF} at ${freeze.sha} is unreadable; clear it with --release-promotion-freeze --pr <n> (any positive PR number releases an unreadable record)` : `promotion merge freeze held by ${JSON.stringify(freeze.owner)} for PR #${freeze.pr} (issue #${freeze.issue}) until ${freeze.expiresAt}`
 }
 
 export function assertNoPromotionFreeze(io = githubIo, now = new Date()) {

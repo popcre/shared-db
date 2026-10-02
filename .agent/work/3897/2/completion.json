@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 3897,
+  "outcome": "ready-for-merge",
+  "pr": 3899,
+  "migration_versions": [
+    "20261002165102"
+  ],
+  "contract_ref": "refs/db-contracts/3897/2",
+  "contract_sha256": "5b5c17cd3093801f21494687c1fdbf4ee7f0e950959ad66fa8dd08aeb0627266",
+  "head_sha": "ce95e72d3dba67aa1d63bc52db35bc8600a9d8b6",
+  "base_sha": "3efebc3f956c0bfcb5567b49c3422aa6a79d9c22",
+  "files_changed": [
+    "supabase/migrations/20261002165102_peanuts_sesame_submission_property_options.sql",
+    "supabase/tests/peanuts_landing_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "policy peanuts_submission_property_option_plm_read on plm.peanuts_submission_property_option",
+    "policy peanuts_submission_property_option_service_read on plm.peanuts_submission_property_option",
+    "table plm.peanuts_submission_property_option",
+    "table plm.sesame_submission_property_option"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests peanuts_landing_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3899 CI job 110943049786 (supabase/tests against an ephemeral database, run 37038639674) at implementation head ce95e72d3dba67aa1d63bc52db35bc8600a9d8b6."
+    }
+  ],
+  "assumptions_resolved": [
+    "Sesame holds exactly the one owner-authorized option; Peanuts exactly the two owner-entered options (self-check in migration; Peanuts schema check constraint)."
+  ],
+  "stop_conditions_hit": []
+}

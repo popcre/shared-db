@@ -1,7 +1,7 @@
 -- #3897: Peanuts and Sesame Workshop Submissions Property options (owner decisions
 -- 2026-10-02, Albert Hazan, recorded in u2giants/licensor-source-data PRs #100 and #105).
 --
--- reserved-version: 20261002183201 (claim #3898)
+-- reserved-version: 20261002193034 (claim #3898)
 -- derived-from: 20260930202719
 -- (api.db_data_admin_scraped_source_inventory body; plm.wildbrain_submission_property_option
 -- shape, grants and policies. plm.sesame_submission_property_option is from 20260917144950.)

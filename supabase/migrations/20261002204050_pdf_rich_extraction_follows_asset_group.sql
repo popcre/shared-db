@@ -8,19 +8,62 @@
 -- the group's spec-sheet data vanished and nothing healed it (2026-10-02: 233
 -- rows / 227 groups orphaned).
 --
--- Design (review of PR #3913): a STATEMENT-level AFTER UPDATE trigger with
--- transition tables, so a bulk regroup costs one hash join of the changed rows
--- against dam.pdf_rich_extraction (~250 rows) per statement, and each affected
--- group is rolled up exactly once per statement, never once per asset.
--- (PostgreSQL forbids a column list together with transition tables, so the
--- trigger is UPDATE-wide; the existing trg_refresh_sg_counts_on_update on
--- public.assets already uses the same transition-table shape.)
+-- Design and cost (review of PR #3913):
+--   * Row trigger, AFTER UPDATE OF style_group_id, WHEN the value actually
+--     changes. It never fires for any other assets UPDATE. Per changed asset it
+--     does one primary-key probe of dam.pdf_rich_extraction (~250 rows in
+--     production, at most 13 per group on 2026-10-02). Only when that probe
+--     re-points a row does it record the old and new group ids in a
+--     transaction-local temporary table.
+--   * Statement trigger, AFTER UPDATE OF style_group_id. It fires only for
+--     statements that set style_group_id; when nothing was recorded it costs
+--     one to_regclass lookup. Otherwise it rolls each recorded group up exactly
+--     once per statement with the existing functions, then clears the list.
+--   The rollup's own UPDATE of public.assets sets only product_material /
+--   product_dimensions, so neither trigger re-fires from it.
 --
--- Rollback: drop trigger trg_assets_sync_pdf_rich_extraction_group on
--- public.assets; drop function dam.sync_pdf_rich_extraction_style_group();
+-- Privilege boundary: both functions are SECURITY DEFINER because the caller
+-- (service_role, or an admin through the "Admins can update assets" RLS policy)
+-- has no grant on dam.pdf_rich_extraction. They take no caller-supplied values:
+-- they copy the asset's new style_group_id into its own extraction row and
+-- re-run the existing SECURITY DEFINER rollups, which recompute from stored
+-- extraction data. EXECUTE is revoked from public, anon and authenticated.
+--
+-- Rollback (not executed here):
+--   drop trigger trg_assets_rollup_pdf_rich_extraction_groups on public.assets;
+--   drop trigger trg_assets_sync_pdf_rich_extraction_group on public.assets;
+--   drop function dam.rollup_moved_pdf_rich_extraction_groups();
+--   drop function dam.sync_pdf_rich_extraction_style_group();
+-- The migration runs in one transaction, so a partial apply cannot persist.
 -- No data is changed by this migration itself.
 
 create function dam.sync_pdf_rich_extraction_style_group()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, dam, pg_temp
+as $$
+begin
+  update dam.pdf_rich_extraction e
+  set style_group_id = new.style_group_id
+  where e.asset_id = new.id
+    and e.style_group_id is distinct from new.style_group_id;
+
+  if found then
+    create temporary table if not exists pdf_rich_extraction_moved_groups (
+      style_group_id uuid primary key
+    ) on commit drop;
+    insert into pg_temp.pdf_rich_extraction_moved_groups (style_group_id)
+    select g from unnest(array[old.style_group_id, new.style_group_id]) g
+    where g is not null
+    on conflict do nothing;
+  end if;
+
+  return null;
+end;
+$$;
+
+create function dam.rollup_moved_pdf_rich_extraction_groups()
 returns trigger
 language plpgsql
 security definer
@@ -30,24 +73,14 @@ declare
   v_gids uuid[];
   v_gid uuid;
 begin
-  with moved as (
-    select n.id as asset_id, o.style_group_id as old_gid, n.style_group_id as new_gid
-    from new_assets n
-    join old_assets o on o.id = n.id
-    where n.style_group_id is distinct from o.style_group_id
-  ),
-  repointed as (
-    update dam.pdf_rich_extraction e
-    set style_group_id = m.new_gid
-    from moved m
-    where e.asset_id = m.asset_id
-      and e.style_group_id is distinct from m.new_gid
-    returning m.old_gid, m.new_gid
+  if pg_catalog.to_regclass('pg_temp.pdf_rich_extraction_moved_groups') is null then
+    return null;
+  end if;
+
+  with drained as (
+    delete from pg_temp.pdf_rich_extraction_moved_groups returning style_group_id
   )
-  select array_agg(distinct g)
-  into v_gids
-  from repointed r, lateral unnest(array[r.old_gid, r.new_gid]) g
-  where g is not null;
+  select array_agg(style_group_id) into v_gids from drained;
 
   foreach v_gid in array coalesce(v_gids, '{}'::uuid[]) loop
     perform public.refresh_style_group_rich_metadata(v_gid);
@@ -59,12 +92,20 @@ end;
 $$;
 
 comment on function dam.sync_pdf_rich_extraction_style_group() is
-  '#3911: statement-level trigger on public.assets; re-points dam.pdf_rich_extraction.style_group_id to the asset''s current group and re-runs the rich-metadata and search rollups once per affected group.';
+  '#3911: row trigger on public.assets (UPDATE OF style_group_id, value changed); re-points the asset''s dam.pdf_rich_extraction row and records the affected groups for the statement rollup.';
+comment on function dam.rollup_moved_pdf_rich_extraction_groups() is
+  '#3911: statement trigger on public.assets (UPDATE OF style_group_id); rolls each group recorded by dam.sync_pdf_rich_extraction_style_group up once.';
 
 revoke all on function dam.sync_pdf_rich_extraction_style_group() from public, anon, authenticated;
+revoke all on function dam.rollup_moved_pdf_rich_extraction_groups() from public, anon, authenticated;
 
 create trigger trg_assets_sync_pdf_rich_extraction_group
-  after update on public.assets
-  referencing old table as old_assets new table as new_assets
-  for each statement
+  after update of style_group_id on public.assets
+  for each row
+  when (old.style_group_id is distinct from new.style_group_id)
   execute function dam.sync_pdf_rich_extraction_style_group();
+
+create trigger trg_assets_rollup_pdf_rich_extraction_groups
+  after update of style_group_id on public.assets
+  for each statement
+  execute function dam.rollup_moved_pdf_rich_extraction_groups();

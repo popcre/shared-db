@@ -7,7 +7,7 @@ begin;
 
 do $contract$
 declare
-  g1 uuid; g2 uuid; g3 uuid; a1 uuid;
+  g1 uuid; g2 uuid; g3 uuid; a1 uuid; a2 uuid;
   v uuid; rm jsonb;
 begin
   if not exists (
@@ -16,9 +16,16 @@ begin
       and tgname = 'trg_assets_sync_pdf_rich_extraction_group'
       and tgfoid = 'dam.sync_pdf_rich_extraction_style_group()'::regprocedure
       and tgenabled = 'O'
+      and tgtype = 17 -- row-level AFTER UPDATE
+  ) or not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.assets'::regclass
+      and tgname = 'trg_assets_rollup_pdf_rich_extraction_groups'
+      and tgfoid = 'dam.rollup_moved_pdf_rich_extraction_groups()'::regprocedure
+      and tgenabled = 'O'
       and tgtype = 16 -- statement-level AFTER UPDATE
   ) then
-    raise exception '#3911: trigger missing or wrong shape';
+    raise exception '#3911: triggers missing or wrong shape';
   end if;
 
   insert into public.style_groups (sku, folder_path) values ('T3911A', '/t3911/a') returning id into g1;
@@ -42,6 +49,22 @@ begin
   update public.assets set filename = 't3911b.pdf' where id = a1;
   select style_group_id into v from dam.pdf_rich_extraction where asset_id = a1;
   if v is distinct from g2 then raise exception '#3911: unrelated update moved extraction'; end if;
+
+  -- 2b. two assets of one group moved in one statement: both rows follow
+  insert into public.assets (filename, relative_path, file_type, quick_hash, modified_at, style_group_id)
+    values ('t3911c.pdf', 't3911/t3911c.pdf', 'pdf', 't3911c', now(), g2) returning id into a2;
+  insert into dam.pdf_rich_extraction (asset_id, style_group_id, doc_kind, data)
+    values (a2, g2, 'licensing_sheet', '{"legal":{"copyright":["T3911"]}}');
+  update public.assets set style_group_id = g1 where id in (a1, a2);
+  if (select count(*) from dam.pdf_rich_extraction where asset_id in (a1, a2) and style_group_id = g1) <> 2 then
+    raise exception '#3911: bulk move did not re-point both rows';
+  end if;
+  select rich_metadata into rm from public.style_groups where id = g1;
+  if rm is null or rm #>> '{legal,copyright,0}' is distinct from 'T3911'
+     or rm #>> '{production_specs,materials,0}' is distinct from 'CANVAS' then
+    raise exception '#3911: bulk move did not roll up both extractions';
+  end if;
+  update public.assets set style_group_id = g2 where id in (a1, a2);
 
   -- 3. group delete (SET NULL) then re-assignment to a recreated group
   delete from public.style_groups where id = g2;

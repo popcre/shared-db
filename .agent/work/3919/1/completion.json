@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "work_issue": 3919,
+  "outcome": "ready-for-merge",
+  "pr": 3922,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3919/1",
+  "contract_sha256": "a53fa8f2146ddf53c3e3e22d0c6942469a331e790055d2f08b4cb50598b37234",
+  "head_sha": "3a453a29e5c49031fca7ea98f3b188f6d51b67f5",
+  "base_sha": "0cf19993119fe26378ed7bc85e9f7facc66580ce",
+  "files_changed": [
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/agents/standing-facts.md",
+    "docs/owner-rulings.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; 0 added migrations; exit 0 at the implementation head 3a453a29e5c49031fca7ea98f3b188f6d51b67f5."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/prove-production-risk-acceptance.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "790 tests, 790 pass, 0 fail at the implementation head 3a453a29e5c49031fca7ea98f3b188f6d51b67f5, including the 2026-10-02 reuse tests (open PR stays strict on assign and replace; merged PR slot>=2 reuses deterministically and never redraws the failed reviewer; durable approval accepts the shared reviewer only on a merged head, independent of slot order) and the promotion freeze tests (merge and repository-maintenance authorization refused with holder and expiry, production not blocked, TTL expiry, release by owner or source PR)."
+    }
+  ],
+  "assumptions_resolved": [
+    "Merged state for reuse is proven by mergedPrReviewTarget, installed only by the verified merged-PR issue binding (SHARED_DB_MERGED_PR_ISSUE_BINDING); without it no reuse happens.",
+    "The workflow-contract suites that read shared-supabase-migrations.yml (889 tests) pass with the added always() freeze-release step.",
+    "Live GitHub proof (set and release a freeze; draw a reused reviewer for a merged PR slot) can only run from merged main; it is the open live-proof checklist item on issue #3919."
+  ],
+  "stop_conditions_hit": []
+}

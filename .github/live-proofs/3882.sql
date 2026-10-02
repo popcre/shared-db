@@ -1,9 +1,9 @@
--- Live proof for #3882 child 2 (migration 20261002155049). Read-only.
+-- Live proof for #3882 child 2 (migration 20261002173317). Read-only.
 -- Proves on production: the migration is in the ledger and each of the 14 foreign
 -- keys is validated, single-column, on the expected child column, references the
 -- mapped parent's expected key column, and keeps its ON UPDATE/ON DELETE actions.
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20261002155049')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20261002173317')
   and (
     select count(*) from (values
       ('dflow.art_piece', 'art_piece_licensor_id_fkey', 'licensor_id', 'core."merchGroup"', 'mg_id', 'a', 'a'),

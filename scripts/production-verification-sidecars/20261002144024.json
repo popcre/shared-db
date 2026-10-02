@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261002144024",
-  "migration_sha256": "PLACEHOLDER",
+  "migration_sha256": "c6dbaa1c02c6e588f7c634f1d51c4adb8922e131a913de28a95421575a0d0999",
   "checks": [
     {
       "id": "prod_detail_line_seq_unique_absent",

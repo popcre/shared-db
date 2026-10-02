@@ -29,8 +29,9 @@ export function buildItemImportPayload(items, options = {}) {
 // plm.item, which only grows and would dilute the signal over time. A division with
 // at least MIN_DIVISION_ITEMS items whose resolved share falls by more than
 // MAX_RESOLVED_SHARE_DROP refuses the whole sweep. The script carries its own
-// begin/commit because the Supabase-CLI (--linked) path does not wrap a file in a
-// transaction (tools/coldlion-landing/lib/db.mjs); the raise rolls the import back.
+// --apply is refused with --linked: only the psql DATABASE_URL path runs the file as
+// one transaction (tools/coldlion-landing/lib/db.mjs), which the raise relies on to
+// roll the import back.
 // A deliberate, verified drop is promoted by setting allowResolutionDrop (workflow
 // input allow_resolution_drop), which skips only this guard for that one run.
 export const MAX_RESOLVED_SHARE_DROP = 0.1;
@@ -48,7 +49,7 @@ const DIVISION_SHARE_SQL = [
 
 export function buildItemImportSql(payload, { allowResolutionDrop = false } = {}) {
   return [
-    "begin;",
+    "-- runs inside runSql's psql --single-transaction",
     `create temp table item_master_resolved_before as ${DIVISION_SHARE_SQL};`,
     `select * from plm.import_item_master_data(${sqlDollarQuote("cl_items", payload)}::jsonb);`,
     "do $guard$",
@@ -61,14 +62,20 @@ export function buildItemImportSql(payload, { allowResolutionDrop = false } = {}
     `      left join (${DIVISION_SHARE_SQL}) a using (division_code)`,
     `     where b.n >= ${MIN_DIVISION_ITEMS} and a.division_code is not null`,
     `       and coalesce(a.share, 0) < b.share - ${MAX_RESOLVED_SHARE_DROP};`,
+    "    if (select count(*) from plm.item_import ii join plm.item i on i.source_system = 'coldlion'",
+    "          and i.source_id = ii.company_code || '|' || ii.division_code || '|' || ii.item_no)",
+    "       < 0.9 * (select count(*) from plm.item_import) then",
+    "      raise exception 'item master guard cannot match silver to plm.item by source_id (format drift?); refusing to promote';",
+    "    end if;",
     "    if v_bad is not null then",
     "      raise exception 'item master resolution collapsed (resolved share by division: %); refusing to promote. If the drop is real, re-run ColdLion Landing Sync with allow_resolution_drop=true', v_bad;",
     "    end if;",
+    "  else",
+    "    raise notice 'item master resolution guard BYPASSED by allow_resolution_drop';",
     "  end if;",
     "end",
     "$guard$;",
     "drop table item_master_resolved_before;",
-    "commit;",
     "",
   ].join("\n");
 }
@@ -91,7 +98,8 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
 
 async function main() {
   const { apply, linked } = parseLoaderArgs(process.argv.slice(2));
-  if (apply && !linked) assertExpectedTarget();
+  if (apply && linked) throw new Error("--apply --linked is refused: the guard needs psql's single transaction; set DATABASE_URL and COLDLION_EXPECTED_PROJECT_REF");
+  if (apply) assertExpectedTarget();
   let stage = "fetch";
   try {
     const sweep = await collectItems(readColdlionApiKey());
@@ -101,7 +109,8 @@ async function main() {
       return counts;
     }, {});
     process.stdout.write(`${JSON.stringify({ items: sweep.rows.length, pagesFetched: sweep.pagesFetched,
-      terminalReached: sweep.terminalReached, divisions, apply }, null, 2)}\n`);
+      terminalReached: sweep.terminalReached, divisions, apply,
+      resolutionGuard: process.env.ITEM_MASTER_ALLOW_RESOLUTION_DROP === "true" ? "BYPASSED" : "enforced" }, null, 2)}\n`);
     if (apply) {
       stage = "apply";
       process.stdout.write(runSql(buildItemImportSql(payload, { allowResolutionDrop: process.env.ITEM_MASTER_ALLOW_RESOLUTION_DROP === "true" }), { linked }));

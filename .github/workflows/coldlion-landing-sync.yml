@@ -18,7 +18,7 @@
 # coldlion-prod-detail-backfill.yml, manual dispatch only.
 #
 # Since issue #3903 the job also refreshes the Item Master (plm.item) from the
-# ColdLion /items sweep through plm.import_item_master_data, in its OWN step after
+# ColdLion /items sweep through plm.import_item_master_data, in its OWN step before
 # the landing step, so neither can stop the other. Before #3903 that loader had only
 # ever been run by hand (once, 2026-08-26) and plm.item silently stopped moving. It
 # resolves licensor/property against plm.merch_group_header, which holds curated,
@@ -82,14 +82,14 @@ concurrency:
 
 jobs:
   sync:
-    name: Sync masters and recent history windows
+    name: Sync Item Master, masters and recent history windows
     runs-on: blacksmith-2vcpu-ubuntu-2404
     # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
     # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
     # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
     # (2,577 codes at 1s), prod-detail refresh ~1.9s/key over up to 2,000 recent
-    # orders ~63 min — ~116 min worst case. Item Master (#3903, measured 2026-10-02):
-    # whole step measured 80 s on 2026-10-02 (fetch ~42 s + import) — ~118 min. 150 keeps a real stall-killing ceiling
+    # orders ~63 min — ~116 min worst case. Item Master (#3903): whole step
+    # measured 80 s on 2026-10-02 (fetch ~42 s + import) — ~118 min. 150 keeps a real stall-killing ceiling
     # (#1266) with margin; the job stays serialized by the concurrency group.
     timeout-minutes: 150
     steps:
@@ -118,7 +118,28 @@ jobs:
           [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
 
+      # Item Master (#3903). Its own step, FIRST after the target proof so a job that
+      # hits its time ceiling never sacrifices it; its failure cannot skip the landing
+      # step below, which runs whenever the target was proven.
+      - name: Refresh Item Master (plm.item) from ColdLion /items
+        if: ${{ !cancelled() && steps.target.outcome == 'success' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          ITEM_MASTER_ALLOW_RESOLUTION_DROP: ${{ github.event.inputs.allow_resolution_drop }}
+        run: |
+          set -euo pipefail
+          # Without --apply the loader only fetches and reports.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            node tools/sync-coldlion-items.mjs
+          else
+            node tools/sync-coldlion-items.mjs --apply
+          fi
+
       - name: Sync
+        if: ${{ !cancelled() && steps.target.outcome == 'success' }}
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
@@ -149,22 +170,3 @@ jobs:
           # (the vendor agreement) and bounds this step at ~33 minutes.
           PROD_DETAIL_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"
-
-      # Item Master (#3903). Its own step: runs even when the landing step above
-      # failed (the target was proven), and its own failure cannot skip the landing.
-      - name: Refresh Item Master (plm.item) from ColdLion /items
-        if: ${{ !cancelled() && steps.target.outcome == 'success' }}
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
-          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
-          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
-          ITEM_MASTER_ALLOW_RESOLUTION_DROP: ${{ github.event.inputs.allow_resolution_drop }}
-        run: |
-          set -euo pipefail
-          # Without --apply the loader only fetches and reports.
-          if [ "${DRY_RUN:-false}" = "true" ]; then
-            node tools/sync-coldlion-items.mjs
-          else
-            node tools/sync-coldlion-items.mjs --apply
-          fi

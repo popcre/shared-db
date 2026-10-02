@@ -124,8 +124,9 @@ test("#3903: item import rolls back when licensor resolution collapses", async (
   const sql = buildItemImportSql({ items: [] });
   assert.ok(sql.indexOf("item_master_resolved_before") < sql.indexOf("plm.import_item_master_data"));
   assert.match(sql, /raise exception 'item master resolution collapsed/);
-  assert.match(sql, /^begin;\n/);
-  assert.match(sql, /\ncommit;\n$/);
+  assert.doesNotMatch(sql, /^begin;|commit;/m);
+  assert.match(sql, /cannot match silver to plm\.item by source_id/);
+  assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /guard BYPASSED/);
   assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /\n  if false then\n/);
   assert.match(sql, /group by ii\.division_code/);
 });
@@ -134,7 +135,9 @@ test("#3903: nightly landing sync runs the Item Master loader in its own guarded
   const { readFileSync } = await import("node:fs");
   const yml = readFileSync(new URL("../.github/workflows/coldlion-landing-sync.yml", import.meta.url), "utf8");
   const step = yml.slice(yml.indexOf("- name: Refresh Item Master (plm.item) from ColdLion /items"));
-  assert.ok(yml.indexOf("- name: Sync\n") > 0 && yml.indexOf("- name: Sync\n") < yml.indexOf("- name: Refresh Item Master"));
+  assert.ok(yml.indexOf("- name: Refresh Item Master") > 0 && yml.indexOf("- name: Refresh Item Master") < yml.indexOf("- name: Sync\n"));
+  const sync = yml.slice(yml.indexOf("- name: Sync\n"));
+  assert.match(sync, /^- name: Sync\n\s+if: \$\{\{ !cancelled\(\) && steps\.target\.outcome == 'success' \}\}/);
   assert.match(step, /ITEM_MASTER_ALLOW_RESOLUTION_DROP: \$\{\{ github\.event\.inputs\.allow_resolution_drop \}\}/);
   assert.match(step, /steps\.target\.outcome == 'success'/);
   assert.match(yml, /- name: Refuse to run without an explicit target\n\s+id: target\n/);

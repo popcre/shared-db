@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3900/1",
   "contract_sha256": "f2c9288a9b87d0cc25c10e56a44a6ea818eb575739324ff67fef29cc8f328c59",
-  "head_sha": "23b89ccefea0193ebadf24d13d277756ba8bdab4",
+  "head_sha": "47cc89382f28293dc990069db5c738cb62a1b19c",
   "base_sha": "d26cedf5733e1e43938d5ce3e2007cce10a67fea",
   "files_changed": [
     "supabase/migrations/20261002170907_style_group_item_short_description.sql",
@@ -26,11 +26,12 @@
     {
       "command": "database-contract-tests style_group_item_short_description_contract.sql",
       "exit_code": 0,
-      "evidence": "Passed in PR #3902 CI job 110949592574 (supabase/tests against an ephemeral database, run 37040614659) at implementation head 23b89ccefea0193ebadf24d13d277756ba8bdab4."
+      "evidence": "Passed in PR #3902 CI job 110970670282 (supabase/tests against an ephemeral database, run 37046877534) at implementation head 47cc89382f28293dc990069db5c738cb62a1b19c."
     }
   ],
   "assumptions_resolved": [
-    "Item Master wins; sheet only fills SKUs without an Item Master description; manual sources untouched (test T1-T3)."
+    "Item Master wins; sheet only fills SKUs without an Item Master description; manual sources untouched (test T1-T3).",
+    "Governed review findings addressed: advisory lock taken first; public.admin_config qualified; dependency verify block; sheet tiebreak; no-clobber test T7."
   ],
   "stop_conditions_hit": []
 }

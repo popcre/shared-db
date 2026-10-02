@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3234,
+  "outcome": "ready-for-merge",
+  "pr": 3883,
+  "migration_versions": [
+    "20261002144024"
+  ],
+  "contract_ref": "refs/db-contracts/3234/9",
+  "contract_sha256": "8cce4c625e1e289dfd166930b8941d4b1e043b28945fe1264a988a83913b7de3",
+  "base_sha": "69d7b058d3bbb2995091f7dacb5c272d8cfbd2d5",
+  "head_sha": "5f1cbc56a85456c7239e4bedc106e346b7599c45",
+  "files_changed": [
+    "supabase/migrations/20261002144024_coldlion_prod_detail_drop_line_seq_unique_prod.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table coldlion.prod_detail"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "static checks passed for static DROP CONSTRAINT IF EXISTS"
+    }
+  ],
+  "assumptions_resolved": [
+    "idempotent successor lets the constraint drop take the workflow preview path"
+  ],
+  "stop_conditions_hit": []
+}

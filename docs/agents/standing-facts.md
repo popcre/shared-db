@@ -125,6 +125,13 @@ have already happened in this repo, more than once.
     the guard worked — but two owner approvals were wasted, and the third only landed under a
     deliberate merge freeze. **Announce a freeze, hold every merge from staging until the run
     finishes, then release it.** This is standard practice, not an improvisation.
+    **The mechanism (owner instruction 2026-10-02, "assign someone to pause merges during
+    production runs"; [owner rulings §6.25](../owner-rulings.md)):** before drawing the risk
+    assessment, run `node scripts/manage-migration-author-lanes.mjs --acquire-promotion-freeze
+    --issue <n> --pr <source-pr> --owner <text> --ttl-minutes <=180>`. Every `--acquire-merge`
+    then refuses until the freeze is released (`--release-promotion-freeze --owner <text>`), the
+    production run's cleanup releases it, or its TTL expires. Preview and production are never
+    blocked by it.
 
 15. **The structural-lane rules are scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
     Rules 1 and 2 above (claim-first structural work, concurrent migration authors on exact object claims) govern changes to the

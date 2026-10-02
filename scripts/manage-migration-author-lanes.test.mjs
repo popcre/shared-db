@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-migration-author-lanes.mjs'
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
+import { mergedPrReviewerReuseAllowed, acquirePromotionFreeze, releasePromotionFreeze, readPromotionFreeze, PROMOTION_FREEZE_REF } from './manage-migration-author-lanes.mjs'
 import { SLOT_INDEPENDENCE_CONFLICT } from './manage-migration-author-lanes.mjs'
 import { canonicalReviewerAllowlist } from './manage-migration-author-lanes.mjs'
 import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
@@ -10827,4 +10828,95 @@ test('#2998 CLI: a fully valid handoff clears every readiness check and reaches 
     assert.equal(printed.evidence.validated, true)
     assert.deepEqual(printed.degraded, [])
   } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// OWNER RULING 2026-10-02 (docs/owner-rulings.md): "if you can't then you'll have
+// to be ok with using one reviewer twice". Merged PR post-merge slot >= 2 only.
+function mergedReuseIo({merged}){
+  const io=reviewIo(),headSha='e'.repeat(40)
+  io.requiresExactReviewHeadSha=true
+  io.getPr=(number)=>({number:Number(number),state:merged?'closed':'open',merged_at:merged?'2026-10-02T00:00:00Z':null,head:{sha:headSha,ref:'codex/x'}})
+  if(merged)io.mergedPrReviewTarget=(pr,issue)=>Number(pr)===3902&&Number(issue)===3901
+  return {io,headSha}
+}
+function fillEverySlot(io,headSha){
+  const holders=[]
+  for(let slot=1;slot<=ACTIVE_REVIEWERS.length;slot+=1){
+    const row=assignNextReviewer({issue:3901,pr:3902,headSha,slot},io)
+    holders.push(row.reviewer)
+  }
+  return holders
+}
+
+test('2026-10-02 ruling: an OPEN pull request keeps strict slot independence',()=>{
+  const {io,headSha}=mergedReuseIo({merged:false})
+  const holders=fillEverySlot(io,headSha)
+  assert.equal(new Set(holders).size,holders.length)
+  assert.throws(()=>assignNextReviewer({issue:3901,pr:3902,headSha,slot:holders.length+1},io),/no independent reviewer is available for slot/)
+})
+
+test('2026-10-02 ruling: a MERGED pull request slot >= 2 reuses a reviewer when none is independent',()=>{
+  const {io,headSha}=mergedReuseIo({merged:true})
+  const holders=fillEverySlot(io,headSha)
+  assert.equal(new Set(holders).size,holders.length,'independent reviewers are still preferred while any remain')
+  const reused=assignNextReviewer({issue:3901,pr:3902,headSha,slot:holders.length+1},io)
+  assert.ok(holders.includes(reused.reviewer),'the reused reviewer already holds another slot on this head')
+  const again=mergedReuseIo({merged:true});fillEverySlot(again.io,again.headSha)
+  assert.equal(assignNextReviewer({issue:3901,pr:3902,headSha:again.headSha,slot:holders.length+1},again.io).reviewer,reused.reviewer,'deterministic choice')
+})
+
+test('2026-10-02 ruling: reuse requires a verified merged-PR binding and slot >= 2',()=>{
+  const {io}=mergedReuseIo({merged:true})
+  assert.equal(mergedPrReviewerReuseAllowed({issue:3901,pr:3902,headSha:'e'.repeat(40),slot:1},io),false)
+  assert.equal(mergedPrReviewerReuseAllowed({issue:3901,pr:3902,headSha:'e'.repeat(40),slot:2},io),true)
+  assert.equal(mergedPrReviewerReuseAllowed({issue:3999,pr:3902,headSha:'e'.repeat(40),slot:2},io),false,'binding names another issue')
+  assert.equal(mergedPrReviewerReuseAllowed({issue:3901,pr:3902,headSha:'f'.repeat(40),slot:2},io),false,'not the merged head')
+  delete io.mergedPrReviewTarget
+  assert.equal(mergedPrReviewerReuseAllowed({issue:3901,pr:3902,headSha:'e'.repeat(40),slot:2},io),false,'no binding, no reuse')
+})
+
+// OWNER INSTRUCTION 2026-10-02: "assign someone to pause merges during production runs".
+function freezeIo(){
+  const io=memoryIo(),messages=new Map();let n=0
+  io.makeOwnerCommit=(message)=>{const sha=(++n).toString(16).padStart(40,'0');messages.set(sha,message);return sha}
+  io.readCommitMessage=(sha)=>messages.get(sha)??null
+  io.openClaims=()=>[{number:1,body:body(['table core.x'],'1','2099-01-01T00:00:00Z')}]
+  io.getPr=(number)=>({number:Number(number),head:{sha:'abc',ref:'codex/1'},base:{sha:'main'}})
+  return io
+}
+
+test('promotion merge freeze blocks merges, never production, and expires by TTL',()=>{
+  const io=freezeIo(),now=new Date('2026-10-02T12:00:00Z')
+  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'x',ttlMinutes:181,now},io),/between 1 and 180/)
+  const freeze=acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:90,now},io)
+  assert.equal(freeze.expiresAt,'2026-10-02T13:30:00.000Z')
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'other',ttlMinutes:10,now},io),/already set; promotion merge freeze held by "claude-session"/)
+  assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now},io),/merges are paused for a production run; promotion merge freeze held by "claude-session" for PR #3902 \(issue #3901\) until 2026-10-02T13:30:00.000Z/)
+  const production=acquireExclusive('production',{owner:'p',headSha:'main',now},io)
+  releaseOwnedRef(EXCLUSIVE_REFS.production,production.ownerSha,io)
+  assert.throws(()=>releasePromotionFreeze({owner:'someone-else',now},io),/refusing to release another holder's freeze/)
+  assert.ok(acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now:new Date('2026-10-02T13:31:00Z')},io).ownerSha,'an expired freeze never wedges merges')
+  releaseOwnedRef(EXCLUSIVE_REFS.merge,io.refs.get(EXCLUSIVE_REFS.merge),io)
+  assert.equal(releasePromotionFreeze({pr:3902},io).released,true,'the production cleanup releases by source PR')
+  assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)
+  assert.equal(releasePromotionFreeze({pr:3902},io).released,false)
+})
+
+test('an expired promotion freeze is replaced by a new one',()=>{
+  const io=freezeIo()
+  acquirePromotionFreeze({issue:1,pr:2,owner:'old',ttlMinutes:5,now:new Date('2026-10-02T12:00:00Z')},io)
+  const next=acquirePromotionFreeze({issue:3,pr:4,owner:'new',ttlMinutes:5,now:new Date('2026-10-02T12:06:00Z')},io)
+  assert.equal(next.replacedExpired,true)
+  assert.equal(readPromotionFreeze(io,new Date('2026-10-02T12:07:00Z')).owner,'new')
+})
+
+test('2026-10-02 ruling: durable approval accepts a reused slot >= 2 reviewer only on a merged head',()=>{
+  const fixture=durableApprovalFixture()
+  const replacement2='3'.repeat(40),original=fixture.io.getCommit
+  fixture.io.getCommit=(sha)=>sha===replacement2?{message:`db-coordination reviewer-replacement sequence=7 reviewer=kimi-k3 issue=${fixture.issue} pr=${fixture.pr} head=${fixture.headSha} slot=2 failed-sequence=2 prior-sequence=6 failure-ref=${'9'.repeat(40)}`}:sha==='6'.repeat(40)?{...original(sha),message:original(sha).message.replace('muse-spark-1.3-contributor','kimi-k3')}:original(sha)
+  fixture.io.getPr=()=>({state:'open',merged_at:null,head:{sha:fixture.headSha}})
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io),/share reviewer kimi-k3; independent approval refused/)
+  fixture.io.getPr=()=>({state:'closed',merged_at:'2026-10-02T00:00:00Z',head:{sha:fixture.headSha}})
+  assert.equal(assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io).length,3)
 })

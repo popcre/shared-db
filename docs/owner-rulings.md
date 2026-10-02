@@ -42,6 +42,7 @@
 | [6.21](#621-owner-ruling-no-new-direct-database-logins-albert-hazan-2026-09-23) | OWNER RULING — no new direct database logins (Albert Hazan, 2026-09-23) |
 | [6.23](#623-owner-ruling-albert-is-not-a-technical-reviewer-production-risk-classes-are-accepted-by-the-ai-reviewer-albert-hazan-2026-09-30) | OWNER RULING — Albert is not a technical reviewer; production risk classes are accepted by the AI reviewer (Albert Hazan, 2026-09-30) |
 | [6.24](#624-owner-ruling-documentation-only-changes-skip-checks-albert-hazan-2026-10-02) | OWNER RULING — documentation-only changes skip checks (Albert Hazan, 2026-10-02) |
+| [6.25](#625-owner-ruling-one-reviewer-may-be-used-twice-and-merges-pause-during-production-runs-albert-hazan-2026-10-02) | OWNER RULING — one reviewer may be used twice, and merges pause during production runs (Albert Hazan, 2026-10-02) |
 
 ---
 
@@ -2072,3 +2073,32 @@ authorization`) proves the exact base/head inventory is pure prose and the heavy
 short-circuit under their unchanged check names. Anything not positively proven prose — code,
 tests, scripts, workflows, config, `.json`/`.yml`/`.sql`, and agent rulebooks such as `AGENTS.md`
 or skills — takes the full engineering path. `enforce_admins` stays on.
+
+### 6.25 OWNER RULING — one reviewer may be used twice, and merges pause during production runs (Albert Hazan, 2026-10-02)
+
+Verbatim from Albert's chat (2026-10-02):
+
+> "there are more than 2 reviewers working on this machine. find another one. and if you can't
+> then you'll have to be ok with using one reviewer twice. we can't just sit here doing nothing.
+> you need to be much more aggressive about moving everything forward"
+
+> "assign someone to pause merges during production runs"
+
+**Reviewer reuse.** Only for review slot 2 or higher on a pull request that is already **merged**
+at the exact reviewed head (the post-merge production-risk-assessment slot), with that merged
+state proven through the verified merged-PR issue binding (`SHARED_DB_MERGED_PR_ISSUE_BINDING`).
+The allocator still prefers any independent reviewer; only when none is left may
+`--assign-reviewer` or `--replace-failed-reviewer` draw one that already holds another slot on
+that head, in the ordinary rotation order. It never draws a reviewer that failed on this head, is
+unusable or preflight-excluded, conflicts with the implementing engine, or is retired. The
+durable-approval check accepts that shared reviewer only in the same merged, slot-2-or-higher
+case. Open pull requests keep strict slot independence. Code:
+`mergedPrReviewerReuseAllowed` in `scripts/manage-migration-author-lanes.mjs`.
+
+**Promotion merge freeze.** `--acquire-promotion-freeze --issue <n> --pr <n> --owner <text>
+--ttl-minutes <1-180>` sets the create-only ref `refs/db-coordination/promotion-freeze` before the
+risk assessment is drawn. While it is live, `--acquire-merge` (guarded merge and merge-queue gate)
+and repository-maintenance authorization refuse, naming the holder and expiry. It never blocks
+preview or production. It expires by TTL, so it cannot wedge merges; `--release-promotion-freeze
+--owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
+freeze for its source PR.

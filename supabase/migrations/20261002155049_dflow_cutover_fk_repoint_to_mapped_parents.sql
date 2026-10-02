@@ -23,7 +23,13 @@
 -- dflow."licenseList" ON DELETE RESTRICT likewise now protects core."licenseList".
 --
 -- A precondition block refuses to run if any of the 14 FKs is not exactly the
--- expected current definition (column, old parent, parent column, actions).
+-- expected current definition (column, old parent, parent column, actions, not
+-- deferrable).
+--
+-- Index coverage is unchanged: the same child columns keep the same indexes
+-- (production read 2026-10-02: item_header_id, both licensor_id columns, artist_id and
+-- divisioncode_id indexed; the other nine dflow.art_piece columns unindexed, as
+-- today, on a ~480 kB table). Every new parent column is that parent's primary key.
 --
 -- Not here: plm.art_piece_attachment and app."RolePermissions" (frozen-schema
 -- repoints) belong to open PR #3391 (#2110), which performs those exact swaps.
@@ -54,7 +60,7 @@ begin
       select 1 from pg_catalog.pg_constraint c
       where c.contype = 'f' and c.conrelid = pg_catalog.to_regclass(r.t) and c.conname = r.n
         and c.confrelid = pg_catalog.to_regclass(r.oldp)
-        and c.confupdtype = r.upd and c.confdeltype = r.del
+        and c.confupdtype = r.upd and c.confdeltype = r.del and not c.condeferrable
         and array_length(c.conkey, 1) = 1 and array_length(c.confkey, 1) = 1
         and (select attname from pg_catalog.pg_attribute where attrelid = c.conrelid and attnum = c.conkey[1]) = r.col
         and (select attname from pg_catalog.pg_attribute where attrelid = c.confrelid and attnum = c.confkey[1]) = r.pc

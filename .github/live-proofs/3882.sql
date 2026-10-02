@@ -25,7 +25,7 @@ select (
       on c.contype = 'f' and c.convalidated
      and c.conrelid = pg_catalog.to_regclass(v.t) and c.conname = v.n
      and c.confrelid = pg_catalog.to_regclass(v.p)
-     and c.confupdtype = v.upd and c.confdeltype = v.del
+     and c.confupdtype = v.upd and c.confdeltype = v.del and not c.condeferrable
      and array_length(c.conkey, 1) = 1 and array_length(c.confkey, 1) = 1
     join pg_catalog.pg_attribute ca on ca.attrelid = c.conrelid and ca.attnum = c.conkey[1] and ca.attname = v.col
     join pg_catalog.pg_attribute pa on pa.attrelid = c.confrelid and pa.attnum = c.confkey[1] and pa.attname = v.pc

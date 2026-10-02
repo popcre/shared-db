@@ -29,9 +29,9 @@ export function buildItemImportPayload(items, options = {}) {
 // plm.item, which only grows and would dilute the signal over time. A division with
 // at least MIN_DIVISION_ITEMS items whose resolved share falls by more than
 // MAX_RESOLVED_SHARE_DROP refuses the whole sweep. The script carries its own
-// --apply is refused with --linked: only the psql DATABASE_URL path runs the file as
-// one transaction (tools/coldlion-landing/lib/db.mjs), which the raise relies on to
-// roll the import back.
+// Applies go only through psql with DATABASE_URL (target proven first); the script
+// carries its own begin/commit and runSql sets ON_ERROR_STOP, so a raise rolls the
+// whole import back.
 // A deliberate, verified drop is promoted by setting allowResolutionDrop (workflow
 // input allow_resolution_drop), which skips only this guard for that one run.
 export const MAX_RESOLVED_SHARE_DROP = 0.1;
@@ -42,19 +42,27 @@ const DIVISION_SHARE_SQL = [
   "       count(*)::numeric as n,",
   "       count(*) filter (where i.licensor_id is not null)::numeric / count(*) as share",
   "  from plm.item_import ii",
-  "  join plm.item i on i.source_system = 'coldlion'",
-  "   and i.source_id = ii.company_code || '|' || ii.division_code || '|' || ii.item_no",
+  "  join plm.item i on i.id = ii.item_id",
   " group by ii.division_code",
 ].join("\n");
 
 export function buildItemImportSql(payload, { allowResolutionDrop = false } = {}) {
   return [
-    "-- runs inside runSql's psql --single-transaction",
+    // Explicit transaction: atomic whatever the transport does; ON_ERROR_STOP (set by
+    // runSql) makes any raise below abort before commit, rolling the import back.
+    "begin;",
     `create temp table item_master_resolved_before as ${DIVISION_SHARE_SQL};`,
     `select * from plm.import_item_master_data(${sqlDollarQuote("cl_items", payload)}::jsonb);`,
     "do $guard$",
-    "declare v_bad text;",
+    "declare v_bad text; v_silver bigint; v_linked bigint;",
     "begin",
+    // Input sanity: always enforced, never bypassable. Silver links to plm.item by the
+    // resolver's own item_id foreign key, so no key format is re-derived here.
+    "  select count(*), count(i.id) into v_silver, v_linked",
+    "    from plm.item_import ii left join plm.item i on i.id = ii.item_id;",
+    "  if v_silver = 0 or v_linked < 0.9 * v_silver then",
+    "    raise exception 'item master guard: % of % silver rows link to plm.item; refusing to promote', v_linked, v_silver;",
+    "  end if;",
     `  if ${allowResolutionDrop ? "false" : "true"} then`,
     "    select string_agg(format('%s %s -> %s', b.division_code, round(b.share, 3), round(coalesce(a.share, 0), 3)), ', ')",
     "      into v_bad",
@@ -62,31 +70,26 @@ export function buildItemImportSql(payload, { allowResolutionDrop = false } = {}
     `      left join (${DIVISION_SHARE_SQL}) a using (division_code)`,
     `     where b.n >= ${MIN_DIVISION_ITEMS} and a.division_code is not null`,
     `       and coalesce(a.share, 0) < b.share - ${MAX_RESOLVED_SHARE_DROP};`,
-    "    if (select count(*) from plm.item_import ii join plm.item i on i.source_system = 'coldlion'",
-    "          and i.source_id = ii.company_code || '|' || ii.division_code || '|' || ii.item_no)",
-    "       < 0.9 * (select count(*) from plm.item_import) then",
-    "      raise exception 'item master guard cannot match silver to plm.item by source_id (format drift?); refusing to promote';",
-    "    end if;",
     "    if v_bad is not null then",
     "      raise exception 'item master resolution collapsed (resolved share by division: %); refusing to promote. If the drop is real, re-run ColdLion Landing Sync with allow_resolution_drop=true', v_bad;",
     "    end if;",
-    "  else",
-    "    raise notice 'item master resolution guard BYPASSED by allow_resolution_drop';",
     "  end if;",
     "end",
     "$guard$;",
+    `select '${allowResolutionDrop ? "RESOLUTION GUARD BYPASSED by allow_resolution_drop" : "resolution guard enforced"}' as item_master_guard;`,
     "drop table item_master_resolved_before;",
+    "commit;",
     "",
   ].join("\n");
 }
 
-const KNOWN_FLAGS = new Set(["--apply", "--linked"]);
+const KNOWN_FLAGS = new Set(["--apply"]);
 
 /** A misspelled flag must fail loudly, never degrade into a green fetch-only run. */
 export function parseLoaderArgs(argv, known = KNOWN_FLAGS) {
   const unknown = argv.filter((arg) => !known.has(arg));
   if (unknown.length) throw new Error(`unknown argument(s): ${unknown.join(" ")}; allowed: ${[...known].join(" ")}`);
-  return { apply: argv.includes("--apply"), linked: argv.includes("--linked") };
+  return { apply: argv.includes("--apply") };
 }
 
 export async function collectItems(apiKey, fetchImpl = fetch) {
@@ -97,8 +100,8 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
 }
 
 async function main() {
-  const { apply, linked } = parseLoaderArgs(process.argv.slice(2));
-  if (apply && linked) throw new Error("--apply --linked is refused: the guard needs psql's single transaction; set DATABASE_URL and COLDLION_EXPECTED_PROJECT_REF");
+  const { apply } = parseLoaderArgs(process.argv.slice(2));
+  const linked = false; // the Supabase-CLI path is not supported for applies (#3903)
   if (apply) assertExpectedTarget();
   let stage = "fetch";
   try {

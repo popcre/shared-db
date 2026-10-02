@@ -37,6 +37,9 @@
 # 5,777 rows, so a volatile /items field in raw bumps plm.item.updated_at nightly.
 #
 # This workflow WRITES to the shared database. Two rules follow from that:
+# The Item Master import resolves against core.property by code (no index on code;
+# core.property is small, measured import ~38 s), so no index is added.
+#
 #   1. It is never triggered by a pull request or a push. Schedule and manual
 #      dispatch only, so a branch cannot make it run.
 #   2. The offline contract tests run first, in the same job, immediately before
@@ -89,7 +92,8 @@ jobs:
     # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
     # (2,577 codes at 1s), prod-detail refresh ~1.9s/key over up to 2,000 recent
     # orders ~63 min — ~116 min worst case. Item Master (#3903): whole step
-    # measured 80 s on 2026-10-02 (fetch ~42 s + import) — ~118 min. 150 keeps a real stall-killing ceiling
+    # measured 80 s on 2026-10-02 (fetch ~42 s, import transaction ~38 s) — ~118 min.
+    # 150 keeps a real stall-killing ceiling
     # (#1266) with margin; the job stays serialized by the concurrency group.
     timeout-minutes: 150
     steps:
@@ -159,14 +163,14 @@ jobs:
           # The prepack refresh re-asks every harvested code daily (2,577 on
           # 2026-09-17). The loader's 3s default pace was sized for the heavy
           # paged history pulls; at that pace this one-at-a-time keyed lookup
-          # feed would need ~2h13m and overrun the job's 90-minute budget. 1s
+          # feed would need ~2h13m and overrun the job's 150-minute budget. 1s
           # keeps the vendor agreement (serialized requests) and lands the
           # whole refresh in ~45 minutes beside history+masters' ~8.
           PREPACK_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prepack-detail.mjs "${PREPACK_ARGS[@]}"
           # Same budget arithmetic for the production-detail refresh (#3180): the
           # limit is 2000 orders, and at the loader's 3s default that alone is
-          # ~100 minutes inside a 90-minute job. 1s keeps the requests serialized
+          # ~100 minutes inside the job's budget. 1s keeps the requests serialized
           # (the vendor agreement) and bounds this step at ~33 minutes.
           PROD_DETAIL_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"

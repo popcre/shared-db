@@ -115,7 +115,8 @@ test("dollar quoting rejects a payload escape", () => {
 
 test("#3903: loader refuses unknown flags instead of a silent fetch-only run", async () => {
   const { parseLoaderArgs } = await import("./sync-coldlion-items.mjs");
-  assert.deepEqual(parseLoaderArgs(["--apply"]), { apply: true, linked: false });
+  assert.deepEqual(parseLoaderArgs(["--apply"]), { apply: true });
+  assert.throws(() => parseLoaderArgs(["--linked"]), /unknown argument/);
   assert.throws(() => parseLoaderArgs(["--aply"]), /unknown argument/);
 });
 
@@ -124,9 +125,13 @@ test("#3903: item import rolls back when licensor resolution collapses", async (
   const sql = buildItemImportSql({ items: [] });
   assert.ok(sql.indexOf("item_master_resolved_before") < sql.indexOf("plm.import_item_master_data"));
   assert.match(sql, /raise exception 'item master resolution collapsed/);
-  assert.doesNotMatch(sql, /^begin;|commit;/m);
-  assert.match(sql, /cannot match silver to plm\.item by source_id/);
-  assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /guard BYPASSED/);
+  assert.match(sql, /^begin;\n/);
+  assert.match(sql, /\ncommit;\n$/);
+  const bypass = buildItemImportSql({ items: [] }, { allowResolutionDrop: true });
+  assert.match(bypass, /RESOLUTION GUARD BYPASSED/);
+  // the silver-link sanity check runs before, and outside, the bypassable block
+  assert.ok(bypass.indexOf("silver rows link to plm.item") < bypass.indexOf("if false then"));
+  assert.match(sql, /join plm\.item i on i\.id = ii\.item_id/);
   assert.match(buildItemImportSql({ items: [] }, { allowResolutionDrop: true }), /\n  if false then\n/);
   assert.match(sql, /group by ii\.division_code/);
 });
@@ -139,7 +144,8 @@ test("#3903: nightly landing sync runs the Item Master loader in its own guarded
   const sync = yml.slice(yml.indexOf("- name: Sync\n"));
   assert.match(sync, /^- name: Sync\n\s+if: \$\{\{ !cancelled\(\) && steps\.target\.outcome == 'success' \}\}/);
   assert.match(step, /ITEM_MASTER_ALLOW_RESOLUTION_DROP: \$\{\{ github\.event\.inputs\.allow_resolution_drop \}\}/);
-  assert.match(step, /steps\.target\.outcome == 'success'/);
+  const ownStep = step.slice(0, step.indexOf("- name: Sync\n"));
+  assert.match(ownStep, /\n\s+if: \$\{\{ !cancelled\(\) && steps\.target\.outcome == 'success' \}\}\n/);
   assert.match(yml, /- name: Refuse to run without an explicit target\n\s+id: target\n/);
   assert.match(step, /COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai/);
   assert.match(step, /node tools\/sync-coldlion-items\.mjs --apply/);

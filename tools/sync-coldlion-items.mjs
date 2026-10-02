@@ -10,6 +10,7 @@ import {
   runSql,
   sqlDollarQuote,
 } from "./coldlion-sync-common.mjs";
+import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 
 export function buildItemImportPayload(items, options = {}) {
   return {
@@ -20,8 +21,39 @@ export function buildItemImportPayload(items, options = {}) {
   };
 }
 
+// Refuse to promote a sweep that collapses licensor resolution (#3903 review F2): a
+// stale or empty merch-group header dictionary resolves nothing, and the upsert
+// would overwrite previously resolved licensor/property links with NULL while every
+// row-count guard still passes. runSql applies the script as ONE transaction, so the
+// raise rolls the whole import back.
+export const MIN_RESOLVED_RETENTION = 0.9;
+
 export function buildItemImportSql(payload) {
-  return `select * from plm.import_item_master_data(${sqlDollarQuote("cl_items", payload)}::jsonb);\n`;
+  return [
+    "create temp table item_master_resolved_before on commit drop as",
+    "  select count(*)::bigint as n from plm.item where source_system = 'coldlion' and licensor_id is not null;",
+    `select * from plm.import_item_master_data(${sqlDollarQuote("cl_items", payload)}::jsonb);`,
+    "do $guard$",
+    "declare v_before bigint; v_after bigint;",
+    "begin",
+    "  select n into v_before from item_master_resolved_before;",
+    "  select count(*) into v_after from plm.item where source_system = 'coldlion' and licensor_id is not null;",
+    `  if v_before > 0 and v_after < v_before * ${MIN_RESOLVED_RETENTION} then`,
+    "    raise exception 'item master resolution collapsed: % -> % resolved items; refusing to promote', v_before, v_after;",
+    "  end if;",
+    "end",
+    "$guard$;",
+    "",
+  ].join("\n");
+}
+
+const KNOWN_FLAGS = new Set(["--apply", "--linked"]);
+
+/** A misspelled flag must fail loudly, never degrade into a green fetch-only run. */
+export function parseLoaderArgs(argv, known = KNOWN_FLAGS) {
+  const unknown = argv.filter((arg) => !known.has(arg));
+  if (unknown.length) throw new Error(`unknown argument(s): ${unknown.join(" ")}; allowed: ${[...known].join(" ")}`);
+  return { apply: argv.includes("--apply"), linked: argv.includes("--linked") };
 }
 
 export async function collectItems(apiKey, fetchImpl = fetch) {
@@ -32,9 +64,8 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
 }
 
 async function main() {
-  const args = new Set(process.argv.slice(2));
-  const apply = args.has("--apply");
-  const linked = args.has("--linked");
+  const { apply, linked } = parseLoaderArgs(process.argv.slice(2));
+  if (apply && !linked) assertExpectedTarget();
   let stage = "fetch";
   try {
     const sweep = await collectItems(readColdlionApiKey());

@@ -112,3 +112,28 @@ test("SQL resolver implements the locked outcome matrix and read-only core contr
 test("dollar quoting rejects a payload escape", () => {
   assert.throws(() => sqlDollarQuote("cl_items", "bad $cl_items$ value"), /dollar quote tag/);
 });
+
+test("#3903: loader refuses unknown flags instead of a silent fetch-only run", async () => {
+  const { parseLoaderArgs } = await import("./sync-coldlion-items.mjs");
+  assert.deepEqual(parseLoaderArgs(["--apply"]), { apply: true, linked: false });
+  assert.throws(() => parseLoaderArgs(["--aply"]), /unknown argument/);
+});
+
+test("#3903: item import rolls back when licensor resolution collapses", async () => {
+  const { buildItemImportSql } = await import("./sync-coldlion-items.mjs");
+  const sql = buildItemImportSql({ items: [] });
+  assert.ok(sql.indexOf("item_master_resolved_before") < sql.indexOf("plm.import_item_master_data"));
+  assert.match(sql, /raise exception 'item master resolution collapsed/);
+});
+
+test("#3903: nightly landing sync runs the Item Master loader in its own guarded step", async () => {
+  const { readFileSync } = await import("node:fs");
+  const yml = readFileSync(new URL("../.github/workflows/coldlion-landing-sync.yml", import.meta.url), "utf8");
+  const step = yml.slice(yml.indexOf("- name: Refresh Item Master (plm.item) from ColdLion /items"));
+  assert.ok(step.length > 0 && yml.indexOf("- name: Sync\n") < yml.indexOf("- name: Refresh Item Master"));
+  assert.match(step, /steps\.target\.outcome == 'success'/);
+  assert.match(step, /COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai/);
+  assert.match(step, /node tools\/sync-coldlion-items\.mjs --apply/);
+  assert.match(step, /if \[ "\$\{DRY_RUN:-false\}" = "true" \]; then\n\s+node tools\/sync-coldlion-items\.mjs\n/);
+  assert.match(yml, /tools\/item-taxonomy-phase2\.test\.mjs/);
+});

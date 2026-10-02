@@ -1,4 +1,4 @@
-# Scheduled ColdLion masters, history, prepack and production-detail sync.
+# Scheduled ColdLion masters, history, prepack, production-detail and Item Master sync.
 #
 # Re-reads the most recent grid windows every run. A window already proven loaded
 # is skipped; a window that is not is completed. Trailing more than one window is
@@ -16,6 +16,15 @@
 # then re-reads recently-observed ones — the same trailing-window philosophy as
 # the history re-read above it. The initial bounded backfill lives in
 # coldlion-prod-detail-backfill.yml, manual dispatch only.
+#
+# Since issue #3903 the job also refreshes the Item Master (plm.item) from the
+# ColdLion /items sweep through plm.import_item_master_data, in its OWN step after
+# the landing step, so neither can stop the other. Before #3903 that loader had only
+# ever been run by hand (once, 2026-08-26) and plm.item silently stopped moving. It
+# resolves licensor/property against plm.merch_group_header, which holds curated,
+# owner-approved rows (#539/#1177) and is deliberately NOT refreshed here; the
+# loader instead refuses, inside its single transaction, any sweep that drops
+# resolved items below 90% of the previous count.
 #
 # This workflow WRITES to the shared database. Two rules follow from that:
 #   1. It is never triggered by a pull request or a push. Schedule and manual
@@ -64,7 +73,8 @@ jobs:
     # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
     # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
     # (2,577 codes at 1s), prod-detail refresh ~1.9s/key over up to 2,000 recent
-    # orders ~63 min — ~116 min worst case. 150 keeps a real stall-killing ceiling
+    # orders ~63 min — ~116 min worst case. Item Master (#3903, measured 2026-10-02):
+    # /items fetch ~42s plus one import transaction of a few minutes — ~120 min. 150 keeps a real stall-killing ceiling
     # (#1266) with margin; the job stays serialized by the concurrency group.
     timeout-minutes: 150
     steps:
@@ -81,6 +91,7 @@ jobs:
         run: node --test tools/coldlion-landing-history.test.mjs tools/coldlion-landing-masters.test.mjs tools/coldlion-landing-prepack.test.mjs tools/coldlion-landing-prod-details.test.mjs tools/item-taxonomy-phase2.test.mjs
 
       - name: Refuse to run without an explicit target
+        id: target
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
@@ -109,16 +120,6 @@ jobs:
           if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); MASTER_ARGS+=(--dry-run); PREPACK_ARGS+=(--dry-run); PROD_DETAIL_ARGS+=(--dry-run); fi
           node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           node tools/coldlion-landing/sync-masters.mjs "${MASTER_ARGS[@]}"
-          # Item Master (#3903): refresh plm.item from the ColdLion /items sweep through
-          # plm.import_item_master_data. Before this step the loader had only ever been
-          # run by hand (once, 2026-08-26), so the Item Master silently stopped moving.
-          # Placed before the prepack/prod-detail refreshes so their failures cannot
-          # block it. Without --apply the loader only fetches and reports.
-          if [ "${DRY_RUN:-false}" = "true" ]; then
-            node tools/sync-coldlion-items.mjs
-          else
-            node tools/sync-coldlion-items.mjs --apply
-          fi
           # The prepack refresh re-asks every harvested code daily (2,577 on
           # 2026-09-17). The loader's 3s default pace was sized for the heavy
           # paged history pulls; at that pace this one-at-a-time keyed lookup
@@ -133,3 +134,21 @@ jobs:
           # (the vendor agreement) and bounds this step at ~33 minutes.
           PROD_DETAIL_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"
+
+      # Item Master (#3903). Its own step: runs even when the landing step above
+      # failed (the target was proven), and its own failure cannot skip the landing.
+      - name: Refresh Item Master (plm.item) from ColdLion /items
+        if: ${{ !cancelled() && steps.target.outcome == 'success' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          # Without --apply the loader only fetches and reports.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            node tools/sync-coldlion-items.mjs
+          else
+            node tools/sync-coldlion-items.mjs --apply
+          fi

@@ -5,15 +5,14 @@
 # in plm.production_order(_line). JamieLynn's ERP entry stays manual (owner
 # ruling 2026-09-17).
 #
-# Stages + detects + decodes in ONE job, as separate steps so a later writer
-# bug can never block staging. The unsealed trailing re-read (3 closed windows +
+# Stages + detects + decodes in ONE job, as separate steps so a writer bug
+# can never block staging. The unsealed trailing re-read (3 closed windows +
 # the open week) plus the forward scan run on every invocation; see
 # tools/coldlion-landing/lib/order-intake-windows.mjs for the stop rule and the
-# 18-month cap. The CANONICAL WRITER (Phase C2, order-intake-write.mjs) is NOT
-# built yet: until it lands, a step for it must not exist here — a dispatch that
-# stages production windows and then calls a script that does not exist is an unbounded
-# write followed by a hard failure. Every dispatch of this workflow is
-# claim-only by construction until C2 adds the writer step.
+# 18-month cap. The CANONICAL WRITER (Phase C2, order-intake-write.mjs — merged
+# in PR #3868) runs as the step AFTER decode, skipped whenever dry_run or
+# claim_only is set: a dispatch is claim-only exactly when it asks to be, and a
+# dry run writes nothing anywhere (not even the writer's rehearsal path).
 #
 # THE SCHEDULE STAYS DISABLED until Phase F's sample-week live proof passes
 # (plan B0): the first enablement is a bounded event, never an unbounded mass
@@ -42,7 +41,7 @@ on:
         required: false
         default: '5'
       claim_only:
-        description: 'Stage and decode, write no canonical rows (every run is claim-only until Phase C2)'
+        description: 'Stage and decode, write no canonical rows (skips the writer step)'
         type: boolean
         required: false
         default: false
@@ -113,6 +112,19 @@ jobs:
           if [ "${CLAIM_ONLY:-false}" = "true" ]; then ARGS+=(--claim-only); fi
           node tools/coldlion-landing/order-intake.mjs "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # Phase C2 adds the writer step here (order-intake-write.mjs, gated by
-      # --claim-only). It must not be added before that script exists: see the
-      # header comment and plan §9 C2.
+      # The CANONICAL WRITER (plan §9 C2 + D1). A separate step, so a writer
+      # failure can never block staging above. It is SKIPPED on dry_run (a dry
+      # run writes nothing anywhere) and on claim_only (the B0 dispatch
+      # vocabulary), and only runs when the decode step above succeeded.
+      - name: Write canonical placeholder orders
+        if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ARGS=(--write)
+          if [ -n "${LIMIT:-}" ]; then ARGS+=(--limit "$LIMIT"); fi
+          node tools/coldlion-landing/order-intake-write.mjs "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

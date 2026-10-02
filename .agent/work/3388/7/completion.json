@@ -6,9 +6,11 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3388/7",
   "contract_sha256": "7266406651ae2b2421c44b208b562b9ea834289596065dc086acd3679039aad2",
-  "base_sha": "bbe08bbeb0f2c8cbefa6da4f6cdf0b8ee1e0fdf0",
-  "head_sha": "6d75ff616f9bce046ccdf0de2c0541ee8caf8504",
+  "base_sha": "514e09be0ce155f380e0e091b25da8805a3bef98",
+  "head_sha": "75494f8ac0f3d1f1ff39c928037a9c4a2df334b0",
   "files_changed": [
+    ".agent/work/3388/7/completion.json",
+    ".agent/work/3388/7/contract.json",
     "docs/verification/throughput-dispositions/scripts~lib~work-stage-evidence.mjs.json",
     "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
     "docs/verification/throughput-dispositions/scripts~orchestrator-flow~outcome-lifecycle.mjs.json",

@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { OWN_START_ONLY_ACTIVITY, ENGINE_REVIEWER_EXCLUSION } from './manage-migration-author-lanes.mjs'
 import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
+import { authorizeRepositoryMaintenanceStatus } from './manage-migration-author-lanes.mjs'
 import { mergedPrReviewerReuseAllowed, acquirePromotionFreeze, releasePromotionFreeze, readPromotionFreeze, PROMOTION_FREEZE_REF } from './manage-migration-author-lanes.mjs'
 import { SLOT_INDEPENDENCE_CONFLICT } from './manage-migration-author-lanes.mjs'
 import { canonicalReviewerAllowlist } from './manage-migration-author-lanes.mjs'
@@ -10899,7 +10900,8 @@ test('#3874 a route: claim-first issue is dispatched by the queue builder end to
 function mergedReuseIo({merged}){
   const io=reviewIo(),headSha='e'.repeat(40)
   io.requiresExactReviewHeadSha=true
-  io.getPr=(number)=>({number:Number(number),state:merged?'closed':'open',merged_at:merged?'2026-10-02T00:00:00Z':null,head:{sha:headSha,ref:'codex/x'}})
+  io.getPr=(number)=>({number:Number(number),state:merged?'closed':'open',merged_at:merged?'2026-10-02T00:00:00Z':null,...(merged?{merge_commit_sha:'c'.repeat(40)}:{}),head:{sha:headSha,ref:'codex/x'}})
+  if(merged)io.mergeCommitInMain=()=>true
   if(merged)io.mergedPrReviewTarget=(pr,issue)=>Number(pr)===3902&&Number(issue)===3901
   return {io,headSha}
 }
@@ -10981,6 +10983,36 @@ test('2026-10-02 ruling: durable approval accepts a reused slot >= 2 reviewer on
   fixture.io.getCommit=(sha)=>sha===replacement2?{message:`db-coordination reviewer-replacement sequence=7 reviewer=kimi-k3 issue=${fixture.issue} pr=${fixture.pr} head=${fixture.headSha} slot=2 failed-sequence=2 prior-sequence=6 failure-ref=${'9'.repeat(40)}`}:sha==='6'.repeat(40)?{...original(sha),message:original(sha).message.replace('muse-spark-1.3-contributor','kimi-k3')}:original(sha)
   fixture.io.getPr=()=>({state:'open',merged_at:null,head:{sha:fixture.headSha}})
   assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io),/share reviewer kimi-k3; independent approval refused/)
+  fixture.io.getPr=()=>({state:'closed',merged_at:'2026-10-02T00:00:00Z',head:{sha:fixture.headSha}})
+  assert.equal(assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io).length,3)
+})
+
+test('2026-10-02 ruling: --replace-failed-reviewer reuses a slot holder only on a merged PR',()=>{
+  for(const merged of [false,true]){
+    const {io,headSha}=mergedReuseIo({merged})
+    const holders=fillEverySlot(io,headSha)
+    const last=holders.length,failed=assignNextReviewer({issue:3901,pr:3902,headSha,slot:last},io)
+    const request={issue:3901,pr:3902,headSha,slot:last,failedSequence:failed.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+    if(!merged){assert.throws(()=>replaceFailedReviewer(request,io),/no other independent reviewer is available for slot/);continue}
+    const replacement=replaceFailedReviewer(request,io)
+    assert.notEqual(replacement.reviewer,failed.reviewer,'the reviewer that failed on this head is never redrawn')
+    assert.ok(holders.includes(replacement.reviewer),'the replacement reuses a reviewer holding another slot')
+  }
+})
+
+test('promotion merge freeze also blocks repository-maintenance authorization',()=>{
+  const io=freezeIo()
+  acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:180},io)
+  assert.throws(()=>authorizeRepositoryMaintenanceStatus({pr:5,headSha:'a'.repeat(40),description:'d',targetUrl:'https://example.test/x'},io),/merges are paused for a production run; promotion merge freeze held by "claude-session"/)
+  assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
+test('2026-10-02 ruling: merged-head shared-reviewer acceptance does not depend on slot order',()=>{
+  const fixture=durableApprovalFixture()
+  const original=fixture.io.getCommit,swap=(m)=>m.replace(/reviewer=kimi-k3/,'reviewer=muse-spark-1.3-contributor').replace('"reviewer":"kimi-k3"','"reviewer":"muse-spark-1.3-contributor"')
+  fixture.io.getCommit=(sha)=>(sha==='1'.repeat(40)||sha==='4'.repeat(40))?{...original(sha),message:swap(original(sha).message)}:original(sha)
+  fixture.io.getPr=()=>({state:'open',merged_at:null,head:{sha:fixture.headSha}})
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io),/share reviewer muse-spark-1.3-contributor/)
   fixture.io.getPr=()=>({state:'closed',merged_at:'2026-10-02T00:00:00Z',head:{sha:fixture.headSha}})
   assert.equal(assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io).length,3)
 })

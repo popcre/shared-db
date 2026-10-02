@@ -5305,7 +5305,9 @@ function assertExactDurableReviewApproval(issue,pr,headSha,io){
   for(const assignment of latest.values()){
     const record=parseReviewCursor(io.getCommit(assignment.sha))
     if(!record?.reviewer)throw new LaneError(`review slot ${assignment.slot} has no readable reviewer identity`)
-    if(reviewers.has(record.reviewer)&&!(assignment.slot>=2&&mergedPrAtHead(pr,head,io)))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
+    // Slot 1 is unique, so any shared pair involves a slot >= 2; on a merged head
+    // that is the 2026-10-02 reuse ruling, and the check is order-independent.
+    if(reviewers.has(record.reviewer)&&!mergedPrAtHead(pr,head,io))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
     reviewers.add(record.reviewer)
   }
   for(const assignment of latest.values())if(!verdicts.some((row)=>row.verdict==='APPROVE'&&row.assignment_sha===assignment.sha))throw new LaneError(`review slot ${assignment.slot} has no durable APPROVE for its latest exact-head assignment${disregardedNote}`)

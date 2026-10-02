@@ -2115,6 +2115,7 @@ case. Open pull requests keep strict slot independence. Code:
 --ttl-minutes <1-180>` sets the create-only ref `refs/db-coordination/promotion-freeze` before the
 risk assessment is drawn. While it is live, `--acquire-merge` (guarded merge and merge-queue gate)
 and repository-maintenance authorization refuse, naming the holder and expiry. It never blocks
-preview or production. It expires by TTL, so it cannot wedge merges; `--release-promotion-freeze
+preview or production. It expires by TTL, so it cannot wedge merges (a corrupt, unreadable freeze record
+fails closed until any holder releases it); `--release-promotion-freeze
 --owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
 freeze for its source PR.

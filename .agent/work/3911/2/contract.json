@@ -1,0 +1,63 @@
+{
+  "allowed_paths": [
+    "supabase/migrations/20261002194321_pdf_rich_extraction_follows_asset_group.sql",
+    ".github/live-proofs/3911.sql",
+    "supabase/tests/pdf_rich_extraction_follows_asset_group_contracts.sql",
+    ".agent/work/3911/2/contract.json",
+    ".agent/work/3911/2/completion.json",
+    ".agent/work/3911/1/contract.json",
+    ".agent/work/3911/1/completion.json"
+  ],
+  "assumptions": [
+    "Generation 2 answers the DeepSeek REVISE on head ef23f0ef: statement-level trigger with transition tables, stronger probe, behavioural test",
+    "Generation 2 is published before its implementation commit"
+  ],
+  "base_sha": "a233e49a3c5a9c6bbba1c6ebbc51c81001db84f3",
+  "branch": "claude/rich-extraction-follow-group",
+  "db_reads": [
+    "function public.refresh_dam_search_style_group_document",
+    "function public.refresh_style_group_rich_metadata",
+    "table dam.pdf_rich_extraction"
+  ],
+  "db_writes": [
+    "function dam.sync_pdf_rich_extraction_style_group",
+    "table public.assets",
+    "trigger trg_assets_sync_pdf_rich_extraction_group on public.assets"
+  ],
+  "dispatcher": "PopDAM coordinator session (Albert's chat) via u2giants/popdam3 rich-metadata restore; claim #3912",
+  "evidence_parent": {
+    "contract_sha256": "5e4f3d48bb1b61ea5ab3bbb0fcd63b5390076b85041e9ed2c4e36fb67aa3515c",
+    "generation": 1,
+    "work_issue": 3911
+  },
+  "file_writes": [
+    "supabase/migrations/20261002194321_pdf_rich_extraction_follows_asset_group.sql",
+    ".github/live-proofs/3911.sql",
+    "supabase/tests/pdf_rich_extraction_follows_asset_group_contracts.sql",
+    ".agent/work/3911/2/contract.json",
+    ".agent/work/3911/2/completion.json",
+    ".agent/work/3911/1/contract.json",
+    ".agent/work/3911/1/completion.json"
+  ],
+  "generation": 2,
+  "goal": "Make dam.pdf_rich_extraction rows follow their asset to its current style group (trigger on public.assets) so a regroup cannot orphan spec-sheet data again.",
+  "prohibited_actions": [
+    "no data statement in the migration",
+    "do not change existing functions, columns, RLS or grants",
+    "no manual production command"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "supabase/tests against an ephemeral database (CI)"
+  ],
+  "route": "shared-db-orchestrator",
+  "schema_version": 2,
+  "stop_conditions": [
+    "stop if the trigger would roll up a group more than once per statement",
+    "stop if the change would need to touch a file outside allowed_paths"
+  ],
+  "work_issue": 3911,
+  "work_type": "structural",
+  "worker": "Claude chat d2375ee0-fcd9-47b0-9008-da311f11c552 on hetz",
+  "worktree": "/worksp/shared-db/.wt-rich-follow"
+}

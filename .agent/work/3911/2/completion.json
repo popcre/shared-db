@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "work_issue": 3911,
+  "outcome": "ready-for-merge",
+  "pr": 3913,
+  "migration_versions": [
+    "20261002194321"
+  ],
+  "contract_ref": "refs/db-contracts/3911/2",
+  "contract_sha256": "0336f2a53d2b34d7b05fdf2272af8d47c7177e93b2065a2964e081bd5c4d5c6d",
+  "head_sha": "86d8971a0d4f81b622121610a6cf78d7c08b32e6",
+  "base_sha": "a233e49a3c5a9c6bbba1c6ebbc51c81001db84f3",
+  "files_changed": [
+    ".github/live-proofs/3911.sql",
+    "supabase/migrations/20261002194321_pdf_rich_extraction_follows_asset_group.sql",
+    "supabase/tests/pdf_rich_extraction_follows_asset_group_contracts.sql"
+  ],
+  "db_reads": [
+    "function public.refresh_dam_search_style_group_document",
+    "function public.refresh_style_group_rich_metadata",
+    "table dam.pdf_rich_extraction"
+  ],
+  "db_writes": [
+    "function dam.sync_pdf_rich_extraction_style_group",
+    "table public.assets",
+    "trigger trg_assets_sync_pdf_rich_extraction_group on public.assets"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at 86d8971a0d4f81b622121610a6cf78d7c08b32e6."
+    },
+    {
+      "command": "supabase/tests against an ephemeral database (CI)",
+      "exit_code": 0,
+      "evidence": "behavioural test supabase/tests/pdf_rich_extraction_follows_asset_group_contracts.sql runs in the PR's ephemeral-database check at 86d8971a0d4f81b622121610a6cf78d7c08b32e6."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 2 was published before implementation commit 86d8971a0d4f81b622121610a6cf78d7c08b32e6."
+  ],
+  "stop_conditions_hit": []
+}

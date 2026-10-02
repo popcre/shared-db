@@ -11,6 +11,8 @@
   "base_sha": "9299911e72ca293c99b491939c1279dcc770406b",
   "head_sha": "f17d47cf9b3e45aec3605f4dc52deea0e545e483",
   "files_changed": [
+    ".agent/work/3882/1/completion.json",
+    ".agent/work/3882/1/contract.json",
     ".github/live-proofs/3882.sql",
     "supabase/migrations/20261002155049_dflow_cutover_fk_repoint_to_mapped_parents.sql"
   ],

@@ -17,7 +17,6 @@
  * meaningful transition (snapshot change, an outcome newly stalled past 120
  * minutes, the zero-closures-in-4h alarm turning on) prints exactly once.
  */
-import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -213,11 +212,11 @@ export function gh(args, options = {}) {
 const ghPages = (endpoint) => JSON.parse(gh(['api', endpoint, '--paginate', '--slurp'])).flat()
 
 export const defaultIo = {
-  resolveMarker(repo) {
-    const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'check-orchestrator-marker.mjs')
-    const result = spawnSync(process.execPath, [script, '--resolve', '--repo', repo, '--json'], { encoding: 'utf8' })
-    if (result.status !== 0) throw new SnapshotCallerError(`orchestrator marker did not resolve (exit ${result.status})`)
-    return JSON.parse(result.stdout)
+  // The orchestrator role and its marker are retired (owner ruling 2026-10-02,
+  // issue #3874). There is never a routable marker, which every caller already
+  // handles as "no orchestrator is running" (exit 3 / NO_ORCHESTRATOR).
+  resolveMarker() {
+    throw new SnapshotCallerError('orchestrator marker did not resolve (exit 3): the orchestrator role is retired (#3874)')
   },
   // The queue audit's own dependency proof, including merge-in-main evidence for closed dependencies.
   dependencyStates(numbers) {

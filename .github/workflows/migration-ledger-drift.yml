@@ -25,7 +25,7 @@
 #     report that only runs when somebody applies migrations cannot report the
 #     drift caused by nobody applying them. That is the exact defect.
 #   * A dedicated workflow, on THREE triggers, mirroring the design of
-#     `orchestrator-marker-guard.yml`:
+#     `orchestrator-marker-guard.yml` (retired, #3874):
 #       - push to `main`, so drift is announced at the moment a merge creates it;
 #       - a daily schedule, because the dangerous window is the days when nobody
 #         merges and nobody applies;
@@ -124,7 +124,7 @@ jobs:
 
       # ---------------------------------------------------------------------
       # Alarm path for the SCHEDULED leg only, copied deliberately from
-      # orchestrator-marker-guard.yml. A failed scheduled run mails the commit
+      # orchestrator-marker-guard.yml (retired, #3874). A failed scheduled run mails the commit
       # author, and the mandated committer identity is a `noreply` address — so
       # by default NOBODY is told. Throttled to ONE open issue: this repo has
       # already produced 25 duplicates from a monitor with no dedupe.

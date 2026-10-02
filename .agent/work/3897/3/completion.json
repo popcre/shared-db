@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3897,
+  "outcome": "ready-for-merge",
+  "pr": 3899,
+  "migration_versions": [
+    "20261002165102"
+  ],
+  "contract_ref": "refs/db-contracts/3897/3",
+  "contract_sha256": "96cf6fe12740d9009e1848bd98e4e0bb35ba5c04f93461d914bbc8f9a6255633",
+  "head_sha": "5a6a35c8af7dcfcfbfbc4442d10165b597fa0448",
+  "base_sha": "3efebc3f956c0bfcb5567b49c3422aa6a79d9c22",
+  "files_changed": [
+    ".agent/work/3897/3/completion.json",
+    ".agent/work/3897/3/contract.json",
+    "supabase/migrations/20261002165102_peanuts_sesame_submission_property_options.sql",
+    "supabase/tests/peanuts_landing_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function api.db_data_admin_scraped_source_inventory",
+    "policy peanuts_submission_property_option_plm_read on plm.peanuts_submission_property_option",
+    "policy peanuts_submission_property_option_service_read on plm.peanuts_submission_property_option",
+    "table plm.peanuts_submission_property_option"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests peanuts_landing_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3899 CI job 110959910094 (supabase/tests against an ephemeral database, run 37043723052) at implementation head 5a6a35c8af7dcfcfbfbc4442d10165b597fa0448."
+    }
+  ],
+  "assumptions_resolved": [
+    "Sesame owner-authorized option present (key-scoped self-check); Peanuts exactly the two owner-entered options (self-check plus check constraint); inventory function carries the peanuts-submissions arm (self-check)."
+  ],
+  "stop_conditions_hit": []
+}

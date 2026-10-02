@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, mkdirSync, mkdtempSync, lstatSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
@@ -122,7 +122,7 @@ function readGitHub(args){
   try{return {status:0,stdout:runGitHubCommand(args,{executor:execFileSync})}}
   catch(error){return {status:1,error,stderr:String(error?.stderr??'')}}
 }
-export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,digest=readReviewSourceDigest}={}){
+export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,digest=readReviewSourceDigest,io=githubIo,env=process.env}={}){
   if(!Number.isSafeInteger(Number(options.pr))||Number(options.pr)<1)throw new Error('source identity requires a pull request number')
   const head=String(options.headSha??'').toLowerCase()
   if(!/^[0-9a-f]{40}$/.test(head)||!options.worktree)throw new Error('source identity requires an exact head and worktree')
@@ -130,7 +130,19 @@ export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,dig
   if(response.error||response.status!==0)throw new Error('could not resolve live pull request source identity')
   let pr
   try{pr=JSON.parse(response.stdout)}catch{throw new Error('live pull request source identity is unreadable')}
-  if(pr.state!=='open'||pr.merged||pr.number!==Number(options.pr)||pr.base?.repo?.full_name?.toLowerCase()!==REPO.toLowerCase())throw new Error('pull request source repository or state does not match this review')
+  if(pr.number!==Number(options.pr)||pr.base?.repo?.full_name?.toLowerCase()!==REPO.toLowerCase())throw new Error('pull request source repository or state does not match this review')
+  // Mirror reviewTargetIsRecordable: an open PR at the exact head is unchanged. A
+  // merged PR is accepted only at its exact merged head through the same verified
+  // merged-PR issue binding the lane CLI and verdict recording already trust; a
+  // closed unmerged PR, or a merged PR without that binding, still refuses. The
+  // digest and exact file-comparison checks below apply to every accepted source.
+  if(String(pr.state??'').toLowerCase()==='open'){
+    if(pr.merged)throw new Error('pull request source repository or state does not match this review')
+  }else{
+    const value=String(env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim()
+    const bound=value?withMergedPrIssueBinding(io,value):null
+    if(!pr.merged_at||typeof bound?.mergedPrReviewTarget!=='function'||bound.mergedPrReviewTarget(Number(options.pr),Number(options.issue))!==true)throw new Error('pull request source repository or state does not match this review')
+  }
   const target=String(pr.base?.sha??'').toLowerCase(),baseRef=String(pr.base?.ref??'')
   if(pr.head?.sha?.toLowerCase()!==head)throw new Error('live pull request head differs from the assigned review head')
   if(!/^[0-9a-f]{40}$/.test(target)||!baseRef)throw new Error('live pull request target is missing or invalid')
@@ -361,11 +373,11 @@ export function wrapperSpawnPlan(resolved,args,platform=process.platform){
 // OUT OF CREDIT (owner requirement, 2026-09-24): a session whose reviewer failed
 // because the provider account ran out of credit must know that, and tell Albert in
 // the same reply. The ai-devops rotation wrappers exit 92 and print two stderr lines:
-//   AI_REVIEWER_OUT_OF_CREDIT provider=<grok|muse|qwen|gemini|deepseek> code=insufficient_quota
+//   AI_REVIEWER_OUT_OF_CREDIT provider=<grok|muse|qwen|gemini|deepseek|stepfun> code=insufficient_quota
 //   OUT OF CREDIT: <plain-English sentence naming the provider and where to add credit>
-export const OUT_OF_CREDIT_MACHINE_LINE=/^AI_REVIEWER_OUT_OF_CREDIT provider=(grok|muse|qwen|gemini|deepseek) code=insufficient_quota$/
+export const OUT_OF_CREDIT_MACHINE_LINE=/^AI_REVIEWER_OUT_OF_CREDIT provider=(grok|muse|qwen|gemini|deepseek|stepfun) code=insufficient_quota$/
 export const OUT_OF_CREDIT_HUMAN_LINE=/^OUT OF CREDIT: [ -~]{10,300}$/
-const OUT_OF_CREDIT_PROVIDER_NAMES=Object.freeze({grok:'xAI (Grok)',muse:'Meta (Muse)',qwen:'Alibaba Model Studio (Qwen)',gemini:'Google Gemini',deepseek:'DeepSeek'})
+const OUT_OF_CREDIT_PROVIDER_NAMES=Object.freeze({grok:'xAI (Grok)',muse:'Meta (Muse)',qwen:'Alibaba Model Studio (Qwen)',gemini:'Google Gemini',deepseek:'DeepSeek',stepfun:'StepFun (Step 5)'})
 // Raw provider billing text, from a wrapper that predates the contract above. It is
 // recognized but NEVER echoed: only the fixed sentence below crosses into the refusal.
 const RAW_BILLING_EXHAUSTION=/used all available credits|monthly spending limit|insufficient balance|arrearage|prepayment credits are depleted/i
@@ -405,6 +417,11 @@ export function wrapperFailureReason(run){
   }
   if(/timed-out|timed out|deadline|time limit/i.test(stderr))reasons.push('the wrapper reported a timeout')
   if(/local_dependency_unavailable/i.test(stderr))reasons.push('a local reviewer dependency is unavailable')
+  // A wrapper that finds the reviewed checkout changed during the turn refuses the
+  // verdict. The writer is usually the calling session itself (a log redirected
+  // into the checkout, or a parallel slot's output), not the reviewer.
+  if(/changed the protected source checkout|source checkout changed|checkout files changed between turns/i.test(stderr))reasons.push('source_drift: the reviewed checkout changed during the reviewer turn; keep caller logs and scratch outside the checkout (or in a git-ignored root .tmp-* path) and rerun')
+  if(/headless runtime denied a tool/i.test(stderr))reasons.push('tool_denied: the reviewer runtime denied a tool call and ended the turn without a verdict')
   if(/execution-context-denied/i.test(stderr))reasons.push('the wrapper reported execution-context-denied')
   if(hasReason('content-filter')||hasReason('DataInspectionFailed'))reasons.push('provider_unavailable: content-filter rejected the request')
   else if(hasReason('provider-unavailable'))reasons.push('provider_unavailable: the provider refused the request')
@@ -415,6 +432,44 @@ export function wrapperFailureReason(run){
   // held session; matching a bare "retained" mislabelled every such failure.
   if(/already active|already in progress|held for reconciliation|active or retained|retained (?:lock|exact-work|protection)|protection for this exact session is retained|reconcile the retained lock/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
   return reasons.join('; ')||(stderr?'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session':'the wrapper supplied no recognized diagnostic')
+}
+// ISSUE #3810 -- an unrecognized wrapper failure was undiagnosable because stderr was
+// discarded. Save a bounded, redacted stderr tail plus the exit details to a private file
+// OUTSIDE the worktree (so worktree retirement cannot lose it) and name that path in the
+// refusal. Diagnostic only: it never feeds any verdict, reroute, or approval decision.
+const FAILURE_LOG_TAIL_BYTES=8192
+const SECRET_PATTERNS=[
+  /\b(?:sk|pk|rk|xai|gsk|ghp|gho|ghs|ghu|ghr|glpat|op)[-_][A-Za-z0-9_\-]{12,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bAIza[0-9A-Za-z_\-]{20,}/g,
+  /\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}/g,
+  /\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+\/=\-]{12,}/gi,
+  /\b([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH)[A-Za-z0-9_]*)\s*[:=]\s*["']?[^\s"']{4,}/gi,
+  /\b[A-Za-z0-9+\/_\-]{40,}={0,2}(?![0-9a-f])/g
+]
+export function redactWrapperStderr(text){
+  let out=String(text??'')
+  out=out.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g,'')
+  for(const pattern of SECRET_PATTERNS)out=out.replace(pattern,(match,label)=>typeof label==='string'&&/[A-Za-z]/.test(label)&&match.startsWith(label)?`${label}=[REDACTED]`:'[REDACTED]')
+  return out
+}
+export function wrapperFailureLogText(run,{wrapper,pr,headSha,reason,at=new Date().toISOString()}={}){
+  const stderr=String(run?.stderr??'')
+  const tail=stderr.length>FAILURE_LOG_TAIL_BYTES?stderr.slice(-FAILURE_LOG_TAIL_BYTES):stderr
+  return [
+    `time: ${at}`,`wrapper: ${wrapperBaseName(String(wrapper??'unknown'))}`,`pr: ${Number(pr)||'unknown'}`,`head: ${/^[0-9a-f]{40}$/.test(String(headSha))?headSha:'unknown'}`,
+    `exit_status: ${run?.status??'none'}`,`signal: ${run?.signal??'none'}`,`spawn_error: ${run?.error?redactWrapperStderr(run.error.code??run.error.message??'error'):'none'}`,
+    `recognized_reason: ${reason}`,`stderr_bytes: ${stderr.length}`,`stderr_tail (last ${FAILURE_LOG_TAIL_BYTES} chars, redacted):`,redactWrapperStderr(tail),''
+  ].join('\n')
+}
+export function wrapperFailureLogDir(env=process.env){
+  return env.SHARED_DB_REVIEW_FAILURE_LOG_DIR||join(homedir(),'.cache','shared-db','review-wrapper-failures')
+}
+export function writeWrapperFailureLog(text,{dir=wrapperFailureLogDir(),pr,headSha}={}){
+  mkdirSync(dir,{recursive:true,mode:0o700})
+  const file=join(dir,`pr${Number(pr)||0}-${String(headSha??'').slice(0,7)||'nohead'}-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomUUID().slice(0,8)}.log`)
+  writeFileSync(file,text,{mode:0o600,flag:'wx'})
+  return file
 }
 // ISSUE #2729 STEP 7 -- RETRY ONCE, THEN REROUTE, DECIDED BY THE LIFECYCLE.
 // The manager's preflight throws `doctor did not answer within 60s` when the local
@@ -509,7 +564,15 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   if(run.error||run.status!==0||!verdict){
     // Issue #2492: a refusal that says only "no verdict" costs a fresh hand
     // investigation every time. Name the budget the reviewer was actually given.
-    const reason=wrapperFailureReason(run),message=`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${reason}.${turnBudgetDiagnostic(turnBudget)}`.trimEnd()
+    const reason=wrapperFailureReason(run)
+    let logNote=''
+    if(typeof deps.writeFailureLog==='function'){
+      try{
+        const saved=deps.writeFailureLog(wrapperFailureLogText(run,{wrapper:options.wrapper,pr:options.pr,headSha:options.headSha,reason}),{pr:options.pr,headSha:options.headSha})
+        if(saved)logNote=` Wrapper diagnostics (redacted stderr tail and exit details) saved to ${saved}.`
+      }catch{logNote=' Wrapper diagnostics could not be saved.'}
+    }
+    const message=`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${reason}.${turnBudgetDiagnostic(turnBudget)}${logNote}`.trimEnd()
     const terminal=NON_VERDICT_TERMINAL_REASONS.find((code)=>reason.split('; ').some((part)=>part.startsWith(`${code}:`)))
     if(terminal){
       lifecycle.push(lifecycleEvent(deps,assignment,'terminal_non_verdict',{reason:terminal,head_sha:assignment.head_sha}))
@@ -677,7 +740,7 @@ export function recordReviewStart(options,io,at=Date.now(),leaseHeld=reviewLease
 export function governedReviewDeps(env=process.env){
   const value=String(env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim()
   const io=value?withMergedPrIssueBinding(githubIo,value):githubIo
-  return {spawn:spawnSync,preflight:(o)=>reviewerExecutionPreflight(o,io),recordStart:(o)=>recordReviewStart(o,io),record:(o)=>recordReviewVerdict(o,io),resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8'),io}
+  return {spawn:spawnSync,preflight:(o)=>reviewerExecutionPreflight(o,io),recordStart:(o)=>recordReviewStart(o,io),record:(o)=>recordReviewVerdict(o,io),resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8'),writeFailureLog:(text,meta)=>writeWrapperFailureLog(text,{...meta,dir:wrapperFailureLogDir(env)}),io}
 }
 // #498 items 16-17 (popcre/ai-devops): refuse or repair paperwork faults BEFORE any
 // reviewer starts, so no review round is spent without a recordable verdict.

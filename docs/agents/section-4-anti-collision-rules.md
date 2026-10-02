@@ -164,8 +164,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    1. Record the evidence that the work is terminal on the audit issue.
    2. For potentially recoverable work, preserve a rescue branch or patch backup,
-      leave the claim protective, and report it `Blocked —` until #3675 lands —
-      see the authority boundary below.
+      leave the claim protective, and retire it only with `--preservation` plus the
+      allocator-assigned AI reviewer's APPROVE — see the authority boundary below.
    3. Close the pull request through the normal authenticated operator flow.
       Never delete its branch or its refs.
    4. Retire the claim with the tombstoning `--release-claim`, which writes an
@@ -181,9 +181,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    work (any worktree observed `dirty` or
    `remote`) is never abandoned as-is and never sent to Albert (owner ruling
    2026-09-28): preserve a rescue branch or patch backup, leave the claim
-   protective, and report it `Blocked —`. The lane tool still requires
-   `--owner-decision` for a retirement from `dirty`/`remote`; never bypass it.
-   Issue #3675 replaces it with an assigned AI reviewer's APPROVE. An `ambiguous` observation
+   protective, and report it `Blocked —` until retired as follows.
+   A terminal retirement from `dirty`/`remote` takes `--preservation artifact:<rescue commit or patch object>`
+   (dereferenced before anything is written) plus the allocator-assigned AI reviewer's durable
+   exact-head APPROVE for `--pr`/`--head-sha`, read automatically; `--owner-decision` is refused
+   (#3675). An `ambiguous` observation
    is not a state; re-observe, or treat it as `3` and stop.
 
    Audit lanes with `node scripts/manage-migration-author-lanes.mjs --audit`.
@@ -388,7 +390,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    | `curated-master-data` | `fork` | a fresh session **dispatched by this orchestrator**, under §6.4 |
    | `application-data`, `source-data` | `reject` | the owning application repository, after being forwarded |
    | `repo-maintenance`, `documentation` | `repo-session` | a **separately started** repository session — not an orchestrator assignment at all |
-   | `security-settings` | `return-to-owner` | Albert (code-enforced today; moving to an AI session is issue #3675) |
+   | `security-settings` | `repo-session` | a **separately started** AI session that obtains the needed access itself (owner ruling 2026-09-28, #3675: never ask a human to approve) |
 
    **Owner ruling, 2026-08-21 (issue #1366).** The orchestrator does database
    structure and schema only. `repo-maintenance` and `documentation` are not
@@ -465,12 +467,16 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
    slot independence still decide who is usable. It creates no concurrency cap.
 
-   For new assignments, the machine-independent cursor rotates Grok 4.6 → Qwen
-   3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
-   V4.1 Flash → repeat,
-   skipping any reviewer whose engine matches the live orchestrator. GLM 5.3
-   (paused 2026-09-18) and Kimi K3 (paused 2026-09-22, account out of credit,
-   issue #3423) are not drawable until removed from `RETIRED_REVIEWERS`.
+   For new assignments, the shared cursor (the sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run) rotates Grok 4.6 → GLM
+   5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
+   V4.1 Flash → StepFun Step 5 → repeat,
+   skipping any reviewer whose engine matches the live orchestrator, and on a
+   non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
+   was restored on 2026-09-30 (owner instruction: "add GLM back into the
+   reviewer rotation") after its 2026-09-18 weekly-usage pause. Kimi K3
+   (paused 2026-09-22, account out of credit, issue #3423) is not drawable
+   until removed from `RETIRED_REVIEWERS`.
    Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
    by owner instruction and is no longer drawable.
    That is exactly `ACTIVE_REVIEWERS` in
@@ -479,7 +485,15 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the code is the truth and this sentence must be re-derived from it, never the
    other way round.
    Codex cannot review when Codex orchestrates; Claude cannot review when Claude
-   orchestrates. Albert approved Codex on 2026-08-28 after its wrapper
+   orchestrates; and GLM cannot review when a ZCode orchestrator runs, because
+   ZCode's engine is GLM-5.3 — the exclusion follows the model engine behind the
+   harness, not the harness name (owner ruling 2026-09-17, "I never want GLM
+   reviewing GLM code", enforced by PR #3232: the glm rows carry
+   `orchestratorEngine:'glm'`, a marker may declare `engine: zcode` with a
+   `sess_<uuid>` id, and `ENGINE_REVIEWER_EXCLUSION` maps zcode → glm before the
+   draw, while codex and claude map to themselves unchanged). ZCode is not a
+   reviewer; adding it as one was permanently rejected by the same ruling.
+   Albert approved Codex on 2026-08-28 after its wrapper
    qualified.
 
    **Gemini 3.8 Flash High is ACTIVE again as of 2026-09-06** (PR #2438,
@@ -513,6 +527,16 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
    above a report citing specific lines.
 
+   **StepFun Step 5 (`stepfun-step-5-preview`) is ACTIVE as of 2026-09-25,
+   Ubuntu/Linux only** (owner instruction). `ai-stepfun review` (ai-devops PR
+   #849) runs StepCode `step/step-5-preview` with only read/grep/find/ls under
+   strict approval inside bubblewrap, over the shared sealed evidence packet, and
+   ends in a head-bound `VERDICT:` line; a live review of `94bf83c6` returned
+   `VERDICT: REVISE 94bf83c64889c2c29e229a2faa66d8ee183e911c` above a report
+   citing specific lines. The allocator has no platform field: on Windows,
+   `ai-review-preflight usable` reports stepfun `unsupported-platform`, so that
+   machine never draws it.
+
    **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
    and stays retired.** At that time
    `ai-deepseek-agent` was a conversational API client with no filesystem, no
@@ -524,12 +548,14 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    refuses outright — before any commit or ref is created — to record a
    code-review verdict from a reviewer whose wrapper cannot read the repository.
    Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
-   an `ai-review-sandbox` clone (as is paused GLM), Qwen via a sealed
+   an `ai-review-sandbox` clone (as is GLM), Qwen via a sealed
    evidence-packet checkout, Gemini via a disposable sandbox copy of
    the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
    DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
-   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
-   retired Codex reviewer was equipped the same way, via `codex exec --sandbox
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root, and
+   StepFun Step 5 (Linux machines only) via `ai-stepfun review`: read/grep/find/ls
+   inside bubblewrap over a read-only disposable copy with the sealed evidence
+   packet. The retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
    No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,

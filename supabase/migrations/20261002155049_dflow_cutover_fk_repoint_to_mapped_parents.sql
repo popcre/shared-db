@@ -4,7 +4,7 @@
 --
 -- Claim: #3884. Reserved version 20261002155049.
 --
--- WHY: the cutover maps art_piece, properties_and_characters,
+-- WHY: the cutover maps dflow.art_piece, dflow.properties_and_characters,
 -- property_character_associations and item_character_associations to dflow, but
 -- loads their parents into core."merchGroup", core."licenseList", plm."divisionCode",
 -- plm."SeasonCode" and plm."itemHeader". The dflow copies' FKs still point at stale

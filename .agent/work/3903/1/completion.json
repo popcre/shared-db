@@ -22,5 +22,6 @@
     "Loader verified live 2026-10-02 1:33 PM EDT: sync_run 3dcb09ac, 19,472 seen, 112 inserted, 19,360 updated."
   ],
   "stop_conditions_hit": [],
-  "pr": 3904
+  "pr": 3904,
+  "migration_versions": []
 }

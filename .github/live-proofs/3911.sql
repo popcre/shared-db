@@ -27,7 +27,9 @@ select (
       and t.tgenabled = 'O'
       and t.tgtype = 17
       and t.tgqual is not null
-      and t.tgattr::int2[] = array[(select attnum from sg_col)]::int2[]
+      -- int2vector casts to a 0-based array, so compare by length and members
+      and array_length(t.tgattr::int2[], 1) = 1
+      and (select attnum from sg_col) = all (t.tgattr::int2[])
       and t.tgfoid = pg_catalog.to_regprocedure('dam.sync_pdf_rich_extraction_style_group()')
   )
   and exists (
@@ -36,7 +38,9 @@ select (
       and t.tgname = 'trg_assets_rollup_pdf_rich_extraction_groups'
       and t.tgenabled = 'O'
       and t.tgtype = 16
-      and t.tgattr::int2[] = array[(select attnum from sg_col)]::int2[]
+      -- int2vector casts to a 0-based array, so compare by length and members
+      and array_length(t.tgattr::int2[], 1) = 1
+      and (select attnum from sg_col) = all (t.tgattr::int2[])
       and t.tgfoid = pg_catalog.to_regprocedure('dam.rollup_moved_pdf_rich_extraction_groups()')
   )
   and not exists (

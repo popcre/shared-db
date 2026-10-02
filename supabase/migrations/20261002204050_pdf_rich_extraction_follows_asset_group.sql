@@ -19,10 +19,19 @@
 --     statements that set style_group_id; when nothing was recorded it costs
 --     one to_regclass lookup. Otherwise it rolls each recorded group up exactly
 --     once per statement with the existing functions, then clears the list.
---   The rollup's own UPDATE of public.assets sets only product_material /
---   product_dimensions, so neither trigger re-fires from it.
+--   Each rollup is the existing refresh_style_group_rich_metadata: it reads the
+--   group's extraction rows and writes public.assets product_material /
+--   product_dimensions only for member rows whose values actually differ
+--   (IS DISTINCT FROM guard), so its cost is one indexed read of the group's
+--   members plus writes to changed members only. That UPDATE does not set
+--   style_group_id, so neither trigger re-fires from it.
+--   The row->statement hand-off uses a session-local temp table created
+--   on first use inside the transaction (ON COMMIT DROP) and emptied by the
+--   statement trigger, so it never carries ids across statements.
 --
--- Privilege boundary: both functions are SECURITY DEFINER because the caller
+-- Privilege boundary: the control is the existing RLS on public.assets (RLS
+-- enabled; the only UPDATE policy is "Admins can update assets"), not the
+-- REVOKE below, since trigger functions cannot be called directly. Both functions are SECURITY DEFINER because the caller
 -- (service_role, or an admin through the "Admins can update assets" RLS policy)
 -- has no grant on dam.pdf_rich_extraction. They take no caller-supplied values:
 -- they copy the asset's new style_group_id into its own extraction row and
@@ -34,7 +43,10 @@
 --   drop trigger trg_assets_sync_pdf_rich_extraction_group on public.assets;
 --   drop function dam.rollup_moved_pdf_rich_extraction_groups();
 --   drop function dam.sync_pdf_rich_extraction_style_group();
--- The migration runs in one transaction, so a partial apply cannot persist.
+-- Plain CREATE (no OR REPLACE / DROP) on purpose, so the statements stay
+-- purely additive for the production risk gate. The migration is applied in
+-- one transaction and recorded once in the ledger, so a partial apply cannot
+-- persist and a re-apply is never attempted.
 -- No data is changed by this migration itself.
 
 create function dam.sync_pdf_rich_extraction_style_group()
@@ -50,7 +62,7 @@ begin
     and e.style_group_id is distinct from new.style_group_id;
 
   if found then
-    create temporary table if not exists pdf_rich_extraction_moved_groups (
+    create temporary table if not exists pg_temp.pdf_rich_extraction_moved_groups (
       style_group_id uuid primary key
     ) on commit drop;
     insert into pg_temp.pdf_rich_extraction_moved_groups (style_group_id)

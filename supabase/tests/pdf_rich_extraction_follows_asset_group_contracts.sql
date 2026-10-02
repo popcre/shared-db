@@ -17,6 +17,9 @@ begin
       and tgfoid = 'dam.sync_pdf_rich_extraction_style_group()'::regprocedure
       and tgenabled = 'O'
       and tgtype = 17 -- row-level AFTER UPDATE
+      and tgqual is not null
+      and array_length(tgattr::int2[], 1) = 1
+      and (select attnum from pg_attribute where attrelid = 'public.assets'::regclass and attname = 'style_group_id') = all (tgattr::int2[])
   ) or not exists (
     select 1 from pg_trigger
     where tgrelid = 'public.assets'::regclass
@@ -24,6 +27,8 @@ begin
       and tgfoid = 'dam.rollup_moved_pdf_rich_extraction_groups()'::regprocedure
       and tgenabled = 'O'
       and tgtype = 16 -- statement-level AFTER UPDATE
+      and array_length(tgattr::int2[], 1) = 1
+      and (select attnum from pg_attribute where attrelid = 'public.assets'::regclass and attname = 'style_group_id') = all (tgattr::int2[])
   ) then
     raise exception '#3911: triggers missing or wrong shape';
   end if;

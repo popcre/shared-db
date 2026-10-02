@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "work_issue": 3874,
+  "outcome": "ready-for-merge",
+  "pr": 3908,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3874/8",
+  "contract_sha256": "dbe8d736758d53578e9d3d4c18ca5488602c5acf9fe5a85e1559de7b5fcd0d8e",
+  "base_sha": "335b0232769eefadb0cc38791c98422c6b409ea5",
+  "head_sha": "dd1d869f07b6d79a5a9ab96ab29787f5ade79f26",
+  "files_changed": [
+    ".github/workflows/issue-orchestrator-label.yml",
+    "AGENTS.md",
+    "docs/agents/orchestrator.md",
+    "scripts/check-repository-identity-conformance.mjs",
+    "scripts/check-skill-drift.mjs",
+    "scripts/check-skill-drift.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/reviewer-wire-budget.test.mjs",
+    "scripts/sync-issue-orchestrator-label.mjs",
+    "scripts/sync-issue-orchestrator-label.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "754 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "397 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/check-skill-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "5 pass, 0 fail"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "OK, 44 entries"
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 pass, 0 fail"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 8 supersedes 7 only to set SHARED_DB_AUTHOR_ENGINE in the wire-budget CLI fixture; full local script suite shows the same 21 Windows-only failures as main and no new ones.",
+    "Marker guard workflow, preview resolveMarker and orchestrator-admission.mjs remain open on #3874."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Live proof card: #3874."
+}

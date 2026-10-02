@@ -1,6 +1,6 @@
 # Shipping terms and delivery responsibility
 
-**Status:** Settled where marked; the named Unknowns are open.
+**Status:** Settled
 
 ## Where POP's responsibility ends, by sales-order term
 

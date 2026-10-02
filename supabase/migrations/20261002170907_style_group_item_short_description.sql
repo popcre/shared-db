@@ -14,6 +14,30 @@
 --    (human-entered) are never overwritten. When short descriptions are stale
 --    it enqueues the PopDAM worker operation 'shorten-item-descriptions'.
 
+-- Fail the apply, not a 04:30 cron run, if a dependency the new body reads is missing.
+do $verify$
+declare
+  v_missing text;
+begin
+  select string_agg(format('%s.%s.%s', t.s, t.r, t.c), ', ') into v_missing
+  from (values
+    ('plm', 'item', 'item_number'), ('plm', 'item', 'description'), ('plm', 'item', 'updated_at'), ('plm', 'item', 'id'),
+    ('public', 'style_tracker_rows', 'sku'), ('public', 'style_tracker_rows', 'description'),
+    ('public', 'style_tracker_rows', 'tracker_type'), ('public', 'style_tracker_rows', 'updated_at'),
+    ('public', 'admin_config', 'key'), ('public', 'admin_config', 'value'), ('public', 'admin_config', 'updated_at'),
+    ('dam', 'sku_human_description', 'sku'), ('dam', 'sku_human_description', 'tracker_type'),
+    ('public', 'style_groups', 'item_description_source')
+  ) as t(s, r, c)
+  where not exists (
+    select 1 from information_schema.columns ic
+    where ic.table_schema = t.s and ic.table_name = t.r and ic.column_name = t.c
+  );
+  if v_missing is not null then
+    raise exception '#3900: required column(s) missing: %', v_missing;
+  end if;
+end
+$verify$;
+
 alter table public.style_groups
   add column if not exists item_short_description text,
   add column if not exists item_short_description_source text,
@@ -39,6 +63,11 @@ declare
   v_status    text;
   v_now       timestamptz := now();
 begin
+  -- Take the BULK_OPERATIONS advisory lock FIRST, like every sibling writer
+  -- (queue_nightly_rebuild_style_groups takes it before updating style_groups;
+  -- acquiring it after our own style_groups row locks would invert lock order).
+  perform pg_advisory_xact_lock(hashtext('BULK_OPERATIONS'));
+
   truncate table dam.sku_human_description;
 
   -- Item Master (ColdLion) first; the Google Sheet import only fills SKUs the
@@ -78,7 +107,7 @@ begin
     and not exists (
       select 1 from dam.sku_human_description d where upper(d.sku) = upper(trim(r.sku))
     )
-  order by upper(trim(r.sku)), r.updated_at desc nulls last;
+  order by upper(trim(r.sku)), r.updated_at desc nulls last, r.id;
 
   select count(*) into v_row_count from dam.sku_human_description;
 
@@ -99,8 +128,7 @@ begin
       and coalesce(sg.item_short_description_source, '') <> 'manual'
       and sg.item_short_description_input is distinct from sg.item_description
   ) then
-    perform pg_advisory_xact_lock(hashtext('BULK_OPERATIONS'));
-    select value into v_current from admin_config where key = 'BULK_OPERATIONS';
+    select value into v_current from public.admin_config where key = 'BULK_OPERATIONS';
     v_current := coalesce(v_current, '{}'::jsonb);
     v_status := v_current -> 'shorten-item-descriptions' ->> 'status';
     if coalesce(v_status, '') not in ('queued', 'running') then
@@ -120,7 +148,7 @@ begin
         ),
         true
       );
-      insert into admin_config (key, value, updated_at)
+      insert into public.admin_config (key, value, updated_at)
       values ('BULK_OPERATIONS', v_current, v_now)
       on conflict (key) do update
         set value = excluded.value, updated_at = excluded.updated_at;

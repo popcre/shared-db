@@ -38,6 +38,17 @@ begin
     raise exception 'T5: shorten-item-descriptions was not enqueued';
   end if;
 
+  -- T7: a queued/running op is never clobbered by a second refresh.
+  perform public.refresh_sku_human_description();
+  if (select value -> 'shorten-item-descriptions' ->> 'run_id' from public.admin_config where key = 'BULK_OPERATIONS')
+     is distinct from (v_bulk -> 'shorten-item-descriptions' ->> 'run_id') then
+    raise exception 'T7: a queued shorten-item-descriptions op was replaced';
+  end if;
+
+  -- T8: a manual short description is not stale, so it alone never enqueues.
+  update public.style_groups set item_short_description = 'Hand label', item_short_description_source = 'manual'
+  where sku = 'ZZTEST-A1';
+
   begin
     update public.style_groups set item_short_description_source = 'bogus' where sku = 'ZZTEST-A1';
     raise exception 'T6: invalid short description source accepted';

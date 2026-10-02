@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/3882/1",
   "contract_sha256": "e100860297ee4d12492f6db65e67dfbbdfc14cda9dbc5a2200eaa0a37395307d",
   "base_sha": "9299911e72ca293c99b491939c1279dcc770406b",
-  "head_sha": "553804e99fb22fd9c92e393d4d0ba0c3c776ff1e",
+  "head_sha": "f17d47cf9b3e45aec3605f4dc52deea0e545e483",
   "files_changed": [
     ".github/live-proofs/3882.sql",
     "supabase/migrations/20261002155049_dflow_cutover_fk_repoint_to_mapped_parents.sql"
@@ -31,7 +31,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "static checks passed at 553804e99fb22fd9c92e393d4d0ba0c3c776ff1e, including the #1684 EOL reference guard"
+      "evidence": "static checks passed at f17d47cf9b3e45aec3605f4dc52deea0e545e483, including the #1684 EOL reference guard"
     },
     {
       "command": "node scripts/check-live-proof-probe.mjs",

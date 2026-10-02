@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3859,
+  "outcome": "ready-for-merge",
+  "pr": 3862,
+  "migration_versions": ["20261001122410"],
+  "contract_ref": "refs/db-contracts/3859/1",
+  "contract_sha256": "1bb261b12be3960c931e69a500f393ee9791f4483ac23c853694fb52c8372aad",
+  "base_sha": "5deadd0432d282b204b4702464867f472025c333",
+  "head_sha": "ee85b0ba29cb9a936d4658a0e6d148664d32280c",
+  "files_changed": [
+    "supabase/migrations/20261001122410_coldlion_prod_detail_order_index.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table coldlion.prod_detail",
+    "index coldlion.prod_detail_company_code_prod_order_no_idx"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "static checks passed for additive CREATE INDEX"
+    }
+  ],
+  "assumptions_resolved": [
+    "per-order reconcile lookups need (company_code, prod_order_no) after the line-seq unique drop"
+  ],
+  "stop_conditions_hit": []
+}

@@ -52,13 +52,17 @@ begin
   if not exists (
     select 1 from pg_index i
     where i.indrelid = 'public.admin_config'::regclass and i.indisunique
-      and i.indnkeyatts = 1
+      and i.indpred is null and i.indnkeyatts = 1
       and i.indkey[0] = (select attnum from pg_attribute where attrelid = 'public.admin_config'::regclass and attname = 'key')
   ) then
     raise exception '#3900: public.admin_config(key) has no unique index for ON CONFLICT (key)';
   end if;
   if to_regprocedure('public.refresh_sku_human_description()') is null
-     or (select prorettype from pg_proc where oid = to_regprocedure('public.refresh_sku_human_description()')) <> 'bigint'::regtype then
+     or not exists (
+       select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_sku_human_description()')
+         and p.prorettype = 'bigint'::regtype and p.prokind = 'f' and p.prosecdef
+     ) then
     raise exception '#3900: public.refresh_sku_human_description() returning bigint is not the function being replaced';
   end if;
 end
@@ -77,6 +81,16 @@ alter table public.style_groups
   add constraint style_groups_item_short_description_source_check
   check (item_short_description_source is null or item_short_description_source in ('ai', 'manual'));
 
+-- Index assumption (stated, not an oversight): this nightly body joins on
+-- upper(trim(...)) expressions, which no existing index serves
+-- (idx_style_tracker_rows_sku is upper(sku); plm.item has no item_number index;
+-- style_groups/sku_human_description are keyed on raw sku). At ~19.5k Item Master
+-- rows, ~11k groups and one run a day, sequential scans + hash joins are cheaper
+-- than maintaining new expression indexes on these write-heavy tables. Revisit if
+-- this ever runs interactively. The staleness probe is likewise a full scan.
+--
+-- public.admin_config is written as DATA (the BULK_OPERATIONS row), exactly as the
+-- sibling enqueue writers do; no admin_config structure changes.
 create or replace function public.refresh_sku_human_description()
 returns bigint
 language plpgsql

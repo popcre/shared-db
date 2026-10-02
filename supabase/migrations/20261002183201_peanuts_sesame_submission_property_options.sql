@@ -23,6 +23,11 @@
 --      released 2026-10-02). Body is 20260930202719's verbatim plus that arm and the
 --      Peanuts group mapping; production's live definition was confirmed to be
 --      20260930202719 before authoring.
+--
+-- Revert: fix forward. Restore the inventory function from 20260930202719's body
+-- (drop only the peanuts-submissions arm and mapping), then drop
+-- plm.peanuts_submission_property_option. The Sesame row is owner-authorized data and
+-- is not reverted by a structural rollback.
 
 -- 1. Sesame Workshop: the one owner-authorized option.
 insert into plm.sesame_submission_property_option
@@ -1598,8 +1603,12 @@ begin
   -- table this migration does not own).
   if not exists (select 1 from plm.sesame_submission_property_option
                  where option_key = '6f101119-6043-45b2-be4c-f4d42e65022c'
-                   and exact_label = 'Sesame street') then
-    raise exception '#3897 self-check: the owner-authorized Sesame option is missing';
+                   and exact_label = 'Sesame street'
+                   and ordinal = 0
+                   and source_field = 'property_source_id'
+                   and source_captured_at = '2026-08-21T11:21:21Z'::timestamptz
+                   and raw ->> 'source_repo' = 'u2giants/licensor-source-data#105') then
+    raise exception '#3897 self-check: the owner-authorized Sesame option is missing or differs';
   end if;
   if (select count(*) from plm.peanuts_submission_property_option) <> 2
      or (select count(*) from plm.peanuts_submission_property_option
@@ -1615,16 +1624,37 @@ begin
      <> 'option_key:text:true,exact_label:text:true,ordinal:integer:true,source_field:text:true,source_captured_at:timestamp with time zone:true,raw:jsonb:true,loaded_at:timestamp with time zone:true' then
     raise exception '#3897 self-check: plm.peanuts_submission_property_option shape differs';
   end if;
-  if (select count(*) from pg_constraint
-       where conrelid = 'plm.peanuts_submission_property_option'::regclass
-         and conname in ('peanuts_submission_property_option_pkey',
-                         'peanuts_submission_property_option_label_nonblank_chk',
-                         'peanuts_submission_property_option_ordinal_chk',
-                         'peanuts_submission_property_option_field_nonblank_chk',
-                         'peanuts_submission_property_option_raw_obj_chk',
-                         'peanuts_submission_property_option_owner_scope_chk')) <> 6 then
-    raise exception '#3897 self-check: plm.peanuts_submission_property_option constraints differ';
+  -- Constraint DEFINITIONS, not just names: the four generic checks and the key must
+  -- equal the WildBrain sibling's exactly (same shape, same source text).
+  if (select count(*) from pg_constraint c
+       join pg_constraint w
+         on w.conrelid = 'plm.wildbrain_submission_property_option'::regclass
+        and w.conname = replace(c.conname, 'peanuts_', 'wildbrain_')
+        and pg_get_constraintdef(w.oid) = pg_get_constraintdef(c.oid)
+      where c.conrelid = 'plm.peanuts_submission_property_option'::regclass
+        and c.conname in ('peanuts_submission_property_option_pkey',
+                          'peanuts_submission_property_option_label_nonblank_chk',
+                          'peanuts_submission_property_option_ordinal_chk',
+                          'peanuts_submission_property_option_field_nonblank_chk',
+                          'peanuts_submission_property_option_raw_obj_chk')) <> 5
+     or (select count(*) from pg_constraint
+          where conrelid = 'plm.peanuts_submission_property_option'::regclass) <> 6 then
+    raise exception '#3897 self-check: plm.peanuts_submission_property_option constraint definitions differ';
   end if;
+  -- Owner scope: exactly the two authorized keys, proven by definition and behaviour.
+  if (select pg_get_constraintdef(oid) from pg_constraint
+       where conrelid = 'plm.peanuts_submission_property_option'::regclass
+         and conname = 'peanuts_submission_property_option_owner_scope_chk')
+     not like '%''owner-manual:peanuts-classic''%''owner-manual:charlie-brown-tv-special''%' then
+    raise exception '#3897 self-check: owner scope constraint does not name the two keys';
+  end if;
+  begin
+    insert into plm.peanuts_submission_property_option
+      (option_key, exact_label, ordinal, source_field, source_captured_at)
+    values ('owner-manual:not-authorized', 'x', 9, 'x', now());
+    raise exception '#3897 self-check: owner scope accepted an unauthorized key';
+  exception when check_violation then null;
+  end;
   if not (select c.relrowsecurity from pg_class c
           where c.oid = 'plm.peanuts_submission_property_option'::regclass) then
     raise exception '#3897 self-check: RLS is not enabled on plm.peanuts_submission_property_option';
@@ -1634,7 +1664,14 @@ begin
      or not has_table_privilege('authenticated', 'plm.peanuts_submission_property_option', 'select')
      or not has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'select')
      or not has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'insert')
-     or has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'update') then
+     or has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'update')
+     or has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'delete')
+     or has_table_privilege('service_role', 'plm.peanuts_submission_property_option', 'truncate')
+     or has_table_privilege('anon', 'plm.peanuts_submission_property_option', 'insert')
+     or has_table_privilege('anon', 'plm.peanuts_submission_property_option', 'update')
+     or has_table_privilege('anon', 'plm.peanuts_submission_property_option', 'delete')
+     or has_table_privilege('authenticated', 'plm.peanuts_submission_property_option', 'update')
+     or has_table_privilege('authenticated', 'plm.peanuts_submission_property_option', 'delete') then
     raise exception '#3897 self-check: grants differ from the sibling read grant';
   end if;
   if (select count(*) from pg_policies where schemaname = 'plm'
@@ -1647,11 +1684,36 @@ begin
         and tablename = 'peanuts_submission_property_option'
         and policyname = 'peanuts_submission_property_option_plm_read'
         and cmd = 'SELECT' and roles = array['authenticated']::name[]
-        and qual like '%has_app_access(''plm''%') then
+        and qual = (select w.qual from pg_policies w
+                     where w.schemaname = 'plm'
+                       and w.tablename = 'wildbrain_submission_property_option'
+                       and w.policyname = 'wildbrain_submission_property_option_plm_read')) then
     raise exception '#3897 self-check: read policies differ';
   end if;
-  if position('peanuts-submissions' in pg_get_functiondef(
-       'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)) = 0 then
-    raise exception '#3897 self-check: inventory arm missing';
+  if (select position($arm$      select 'peanuts-submissions', 'Peanuts - Submissions (owner-entered)', 'Submissions',
+             'peanuts_owner_manual', 'plm.peanuts_submission_property_option', o.option_key,
+             o.exact_label, null,
+             o.source_captured_at, null::text
+      from plm.peanuts_submission_property_option o
+    ), excluded_identity as materialized ($arm$ in p.prosrc)
+        from pg_proc p
+       where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure) = 0
+     or (select (length(p.prosrc) - length(replace(p.prosrc,
+           $m$when s.licensor_key in ('peanuts-creative', 'peanuts-submissions') then $m$, '')))
+           / length($m$when s.licensor_key in ('peanuts-creative', 'peanuts-submissions') then $m$)
+           from pg_proc p
+          where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure) <> 6
+     or (select position($m$when s.licensor_key = 'peanuts-creative' then$m$ in p.prosrc)
+           from pg_proc p
+          where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure) <> 0 then
+    raise exception '#3897 self-check: inventory arm or Peanuts group mappings differ';
+  end if;
+  if not exists (select 1 from pg_proc p
+                  where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure
+                    and p.prosecdef and p.provolatile = 's'
+                    and p.proconfig = array['search_path=app, public'])
+     or not has_function_privilege('authenticated', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute')
+     or has_function_privilege('anon', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute') then
+    raise exception '#3897 self-check: inventory function security, volatility, search_path or grants differ';
   end if;
 end $$;

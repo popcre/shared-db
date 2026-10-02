@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3903/2",
   "contract_sha256": "63aa77c29e741e96b8cb04ffcbdcc33c3464f9a72e0b13340f46721d5da76a4d",
-  "head_sha": "2428262e8a8705f4d0b321d75fa02e5cd73fa7d2",
+  "head_sha": "859259c6464f2e011b4ad0c5972af2e9ef80b0cc",
   "base_sha": "d26cedf5733e1e43938d5ce3e2007cce10a67fea",
   "files_changed": [
     ".github/workflows/coldlion-landing-sync.yml",
@@ -19,13 +19,15 @@
     {
       "command": "node --test tools/item-taxonomy-phase2.test.mjs",
       "exit_code": 0,
-      "evidence": "Local run at 2428262e8a8705f4d0b321d75fa02e5cd73fa7d2 with the landing gate files: 129 pass, 0 fail."
+      "evidence": "Local run at 859259c6464f2e011b4ad0c5972af2e9ef80b0cc together with the four landing gate files: 187 pass, 0 fail."
     }
   ],
   "assumptions_resolved": [
     "Manual production run 2026-10-02 1:33 PM EDT: sync_run 3dcb09ac, 19,472 seen, 112 inserted, 19,360 updated; resolved licensor items 13,092 (unchanged quality). /items fetch measured 42s.",
     "plm.merch_group_header holds curated owner-approved rows (#539/#1177); not refreshed by this job by design; collapse guard covers F2.",
-    "Guard SQL syntax-checked against production in a rolled-back transaction."
+    "Guard SQL syntax-checked against production in a rolled-back transaction.",
+    "Review 2: explicit begin/commit (CLI path safe); share-based guard + allow_resolution_drop dispatch input; live timed run with the new SQL at 3:06 PM EDT: 80 s total, 19,500 seen, 28 inserted, 5,777 updated, resolved 13,120 (churn data point: 5,777 rows changed within 90 minutes suggests a volatile /items field; tracked as follow-up).",
+    "EP001 division retirement guard lives in plm.import_item_master_data (database function, out of this repo-maintenance scope); documented remedy + follow-up issue."
   ],
   "stop_conditions_hit": []
 }

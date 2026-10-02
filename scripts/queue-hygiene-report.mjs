@@ -51,6 +51,7 @@ export function hygieneReportIo(io) {
     updateRef: refuse('updateRef'),
     atomicReviewRefs: refuse('atomicReviewRefs'),
     atomicReviewMutexRelease: refuse('atomicReviewMutexRelease'),
+    releaseRefOverGit: refuse('releaseRefOverGit'),
     reserveVersion: refuse('reserveVersion'),
     createClaim: refuse('createClaim'),
     createIssueIn: refuse('createIssueIn'),

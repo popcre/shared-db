@@ -295,6 +295,18 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         self.assertEqual(calls, [f"repos/{REPOSITORY}/pulls/1108", "rate_limit", f"repos/{REPOSITORY}/pulls/1108"])
         self.assertEqual(sleeps, [301])
 
+    def test_rate_limit_wait_is_the_shared_module_and_never_exceeds_the_cap(self):
+        # #3735: the gate and the historical recovery proof share one wait.
+        import github_rate_limit
+        import production_business_risk_gate as gate
+        self.assertIs(gate.wait_for_reset_once, github_rate_limit.wait_for_reset_once)
+        self.assertIs(gate.rate_limit_exhausted, github_rate_limit.rate_limit_exhausted)
+        calls, sleeps = [], []
+        runner, clock = self.rate_limit_runner(calls, reset_in=900)
+        self.assertEqual(gh_json(f"repos/{REPOSITORY}/pulls/1108", runner=runner, sleep=sleeps.append,
+                                 rate_limit_wait_seconds=3600, clock=clock), {"ok": True})
+        self.assertEqual(sleeps, [900])
+
     def test_lane_held_default_fails_fast_on_a_rate_limit(self):
         calls = []
         runner, clock = self.rate_limit_runner(calls, reset_in=60)
@@ -2366,6 +2378,49 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                 enforce_automatic_risk_decision(automatic, decision)
             enforce_automatic_risk_decision(legacy, decision)
 
+    def test_ai_reviewer_assessment_accepts_flagged_sql_risks_never_a_human(self):
+        # Owner ruling 2026-09-30: Albert is not a technical reviewer. A flagged SQL
+        # risk class is accepted only by the durable exact-head AI reviewer assessment.
+        automatic = {"schema_version": "shared-db-production-apply-review/v2"}
+        flagged = decide_business_risk(
+            [RISK_TEXT["material_access_change"], RISK_TEXT["permanent_data_rewrite_or_loss"]],
+            recovery_proven=True, review_approved=True,
+        )
+        seen = []
+        evidence = {"verdictRef": "refs/db-review-verdicts/1-2-" + "a" * 40 + "-slot3"}
+        self.assertEqual(
+            enforce_automatic_risk_decision(automatic, flagged, lambda keys: seen.append(keys) or evidence),
+            evidence,
+        )
+        self.assertEqual(seen, [["material_access_change", "permanent_data_rewrite_or_loss"]])
+        with self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED.*never by a human: no durable"):
+            enforce_automatic_risk_decision(
+                automatic, flagged,
+                lambda keys: (_ for _ in ()).throw(RiskGateError("no durable APPROVE")),
+            )
+        with self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED"):
+            enforce_automatic_risk_decision(automatic, flagged)
+        for key in ("recovery_unproven", "unresolved_material_objection"):
+            decision = {"automaticPromotionAllowed": False, "ownerDecisionReasons": [RISK_TEXT[key]]}
+            with self.subTest(key=key), self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED"):
+                enforce_automatic_risk_decision(automatic, decision, lambda keys: self.fail("must not ask"))
+
+    def test_ai_risk_acceptance_prover_output_is_bound_to_the_exact_promotion(self):
+        import production_business_risk_gate as gate
+        good = {"mainSha": "b" * 40, "orderedAllowlist": ["20260930185929"], "sourcePr": 7,
+                "headSha": "c" * 40, "assessedRisks": {"material_access_change": "x"}}
+        def runner(out, code=0):
+            return lambda *a, **k: type("R", (), {"returncode": code, "stdout": json.dumps(out), "stderr": "refused"})()
+        kwargs = dict(issue=1, pr=7, head_sha="c" * 40, main_sha="b" * 40,
+                      allowlist=["20260930185929"], risks=["material_access_change"])
+        self.assertEqual(gate.prove_ai_risk_acceptance(**kwargs, runner=runner(good)), good)
+        with self.assertRaisesRegex(RiskGateError, "refused"):
+            gate.prove_ai_risk_acceptance(**kwargs, runner=runner(good, 2))
+        for field, value in (("mainSha", "d" * 40), ("orderedAllowlist", []), ("sourcePr", 8),
+                             ("headSha", "e" * 40), ("assessedRisks", {})):
+            with self.subTest(field=field), self.assertRaisesRegex(RiskGateError, "not bound"):
+                gate.prove_ai_risk_acceptance(**kwargs, runner=runner({**good, field: value}))
+
     def test_forged_preview_claim_is_rejected_before_download(self):
         forged = "b" * 40
         run = {
@@ -3622,6 +3677,16 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             (root / "supabase/migrations/20260814000000_x.sql").write_text(body, encoding="utf-8")
             return classify_sql(root, ["20260814000000"])
 
+    def classify_multi(self, migrations):
+        """classify_sql over an ordered [(version, body), ...] migration set."""
+        from production_business_risk_gate import classify_sql
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "supabase/migrations").mkdir(parents=True)
+            for version, body in migrations:
+                (root / f"supabase/migrations/{version}_x.sql").write_text(body, encoding="utf-8")
+            return classify_sql(root, [migrations[-1][0]])
+
     EVERY_RISK = sorted([RISK_TEXT["permanent_data_rewrite_or_loss"],
                          RISK_TEXT["expected_downtime"], RISK_TEXT["material_access_change"]])
 
@@ -3638,7 +3703,8 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         from production_business_risk_gate import ALLOWLIST
         self.assertEqual(set(ALLOWLIST), {
             "create_function", "drop_function_if_exists", "add_nullable_column",
-            "create_table", "create_index_on_new_table", "comment_on"})
+            "create_table", "create_index_on_new_table", "comment_on",
+            "alter_function_volatility"})
 
     def test_the_two_refused_production_migrations_are_allowed(self):
         """Runs 34987389408 (#2934, PR #2958) and 34989644100 (#2911) were refused."""
@@ -3688,7 +3754,6 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter table public.t add column c public.some_domain;",
             "alter table public.t add column c text collate \"C\";",
             "alter table public.t add column c int generated always as identity;",
-            "alter table public.t add column n text, add column m text;",
             "alter table public.t add column n text, alter column c set not null;",
             "alter table public.t owner to app_owner;",
             "alter table t add column c text;",
@@ -3786,6 +3851,228 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             "alter table public.t add column s text check (s in ('a')); grant all on public.t to anon;",
             "alter table public.t add column s text check (s in ('a')); delete from public.t;",
         ])
+
+    def test_a_plain_multi_column_add_reports_no_risk(self):
+        """#3400: 20260928182014 adds three nullable columns per ALTER; each is
+        catalog-only exactly like the single-column entry, so the list is too."""
+        for body in [
+            "alter table plm.\"itemHeader\" add column if not exists a text,"
+            " add column if not exists b text, add column if not exists c timestamptz;",
+            "alter table public.t add column a text null, add column b bigint;",
+        ]:
+            with self.subTest(body=body):
+                self.assertEqual(self.classify(body), [])
+        self.assert_allowed([], [
+            "alter table public.t add column a text, add column b text not null;",
+            "alter table public.t add column a text, add column b text default 'x';",
+            "alter table public.t add column a text, drop column old;",
+            "alter table public.t add column a text, add column b text references public.u(id);",
+            "alter table public.t add column a text, add column b serial;",
+        ])
+
+    def test_allowlist_entry_alter_function_volatility(self):
+        """#3725: a volatility flag alone is catalog-only — no data rewrite,
+        no lock, no grant change. Anything beside the flag stays refused.
+        #3826 (Muse M2): an IMMUTABLE claim additionally needs a pure body;
+        STABLE and VOLATILE need no body proof (the safe direction)."""
+        self.assert_allowed([
+            "alter function plm.wb_validate_normalized_row(text, jsonb) stable;",
+            "alter function public.f(text) volatile;",
+            "alter function plm.f(a bigint, b text[]) stable;",
+            # IMMUTABLE with a body that only computes on its arguments
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return abs(p_x); end $$;"
+            " alter function public.f(int) immutable;",
+            "create or replace function public.g(p_s text) returns text"
+            " language sql immutable as $$ select btrim(p_s) $$;"
+            " alter function public.g(text) immutable;",
+        ], [
+            "alter function plm.f(text) stable cascade;",
+            "alter function plm.f(text) stable restrict;",
+            "alter function plm.f(text) rename to g;",
+            "alter function plm.f(text) owner to app_owner;",
+            "alter function plm.f(text) set search_path = '';",
+            "alter function plm.f(text) stable, immutable;",
+            "alter function plm.f(text) immutable leakproof;",
+            "alter function plm.f(text) stable security definer;",
+            "alter function plm.f(text) cost 100;",
+            "alter function f(text) stable;",
+            "alter function plm.f(text) depends on extension pg_trgm;",
+            # IMMUTABLE with no body anyone can inspect: refused (M2)
+            "ALTER FUNCTION public.f() IMMUTABLE;",
+            "alter function public.f(int) immutable;",
+            # IMMUTABLE on a body that reads the clock or a table: refused
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return now()::int + p_x; end $$;"
+            " alter function public.f(int) immutable;",
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ declare n int; begin"
+            " select count(*) into n from pg_class; return n; end $$;"
+            " alter function public.f(int) immutable;",
+            # tz-dependent cast: the exact #3725 defect shape
+            "create or replace function public.f(p_s text) returns text"
+            " language plpgsql immutable as $$ begin perform p_s::timestamptz;"
+            " return p_s; end $$;"
+            " alter function public.f(text) immutable;",
+            # a call to a user-defined name carries unknown volatility
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin return public.other(p_x); end $$;"
+            " alter function public.f(int) immutable;",
+        ])
+
+    def test_a_do_assertion_block_reports_no_risk(self):
+        """#3725: a post-apply DO that reads catalogs and RAISEs on mismatch
+        writes nothing, so it is not a business risk. Anything with DML/DDL
+        or a non-whitelisted call still reports every risk."""
+        allowed = [
+            # the exact #3725 shape
+            "do $postapply$\ndeclare p record;\nbegin\n"
+            "  select provolatile, proconfig into p from pg_proc where oid = to_regprocedure('plm.f(text,jsonb)');\n"
+            "  if not found then raise exception 'missing'; end if;\n"
+            "  if p.provolatile <> 's' then raise exception 'bad %%'; end if;\n"
+            "end\n$postapply$;",
+            # minimal assertion
+            "do $$ begin raise exception 'x'; end $$;",
+            # assert with a catalog read
+            "do $$ declare n int; begin select count(*) into n from pg_class; "
+            "if n = 0 then raise exception 'empty'; end if; end $$;",
+            # language plpgsql is fine
+            "do language plpgsql $$ begin raise notice 'ok'; end $$;",
+            "do language plpgsql as $$ begin raise exception 'x'; end $$;",
+        ]
+        refused = [
+            # DML
+            "do $$ begin delete from public.t; end $$;",
+            "do $$ begin insert into public.t values (1); end $$;",
+            "do $$ begin update public.t set v = 1; end $$;",
+            "do $$ begin truncate public.t; end $$;",
+            # DDL
+            "do $$ begin drop table core.character; end $$;",
+            "do $$ begin create table core.n(id int); end $$;",
+            # DCL
+            "do $$ begin grant select on public.t to anon; end $$;",
+            # dynamic SQL
+            "do $$ begin execute 'delete from public.t'; end $$;",
+            # side-effecting calls
+            "do $$ begin perform public.destroy(); end $$;",
+            "do $$ begin select public.destroy() into null; end $$;",
+            "do $$ declare x int; begin x := public.destroy(); raise exception 'x'; end $$;",
+            # no RAISE at all
+            "do $$ declare n int; begin select 1 into n; end $$;",
+            # session change
+            "do $$ begin set search_path = public; raise exception 'x'; end $$;",
+            # E-string backslash escape hides DML from the string stripper
+            "do $$ begin raise notice e'a\\''; delete from public.t; raise notice 'b'; end $$;",
+            # call-free utility keywords
+            "do $$ begin analyse core.character; raise exception 'x'; end $$;",
+            "do $$ begin load '/tmp/x.so'; raise exception 'x'; end $$;",
+            "do $$ begin checkpoint; raise exception 'x'; end $$;",
+            "do $$ begin explain select 1; raise exception 'x'; end $$;",
+            "do $$ begin reassign owned by app to anon; raise exception 'x'; end $$;",
+            "do $$ begin import foreign schema x; raise exception 'x'; end $$;",
+            "do $$ declare n int; begin select count(*) into n from t for share; raise exception 'x'; end $$;",
+            # string-literal body (not dollar-quoted)
+            "do 'begin raise exception \'x\'; end';",
+            # language sql body
+            "do language sql $$ delete from public.t $$;",
+        ]
+        for body in allowed:
+            with self.subTest(allowed=body):
+                self.assertEqual(self.classify(body), [])
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_a_string_delimiter_cannot_hide_dml_from_the_do_checker(self):
+        """#3826 (Muse H1): comment stripping before string stripping let a
+        `--` or `/*` inside a string literal hide real DML from the forbidden
+        keyword scan while PostgreSQL executed it. The checker must see the
+        DELETE in every one of these shapes."""
+        refused = [
+            # the two review payloads, as a complete DO body
+            "do $$ declare v text; begin "
+            "select 'a--b' into v; delete from public.t; raise notice 'x'; end $$;",
+            "do $$ declare v text; begin "
+            "select '/*' into v; delete from public.t; /* */ raise notice 'x'; end $$;",
+            # the same two with the RAISE first (the variant that used to be
+            # excused: the false comment ate only the DML, leaving the raise)
+            "do $$ declare v text; begin "
+            "raise notice 'x'; select 'a--b' into v; delete from public.t; end $$;",
+            "do $$ declare v text; begin "
+            "raise notice 'x'; select '/*' into v; delete from public.t; /* */ end $$;",
+            # a real end-of-line comment must not swallow the next line's DML
+            # (the body arrives line-structured, so `--` ends at its newline)
+            "do $$\nbegin\n  raise notice 'x'; -- note\n  delete from public.t;\nend\n$$;",
+            # doubled-quote and E-string shapes around the delimiters
+            "do $$ declare v text; begin "
+            "raise notice 'a''--b'; select 'c' into v; delete from public.t; end $$;",
+            "do $$ declare v text; begin "
+            "raise notice e'a\\''; delete from public.t; raise notice 'b'; end $$;",
+        ]
+        for body in refused:
+            with self.subTest(refused=body):
+                self.assertEqual(self.classify(body), self.EVERY_RISK)
+
+    def test_a_shadowed_whitelist_name_cannot_cover_dml(self):
+        """#3826 (Muse H1/M1): a bare whitelisted call is only the builtin
+        while no `create ... function` of that name exists in the migration
+        set. The traced exploit is two statements -- CREATE FUNCTION md5 that
+        deletes, then a DO that merely calls bare md5() -- and the exemption
+        must refuse it. The same hole let a shadowed name lie about IMMUTABLE
+        (M1). pg_catalog. qualification stays the builtin; no create function
+        at all leaves the bare call routine."""
+        shadow = (
+            "create or replace function public.md5(t text) returns text"
+            " language plpgsql as $$ begin delete from public.t; return t; end $$;"
+        )
+        select_bare_md5 = (
+            "do $$ declare v text; begin select md5('x') into v;"
+            " raise notice 'ok'; end $$;"
+        )
+        select_qualified_md5 = (
+            "do $$ declare v text; begin select pg_catalog.md5('x') into v;"
+            " raise notice 'ok'; end $$;"
+        )
+        # the exploit: shadowed bare md5() under an otherwise-clean DO
+        self.assert_allowed([], [shadow + select_bare_md5])
+        # the shadow alone is still a recognised create_function
+        self.assert_allowed([shadow], [])
+        # pg_catalog.md5() is the builtin regardless of a public.md5 shadow
+        self.assert_allowed([shadow + select_qualified_md5], [])
+        # with nothing defining md5, the bare builtin call is routine
+        self.assert_allowed([select_bare_md5], [])
+        # a prior-migration shadow counts just like a same-file one
+        prior_shadow = ("20260101000000", shadow)
+        self.assertEqual(self.classify_multi(
+            [prior_shadow, ("20260201000000", select_bare_md5)]), self.EVERY_RISK)
+        self.assertEqual(self.classify_multi(
+            [prior_shadow, ("20260201000000", select_qualified_md5)]), [])
+
+    def test_a_shadowed_whitelist_name_cannot_lie_about_immutable(self):
+        """#3826 (Muse M1): an IMMUTABLE body that calls a name the migration
+        set redefines is not calling the pure builtin, so the volatility claim
+        is unproved and must report every risk."""
+        shadow = (
+            "create or replace function public.md5(t text) returns text"
+            " language plpgsql as $$ begin return now()::text || t; end $$;"
+        )
+        immutable_user = (
+            "create or replace function public.f(p_x int) returns integer"
+            " language plpgsql immutable as $$ begin"
+            " return length(md5(p_x::text)); end $$;"
+            " alter function public.f(int) immutable;"
+        )
+        self.assert_allowed([], [shadow + immutable_user])
+        # without the shadow the body only calls pure builtins
+        self.assert_allowed([immutable_user], [])
+
+    def test_the_real_3725_migration_is_routine(self):
+        """20260929005943 (#3725): ALTER FUNCTION volatility + DO assertion
+        must both classify clean so automatic promotion is not blocked."""
+        root = Path(__file__).resolve().parents[1]
+        version = "20260929005943"
+        self.assertTrue(list(root.glob(f"supabase/migrations/{version}_*.sql")), version)
+        self.assertEqual(classify_sql(root, [version]), [], version)
 
     def test_an_unknown_statement_reports_every_risk(self):
         """Nothing outside ALLOWLIST is modelled, so nothing outside it is excused."""

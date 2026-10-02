@@ -26,11 +26,6 @@ alter table public.style_groups
   add constraint style_groups_item_short_description_source_check
   check (item_short_description_source is null or item_short_description_source in ('ai', 'manual'));
 
-comment on column public.style_groups.item_short_description is
-  'Very short display description for library cover cards. AI-derived from item_description (source ai) or human-entered (source manual).';
-comment on column public.style_groups.item_short_description_input is
-  'The exact item_description text item_short_description was derived from; differs from item_description when the short text is stale.';
-
 create or replace function public.refresh_sku_human_description()
 returns bigint
 language plpgsql

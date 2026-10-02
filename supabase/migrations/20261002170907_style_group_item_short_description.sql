@@ -14,26 +14,52 @@
 --    (human-entered) are never overwritten. When short descriptions are stale
 --    it enqueues the PopDAM worker operation 'shorten-item-descriptions'.
 
--- Fail the apply, not a 04:30 cron run, if a dependency the new body reads is missing.
+-- Fail the apply, not a 04:30 cron run, if anything the new body depends on is
+-- missing or has an unexpected shape: every column it reads or writes (with type),
+-- the relation kinds, admin_config's primary key (ON CONFLICT (key)), and the
+-- function being replaced.
 do $verify$
 declare
   v_missing text;
 begin
-  select string_agg(format('%s.%s.%s', t.s, t.r, t.c), ', ') into v_missing
+  select string_agg(format('%s.%s.%s %s', t.s, t.r, t.c, t.ty), ', ') into v_missing
   from (values
-    ('plm', 'item', 'item_number'), ('plm', 'item', 'description'), ('plm', 'item', 'updated_at'), ('plm', 'item', 'id'),
-    ('public', 'style_tracker_rows', 'sku'), ('public', 'style_tracker_rows', 'description'),
-    ('public', 'style_tracker_rows', 'tracker_type'), ('public', 'style_tracker_rows', 'updated_at'),
-    ('public', 'admin_config', 'key'), ('public', 'admin_config', 'value'), ('public', 'admin_config', 'updated_at'),
-    ('dam', 'sku_human_description', 'sku'), ('dam', 'sku_human_description', 'tracker_type'),
-    ('public', 'style_groups', 'item_description_source')
-  ) as t(s, r, c)
+    ('plm', 'item', 'id', 'uuid'), ('plm', 'item', 'item_number', 'text'),
+    ('plm', 'item', 'description', 'text'), ('plm', 'item', 'updated_at', 'timestamp with time zone'),
+    ('public', 'style_tracker_rows', 'id', 'uuid'), ('public', 'style_tracker_rows', 'sku', 'text'),
+    ('public', 'style_tracker_rows', 'description', 'text'), ('public', 'style_tracker_rows', 'tracker_type', 'text'),
+    ('public', 'style_tracker_rows', 'updated_at', 'timestamp with time zone'),
+    ('public', 'admin_config', 'key', 'text'), ('public', 'admin_config', 'value', 'jsonb'),
+    ('public', 'admin_config', 'updated_at', 'timestamp with time zone'),
+    ('dam', 'sku_human_description', 'sku', 'text'), ('dam', 'sku_human_description', 'description', 'text'),
+    ('dam', 'sku_human_description', 'tracker_type', 'text'), ('dam', 'sku_human_description', 'source_row_id', 'uuid'),
+    ('dam', 'sku_human_description', 'source_updated_at', 'timestamp with time zone'),
+    ('dam', 'sku_human_description', 'refreshed_at', 'timestamp with time zone'),
+    ('public', 'style_groups', 'sku', 'text'), ('public', 'style_groups', 'item_description', 'text'),
+    ('public', 'style_groups', 'item_description_source', 'text')
+  ) as t(s, r, c, ty)
   where not exists (
-    select 1 from information_schema.columns ic
-    where ic.table_schema = t.s and ic.table_name = t.r and ic.column_name = t.c
+    select 1
+    from pg_attribute att
+    join pg_class cls on cls.oid = att.attrelid and cls.relkind in ('r', 'p')
+    join pg_namespace nsp on nsp.oid = cls.relnamespace
+    where nsp.nspname = t.s and cls.relname = t.r and att.attname = t.c
+      and not att.attisdropped and format_type(att.atttypid, att.atttypmod) = t.ty
   );
   if v_missing is not null then
-    raise exception '#3900: required column(s) missing: %', v_missing;
+    raise exception '#3900: required column(s) missing or of another type: %', v_missing;
+  end if;
+  if not exists (
+    select 1 from pg_index i
+    where i.indrelid = 'public.admin_config'::regclass and i.indisunique
+      and i.indnkeyatts = 1
+      and i.indkey[0] = (select attnum from pg_attribute where attrelid = 'public.admin_config'::regclass and attname = 'key')
+  ) then
+    raise exception '#3900: public.admin_config(key) has no unique index for ON CONFLICT (key)';
+  end if;
+  if to_regprocedure('public.refresh_sku_human_description()') is null
+     or (select prorettype from pg_proc where oid = to_regprocedure('public.refresh_sku_human_description()')) <> 'bigint'::regtype then
+    raise exception '#3900: public.refresh_sku_human_description() returning bigint is not the function being replaced';
   end if;
 end
 $verify$;
@@ -62,11 +88,15 @@ declare
   v_current   jsonb;
   v_status    text;
   v_now       timestamptz := now();
+  v_can_enqueue boolean;
 begin
-  -- Take the BULK_OPERATIONS advisory lock FIRST, like every sibling writer
-  -- (queue_nightly_rebuild_style_groups takes it before updating style_groups;
-  -- acquiring it after our own style_groups row locks would invert lock order).
-  perform pg_advisory_xact_lock(hashtext('BULK_OPERATIONS'));
+  -- Ask for the BULK_OPERATIONS advisory lock FIRST and never wait for it.
+  -- queue_nightly_rebuild_style_groups holds it while updating style_groups, so
+  -- waiting for it after taking our own style_groups row locks would invert lock
+  -- order, and waiting for it up front would stall this refresh behind that
+  -- reconcile. If it is busy, the refresh still runs and only the enqueue is
+  -- skipped; the next night enqueues while short descriptions remain stale.
+  v_can_enqueue := pg_try_advisory_xact_lock(hashtext('BULK_OPERATIONS'));
 
   truncate table dam.sku_human_description;
 
@@ -121,7 +151,7 @@ begin
         is distinct from (d.description, case when d.tracker_type = 'coldlion' then 'coldlion' else 'master_data' end);
 
   -- Hand stale short descriptions to the PopDAM worker.
-  if exists (
+  if v_can_enqueue and exists (
     select 1 from public.style_groups sg
     where sg.item_description_source = 'coldlion'
       and sg.item_description is not null

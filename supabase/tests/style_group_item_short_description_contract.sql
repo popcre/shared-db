@@ -46,8 +46,20 @@ begin
   end if;
 
   -- T8: a manual short description is not stale, so it alone never enqueues.
+  -- Only ZZTEST rows may be stale for this check, so mark every other coldlion
+  -- group current, mark the one ZZTEST coldlion group manual, and clear the op.
+  update public.style_groups set item_short_description_input = item_description
+  where item_description_source = 'coldlion' and sku <> 'ZZTEST-A1';
   update public.style_groups set item_short_description = 'Hand label', item_short_description_source = 'manual'
   where sku = 'ZZTEST-A1';
+  update public.admin_config set value = value - 'shorten-item-descriptions' where key = 'BULK_OPERATIONS';
+  perform public.refresh_sku_human_description();
+  if (select value ? 'shorten-item-descriptions' from public.admin_config where key = 'BULK_OPERATIONS') then
+    raise exception 'T8: a manual short description was treated as stale and enqueued';
+  end if;
+  if (select item_short_description from public.style_groups where sku = 'ZZTEST-A1') is distinct from 'Hand label' then
+    raise exception 'T8: manual short description was changed';
+  end if;
 
   begin
     update public.style_groups set item_short_description_source = 'bogus' where sku = 'ZZTEST-A1';

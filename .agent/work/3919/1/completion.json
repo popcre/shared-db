@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3919,
+  "outcome": "ready-for-merge",
+  "pr": 3922,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3919/1",
+  "contract_sha256": "a53fa8f2146ddf53c3e3e22d0c6942469a331e790055d2f08b4cb50598b37234",
+  "head_sha": "9d29e586cf622dbbd13d2ab0bc6f234bc5b057d9",
+  "base_sha": "52495186af0dcbbc1d25c293fb53d99f912df64e",
+  "files_changed": [
+    ".github/workflows/shared-supabase-migrations.yml",
+    "docs/agents/standing-facts.md",
+    "docs/owner-rulings.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; 0 added migrations; exit 0 at the implementation head 9d29e586cf622dbbd13d2ab0bc6f234bc5b057d9."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/prove-production-risk-acceptance.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "781 tests, 781 pass, 0 fail at the implementation head 9d29e586cf622dbbd13d2ab0bc6f234bc5b057d9 (after merging origin/main), including the new 2026-10-02 reuse tests (open PR stays strict; merged PR slot>=2 reuses deterministically; durable approval accepts the shared reviewer only on a merged head) and the promotion freeze tests (merge refused with holder and expiry, production not blocked, TTL expiry, release by owner or source PR)."
+    }
+  ],
+  "assumptions_resolved": [
+    "Merged state for reuse is proven by mergedPrReviewTarget, installed only by the verified merged-PR issue binding (SHARED_DB_MERGED_PR_ISSUE_BINDING); without it no reuse happens.",
+    "The workflow-contract suites that read shared-supabase-migrations.yml (889 tests) pass with the added always() freeze-release step."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,5 +1,7 @@
--- Live proof for #3911 (migration 20261002204050). Read-only.
--- Proves: migration in ledger; the columns and rollup dependencies it relies on
+-- Live proof for #3911 (migration 20261002222102). Read-only.
+-- Proves: forward replacement in ledger and retired 20261002204050 absent;
+-- both trigger functions are SECURITY DEFINER with search_path pinned to
+-- public, dam, pg_temp; the columns and rollup dependencies it relies on
 -- exist; both trigger functions exist; on public.assets the row trigger is
 -- enabled AFTER UPDATE FOR EACH ROW (tgtype 17) with a WHEN clause and the
 -- statement trigger is enabled AFTER UPDATE FOR EACH STATEMENT (tgtype 16),
@@ -11,7 +13,17 @@ with sg_col as (
     and a.attname = 'style_group_id' and not a.attisdropped
 )
 select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20261002204050')
+  exists (select 1 from supabase_migrations.schema_migrations where version = '20261002222102')
+  and not exists (select 1 from supabase_migrations.schema_migrations where version = '20261002204050')
+  and (
+    select count(*) from pg_catalog.pg_proc p
+    where p.oid in (
+      pg_catalog.to_regprocedure('dam.sync_pdf_rich_extraction_style_group()'),
+      pg_catalog.to_regprocedure('dam.rollup_moved_pdf_rich_extraction_groups()')
+    )
+      and p.prosecdef
+      and p.proconfig = array['search_path=public, dam, pg_temp']::text[]
+  ) = 2
   and exists (select 1 from sg_col)
   and exists (
     select 1 from pg_catalog.pg_attribute a

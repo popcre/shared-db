@@ -11,8 +11,6 @@
   "head_sha": "5a6a35c8af7dcfcfbfbc4442d10165b597fa0448",
   "base_sha": "3efebc3f956c0bfcb5567b49c3422aa6a79d9c22",
   "files_changed": [
-    ".agent/work/3897/3/completion.json",
-    ".agent/work/3897/3/contract.json",
     "supabase/migrations/20261002165102_peanuts_sesame_submission_property_options.sql",
     "supabase/tests/peanuts_landing_contracts.sql"
   ],

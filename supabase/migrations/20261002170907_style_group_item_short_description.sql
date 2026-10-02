@@ -1,4 +1,4 @@
--- derived-from: 20260814223552
+-- derived-from: 20260714203100
 -- Issue #3900: PopDAM library cover cards read a very short AI display
 -- description derived from the ColdLion Item Master description.
 --

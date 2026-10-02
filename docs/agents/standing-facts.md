@@ -126,7 +126,7 @@ have already happened in this repo, more than once.
     deliberate merge freeze. **Announce a freeze, hold every merge from staging until the run
     finishes, then release it.** This is standard practice, not an improvisation.
     **The mechanism (owner instruction 2026-10-02, "assign someone to pause merges during
-    production runs"; [owner rulings §6.25](../owner-rulings.md)):** before drawing the risk
+    production runs"; [owner rulings §6.26](../owner-rulings.md)):** before drawing the risk
     assessment, run `node scripts/manage-migration-author-lanes.mjs --acquire-promotion-freeze
     --issue <n> --pr <source-pr> --owner <text> --ttl-minutes <=180>`. Every `--acquire-merge`
     then refuses until the freeze is released (`--release-promotion-freeze --owner <text>`), the

@@ -65,9 +65,12 @@ relayed verbatim by the coordinating session:
 ### mDDP (sales-order term, rarely if ever used now)
 
 The **customer** pays freight and arranges shipping; **POP** is still responsible for clearing US
-customs and paying duty. Implied: the goods are handed to the customer's shipping arrangement
-at origin, as with FOB China, with POP's customs and duty obligation at the US port. The
-**delivery point that the customer's dates are measured at is Unknown** (not stated).
+customs and paying duty.
+
+**mDDP dates are measured the same as FOB (Settled, Albert, 2026-10-02).** Albert's words:
+"since customer handles freight under mDDP, it is the same terms as FOB." POP's shipping
+responsibility ends at origin exactly as under FOB China, and the customer's start/cancel dates
+are measured there; POP's separate obligation to clear US customs and pay duty is unchanged.
 
 ### Warehouse term: L.A. or NJ
 
@@ -76,15 +79,33 @@ serves the chosen warehouse (L.A. port or NJ port), clears customs, pays duty, t
 warehouse, and makes the goods available there. This reconciles the first ruling's
 "Warehouse → NJ seaport" wording, which described the NJ case.
 
-### Transit times (approximate, calendar days)
+**Which warehouse comes from the ColdLion sales order (Settled, Albert, 2026-10-02).** Albert's
+words: "the warehouse should be on the sales order in ColdLion." For a Warehouse-terms order, L.A.
+vs NJ is read from the ColdLion sales order, never guessed. The exact ColdLion field is
+**pending confirmation** (being verified separately); record it here once confirmed.
 
-| Leg | About |
-|---|---|
-| China → US West Coast port (L.A.) | 19 days |
-| China → US East Coast port (NJ) | 35 days |
-| Port → POP warehouse (L.A. or NJ, Warehouse term) | +7 days on top of that port's transit |
+### Transit times (approximate, calendar days) — condition-dependent and dated
 
-These are Albert's "about" figures, not guarantees.
+**Transit times change with world shipping conditions.** "Standard" is the normal-conditions
+figure; "Current" is what Albert reported as of the date shown. Anyone using these numbers
+(for example to compute a required factory ship date) must treat the Current column as dated
+and re-confirm it with Albert or the forwarder when it is old; never silently fall back to
+Standard while a Current disruption is on record.
+
+| Leg (port to port) | Standard | Current (as of 2026-10-02) | Source |
+|---|---|---|---|
+| China → L.A. (US West Coast) | about 19 days | about 19 days (no disruption stated) | Albert, 2026-10-02 |
+| China → NJ (US East Coast) | about 35 days | about 35 days (no disruption stated) | Albert, 2026-10-02 |
+| Kochi (Cochin), India → NJ/NY | 25 days, standard Suez routing | **45 days via the Cape of Good Hope — Suez closed** | Albert, 2026-10-02 |
+| Kochi (Cochin), India → L.A. | usually 30–35 days | **about 60 days — Panama Canal capacity constrained** | Albert, 2026-10-02 |
+| Port → POP warehouse (L.A. or NJ, Warehouse term) | +7 days on top of that port's transit | +7 days | Albert, 2026-10-02 |
+
+These are Albert's approximate figures, not guarantees.
+
+**US customs clearance adds no time when all goes well (Settled, Albert, 2026-10-02).** Albert's
+words: "customs clearance, if everything goes well, is done concurrently with shipping, while
+the container is on the water." The transit figures above therefore already cover clearance in
+the normal case; a clearance problem can add time that is not modelled here.
 
 ### Customer start and cancel dates
 
@@ -96,7 +117,7 @@ the point where POP's responsibility ends under that term.
 | FOB China | the origin port / the customer's freight forwarder's facility in China |
 | POE NJ / POE L.A. | goods available for pickup at that US port (customs cleared, duty paid) |
 | Warehouse (L.A. or NJ) | goods available for pickup at that POP warehouse |
-| mDDP | Unknown (see *mDDP*) |
+| mDDP | the same point as FOB China (origin / the customer's forwarder) |
 
 Consistent with (not replaced by) the earlier Settled statements in
 [`erp-orders-and-source-meaning.md`](erp-orders-and-source-meaning.md) (*POE vs DDP*, Albert,
@@ -106,12 +127,10 @@ from the Warehouse term above) and the cost bases in [`rfq-pricing.md`](rfq-pric
 
 ## Unknown — not yet answered (do not guess)
 
-- **Customs-clearance duration** at the US port (not included in the transit figures).
-- **Transit times from India and other non-China origins.**
-- **Which warehouse a given sales order uses** (L.A. or NJ) and which data field records it.
+- **Transit times from origins other than China and Kochi, India** (other Indian ports, other countries).
+- **Which ColdLion sales-order field** carries the warehouse (L.A. vs NJ) — pending confirmation.
 - **DDP production-PO timing**: how the factory's ship date relates to delivery when the factory
   carries freight, customs, and duty.
-- The **mDDP delivery point** for the customer's start/cancel dates.
 - The delivery-responsibility meaning of other ERP routing codes (POE Savannah/Norfolk,
   sales-order DDP-by-state, FOB India/USA) in this frame.
 
@@ -122,5 +141,5 @@ from the Warehouse term above) and the cost bases in [`rfq-pricing.md`](rfq-pric
   order's start/cancel date and compares against the production order's ship date. Under these
   rules the required factory ship date depends on the sales-order term (roughly: FOB China ≈
   the customer date; POE L.A. ≈ 19 days earlier, POE NJ ≈ 35 days earlier, Warehouse +7 more,
-  each before customs time). How the plan should convert dates is a design decision for that
-  plan, still blocked on the customs-clearance and warehouse-source Unknowns above.
+  customs normally concurrent; Kochi origins use the dated India rows). How the plan should convert dates is a design decision for that
+  plan, still waiting on the warehouse field name above and must use the dated Current transit figures.

@@ -16,6 +16,7 @@ name: DesignFlow Sandbox Migrations
 #   - production_catalog_verification.py (read-only post-apply catalog proof).
 # Sandbox-only gates live in scripts/sandbox_migration_preflight.py: target
 # identity, the sandbox version blocklist, the same-name collision preflight,
+# the absent-schema statement conditioning (issue #2986; bounded checkout only),
 # and the exact ledger delta. scripts/test_sandbox_migration_preflight.py
 # (WorkflowInvariantTests) pins every invariant below; GitHub reads go through
 # scripts/sandbox-migration-binding.mjs.
@@ -60,11 +61,13 @@ permissions:
   statuses: read
   actions: read
 
-# THE SERIAL TARGET LOCK. One global group for every run of this workflow, and
-# this workflow is the only route in this repository that can write to the
-# sandbox, so at most one sandbox run ever holds the target. Queued runs wait;
-# nothing is cancelled mid-apply. It is deliberately NOT the preview or
-# production group: those lanes neither guard nor are blocked by the sandbox.
+# THE SERIAL TARGET LOCK. One global group for every run of this workflow and
+# of sandbox-ledger-orphan-reconciliation.yml, the two routes in this
+# repository that can write to the sandbox (this one applies migrations; that
+# one performs metadata-only ledger reconciliation), so at most one sandbox
+# run ever holds the target. Queued runs wait; nothing is cancelled mid-apply.
+# It is deliberately NOT the preview or production group: those lanes neither
+# guard nor are blocked by the sandbox.
 concurrency:
   group: designflow-sandbox-migrations
   cancel-in-progress: false
@@ -205,6 +208,25 @@ jobs:
             --allowlist "$SANDBOX_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
             --ledger-name sandbox
+      - name: Condition absent-schema statements (bounded checkout only, both modes)
+        # Issue #2986. The sandbox does not carry every schema production has
+        # (dflow_prod is absent until the structural route creates it), so an
+        # allowlisted statement targeting an absent schema would fail 42P01
+        # mid-batch. This step wraps exactly those statements, in the bounded
+        # checkout ONLY, in a live schema-existence guard -- identically in
+        # dry-run and apply mode, so the green dry-run proves the exact bytes
+        # apply will run. The repository migration files are never modified,
+        # and the preview/production lanes never call this code. Statements
+        # this lane cannot condition are refused by name; none is ever
+        # silently skipped.
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python scripts/sandbox_migration_preflight.py condition \
+            --repo "$RUNNER_TEMP/bounded-sandbox" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --project-ref "$SANDBOX_PROJECT_REF" \
+            --evidence-out "$RUNNER_TEMP/sandbox-schema-conditioning.json"
       - name: Apply only on the exact successful dry-run evidence
         if: inputs.mode == 'apply'
         env:
@@ -216,6 +238,19 @@ jobs:
           gh run download "$DRY_RUN_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "sandbox-migration-dry-run-${COMMIT_SHA}" -D "$RUNNER_TEMP/prior-dry-run"
           if [ "$(cat "$RUNNER_TEMP/prior-dry-run/sandbox-allowlist.txt")" != "$SANDBOX_ALLOWLIST" ]; then
             echo "REFUSED: the dry-run evidence was for a different allowlist." >&2; exit 2
+          fi
+          # Issue #2986: the conditioning decisions depend on the LIVE schema
+          # state, so the apply is bound to the dry run's conditioning evidence
+          # by digest, not just by commit and allowlist. If the schema state
+          # moved between the two runs, the bytes apply would run are not the
+          # bytes the dry run proved; dispatch a fresh dry run at that point.
+          if [ ! -f "$RUNNER_TEMP/prior-dry-run/sandbox-schema-conditioning.json" ] || [ ! -f "$RUNNER_TEMP/sandbox-schema-conditioning.json" ]; then
+            echo "REFUSED: the dry-run/apply schema-conditioning evidence pair is incomplete; dispatch a fresh dry-run." >&2; exit 2
+          fi
+          PRIOR_DIGEST="$(python -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$RUNNER_TEMP/prior-dry-run/sandbox-schema-conditioning.json")"
+          THIS_DIGEST="$(python -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$RUNNER_TEMP/sandbox-schema-conditioning.json")"
+          if [ "$PRIOR_DIGEST" != "$THIS_DIGEST" ]; then
+            echo "REFUSED: the sandbox schema state (or the migrations) changed between the proven dry-run and this apply; dispatch a fresh dry-run." >&2; exit 2
           fi
       - name: Bounded dry-run, then apply in apply mode
         id: apply
@@ -298,6 +333,7 @@ jobs:
             ${{ runner.temp }}/sandbox-ledger-after.txt
             ${{ runner.temp }}/sandbox-dry-run.txt
             ${{ runner.temp }}/sandbox-apply.txt
+            ${{ runner.temp }}/sandbox-schema-conditioning.json
             ${{ runner.temp }}/catalog-verification/
             ${{ runner.temp }}/bounded-sandbox/supabase/migration-content-manifest.json
           retention-days: 90

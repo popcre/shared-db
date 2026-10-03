@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REVIEWERS } from './manage-migration-author-lanes.mjs'
 import { LEGACY_COMPLETION_PATH, LEGACY_CONTRACT_PATH, resolveEvidencePair } from './lib/agent-evidence-paths.mjs'
+import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
 
 export class RefreshError extends Error {}
 const LEGACY_EVIDENCE = [LEGACY_CONTRACT_PATH, LEGACY_COMPLETION_PATH]
@@ -113,6 +114,69 @@ export function refresh(options, { run = defaultRun, log = (l) => console.log(l)
     throw e
   }
   const head = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
+  // STEP 2 RESIDUAL (post-#3380/#3631): when the pull request's own
+  // implementation digest is unchanged, a main-forward refresh must not add a
+  // trailing evidence-only commit. Fold the untouched pair into one merge
+  // commit. #2845 still names the base the checks were measured against for
+  // any real implementation change; content-preserving lag is accepted by
+  // verifyGitEvidence instead of forcing a rebind commit.
+  {
+    const gitRunner = (args) => {
+      const r = run('git', args, { cwd })
+      if (r.status !== 0) {
+        const err = new Error(String(r.stderr || r.stdout || 'git failed'))
+        err.status = r.status
+        throw err
+      }
+      return String(r.stdout ?? '')
+    }
+    const preserve = isContentPreservingRefresh({ approvedHead: report.head_sha, head, mainRef: 'origin/main', gitRunner })
+    if (preserve.ok) {
+      // Fold into the EXISTING merge commit with --amend so the merge keeps both
+      // parents (main stays an ancestor). Never soft-reset: that would drop
+      // MERGE_HEAD and squash the merge onto one parent.
+      let testSummary = 'no changed scripts test file'
+      try {
+        for (const file of EVIDENCE) ok(git('checkout', before, '--', file), `restoring ${file} unchanged`)
+        ok(git('add', '--', ...EVIDENCE), 'git add')
+        const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
+        const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))
+        if (tests.length) {
+          const t = run('node', ['--test', '--test-reporter=spec', ...tests], { cwd })
+          const s = summarizeNodeTest(`${t.stdout}\n${t.stderr}`)
+          if (t.status !== 0 || s.fail) throw new RefreshError(`tests fail after refreshing (${s.fail} failing); the merge commit ${head} is local and nothing was pushed`)
+          testSummary = `${tests.map((f) => f.replace(/^scripts\/|\.test\.mjs$/g, '')).join(', ')} ${s.pass}/${s.pass + s.fail} pass, ${s.fail} fail, ${s.skipped} skipped`
+        }
+        ok(git('diff', '--check', 'origin/main...HEAD'), 'git diff --check')
+        ok(git('commit', '-q', '--amend', '--no-edit'), 'folding the pair into the refresh merge commit')
+      } catch (foldError) {
+        // M2: return to the pre-merge tip (which still carries the pair) so a
+        // retry can run. The merge commit has the pair stripped and must not be
+        // left as HEAD.
+        git('reset', '-q', '--hard', before)
+        throw new RefreshError(`${foldError.message}. The worktree is reset to the pre-refresh tip ${before} (evidence intact); fix the cause and re-run refresh.`)
+      }
+      const tip = ok(git('rev-parse', 'HEAD'), 'git rev-parse')
+      log(`Refreshed (content-preserving, no new evidence commit): tip ${tip}. ${testSummary}.`)
+      if (!options.push) return { head: tip, tip, pushed: false, evidenceCommitSkipped: true }
+      ok(git('push', '-q'), 'git push')
+      if (!options.assign) return { head: tip, tip, pushed: true, evidenceCommitSkipped: true }
+      const assign = run('node', ['scripts/manage-migration-author-lanes.mjs', '--assign-reviewer', '--issue', String(options.issue), '--pr', String(options.pr), '--head-sha', tip], { cwd })
+      let assigned = String(assign.stdout ?? '')
+      if (assign.status !== 0) {
+        const ref = `refs/db-review-assignments/${options.issue}-${options.pr}-${tip}`
+        const fetched = git('fetch', '-q', 'origin', ref)
+        const message = fetched.status === 0 ? String(git('log', '-1', '--format=%B', 'FETCH_HEAD').stdout ?? '') : ''
+        const recorded = message.match(/reviewer=(\S+) issue=(\d+) pr=(\d+) head=([0-9a-f]{40})/)
+        if (!recorded || Number(recorded[2]) !== options.issue || Number(recorded[3]) !== options.pr || recorded[4] !== tip) ok(assign, 'assigning a reviewer at the new head')
+        log(`The reviewer assignment reported an error (${String(assign.stderr || assign.stdout).trim().split('\n').at(-1)}), but ${ref} records it, so it stands (#2844).`)
+        assigned = `"reviewer": "${recorded[1]}"`
+      }
+      const reviewer = (assigned.match(/"reviewer":\s*"([^"]+)"/) ?? [])[1], wrapper = (assigned.match(/"wrapper":\s*"([^"]+)"/) ?? [])[1] ?? REVIEWERS.find((row) => row.name === reviewer)?.wrapper
+      log(`Reviewer assigned at ${tip}: ${reviewer ?? 'see output'} (${wrapper ?? '?'}). Next: node scripts/run-governed-review.mjs --issue ${options.issue} --pr ${options.pr} --reviewer ${reviewer} --wrapper ${wrapper ?? '<wrapper>'} --worktree ${cwd} -- new <session> --prompt-file <brief>`)
+      return { head: tip, tip, pushed: true, reviewer, wrapper, evidenceCommitSkipped: true }
+    }
+  }
   const changed = ok(git('diff', '--name-only', 'origin/main', 'HEAD'), 'git diff').split('\n').filter(Boolean)
   const tests = changed.filter((f) => /^scripts\/.*\.test\.mjs$/.test(f))
   let testSummary = 'no changed scripts test file'

@@ -153,3 +153,62 @@ test('#2845 a legacy pair is rebound to the refreshed base as well', () => {
     assert.equal(report.base_sha, r.g(r.work, 'rev-parse', 'origin/main'))
   } finally { rmSync(r.root, { recursive: true, force: true }) }
 })
+
+function repoWithRealBinding({ keyed = false } = {}) {
+  const pair = keyed
+    ? ['.agent/work/7/1/contract.json', '.agent/work/7/1/completion.json']
+    : ['.agent/contract.json', '.agent/completion.json']
+  const root = mkdtempSync(join(tmpdir(), 'refresh-pr-fold-'))
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim()
+  const origin = join(root, 'origin.git'), work = join(root, 'w')
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin])
+  execFileSync('git', ['clone', '-q', origin, work])
+  for (const [k, v] of [['user.name', 't'], ['user.email', 't@t'], ['core.autocrlf', 'false']]) g(work, 'config', k, v)
+  const put = (f, s) => { mkdirSync(join(work, f, '..'), { recursive: true }); writeFileSync(join(work, f), s) }
+  if (!keyed) { put('.agent/contract.json', '{"work_issue":0}\n'); put('.agent/completion.json', '{"pr":0}\n') }
+  put('scripts/agent-work-contract.mjs', 'process.exit(0)\n'); put('base.txt', '1\n')
+  g(work, 'add', '-A'); g(work, 'commit', '-qm', 'base'); g(work, 'push', '-q', 'origin', 'main')
+  g(work, 'checkout', '-q', '-b', 'feature')
+  put('scripts/x.test.mjs', "import test from 'node:test'\ntest('ok',()=>{})\n")
+  g(work, 'add', '-A'); g(work, 'commit', '-qm', 'impl')
+  const implHead = g(work, 'rev-parse', 'HEAD')
+  const baseSha = g(work, 'rev-parse', 'origin/main')
+  put(pair[0], JSON.stringify({ work_issue: 7, generation: 1 }) + '\n')
+  put(pair[1], JSON.stringify({
+    pr: 8, head_sha: implHead, base_sha: baseSha, files_changed: ['scripts/x.test.mjs'],
+    checks: [{ command: TEST_CHECK, exit_code: 0, evidence: 'old' }, { command: DIFF_CHECK, exit_code: 0, evidence: 'old' }],
+  }) + '\n')
+  g(work, 'add', '-A'); g(work, 'commit', '-qm', 'evidence')
+  return { root, work, g, put, pair, implHead }
+}
+
+test('unchanged_implementation_needs_no_new_evidence_commit: a content-preserving main move folds into one commit', () => {
+  const r = repoWithRealBinding({ keyed: true })
+  try {
+    const evidenceBefore = readFileSync(join(r.work, r.pair[1]), 'utf8')
+    moveMain(r, 'base.txt', '2\n')
+    const logs = []
+    const result = refresh({ issue: 7, pr: 8, worktree: r.work, push: false, assign: false }, { log: (l) => logs.push(l) })
+    assert.equal(result.evidenceCommitSkipped, true)
+    assert.equal(result.head, result.tip)
+    // One new commit only: the fold. The pair is byte-identical (no rebind).
+    const evidenceAfter = readFileSync(join(r.work, r.pair[1]), 'utf8')
+    assert.equal(evidenceAfter, evidenceBefore)
+    assert.match(logs.join('\n'), /content-preserving, no new evidence commit/)
+    // M1: the fold amends the merge commit, so both parents survive.
+    const parents = r.g(r.work, 'rev-list', '--parents', '-n', '1', result.tip).split(' ')
+    assert.equal(parents.length, 3, `fold tip must be a merge commit (got parents ${parents.slice(1).join(' ')})`)
+    assert.equal(r.g(r.work, 'status', '--porcelain'), '')
+    assert.equal(r.g(r.work, 'show', 'HEAD:base.txt'), '2')
+  } finally { rmSync(r.root, { recursive: true, force: true }) }
+})
+
+test('changed_implementation_invalidates_receipt: a real conflict still refuses and leaves the branch unchanged', () => {
+  const r = repoWithRealBinding({ keyed: true })
+  try {
+    moveMain(r, 'scripts/x.test.mjs', 'conflict\n')
+    const before = r.g(r.work, 'rev-parse', 'HEAD')
+    assert.throws(() => refresh({ issue: 7, pr: 8, worktree: r.work, push: false, assign: false }, { log: () => {} }), /conflicts outside \.agent\/: scripts\/x\.test\.mjs/)
+    assert.equal(r.g(r.work, 'rev-parse', 'HEAD'), before)
+  } finally { rmSync(r.root, { recursive: true, force: true }) }
+})

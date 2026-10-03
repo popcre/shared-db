@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 3751,
+  "generation": 3,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Content-preserving refresh must not add an evidence-only commit",
+  "base_sha": "c07084960a4dbe619686d1071d979a0ffbc04247",
+  "dispatcher": "MiMo chat ses_ffe5f18244baaffe5u2M2rZ2qA on windows-dev",
+  "worker": "mimo-evidence-rebind-residual",
+  "branch": "codex/evidence-rebind-residual",
+  "worktree": "shared-db-worktrees/evidence-rebind-residual",
+  "allowed_paths": [
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~agent-work-contract-git-evidence.mjs.json",
+    ".agent/work/3751/3/contract.json",
+    ".agent/work/3751/3/completion.json"
+  ],
+  "file_writes": [
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract-git-evidence.test.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/refresh-code-pr-branch.test.mjs",
+    ".agent/work/3751/3/contract.json",
+    ".agent/work/3751/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "no database writes",
+    "no production writes",
+    "no orchestrator structural claim"
+  ],
+  "required_checks": [
+    "node --test scripts/refresh-code-pr-branch.test.mjs",
+    "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Non-orchestrator tooling; REVISE findings from DeepSeek then Muse are addressed in this generation"
+  ],
+  "stop_conditions": [
+    "Any change to the pull request implementation diff after this head"
+  ]
+}

@@ -296,9 +296,17 @@ jobs:
           fi
       - name: Capture sandbox migration record (after)
         if: always() && inputs.mode == 'apply'
+        env:
+          # `migration list` reads the Management API and needs the access
+          # token; without it the after-ledger is an error page, verify-ledger
+          # sees no versions, and every successful apply ends the job red
+          # (live proof: apply run 37102659147 applied 20260928182014 and the
+          # catalog contract passed, but this step had no token).
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/bounded-sandbox"
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
           supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-after.txt"
       - name: Post-apply ledger proof
         if: always() && inputs.mode == 'apply'

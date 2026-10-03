@@ -7,6 +7,12 @@
 --    promotes and retires it instead of failing every night.
 -- ACL, signature, SECURITY DEFINER and search_path are unchanged (create or replace);
 -- the verify block at the end asserts all four.
+-- 3. ingest.raw_record rewrites only changed payloads, and a reviewed/dismissed
+--    disagreement is re-opened only when the disagreement itself changed (it was
+--    forced back to 'open' every night). plm.item_import_unresolved stays a
+--    per-sweep quarantine snapshot (rebuilt each run by design).
+-- Retiring EP001 cascades its plm.item_import_unresolved/disagreement rows (FK on
+-- delete cascade); production holds 0 EP001 disagreement rows (2026-10-02).
 -- A retired EP001 item keeps its plm.item row, exactly as any item that leaves the
 -- vendor feed always has: plm.item is the durable Item Master and never deletes.
 
@@ -68,11 +74,14 @@ begin
     raise exception 'item sweep row count % is below sanity band % of current silver %', seen_count, sanity_ratio, existing_count;
   end if;
   if existing_count>0 and exists(
-    select 1 from (select distinct division_code from plm.item_import) current_division
-    -- EP001 is permanently out of scope (owner ruling 2026-08-28): its absence from a
-    -- sweep is a retirement, pruned below by the full-sweep promotion, not a failure.
-    where current_division.division_code <> 'EP001' and not exists(select 1 from plm.item_import_staging staged
-      where staged.sweep_id=sync_id and staged.division_code=current_division.division_code)
+    select 1 from (select distinct company_code, division_code from plm.item_import) current_division
+    -- EDGEHOME/EP001 is permanently out of scope (owner ruling 2026-08-28): its absence
+    -- from a sweep is a retirement, pruned below by the full-sweep promotion and
+    -- recorded in this run's metadata as retired_divisions, not a failure.
+    where (current_division.company_code, current_division.division_code) <> ('EDGEHOME', 'EP001')
+      and not exists(select 1 from plm.item_import_staging staged
+      where staged.sweep_id=sync_id and staged.company_code=current_division.company_code
+        and staged.division_code=current_division.division_code)
   ) then
     raise exception 'item sweep omitted a division present in current silver; silver was not promoted';
   end if;
@@ -98,7 +107,9 @@ begin
   select sync_id,'coldlion','items',company_code||'|'||division_code||'|'||item_no,md5(raw::text),raw,now()
   from plm.item_import_staging where sweep_id=sync_id
   on conflict(source_system,source_table,source_id) do update set sync_run_id=excluded.sync_run_id,
-    record_hash=excluded.record_hash,payload=excluded.payload,imported_at=excluded.imported_at;
+    record_hash=excluded.record_hash,payload=excluded.payload,imported_at=excluded.imported_at
+  -- unchanged payloads are not rewritten; sync_run_id then names the run that last changed it
+  where ingest.raw_record.record_hash is distinct from excluded.record_hash;
 
   insert into plm.item_import(company_code,division_code,item_no,item_description,style_number,status,
     merch_group_01,merch_group_02,merch_group_03,merch_group_04,merch_group_05,merch_group_06,merch_groups,raw,imported_at)
@@ -118,6 +129,12 @@ begin
         (excluded.item_description,excluded.style_number,excluded.status,excluded.merch_group_01,
          excluded.merch_group_02,excluded.merch_group_03,excluded.merch_group_04,excluded.merch_group_05,
          excluded.merch_group_06,excluded.merch_groups,excluded.raw);
+
+  update ingest.sync_run set metadata=metadata || jsonb_build_object('retired_divisions',
+    coalesce((select jsonb_agg(distinct i.company_code||'|'||i.division_code) from plm.item_import i
+      where not exists(select 1 from plm.item_import_staging s where s.sweep_id=sync_id
+        and s.company_code=i.company_code and s.division_code=i.division_code)),'[]'::jsonb))
+  where id=sync_id;
 
   -- A full-sweep promotion makes silver an exact last-good snapshot.
   delete from plm.item_import i where not exists(select 1 from plm.item_import_staging s where s.sweep_id=sync_id
@@ -233,7 +250,15 @@ begin
   on conflict(company_code,division_code,item_no) do update set licensor_slot_code=excluded.licensor_slot_code,
     property_slot_code=excluded.property_slot_code,slot_licensor_id=excluded.slot_licensor_id,
     property_id=excluded.property_id,property_licensor_id=excluded.property_licensor_id,
-    reason=excluded.reason,last_seen_at=excluded.last_seen_at,sync_run_id=excluded.sync_run_id,status='open';
+    reason=excluded.reason,last_seen_at=excluded.last_seen_at,sync_run_id=excluded.sync_run_id,
+    -- a reviewed/dismissed decision is re-opened only when the disagreement itself changed
+    status=case when (plm.item_taxonomy_disagreement.licensor_slot_code,plm.item_taxonomy_disagreement.property_slot_code,
+                      plm.item_taxonomy_disagreement.slot_licensor_id,plm.item_taxonomy_disagreement.property_id,
+                      plm.item_taxonomy_disagreement.property_licensor_id)
+                     is distinct from
+                     (excluded.licensor_slot_code,excluded.property_slot_code,excluded.slot_licensor_id,
+                      excluded.property_id,excluded.property_licensor_id)
+                then 'open' else plm.item_taxonomy_disagreement.status end;
 
   delete from plm.item_taxonomy_disagreement d using item_taxonomy_resolution r
   where (d.company_code,d.division_code,d.item_no)=(r.company_code,r.division_code,r.item_no)

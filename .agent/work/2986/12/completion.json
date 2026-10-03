@@ -1,26 +1,24 @@
 {
   "schema_version": 1,
   "work_issue": 2986,
-  "generation": 11,
+  "generation": 12,
   "outcome": "ready-for-merge",
   "pr": 3933,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/2986/11",
-  "contract_sha256": "b07e539d7f28294bbb3cabd8918eca9cf77429a5cc82c31599dcd172f79627c3",
+  "contract_ref": "refs/db-contracts/2986/12",
+  "contract_sha256": "f0ae6398c76e322d3ed945c5239663a46001aee0475db29e230df475b10b27ba",
   "head_sha": "a7ba8e5a30a4c798d3acfdca7dbf42d0af881421",
   "files_changed": [
     "config/preview-ledger-orphan-reconciliations.json",
     "scripts/test_preview_ledger_orphan_reconcile.py"
   ],
-  "db_reads": [
-    "read-only sandbox ledger listing (project xupnyeifmpsacrqahwwm) proving the third-party row before the re-pin"
-  ],
+  "db_reads": [],
   "db_writes": [],
   "checks": [
     {
       "command": "python -B -m unittest scripts.test_preview_ledger_orphan_reconcile",
       "exit_code": 0,
-      "evidence": "39 tests OK after the re-pin (was 3 failures against the new live world before the fixture update)"
+      "evidence": "39 tests OK after the re-pin (3 failures against the new live world before the fixture update)"
     },
     {
       "command": "python -B -m unittest scripts.test_sandbox_migration_preflight scripts.test_production_catalog_verification",

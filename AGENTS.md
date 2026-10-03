@@ -74,7 +74,9 @@ the map below.
   excluded; the orchestrator / non-orchestrator issue labeler is removed. The marker guard, the
   marker resolver and `orchestrator-admission.mjs` are deleted; preview preparation, abandonment
   action and operator adoption now require claim-first session authority: the acting session
-  declares `SHARED_DB_SESSION_ID`, and a named claim must be leased to that session (fail closed).
+  declares `SHARED_DB_SESSION_ID` (fail closed when unset or malformed); preview preparation on a
+  named claim also requires that claim to be leased to that session. Abandonment and adoption act
+  on another session's claim and keep their own evidence gates.
   **This ruling supersedes every older passage in this repo that says otherwise** (dated docs,
   plans, handoffs, runbooks): such passages are historical records, not instructions.
 

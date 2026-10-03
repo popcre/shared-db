@@ -8367,7 +8367,7 @@ export function assertAbandonmentEvidence(options, lease, blocker, io) {
   // it here would let a stale audit decide what the disk currently looks like.
   if(!options.worktreeState)throw new LaneError('acting on abandonment evidence requires an explicit --worktree-state')
   const marker=typeof io.orchestratorFlowAdapter==='function'?io.orchestratorFlowAdapter().resolveMarker():null
-  if(!marker?.live||marker.calling_task!==marker.task)throw new LaneError(`acting on abandonment evidence requires ${sessionAuthorityRefusal(marker)}`)
+  if(!marker?.live||marker.calling_task!==marker.task)throw new LaneError(`acting on abandonment evidence: ${sessionAuthorityRefusal(marker)}`)
   return audit
 }
 

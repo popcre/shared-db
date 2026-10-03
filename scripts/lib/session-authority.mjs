@@ -3,8 +3,16 @@
 // The orchestrator role was retired by owner ruling (Albert Hazan, 2026-10-02:
 // "there is no longer an orchestrator"; AGENTS.md §0.0-D). Paths that used to
 // require "a matching live sole-orchestrator marker" now require a declared,
-// well-formed session identity instead, and -- when the operation names a claim
-// -- that the claim's lease owner IS that session.
+// well-formed session identity instead, and -- when the operation acts on the
+// session's OWN claim (preview preparation with --claim-number) -- that the
+// claim's lease owner IS that session.
+//
+// Abandonment action and operator adoption act on ANOTHER session's expired or
+// abandoned claim, so they are deliberately not bound to the claim owner; they
+// keep their own evidence gates (abandonment-audit fence, exact PR head,
+// version reservation, recovery artifact, explicit worktree state). The session
+// id is self-declared: it identifies who acted and is recorded; it is not an
+// external credential -- exactly as the retired marker was self-opened.
 //
 // This is deliberately fail-closed: an unset, blank, malformed or mismatched
 // identity never authorizes a mutation. It does NOT replace any serialization
@@ -43,5 +51,5 @@ export function resolveSessionAuthority({ env = process.env, claimOwner } = {}) 
 }
 
 export function sessionAuthorityRefusal(authority) {
-  return `claim-first session authority is required (${authority?.reason ?? 'unknown'}); declare ${SESSION_ID_ENV} as this session and act only on claims it owns`
+  return `claim-first session authority is required (${authority?.reason ?? 'unknown'}); declare ${SESSION_ID_ENV} as this session`
 }

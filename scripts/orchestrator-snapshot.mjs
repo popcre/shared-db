@@ -213,8 +213,9 @@ const ghPages = (endpoint) => JSON.parse(gh(['api', endpoint, '--paginate', '--s
 
 export const defaultIo = {
   // The orchestrator role and its marker are retired (owner ruling 2026-10-02,
-  // issue #3874). There is never a routable marker, which every caller already
-  // handles as "no orchestrator is running" (exit 3 / NO_ORCHESTRATOR).
+  // issue #3874). There is never a routable marker; this answer matches
+  // NO_ORCHESTRATOR, and both the CLI and the no-progress alarm call
+  // gatherLiveInput with allowNoMarker so they report with marker: null.
   resolveMarker() {
     throw new SnapshotCallerError('orchestrator marker did not resolve (exit 3): the orchestrator role is retired (#3874)')
   },
@@ -327,7 +328,15 @@ export function main(argv = process.argv.slice(2), { io = defaultIo, stdout = co
     const now = value('--now') ?? new Date().toISOString()
     const stateDir = value('--state-dir')
     if (stateDir && !path.isAbsolute(stateDir)) throw new SnapshotCallerError('--state-dir must be an absolute path')
-    const { input, sessionStarted } = gatherLiveInput(repo, io)
+    // The orchestrator marker is retired (#3874): the CLI reports with no marker.
+    const { input, sessionStarted } = gatherLiveInput(repo, io, { allowNoMarker: true })
+    // A sealed orchestrator snapshot is bound to a marker, and there is none any
+    // more. Say so plainly and exit 0 instead of failing every run; stall
+    // reporting continues through the no-progress alarm, which needs no marker.
+    if (!input.marker) {
+      stdout(JSON.stringify({ status: 'no-orchestrator', reason: 'the orchestrator role and its marker are retired (#3874); stall reporting runs through the no-progress alarm' }, null, 2))
+      return 0
+    }
     const stateFile = stateDir ? path.join(stateDir, 'last-report.json') : null
     let previous = null
     if (stateFile) { try { previous = JSON.parse(readFileSync(stateFile, 'utf8')) } catch { previous = null } }

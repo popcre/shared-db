@@ -430,7 +430,7 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // carry a slot >= 2 reviewer that also holds another slot. The allocator draws
   // that state only through the verified merged-PR issue binding, and a verdict on
   // a merged PR is recordable only through that binding. Open PRs stay strict.
-  const mergedAtHead = Boolean(livePr?.merged_at) && /^[0-9a-f]{40}$/i.test(headSha) && String(livePr?.head?.sha ?? '').toLowerCase() === headSha.toLowerCase()
+  const mergedAtHead = Boolean(livePr?.merged_at) && String(livePr?.state ?? '').toLowerCase() !== 'open' && /^[0-9a-f]{40}$/i.test(headSha) && String(livePr?.head?.sha ?? '').toLowerCase() === headSha.toLowerCase()
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a
   // failure keeps its own ref under the replacement namespace, pinned to the SAME
@@ -582,7 +582,8 @@ export function evaluateApprovalWithRefresh(input, { contentPreservingRefresh })
   if (refusedPrior) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because head ${refusedPrior.headSha}, whose pull request diff is identical to this head, carries a durable reviewer refusal`)
   for (const prior of equivalent) {
     try {
-      const result = evaluateExactHeadApproval({ ...input, headSha: prior.headSha, returns: prior.returns ?? [], verdicts: prior.verdicts })
+      // mergedAtHead describes the CURRENT head only; a carried prior head is judged strictly.
+      const result = evaluateExactHeadApproval({ ...input, headSha: prior.headSha, returns: prior.returns ?? [], verdicts: prior.verdicts, mergedAtHead: false })
       if (result.documents_only) continue
       return { ...result, head_sha: input.headSha, carried_from: prior.headSha, implementation_digest: digests.get(prior) }
     } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error }

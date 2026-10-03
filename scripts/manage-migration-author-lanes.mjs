@@ -5237,7 +5237,7 @@ export function mergedPrReviewerReuseAllowed(request,io){
   if(!mergedPrLive(live,request.headSha))return false
   return io.mergedPrReviewTarget(Number(request.pr),Number(request.issue))===true
 }
-function mergedPrLive(live,headSha){return Boolean(live?.merged_at)&&String(live?.head?.sha??'').toLowerCase()===String(headSha).toLowerCase()}
+function mergedPrLive(live,headSha){return Boolean(live?.merged_at)&&String(live?.state??'').toLowerCase()!=='open'&&String(live?.head?.sha??'').toLowerCase()===String(headSha).toLowerCase()}
 function mergedPrAtHead(pr,headSha,io){try{return mergedPrLive(io.getPr?.(Number(pr)),headSha)}catch{return false}}
 
 function assertExactDurableReviewApproval(issue,pr,headSha,io){

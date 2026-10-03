@@ -2107,9 +2107,11 @@ state proven through the verified merged-PR issue binding (`SHARED_DB_MERGED_PR_
 The allocator still prefers any independent reviewer; only when none is left may
 `--assign-reviewer` or `--replace-failed-reviewer` draw one that already holds another slot on
 that head, in the ordinary rotation order. It never draws a reviewer that failed on this head, is
-unusable or preflight-excluded, conflicts with the implementing engine, or is retired. The
-durable-approval check accepts that shared reviewer only in the same merged, slot-2-or-higher
-case. Open pull requests keep strict slot independence. Code:
+unusable or preflight-excluded, conflicts with the implementing engine, or is retired. Both
+approval gates, `assertDurableReviewApproval` and `scripts/check-exact-head-approval.mjs` (the
+automatic-promotion re-proof), accept that shared reviewer only when the pull request is merged
+(not open) at the exact head. Once every independent reviewer is used, a reviewer may be reused
+for more than one later slot; slot 1 is not kept independent of slots 2 and above collectively. Open pull requests keep strict slot independence. Code:
 `mergedPrReviewerReuseAllowed` in `scripts/manage-migration-author-lanes.mjs`.
 
 **Promotion merge freeze.** `--acquire-promotion-freeze --issue <n> --pr <n> --owner <text>

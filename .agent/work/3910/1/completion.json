@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "work_issue": 3910,
+  "outcome": "ready-for-merge",
+  "pr": 3932,
+  "migration_versions": [
+    "20261002224520"
+  ],
+  "contract_ref": "refs/db-contracts/3910/1",
+  "contract_sha256": "fb2f58435a5cfc9b2aef16683b82ed0d531646caaa07d88518aea726873532b7",
+  "head_sha": "4a1c4c71ffbef75d47a03c6981c15ca37d9f9222",
+  "base_sha": "0cf19993119fe26378ed7bc85e9f7facc66580ce",
+  "files_changed": [
+    "supabase/migrations/20261002224520_item_master_import_no_churn_ep001_retirement.sql",
+    "supabase/tests/item_master_import_no_churn_contract.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function plm.import_item_master_data"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests item_master_import_no_churn_contract.sql",
+      "exit_code": 0,
+      "evidence": "Passed in PR #3932 CI job 111079610060 (run 37080258597) at 4a1c4c71ffbef75d47a03c6981c15ca37d9f9222."
+    }
+  ],
+  "assumptions_resolved": [
+    "Churn root cause: unconditional upserts/back-fill; a fresh /items sweep showed 0 raw differences vs plm.item on 2026-10-02.",
+    "Review rounds: verify block; EDGEHOME-scoped EP001 retirement recorded as sync_run metadata retired_divisions; raw_record and disagreement no-churn (reviewed decisions not reopened unless changed)."
+  ],
+  "stop_conditions_hit": []
+}

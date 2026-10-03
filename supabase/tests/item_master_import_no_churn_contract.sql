@@ -43,10 +43,48 @@ begin
     raise exception 'T3: a changed item was not the only row updated';
   end if;
 
+  -- T6: a reviewed disagreement decision survives a sweep where it did not change.
+  declare lic_a uuid; lic_b uuid; prop_a uuid; v_dis jsonb;
+  begin
+    insert into core.licensor(name,code) values ('ZZT Licensor A','ZZTLA') returning id into lic_a;
+    insert into core.licensor(name,code) values ('ZZT Licensor B','ZZTLB') returning id into lic_b;
+    insert into core.property(licensor_id,name,code) values (lic_a,'ZZT Property A','ZZTPA') returning id into prop_a;
+    perform * from plm.import_merch_group_headers('[
+      {"companyCode":"EDGEHOME","divisionCode":"CW001","mgTypeCode":"05","mgTypeDesc":"Licensor"},
+      {"companyCode":"EDGEHOME","divisionCode":"CW001","mgTypeCode":"06","mgTypeDesc":"Property"}]'::jsonb);
+    v_dis := v_items || jsonb_build_array(jsonb_build_object('companyCode','EDGEHOME','divisionCode','CW001',
+      'itemNo','ZZT-D','merchGroup05','ZZTLB','merchGroup06','ZZTPA'));
+    perform * from plm.import_item_master_data(jsonb_build_object(
+      'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,'items',v_dis));
+    if not exists (select 1 from plm.item_taxonomy_disagreement where item_no = 'ZZT-D') then
+      raise exception 'T6 setup: fixture disagreement was not detected';
+    end if;
+    update plm.item_taxonomy_disagreement set status = 'reviewed' where item_no = 'ZZT-D';
+    perform * from plm.import_item_master_data(jsonb_build_object(
+      'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,'items',v_dis));
+    if (select status from plm.item_taxonomy_disagreement where item_no = 'ZZT-D') <> 'reviewed' then
+      raise exception 'T6: an unchanged disagreement was re-opened';
+    end if;
+    v_items := v_dis;
+  end;
+
+  -- T7: retiring EP001 is refused while it holds a reviewed disagreement decision.
+  insert into plm.item_taxonomy_disagreement(company_code,division_code,item_no,property_id,status,reason)
+  select 'EDGEHOME','EP001','ZZT-E', id, 'reviewed', 'zzt fixture' from core.property where code = 'ZZTPA';
+  begin
+    perform * from plm.import_item_master_data(jsonb_build_object(
+      'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,
+      'items',jsonb_build_array(v_items->0, v_items->1, v_items->3)));
+    raise exception 'T7: EP001 retirement discarded a reviewed decision';
+  exception when raise_exception then
+    if sqlerrm not like '%reviewed disagreement decisions%' then raise; end if;
+  end;
+  delete from plm.item_taxonomy_disagreement where item_no = 'ZZT-E';
+
   -- EP001 disappears from the sweep: promotes and retires it from silver.
   select r.sync_run_id into v_run from plm.import_item_master_data(jsonb_build_object(
     'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,
-    'items',jsonb_build_array(v_items->0, v_items->1))) r;
+    'items',jsonb_build_array(v_items->0, v_items->1, v_items->3))) r;
   if exists (select 1 from plm.item_import where division_code = 'EP001' and item_no = 'ZZT-E') then
     raise exception 'T4: EP001 was not retired from silver';
   end if;

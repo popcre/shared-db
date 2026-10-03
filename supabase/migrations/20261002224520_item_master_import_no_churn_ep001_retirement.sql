@@ -70,7 +70,11 @@ begin
     raise exception 'item sweep contains a zero-row division; silver was not promoted';
   end if;
   select count(*) into existing_count from plm.item_import;
-  if existing_count>0 and seen_count < ceil(existing_count*sanity_ratio) then
+  -- A retiring EDGEHOME/EP001 (absent from this sweep) does not count against the band.
+  if existing_count>0 and seen_count < ceil(sanity_ratio * (existing_count - case
+       when exists(select 1 from plm.item_import_staging st where st.sweep_id=sync_id
+                   and st.company_code='EDGEHOME' and st.division_code='EP001') then 0
+       else (select count(*) from plm.item_import where company_code='EDGEHOME' and division_code='EP001') end)) then
     raise exception 'item sweep row count % is below sanity band % of current silver %', seen_count, sanity_ratio, existing_count;
   end if;
   if existing_count>0 and exists(
@@ -84,6 +88,14 @@ begin
         and staged.division_code=current_division.division_code)
   ) then
     raise exception 'item sweep omitted a division present in current silver; silver was not promoted';
+  end if;
+  -- Retiring EP001 cascades its quarantine and disagreement rows; never let that
+  -- silently discard a human reviewed/dismissed disagreement decision.
+  if exists(select 1 from plm.item_taxonomy_disagreement d
+            where d.company_code='EDGEHOME' and d.division_code='EP001' and d.status <> 'open')
+     and not exists(select 1 from plm.item_import_staging st where st.sweep_id=sync_id
+                    and st.company_code='EDGEHOME' and st.division_code='EP001') then
+    raise exception 'retiring EDGEHOME/EP001 would delete reviewed disagreement decisions; silver was not promoted';
   end if;
 
   select count(*) into inserted_count from plm.item_import_staging s left join plm.item_import i
@@ -303,6 +315,17 @@ begin
     raise exception '#3910: unexpected search_path %', p.proconfig;
   end if;
   if p.args <> 'import_payload jsonb' then raise exception '#3910: unexpected signature %', p.args; end if;
+  if pg_get_function_result('plm.import_item_master_data(jsonb)'::regprocedure) <> 'TABLE(sync_run_id uuid, rows_seen integer, rows_inserted integer, rows_updated integer, rows_resolved integer, rows_partially_resolved integer, rows_ambiguous integer, rows_unresolved integer)'
+     or (select provolatile from pg_proc where oid = 'plm.import_item_master_data(jsonb)'::regprocedure) <> 'v'
+     or (select l.lanname from pg_proc pr join pg_language l on l.oid = pr.prolang where pr.oid = 'plm.import_item_master_data(jsonb)'::regprocedure) <> 'plpgsql' then
+    raise exception '#3910: return shape, volatility or language changed';
+  end if;
+  if (select array_agg(format('%s:%s', coalesce(nullif(a.grantee::regrole::text, '-'), 'PUBLIC'), a.privilege_type) order by 1)
+        from aclexplode(p.proacl) a where a.grantee <> 0)
+     is distinct from array['postgres:EXECUTE', 'service_role:EXECUTE']
+     or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0) then
+    raise exception '#3910: execute ACL changed: %', p.proacl;
+  end if;
   if has_function_privilege('anon', 'plm.import_item_master_data(jsonb)', 'execute')
      or has_function_privilege('authenticated', 'plm.import_item_master_data(jsonb)', 'execute')
      or not has_function_privilege('service_role', 'plm.import_item_master_data(jsonb)', 'execute') then

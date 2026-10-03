@@ -5237,7 +5237,7 @@ export function mergedPrReviewerReuseAllowed(request,io){
   if(!mergedPrLive(live,request.headSha))return false
   return io.mergedPrReviewTarget(Number(request.pr),Number(request.issue))===true
 }
-function mergedPrLive(live,headSha){return Boolean(live?.merged_at)&&String(live?.state??'').toLowerCase()!=='open'&&String(live?.head?.sha??'').toLowerCase()===String(headSha).toLowerCase()}
+function mergedPrLive(live,headSha){return Boolean(live?.merged_at)&&String(live?.state??'').toLowerCase()!=='open'&&/^[0-9a-f]{40}$/i.test(String(headSha??''))&&String(live?.head?.sha??'').toLowerCase()===String(headSha).toLowerCase()}
 function mergedPrAtHead(pr,headSha,io){try{return mergedPrLive(io.getPr?.(Number(pr)),headSha)}catch{return false}}
 
 function assertExactDurableReviewApproval(issue,pr,headSha,io){
@@ -5307,9 +5307,13 @@ function assertExactDurableReviewApproval(issue,pr,headSha,io){
     if(!record?.reviewer)throw new LaneError(`review slot ${assignment.slot} has no readable reviewer identity`)
     // Slot 1 is unique, so any shared pair involves a slot >= 2; on a merged head
     // that is the 2026-10-02 reuse ruling, and the check is order-independent.
-    // Merged-at-head is enough here: a verdict on a merged PR is recordable only
-    // through the verified merged-PR issue binding (reviewTargetIsRecordable), and
-    // the allocator draws a shared reviewer only through that same binding.
+    // Merged-at-head is enough here because every verdict this loop counts was
+    // recorded through the binding: recordReviewVerdict refuses any verdict on a merged PR unless
+    // reviewTargetIsRecordable passes (scripts/manage-migration-author-lanes.mjs, the
+    // `if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw` line), which for a
+    // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
+    // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.
+    // The allocator draws a shared reviewer only through that same binding.
     if(reviewers.has(record.reviewer)&&!mergedPrAtHead(pr,head,io))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
     reviewers.add(record.reviewer)
   }
@@ -9768,7 +9772,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     const previewAdmission=databasePreviewAdmission(o,io)
     if(previewAdmission.decision==='NO_DATABASE_PREVIEW'){console.log(JSON.stringify(previewAdmission,null,2));return 0}
     if(o.acquirePromotionFreeze){console.log(JSON.stringify(acquirePromotionFreeze({issue:o.issue,pr:o.pr,owner:o.owner,ttlMinutes:o.ttlMinutes},io),null,2));return 0}
-    if(o.releasePromotionFreeze){console.log(JSON.stringify(releasePromotionFreeze({owner:o.owner,pr:o.pr},io),null,2));return 0}
+    if(o.releasePromotionFreeze){if(o.ttlMinutes!==undefined)throw new LaneError('--ttl-minutes applies only to --acquire-promotion-freeze');console.log(JSON.stringify(releasePromotionFreeze({owner:o.owner,pr:o.pr},io),null,2));return 0}
     if(o.authorizeRepositoryMaintenanceStatus){console.log(JSON.stringify(authorizeRepositoryMaintenanceStatus(o,io),null,2));return 0}
     if(o.resolveAdmittedIssueForPr){console.log(JSON.stringify(resolveAdmittedIssueForPr(o.resolveAdmittedIssueForPr,io),null,2));return 0}
     const admissionOnly=hasAdmission&&selectedPrimary.length===0

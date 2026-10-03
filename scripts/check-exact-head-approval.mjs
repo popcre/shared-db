@@ -428,8 +428,13 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // OWNER RULING 2026-10-02 (docs/owner-rulings.md §6.26, "using one reviewer
   // twice"): only a pull request that is already MERGED at exactly this head may
   // carry a slot >= 2 reviewer that also holds another slot. The allocator draws
-  // that state only through the verified merged-PR issue binding, and a verdict on
-  // a merged PR is recordable only through that binding. Open PRs stay strict.
+  // that state only through the verified merged-PR issue binding, and every verdict
+  // counted here was recorded through it: recordReviewVerdict refuses any verdict on a merged PR unless
+  // reviewTargetIsRecordable passes (scripts/manage-migration-author-lanes.mjs, the
+  // `if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw` line), which for a
+  // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
+  // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.
+  // Open PRs stay strict. The predicate matches mergedPrLive in the lanes script.
   const mergedAtHead = Boolean(livePr?.merged_at) && String(livePr?.state ?? '').toLowerCase() !== 'open' && /^[0-9a-f]{40}$/i.test(headSha) && String(livePr?.head?.sha ?? '').toLowerCase() === headSha.toLowerCase()
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a

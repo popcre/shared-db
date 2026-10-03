@@ -11050,3 +11050,8 @@ test('the production job releases the promotion freeze for its source PR on alwa
   assert.match(step,/--release-promotion-freeze --pr "\$SOURCE_PR"/)
   assert.doesNotMatch(workflow,/--acquire-production[\s\S]{0,400}promotion-freeze/,'acquiring production never consults the freeze')
 })
+
+test('--ttl-minutes is refused with --release-promotion-freeze',()=>{
+  const io=freezeIo(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
+  try{assert.notEqual(main(['--release-promotion-freeze','--owner','x','--ttl-minutes','5'],NOW,io),0)}finally{console.log=oldLog;console.error=oldError}
+})

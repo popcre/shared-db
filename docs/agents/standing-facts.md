@@ -134,7 +134,9 @@ have already happened in this repo, more than once.
     it, or its TTL expires. Pick a TTL that outlives the whole window (review round plus
     production run); there is no renewal. Preview and production are never blocked by it. It is
     checked when a merge lane is acquired, so set it before the window: it does not revoke a
-    merge lane or merge-queue group that is already running.
+    merge lane or merge-queue group that is already running. The production cleanup releases
+    only a freeze recorded for its own source PR; a freeze filed under another PR waits for its
+    owner or its TTL.
 
 15. **The structural-lane rules are scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
     Rules 1 and 2 above (claim-first structural work, concurrent migration authors on exact object claims) govern changes to the

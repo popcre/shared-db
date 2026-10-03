@@ -2119,7 +2119,8 @@ for more than one later slot; slot 1 is not kept independent of slots 2 and abov
 risk assessment is drawn. While it is live, `--acquire-merge` (guarded merge and merge-queue gate)
 and repository-maintenance authorization refuse, naming the holder and expiry. It never blocks
 preview or production. It expires by TTL, so it cannot wedge merges (a corrupt, unreadable freeze record
-fails closed until any holder releases it); `--release-promotion-freeze
+fails closed until someone releases it with `--release-promotion-freeze --pr <n>`; any positive PR
+number releases an unreadable record, by design, so it can never wedge merges); `--release-promotion-freeze
 --owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
 freeze for its source PR. Release ownership is an accident guard, not a security boundary: the production
 job must be able to release a freeze it did not set.

@@ -44,16 +44,24 @@ begin
   end if;
 
   -- T6: a reviewed disagreement decision survives a sweep where it did not change.
-  declare lic_a uuid; lic_b uuid; prop_a uuid; v_dis jsonb;
+  declare v_lb text; v_pa text; v_dis jsonb;
   begin
-    insert into core.licensor(name,code) values ('ZZT Licensor A','ZZTLA') returning id into lic_a;
-    insert into core.licensor(name,code) values ('ZZT Licensor B','ZZTLB') returning id into lic_b;
-    insert into core.property(licensor_id,name,code) values (lic_a,'ZZT Property A','ZZTPA') returning id into prop_a;
+    -- Uses existing canonical Licensing rows (canonical writes need a transaction-bound
+    -- authorization): any coded property, plus a different coded licensor.
+    select p.code into v_pa from core.property p join core.licensor l on l.id = p.licensor_id
+     where p.code is not null and l.code is not null
+       and (select count(*) from core.property p2 where p2.code = p.code) = 1
+     order by p.code limit 1;
+    select l2.code into v_lb from core.licensor l2
+     where l2.code is not null and (select count(*) from core.licensor l3 where l3.code = l2.code) = 1
+       and l2.id <> (select licensor_id from core.property where code = v_pa)
+     order by l2.code limit 1;
+    if v_pa is null or v_lb is null then raise exception 'T6 setup: no coded licensing rows in this database'; end if;
     perform * from plm.import_merch_group_headers('[
       {"companyCode":"EDGEHOME","divisionCode":"CW001","mgTypeCode":"05","mgTypeDesc":"Licensor"},
       {"companyCode":"EDGEHOME","divisionCode":"CW001","mgTypeCode":"06","mgTypeDesc":"Property"}]'::jsonb);
     v_dis := v_items || jsonb_build_array(jsonb_build_object('companyCode','EDGEHOME','divisionCode','CW001',
-      'itemNo','ZZT-D','merchGroup05','ZZTLB','merchGroup06','ZZTPA'));
+      'itemNo','ZZT-D','merchGroup05',v_lb,'merchGroup06',v_pa));
     perform * from plm.import_item_master_data(jsonb_build_object(
       'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,'items',v_dis));
     if not exists (select 1 from plm.item_taxonomy_disagreement where item_no = 'ZZT-D') then
@@ -70,7 +78,7 @@ begin
 
   -- T7: retiring EP001 is refused while it holds a reviewed disagreement decision.
   insert into plm.item_taxonomy_disagreement(company_code,division_code,item_no,property_id,status,reason)
-  select 'EDGEHOME','EP001','ZZT-E', id, 'reviewed', 'zzt fixture' from core.property where code = 'ZZTPA';
+  select 'EDGEHOME','EP001','ZZT-E', property_id, 'reviewed', 'zzt fixture' from plm.item_taxonomy_disagreement where item_no = 'ZZT-D';
   begin
     perform * from plm.import_item_master_data(jsonb_build_object(
       'sweepId',gen_random_uuid(),'terminalReached',true,'minimumSilverRatio',0.1,

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "work_issue": 2662,
+  "outcome": "ready-for-merge",
+  "pr": 3304,
+  "migration_versions": [
+    "20260928052136"
+  ],
+  "contract_ref": "refs/db-contracts/2662/19",
+  "contract_sha256": "a94b5200cdc165cfc46870ce32e1fbbb9ee8fe0e77631487ff0cd54ceb470d52",
+  "head_sha": "bf3865ccb61a36ae9a8cbf67bbee022b7db84d9f",
+  "files_changed": [
+    ".github/live-proofs/2662.sql",
+    "supabase/migrations/20260928052136_revoke_authenticated_from_unused_definer_views.sql",
+    "supabase/tests/app_serving_status_contracts.sql",
+    "supabase/tests/issue_2662_unused_view_grants_contracts.sql",
+    "supabase/tests/opa_property_studio_resolution_contracts.sql",
+    "supabase/tests/sega_landing_contracts.sql",
+    "supabase/tests/source_capture_inventory_contracts.sql",
+    "supabase/tests/wildbrain_landing_contracts.sql"
+  ],
+  "db_reads": [
+    "catalog pg_class",
+    "catalog pg_namespace",
+    "catalog information_schema.role_table_grants"
+  ],
+  "db_writes": [
+    "view api.crm_factory_picker_list",
+    "view api.opa_disney_property",
+    "view api.opa_lucasfilm_property",
+    "view api.opa_marvel_property",
+    "view api.pm_factory_list",
+    "view api.source_capture_inventory",
+    "table api.crm_factory_picker_list",
+    "table api.opa_disney_property",
+    "table api.opa_lucasfilm_property",
+    "table api.opa_marvel_property",
+    "table api.pm_factory_list",
+    "table api.source_capture_inventory"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Current-main PR diff and local changes passed whitespace check at bf3865cc."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static guards passed with reserved version 20260928052136 after current-main integration; live-ledger B2 awaits CI."
+    },
+    {
+      "command": "supabase/tests against an ephemeral database",
+      "exit_code": 0,
+      "evidence": "Prior hosted run 35518490787 passed all six changed/added SQL test files on equivalent REVOKE implementation; current exact-head ephemeral CI is still required before guarded merge."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_shared_db_live_proof -q",
+      "exit_code": 0,
+      "evidence": "28 local tests passed, 0 failed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #3294 renewed and rebound to this clean worktree; new version 20260928052136 reserved with the old version permanently unavailable.",
+    "Current main b02d04c7 merged cleanly; bounded six-view REVOKE statements remain unchanged in operation.",
+    "Fresh exact-head independent reviews, full CI, preview, guarded merge, and automatic production remain required; no live result claimed."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15"
+}

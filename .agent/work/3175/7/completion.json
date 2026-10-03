@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "work_issue": 3175,
+  "outcome": "ready-for-merge",
+  "pr": 3309,
+  "migration_versions": [
+    "20260928050320"
+  ],
+  "contract_ref": "refs/db-contracts/3175/7",
+  "contract_sha256": "f7520642d95e9f44f4cb0063b53a2616e3f53502e73dda2a47ef9a6111b60af8",
+  "head_sha": "f6d693c4fa263ab9620aa0626ec36e4b03e90be4",
+  "files_changed": [
+    "supabase/migrations/20260928050320_retire_designflow_taxonomy_health_lane.sql",
+    "supabase/tests/taxonomy_retired_designflow_lane_contracts.sql",
+    ".github/live-proofs/3175.sql"
+  ],
+  "db_reads": [
+    "table ingest.sync_run"
+  ],
+  "db_writes": [
+    "function plm.check_taxonomy_sync_health",
+    "function plm.record_taxonomy_parallel_observation"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static SQL checks passed locally on current-main merge with new reserved version 20260928050320; live-ledger B2 awaits hosted CI."
+    },
+    {
+      "exit_code": 0,
+      "command": "node --test tools/check-coldlion-designflow-sync-health.test.mjs tools/compare-coldlion-designflow-daily.test.mjs tools/evaluate-coldlion-licensor-property-cutover-readiness.test.mjs",
+      "evidence": "19 tests passed, 0 failed."
+    },
+    {
+      "exit_code": 0,
+      "command": "cmp old-version migration body new-version migration body",
+      "evidence": "SQL body byte-identical to the prior reviewed file; only the reserved filename version changed."
+    },
+    {
+      "exit_code": 0,
+      "command": "node scripts/check-migration-pr-lease.mjs",
+      "evidence": "PR_NUMBER=3309 verified open claim #3307 and reserved version 20260928050320 against pushed implementation head f9ab86c1."
+    },
+    {
+      "exit_code": 0,
+      "command": "focused rollback SQL regression contracts",
+      "evidence": "Prior focused hosted run 35519211279 succeeded on byte-identical migration SQL body; taxonomy_retired_designflow_lane_contracts.sql passed. New exact-head ephemeral CI remains required before guarded merge."
+    }
+  ],
+  "assumptions_resolved": [
+    "The branch incorporates current origin/main b02d04c7 with no SQL conflict.",
+    "Claim #3307 is renewed and rebound to this clean worktree; version 20260928050320 is atomically reserved, old version remains permanently reserved.",
+    "Existing function migration body is byte-identical to prior PR head cc2b4e47; live proof checks new version.",
+    "Fresh exact-head CI and two governed approvals remain required; no preview, merge, or production result is claimed.",
+    "Generation 7 supersedes published generation 6 after deleting its incorrectly ordered PR evidence pair; current pair is committed together after implementation head."
+  ],
+  "stop_conditions_hit": [],
+  "base_sha": "b02d04c71e6240461ef37187134cc6b568e74b15"
+}

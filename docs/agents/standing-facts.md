@@ -19,9 +19,10 @@
 Read these before you write anything. Several of them describe failures that
 have already happened in this repo, more than once.
 
-1. **One orchestrator.** All work is dispatched to sub-agents in isolated
-   worktrees. If you were not started as the orchestrator, you are not it.
-   **Resolve who it is with `--resolve`, never from memory — §11c.**
+1. **No orchestrator — claim-first (owner ruling 2026-10-02, AGENTS.md §0.0-D; replaces the
+   former "one orchestrator" rule).** A session needing a structural change claims the exact
+   objects on the existing issue and does the work itself in its own isolated worktree. Never
+   resolve a marker or wait for dispatch.
 2. **SUPERSEDED 2026-08-14, RAISED 2026-08-25:** up to **five** unrelated
    migrations may be authored concurrently under exact object claims and atomic
    version reservations. Preview, merges and production promotion remain one at
@@ -124,24 +125,36 @@ have already happened in this repo, more than once.
     the guard worked — but two owner approvals were wasted, and the third only landed under a
     deliberate merge freeze. **Announce a freeze, hold every merge from staging until the run
     finishes, then release it.** This is standard practice, not an improvisation.
+    **The mechanism (owner instruction 2026-10-02, "assign someone to pause merges during
+    production runs"; [owner rulings §6.26](../owner-rulings.md)):** before drawing the risk
+    assessment, run `node scripts/manage-migration-author-lanes.mjs --acquire-promotion-freeze
+    --issue <n> --pr <source-pr> --owner <text> --ttl-minutes <1-180>`. Every `--acquire-merge`
+    and repository-maintenance (documents-only) authorization then refuses until the freeze is
+    released (`--release-promotion-freeze --owner <text>`), the production run's cleanup releases
+    it, or its TTL expires. Pick a TTL that outlives the whole window (review round plus
+    production run); there is no renewal. Preview and production are never blocked by it. It is
+    checked when a merge lane is acquired, so set it before the window: it does not revoke a
+    merge lane or merge-queue group that is already running. The production cleanup releases
+    only a freeze recorded for its own source PR; a freeze filed under another PR waits for its
+    owner or its TTL.
 
-15. **The single-orchestrator rule is scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
-    Rules 1 and 2 above ("one orchestrator", "unlimited concurrent migration authors, each on exact object claims") govern changes to the
+15. **The structural-lane rules are scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
+    Rules 1 and 2 above (claim-first structural work, concurrent migration authors on exact object claims) govern changes to the
     *shape* of the database. They do **not** make an application session's ordinary row writes
-    into orchestrator work, and a session must not open an issue or hand over merely because its
+    into structural work, and a session must not open an issue or hand over merely because its
     feature writes data. The single exception is curated Master Data under §6.4, which stays
     gated. §4.2's connection-target proof still applies to every data write regardless.
 
-16. **REPOSITORY MAINTENANCE IS NOT ORCHESTRATOR WORK (owner ruling, 2026-08-21, issue #1366).**
-    The shared-db orchestrator accepts, dispatches, reviews, merges and promotes **structural and
+16. **REPOSITORY MAINTENANCE IS NOT STRUCTURAL-LANE WORK (owner ruling, 2026-08-21, issue #1366;
+    orchestrator role retired 2026-10-02, §0.0-D).** The structural lane covers **structural and
     schema work only**. `repo-maintenance` and `documentation` are performed by a **separately
-    started repository session** and are never an orchestrator assignment — not even to dispatch.
+    started repository session** and never consume the structural lane.
     `security-settings` is routed `repo-session` by the lane tool (#3675): an AI session obtains
     the access itself (owner ruling 2026-09-28).
     `--queue-audit` lists these under `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` for audit
     visibility only; that list is **not** a worklist.
 
-    This ruling narrowed the boundary rather than restating it. Until 2026-08-21 all three exited
+    (Historical:) This ruling narrowed the boundary rather than restating it. Until 2026-08-21 all three exited
     by `fork`, which reads as "the orchestrator hands this out", and on that basis an orchestrator
     session accepted a repository-maintenance planning task. Do not route such work back to the
     orchestrator, and do not read a `fork` in an old document as current.

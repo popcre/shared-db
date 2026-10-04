@@ -1,0 +1,211 @@
+name: Sandbox Ledger Orphan Reconciliation
+
+# ============================================================================
+# Issue #2986. The sandbox analogue of preview-ledger-orphan-reconciliation.yml,
+# for DesignFlow sandbox ledger rows whose migration file never existed on any
+# branch (no-replacement orphans). `supabase migration repair` cannot process
+# those versions (it requires a local file), and the bare CLI DELETE carries no
+# lock, no pinned-content re-verification and no row-count assertion. This lane
+# runs scripts/preview_ledger_orphan_reconcile.py --reconciliation sandbox,
+# whose DELETE is exclusive-locked, statements-pinned and row-count-asserted,
+# against a case pinned in the reviewed manifest
+# config/preview-ledger-orphan-reconciliations.json (expected live row content
+# plus the full expected remainder of the ledger).
+#
+# This workflow NEVER targets shared production or the shared preview branch,
+# and it performs no DDL: the only write is the one-row metadata DELETE inside
+# the reconciler's verified transaction, with the full before/after rows and an
+# executable restore statement uploaded as immutable evidence.
+#
+# It shares the `designflow-sandbox-migrations` concurrency group with the
+# sandbox migration workflow, so the sandbox keeps exactly one writer at a time.
+#
+# Only workflow_dispatch. No pull_request / merge_group trigger, so this file
+# emits no required status context and cannot hold up any merge.
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_sha: {description: "Exact current main SHA", required: true, type: string}
+      orphan_version: {description: "Exact pinned sandbox orphan version (no file ever existed)", required: true, type: string}
+      issue: {description: "Owning work issue pinned by the reviewed manifest", required: true, type: string}
+      confirmation: {description: "Type RECONCILE SANDBOX ORPHAN <version>", required: true, type: string}
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: designflow-sandbox-migrations
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile one pinned sandbox ledger orphan
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: designflow-sandbox
+    timeout-minutes: 15
+    env:
+      SANDBOX_PROJECT_REF: xupnyeifmpsacrqahwwm
+      PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.main_sha }}", fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: supabase/setup-cli@v1
+        with: {version: 2.105.0}
+      - name: Ensure a working PostgreSQL client (psql)
+        run: |
+          set -euo pipefail
+
+          # WHY THIS IS NOT JUST `apt-get install postgresql-client` (issue #1261)
+          # ---------------------------------------------------------------------
+          # The hosted runner image ALREADY ships a PostgreSQL client, so the apt
+          # install was buying nothing and risking everything. On 2026-08-19 a stalled
+          # `apt-get update` against azure.archive.ubuntu.com consumed an entire
+          # 45-minute job budget five times across three PRs; every later step was
+          # skipped, so NOT ONE LINE OF SQL RAN -- and it surfaced as a plain red X,
+          # indistinguishable from a genuine failure. That is the hosted-runner
+          # starvation mode described in AGENTS.md 5.2-A.
+          #
+          # So: prove the client FIRST and skip apt entirely when it is already there;
+          # if apt is genuinely needed, bound every command with `timeout` and retry
+          # with backoff; and if a working client still cannot be had, fail FAST and
+          # BY NAME so nobody mistakes an infrastructure stall for a fault in the
+          # change under review. This step never continues without a real client --
+          # failing loudly is the point.
+          if command -v psql >/dev/null 2>&1 && psql --version; then
+            echo "psql already present on the runner image; no apt install needed."
+            exit 0
+          fi
+
+          echo "::warning::psql absent from the runner image; falling back to apt."
+          attempts=3
+          for i in $(seq 1 "$attempts"); do
+            if timeout --kill-after=10 60 sudo apt-get update \
+              && timeout --kill-after=10 120 sudo apt-get install -y --no-install-recommends postgresql-client; then
+              if command -v psql >/dev/null 2>&1 && psql --version; then
+                echo "psql installed and proved working on attempt ${i}."
+                exit 0
+              fi
+            fi
+            echo "::warning::psql install attempt ${i} of ${attempts} failed or timed out."
+            # No backoff after the LAST attempt: it would only delay the named
+            # error below by a further 30s. The worst-case budget is
+            # 3*(60+120)+10+20 = 570s, which must stay inside this job's
+            # 15-minute ceiling. Shorten the budget, never raise the ceiling --
+            # a generic job timeout would swallow the named diagnostic exactly
+            # when it is needed, which is the whole defect of #1261.
+            if [ "$i" -lt "$attempts" ]; then
+              sleep $(( i * 10 ))
+            fi
+          done
+
+          echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO RECONCILIATION WAS PERFORMED"
+          exit 1
+      - name: Prove exact current main and sandbox-only intent
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          ISSUE: ${{ inputs.issue }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          printf '%s' "$SANDBOX_PROJECT_REF" | grep -Eq '^[a-z]{20}$'
+          test "$SANDBOX_PROJECT_REF" != "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE"
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo "REFUSED: repository variable PREVIEW_PROJECT_REF is not set, so the sandbox cannot be proven distinct from preview." >&2
+            exit 2
+          fi
+          printf '%s' "$PREVIEW_PROJECT_REF" | grep -Eq '^[a-z]{20}$'
+          test "$SANDBOX_PROJECT_REF" != "$PREVIEW_PROJECT_REF"
+          [[ "$ORPHAN" =~ ^[0-9]{14}$ ]]
+          test "$CONFIRMATION" = "RECONCILE SANDBOX ORPHAN $ORPHAN"
+          python - "$ISSUE" "$ORPHAN" <<'PY'
+          import json,sys
+          data=json.load(open('config/preview-ledger-orphan-reconciliations.json',encoding='utf-8'))
+          issue,orphan=int(sys.argv[1]),sys.argv[2]
+          matches=[row for row in data.get('cases',[]) if row.get('issue')==issue and row.get('mode')=='sandbox_orphan_no_replacement' and row.get('orphan_version')==orphan]
+          if data.get('schema')!='shared-db-preview-ledger-orphan-reconciliations/v1' or len(matches)!=1:
+              raise SystemExit('REFUSED: sandbox orphan tuple is not uniquely allowlisted by the reviewed manifest')
+          if matches[0].get('project_ref')!='xupnyeifmpsacrqahwwm':
+              raise SystemExit('REFUSED: sandbox reconciliation case pins a different target ref')
+          PY
+          if [ -n "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)" ]; then
+            echo "REFUSED: a sandbox no-replacement orphan must have no local migration file." >&2
+            exit 2
+          fi
+      - name: Link only to the sandbox
+        run: |
+          set -euo pipefail
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$SANDBOX_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          grep -F "$SANDBOX_PROJECT_REF" supabase/.temp/pooler-url
+          ! grep -F "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE" supabase/.temp/pooler-url
+          ! grep -F "$PREVIEW_PROJECT_REF" supabase/.temp/pooler-url
+      - name: Capture sandbox migration record (before)
+        run: |
+          set -euo pipefail
+          supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-before.txt"
+      - name: Fetch the pinned work issue
+        env:
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/issue.json" api "repos/${GITHUB_REPOSITORY}/issues/$ISSUE"
+      - name: Exact proof with no write
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          EXPECTED_PROJECT_REF="$SANDBOX_PROJECT_REF" python scripts/preview_ledger_orphan_reconcile.py --mode check \
+            --reconciliation sandbox \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" \
+            --expected-project-ref "$SANDBOX_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --issue "$ISSUE" \
+            --issue-json "$RUNNER_TEMP/issue.json" --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-check.json"
+      - name: Transactional one-row sandbox reconciliation
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          EXPECTED_PROJECT_REF="$SANDBOX_PROJECT_REF" python scripts/preview_ledger_orphan_reconcile.py --mode apply \
+            --reconciliation sandbox \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" \
+            --expected-project-ref "$SANDBOX_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --issue "$ISSUE" \
+            --issue-json "$RUNNER_TEMP/issue.json" --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-apply.json"
+      - name: Capture sandbox migration record (after)
+        if: always()
+        run: |
+          set -euo pipefail
+          supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-after.txt"
+      - name: Upload immutable before and after evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-ledger-orphan-reconciliation-${{ inputs.orphan_version }}
+          path: |
+            ${{ runner.temp }}/reconciliation-check.json
+            ${{ runner.temp }}/reconciliation-apply.json
+            ${{ runner.temp }}/sandbox-ledger-before.txt
+            ${{ runner.temp }}/sandbox-ledger-after.txt
+          if-no-files-found: warn
+          retention-days: 90

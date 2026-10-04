@@ -95,7 +95,7 @@ defect):
 | `DDPNJ` / `DDP New Jersey` | POE | NJ |
 | `MDDP` / `MDDP` | MDDP | NINGBO (on the sheet) |
 
-**POE vs DDP — definitions and who differentiates them (Settled, Albert, 2026-09-17).**
+**POE vs DDP — definitions and who differentiates them (Settled, Albert, 2026-09-17).** Where POP's delivery responsibility ends for each sales-order term (FOB China, POE NJ, POE L.A., Warehouse) is Settled in [`shipping-terms-and-delivery-responsibility.md`](shipping-terms-and-delivery-responsibility.md).
 
 - **POE (port of entry):** POP is responsible for getting the goods to a domestic port and
   paying freight and duty; the customer picks the container up at that port.
@@ -123,7 +123,7 @@ defect):
 | `POEVA` | POE GA Norfolk | port of entry, Norfolk (code says VA, description says GA — as returned) |
 | `POE` | POE | bare port-of-entry code, destination unstated |
 | `DDPNJ` / `DDPMD` / `DDPPA` / `DDPOH` / `DDPNC` / `DDPCA` / `DDPGA` | DDP + state | delivered duty paid, trucked to the customer's state |
-| `MDDP` | MDDP | DDP variant; the expansion is Unknown (sheet pairs it with NINGBO) |
+| `MDDP` | MDDP | customer pays freight and arranges shipping; POP clears US customs and pays duty (Settled, Albert, 2026-10-02 — see [`shipping-terms-and-delivery-responsibility.md`](shipping-terms-and-delivery-responsibility.md)); the letter expansion is still unstated |
 | `DES001` | Deco Signs | drop-ship/destination code |
 | `ANT001` | ANTHONY'S WAREHOUSE | POP-side warehouse |
 | `WMFC` | Walmart Fulfillment Center | |

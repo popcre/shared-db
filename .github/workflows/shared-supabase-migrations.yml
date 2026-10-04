@@ -2163,6 +2163,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.production_lock.outputs.owner_sha }}
         run: node scripts/manage-migration-author-lanes.mjs --release-production --owner-sha "$OWNER_SHA"
+      # PROMOTION MERGE FREEZE (owner instruction 2026-10-02, "assign someone to
+      # pause merges during production runs"). A session may set the freeze for
+      # this source PR before drawing the risk assessment; the run ending ends it.
+      # Releases only a freeze recorded for THIS source PR; another PR's freeze is
+      # left alone, and the TTL expires any freeze on its own.
+      - name: Release the promotion merge freeze for this source PR
+        if: always() && inputs.source_pr != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: node scripts/manage-migration-author-lanes.mjs --release-promotion-freeze --pr "$SOURCE_PR"
       # THE FREEZE PUTS BACK WHAT IT TOOK (issue #2116). Runs on `always()`, after the
       # lane is released, so a failed or cancelled promotion cannot leave every open
       # pull request in the repository red forever.

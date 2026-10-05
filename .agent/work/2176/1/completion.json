@@ -4,17 +4,14 @@
   "outcome": "ready-for-merge",
   "pr": 3839,
   "migration_versions": [
-    "20261005025111"
+    "20260930172952"
   ],
   "contract_ref": "refs/db-contracts/2176/1",
-  "contract_sha256": "8350a3482e5a6ecebc08f9f7958f6aced2706e7730f190966ca25c959fecc6da",
-  "base_sha": "53fd0bea085b90f039ae4fa2a7005652867d5ce3",
-  "head_sha": "c3fd4fb49265500ad42855d5ee3f04c44e937eb0",
+  "contract_sha256": "3433496053b00cc21cd66ff737e74ada11b6bd720a61ee7343ab9647d2991ded",
+  "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
+  "head_sha": "c5c7fc0eb458c822fb0a5f018c425c8c18bb6d5b",
   "files_changed": [
-    ".agent/work/2176/1/completion.json",
-    ".agent/work/2176/1/contract.json",
-    "HANDOFF.d/2026-10-04T2342Z-edge-dev-mimo-queue-resume.md",
-    "supabase/migrations/20261005025111_coldlion_unit6_consumer_contracts.sql",
+    "supabase/migrations/20260930172952_coldlion_unit6_consumer_contracts.sql",
     "supabase/tests/coldlion_unit6_consumer_contracts.sql"
   ],
   "db_reads": [
@@ -60,7 +57,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at c5c7fc0eb458c822fb0a5f018c425c8c18bb6d5b (implementation head; evidence pair follows as tail)"
+      "evidence": "Static checks passed at c5c7fc0eb"
     },
     {
       "command": "node tmp extraction proof via scripts/orchestrator-flow/admission.mjs inspectPrStructuralChange (exact match to claim #3838 objects)",

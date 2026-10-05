@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/2176/1",
   "contract_sha256": "3433496053b00cc21cd66ff737e74ada11b6bd720a61ee7343ab9647d2991ded",
   "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
-  "head_sha": "103642e7da4f383b259602f018411c941aea5fe6",
+  "head_sha": "c5c7fc0eb458c822fb0a5f018c425c8c18bb6d5b",
   "files_changed": [
     "supabase/migrations/20260930172952_coldlion_unit6_consumer_contracts.sql",
     "supabase/tests/coldlion_unit6_consumer_contracts.sql"
@@ -57,7 +57,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 103642e7da4f383b259602f018411c941aea5fe6"
+      "evidence": "Static checks passed at c5c7fc0eb458c822fb0a5f018c425c8c18bb6d5b (implementation head; evidence pair follows as tail)"
     },
     {
       "command": "node tmp extraction proof via scripts/orchestrator-flow/admission.mjs inspectPrStructuralChange (exact match to claim #3838 objects)",

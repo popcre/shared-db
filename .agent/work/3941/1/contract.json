@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "work_issue": 3234,
-  "generation": 13,
+  "work_issue": 3941,
+  "generation": 1,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Treat concurrency-group-only workflow differences as custody-only so high-risk production promotion is not blocked by queue-label drift.",
@@ -13,14 +13,14 @@
   "allowed_paths": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    ".agent/work/3234/13/contract.json",
-    ".agent/work/3234/13/completion.json"
+    ".agent/work/3941/1/contract.json",
+    ".agent/work/3941/1/completion.json"
   ],
   "file_writes": [
     "scripts/production_business_risk_gate.py",
     "scripts/test_production_business_risk_gate.py",
-    ".agent/work/3234/13/contract.json",
-    ".agent/work/3234/13/completion.json"
+    ".agent/work/3941/1/contract.json",
+    ".agent/work/3941/1/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -39,9 +39,5 @@
     "stop if a test fails",
     "stop if the change would need to touch a file outside allowed_paths"
   ],
-  "evidence_parent": {
-    "work_issue": 3234,
-    "generation": 12,
-    "contract_sha256": "c29e828a4a22fe6b960932270b99cf3c42077fbb8f895cd6d6c44ba9f3f19392"
-  }
+  "evidence_parent": null
 }

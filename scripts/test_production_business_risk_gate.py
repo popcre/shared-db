@@ -4694,6 +4694,26 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
                    + "          # #3153: a comment\n")
         self.prove(self.api(workflows={"wf-ref": self.BASE_WORKFLOW, "wf-main": main_wf}))
 
+    def test_workflow_group_only_drift_passes_at_gate_level(self):
+        """#3941: a concurrency-group-only rename must not block production promotion."""
+        base_wf = (
+            "concurrency:\n"
+            "  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group')"
+            " && format('shared-supabase-migrations-{0}', github.ref)"
+            " || (inputs.target == 'production' && 'shared-supabase-migrations-production'"
+            " || 'shared-supabase-migrations-preview') }}\n"
+            "  cancel-in-progress: false\n"
+            "jobs:\n  preview:\n    steps:\n"
+            "      - run: |\n"
+            "          MAIN_SHA=\"$REQUESTED_SHA\" node scripts/check-main-tip-freshness.mjs\n"
+            f"          gh api 'repos/{REPOSITORY}/pulls?state=open' \\\n"
+            "          python scripts/atomic_migration_apply.py --apply\n"
+        )
+        renamed_wf = base_wf.replace(
+            "shared-supabase-migrations-preview", "shared-supabase-migrations-staging")
+        self.assertNotEqual(base_wf, renamed_wf)  # sanity: they really differ
+        self.prove(self.api(workflows={"wf-ref": base_wf, "wf-main": renamed_wf}))
+
     def test_workflow_step_change_is_refused_even_on_a_main_line_ref(self):
         for main_wf in (
             self.BASE_WORKFLOW.replace("--apply", "--apply --skip-verify"),

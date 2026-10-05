@@ -4705,19 +4705,72 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
                 self.prove(self.api(workflows={"wf-ref": self.BASE_WORKFLOW, "wf-main": main_wf}))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class WorkflowCustodyConcurrencyTests(unittest.TestCase):
+    """#3941: concurrency-group-only workflow differences are custody-only so
+    high-risk production promotion is not blocked by queue-label drift."""
+
+    # The real expression from .github/workflows/shared-supabase-migrations.yml:137.
+    REAL_CONCURRENCY = (
+        "concurrency:\n"
+        "  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group')"
+        " && format('shared-supabase-migrations-{0}', github.ref)"
+        " || (inputs.target == 'production' && 'shared-supabase-migrations-production'"
+        " || 'shared-supabase-migrations-preview') }}\n"
+        "  cancel-in-progress: false\n"
+    )
+
     def test_concurrency_group_expression_is_custody_only(self):
         from production_business_risk_gate import _workflow_custody_normal_form
-        a = "concurrency:\n  group: ${{ 'shared-supabase-migrations' }}\n  cancel-in-progress: false\n"
-        b = "concurrency:\n  group: ${{ inputs.target == 'production' && 'shared-supabase-migrations-production' || 'shared-supabase-migrations-preview' }}\n  cancel-in-progress: false\n"
-        self.assertEqual(_workflow_custody_normal_form(a), _workflow_custody_normal_form(b))
+        renamed = self.REAL_CONCURRENCY.replace(
+            "shared-supabase-migrations-preview", "shared-supabase-migrations-staging")
+        self.assertEqual(
+            _workflow_custody_normal_form(self.REAL_CONCURRENCY),
+            _workflow_custody_normal_form(renamed))
 
-    def test_apply_command_change_still_refused(self):
+    def test_concurrency_group_normal_form_token(self):
         from production_business_risk_gate import _workflow_custody_normal_form
-        a = "jobs:\n  run: supabase db push\n"
-        b = "jobs:\n  run: supabase db push --include-all\n"
-        self.assertNotEqual(_workflow_custody_normal_form(a), _workflow_custody_normal_form(b))
+        result = _workflow_custody_normal_form(self.REAL_CONCURRENCY)
+        self.assertIn("group: <concurrency>", result)
+
+    def test_condition_change_is_still_refused(self):
+        from production_business_risk_gate import _workflow_custody_normal_form
+        with_cond = self.REAL_CONCURRENCY + "jobs:\n  preview:\n    if: ${{ inputs.target == 'production' }}\n"
+        without = self.REAL_CONCURRENCY + "jobs:\n  preview:\n"
+        self.assertNotEqual(_workflow_custody_normal_form(with_cond),
+                            _workflow_custody_normal_form(without))
+
+    def test_apply_change_with_group_change_is_still_refused(self):
+        from production_business_risk_gate import _workflow_custody_normal_form
+        base = self.REAL_CONCURRENCY + "jobs:\n  run: supabase db push\n"
+        both = (self.REAL_CONCURRENCY.replace("shared-supabase-migrations-preview", "renamed-queue")
+                + "jobs:\n  run: supabase db push --skip-verify\n")
+        self.assertNotEqual(_workflow_custody_normal_form(base),
+                            _workflow_custody_normal_form(both))
+
+    def test_group_in_run_block_is_not_normalised(self):
+        from production_business_risk_gate import _workflow_custody_normal_form
+        # A `group:` line inside a run: | block must NOT be collapsed even if it
+        # matches the expression shape -- only the concurrency block is rewritten.
+        with_nested = (
+            "concurrency:\n"
+            "  group: ${{ 'a' }}\n"
+            "  cancel-in-progress: false\n"
+            "jobs:\n"
+            "  run: |\n"
+            "    group: ${{ 'b' }}\n"
+        )
+        without_nested = (
+            "concurrency:\n"
+            "  group: ${{ 'a' }}\n"
+            "  cancel-in-progress: false\n"
+            "jobs:\n"
+            "  run: |\n"
+            "    group: ${{ 'c' }}\n"
+        )
+        # The nested group: lines differ and must NOT be normalised to equality.
+        self.assertNotEqual(_workflow_custody_normal_form(with_nested),
+                            _workflow_custody_normal_form(without_nested))
+
+
+if __name__ == "__main__":
+    unittest.main()

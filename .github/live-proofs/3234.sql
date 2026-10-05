@@ -1,4 +1,4 @@
--- Live proof for #3234 (migration 20260930212107, PR #3852). Read-only.
+-- Live proof for #3234 (migration 20261005005221, PR #3883). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger
 --   2. coldlion.prod_detail still has PRIMARY KEY (company_code, pkey)
@@ -6,7 +6,7 @@
 --   4. landing RLS remains on; anon/authenticated hold no privilege
 select (
   (exists (select 1 from supabase_migrations.schema_migrations where version = '20260930212107')
-  or exists (select 1 from supabase_migrations.schema_migrations where version = '20261002144024'))
+  or exists (select 1 from supabase_migrations.schema_migrations where version = '20261005005221'))
   and exists (
     select 1 from pg_catalog.pg_class
     where oid = pg_catalog.to_regclass('coldlion.prod_detail')

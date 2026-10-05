@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 3234,
+  "outcome": "ready-for-merge",
+  "pr": null,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3234/13",
+  "contract_sha256": "b5911e4c0da36a2249a8edef79fd81660a4219f63240e42c150f445ab8417aea",
+  "base_sha": "ec05fa0df6e28f88f9022c1a73c14cfab37d5798",
+  "head_sha": "43044cb0a4251976770aa2b6e59ee208247d74ce",
+  "files_changed": [
+    "scripts/production_business_risk_gate.py",
+    "scripts/test_production_business_risk_gate.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.test_production_business_risk_gate.WorkflowCustodyConcurrencyTests",
+      "exit_code": 0,
+      "evidence": "2 tests passed"
+    }
+  ],
+  "assumptions_resolved": [
+    "concurrency group expressions are custody-only"
+  ],
+  "stop_conditions_hit": []
+}

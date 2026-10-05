@@ -1066,6 +1066,11 @@ _WORKFLOW_CUSTODY_REWRITES = (
      r"repos/<repository>/\1"),
     # The freshness rule is the freshness script's own business.
     (re.compile(r"(scripts/check-main-tip-freshness\.mjs) --production\b"), r"\1"),
+    # Concurrency queue labels do not change which statements run. A PR head and
+    # its merge commit routinely differ only here (e.g. a main-side queue rename
+    # between cut and merge). Normalise the group expression so custody still
+    # refuses any step, condition, or apply-command change.
+    (re.compile(r"^group: \$\{\{.*\}\}$"), "group: <concurrency>"),
 )
 _WORKFLOW_CUSTODY_DROPPED_LINES = frozenset((
     # The production job's exact-tip equality, replaced by the freshness rule.

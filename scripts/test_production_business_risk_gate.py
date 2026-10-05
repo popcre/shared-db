@@ -4707,3 +4707,17 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkflowCustodyConcurrencyTests(unittest.TestCase):
+    def test_concurrency_group_expression_is_custody_only(self):
+        from production_business_risk_gate import _workflow_custody_normal_form
+        a = "concurrency:\n  group: ${{ 'shared-supabase-migrations' }}\n  cancel-in-progress: false\n"
+        b = "concurrency:\n  group: ${{ inputs.target == 'production' && 'shared-supabase-migrations-production' || 'shared-supabase-migrations-preview' }}\n  cancel-in-progress: false\n"
+        self.assertEqual(_workflow_custody_normal_form(a), _workflow_custody_normal_form(b))
+
+    def test_apply_command_change_still_refused(self):
+        from production_business_risk_gate import _workflow_custody_normal_form
+        a = "jobs:\n  run: supabase db push\n"
+        b = "jobs:\n  run: supabase db push --include-all\n"
+        self.assertNotEqual(_workflow_custody_normal_form(a), _workflow_custody_normal_form(b))

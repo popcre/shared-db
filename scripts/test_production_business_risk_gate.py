@@ -2008,6 +2008,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         "config/db-data-admin-property-source-coverage.json",
         # #3443: read only by production_owner_decision_evidence.py on exact main.
         "config/production-owner-identity.json",
+        # #3835: read only by the vendor identity source-authority guard, which runs
+        # as a job of the PR Guards workflow, not as a workflow of its own.
+        "config/vendor-landing-authority.json",
         # Issue #1366 Step 4. All three are static text: two document a field
         # contract that hand-rolled code in scripts/agent-work-contract.mjs
         # actually enforces, and the third is a pull-request-workflow flag whose

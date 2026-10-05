@@ -725,6 +725,15 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "source would make the production-risk test depend on which commands had "
         "previously run on that machine without protecting committed evidence."
     ),
+    "config/vendor-landing-authority.json": (
+        "Never read by the preview job. Read only by scripts/check-vendor-identity-authority.mjs, "
+        "which runs as a job of the PR Guards workflow and decides whether a landing identity "
+        "constraint cites a settled vendor authority. It names a register document, a landing "
+        "schema and an activation migration stamp, but nothing it names is read AS a migration or "
+        "an object: the stamp is compared as a string to decide which files predate the guard. No "
+        "preview step, migration apply helper or promotion tool imports it or reads its path, so "
+        "it cannot shape what preview executes."
+    ),
     "config/blocker-ledger": (
         "Never read by the preview job. Read only by the offline throughput "
         "diagnosis and reporting tools. The "

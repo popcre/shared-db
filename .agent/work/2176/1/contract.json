@@ -5,7 +5,7 @@
   "work_type": "structural",
   "route": "shared-db-orchestrator",
   "goal": "Publish consumer-safe ColdLion promotion contracts (views/functions) for unit 6 of plan_coldlion_landing_schema_completion.md section 9 Step 8: extend the plm.erp_* path for customer/vendor/season/salesperson, expose read-only merch-group candidates, plm/pim contract views over item/prod/prepack/sales/image landing, and keep schema coldlion closed to application roles. Structure only; no row loads.",
-  "base_sha": "e5d3b11a063c6f3e981191e02048348ecfc4b2f9",
+  "base_sha": "53fd0bea085b90f039ae4fa2a7005652867d5ce3",
   "dispatcher": "MiMo shared-db orchestrator (marker #3837, claim #3838) on edge-dev; unit 6 consumer contracts after placement decision 2026-09-28 and closure of upstream landing units",
   "worker": "MiMo subagent mimo/2176-unit6-author on edge-dev",
   "branch": "feat/2176-consumer-contracts",

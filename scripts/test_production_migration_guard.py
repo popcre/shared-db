@@ -274,6 +274,7 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261002204050",
                 "20260911212849",
                 "20260917112129",
                 "20260906222338",
@@ -301,6 +302,7 @@ class GuardTests(unittest.TestCase):
                 "20260908195056",
                 "20260915015414",
                 "20260928003740",
+                "20260929040458",
             },
         )
 
@@ -348,6 +350,14 @@ class GuardTests(unittest.TestCase):
             migrations / "20260925061508_shared_style_group_sku_key.sql"
         ).read_bytes().replace(b"\r\n", b"\n")
         self.assertEqual(original.split(b"\n", 1)[1], reissue.split(b"\n", 1)[1])
+
+    def test_rich_extraction_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261002204050", "20261002204050,20261002222102"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261002204050"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261002222102"), ["20261002222102"])
+        for applied in (set(), {"20261002204050"}):
+            self.assertEqual(classify_pending_version("20261002204050", applied, REPO)["kind"], "retired")
 
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
@@ -401,14 +411,14 @@ class GuardTests(unittest.TestCase):
             parse_allowlist("20260928003740")
         with self.assertRaisesRegex(GuardError, "20260928003740"):
             parse_allowlist("20260928003740,20260929040458")
-        self.assertEqual(parse_allowlist("20260929040458"), ["20260929040458"])
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
         for applied in (set(), {"20260928003740"}):
             with self.subTest(applied=applied):
                 result = classify_pending_version("20260928003740", applied, REPO)
                 self.assertEqual(result["kind"], "retired")
                 self.assertIn("20260929040458", result["reason"])
         self.assertNotEqual(
-            classify_pending_version("20260929040458", set(), REPO)["kind"], "retired"
+            classify_pending_version("20260930185929", set(), REPO)["kind"], "retired"
         )
 
     def test_issue_3458_reissue_declares_only_the_production_base(self) -> None:
@@ -425,6 +435,33 @@ class GuardTests(unittest.TestCase):
         )
         self.assertEqual(
             declared_bases("20260929040458", path=path), frozenset({"20260917005221"})
+        )
+
+    def test_issue_3458_second_reissue_has_identical_executable_sql(self) -> None:
+        """20260930185929 retires 20260929040458 only because it runs the SAME SQL."""
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260929040458_popsg_refresh_steps_reissue.sql"),
+            executable("20260930185929_popsg_refresh_steps_reissue2.sql"),
+        )
+
+    def test_issue_3458_second_reissue_blocks_original_and_keeps_base(self) -> None:
+        from migration_derivation import declared_bases
+
+        with self.assertRaisesRegex(GuardError, "20260929040458"):
+            parse_allowlist("20260929040458")
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260930185929_popsg_refresh_steps_reissue2.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260930185929", path=path), frozenset({"20260917005221"})
         )
 
     def test_stranded_bulk_operation_history_original_is_blocked_but_reissue_is_allowed(
@@ -2301,7 +2338,15 @@ class ApplyLaneTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", header)
         self.assertIn("issues: read", header)
         self.assertIn("github.event_name == 'pull_request'", header)
-        self.assertIn("|| 'shared-supabase-migrations'", header)
+        self.assertIn("github.event_name == 'merge_group'", header)
+        # Step 10 (#3781): dispatch queues are target-qualified from a CLOSED
+        # two-branch map so preview and production no longer share one
+        # workflow-wide queue, and unknown/empty target collapses to preview
+        # instead of minting a new queue via API/CLI dispatch.
+        self.assertIn("inputs.target == 'production' && 'shared-supabase-migrations-production'", header)
+        self.assertIn("|| 'shared-supabase-migrations-preview'", header)
+        self.assertNotIn("format('shared-supabase-migrations-{0}', inputs.target)", header)
+        self.assertNotIn("|| 'shared-supabase-migrations'", header)
         self.assertIn("cancel-in-progress: false", header)
 
     def test_derivation_override_is_recorded_and_rechecked_at_every_production_choke_point(self) -> None:

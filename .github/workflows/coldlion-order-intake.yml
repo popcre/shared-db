@@ -1,0 +1,130 @@
+# The ColdLion automatic order intake poll (plan_coldlion_order_intake.md §9 D1).
+#
+# Replaces Adam's manual Google OrderList typing: within the business day after
+# JamieLynn keys a sales order into the ColdLion ERP, canonical order rows exist
+# in plm.production_order(_line). JamieLynn's ERP entry stays manual (owner
+# ruling 2026-09-17).
+#
+# Stages + detects + decodes in ONE job, as separate steps so a writer bug
+# can never block staging. The unsealed trailing re-read (3 closed windows +
+# the open week) plus the forward scan run on every invocation; see
+# tools/coldlion-landing/lib/order-intake-windows.mjs for the stop rule and the
+# 18-month cap. The CANONICAL WRITER (Phase C2, order-intake-write.mjs — merged
+# in PR #3868) runs as the step AFTER decode, skipped whenever dry_run or
+# claim_only is set: a dispatch is claim-only exactly when it asks to be, and a
+# dry run writes nothing anywhere (not even the writer's rehearsal path).
+#
+# THE SCHEDULE STAYS DISABLED until Phase F's sample-week live proof passes
+# (plan B0): the first enablement is a bounded event, never an unbounded mass
+# write. When enabling, replace the trigger block with the hourly cron and keep
+# dispatch. Until then this workflow runs by manual dispatch only, and the
+# first production dispatches carry --limit.
+#
+# This workflow WRITES to the shared database. Two rules follow from that:
+#   1. It is never triggered by a pull request or a push. Schedule and manual
+#      dispatch only, so a branch cannot make it run.
+#   2. The offline intake tests run first, in the same job, immediately before
+#      the write. If they are red nothing is fetched and nothing is written.
+#
+# on:
+#   schedule:
+#     - cron: '0 * * * *'   # hourly working assumption (§8 open); no cadence
+#                            # faster than 3x the measured full-scan duration.
+
+name: ColdLion Order Intake
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Total-orders-staged budget for the whole dispatch, of which newly detected orders are a subset (B0 bounded enablement; leave empty for unbounded)'
+        required: false
+        default: '5'
+      claim_only:
+        description: 'Stage and decode, write no canonical rows (skips the writer step)'
+        type: boolean
+        required: false
+        default: false
+      dry_run:
+        description: 'Print the windows and detections; write nothing anywhere'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Never let two intake scans overlap; a queued run is the honest outcome, and
+# the queue must not grow unbounded (cadence > 3x scan duration, §8).
+concurrency:
+  group: coldlion-order-intake
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    name: Stage, detect, decode
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A workflow_dispatch run executes the SELECTED REF's copy of this file, so
+    # without this guard any branch could run its own edited workflow against
+    # the production secrets. Manual dispatch of THIS ref only (round-2 L-7).
+    if: github.ref == 'refs/heads/main'
+    # ~80 serial windows at the 3s standard pause is several minutes. 60 keeps a
+    # real ceiling on the unbounded scan; --limit bounds it further.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline intake tests before touching anything
+        run: node --test tools/coldlion-order-intake-*.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Stage, detect, and decode
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          LIMIT: ${{ github.event.inputs.limit }}
+          CLAIM_ONLY: ${{ github.event.inputs.claim_only }}
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+          if [ -n "${LIMIT:-}" ]; then ARGS+=(--limit "$LIMIT"); fi
+          if [ "${CLAIM_ONLY:-false}" = "true" ]; then ARGS+=(--claim-only); fi
+          node tools/coldlion-landing/order-intake.mjs "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The CANONICAL WRITER (plan §9 C2 + D1). A separate step, so a writer
+      # failure can never block staging above. It is SKIPPED on dry_run (a dry
+      # run writes nothing anywhere) and on claim_only (the B0 dispatch
+      # vocabulary), and only runs when the decode step above succeeded.
+      - name: Write canonical placeholder orders
+        if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ARGS=(--write)
+          if [ -n "${LIMIT:-}" ]; then ARGS+=(--limit "$LIMIT"); fi
+          node tools/coldlion-landing/order-intake-write.mjs "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

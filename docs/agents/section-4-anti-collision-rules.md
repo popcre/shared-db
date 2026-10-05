@@ -1,5 +1,12 @@
 # AGENTS.md §4 — the five anti-collision rules, full text
 
+> **Orchestrator role retired (owner ruling, Albert Hazan, 2026-10-02: "there is no longer an
+> orchestrator"; AGENTS.md §0.0-D).** Structural work is claim-first. Wherever this file says
+> "the orchestrator", read "the session doing the structural work". Instructions to resolve a
+> marker, route or hand over to an orchestrator, or wait for dispatch are historical. Text that
+> describes what current automation does (the `route: shared-db-orchestrator` value, marker reads,
+> engine exclusion) describes code, not a role; retiring that code is open on #3874.
+
 - [current-workflow.md](current-workflow.md)
 
 > **Active hardening plan:** [`../../plan_multi_agent_database_coordination_hardening.md`](../../plan_multi_agent_database_coordination_hardening.md), issue #1366. Read its STATUS table first. It preserves the rules below while adding read/write dependencies, proven prerequisites, provider-neutral work contracts, lifecycle traces, recoverable fenced stage leases, and an opt-in Supabase branch pilot. Its implementation is repository maintenance outside the structure/schema orchestrator.
@@ -10,7 +17,7 @@ Reviewer availability is the bounded active-lease index. Before the parallel-rev
 
 An exact-head verdict, terminal failure/replacement, moved head, merged PR, or closed PR makes a lease stale; a verdict additionally releases the lease it was recorded against, so the stale classification is the fallback for leases no verdict path reclaimed. Stale leases are deleted only while the global mutex is owned and the fixed ref still matches its expected SHA. If release cannot be proved, preserve the named ref/SHA and use the guarded `recover-author-mutex.yml` procedure.
 
-Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The live orchestrator engine is excluded from review; Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. **With zero open orchestrator markers (`state: none`) the exclusion list is empty and the whole rotation stays drawable** (issue #2127): the exclusion is a same-engine conflict guard, and with no live engine there is no conflict, so closing a marker must not freeze merging repository-wide. `ambiguous`, `invalid` and `unsafe` marker states still refuse. The marker resolver exits non-zero for answers it is certain of (3 for `none`, 1 for the refusing states), so a non-zero exit carrying parseable JSON is an ANSWER; only unreadable output is a resolver fault, and the refusal names which it was.
+Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The live orchestrator engine is excluded from review; Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. **With zero open orchestrator markers (`state: none`) the exclusion list is empty and the whole rotation stays drawable** (issue #2127): the exclusion is a same-engine conflict guard, and with no live engine there is no conflict, so closing a marker must not freeze merging repository-wide. `ambiguous`, `invalid` and `unsafe` marker states still refuse. The marker resolver exits non-zero for answers it is certain of (3 for `none`, 1 for the refusing states), so a non-zero exit carrying parseable JSON is an ANSWER; only unreadable output is a resolver fault, and the refusal names which it was.
 
 Relocated from `AGENTS.md` on 2026-08-20 (issue #1331, PR #1212) so the router stays under its
 80 KB ceiling. **Text unchanged, section number unchanged.** `AGENTS.md` §4 carries the operative
@@ -174,7 +181,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
       retired version can never be reissued, and a retired claim is refused on
       every reactivation path.
 
-   **Authority boundary (settled).** The orchestrator may retire work on its own
+   **Authority boundary (settled).** The session doing the structural work may retire work on its own
    evidence where the worktree is `clean`, or `absent` with its absence proven
    and its durable branch and pull-request evidence complete — in both cases
    nothing unrecoverable is being discarded. Potentially recoverable uncommitted
@@ -386,8 +393,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    | work type | exit | who does it |
    |---|---|---|
-   | `structural` | `accept` | this orchestrator, via a migration-author lane |
-   | `curated-master-data` | `fork` | a fresh session **dispatched by this orchestrator**, under §6.4 |
+   | `structural` | `accept` | the claiming session, via a migration-author lane |
+   | `curated-master-data` | `fork` | a claiming session, under §6.4 |
    | `application-data`, `source-data` | `reject` | the owning application repository, after being forwarded |
    | `repo-maintenance`, `documentation` | `repo-session` | a **separately started** repository session — not an orchestrator assignment at all |
    | `security-settings` | `repo-session` | a **separately started** AI session that obtains the needed access itself (owner ruling 2026-09-28, #3675: never ask a human to approve) |
@@ -467,12 +474,16 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
    slot independence still decide who is usable. It creates no concurrency cap.
 
-   For new assignments, the machine-independent cursor rotates Grok 4.6 → Qwen
-   3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
-   V4.1 Flash → repeat,
-   skipping any reviewer whose engine matches the live orchestrator. GLM 5.3
-   (paused 2026-09-18) and Kimi K3 (paused 2026-09-22, account out of credit,
-   issue #3423) are not drawable until removed from `RETIRED_REVIEWERS`.
+   For new assignments, the shared cursor (the sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run) rotates Grok 4.6 → GLM
+   5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
+   V4.1 Flash → StepFun Step 5 → repeat,
+   skipping any reviewer whose engine matches the live orchestrator, and on a
+   non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
+   was restored on 2026-09-30 (owner instruction: "add GLM back into the
+   reviewer rotation") after its 2026-09-18 weekly-usage pause. Kimi K3
+   (paused 2026-09-22, account out of credit, issue #3423) is not drawable
+   until removed from `RETIRED_REVIEWERS`.
    Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
    by owner instruction and is no longer drawable.
    That is exactly `ACTIVE_REVIEWERS` in
@@ -481,7 +492,15 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the code is the truth and this sentence must be re-derived from it, never the
    other way round.
    Codex cannot review when Codex orchestrates; Claude cannot review when Claude
-   orchestrates. Albert approved Codex on 2026-08-28 after its wrapper
+   orchestrates; and GLM cannot review when a ZCode orchestrator runs, because
+   ZCode's engine is GLM-5.3 — the exclusion follows the model engine behind the
+   harness, not the harness name (owner ruling 2026-09-17, "I never want GLM
+   reviewing GLM code", enforced by PR #3232: the glm rows carry
+   `orchestratorEngine:'glm'`, a marker may declare `engine: zcode` with a
+   `sess_<uuid>` id, and `ENGINE_REVIEWER_EXCLUSION` maps zcode → glm before the
+   draw, while codex and claude map to themselves unchanged). ZCode is not a
+   reviewer; adding it as one was permanently rejected by the same ruling.
+   Albert approved Codex on 2026-08-28 after its wrapper
    qualified.
 
    **Gemini 3.8 Flash High is ACTIVE again as of 2026-09-06** (PR #2438,
@@ -515,6 +534,16 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
    above a report citing specific lines.
 
+   **StepFun Step 5 (`stepfun-step-5-preview`) is ACTIVE as of 2026-09-25,
+   Ubuntu/Linux only** (owner instruction). `ai-stepfun review` (ai-devops PR
+   #849) runs StepCode `step/step-5-preview` with only read/grep/find/ls under
+   strict approval inside bubblewrap, over the shared sealed evidence packet, and
+   ends in a head-bound `VERDICT:` line; a live review of `94bf83c6` returned
+   `VERDICT: REVISE 94bf83c64889c2c29e229a2faa66d8ee183e911c` above a report
+   citing specific lines. The allocator has no platform field: on Windows,
+   `ai-review-preflight usable` reports stepfun `unsupported-platform`, so that
+   machine never draws it.
+
    **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
    and stays retired.** At that time
    `ai-deepseek-agent` was a conversational API client with no filesystem, no
@@ -526,12 +555,14 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    refuses outright — before any commit or ref is created — to record a
    code-review verdict from a reviewer whose wrapper cannot read the repository.
    Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
-   an `ai-review-sandbox` clone (as is paused GLM), Qwen via a sealed
+   an `ai-review-sandbox` clone (as is GLM), Qwen via a sealed
    evidence-packet checkout, Gemini via a disposable sandbox copy of
    the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
    DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
-   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root. The
-   retired Codex reviewer was equipped the same way, via `codex exec --sandbox
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root, and
+   StepFun Step 5 (Linux machines only) via `ai-stepfun review`: read/grep/find/ls
+   inside bubblewrap over a read-only disposable copy with the sealed evidence
+   packet. The retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
    No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,
@@ -898,7 +929,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    `preview` or `merge` lease. Instructions in chat are not a lock. Fetch `origin/main`, update the branch
    from newly merged `main`, and re-run the version/object checks and all existing
    SQL/cross-PR guards. A clean author lane does not grant access to preview.
-   The orchestrator grants the single preview lane, then the single merge lane.
+   The lane tooling grants the single preview lane, then the single merge lane.
    Release each stage lease explicitly when that stage ends. Required CI rejects
    a migration PR unless its exact version and normalized objects match a live,
    branch-bound author claim; merge CI also requires that PR's merge lease.

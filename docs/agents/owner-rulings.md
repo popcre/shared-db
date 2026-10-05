@@ -1,5 +1,12 @@
 # AGENTS.md — §0, §0.0-A, §0.0-B, §0.1 to §0.4 (gatekeeper rule and owner rulings)
 
+
+> **Orchestrator role retired (owner ruling, Albert Hazan, 2026-10-02: "there is no longer an
+> orchestrator"; AGENTS.md §0.0-D).** Structural work is claim-first. Wherever this file says
+> "the orchestrator", read "the session doing the structural work". Instructions to resolve a
+> marker, route or hand over to an orchestrator, or wait for dispatch are historical. Text that
+> describes what current automation does (the `route: shared-db-orchestrator` value, marker reads,
+> engine exclusion) describes code, not a role; retiring that code is open on #3874.
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
 ## 0. Shared-db gatekeeper rule for consumer repos
@@ -107,7 +114,7 @@ and that reading is wrong. It resolves a real ambiguity: the earlier rules liste
 "data fixes" in the same breath as tables and columns, and several sessions correctly concluded
 from that wording that any `INSERT` put them under the orchestrator. That was never the intent.
 
-### What the orchestrator governs — STRUCTURE
+### What this repo's structural lane governs — STRUCTURE
 
 Authored here first, on a branch, preview-first, merged by pull request:
 
@@ -117,7 +124,7 @@ extensions · realtime publications · storage policies · migrations · **struc
 ships as a migration** (lookup/enum/reference rows the schema itself depends on) · shared data
 contracts between applications.
 
-### What the orchestrator does NOT govern — DATA
+### What the structural lane does NOT govern — DATA
 
 The rows an application creates, edits, or removes in the normal course of doing its job. The
 session working on that application owns those writes outright. **No GitHub issue, no
@@ -157,12 +164,13 @@ application's own row writes elsewhere in the database into orchestrator work.
 - **Production and shared-cloud safety rules**, the read-only AI identity requirement, and
   licensed-data protection are unchanged.
 - **Read-only inspection** stays wide open per §0.0-A.
-- **The single-orchestrator rule (§12.1) still governs structure work.** A session that needs a
-  schema change in `shared-db` still stops, opens an issue, and hands over.
+- **Structure work is claim-first (AGENTS.md §0.0-D, 2026-10-02; replaces the former
+  single-orchestrator rule).** A session that needs a schema change claims the exact objects on
+  the existing issue and does the work itself; it does not stop and hand over.
 
 ### The test, in one line
 
-*Am I changing the shape of the database, or the contents of it?* Shape → this repo, orchestrator,
+*Am I changing the shape of the database, or the contents of it?* Shape → this repo, claim-first,
 branch, preview, PR. Contents → your own application session, with §4.2 proof, unless the target
 is curated Master Data.
 
@@ -275,3 +283,30 @@ Two traps that made it look safe to tighten:
 
 If a genuinely read-only DAM tester is needed, express it with the **app-schema** roles
 that gate the shared `api.*`/`dam.*` contracts. Never narrow `style_tracker_rows`.
+
+## 0.5 OWNER RULING — required checks may be cut by AI decision with evidence (Albert Hazan, 2026-09-28)
+
+Albert's exact words, from his chat on 2026-09-28 at about 6:35 PM EDT:
+
+> "kill the rule that says no required check may be dropped without my say. cut the gates"
+
+What this changes:
+
+- The AGENTS.md §5.0-C promise "No required check becomes optional" is retired. A required
+  check on `main` may now be retired, merged into another, or made advisory by AI decision,
+  without asking Albert, when measured evidence shows it mostly fails for reasons unrelated to
+  the change (for example an empty GitHub API quota).
+- The pull request that does it must state the exact before/after required-check list and carry
+  an assigned AI reviewer's APPROVE (shared-db allocator) before branch protection is changed.
+- `scripts/update-required-checks.mjs` accepts a removal only through its explicit
+  `--remove` flag, naming each retired context.
+
+What this does NOT change: the exact-head APPROVE rule and the refusal to widen head
+equivalence beyond `.agent/` files (§5.0-C) stand. `Cross-PR object collision` and
+`Migration author lease` stay required because production promotion
+(`scripts/production_business_risk_gate.py`) depends on them.
+
+First use (2026-09-28): `Agent work contract` and `Orchestrator marker guard` were made advisory
+(the workflows still run and report; they no longer block merging). Evidence: 24/43 and 14/42
+failed in the 14 days to 2026-09-28, sampled failures being API-quota refusals or missing
+evidence files, not defects in the change (`docs/plans/plan_gate_cutback.md` §5–§6).

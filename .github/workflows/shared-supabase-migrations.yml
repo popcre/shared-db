@@ -653,6 +653,7 @@ jobs:
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: supabase/setup-cli@v1
+        id: setup_supabase
         with:
           version: 2.105.0
       - name: Ensure a working PostgreSQL client (psql)
@@ -903,8 +904,18 @@ jobs:
         if: always()
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+          SETUP_OUTCOME: ${{ steps.setup_supabase.outcome }}
         run: |
           set -euo pipefail
+          # When an earlier step stopped the job, CLI setup never ran (#3735).
+          # Write the reason into the after-ledger so the artifact keeps the
+          # member and the real cause stays visible, rather than ending with
+          # `supabase: command not found`. The delta check still rejects it.
+          if [ "${SETUP_OUTCOME:-}" != "success" ]; then
+            echo "NOT CAPTURED: Supabase CLI setup outcome was '${SETUP_OUTCOME:-}'; an earlier step stopped this job." | tee "$RUNNER_TEMP/preview-ledger-after.txt"
+            echo "::warning::preview ledger (after) not captured: Supabase CLI setup outcome '${SETUP_OUTCOME:-}'"
+            exit 0
+          fi
           cd "$RUNNER_TEMP/bounded-preview" 2>/dev/null || cd "$GITHUB_WORKSPACE"
           supabase migration list --linked | tee "$RUNNER_TEMP/preview-ledger-after.txt"
       - name: Report the preview ledger delta
@@ -921,6 +932,10 @@ jobs:
           before_p, after_p = tmp / "preview-ledger-before.txt", tmp / "preview-ledger-after.txt"
           if not (before_p.exists() and after_p.exists()):
               print("### Preview ledger delta: NOT AVAILABLE (a ledger read did not complete)")
+              raise SystemExit(0)
+          placeholder = after_p.read_text(encoding="utf-8").strip()
+          if placeholder.startswith("NOT CAPTURED:"):
+              print(f"### Preview ledger delta: NOT AVAILABLE ({placeholder})")
               raise SystemExit(0)
           before, after = parse_remote_versions(before_p), parse_remote_versions(after_p)
           print("### Preview ledger delta")
@@ -2148,6 +2163,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.production_lock.outputs.owner_sha }}
         run: node scripts/manage-migration-author-lanes.mjs --release-production --owner-sha "$OWNER_SHA"
+      # PROMOTION MERGE FREEZE (owner instruction 2026-10-02, "assign someone to
+      # pause merges during production runs"). A session may set the freeze for
+      # this source PR before drawing the risk assessment; the run ending ends it.
+      # Releases only a freeze recorded for THIS source PR; another PR's freeze is
+      # left alone, and the TTL expires any freeze on its own.
+      - name: Release the promotion merge freeze for this source PR
+        if: always() && inputs.source_pr != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: node scripts/manage-migration-author-lanes.mjs --release-promotion-freeze --pr "$SOURCE_PR"
       # THE FREEZE PUTS BACK WHAT IT TOOK (issue #2116). Runs on `always()`, after the
       # lane is released, so a failed or cancelled promotion cannot leave every open
       # pull request in the repository red forever.

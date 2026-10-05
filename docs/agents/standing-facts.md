@@ -19,9 +19,10 @@
 Read these before you write anything. Several of them describe failures that
 have already happened in this repo, more than once.
 
-1. **One orchestrator.** All work is dispatched to sub-agents in isolated
-   worktrees. If you were not started as the orchestrator, you are not it.
-   **Resolve who it is with `--resolve`, never from memory — §11c.**
+1. **No orchestrator — claim-first (owner ruling 2026-10-02, AGENTS.md §0.0-D; replaces the
+   former "one orchestrator" rule).** A session needing a structural change claims the exact
+   objects on the existing issue and does the work itself in its own isolated worktree. Never
+   resolve a marker or wait for dispatch.
 2. **SUPERSEDED 2026-08-14, RAISED 2026-08-25:** up to **five** unrelated
    migrations may be authored concurrently under exact object claims and atomic
    version reservations. Preview, merges and production promotion remain one at
@@ -124,23 +125,36 @@ have already happened in this repo, more than once.
     the guard worked — but two owner approvals were wasted, and the third only landed under a
     deliberate merge freeze. **Announce a freeze, hold every merge from staging until the run
     finishes, then release it.** This is standard practice, not an improvisation.
+    **The mechanism (owner instruction 2026-10-02, "assign someone to pause merges during
+    production runs"; [owner rulings §6.26](../owner-rulings.md)):** before drawing the risk
+    assessment, run `node scripts/manage-migration-author-lanes.mjs --acquire-promotion-freeze
+    --issue <n> --pr <source-pr> --owner <text> --ttl-minutes <1-180>`. Every `--acquire-merge`
+    and repository-maintenance (documents-only) authorization then refuses until the freeze is
+    released (`--release-promotion-freeze --owner <text>`), the production run's cleanup releases
+    it, or its TTL expires. Pick a TTL that outlives the whole window (review round plus
+    production run); there is no renewal. Preview and production are never blocked by it. It is
+    checked when a merge lane is acquired, so set it before the window: it does not revoke a
+    merge lane or merge-queue group that is already running. The production cleanup releases
+    only a freeze recorded for its own source PR; a freeze filed under another PR waits for its
+    owner or its TTL.
 
-15. **The single-orchestrator rule is scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
-    Rules 1 and 2 above ("one orchestrator", "unlimited concurrent migration authors, each on exact object claims") govern changes to the
+15. **The structural-lane rules are scoped to STRUCTURE (owner ruling §0.0-B, 2026-08-13).**
+    Rules 1 and 2 above (claim-first structural work, concurrent migration authors on exact object claims) govern changes to the
     *shape* of the database. They do **not** make an application session's ordinary row writes
-    into orchestrator work, and a session must not open an issue or hand over merely because its
+    into structural work, and a session must not open an issue or hand over merely because its
     feature writes data. The single exception is curated Master Data under §6.4, which stays
     gated. §4.2's connection-target proof still applies to every data write regardless.
 
-16. **REPOSITORY MAINTENANCE IS NOT ORCHESTRATOR WORK (owner ruling, 2026-08-21, issue #1366).**
-    The shared-db orchestrator accepts, dispatches, reviews, merges and promotes **structural and
+16. **REPOSITORY MAINTENANCE IS NOT STRUCTURAL-LANE WORK (owner ruling, 2026-08-21, issue #1366;
+    orchestrator role retired 2026-10-02, §0.0-D).** The structural lane covers **structural and
     schema work only**. `repo-maintenance` and `documentation` are performed by a **separately
-    started repository session** and are never an orchestrator assignment — not even to dispatch.
-    `security-settings` goes to Albert, because it needs authority the orchestrator does not have.
+    started repository session** and never consume the structural lane.
+    `security-settings` is routed `repo-session` by the lane tool (#3675): an AI session obtains
+    the access itself (owner ruling 2026-09-28).
     `--queue-audit` lists these under `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` for audit
     visibility only; that list is **not** a worklist.
 
-    This ruling narrowed the boundary rather than restating it. Until 2026-08-21 all three exited
+    (Historical:) This ruling narrowed the boundary rather than restating it. Until 2026-08-21 all three exited
     by `fork`, which reads as "the orchestrator hands this out", and on that basis an orchestrator
     session accepted a repository-maintenance planning task. Do not route such work back to the
     orchestrator, and do not read a `fork` in an old document as current.
@@ -174,7 +188,9 @@ have already happened in this repo, more than once.
 
 18. **A DOCUMENTS-ONLY PULL REQUEST DRAWS NO DATABASE REVIEWER (owner decision, 2026-09-02, issue
     #2102; lightweight status path #2715).** A pull request whose changed files are **all** prose
-    documents still runs **every** automated check. It receives the required
+    documents, including standalone `plan_*.md` files, uses the lightweight documentation
+    route without full engineering CI or reviewer waits (owner ruling 2026-09-20).
+    It receives the required
     `Migration guarded merge authorization` status from
     `.github/workflows/documents-only-merge-authorization.yml` without dispatching the database
     guarded-merge workflow or consuming a slot from the small external **database reviewer pool**
@@ -184,22 +200,20 @@ have already happened in this repo, more than once.
     to migrations.
 
     **Rulebook files are NOT documents for this purpose and keep the full treatment:** `AGENTS.md`
-    (and `CLAUDE.md`), anything under `.claude/skills/` or `skills/`, and plan files
-    (`plan_*.md`). They instruct every later session, so a bad edit to one of them is as dangerous
+    (and `CLAUDE.md`), skill, agent and command instruction files. Standalone plans are
+    documentation; executable agent instructions retain the guarded path. A bad edit to an instruction is as dangerous
     as a bad migration. One non-document file of any kind — a `.sql`, a script, a workflow, a test,
     a config file — removes the exemption from the whole pull request.
 
-    **Review is not removed, and this is not a merge exemption.** The review of PR #2034 caught a
-    real customer order number heading into this **public** repository, so the content risk is
-    real; what changed is only which pool answers for it. The automated checks and the guarded
-    merge lane still answer, and a refusal already recorded at the exact head still blocks it — the
-    exemption is from *drawing* a reviewer and dispatching the database merge workflow, never from
-    *answering* a review already recorded for the exact head or from running automated checks.
+    Inspect the complete change for public-content risk and prove its documentation-only
+    classification. Exact-head refusals remain binding. Documentation does not require
+    an external reviewer draw or the full engineering test suites; code, migrations,
+    database writes, production promotion and executable instructions keep their protections.
 
     Enforced, not documented: `scripts/lib/documents-only-change.mjs` is the single deterministic
     classifier, listing the rulebook exclusions explicitly and failing closed whenever the
     changed-file list is empty, unreadable or absent. The required-status adapter
-    `scripts/check-documents-only-merge-authorization.mjs` separately permits plan files and
+    `scripts/check-documents-only-merge-authorization.mjs` also permits narrow
     declarative routing pointers in AGENTS, task-router, and skill files. It inspects the actual
     changed hunks and accepts only link-only list/table rows whose labels literally name the local
     Markdown target; free-form or behavior-changing instructions stay on the guarded code path. An

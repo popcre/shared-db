@@ -31,7 +31,7 @@ import { pathToFileURL } from 'node:url'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity, RepositoryIdentityError } from './lib/repository-identity.mjs'
-import { PREVIEW_REHEARSAL_CONTEXT, QUEUE_RULE, RULESET_NAME, baseNeedsPreview, migrationVersions, readAuthorizationStatuses, rehearsalState } from './merge-queue-contract.mjs'
+import { PREVIEW_REHEARSAL_CONTEXT, QUEUE_RULE, queueParametersEqual, RULESET_NAME, baseNeedsPreview, migrationVersions, readAuthorizationStatuses, rehearsalState } from './merge-queue-contract.mjs'
 
 export class ConfigureQueueError extends Error {}
 
@@ -45,6 +45,8 @@ export const LANE_REFS = Object.freeze([
   'refs/db-coordination/preview',
   'refs/db-coordination/production',
   'refs/db-coordination/author-acquisition',
+  // Promotion merge freeze (owner instruction 2026-10-02, docs/owner-rulings.md §6.26).
+  'refs/db-coordination/promotion-freeze',
 ])
 
 export function desiredRuleset() {
@@ -86,6 +88,18 @@ export function assertContextsAndWorkflow({ contexts, workflows }) {
   if (!Array.isArray(workflows) || !workflows.includes(MERGE_QUEUE_WORKFLOW)) {
     throw new ConfigureQueueError(`${MERGE_QUEUE_WORKFLOW} is not on main; merge the Step 7 implementation first (never activate from a branch)`)
   }
+  return true
+}
+
+// Plan Step 8: refuse unless every LIVE required context has merge-group coverage.
+// Coverage is proven per context by scripts/check-merge-queue-workflows.test.mjs
+// against the committed mirror, so a live context absent from that mirror is
+// unproven and would hold every queued group forever.
+export const COVERED_CONTEXTS_PATH = 'docs/verification/main-required-status-checks.json'
+export function assertLiveContextsCovered({ contexts, coveredContexts }) {
+  if (!Array.isArray(coveredContexts) || coveredContexts.length === 0) throw new ConfigureQueueError('the merge-group-covered context list is unreadable; refusing')
+  const uncovered = (contexts ?? []).filter((c) => !coveredContexts.includes(c))
+  if (uncovered.length) throw new ConfigureQueueError(`live required context(s) without proven merge-group coverage: ${uncovered.join(', ')}; mirror and map them first (scripts/update-required-checks.mjs, scripts/check-merge-queue-workflows.test.mjs)`)
   return true
 }
 
@@ -160,9 +174,10 @@ export function readMainTip(repo, { read = ghJson } = {}) {
 // Plan / apply / rollback
 // ---------------------------------------------------------------------------
 
-export function planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip }) {
+export function planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip, coveredContexts }) {
   assertRepositoryIdentity({ live, baselineId })
   assertContextsAndWorkflow({ contexts, workflows })
+  assertLiveContextsCovered({ contexts, coveredContexts })
   assertNoMutationLane(heldLanes)
   const tip = assertMainTipPreview(mainTip)
   if (!Array.isArray(rulesets)) throw new ConfigureQueueError('ruleset list is unreadable; refusing')
@@ -187,7 +202,7 @@ export function verifyReadback(written, desired = desiredRuleset()) {
   if (!Array.isArray(rules) || rules.length !== 1 || rules[0]?.type !== 'merge_queue') {
     throw new ConfigureQueueError('read-back mismatch: ruleset does not carry exactly one merge_queue rule')
   }
-  if (JSON.stringify(rules[0].parameters) !== JSON.stringify(QUEUE_RULE.parameters)) {
+  if (!queueParametersEqual(rules[0].parameters)) {
     throw new ConfigureQueueError(`read-back mismatch: queue parameters ${JSON.stringify(rules[0]?.parameters)} != approved ${JSON.stringify(QUEUE_RULE.parameters)}`)
   }
   return written
@@ -270,7 +285,11 @@ export function main(argv, env = process.env, deps = {}) {
   const heldLanes = readHeldLanes(repo, { read })
   const mainTip = readMainTip(repo, { read })
 
-  const plan = planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip })
+  let coveredContexts = deps.coveredContexts
+  if (coveredContexts === undefined) {
+    try { coveredContexts = JSON.parse((deps.readFile ?? readFileSync)(COVERED_CONTEXTS_PATH, 'utf8'))?.contexts } catch { coveredContexts = null }
+  }
+  const plan = planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip, coveredContexts })
   log(JSON.stringify({ mode: apply ? 'APPLY' : 'DRY RUN', repository: { id: live.id, ownerType: live.owner.type, visibility: live.visibility }, existingRulesetId: plan.existing?.id ?? null, mainTipHold: plan.mainTip, desired: plan.desired }, null, 2))
   if (!apply) {
     log('Dry run only. Nothing was written. Re-run with --apply to create the ruleset.')

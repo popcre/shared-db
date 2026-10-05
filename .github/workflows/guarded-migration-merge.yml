@@ -42,9 +42,17 @@ permissions:
   actions: write
   # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
   # file unparseable, and because this workflow is the ONLY path to `main`, every
-  # merge in the repository was refused at dispatch with HTTP 422. The pre-flight
-  # therefore cannot read main's required status check list with `github.token`;
-  # it detects that and applies a STRICTLY STRONGER test instead. See
+  # merge in the repository was refused at dispatch with HTTP 422. Since #3369 the
+  # pre-flight reads FRESH effective settings (classic branch protection plus the
+  # applicable rulesets) and REFUSES when that read cannot complete: there is no
+  # committed-mirror fallback and no snapshot or expiry can authorize a merge.
+  #
+  # The authority reads (GraphQL branchProtectionRule + REST /rules/branches)
+  # require ADMIN-LEVEL access. GITHUB_TOKEN (github.token) has no administration
+  # permission and gets "Resource not accessible by integration" (live run
+  # 36186790619). A classic PAT with `repo` scope (secrets.SYNC_TOKEN) provides
+  # the needed access and is passed as AUTHORITY_TOKEN for the authority-read
+  # steps ONLY; every other step keeps github.token. See
   # `scripts/check-required-checks-preflight.mjs`.
 
 jobs:
@@ -63,15 +71,126 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Capture trusted executable path before pull-request code runs
+        id: trusted_tools
+        run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
       - name: Check out protected main policy separately from the pull request
         uses: actions/checkout@v4
         with:
           ref: main
           path: trusted-policy
-          fetch-depth: 1
-      - name: Require current main and rerun every applicable coordination guard
+          # Full history (#3669): the merge-lane acquisition asks
+          # classifyBranchFreshness for the merge base of the head and the main
+          # tip. A depth-1 checkout has no merge base, so "main moved
+          # independently" (#2758) was always refused.
+          fetch-depth: 0
+      - name: Pre-flight the required status checks before taking the merge lane
+        id: trusted_preflight
+        working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Protected-main checkout is stale' >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo 'Protected-main checkout is dirty' >&2
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
+      - name: Refuse out-of-boundary self-service changes before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+        run: node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}"
+      # The protected-main preflight above fetches and proves current main before
+      # any pull-request script runs. Quota exhaustion waits outside the lock.
+      - name: Check the GitHub API quota before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          # Quota multiplier note: the probe and preflight below add a handful of
+          # authority reads (GraphQL + REST) on top of the status/check reads;
+          # the absolute quota cost is not yet metered per merge.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-actions-quota.mjs
+      - name: Acquire the exclusive merge lane
+        id: merge_lock
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # The freshness re-check below runs git merge-base / merge-tree on the
+          # head and the live main tip: both commits must exist locally (#3669).
+          # Fetching objects only; nothing from the head is checked out or run.
+          git fetch --no-tags --quiet origin main "$HEAD_SHA"
+          node scripts/manage-migration-author-lanes.mjs --acquire-merge \
+            --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
+            --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
+          echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
+      - name: Re-read required-check authority under the merge lock from protected main
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+          PREFLIGHT_WAIT_SECONDS: '0'
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Protected-main checkout is stale under the merge lock' >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo 'Protected-main checkout is dirty under the merge lock' >&2
+            exit 1
+          fi
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      - name: Require current main and rerun every applicable coordination guard
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ inputs.pull_request }}
         run: |
           set -euo pipefail
@@ -79,55 +198,9 @@ jobs:
           node scripts/check-main-tip-freshness.mjs --contains
           bash scripts/check-sql.sh
           node scripts/check-production-verification-sidecars.mjs --base origin/main
-          # The cross-PR object collision check is NOT run here any more. It ran
-          # twice per merge (here and under the lock below) and only the run under
-          # the lock can decide the merge: another pull request can merge between
-          # the two. This copy was a fast fail that cost a full scan of every open
-          # pull request against the shared Actions quota.
           node scripts/check-migration-pr-lease.mjs
-          # #3127: a structural outcome returning to shared-db carries its live-proof probe.
           node scripts/check-live-proof-probe.mjs
-          # An assignment is not an approval, and an approval of an earlier head
-          # is not an approval of these bytes (#1816).
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
-          # SELF-SERVICE ADDITIVE LANE BOUNDARY (#3199 Phase B3). Applies only
-          # when the pull request's linked work issue (resolved through the closing-
-          # issue linkage, never a claim) declares route self-service-additive; every
-          # other route — including repository maintenance — exits 0 "not applicable"
-          # and this step never judges it. Placed BEFORE the quota check and
-          # the merge lane so an out-of-boundary pull request is refused having
-          # taken no lock at all — the classifier is fail-closed: any parse
-          # doubt, any unrecognized statement, any object outside {crm,pim,dam}
-          # refuses.
-          node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}" 
-      # `github.token` cannot read branch protection (there is no `administration`
-      # permission scope), so this falls back to the committed mirror. It reads that
-      # mirror only from trusted `origin/main`; the checked-out pull request cannot
-      # alter the list that judges it. This first mirror merge has an exact-head-bound,
-      # immutable bootstrap floor. The step above fetches and proves current main.
-      # Before the lane is taken, so a low quota waits (or fails plainly) while
-      # holding nothing, instead of failing half-way through under the lock.
-      - name: Check the GitHub API quota before taking the merge lane
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
-        run: node scripts/check-actions-quota.mjs
-      - name: Pre-flight the required status checks before taking the merge lane
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_SHA: ${{ inputs.head_sha }}
-        run: node scripts/check-required-checks-preflight.mjs
-      - name: Acquire the exclusive merge lane
-        id: merge_lock
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          node scripts/manage-migration-author-lanes.mjs --acquire-merge \
-            --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
-            --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
-          echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
       - name: Re-prove the head and merge while the lock is held
         id: guarded_merge
         env:
@@ -243,7 +316,20 @@ jobs:
         run: gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=failure -f context='Migration guarded merge authorization' -f description='Guarded merge failed; authorization revoked before lock release'
       - name: Release the exclusive merge lane with ownership proof
         if: always() && steps.merge_lock.outputs.owner_sha != '' && (steps.guarded_merge.outcome == 'success' || steps.revoke_authorization.outcome == 'success')
+        working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.merge_lock.outputs.owner_sha }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"
+          TRUSTED_MAIN_SHA: ${{ steps.trusted_preflight.outputs.sha }}
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          test "$(git rev-parse HEAD)" = "$TRUSTED_MAIN_SHA"
+          test -z "$(git status --porcelain)"
+          node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"

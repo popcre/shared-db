@@ -1,5 +1,16 @@
 # AGENTS.md — §0.0-C admission test, §11b to §11d (orchestrator role, routing contract, admission)
 
+> **Historical / reference only.** The orchestrator role was retired by owner ruling
+> (Albert Hazan, 2026-10-02: "there is no longer an orchestrator"; AGENTS.md §0.0-D).
+> Structural work is claim-first. Still binding below: only the §0.0-C *test* (does it change
+> the database's SHAPE?) and the safety rules (exact-object claims, version reservation,
+> independent review, guarded merge, serial production lane). **Historical and NOT to be
+> followed:** §0.0-C's accept-and-dispatch and dispatch-waiting text, and ALL of §11b, §11c
+> and §11d (the role, marker routing, `check-orchestrator-marker.mjs --resolve`, starting as
+> or handing over to an orchestrator, queueing to wait for one). New structural issues use
+> `route: claim-first`; `route: shared-db-orchestrator` is accepted only as a legacy alias and
+> names no session (#3874).
+
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
 ## 0.0-C The orchestrator admission test — what it may keep in its own context
@@ -23,14 +34,14 @@ objects listed, dispatched to a sub-agent in an isolated worktree as usual.
 
 **Structural work has a second ROUTE, never a second work type (issue #3199 Phase B):**
 `route: self-service-additive` admits the same structural work WITHOUT orchestrator triage when it
-is additive and every named object lives in the app-owned `{crm, pim, dam}` schemas. The boundary
+is additive and every named object lives in the app-owned `{crm, pim, dam, plm}` schemas. The boundary
 is enforced AT MERGE TIME by `scripts/check-self-service-additive-lane.mjs` inside the guarded
 merge, pre-lock — a declared route whose pull request fails the classifier never merges. The
 author session claims the lane (`--claim --admit-issue`), draws both reviewers itself
 (`--assign-reviewer`), and dispatches the guarded merge itself; every existing gate (collision
 locks, version reservation, exact-head review, serial preview/merge/promotion) is unchanged. The
 orchestrator never dispatches, refills or reviews this route; `--queue-audit` prints it in its own
-section. Out of the lane: `plm`/`api`/`core`/`public`/`ingest`/`storage`/`dflow`/`app`, any
+section. Out of the lane: `api`/`core`/`public`/`ingest`/`storage`/`dflow`/`app`, any
 brand-new schema, any data statement, `CREATE OR REPLACE`, `SECURITY DEFINER`, and grants to
 browser roles on `crm`/`pim` objects without RLS.
 
@@ -56,8 +67,9 @@ instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
   end to end. The orchestrator lists such issues in `--queue-audit` under
   `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` purely so nothing accumulates unseen, and then
   takes no action on them.
-- **RETURN-TO-OWNER** — `security-settings`. It needs authority the orchestrator does not have.
-  Put it to Albert; do not dispatch it to any session.
+- **`security-settings`** exits to `repo-session` (#3675, owner ruling 2026-09-28: never ask a
+  human to approve): a separately started AI session obtains the needed access itself. It is
+  never put to Albert, and the orchestrator does not do it.
 
 ### Every dispatch carries the waiting instruction (issue #2998 item 4, added 2026-09-20)
 

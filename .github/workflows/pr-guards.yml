@@ -1,0 +1,1120 @@
+# PR Guards: the repository-wide pull-request guards, as jobs of ONE workflow (#3746).
+#
+# WHY ONE WORKFLOW. Every push to a pull request used to fan out into about
+# twenty separate workflow runs, each repeating checkout and setup and each
+# spending shared runner capacity and GITHUB_TOKEN budget. The guards below
+# were separate files with identical shape; they are now jobs here.
+#
+# REQUIRED CONTEXTS ARE UNCHANGED. A job inside a workflow reports its plain
+# job `name:` as its check-run context, so every required context emitted
+# here ("Agent work contract", "Cancelled work guard", "Domain ownership",
+# "Handoff contract", "Intake pointer guard", "Destructive SQL outside
+# migrations", "Cross-PR object collision", "Orchestrator marker guard",
+# "Queue-sensitive checks (aggregate)") is byte-identical to before. Jobs are
+# moved in directly, never called through `workflow_call`, because a reusable
+# workflow call prefixes the context ("caller / callee") and would break every
+# required check.
+#
+# PER-JOB EVENTS. The workflow triggers on the union of the moved workflows'
+# events; each job's `if:` keeps exactly the events its old workflow ran on,
+# and each job keeps its old permissions at job level.
+#
+# Kept separate on purpose: workflows dispatched by file name for lane
+# replacement (tools-offline-tests.yml, coldlion-promotion-contract-tests.yml,
+# #2729), the migration, database and queue-gate workflows that hold locks or
+# production gates, migration-author-lease.yml (a global invalidator that
+# posts commit statuses), the issue-only half of destructive-analysis-guard.yml,
+# the scheduled alarm half of orchestrator-marker-guard.yml,
+# historical-item-mg-reclassification-tests.yml (its truth-audit identity is
+# pinned by the immutable 2026-08-28 cutover record), path-filtered advisory
+# workflows, and the pull_request_target documents route.
+#
+# SHARED CONTENTION POINT. Every guard edit now touches this one file and one
+# concurrency group. Adding a repo-wide guard means adding a job HERE (not a new
+# workflow file); splitting a job back out is a deliberate, reviewed decision.
+#
+# NO `paths:` FILTER, ON PURPOSE (AGENTS.md 5.2): several jobs here are required
+# contexts, and a filtered required check stays pending or reuses a stale verdict.
+
+name: PR Guards
+
+on:
+  # Default pull_request types (opened, synchronize, reopened) on purpose. The
+  # old pr-object-collision.yml also ran on ready_for_review, but a shared
+  # trigger cannot be per-job, and ready_for_review would start the required
+  # Queue-sensitive aggregate for lane checks that event never starts.
+  # A draft PR's collision verdict comes from its latest push instead.
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One group per pull request (merge_group has no PR number; its unique queue
+  # ref is the key there). A new push cancels the superseded pull_request run.
+  # Never cancel a merge_group run: GitHub re-requests checks for the same
+  # group, and cancelling the older run could starve it (#2530).
+  group: pr-guards-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+
+  # ---- moved from .github/workflows/agent-work-contract.yml (#3746) ----
+  # Guard: does an agent's completion report actually satisfy the contract it was
+  # given? (Step 4, issue #1366)
+  #
+  # NO `paths:` FILTER, ON PURPOSE (AGENTS.md 5.2). This is a repository-wide check.
+  # A path filter would leave the context permanently pending on any pull request
+  # that did not touch the filtered files, and GitHub can then reuse a stale verdict
+  # for a repository-wide required check. That failure mode is recorded in issue
+  # #1286 and in AGENTS.md 5.2; do not "optimise" it back in.
+  #
+  # REPORT-ONLY IS NOT "IGNORE ERRORS". While
+  # config/agent-work-contract-activation.json says mode=report-only, a pull request
+  # with NO contract passes. A pull request WITH a malformed contract or a report
+  # that contradicts its contract FAILS either way — shipping a broken guard in a
+  # quiet mode is how a guard gets trusted without ever having worked.
+  agent-work-contract:
+    name: Agent work contract
+    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The offline unit tests come first. A guard whose own logic is broken must
+      # never render a verdict on somebody else's pull request.
+      - name: Prove the contract logic itself
+        run: >-
+          node --test
+          scripts/agent-work-contract.test.mjs
+          scripts/agent-work-contract-activation.test.mjs
+          scripts/agent-work-contract-git-evidence.test.mjs
+          scripts/lib/agent-evidence-paths.test.mjs
+          scripts/lib/evidence-generation-lineage.test.mjs
+          scripts/check-documents-only-pull-request.test.mjs
+          scripts/check-closeout-readiness.test.mjs
+
+      - name: Report the activation mode, so nobody has to guess
+        run: |
+          set -euo pipefail
+          MODE=$(node scripts/agent-work-contract-activation.mjs --mode --config-file config/agent-work-contract-activation.json)
+          echo "mode=$MODE" >> "$GITHUB_ENV"
+          {
+            echo "## Agent work contract — $MODE"
+            echo
+            if [ "$MODE" = "report-only" ]; then
+              echo "A pull request with no contract passes. A malformed contract or a"
+              echo "report that contradicts its contract still FAILS."
+            else
+              echo "Enforced. Every non-grandfathered pull request must carry a valid"
+              echo "contract and a report that satisfies it."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve the queued pull request (merge group only)
+        # The merge_group payload carries no pull_request object. The one queued
+        # PR is resolved from the queue ref and re-verified live (open, base
+        # main, readable head) by the merge queue contract (#2530).
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          {
+            echo "pr_number=$(echo "$facts" | jq -r .number)"
+            echo "pr_head_sha=$(echo "$facts" | jq -r .headRefOid)"
+          } >> "$GITHUB_OUTPUT"
+          echo "pr_base_sha=$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/$(echo "$facts" | jq -r .number)" --jq .base.sha)" >> "$GITHUB_OUTPUT"
+
+      # Classified from protected base policy whenever the pull request is known,
+      # including the one queued PR on merge_group, so the documents-only
+      # exemption behaves identically on both paths (#2596 review).
+      - name: Check out the protected base policy for the documents-only decision
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          path: trusted-policy
+          fetch-depth: 1
+
+      - name: Classify documents-only status from protected base policy
+        id: documents_only
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_NUMBER"
+          set +e
+          node trusted-policy/scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          status=$?
+          set -e
+          # 0 = documents only. Anything else, including an unreadable file list,
+          # is NOT documents only: the pair stays required (fail closed).
+          if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Validate any contract and report carried by this pull request
+        env:
+          MODE: ${{ env.mode }}
+          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || steps.queue.outputs.pr_head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Convention: a PR that declares a contract changes both evidence
+          # files under .agent/. The activation PR's pair remains on main, so
+          # mere filesystem presence is not current-PR evidence. Compare the
+          # exact PR base and head before reading either file.
+          #
+          # THE PAIR'S PATHS ARE NO LONGER FIXED (#2708). Each pull request writes
+          # .agent/work/<work_issue>/<generation>/{contract,completion}.json, so two
+          # unrelated pull requests cannot collide on one path and force each other
+          # through a full re-review. The legacy .agent/contract.json pair is still
+          # accepted. The resolver -- not this shell -- decides which two files this
+          # pull request's evidence is, and it fails closed on more than one pair.
+          CONTRACT=.agent/contract.json
+          REPORT=.agent/completion.json
+
+          if [ -n "$PR_NUMBER" ]; then
+            RESOLVED=$(node scripts/agent-work-contract-git-evidence.mjs \
+              --resolve-evidence-pair \
+              --pr-base-sha "$PR_BASE_SHA" \
+              --pr-head-sha "$PR_HEAD_SHA")
+            PAIR_STATE=$(echo "$RESOLVED" | cut -d' ' -f1)
+            RESOLVED_CONTRACT=$(echo "$RESOLVED" | cut -d' ' -f2)
+            RESOLVED_REPORT=$(echo "$RESOLVED" | cut -d' ' -f3)
+            if [ -n "$RESOLVED_CONTRACT" ] && [ -n "$RESOLVED_REPORT" ]; then
+              CONTRACT="$RESOLVED_CONTRACT"
+              REPORT="$RESOLVED_REPORT"
+            fi
+          else
+            # A manual dispatch has no PR diff. Validate the checked-out pair as
+            # repository evidence, but do not render a PR gate verdict.
+            PAIR_STATE=current
+          fi
+
+          case "$PAIR_STATE" in
+            inherited|current) ;;
+            partial)
+              echo "::error::A pull request must change its contract and its completion report together."
+              exit 1
+              ;;
+            conflicted)
+              echo "::error::This pull request carries more than one agent evidence pair. Exactly one pair, at .agent/work/<work_issue>/<generation>/, may be present (#2708)."
+              exit 1
+              ;;
+            *)
+              echo "::error::Evidence classification returned an unknown state: $PAIR_STATE"
+              exit 1
+              ;;
+          esac
+
+          if [ "$PAIR_STATE" = "inherited" ] || { [ ! -f "$CONTRACT" ] && [ ! -f "$REPORT" ]; }; then
+            if [ "$MODE" = "report-only" ]; then
+              echo "No current contract on this pull request; report-only mode allows it."
+              exit 0
+            fi
+            if node scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
+              exit 0
+            fi
+            # THE DOCUMENTS-ONLY EXEMPTION (issue #2591, owner approved 2026-09-08).
+            #
+            # The reviewer draw already exempts a prose-only pull request from the
+            # small external database-reviewer pool (#2102). This gate did not know
+            # that rule, so it demanded the evidence pair from a pull request that
+            # changes nothing but documents -- and adding the pair then CANCELLED
+            # the reviewer exemption, because `.json` is not a document extension.
+            # A prose-only change could satisfy either gate but never both, so every
+            # handoff paid a full two-reviewer round. Both gates now ask the same
+            # classifier the same question.
+            #
+            # RULEBOOK FILES ARE NOT DOCUMENTS. AGENTS.md, CLAUDE.md, skills and
+            # plan_*.md keep the full treatment: a bad edit to one of them is as
+            # dangerous as a bad migration, because every later session obeys it.
+            #
+            # FAIL CLOSED. An unreadable or empty file list is never documents-only,
+            # and a failed API read refuses rather than exempts. Every other
+            # automated check and the guarded merge lane are unchanged by this.
+            # The GitHub read happens INSIDE the script, through the one shared
+            # transport library (#2342), never directly from this step.
+            if [ "${{ steps.documents_only.outputs.value }}" = "true" ]; then
+              echo "This pull request changes only prose documents, so the agent work contract pair is not required (#2591)."
+              exit 0
+            fi
+            echo "::error::Enforced mode requires this pull request to change both .agent/work/<work_issue>/<generation>/contract.json and .agent/work/<work_issue>/<generation>/completion.json (#2708). Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
+            exit 1
+          fi
+
+          # HALF A PAIR IS ALWAYS AN ERROR, in either mode. A report with no
+          # contract cannot be checked against anything, and a contract with no
+          # report is work that never proved itself.
+          if [ ! -f "$CONTRACT" ]; then echo "::error::$REPORT exists but $CONTRACT does not; a report with no contract cannot be checked."; exit 1; fi
+          if [ ! -f "$REPORT" ]; then echo "::error::$CONTRACT exists but $REPORT does not; the work never reported against its contract."; exit 1; fi
+
+          node scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
+          PR_ARGS=()
+          if [ -n "$PR_NUMBER" ]; then
+            PR_ARGS+=(--expected-pr "$PR_NUMBER" --expected-head-sha "$PR_HEAD_SHA")
+          fi
+          node scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
+          if [ -n "$PR_NUMBER" ]; then
+            node scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
+          fi
+
+  # ---- moved from .github/workflows/cancelled-work-guard.yml (#3746) ----
+  # Guard: a PR must not reintroduce work an owner ruling has CANCELLED.
+  #
+  # Plan item C2 of `plan_orchestrator-workflow-gaps.md` (issue #619).
+  #
+  # Item C's finding: an owner ruling reaches the NEXT session, never the one already
+  # running. On 2026-08-07 Albert ruled the Disney extract was not sensitive at ~17:00, and
+  # at 22:26 a live session filed issue #578 asking for the git-history scrub that ruling had
+  # just cancelled. Nothing can reach a running session. This makes the next thing that
+  # session COMMITS fail loudly.
+  #
+  # Design rules, same as the other repo-wide guards here:
+  #   1. NO `paths:` filter — the PR that reintroduces cancelled work is exactly the PR a
+  #      filter would let skip the job while still showing all-checks-passed.
+  #   2. A UNIQUE check-run name.
+  #   3. The tests run FIRST, in the same job.
+  #   4. `fetch-depth: 0` — the guard diffs against the base ref and must be able to see it.
+  #      An unreadable diff FAILS; it is never treated as a clean diff.
+  #
+  # ⚠️ TO FINISH C2, AN ADMIN MUST MAKE `Cancelled work guard` A REQUIRED CONTEXT.
+  # Branch protection is not editable from a workflow or by an agent session.
+  cancelled-work-guard:
+    name: Cancelled work guard
+    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the guard fires, and that gutting its table is not a pass
+        run: node --test scripts/check-cancelled-work.test.mjs
+
+      - name: Check the PR does not reintroduce cancelled work
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${BASE_REF}"
+          node scripts/check-cancelled-work.mjs --base "origin/${BASE_REF}"
+
+  # ---- moved from .github/workflows/domain-ownership.yml (#3746) ----
+  # scripts/check-domain-ownership.mjs scans the WHOLE tracked tree via `git ls-files`.
+  # It formerly also ran inside `db-data-admin.yml` (moved to u2giants/popdam3 on 2026-09-16);
+  # that workflow was `paths:`-filtered, so a
+  # PR touching an unwatched file (e.g. HANDOFF.md) could TRIP the guard while firing no
+  # run that could ever clear it (HANDOFF.md B2; PR #328 fixed the file and fired nothing,
+  # PR #307 cleared main only by accident). This workflow has DELIBERATELY NO `paths:`
+  # filter so the repo-wide guard runs on every pull request and every push to main.
+  # The guard stays here because it scans this repository's own docs for the hostname.
+  domain-ownership:
+    name: Domain ownership
+    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    permissions:
+      contents: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Enforce DB Data Admin domain ownership
+        run: |
+          node --test scripts/check-domain-ownership.test.mjs
+          node scripts/check-domain-ownership.mjs
+
+  # ---- moved from .github/workflows/handoff-contract-guard.yml (#3746) ----
+  # Guard: the HANDOFF.d/ ownership contract (issue #658, owner ruling 2026-08-13).
+  #
+  # What this does NOT do, deliberately: count the files in HANDOFF.d/ and fail
+  # above a threshold. That design was proposed and REJECTED by the owner:
+  #
+  #   "when the 6th file gets there legitimately, if there are five files already
+  #    there and some are stale, the legitimate file will get rejected."
+  #
+  # A count cap bills whoever shows up next for a mess somebody else left. This
+  # repo can legitimately hold 20+ concurrent workstreams across the five
+  # applications sharing the database, so there is no correct ceiling. This job
+  # inspects ONLY the handoff files the pull request itself touches, plus the file
+  # belonging to any issue the pull request closes. It can never fail a session for
+  # somebody else's file.
+  #
+  # Design rules, shared with the other repo-wide guards here:
+  #   1. NO `paths:` filter. A filtered guard skips exactly the docs-only PR that
+  #      carries the change and still shows all-checks-passed (AGENTS.md 5.2).
+  #   2. A UNIQUE check-run name, so it can be made a required context (6.7).
+  #   3. Its own negative-path tests run FIRST, in the same job. A guard whose
+  #      tests never run is a guard nobody has proven fires (backlog B7).
+  #   4. NO SILENT PASS. Unreadable issue state fails the job.
+  #
+  # fetch-depth: 0 is required — the job diffs against the merge base.
+  handoff-contract:
+    name: Handoff contract
+    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the guard refuses each failure it is meant to catch
+        run: node --test scripts/check-handoff-contract.test.mjs scripts/report-stale-handoffs.test.mjs
+
+      - name: Resolve the queued pull request (merge group only)
+        # The merge_group payload carries no pull_request object. The one
+        # queued PR is resolved from the queue ref and re-verified live by the
+        # merge queue contract (#2530); its title and body come from the API.
+        if: github.event_name == 'merge_group'
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+          echo "$facts"
+          echo "pr_number=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
+
+      - name: Check the handoff files this pull request touches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HANDOFF_BASE: origin/${{ github.base_ref || 'main' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MERGE_GROUP_PR: ${{ steps.queue.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MERGE_GROUP_PR:-}" ]; then
+            git fetch --no-tags origin main
+            PR_TITLE="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)"
+            PR_BODY="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+            export PR_TITLE PR_BODY
+          fi
+          node scripts/check-handoff-contract.mjs
+
+  # ---- moved from .github/workflows/intake-pointer-guard.yml (#3746) ----
+  # Guard: COORDINATOR_INTAKE.md must not grow a queue back once it is a pointer.
+  #
+  # Why this workflow exists (added 2026-08-07, plan_coordinator-queue-to-github-issues.md).
+  #
+  # Step 5 of that plan requires the updated skills to reach EVERY machine before step 8
+  # reduces the orchestrator queue to a pointer. The failure it guards is silent: a machine
+  # still running the old skill appends its handover to the pointer, the file grows a body,
+  # and the queue this migration deletes is rebuilt live, mid-migration, with nothing raising
+  # a hand.
+  #
+  # The precondition "propagation confirmed on every machine" cannot be verified by any
+  # single session — a session can hash its own installed skills against the hub, but it
+  # cannot see the other four machines. Raised in review by Kimi K3 on 2026-08-07, and
+  # correct: a precondition nobody can check is a precondition nobody checks.
+  #
+  # So this inverts the gate. Rather than proving every machine is current BEFORE the
+  # cutover, it DETECTS the single behaviour a stale machine produces, on the very next pull
+  # request, and fails. An unverifiable precondition becomes a verifiable detector.
+  #
+  # Design rules, same as the other repo-wide guards here:
+  #   1. NO `paths:` filter. With one, the docs-only PR that carries the rebuild is exactly
+  #      the PR that skips the job, and the PR still shows all-checks-passed. AGENTS.md §5.2
+  #      records this false-verdict pattern happening in this repo already.
+  #   2. A UNIQUE check-run name. Three workflows once all exposed a check named `verify`,
+  #      which is why only one could be made a required context (AGENTS.md §6.7).
+  #   3. It must be a REQUIRED status check. As an advisory check it detects the rebuild and
+  #      nobody notices, which is the same class of defect as the check it replaces.
+  #   4. Offline and deterministic. No secrets, no network, no database.
+  #
+  # It is deliberately merged and made required BEFORE step 8, while dormant
+  # (POINTER_MODE = false in the script). If the context does not already exist and pass,
+  # step 8's own PR is blocked by the gate step 8 introduces.
+  intake-pointer-guard:
+    name: Intake pointer guard
+    if: contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the guard refuses a rebuilt queue
+        # The negative-path tests run FIRST and in the same job. Backlog B7 is standing
+        # policy here: an existence check is worthless against this defect class, and a
+        # guard whose own tests are not run is a guard nobody has proven fires.
+        run: node --test scripts/check-intake-pointer.test.mjs
+
+      - name: Check the orchestrator queue has not grown back
+        run: node scripts/check-intake-pointer.mjs
+
+  # ---- moved from .github/workflows/destructive-analysis-guard.yml (#3746) ----
+  # Issue #2437: absence is not proof. Gate the ANALYSIS path.
+  #
+  # - On issues: an issue labeled `destructive-proposal` must carry every checklist
+  #   heading from .github/ISSUE_TEMPLATE/destructive-proposal.md in its BODY.
+  # - On pull requests: SQL added outside migrations/test fixtures may not introduce
+  #   DROP / TRUNCATE / VACUUM FULL / DELETE without WHERE unless marked with
+  #   `-- destructive-proposal: #<issue>`.
+  #
+  # No `paths:` filter (a filtered guard reports a stale green), unique check names,
+  # no secrets, no database contact.
+  destructive-sql:
+    name: Destructive SQL outside migrations
+    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    permissions:
+      contents: read
+      issues: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prove the guard can fail
+        run: node --test scripts/check-destructive-analysis.test.mjs
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
+      - name: Scan SQL added by this change
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"
+      - name: Scan SQL added by the queued group
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          # Fail closed when the group base is not a resolvable commit: an
+          # unresolvable base must never read as "no SQL added".
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::merge_group base_sha '${BASE_SHA}' does not resolve to a commit; refusing to scan."
+            exit 1
+          fi
+          node scripts/check-destructive-analysis.mjs --diff-base "${BASE_SHA}"
+
+  # ---- moved from .github/workflows/pr-object-collision.yml (#3746) ----
+  # CROSS-PR OBJECT COLLISION GUARD — HANDOFF.md backlog item B6.
+  #
+  # WHY IT EXISTS: on 2026-07-31 four independent sessions each authored a
+  # migration doing `create or replace function plm.promote_coldlion_source_owned`.
+  # `create or replace` is last-writer-wins, so merging any two would have silently
+  # erased the other. All four passed CI, because scripts/check-sql.sh only ever
+  # sees one branch at a time. This workflow is the only check that looks across
+  # open pull requests.
+  #
+  # WHY THERE IS NO `paths:` FILTER — read AGENTS.md §5.2 before adding one.
+  #
+  #   The checker inspects OTHER pull requests' migration files, not just this
+  #   one's. There is therefore no set of paths in THIS pull request that
+  #   determines whether the check is relevant: PR #A can become a collision the
+  #   moment PR #B is opened, without PR #A changing at all. A `paths:` filter
+  #   would produce exactly the §5.2 failure — a stale verdict that cannot be
+  #   re-run, because the fix (or the collision) lives in a different branch.
+  #   Same design rule as .github/workflows/backlog-queue-sync.yml and
+  #   .github/workflows/tools-offline-tests.yml. The job is a few seconds of Node
+  #   plus a handful of read-only API calls; there is nothing to optimise.
+  #
+  # LIMITS OF THE TRIGGER, stated honestly: `pull_request` fires on this PR's own
+  # events (opened/synchronize/reopened) and `workflow_dispatch` allows a manual
+  # re-run. GitHub will NOT re-run a green check because a SIBLING pull request
+  # appeared afterwards. The last member of a colliding set to merge is therefore
+  # the one that must be re-checked.
+  #
+  # WHAT ACTUALLY PROVIDES THAT RE-CHECK — corrected 2026-08-23, issue #1366.
+  # THIS JOB IS A DETECTOR, NOT THE GATE. Earlier text here said the re-check came
+  # from branch protection's "require branches to be up to date before merging"
+  # (`required_status_checks.strict`). That is NOT how this repository works and
+  # reading it that way has already produced one unsafe change proposal.
+  #
+  #   * `required_status_checks.strict` is deliberately FALSE. Albert ruled this on
+  #     2026-08-19 in issue #1286, after strict mode restarted the full check suite
+  #     on every branch after every unrelated merge, costing roughly 50 minutes a
+  #     day. It is an owner-authorized throughput decision, NOT configuration drift.
+  #     Do not "fix" it. Issue #1286 alone governs whether it is ever reconsidered.
+  #
+  #   * The real re-check for a MIGRATION pull request (database objects; see
+  #     the PROTECTED COORDINATION SOURCES note below for source files) is
+  #     `.github/workflows/guarded-migration-merge.yml`, whose required context
+  #     `Migration guarded merge authorization` re-runs collision and lease
+  #     validation against a head that already contains current `main`, and does so
+  #     while holding the merge lock.
+  #
+  #   * A pull request with NO migrations is auto-authorized by
+  #     `.github/workflows/migration-author-lease.yml`, because there is no
+  #     structural collision for it to have.
+  #
+  # So: this guard gives early feedback to honest authors; guarded merge is what
+  # actually holds the line at merge time.
+  #
+  # PROTECTED COORDINATION SOURCES are different (#3721): the PR-time step only
+  # reports overlap; the merge-time gate is the merge_group step below, which
+  # proves the group is its base plus exactly one PR, while this same job
+  # runs the lane-manager suites on that tree.
+  #
+  # NO DATABASE CONTACT: this job reads GitHub pull-request metadata and committed
+  # .sql text. It needs no database credentials and must never be given any.
+  pr-object-collision:
+    name: Cross-PR object collision
+    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # B7: the guard ships with a test that COMMITS THE VIOLATION (a replay of
+      # the real four-way collision) and asserts the guard fails on it.
+      - name: Unit-test the checker itself (includes the negative path)
+        run: node --test scripts/check-pr-object-collisions.test.mjs
+
+      # The DISPATCH-time checker imports extractObjects from the script above,
+      # so a change to that parser can silently break it. Both suites run in
+      # this one job precisely so they cannot drift apart. This step adds no new
+      # required status context -- the job name is unchanged.
+      - name: Unit-test the dispatch-time collision checker (shares the parser)
+        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
+
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
+      - name: Check the GitHub API quota before scanning open pull requests
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-actions-quota.mjs
+
+      # ONE read of every open pull request's complete file list, shared by both
+      # checks below. They used to fetch it twice, which was most of this job's
+      # quota spend. Each check still refuses an incomplete list exactly as before.
+      - name: Gather the open pull request file lists once
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/lib/open-pr-files.mjs --out "$RUNNER_TEMP/open-pr-files.json"
+
+      - name: Report earlier open PRs editing the same protected coordination source (overlap queues; unreadable audit refuses)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OPEN_PR_FILES_SNAPSHOT: ${{ runner.temp }}/open-pr-files.json
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-pr-source-collisions.mjs
+
+      # Merge-time twin of the step above (#3721): overlapping protected-source
+      # pull requests are queued, not refused, so every merge group must be
+      # its base plus exactly one pull request; the lane-manager suites run
+      # above on that same tree. A stacked group or unreadable facts
+      # refuse. Uses only the event payload and local git.
+      - name: Merge group is its base plus exactly one PR (protected-source queueing proof)
+        if: github.event_name == 'merge_group'
+        env:
+          SOURCE_COLLISION_MODE: merge-group
+        run: node scripts/check-pr-source-collisions.mjs
+
+      - name: No other open PR replaces the same database object
+        # On merge_group the pull_request payload does not exist; the Merge
+        # queue gate re-runs this same script against the resolved queued PR,
+        # so the proof still happens exactly once per merge (#2530).
+        if: github.event_name != 'merge_group'
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-pr-object-collisions.mjs
+
+  # ---- moved from .github/workflows/orchestrator-marker-guard.yml (#3746) ----
+  # Guard: at most ONE open orchestrator marker, and an unreadable answer is UNKNOWN.
+  #
+  # Plan item B1 of `plan_orchestrator-workflow-gaps.md` (issue #619).
+  #
+  # Two orchestrators dispatching at once is how this repo produced four competing
+  # migrations on one function. The single-orchestrator rule is an honour-system GitHub
+  # issue, and every way step 0 has asked "is a marker open?" has, at least once, answered
+  # "no" while one was open — a renamed label, an eventually-consistent server-side label
+  # filter, and (2026-08-09) `gh issue list` printing empty output while the marker existed.
+  # `scripts/check-orchestrator-marker.mjs` documents all three.
+  #
+  # Design rules, same as the other repo-wide guards here:
+  #   1. NO `paths:` filter. With one, the PR that matters is exactly the PR that skips the
+  #      job, and the PR still shows all-checks-passed. AGENTS.md §5.2 records this
+  #      false-verdict pattern happening in this repo already.
+  #   2. A UNIQUE check-run name. Three workflows once all exposed a check named `verify`,
+  #      which is why only one could be made a required context (AGENTS.md §6.7).
+  #   3. The negative-path tests run FIRST, in the same job. A guard whose own tests are not
+  #      run is a guard nobody has proven fires.
+  #
+  #   4. AND ON A SCHEDULE. Kimi's point, accepted in the plan: a PR-only check sees nothing
+  #      during the hours when two orchestrators are actually colliding, because neither may
+  #      open a PR.
+  #
+  # ⚠️ TO FINISH B1, AN ADMIN MUST MAKE `Orchestrator marker guard` A REQUIRED CONTEXT.
+  # Branch protection is not editable from a workflow or by an agent session. Until that is
+  # done this is advisory, and an advisory check that detects a collision nobody notices is
+  # the same class of defect it was built to fix.
+  #
+  # ⚠️ LIMIT (plan item B1b): this detects a MARKED collision only. A session that never
+  # claims a marker is invisible to it, and nothing in CI can PREVENT a second orchestrator
+  # starting — a marker is claimed outside any pull request. It makes a collision VISIBLE,
+  # not impossible.
+  orchestrator-marker-guard:
+    name: Orchestrator marker guard
+    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    permissions:
+      contents: read
+      issues: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove the guard fails on two markers, and on an unreadable answer
+        run: node --test scripts/check-orchestrator-marker.test.mjs
+
+      # #2318. The admission rules live in their own module, and their unit
+      # cases -- normalisation variants, blank, almost-right owner forms,
+      # unreadable dates -- are only pinned here. A local-only suite is an
+      # unenforced one.
+      - name: Prove the admission rules refuse every ground that produced marker #2312
+        run: node --test scripts/lib/orchestrator-admission.test.mjs
+
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
+      - name: Check the GitHub API quota before reading markers
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-actions-quota.mjs
+
+      - name: Check how many orchestrator markers are open
+        id: check
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-orchestrator-marker.mjs
+
+      # The scheduled leg and its throttled alarm issue live in orchestrator-marker-guard.yml.
+
+  # ---- moved from .github/workflows/queue-sensitive-aggregate.yml (#3746) ----
+  # Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
+  #
+  # "Tools offline tests" and "Promotion contract tests (offline)" can be re-run on another free
+  # GitHub-hosted lane (workflow_dispatch input `lane`) when the preferred runner never picks the job
+  # up. A replacement run reports "<context> [lane <label>]", so this job is the one stable context:
+  # it passes only when every registered assertion has exactly one successful run for the PR head,
+  # and it refuses when an assertion is absent, duplicated or failed. Lanes are declared in
+  # scripts/orchestrator-flow/runner-lanes.json. Read-only: it only lists check runs.
+  queue-sensitive-aggregate:
+    name: Queue-sensitive checks (aggregate)
+    if: contains(fromJSON('["pull_request", "merge_group"]'), github.event_name)
+    permissions:
+      contents: read
+      checks: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require every queue-sensitive assertion exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # On merge_group the asserted head is the synthetic group commit,
+          # which is where the lane jobs report when triggered by the group.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: node scripts/orchestrator-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50
+
+  # ---- moved from .github/workflows/pii-forward-guard.yml (#3746) ----
+  # Guard: no NEW email-shaped personal identifiers enter this PUBLIC repository.
+  #
+  # Why this workflow exists (added 2026-08-09, AGENTS.md §6.14).
+  #
+  # `popcre/shared-db` is a public repository. On 2026-08-09 a sweep found personal data
+  # committed on `main`: work email addresses in migrations and docs, a person's full name in
+  # a migration header, and several hundred third-party vendor contact records inside a
+  # committed verification baseline. The owner ruled: "Remove it going forward and accept the
+  # old copies exist." History rewriting was explicitly rejected, and the migrations are
+  # already applied, so they cannot be edited.
+  #
+  # This job is one deliberately partial mechanical control for that ruling. It does not
+  # verify names, phone numbers, addresses, or every other personal identifier; those remain
+  # review responsibilities. Its visible name and output must never imply full §6.14 coverage.
+  #
+  # WHAT IT CHECKS, precisely:
+  #   Only the lines this pull request ADDS, computed from the merge base with the base branch.
+  #   It never reads the rest of the file and never walks the tree. Every pre-existing
+  #   occurrence — including the two untouchable migrations and the verification baseline — is
+  #   therefore invisible to it by construction, exactly as AGENTS.md §6.14 requires.
+  #
+  # WHY EMAIL-SHAPE ONLY:
+  #   An email address has an unambiguous machine-detectable shape, so the check is
+  #   deterministic with a near-zero false-positive rate. Personal NAMES have no such shape;
+  #   any "name detector" would be a guessing game that fires on `core.person` seed rows,
+  #   which AGENTS.md §6.14 explicitly permits. A noisy guard gets bypassed and then ignored,
+  #   which is worse than no guard. Names remain a review responsibility, not a CI one.
+  #
+  # ALLOWED, because these are not personal identifiers:
+  #   - `*.noreply.github.com` (the mandated commit identity)
+  #   - `*.iam.gserviceaccount.com` and other robot/service-account addresses
+  #   - the reserved documentation domains (example.com/net/org, *.invalid, *.test, localhost)
+  #   - obvious placeholders (user@, you@, someone@, name@, email@)
+  #
+  # Design rules, same as the other repo-wide guards here:
+  #   1. NO `paths:` filter. A filtered job skips on exactly the PR that needs it and still
+  #      reports all-checks-passed (AGENTS.md §5.2).
+  #   2. A UNIQUE check-run name, so it can be made a required context (AGENTS.md §6.7).
+  #   3. Its own negative-path tests run FIRST, in the same job. A guard whose tests are not
+  #      run is a guard nobody has proven fires.
+  #   4. Offline and deterministic. No secrets, no network, no database.
+  #
+  # ESCAPE HATCH: put the `pii-guard-allow` label on the PR when an added address is genuinely
+  # a service account the allowlist does not know. Deliberate, visible, and reviewable.
+  pii-forward-guard:
+    name: Email-address forward guard (partial PII coverage)
+    if: contains(fromJSON('["pull_request", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write the detector and its tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/piiguard"
+          cat > "$RUNNER_TEMP/piiguard/detect.mjs" <<'DETECTOR_EOF'
+          // Detects email-shaped strings in ADDED diff lines only.
+
+          const EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+
+          const ALLOWED_DOMAIN_SUFFIX = [
+            'noreply.github.com',
+            'gserviceaccount.com',
+            'example.com',
+            'example.net',
+            'example.org',
+            '.invalid',
+            '.test',
+            '.local',
+            '.localhost',
+          ];
+
+          const ALLOWED_LOCALPART = new Set([
+            'user', 'users', 'you', 'your', 'someone', 'somebody', 'name', 'email',
+            'e-mail', 'mail', 'test', 'tests', 'example', 'placeholder', 'foo', 'bar',
+            'noreply', 'no-reply', 'donotreply', 'do-not-reply', 'admin', 'root',
+          ]);
+
+          export function findViolations(addedLines) {
+            const hits = [];
+            for (const { file, line, text } of addedLines) {
+              for (const match of text.match(EMAIL) ?? []) {
+                const at = match.lastIndexOf('@');
+                const local = match.slice(0, at).toLowerCase();
+                const domain = match.slice(at + 1).toLowerCase();
+
+                if (ALLOWED_LOCALPART.has(local)) continue;
+                if (ALLOWED_DOMAIN_SUFFIX.some((s) => domain === s || domain.endsWith('.' + s) || domain.endsWith(s))) continue;
+                // A version or scope token, not an address: `@v4`, `@1.2.3`.
+                if (/^[0-9]/.test(domain)) continue;
+
+                hits.push({ file, line, domain });
+              }
+            }
+            return hits;
+          }
+
+          // Parse a unified diff, returning only ADDED lines with their file and new-file
+          // line number. Deletions and context are ignored, so REMOVING an existing
+          // occurrence can never fail this check.
+          export function parseAddedLines(diff) {
+            const out = [];
+            let file = null;
+            let lineNo = 0;
+            for (const raw of diff.split('\n')) {
+              if (raw.startsWith('+++ b/')) { file = raw.slice(6); continue; }
+              if (raw.startsWith('+++ ')) { file = null; continue; }
+              const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+              if (hunk) { lineNo = Number(hunk[1]); continue; }
+              if (raw.startsWith('---')) continue;
+              if (raw.startsWith('+')) {
+                if (file) out.push({ file, line: lineNo, text: raw.slice(1) });
+                lineNo += 1;
+              } else if (raw.startsWith('-') || raw.startsWith('\\')) {
+                // deletion or "no newline" marker: does not advance the new-file counter
+              } else {
+                lineNo += 1;
+              }
+            }
+            return out;
+          }
+          DETECTOR_EOF
+
+          cat > "$RUNNER_TEMP/piiguard/detect.test.mjs" <<'TEST_EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { findViolations, parseAddedLines } from './detect.mjs';
+
+          // Fixture addresses are ASSEMBLED AT RUNTIME and never written as a literal.
+          // As literals they would make this guard flag its own file on every pull request
+          // that touches it, and a guard that fails its own PR gets deleted.
+          const AT = String.fromCharCode(64);
+          const NL = String.fromCharCode(10);
+          const work = (u) => u + AT + 'popcre.com';
+          const personal = (u) => u + AT + 'gmail.com';
+
+          const diff = (...added) => [
+            'diff --git a/f.md b/f.md',
+            '--- a/f.md',
+            '+++ b/f.md',
+            '@@ -1,1 +1,3 @@',
+            ...added,
+          ].join(NL) + NL;
+
+          test('FIRES on a newly added work email address', () => {
+            const hits = findViolations(parseAddedLines(diff('+-- owner: ' + work('person.one'))));
+            assert.equal(hits.length, 1);
+            assert.equal(hits[0].domain, 'popcre.com');
+          });
+
+          test('FIRES on a newly added personal email address', () => {
+            const hits = findViolations(parseAddedLines(diff('+contact: ' + personal('someuser123'))));
+            assert.equal(hits.length, 1);
+          });
+
+          test('does NOT fire on a REMOVED email address', () => {
+            assert.deepEqual(findViolations(parseAddedLines(diff('--- owner: ' + work('person.one')))), []);
+          });
+
+          test('does NOT fire on an unchanged context line', () => {
+            assert.deepEqual(findViolations(parseAddedLines(diff(' -- owner: ' + work('person.one')))), []);
+          });
+
+          test('allows the mandated commit identity', () => {
+            const id = 'u2giants' + AT + 'users.noreply.github.com';
+            assert.deepEqual(findViolations(parseAddedLines(diff('+Co-Authored-By: X <' + id + '>'))), []);
+          });
+
+          test('allows GCP service accounts', () => {
+            const sa = 'sa-planning-proxy' + AT + 'lithe-breaker-323913.iam.gserviceaccount.com';
+            assert.deepEqual(findViolations(parseAddedLines(diff('+' + sa))), []);
+          });
+
+          test('allows documentation placeholders', () => {
+            assert.deepEqual(findViolations(parseAddedLines(diff('+email = ' + 'user' + AT + 'example.com'))), []);
+          });
+
+          test('does not fire on npm scopes or action versions', () => {
+            const lines = ['+  - uses: actions/checkout@v4', '+import x from "@types/node";'];
+            assert.deepEqual(findViolations(parseAddedLines(diff(...lines))), []);
+          });
+
+          test('reports the correct new-file line number', () => {
+            const hits = findViolations(parseAddedLines(diff('+ok', '+bad ' + work('person.two'))));
+            assert.equal(hits.length, 1);
+            assert.equal(hits[0].line, 2);
+          });
+          TEST_EOF
+
+          cat > "$RUNNER_TEMP/piiguard/run.mjs" <<'RUN_EOF'
+          import fs from 'node:fs';
+          import { findViolations, parseAddedLines } from './detect.mjs';
+
+          const hits = findViolations(parseAddedLines(fs.readFileSync(process.argv[2], 'utf8')));
+
+          if (hits.length === 0) {
+            console.log('OK: this pull request adds no email-shaped personal identifier. PARTIAL COVERAGE ONLY: names, phone numbers, addresses, and other identifiers were not checked.');
+            process.exit(0);
+          }
+
+          // Deliberately does NOT print the address itself. This repository is public and
+          // so is this log; echoing the value would widen the very disclosure the guard
+          // exists to prevent. File, line and domain are enough to find it locally.
+          console.error('This pull request ADDS email-shaped personal identifier(s) to a PUBLIC repository.');
+          console.error('AGENTS.md section 6.14: refer to people by app.profile UUID only.');
+          console.error('');
+          for (const h of hits) {
+            console.error('  ' + h.file + ':' + h.line + '  (an email address at domain ' + h.domain + ')');
+          }
+          console.error('');
+
+          const labels = JSON.parse(process.env.PR_LABELS || '[]');
+          if (labels.includes('pii-guard-allow')) {
+            console.error('Label `pii-guard-allow` is present: passing as a reviewed exception.');
+            process.exit(0);
+          }
+
+          console.error('Fix: remove the address, or use the profile UUID instead. If it is');
+          console.error('genuinely a service account, add its domain to the allowlist in');
+          console.error('.github/workflows/pr-guards.yml (pii-forward-guard job), or apply the');
+          console.error('`pii-guard-allow` label as a reviewed exception.');
+          process.exit(1);
+          RUN_EOF
+
+      - name: Prove the guard fires, and prove it ignores pre-existing lines
+        run: node --test "$RUNNER_TEMP/piiguard/detect.test.mjs"
+
+      - name: Scan only the lines this pull request adds
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          echo "Scanning added lines between $MERGE_BASE and $HEAD_SHA"
+          git diff --unified=0 "$MERGE_BASE" "$HEAD_SHA" > "$RUNNER_TEMP/piiguard/pr.diff"
+          node "$RUNNER_TEMP/piiguard/run.mjs" "$RUNNER_TEMP/piiguard/pr.diff"
+
+  # ---- moved from .github/workflows/public-data-venue-guard.yml (#3746) ----
+  # Guard: licensed and internal data artifacts stay out of this PUBLIC repository.
+  #
+  # Issue #2390: scripts/public-data-venue.test.mjs existed since PR #1871 but ran in no workflow,
+  # so PR #2340 merged eight flagged files with every check green.
+  #
+  # Design rules, same as the other repo-wide guards here:
+  #   1. NO `paths:` filter - the guard inspects every tracked file, not just the diff.
+  #   2. A UNIQUE check-run name.
+  #
+  # An admin must make `Public data venue guard` a required context; branch protection is not
+  # editable from a workflow or an agent session.
+  public-data-venue-guard:
+    name: Public data venue guard
+    if: contains(fromJSON('["pull_request", "push", "workflow_dispatch"]'), github.event_name)
+    permissions:
+      contents: read
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check tracked files against the public data venue rules
+        run: node --test scripts/public-data-venue.test.mjs

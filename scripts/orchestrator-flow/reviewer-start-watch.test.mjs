@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { AUTO_REROUTES_PER_SLOT, RESUME_ATTEMPT_LIMIT, exitCodeFor, leaseStartDecision, priorReroutesForSlot, managerArgs, mootable, pendingFromRefNames, rowFromRecord, runStep, watchOnce } from './reviewer-start-watch.mjs'
+import { AUTO_REROUTES_PER_SLOT, MANAGER_TIMEOUT_MS, RESUME_ATTEMPT_LIMIT, dispatchSubref, exitCodeFor, leaseStartDecision, liveDurableIo, priorReroutesForSlot, managerArgs, mootable, pendingFromRefNames, rowFromRecord, runStep, watchOnce } from './reviewer-start-watch.mjs'
 
 const head = 'b'.repeat(40)
 const drawn = '2026-09-16T12:00:00.000Z'
@@ -23,6 +23,46 @@ function memoryDurable() {
     readAccepted: () => null,
   }
 }
+
+test('live reviewer ref adapter keeps create-only sibling markers after canary retirement', () => {
+  const refs = new Map(), commits = new Map([['main-sha', { tree: { sha: 'tree-sha' } }]])
+  let serial = 0
+  const api = (args) => {
+    const endpoint = args.find((arg) => arg.startsWith('repos/'))
+    if (endpoint.endsWith('/git/ref/heads/main')) return JSON.stringify({ object: { sha: 'main-sha' } })
+    if (endpoint.includes('/git/ref/')) {
+      const ref = `refs/${endpoint.split('/git/ref/')[1]}`
+      if (!refs.has(ref)) throw new Error('HTTP 404 Not Found')
+      return JSON.stringify({ object: { sha: refs.get(ref) } })
+    }
+    if (endpoint.includes('/git/commits/') && !args.includes('POST')) return JSON.stringify(commits.get(endpoint.split('/git/commits/')[1]))
+    if (endpoint.endsWith('/git/commits') && args.includes('POST')) {
+      const sha = `commit-${++serial}`
+      commits.set(sha, { message: args.find((arg) => arg.startsWith('message=')).slice(8) })
+      return JSON.stringify({ sha })
+    }
+    if (endpoint.endsWith('/git/refs') && args.includes('POST')) {
+      const ref = args.find((arg) => arg.startsWith('ref=')).slice(4)
+      if (refs.has(ref)) throw new Error('HTTP 422 already exists')
+      refs.set(ref, args.find((arg) => arg.startsWith('sha=')).slice(4))
+      return '{}'
+    }
+    throw new Error(`unexpected API request: ${args.join(' ')}`)
+  }
+  const io = liveDurableIo('popcre/shared-db', api)
+  const ref = 'refs/db-start-reroutes/reviewer/review-10-20-seq3-slot1'
+  assert.equal(dispatchSubref(ref, 'dispatch-claim'), `${ref}--dispatch-claim`)
+  assert.equal(io.compareCreatePair(ref, null, { digest: 'one' }), true)
+  assert.equal(io.compareCreatePair(ref, null, { digest: 'other' }), false)
+  assert.deepEqual(io.readPair(ref), { digest: 'one' })
+  assert.equal(io.compareCreateDispatchClaim(ref, { owner: 'first' }), true)
+  assert.deepEqual(io.readDispatchClaim(ref), { owner: 'first' })
+  assert.equal(io.readDispatchAck(ref), null)
+  assert.equal(io.createAccepted(dispatchSubref(ref, 'moot'), ref, { reason: 'terminal' }), true)
+  assert.deepEqual(io.readAccepted(dispatchSubref(ref, 'moot')), { digest: ref, result: { reason: 'terminal' } })
+  assert.ok(refs.has(`${ref}--dispatch-claim`))
+  assert.ok(!refs.has(`${ref}/dispatch-claim`))
+})
 
 test('a lease inside the 10-minute start SLO waits', () => {
   assert.equal(leaseStartDecision(row({ started: null, lastActivityIso: null, verdictPresent: null }), '2026-09-16T12:09:59.000Z').decision.action, 'wait')
@@ -290,4 +330,12 @@ test('a pass that could not finish a reroute exits non-zero', () => {
   assert.equal(exitCodeFor([{ action: 'wait' }, { action: 'governed-return-and-reroute', reroute: {} }]), 0)
   assert.equal(exitCodeFor([{ action: 'governed-return-and-reroute', error: 'replace refused' }]), 1)
   assert.equal(exitCodeFor([{ resumed: 'refs/x', error: 'boom' }]), 1)
+})
+
+// Run 36487949025: the manager child hung for hours inside the author mutex.
+test('the lane manager child is bounded well inside the leg margin', async () => {
+  const { readFileSync } = await import('node:fs')
+  assert.ok(MANAGER_TIMEOUT_MS > 0 && MANAGER_TIMEOUT_MS <= 20 * 60 * 1000)
+  const src = readFileSync(new URL('./reviewer-start-watch.mjs', import.meta.url), 'utf8')
+  assert.match(src, /spawnSync\(process\.execPath, \[MANAGER, \.\.\.args\], \{[^}]*timeout: MANAGER_TIMEOUT_MS/)
 })

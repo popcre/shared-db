@@ -6,6 +6,10 @@
 #   DROP / TRUNCATE / VACUUM FULL / DELETE without WHERE unless marked with
 #   `-- destructive-proposal: #<issue>`.
 #
+# The pull-request half (the required context "Destructive SQL outside
+# migrations") now runs as the `destructive-sql` job of pr-guards.yml (#3746);
+# this file keeps only the issue-event checklist.
+#
 # No `paths:` filter (a filtered guard reports a stale green), unique check names,
 # no secrets, no database contact.
 name: Destructive Analysis Guard
@@ -13,9 +17,6 @@ name: Destructive Analysis Guard
 on:
   issues:
     types: [opened, edited, labeled, reopened]
-  pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -25,12 +26,18 @@ permissions:
 
 concurrency:
   group: destructive-analysis-guard-${{ github.event.issue.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run (#2530): a required context must report on the group SHA.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   proposal-checklist:
     name: Destructive proposal checklist
-    if: github.event_name == 'issues'
+    # Only a `destructive-proposal` issue needs the checklist (the script no-ops on
+    # every other issue). Skipping here spares a runner on every ordinary issue
+    # open/edit/label, which agents generate constantly (#3745). contains() on a
+    # string array compares case-insensitively, matching the script's lowercasing;
+    # the literal must equal PROPOSAL_LABEL in scripts/lib/destructive-analysis-guard.mjs.
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'destructive-proposal')
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
@@ -48,22 +55,3 @@ jobs:
           printf '%s' "$ISSUE_BODY" > "$body_file"
           node scripts/check-destructive-analysis.mjs --issue-body-file "$body_file" --labels "$ISSUE_LABELS"
 
-  destructive-sql:
-    name: Destructive SQL outside migrations
-    if: github.event_name != 'issues'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Prove the guard can fail
-        run: node --test scripts/check-destructive-analysis.test.mjs
-      - name: Scan SQL added by this change
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"

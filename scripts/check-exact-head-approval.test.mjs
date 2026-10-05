@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
+import { MERGE_ADVISORY_CONTEXT } from './manage-migration-author-lanes.mjs'
 import { evaluateExactHeadApproval as evaluateRaw, evaluateApprovalWithRefresh, gatherApprovalInput, main as approvalMain, selectMergeAuthorizationAtMerge, MERGE_AUTHORIZED_DESCRIPTION, DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION, parseAssignmentRef, requireDurableVerdictInput, resolveApprovalMainRef, ApprovalCheckError } from './check-exact-head-approval.mjs'
 import { isValidatedVerdictArtifact } from './lib/review-verdict-artifact.mjs'
 
@@ -335,7 +336,7 @@ test('issue 2075: the merge gate refuses input that carries no durable verdict l
 // Driven through the ADAPTER with the ref, commit and comment shapes GitHub
 // actually returns, because the gap was in what the adapter never read.
 const RETURN_HEAD = 'a'.repeat(40)
-function returnedSlotGithub({ redrawSequence = null, redrawReviewer = 'glm-5.3' } = {}) {
+function returnedSlotGithub({ redrawSequence = null, redrawReviewer = 'glm-5.3', livePr = null } = {}) {
   const issue = 1824, pr = 1931
   const assignment1 = '1'.repeat(40), assignment2 = '2'.repeat(40), redraw = '7'.repeat(40)
   const findingsBody = 'review findings', findingsRef = `https://github.com/u2giants/shared-db/pull/${pr}#issuecomment-1`
@@ -373,7 +374,7 @@ function returnedSlotGithub({ redrawSequence = null, redrawReviewer = 'glm-5.3' 
       if (endpoint.includes('/git/matching-refs/db-review-verdict-replacements')) return []
       if (/\/git\/commits\/[0-9a-f]{40}$/.test(endpoint)) return commits.get(endpoint.split('/').pop())
       if (endpoint.includes('/issues/comments/')) return { body: findingsBody }
-      if (/\/pulls\/\d+$/.test(endpoint)) return { head: { sha: RETURN_HEAD } }
+      if (/\/pulls\/\d+$/.test(endpoint)) return livePr ?? { head: { sha: RETURN_HEAD } }
       throw new Error(`unexpected endpoint ${endpoint}`)
     },
     pages: () => [],
@@ -401,6 +402,29 @@ test('a returned slot is answered only by an assignment drawn after the returned
 test('two durable approvals from the same reviewer never satisfy independent slots', () => {
   const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
   assert.throws(() => evaluateExactHeadApproval(input), /review slots at exact head .* share reviewer kimi-k3/)
+  assert.equal(input.mergedAtHead, false, 'an open pull request is never merged at its head')
+})
+
+test('2026-10-02 ruling: a shared slot >= 2 reviewer is accepted only when the PR is merged at this exact head', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
+  assert.throws(() => evaluateExactHeadApproval({ ...input, mergedAtHead: false }), /share reviewer kimi-k3/)
+  assert.equal(evaluateExactHeadApproval({ ...input, mergedAtHead: true }).approved, true)
+})
+
+test('2026-10-02 ruling: gatherApprovalInput derives mergedAtHead from the live PR on the production path', () => {
+  const shared = { redrawSequence: 9, redrawReviewer: 'kimi-k3' }
+  const merged = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ ...shared, livePr: { state: 'closed', merged: true, merged_at: '2026-10-02T00:00:00Z', head: { sha: RETURN_HEAD } } }))
+  assert.equal(merged.mergedAtHead, true)
+  assert.equal(evaluateExactHeadApproval(merged).approved, true)
+  for (const livePr of [
+    { state: 'open', merged_at: '2026-10-02T00:00:00Z', head: { sha: RETURN_HEAD } },
+    { state: 'closed', merged_at: null, head: { sha: RETURN_HEAD } },
+    { state: 'closed', merged_at: '2026-10-02T00:00:00Z', head: { sha: 'f'.repeat(40) } },
+  ]) {
+    const input = gatherApprovalInput({ PR_NUMBER: '1931', REQUESTED_SHA: RETURN_HEAD }, returnedSlotGithub({ ...shared, livePr }))
+    assert.equal(input.mergedAtHead, false)
+    assert.throws(() => evaluateExactHeadApproval(input), /share reviewer kimi-k3/)
+  }
 })
 
 // APPROVAL CARRY-FORWARD (#2758). Head A was approved; the PR then merged main and
@@ -993,4 +1017,60 @@ test('#2839 round 3 L4: a throwing documents-only classification refuses rather 
 })
 test('#2839 round 3 M2: the audit admits what the documents-only producer admits (plan file)', () => {
   assert.equal(gatherApprovalInput({ PR_NUMBER: '1931', APPROVAL_AUDIT: 'merged' }, docsOnlyMerged(['plan_example.md'])).mergeAudit.statusId, 40)
+})
+
+// ISSUE #3505 (regression). PR #3311 merged as a code change carrying only the #2838
+// advisory status ("Not applicable: code change; guarded code checks required") and no
+// `Migration guarded merge authorization` at all. A code PR with only the advisory must
+// never be treated as merge-authorized. The advisory lives on its own context name
+// (MERGE_ADVISORY_CONTEXT) and must never satisfy the guarded-merge context.
+test('#3505: a code PR with only the advisory status is refused at merge-authorization audit', () => {
+  const advisoryOnly = [
+    {
+      id: 60,
+      context: MERGE_ADVISORY_CONTEXT,
+      state: 'success',
+      description: 'Not applicable: code change; guarded code checks required',
+      creator: { login: 'github-actions[bot]' },
+      created_at: BEFORE_MERGE,
+    },
+  ]
+  assert.throws(
+    () => selectMergeAuthorizationAtMerge(advisoryOnly, Date.parse(MERGED_AT), 1931, MERGED_AT, { isDocumentsOnly: () => false }),
+    /no guarded-merge authorization status/,
+  )
+})
+
+test('#3505: the advisory context is distinct from the real grant context', () => {
+  const advisoryOnly = [
+    {
+      id: 61,
+      context: MERGE_ADVISORY_CONTEXT,
+      state: 'success',
+      description: 'Not applicable: code change; guarded code checks required',
+      creator: { login: 'github-actions[bot]' },
+      created_at: BEFORE_MERGE,
+    },
+  ]
+  // A status posted under the advisory name must never be selected as a grant.
+  assert.throws(
+    () => selectMergeAuthorizationAtMerge(advisoryOnly, Date.parse(MERGED_AT), 1931, MERGED_AT),
+    /no guarded-merge authorization status/,
+  )
+  // Even if the advisory description were somehow posted under the grant context,
+  // it must not pass as a lawful authorization.
+  const disguised = [
+    {
+      id: 62,
+      context: MERGE_SELF_CONTEXT,
+      state: 'success',
+      description: 'Not applicable: code change; guarded code checks required',
+      creator: { login: 'github-actions[bot]' },
+      created_at: BEFORE_MERGE,
+    },
+  ]
+  assert.throws(
+    () => selectMergeAuthorizationAtMerge(disguised, Date.parse(MERGED_AT), 1931, MERGED_AT, { isDocumentsOnly: () => false }),
+    /is not a lawful authorization/,
+  )
 })

@@ -18,13 +18,59 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { START_SLO_MS, createDurableStartRerouteAdapter, dispatchQueuedReroute, reserveReviewerReroute, reviewerStartDecision } from './start-reroute.mjs'
-import { dispatchSubref, liveIo as canaryLiveIo } from './start-reroute-canary.mjs'
+import { canonicalJson } from './evidence-bundle.mjs'
 import { runGitHubCommand } from '../lib/github-transport.mjs'
 import { currentRepository } from '../lib/repository-identity.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
+// Run 36487949025: an unbounded manager child hung for hours inside the author mutex.
+// Each gh call inside it is now bounded too; this caps the whole child.
+export const MANAGER_TIMEOUT_MS = 15 * 60 * 1000
 export const MANAGER = path.resolve(HERE, '..', 'manage-migration-author-lanes.mjs')
 export const REPLACEMENT_PROVIDER = 'next-eligible'
+
+// Git refs are files: a reservation at refs/x cannot have refs/x/child. Keep
+// dispatch and terminal markers as siblings of the reservation ref.
+export const dispatchSubref = (ref, kind) => `${ref}--${kind}`
+
+/** Create-only durable ref adapter for reviewer reroutes. */
+export function liveDurableIo(repo, api = (args) => runGitHubCommand(['api', ...args])) {
+  const json = (args) => JSON.parse(api(args) || 'null')
+  const refRead = (ref) => {
+    try {
+      const row = json([`repos/${repo}/git/ref/${ref.replace(/^refs\//, '')}`])
+      return JSON.parse(json([`repos/${repo}/git/commits/${row.object.sha}`]).message)
+    } catch (error) {
+      if (/Not Found|404/.test(String(error.message ?? error))) return null
+      throw error
+    }
+  }
+  const refCreate = (ref, value) => {
+    const main = json([`repos/${repo}/git/ref/heads/main`]).object.sha
+    const tree = json([`repos/${repo}/git/commits/${main}`]).tree.sha
+    const commit = json(['-X', 'POST', `repos/${repo}/git/commits`, '-f', `message=${canonicalJson(value)}`, '-f', `tree=${tree}`, '-f', `parents[]=${main}`]).sha
+    try {
+      api(['-X', 'POST', `repos/${repo}/git/refs`, '-f', `ref=${ref}`, '-f', `sha=${commit}`])
+      return true
+    } catch (error) {
+      if (refRead(ref) !== null) return false
+      throw error
+    }
+  }
+  return {
+    withMutex: (fn) => fn(),
+    readPair: refRead,
+    compareCreatePair: (ref, _expected, pair) => refCreate(ref, pair),
+    readLive: () => { throw new Error('readLive is bound by the watcher') },
+    readDispatchAck: (ref) => refRead(dispatchSubref(ref, 'dispatch-ack')),
+    readDispatchClaim: (ref) => refRead(dispatchSubref(ref, 'dispatch-claim')),
+    compareCreateDispatchClaim: (ref, claim) => refCreate(dispatchSubref(ref, 'dispatch-claim'), claim),
+    compareCreateDispatchAck: (ref, ack) => refCreate(dispatchSubref(ref, 'dispatch-ack'), ack),
+    readReroute: (ref) => { const pair = refRead(ref); return pair ? { digest: pair.digest, record: pair.record } : null },
+    createAccepted: (ref, digest, result) => refCreate(ref, { digest, result }),
+    readAccepted: refRead,
+  }
+}
 
 export function assignmentForLease(row) {
   return { id: `review-${row.issue}-${row.pr}-seq${row.sequence}-slot${row.slot}`, head_sha: String(row.headSha).toLowerCase(), assigned_at: row.heldSinceIso }
@@ -214,11 +260,12 @@ export function pendingFromRefNames(refs) {
 
 export function liveWatchIo(repo, env = process.env) {
   const manager = (args) => {
-    const run = spawnSync(process.execPath, [MANAGER, ...args], { encoding: 'utf8', env, maxBuffer: 16 * 1024 * 1024 })
+    const run = spawnSync(process.execPath, [MANAGER, ...args], { encoding: 'utf8', env, maxBuffer: 16 * 1024 * 1024, timeout: MANAGER_TIMEOUT_MS, killSignal: 'SIGKILL' })
+    if (run.error?.code === 'ETIMEDOUT') throw new Error(`lane manager ${args[0]} did not finish within ${MANAGER_TIMEOUT_MS / 60000} minutes and was killed`)
     if (run.status !== 0) throw new Error(String(run.stderr || run.stdout || `manager exited ${run.status}`).trim())
     return JSON.parse(run.stdout)
   }
-  const durable = canaryLiveIo(repo).durable
+  const durable = liveDurableIo(repo)
   const rerouteRefs = () => JSON.parse(runGitHubCommand(['api', '--paginate', '--slurp', `repos/${repo}/git/matching-refs/db-start-reroutes/reviewer/`]) || '[]').flat().map((row) => row.ref)
   const pendingReroutes = () => pendingFromRefNames(rerouteRefs())
   return { now: () => new Date().toISOString(), readLeases: () => manager(['--reviewer-start-watch-leases']), manager, durable, rerouteRefs, pendingReroutes }

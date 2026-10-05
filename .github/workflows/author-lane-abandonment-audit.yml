@@ -36,7 +36,8 @@
 # NO ISSUES, NO COMMENTS, EVER. This job files nothing. An hourly monitor that
 # writes is an hourly monitor that produces duplicates — this repository has
 # already generated 25 of them once. The failing run and its job summary ARE the
-# report, and the token below cannot write even if a future step tried.
+# report. The GitHub token has no write permission; the preview-ledger token is
+# confined to the guarded report step and used only for a fixed SELECT.
 #
 # THREE EXIT CODES, NOT TWO. 0 is a clean hour. 2 means a claim is expired and a
 # human must decide. 3 means the audit COULD NOT READ the state and must never be
@@ -58,15 +59,36 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  # actions: read is required to list workflow runs (the audit's evidence
+  # source). Without it every run since 2026-09-16 exited 3 "unverifiable"
+  # on an HTTP 403 (issue #3536); the audit never once produced a result.
+  actions: read
 
 concurrency:
   group: author-lane-abandonment-audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  require-main:
+    name: Refuse abandonment audit outside main
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 2
+    steps:
+      - name: Require the protected main ref
+        env:
+          AUDIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$AUDIT_REF" != 'refs/heads/main' ]; then
+            echo '::error::Abandonment audit credentials are available only on main.' >&2
+            exit 1
+          fi
+
   audit:
     name: Author lane abandonment audit
+    needs: require-main
+    if: github.ref == 'refs/heads/main'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: preview
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +108,32 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Issue #3857: the audit's required-check authority reads need
+          # admin-level access the workflow token can never have. Same elevated
+          # read token guarded-migration-merge.yml passes, used ONLY for those
+          # two authority reads; the audit's own writes stay structurally
+          # impossible (its write hooks are removed).
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -uo pipefail
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo '::error::PREVIEW_PROJECT_REF is unset; the audit cannot read the preview ledger.' >&2
+            echo '## Author lane abandonment audit' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Unverifiable: PREVIEW_PROJECT_REF is unset; no lane result was proven.' >> "$GITHUB_STEP_SUMMARY"
+            exit 3
+          fi
+          # An unset AUTHORITY_TOKEN would fail closed SILENTLY with the same
+          # undiagnosed exit 3 this workflow's whole repair exists to eliminate
+          # (a misscoped or absent secrets.SYNC_TOKEN interpolates to empty).
+          # Name it instead (issue #3857).
+          if [ -z "${AUTHORITY_TOKEN// /}" ]; then
+            echo '::error::AUTHORITY_TOKEN is unset; the audit cannot read the required-check authority. Check that secrets.SYNC_TOKEN is available to this job (this job runs under the preview environment).' >&2
+            echo '## Author lane abandonment audit' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Unverifiable: AUTHORITY_TOKEN is unset; no lane result was proven.' >> "$GITHUB_STEP_SUMMARY"
+            exit 3
+          fi
           set +e
           node scripts/manage-migration-author-lanes.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
           CODE=${PIPESTATUS[0]}

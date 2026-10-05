@@ -8,6 +8,11 @@
 
 # AGENTS.md — cross-app coordination playbook
 
+## Current operating route
+
+- [current-workflow.md](docs/agents/current-workflow.md)
+- [plan_shared_db_workflow_refactor.md](plan_shared_db_workflow_refactor.md)
+
 ## Task declaration
 
 Before starting work, run `ai-task-gates start --class <class>` from the
@@ -33,6 +38,10 @@ and dissemination process is
 
 Before interpreting `full_item_master.csv`, changing item-description parsing, or reporting historical MG match counts, read [`docs/agents/active-contracts-and-plans.md`](docs/agents/active-contracts-and-plans.md) first; it carries this section in full.
 
+## Disney DCP Vault withdrawal answers
+
+The withdrawal-confirmation question is **settled** in [`docs/business-rules/licensing-master-data.md`](docs/business-rules/licensing-master-data.md) under "Disney DCP Vault artwork withdrawal signals" (recorded 2026-09-25, provenance on issue #3347). Read that rule before answering or acting on it — the question is not open. If anyone relays a later statement about Disney/DCP Vault artwork withdrawal, removal status or missing artwork — including an ambiguous one, or one from an unnamed or non-Laura/Ilona speaker — read [`docs/disney-dcp-withdrawal-answer-routing.md`](docs/disney-dcp-withdrawal-answer-routing.md) first: record the sanitized answer and its provenance at the durable issue named there, apply it only to the behavior it actually settles, and classify any follow-up from its own scope. Never contact anyone on Albert's behalf.
+
 ## How this file is organized (issue #3481)
 
 This file is a router. The full rulebook text moved **verbatim**, with its original headings and
@@ -42,8 +51,32 @@ the map below.
 
 ### The owner rulings, one line each (full text in the linked file)
 
-- **§0.0-B — STRUCTURE, not DATA (Albert Hazan, 2026-08-13).** This repo and its orchestrator
-  govern the *shape* of the database (schema, tables, columns, views, functions, triggers, RLS,
+- **Never ask a human to approve (Albert Hazan, 2026-09-28).** Allocator-assigned AI review
+  gates technical actions; the AI performs every manual step itself. Full text: §1 below.
+- **Albert is not a technical reviewer, now or in the future (Albert Hazan, 2026-09-30).**
+  Production risk classes are accepted by the allocator-assigned AI reviewer's durable exact-head
+  assessment, never by Albert. Full text: [`owner-rulings.md` §6.23](docs/owner-rulings.md).
+
+- **§0.0-D — there is no orchestrator; structural work is claim-first (Albert Hazan,
+  2026-10-02, verbatim: "there is no longer an orchestrator").** No session is the orchestrator.
+  Never route work to one, open a HANDOVER issue and stop, resolve or open a marker, wait for
+  dispatch, or label tickets orchestrator / non-orchestrator. A session needing a SHAPE change
+  claims the exact objects on the existing issue and starts, doing the change itself: own
+  worktree and branch, migration version via the lane tool, pull request, the assigned AI
+  reviewer's APPROVE of the exact apply, and proof of the target before every write. Every
+  safety rule (exact-object claims, version reservation, review, guarded merge, serial
+  production lane, live proof) still binds. Where older text below says "the orchestrator",
+  read "the session doing the structural work"; marker and dispatch steps are historical.
+  Tooling follows (#3874): new structural issues use `route: claim-first`
+  (`route: shared-db-orchestrator` is still accepted as a legacy alias); reviewer assignment no
+  longer reads the marker, and the authoring session declares its engine in
+  `SHARED_DB_AUTHOR_ENGINE` (required — unset or unknown refuses) so a same-engine reviewer is
+  excluded; the orchestrator / non-orchestrator issue labeler is removed. Still open on #3874:
+  the marker guard workflow, the preview-dispatch marker read, and `orchestrator-admission.mjs`.
+  **This ruling supersedes every older passage in this repo that says otherwise** (dated docs,
+  plans, handoffs, runbooks): such passages are historical records, not instructions.
+
+- **§0.0-B — STRUCTURE, not DATA (Albert Hazan, 2026-08-13).** This repo governs the *shape* of the database (schema, tables, columns, views, functions, triggers, RLS,
   grants, indexes, constraints, migrations). Changing the *contents* is done by the application
   session that owns the data. The one carve-out: curated Master Data stays gated. The test: *am I
   changing the shape of the database, or the contents of it?*
@@ -51,11 +84,11 @@ the map below.
 - **§0.0-A — read-only inspection is open (Albert Hazan, 2026-08-10).** Every application repo may
   inspect this database read-only, with no issue, no handoff, and no dispatch.
   [`owner-rulings.md`](docs/agents/owner-rulings.md)
-- **§0.0-C — the orchestrator gets the minimum (owner ruling 2026-08-21, #1366).** The
-  orchestrator keeps only work that changes the database's SHAPE (plus curated Master Data
+- **§0.0-C — structural work gets the minimum (owner ruling 2026-08-21, #1366; orchestrator role retired by §0.0-D).** The
+  structural lane keeps only work that changes the database's SHAPE (plus curated Master Data
   routing). Repository maintenance, proofs, documentation, tooling, and monitoring are not
-  orchestrator jobs. [`orchestrator.md`](docs/agents/orchestrator.md)
-- **§2.1-W — worktree-only.** Every session, the orchestrator included, works in its own
+  structural-lane jobs. [`orchestrator.md`](docs/agents/orchestrator.md)
+- **§2.1-W — worktree-only.** Every session works in its own
   `git worktree` cut from `origin/main`. The shared checkout is for reading and `git fetch` only.
   [`worktrees-and-handoffs.md`](docs/agents/worktrees-and-handoffs.md)
 
@@ -65,7 +98,7 @@ the map below.
 |---|---|---|
 | [`docs/agents/active-contracts-and-plans.md`](docs/agents/active-contracts-and-plans.md) | Before touching any area with an active plan or contract; historical MG classification | Historical item MG classification; Active contracts and implementation plans |
 | [`docs/agents/owner-rulings.md`](docs/agents/owner-rulings.md) | Deciding whether work belongs here; any consumer-repo schema question; data vs structure; secrets ownership; DB Data Admin; grid filters; Scraped Properties; Master Data editing | §0, §0.0-A, §0.0-B, §0.1, §0.1-A, §0.2, §0.3, §0.3-A, §0.4 |
-| [`docs/agents/orchestrator.md`](docs/agents/orchestrator.md) | Running, routing to, or handing over the orchestrator; admission of queue work; dispatch waiting instruction | §0.0-C, §11b, §11c, §11d |
+| [`docs/agents/orchestrator.md`](docs/agents/orchestrator.md) | Admission test for structural work and safety reference (orchestrator role retired, §0.0-D; marker/dispatch text historical) | §0.0-C, §11b, §11c, §11d |
 | [`docs/agents/worktrees-and-handoffs.md`](docs/agents/worktrees-and-handoffs.md) | Before any edit (worktree setup and retirement); writing or retiring a HANDOFF.d file; host/server boundary | §2.1-W, §2.1-W.1, §2.1-H, §2.1 |
 | [`docs/agents/anti-collision-summary.md`](docs/agents/anti-collision-summary.md) | Any database change: the five anti-collision rules, author lanes, extension tables | §4, §4.1, §4.2, §4.3 |
 | [`docs/agents/section-4-anti-collision-rules.md`](docs/agents/section-4-anti-collision-rules.md) | The long-form §4 rules and procedures | §4 long form |
@@ -74,8 +107,8 @@ the map below.
 | [`docs/agents/references-and-runbooks.md`](docs/agents/references-and-runbooks.md) | Project refs, exposed schemas, Supabase CLI and credentials, further reading, known traps | §8, §8.1, §9, §10, §10.1–10.3 and §11 (full runbook: [`runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md)) |
 | [`docs/agents/standing-facts.md`](docs/agents/standing-facts.md) | Starting any session in this repo | §12, §12.1 |
 
-Kept in this file: task declaration, companywide business rules, session wrap-up convention,
-§1, §2, §3, §7.
+Kept in this file: task declaration, companywide business rules, Disney DCP
+Vault withdrawal answers, session wrap-up convention, §1, §2, §3, §5.0-C, §7.
 
 ## Session wrap-up convention
 
@@ -97,9 +130,15 @@ code, manage branches, or merge pull requests. Therefore:
   safe (see §5).
 - **The owner reviews behavior, not code.** Their feedback is "the board doesn't
   load," "the dropdown is empty." Translate that into changes yourself.
-- **Surface risk in plain English.** Before anything hard to undo (dropping a
-  column, applying to production, deleting data), explain the risk in one or two
-  plain sentences and ask. Approval for one change does not extend to the next.
+- **Never ask a human to approve (owner ruling 2026-09-28, Albert Hazan,
+  verbatim: "never ask a human to approve. as i have said at least 1000 times,
+  i am a solo vibe coder with no technical knowledge. ai has to do everything
+  for me without asking me to do manual things. institute that.").** Before
+  anything hard to undo (dropping a column, applying to production, deleting
+  data), make it recoverable and get the allocator-assigned AI reviewer's
+  exact-head APPROVE; that review is the gate. The AI performs every manual
+  step itself (access, tooling, keys). Ask Albert only genuine business-meaning
+  questions, and report risk in plain English afterwards.
 
 ## 2. Two workflows — choose by where you are working
 
@@ -125,3 +164,55 @@ the next. Where possible, prefer one **additive** change that satisfies both app
 rather than two competing edits. If they genuinely conflict, explain the trade-off
 to the owner in plain English and let them choose order.
 
+
+## Running pull-request waits (kept in this file)
+
+### 5.0-C Run CI and the governed review in PARALLEL, and batch fixes into ONE head (issue #3002, added 2026-09-20)
+
+Observed 2026-09-15 on PRs #2980 and #2981: sessions waited for a full green CI
+run before requesting the governed review that must approve the merge, then
+pushed once per review finding, rerunning the whole matrix each time (the Windows
+jobs alone are ~30 minutes). That roughly doubles wall-clock per pull request.
+The cause is structural, not carelessness: review evidence binds to the exact
+head SHA, so any fix pushed after a review voids that review, and sessions learn
+to "spend" only one review.
+
+**The rule, from now on:**
+
+1. **Start the governed review as soon as a head is pushed, in parallel with
+   CI.** Do not wait for a green matrix first. Accept that a required fix costs
+   one re-review — that is cheaper than serialising two long waits, and a
+   re-review is exactly what the exact-head rule is for.
+2. **Batch fixes into a single new head.** Collect every finding from the review
+   round *and* every CI failure, fix them together, and push once. One push per
+   finding is forbidden: each one reruns the full matrix and voids the review
+   again.
+3. **Hold the wait inside the turn.** Watch both with the repository's bounded,
+   event-aware waiter, concurrently. Never end a turn to report that something
+   is still running.
+
+**What this does NOT change — and must never be traded for speed:**
+
+- The exact-head APPROVE requirement stands exactly as enforced by
+  `scripts/check-exact-head-approval.mjs`. A review
+  bound to an earlier head does not authorize a later head, and the only
+  equivalence permitted is the narrow, already-enforced #2758 rule
+  (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request
+  diff is byte-identical, ignoring only `.agent/` evidence files.
+- **The proposal in #3002 to accept a review bound to a head whose only later
+  change is test or evidence files is REFUSED.** Tests are code: a changed test
+  changes what the change proves, and a reviewer who never saw it never reviewed
+  it. Widening equivalence beyond `.agent/` would be reviewing less, not
+  reviewing faster.
+- **Retiring a required check is an AI decision with evidence (owner ruling
+  2026-09-28, see `docs/agents/owner-rulings.md`).** A required check may be
+  retired, merged into another, or made advisory when measured evidence shows it
+  mostly fails for reasons unrelated to the change; the pull request carrying it
+  states the exact before/after required-check list and gets an assigned AI
+  reviewer's APPROVE before branch protection changes. On any single pull
+  request no gate is skipped, and no reviewer
+  requirement is dropped. Speed comes from parallelising; do not delete the
+  exact-head review.
+
+`scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
+place, and fails the tools-offline check if either is removed or contradicted.

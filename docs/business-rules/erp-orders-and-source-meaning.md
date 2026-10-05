@@ -10,6 +10,223 @@ An ERP field name does not establish its business meaning. Every imported field 
 
 Google OrderList rows and future ColdLion rows describe the same real orders. They are not competing order systems. One canonical order and line must retain separate source references for each system. The ultimate item list belongs to the canonical PLM item identity.
 
+## How a new order enters the system (OrderList intake)
+
+**Status:** Settled where marked; the named Unknowns are open. Authority: Albert, 2026-09-17,
+cross-checked against the live-workbook inspection of 2026-08-28 (shared-db issue #1772).
+
+The two live Google sheets this program replaces (Settled, Albert, 2026-09-17):
+
+| Legacy Google sheet | Replaced by |
+|---|---|
+| `OrderList`, spreadsheet `1i1da5J0qy5a0EvsO1CvfyQ6Xijn4678LG7TFqbwxwUk` | the canonical order objects (`plm.production_order` / `plm.production_order_line`) and their DesignFlow UI |
+| `MasterData` (legacy Google workbook; ID recorded in [`master-data-access.md`](master-data-access.md) and also cited in `plan_popdam_order_list.md` and migration `20260710135600`) | the Master Data / Styles grid (`dam.designflow.app/styles`) |
+
+Intake sequence for a new customer order (Settled, Albert, 2026-09-17):
+
+1. Adam (sales) receives the order from the customer, usually as a PDF.
+2. Adam sends it to JamieLynn at ColdLion, who manually enters it into the ColdLion ERP. That
+   manual entry is the trigger every downstream step depends on; nothing in this program
+   replaces it.
+3. Adam then creates the OrderList row himself, typing only the human-input columns (Albert,
+   2026-09-17, by column number): 10 Order Person, 11 Order Type, 12 Customer, 14 Customer PO#,
+   15 Assortment ID or 16 Style# (one or the other, never both), 21 Quantity, 22 Case Pack,
+   24 Ship To, 25 Start Ship Date, 26 Cancel Date. Import PO# (col 02) is entered to create the
+   order and becomes immutable afterwards. (Consistent with the 2026-08-28 issue-#1772
+   inspection, which additionally listed col 18 Order Depth as human input; Albert's 2026-09-17
+   list omits it.)
+4. Description, licensing status, and the other lookup/calculated columns then carry values
+   sourced from the linked Master Data sheet; Adam does not type them.
+5. Yuchen (NY-based production coordinator; not currently a user of the DesignFlow system) then
+   writes the production PO to the factory and enters columns 02 Import PO#, 03 Order vendor,
+   04 Seal Container Day, and 05 Sent PO Date. The remaining columns auto-populate, partly from
+   the workbook's PO tab (gid `426779438`). (Settled, Albert, 2026-09-17.)
+
+On the mechanism behind step 4: the 2026-08-07/09 formula audit found no Master Data lookup
+formulas on the `Order` tab, while the 2026-08-28 inspection found gray columns explicitly
+marked automatic. Both are honest for their dates; whether the population is live formulas or
+another path was never re-audited and does not need to be — the replacement system does not copy
+either mechanism. Description and licensing status are projections from the linked canonical
+item / Master Data (48-column contract, columns S and T).
+
+**Unknowns**
+
+- The full set of automatic columns beyond description and licensing status is recorded only in
+  the live workbook, not yet in this library.
+
+**Automatic order intake from ColdLion (Settled, Albert, 2026-09-17).** The DesignFlow system
+polls the ColdLion API periodically during the business day and creates the canonical order rows
+automatically, replacing Adam's typing (step 3) only. JamieLynn's manual ERP entry (step 2) stays
+manual. The poll is an **unsealed current-window poll on our side**: waiting for ColdLion to
+build a changed-since filter is explicitly ruled out — vendor programming would take time and
+may not happen. Yuchen's production-PO columns (step 5) are out of scope for this automation.
+
+Field coverage of Adam's input columns from `/orderHistory` (verified against the landed
+`coldlion.order_history_line` projection, the 2026-08-19 field census, and live probes on
+2026-09-17):
+
+| Adam's column | `/orderHistory` field | Populated |
+|---|---|---|
+| 10 Order Person | `salesPersonCode1` (name via `/salespersons` master) | 100% |
+| 11 Order Type | `warehouseCode`/`warehouseDesc` routing code — the term prefix | see note |
+| 12 Customer | `customerCode` + `customerDesc` | 100% |
+| 14 Customer PO# | `poNumber` | 100% |
+| 15/16 Assortment ID / Style# | `itemNo` master; `prePackCode` + `prepackQty` + `subItemNo` components for assortments | 100% / 72.5% prepack |
+| 21 Quantity | `orderQty` (per-SKU quantity — use this). `lineQty` is a parent-line total repeated on every exploded component; never read it as a per-SKU quantity and never sum it (`20260905105038:604-605`) | 100% |
+| 22 Case Pack | not on the order line — item grain via `/itemDetails` `cartonQty` | see note |
+| 24 Ship To | the same routing code's destination part (FOB excepted: its origin port is added sheet-side, not in the code — see the routing table) | see note |
+| 25 Start Ship Date | `startDate` | 100% |
+| 26 Cancel Date | `cancelDate` | 100% |
+
+**Order Type and Ship To are one ColdLion field — solved live 2026-09-17.** After
+cross-checking recent OrderList rows against the feed, both columns turn out to be projections
+of the routing code in `warehouseCode`/`warehouseDesc`. Observed live and cross-walked against
+the sheet's own vocabulary (Order Type: FOB 6,811 / POE 2,154 / MDDP 403 rows; Ship To: NINGBO
+7,948 / LA 2,964 / NJ 548 / SAVANNAH 67 — the two vocabularies were counted independently over
+the same sheet and are both partial (the Order Type list ends in "…"), so they do **not**
+partition the same rows; never reconcile one set against the other or treat a mismatch as a
+defect):
+
+| ERP `warehouseCode` / `warehouseDesc` | Sheet Order Type | Sheet Ship To |
+|---|---|---|
+| `FOB` / `FOB` | FOB | — (origin port Ningbo/Xiamen/Qingdao/Shanghai is NOT in the code; it is added on the sheet side) |
+| `POECA` / `POE CALIFORNIA` | POE | LA |
+| `POEGA` / `POE GA Savannah` | POE | SAVANNAH |
+| `DDPNJ` / `DDP New Jersey` | POE | NJ |
+| `MDDP` / `MDDP` | MDDP | NINGBO (on the sheet) |
+
+**POE vs DDP — definitions and who differentiates them (Settled, Albert, 2026-09-17).** Where POP's delivery responsibility ends for each sales-order term (FOB China, POE NJ, POE L.A., Warehouse) is Settled in [`shipping-terms-and-delivery-responsibility.md`](shipping-terms-and-delivery-responsibility.md).
+
+- **POE (port of entry):** POP is responsible for getting the goods to a domestic port and
+  paying freight and duty; the customer picks the container up at that port.
+- **DDP:** POP must additionally truck the container from the domestic port to the customer's
+  warehouse.
+- **Forman Mills and Shoppers World are DDP orders**, not POE, despite their OrderList rows
+  saying POE. DD's Discounts is a true POE (LA) customer.
+- **ColdLion differentiates the two; the Google OrderList does not.** The ERP carries distinct
+  routing codes — Forman Mills and Shoppers World ride `DDPNJ` ("DDP New Jersey") while
+  Burlington as POE rides `POECA`, and Spencer Gifts uses a whole DDP-state family (`DDPPA`,
+  `DDPOH`, `DDPNC`, `DDPCA`, `DDPGA`). The sheet's Order Type vocabulary (FOB / POE / MDDP /
+  CONTRACTUAL SAMPLE / DAVID SAMPLE / C STOCK / STOCK / …) contains **no generic DDP value** —
+  `MDDP` is listed but is a distinct DDP variant code, not a catch-all "DDP" label — so
+  plain DDP orders (Forman Mills, Shoppers World) are labelled POE+NJ on the sheet. The
+  automation's Order Type derived from the ERP routing code is therefore *more correct than
+  the manual sheet column it replaces*.
+
+**Routing-code vocabulary (all observed live, 2026-09-17, sales and production sides):**
+
+| Code | Description | Meaning |
+|---|---|---|
+| `FOB` | FOB | free on board (customer's freight from origin) |
+| `POECA` | POE CALIFORNIA | port of entry, California (Burlington, DD's) |
+| `POEGA` | POE GA Savannah | port of entry, Savannah |
+| `POEVA` | POE GA Norfolk | port of entry, Norfolk (code says VA, description says GA — as returned) |
+| `POE` | POE | bare port-of-entry code, destination unstated |
+| `DDPNJ` / `DDPMD` / `DDPPA` / `DDPOH` / `DDPNC` / `DDPCA` / `DDPGA` | DDP + state | delivered duty paid, trucked to the customer's state |
+| `MDDP` | MDDP | customer pays freight and arranges shipping; POP clears US customs and pays duty (Settled, Albert, 2026-10-02 — see [`shipping-terms-and-delivery-responsibility.md`](shipping-terms-and-delivery-responsibility.md)); the letter expansion is still unstated |
+| `DES001` | Deco Signs | drop-ship/destination code |
+| `ANT001` | ANTHONY'S WAREHOUSE | POP-side warehouse |
+| `WMFC` | Walmart Fulfillment Center | |
+
+**Production orders carry a second vocabulary that can disagree with the routing code.**
+`/prodtracking`'s `prodTypeCode` (101 recent production orders): `FOBCHINA` x62, `POECA` x18,
+`POE` x13, `FOBUSA` x5, `FOBINDIA` x2, `POEVA` x1. The Forman Mills / Shoppers World orders are
+`prodTypeCode = POE` while their `warehouseCode = DDPNJ` — the two fields disagree, and the
+**`warehouseCode` is the one that matches the POE-vs-DDP business meaning** (Albert,
+2026-09-17). `FOBUSA` pairs with `DES001`; `FOBINDIA` appeared with both `FOB` and `DDPMD`.
+
+- The DDP-vs-MDDP wording distinction and the bare-`POE` destination are still to be collected
+  empirically. `udf01` is the constant `"01"` everywhere sampled and `labelCode`/`labelDesc`
+  are per-customer label/program codes — neither is order type.
+- CONTRACTUAL SAMPLE / DAVID SAMPLE / C STOCK / STOCK sheet order types correspond to the
+  settled `COS` and stock-order rules and are recognised separately, not via this field.
+- **Case Pack** stays item-grain: `/itemDetails` returns `cartonQty`, `innerPackQty`,
+  `cartonPackType` and carton dimensions/weight, with real varying values (1, 4, 7 observed).
+  Auto-fill as the item default; the sheet's line-level exceptions (380 text/multiline cells in
+  the historical profile) stay human.
+
+- **FOB point is a production-order detail (Albert, 2026-09-17), and `/prodtracking` is where
+  the ERP keeps it — but the specific port is not populated today.** `/prodtracking` is the
+  production-order header endpoint (52 fields, one row per `prodOrderNo`): it declares
+  `shipPortCode`, `arrivalPortCode`, `containerNo`, `freightForwarderCode`, plus
+  `createdTime`/`createdUser`, deposit tracking, hang-tag tracking, and `ftySalesRep`. Across
+  101 recent production orders: `shipPortCode` empty on all 101; `arrivalPortCode` populated
+  once (`NY`) with a `containerNo` alongside it — the slots are real and get filled later in
+  the process, not at entry. What IS available at entry is origin **country** granularity via
+  `prodTypeCode` (`FOBCHINA`, `FOBINDIA`, `FOBUSA`). Near-term, FOB Ship To (the specific Ningbo/Qingdao/Xiamen/Shanghai port) stays human; no derived substitute may be invented;
+  long-term, ask ColdLion to populate `shipPortCode`. `/prodtracking`'s `createdFrom`/`createdTo`
+  filters returned zero rows for a known-populated range — access by `prodOrderNo` works and is
+  the reliable route. `/proddetails` separately carries real `createdTime`/`createdUser` at
+  production-line grain.
+- **FOB Ship To maps from `shipPortCode` (Settled, Albert, 2026-09-17).** Albert will ask
+  JamieLynn to start entering the FOB point there. Until it is populated the field reads empty
+  and FOB Ship To stays human; no derived substitute may be invented.
+
+**Three join rules and one correction from the deep cross-check (live, 2026-09-17).** Chasing
+five "missing" sheet orders through the production side found every one of them in the ERP,
+entered weeks earlier — and corrected an earlier note here that had blamed JamieLynn's entry
+timing. The misses had three real causes, each now a rule:
+
+1. **Customer-PO numbers are zero-padded inconsistently.** The ERP carries a 10-digit
+   zero-padded value (synthetic shape: `"0001234567"`) and an ordinary 8-digit value
+   (synthetic shape: `"87654321"`) in the same fields — observed on the live feed
+   2026-09-17. Any join against a sheet-typed
+   customer PO must normalize by stripping leading zeros first.
+2. **The ERP's `startDate` is its own value, not the sheet's Start Ship Date.** Same orders:
+   ERP 2026-12-04 vs sheet 2026-11-21; ERP 2026-10-02 and 2026-10-30 vs sheet 2026-10-10. The
+   window filter keys on the ERP date, so the sales rows sat in future windows far from where
+   the sheet dates pointed. Expected divergence, not an error; the automation maps ERP values.
+3. **The sales orders are findable through the production side even when window scans miss:**
+   `prodHistory` rows carry the linked `salesOrderNo` plus `custPONumber`, and
+   `orderHistory?salesOrderNo=` then retrieves the sales order directly within its (now known)
+   start-date window.
+4. **Correction:** JamieLynn's entry does **not** lag Adam's sheet typing in the way an earlier
+   note here claimed — the tested orders were all in the ERP, keyed around the time the
+   production POs were cut. That note is withdrawn and replaced by rules 1–3.
+
+**Forward-scan horizon (Settled, Albert, 2026-09-17):** API calls are cheap; never economise
+call volume at the cost of missing data. The poll scans forward windows generously — until
+consecutive empty months, not a fixed short horizon — in addition to the trailing re-read.
+
+**One sales order maps to many production orders (Settled, Albert, 2026-09-17).** A single
+customer order is regularly fulfilled by multiple production POs, and the reverse also occurs
+(one production PO serving several customer orders). Verified on the live sheet the same day:
+434 of 4,005 customer POs carry 2–12 distinct Import PO numbers, and customer PO differs inside
+806 Import-PO groups. Consequences for the canonical model:
+
+- A ColdLion `salesOrderNo` is **never** the identity of a canonical `production_order` header
+  (the header grain stays one per Import PO).
+- Sales-order rows created by the automatic intake are **placeholders** representing the
+  customer order before production exists. When production orders are later written against
+  that customer order, they **claim the placeholder's lines line-by-line** (splitting
+  quantities where one sales line is produced across factories); they never merge headers.
+- A fully claimed placeholder is retired as evidence, never deleted.
+
+Also recorded: the API exposes a **`POST /order`** insert-sales-order endpoint, unused by us.
+JamieLynn's manual entry stays manual under the 2026-09-17 ruling; this only notes that the
+lever exists.
+
+Two technical constraints on the poll design:
+
+- **The feed carries no created/entry timestamp — verified live 2026-09-17.** A direct probe of
+  `/orderHistory` for the open week 2026-09-11..17 returned the full 63-field payload (the
+  2026-08-19 census said 59; the 2026-08-31/09-01 additions raised it). The only date-valued
+  fields are `startDate`, `cancelDate`, and `invoiceDateString` — none is a record-creation
+  date. The rolling re-read must be the checkpoint, not a per-row created date. Detect new
+  orders as `salesOrderNo` values not seen before, deduplicate by the landed identity plus
+  source hash, and re-read a trailing window so late corrections land as new versions.
+- **The window filter keys on the ERP start date — verified live 2026-09-17.** Windows in
+  October, November and December 2026 return live rows today (a November window held 42 rows,
+  a December window 117), and every returned row's `startDate` falls inside its requested
+  window. A current-week-only poll therefore cannot see newly entered orders with future ship
+  dates — which is the norm — so detection requires scanning forward windows to a generous
+  horizon (Settled ruling above) in addition to the trailing re-read.
+- **The API itself serves the open week.** The same probe returned 135 live rows across 3 pages
+  for the still-open current week. The up-to-a-week trailing lag is purely our sealed-window
+  landing design, not a vendor limitation. The pre-fulfilment signal also works live: rows with
+  both `pickTicketNoString` and `invoiceNoString` empty are present and identifiable in the
+  current week.
+
 ## The customer master is not a customer list
 
 ColdLion's customer table includes ship-to-only records (a Licensor POP ships to
@@ -135,6 +352,29 @@ and it is done by owner decision, never by an automated mapping.
 - **Sub-UPCs are rarely populated**, because UPCs are not usually assigned to prepack components.
   (2026-08-17)
 - **Merchandise groups carry an active/inactive flag**, and it is live. (2026-08-20)
+- **`/proddetails` row identity is `pkey`.** Primarily `pkey`, but consider stage code.
+  Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **`prodLineSeq` on `/proddetails` groups sizes** (one item/color/label/dim). It can repeat and
+  is not a line identity. POP does not use apparel sizes, so the field means nothing for us —
+  never treat it as unique. Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **Ignore `/proddetails` rows with `prodQty` = 0.** They look like a quantity zeroed out instead
+  of cancelled; same effect. Authority: ColdLion technical team, 2026-09-29. **Settled.**
+- **Pull `/proddetails` at `ISS` stage and ignore the rest.** Extra production-order lines often
+  exist only to show in-transit and receiving. Authority: ColdLion technical team, 2026-09-29.
+  **Settled for the loader.**
+- **Never sum, merge or de-duplicate `/proddetails` rows on `(prodOrderNo, prodLineSeq)`.**
+  Identical rows and split quantities are the customer PO entered as written. Authority:
+  JamieLynn, 2026-09-24. **Settled.**
+- **A cancelled-quantity field exists on the production side**, but whether the back office
+  cancels or deletes cancelled lines is **Unknown**. Authority: ColdLion technical team, 2026-09-29.
+- **Factory amount owed is the sum of `prodQty` × `prodCost` over every real row.** Split
+  quantities and faithful double-entered PO lines are both valid charges. Authority: JamieLynn,
+  2026-09-29 (answers to the worked examples). **Settled.**
+- **Ikonick production-order rows that do not fit the model are an owner exception.** When the
+  customer on an order is Ikonick, either ignore the awkward rows or squeeze them to fit our
+  system/method. Ikonick POs do not have to make sense. Multi-cost rows under one item on an
+  Ikonick order are this case (the item stood for different things reported under one number).
+  Authority: Albert Hazan, 2026-09-29. **Settled owner ruling.**
 
 ## How ColdLion works — our working model of the ERP
 
@@ -193,6 +433,29 @@ returns **only the issued lines**. The other stages are not a subset; they are r
 nowhere in the default response. A production pull that does not iterate the stages is silently
 incomplete. **Settled**, verified live.
 
+### `/proddetails` rows are keyed by `pkey`; `prodLineSeq` is not a line identity
+
+**Settled** (ColdLion technical team, 2026-09-29; identity scan and shapes A–C earlier).
+
+- **`pkey` uniquely identifies a `/proddetails` row.** Look primarily at `pkey`, but consider
+  stage code. The landing primary key `(company_code, pkey)` is the right grain.
+- **`prodLineSeq` groups sizes** of one item/color/label/dim. It **can repeat**. POP does not
+  use size, so the field means nothing here and must never be a unique constraint.
+- **Look-alike rows are real.** A customer PO can carry the same line twice (exact duplicate) or
+  split a quantity across two rows. Do not de-duplicate and do not collapse them into one line.
+  For **payment**, add `prodQty` × `prodCost` across those rows (settled 2026-09-29).
+- **Ignore `prodQty` = 0.** Those rows are zeroed rather than cancelled; same effect as cancel.
+- **Filter to `ISS` when loading production-order detail.** Other rows often only show in-transit
+  and receiving, not extra purchase lines.
+- **Cost impact is settled (JamieLynn, 2026-09-29): each real row is a real charge.** Amount
+  owed to the factory = sum of `prodQty` × `prodCost` across the rows. A split-quantity line
+  (400 + 200 of one item) is 600 units owed. A customer PO that carries the same line twice
+  (1600 + 1600) is 3200 pieces owed, not a duplication. Keep the rows separate; add the money.
+- **Ikonick multi-cost rows are an owner exception, not a cost formula.** Same item at several
+  unit costs on one line is the Ikonick pattern: the item stood for different things reported
+  under one number. Either ignore those rows or squeeze them to fit our method. Do not treat
+  that shape as a general multi-cost rule. Owner ruling, Albert, 2026-09-29.
+
 ### What ColdLion computes, and what it refuses to explain
 
 - Invoiced and open quantities are **not carried at component level**.
@@ -211,11 +474,15 @@ incomplete. **Settled**, verified live.
 
 ### Not every endpoint answers in the same shape
 
-Most ColdLion endpoints return a wrapper carrying the rows plus a total count, a page count and an
-end-of-data flag. **The order-history endpoint does not** — it returns a bare list, with no count
-and no working paging. Anything reading it must handle a plain list, and cannot ask how big a window
-is without pulling the whole window. This has already produced one false finding that nearly went
-back to ColdLion as a defect report. **Settled**, verified live 2026-08-28.
+**Superseded 2026-08-31; re-verified live 2026-09-17.** The order-history endpoint *did* return
+a bare list with no count and no working paging until 2026-08-31 — a shape that once produced a
+false finding which nearly went back to ColdLion as a defect report. Both history endpoints now
+return the standard paged envelope and genuinely honour `page`/`size`, subject to an
+undocumented **page-size cap of 200 rows**: always loop until `last` is true, and never infer
+completeness from a single large request. `/merchGroupDetails` still returns a plain JSON
+array. **Settled** (original bare-list finding verified live 2026-08-28; paging change verified
+live 2026-08-31 and re-verified 2026-09-17, envelope keys `last`, `totalElements`, `totalPages`,
+`size`, `number` observed on a live response).
 
 ### Manual intervention is normal, and it is visible in the data
 
@@ -378,4 +645,4 @@ all three have already cost us once:
 
 ## Implementation and evidence
 
-The field-by-field source evidence and formula findings remain in [`../business-rules-erp-data.md`](../business-rules-erp-data.md), [`../app-migration-notes/popdam-order-list.md`](../app-migration-notes/popdam-order-list.md), and the linked formula audit. This page is the companywide entry point.
+The field-by-field source evidence and formula findings remain in [`../business-rules-erp-data.md`](../business-rules-erp-data.md), [`../app-migration-notes/popdam-order-list.md`](../app-migration-notes/popdam-order-list.md), and the linked formula audit. The intake column contract (human-input vs automatic columns) is shared-db issue #1772 (2026-08-28 workbook inspection). Current ColdLion ingestion runs as sealed 7-day windows via `tools/coldlion-landing/` and the `coldlion-landing-sync` workflow — it deliberately trails real time by up to a week, which any new-order automation must account for. The build plan for the automatic intake is [`../../plan_coldlion_order_intake.md`](../../plan_coldlion_order_intake.md) (read its STATUS table first). This page is the companywide entry point.

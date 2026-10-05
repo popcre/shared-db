@@ -6,6 +6,7 @@ import {
   QUEUE_GATE_CONTEXT,
   MERGE_QUEUE_WORKFLOW,
   assertContextsAndWorkflow,
+  assertLiveContextsCovered,
   assertMainTipPreview,
   assertNoMutationLane,
   assertRepositoryIdentity,
@@ -75,7 +76,8 @@ test('lane reads: a 404 is a free lane, anything else is a refusal', () => {
   assert.deepEqual(readHeldLanes('acme/widgets', { read: held }), ['refs/db-coordination/preview'])
   const broken = () => { throw new Error('HTTP 403: forbidden') }
   assert.throws(() => readHeldLanes('acme/widgets', { read: broken }), /could not be read/)
-  assert.equal(LANE_REFS.length, 4)
+  assert.equal(LANE_REFS.length, 5)
+  assert.ok(LANE_REFS.includes('refs/db-coordination/promotion-freeze'))
 })
 
 test('main tip preview gate: migration tips need the exact-SHA success first', () => {
@@ -99,6 +101,12 @@ test('readMainTip refuses a truncated commit file list', () => {
   assert.throws(() => readMainTip('acme/widgets', { read }), /truncated/)
 })
 
+test('live contexts must all be merge-group covered (plan Step 8)', () => {
+  assert.equal(assertLiveContextsCovered({ contexts: ['A', 'B'], coveredContexts: ['A', 'B', 'C'] }), true)
+  assert.throws(() => assertLiveContextsCovered({ contexts: ['A', 'D'], coveredContexts: ['A'] }), /coverage: D/)
+  assert.throws(() => assertLiveContextsCovered({ contexts: ['A'], coveredContexts: [] }), /unreadable/)
+})
+
 test('activation plan: all gates pass, same-name ruleset is reused, duplicates refuse', () => {
   const base = {
     repo: 'acme/widgets',
@@ -108,8 +116,11 @@ test('activation plan: all gates pass, same-name ruleset is reused, duplicates r
     workflows: [MERGE_QUEUE_WORKFLOW],
     heldLanes: [],
     mainTip: { tipSha: SHA_A, tipPaths: ['docs/x.md'], statuses: [] },
+    coveredContexts: [QUEUE_GATE_CONTEXT],
   }
   assert.equal(planActivation({ ...base, rulesets: [] }).existing, null)
+  assert.throws(() => planActivation({ ...base, rulesets: [], contexts: [QUEUE_GATE_CONTEXT, 'Unmirrored check'] }), /without proven merge-group coverage: Unmirrored check/)
+  assert.throws(() => planActivation({ ...base, rulesets: [], coveredContexts: undefined }), /unreadable/)
   assert.equal(planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }] }).existing.id, 9)
   assert.throws(() => planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }, { id: 10, name: RULESET_NAME }] }), /multiple rulesets/)
 })
@@ -123,6 +134,13 @@ test('read-back: every field must equal the desired document', () => {
   assert.throws(() => verifyReadback({ ...written, rules: [{ type: 'merge_queue', parameters: { ...QUEUE_RULE.parameters, max_entries_to_merge: 2 } }] }), /read-back mismatch: queue parameters/)
   assert.throws(() => verifyReadback({ ...written, rules: [] }), /exactly one merge_queue rule/)
   assert.throws(() => verifyReadback({ name: RULESET_NAME }), /did not read back with an ID/)
+})
+
+test('read-back accepts GitHub key order for identical queue parameters (#3566, ruleset 24024180)', () => {
+  const githubOrder = { merge_method: 'MERGE', max_entries_to_build: 1, min_entries_to_merge: 1, max_entries_to_merge: 1, min_entries_to_merge_wait_minutes: 0, grouping_strategy: 'ALLGREEN', check_response_timeout_minutes: 30 }
+  const written = { id: 24024180, ...desiredRuleset(), rules: [{ type: 'merge_queue', parameters: githubOrder }] }
+  assert.equal(verifyReadback(written).id, 24024180)
+  assert.throws(() => verifyReadback({ ...written, rules: [{ type: 'merge_queue', parameters: { ...githubOrder, grouping_strategy: 'HEADGREEN' } }] }), /read-back mismatch: queue parameters/)
 })
 
 test('rollback names only the recorded main merge queue ruleset', () => {

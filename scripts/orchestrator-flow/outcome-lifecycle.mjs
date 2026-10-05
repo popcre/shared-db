@@ -22,7 +22,8 @@ const LINEAR = Object.freeze([
   'preview_verified', 'merged', 'production_authorized', 'production_applied', 'live_verified',
 ])
 
-export function parseOutcomeEvidence(body = '') {
+export function parseOutcomeEvidence(body = '', { requiredStage = 'complete' } = {}) {
+  if (!['database-applied', 'live-verified', 'application-accepted', 'complete'].includes(requiredStage)) throw new OutcomeError('unknown required outcome stage')
   const fences = [...String(body).matchAll(new RegExp('```' + OUTCOME_EVIDENCE_FENCE + '\\s*\\n([\\s\\S]*?)```', 'g'))]
   if (fences.length !== 1) throw new OutcomeError('evidence reference must resolve to exactly one db-outcome-evidence block')
   let record
@@ -44,6 +45,12 @@ export function parseOutcomeEvidence(body = '') {
   if (!Number.isInteger(record.production_artifact_id) || record.production_artifact_id <= 0) throw new OutcomeError('db-outcome-evidence must name the production apply artifact id')
   if (typeof record.production_artifact_digest !== 'string' || !/^sha256:[0-9a-f]{64}$/i.test(record.production_artifact_digest)) throw new OutcomeError('db-outcome-evidence must name the production apply artifact sha256 digest')
   if (!REPOSITORY.test(record.application_repository ?? '')) throw new OutcomeError('db-outcome-evidence must name application_repository as owner/repo')
+  if (requiredStage === 'database-applied') {
+    if (typeof record.live_assertion !== 'string' || !record.live_assertion.trim()) throw new OutcomeError('db-outcome-evidence must repeat the live assertion')
+    if (record.environment !== 'production') throw new OutcomeError('database-applied evidence must name production')
+    if (typeof record.verified_at !== 'string' || Number.isNaN(Date.parse(record.verified_at))) throw new OutcomeError('db-outcome-evidence verified_at must be an ISO instant')
+    return record
+  }
   if (!SHA.test(record.application_commit_sha ?? '')) throw new OutcomeError('db-outcome-evidence must name the exact application_commit_sha')
   if (typeof record.live_assertion !== 'string' || !record.live_assertion.trim()) throw new OutcomeError('db-outcome-evidence must repeat the live assertion')
   if (typeof record.live_evidence !== 'string' || !EVIDENCE_REF.test(record.live_evidence)) throw new OutcomeError('db-outcome-evidence must link durable live application proof')
@@ -309,7 +316,7 @@ export function outcomeEvent({ issue, state, actor, timestamp, evidenceUrls = []
 
 function sameSha(expected, actual) { return String(expected).toLowerCase() === String(actual).toLowerCase() }
 
-export function completeOutcome({ issue, evidenceRef, actor, timestamp = new Date().toISOString() }, io) {
+export function verifyOutcomeAcceptance({ issue, evidenceRef }, io) {
   const work = io.getIssue(Number(issue))
   if (!work || !['open','closed'].includes(String(work.state).toLowerCase())) throw new OutcomeError(`outcome issue #${issue} is unreadable`)
   const scope = io.parseScope(work.body ?? '')
@@ -361,6 +368,11 @@ export function completeOutcome({ issue, evidenceRef, actor, timestamp = new Dat
     merge_sha:evidence.merge_sha, application_repository:evidence.application_repository,
     application_commit_sha:evidence.application_commit_sha, live_evidence:evidence.live_evidence,
   })
+  return { work, scope, comments, history, evidence, completion }
+}
+
+export function completeOutcome({ issue, evidenceRef, actor, timestamp = new Date().toISOString() }, io) {
+  const { comments, history, evidence, completion } = verifyOutcomeAcceptance({ issue, evidenceRef }, io)
   const existingCompletion=findCompletionRecord(comments)
   if(existingCompletion){
     for(const [key,value] of Object.entries(completion))if(existingCompletion[key]!==value)throw new OutcomeError(`existing immutable completion record disagrees on ${key}`)

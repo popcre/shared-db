@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "work_issue": 2176,
+  "outcome": "ready-for-merge",
+  "pr": 3839,
+  "migration_versions": [
+    "20261005025111"
+  ],
+  "contract_ref": "refs/db-contracts/2176/2",
+  "contract_sha256": "d49c1e212bfdc02e8b9361372d99d162e2920fb0e39f86067225a244fb5fbe9b",
+  "base_sha": "53fd0bea085b90f039ae4fa2a7005652867d5ce3",
+  "head_sha": "97ef252153c0c8873ca579d42dfef5240a9372cb",
+  "files_changed": [
+    ".agent/work/2176/1/completion.json",
+    ".agent/work/2176/1/contract.json",
+    "HANDOFF.d/2026-10-04T2342Z-edge-dev-mimo-queue-resume.md",
+    "supabase/migrations/20261005025111_coldlion_unit6_consumer_contracts.sql",
+    "supabase/tests/coldlion_unit6_consumer_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.erp_licensor",
+    "table plm.erp_property",
+    "table coldlion.customer",
+    "table coldlion.vendor",
+    "table coldlion.season",
+    "table coldlion.salesperson",
+    "table coldlion.merch_group_header",
+    "table coldlion.merch_group_detail",
+    "table coldlion.item_header",
+    "table coldlion.item_detail",
+    "table coldlion.item_merch_group",
+    "table coldlion.order_history_line",
+    "table coldlion.order_history_component",
+    "table coldlion.prod_history_line",
+    "table coldlion.prod_history_component",
+    "table coldlion.prepack_detail",
+    "table coldlion.prod_detail",
+    "table coldlion.item_image_metadata"
+  ],
+  "db_writes": [
+    "schema coldlion",
+    "table plm.erp_customer",
+    "table plm.erp_vendor",
+    "table plm.erp_season",
+    "table plm.erp_salesperson",
+    "function plm.import_coldlion_customers",
+    "function plm.import_coldlion_seasons",
+    "function plm.import_coldlion_salespersons",
+    "function plm.coldlion_merch_group_candidates",
+    "view plm.coldlion_item_header",
+    "view plm.coldlion_item_detail",
+    "view plm.coldlion_item_merch_group",
+    "view plm.coldlion_prod_history",
+    "view plm.coldlion_prepack_detail",
+    "view plm.coldlion_prod_detail",
+    "view plm.coldlion_sales_history",
+    "view pim.coldlion_item_image_metadata"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at c5c7fc0eb"
+    },
+    {
+      "command": "node tmp extraction proof via scripts/orchestrator-flow/admission.mjs inspectPrStructuralChange (exact match to claim #3838 objects)",
+      "exit_code": 0,
+      "evidence": "match true; EXACT MATCH OK — 17 objects, no extras, no missing"
+    }
+  ],
+  "assumptions_resolved": [
+    "plm.import_coldlion_vendors not created",
+    "season/salesperson promotion objects created additively",
+    "sales history has no document-type or fulfilment claim",
+    "coldlion schema closed to app roles at schema level only"
+  ],
+  "stop_conditions_hit": []
+}

@@ -16,8 +16,8 @@ select (
   and pg_catalog.to_regclass('plm.coldlion_prod_detail') is not null
   and pg_catalog.to_regclass('plm.coldlion_sales_history') is not null
   and pg_catalog.to_regclass('pim.coldlion_item_image_metadata') is not null
-  and pg_catalog.to_regprocedure('plm.import_coldlion_seasons(jsonb)') is not null
-  and pg_catalog.to_regprocedure('plm.import_coldlion_salespersons(jsonb)') is not null
+  and pg_catalog.to_regprocedure('plm.import_coldlion_seasons()') is not null
+  and pg_catalog.to_regprocedure('plm.import_coldlion_salespersons()') is not null
   and pg_catalog.to_regprocedure('plm.coldlion_merch_group_candidates(text, text)') is not null
   and not exists (
     select 1 from pg_catalog.pg_attribute

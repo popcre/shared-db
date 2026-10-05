@@ -2,7 +2,7 @@
 -- Issue #3234 (production fallback) — idempotent drop of the falsified unique on
 -- coldlion.prod_detail.
 --
--- Claim: #3879 (table coldlion.prod_detail). Reserved version 20261005005221.
+-- Claim: #3879 (table coldlion.prod_detail). Reserved version 20261005044103.
 --
 -- WHY THIS FILE EXISTS. Version 20260930212107 already dropped this constraint on
 -- the preview database, but it was applied there by a direct CLI write before any

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20261005005221",
-  "migration_sha256": "6d17372b3c17f4d5587d0e802278228a0bd52b418b2d2424d539ca7e19630ec2",
+  "migration_version": "20261005044103",
+  "migration_sha256": "0cbc4a08b2d52b0727d6e63a9c34eb91c5b8c535eb2a45792bdbc75381c33ebd",
   "checks": [
     {
       "id": "coldlion_unit_5b_landing_v2_prod",

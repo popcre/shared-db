@@ -4754,10 +4754,12 @@ class WorkflowCustodyConcurrencyTests(unittest.TestCase):
 
     def test_condition_change_is_still_refused(self):
         from production_business_risk_gate import _workflow_custody_normal_form
-        with_cond = self.REAL_CONCURRENCY + "jobs:\n  preview:\n    if: ${{ inputs.target == 'production' }}\n"
-        without = self.REAL_CONCURRENCY + "jobs:\n  preview:\n"
-        self.assertNotEqual(_workflow_custody_normal_form(with_cond),
-                            _workflow_custody_normal_form(without))
+        # Two DIFFERENT if: expressions, both present -- proves a condition edit
+        # is refused even when line counts match (the contract's stop condition).
+        cond_a = self.REAL_CONCURRENCY + "jobs:\n  preview:\n    if: ${{ inputs.target == 'production' }}\n"
+        cond_b = self.REAL_CONCURRENCY + "jobs:\n  preview:\n    if: ${{ inputs.target == 'staging' }}\n"
+        self.assertNotEqual(_workflow_custody_normal_form(cond_a),
+                            _workflow_custody_normal_form(cond_b))
 
     def test_apply_change_with_group_change_is_still_refused(self):
         from production_business_risk_gate import _workflow_custody_normal_form
@@ -4776,16 +4778,20 @@ class WorkflowCustodyConcurrencyTests(unittest.TestCase):
             "  group: ${{ 'a' }}\n"
             "  cancel-in-progress: false\n"
             "jobs:\n"
-            "  run: |\n"
-            "    group: ${{ 'b' }}\n"
+            "  preview:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          group: ${{ 'b' }}\n"
         )
         without_nested = (
             "concurrency:\n"
             "  group: ${{ 'a' }}\n"
             "  cancel-in-progress: false\n"
             "jobs:\n"
-            "  run: |\n"
-            "    group: ${{ 'c' }}\n"
+            "  preview:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          group: ${{ 'c' }}\n"
         )
         # The nested group: lines differ and must NOT be normalised to equality.
         self.assertNotEqual(_workflow_custody_normal_form(with_nested),

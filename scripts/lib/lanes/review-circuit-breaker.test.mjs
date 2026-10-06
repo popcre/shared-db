@@ -232,3 +232,16 @@ test('actual Git link metadata and renamed test conflict ancestry refuse reconci
   assert.throws(()=>derivePaidContentProof(f.before,after,changedMain,f.git),/provenance refused/,kind)
  }
 })
+
+test('actual Git executable-mode-only change cannot reset paid budget',t=>{
+ const f=realGitFixture(t);f.git(['config','core.fileMode','false']);f.git(['update-index','--chmod=+x','app.txt']);f.git(['commit','-qm','mode only']);const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.base,f.git),/surviving author source edit unavailable/)
+})
+test('actual surviving nonempty authored deletion remains eligible for fresh mandatory review',t=>{
+ const f=realGitFixture(t);f.git(['rm','app.txt']);f.git(['commit','-qm','authored removal']);const after=f.git(['rev-parse','HEAD']).trim()
+ const proof=derivePaidContentProof(f.before,after,f.base,f.git);assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt');assert.equal(proof.witness.blob,'absent');assert.match(proof.witness.baselineBlob,/^[0-9a-f]{40}$/)
+})
+test('zero-byte added file supplies no surviving source byte witness',t=>{
+ const f=realGitFixture(t);const after=f.commit('empty.txt','')
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.base,f.git),/surviving author source edit unavailable/)
+})

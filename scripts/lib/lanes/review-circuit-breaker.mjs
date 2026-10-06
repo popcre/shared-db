@@ -40,8 +40,9 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   const paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
   const tree = value => typeof value==='string'?value:value.tree
   const raw = args => String(git(args))
-  const entry = (commit,file) => {
+  const entry = (commit,file,allowAbsent=false) => {
     const record=raw(['ls-tree','-z',tree(commit),'--',file]).split('\0').filter(Boolean)
+    if(record.length===0 && allowAbsent)return null
     if(record.length!==1)throw new LaneError('review budget canonical blob missing')
     const match=/^(100644|100755) blob ([0-9a-f]{40})\t(.+)$/.exec(record[0])
     if(!match || match[3]!==file)throw new LaneError('review budget canonical regular mode unreadable')
@@ -127,7 +128,12 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
     for(const {commit,parent} of authorCandidates) {
       const changed=run(['diff','--name-only',parent,commit,'--',...paths]).split('\n')
-      for(const file of netPaths.filter(file=>changed.includes(file))) {const original=entry(commit,file),actual=entry(after,file);if(original.mode===actual.mode && original.blob===actual.blob){authored=true;witness={commit,path:file,mode:original.mode,blob:original.blob}}}
+      for(const file of netPaths.filter(file=>changed.includes(file))) {
+        const original=entry(commit,file,true),actual=entry(after,file,true),baseline=entry(expected,file,true)
+        const survives=original===null?actual===null:actual!==null && original.mode===actual.mode && original.blob===actual.blob
+        const byteDelta=actual===null?baseline!==null && Buffer.byteLength(baseline.text)>0:baseline===null?Buffer.byteLength(actual.text)>0:baseline.blob!==actual.blob
+        if(survives && byteDelta){authored=true;witness={commit,path:file,mode:original?.mode??'absent',blob:original?.blob??'absent',baselineBlob:baseline?.blob??'absent'}}
+      }
     }
     if (!authored) throw new LaneError('review budget surviving author source edit unavailable')
     return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends}

@@ -388,6 +388,10 @@ _pct_decode() {
     if [[ "$c" == "%" ]]; then
       local hex="${s:i+1:2}"
       if [[ "$hex" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+        if [[ "$hex" == "00" ]]; then
+          echo "ERROR: NUL byte (percent-encoded %00) is refused in URI components" >&2
+          return 1
+        fi
         printf -v c "\\x$hex"
         (( i += 2 ))
       else
@@ -413,16 +417,20 @@ pg_url_to_env() {
   # Save ambient PGSSLMODE before the sweep (PR #3938 pattern: a stricter
   # operator-exported PGSSLMODE survives when the URL declares none).
   local ambient_sslmode="${PGSSLMODE:-}"
-  # Sweep ALL ambient PG* — including PGHOSTADDR (host bypass), PGOPTIONS
-  # (server GUC injection), PGSERVICE/PGSERVICEFILE (alternate target),
-  # PGPASSFILE (alternate credential source). They must never override the
-  # declared target (muse review 2026-10-06, H2).
+  # Sweep ALL ambient libpq PG* vars — including PGHOSTADDR (host bypass),
+  # PGOPTIONS (server GUC injection), PGSERVICE/PGSERVICEFILE (alternate
+  # target), PGPASSFILE (alternate credential source). They must never
+  # override the declared target (muse review 2026-10-06, H2). Use an
+  # explicit list to avoid over-matching non-libpq vars like PAGER (L10).
   local _pg_var
-  for _pg_var in $(compgen -v PG); do
-    [[ "$_pg_var" == "PGSSLMODE" ]] && continue
+  for _pg_var in PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGPASSWORD \
+    PGPASSFILE PGSERVICE PGSERVICEFILE PGOPTIONS PGAPPNAME PGSSLMODE \
+    PGSSLCERT PGSSLKEY PGSSLROOTCERT PGSSLCRL PGSSLPASSWORD PGSSLCERTMODE \
+    PGSSLMINPROTOCOLVERSION PGSSLMAXPROTOCOLVERSION PGCONNECT_TIMEOUT \
+    PGTARGETSESSIONATTRS PGCHANNELBINDING PGLOADBALANCEHOSTS PGGSSENCMODE \
+    PGSSLNEGOTIATION PGREQUIREAUTH PGCLIENTENCODING PGKRBSRVNAME; do
     unset "$_pg_var"
   done
-  unset PGSSLMODE
   # Strip fragment (not representable in PG*).
   url="${url%%#*}"
   # Strip query string; recover sslmode if present.
@@ -433,9 +441,9 @@ pg_url_to_env() {
   fi
   # postgres(ql)://user:pass@host:port/dbname
   # BASH_REMATCH groups: 4=user 6=pass 7=host 9=port 11=dbname
-  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/]+)(:([0-9]+))?(/(.*))?$'
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/@]+)(:([0-9]+))?(/(.*))?$'
   if [[ ! "$url" =~ $re ]]; then
-    echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|://[^@]*@|://[redacted]@|')" >&2
+    echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|[^/]*@|[redacted]@|')" >&2
     return 1
   fi
   local user pass host port dbname
@@ -470,7 +478,21 @@ pg_url_to_env() {
       case "$k" in
         sslmode)
           url_declares_sslmode=1
-          PGSSLMODE="$v"
+          # Refuse weak TLS modes (muse review 2026-10-06 #2): disable/allow
+          # can end in cleartext; prefer silently falls back under MITM.
+          case "$v" in
+            disable|allow|prefer)
+              echo "ERROR: sslmode=$v is rejected (it can send credentials in cleartext)" >&2
+              return 1
+              ;;
+            require|verify-ca|verify-full)
+              PGSSLMODE="$v"
+              ;;
+            *)
+              echo "ERROR: unrecognized sslmode='$v' (accepted: require, verify-ca, verify-full)" >&2
+              return 1
+              ;;
+          esac
           ;;
         ssl)
           # Legacy boolean alias (muse review M6): map true→require, refuse false.

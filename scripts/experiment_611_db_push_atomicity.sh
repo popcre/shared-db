@@ -101,8 +101,13 @@ CONTAINER="issue611-canary"
 
 echo "== 1. Disposable database =="
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PGPASSWORD" \
+# Password via env-file, never -e NAME=value (that places the secret in the
+# docker client's argv — same leak class as --db-url, issue #3944).
+ENVF="$(mktemp)"
+printf 'POSTGRES_PASSWORD=%s\n' "$PGPASSWORD" > "$ENVF"
+docker run -d --name "$CONTAINER" --env-file "$ENVF" \
   -p "${PGPORT}:5432" postgres:15 >/dev/null
+rm -f "$ENVF"
 until docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 
 # --- TLS. NOT optional, and NOT a fixture change. CLI 2.105.0 forces TLS on

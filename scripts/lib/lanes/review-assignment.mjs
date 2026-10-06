@@ -110,8 +110,11 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
 // kept separate from the query so it can be tested directly: it previously carried no
 // merge SHA at all, which silently rejected every merged pull request after the mutex,
 // and a hand-written fixture in the tests could not catch that.
+function projectedMergeTime(pr){
+  return pr?.merged===true&&typeof pr.mergedAt==='string'&&Number.isFinite(Date.parse(pr.mergedAt))?pr.mergedAt:null
+}
 export function projectReviewPr(pr){
-  return {state:String(pr?.state??'').toLowerCase(),merged:pr?.merged===true,merged_at:pr?.mergedAt??null,merge_commit_sha:pr?.mergeCommit?.oid??'',head:{sha:pr?.headRefOid}}
+  return {state:String(pr?.state??'').toLowerCase(),merged:pr?.merged===true,merged_at:projectedMergeTime(pr),merge_commit_sha:pr?.mergeCommit?.oid??'',head:{sha:pr?.headRefOid}}
 }
 
 export function projectReviewerOperationRouteSnapshot(data){
@@ -119,7 +122,7 @@ export function projectReviewerOperationRouteSnapshot(data){
   const row=data.data.repository.pullRequest,files=row.files,linked=row.closingIssuesReferences
   if(!Array.isArray(files?.nodes)||files.pageInfo?.hasNextPage!==false||!Array.isArray(linked?.nodes)||linked.pageInfo?.hasNextPage!==false)throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
   return {
-    pr:{state:String(row.state??'').toLowerCase(),merged_at:row.merged===true?row.mergedAt:null,head:{sha:row.headRefOid}},
+    pr:{state:String(row.state??'').toLowerCase(),merged_at:projectedMergeTime(row),head:{sha:row.headRefOid}},
     files:files.nodes.map((file)=>({filename:file?.path,status:String(file?.changeType??'').toLowerCase()})),
     linkedIssues:linked.nodes.map((item)=>({number:item?.number,state:String(item?.state??'').toLowerCase(),body:item?.body,createdAt:item?.createdAt})),
   }

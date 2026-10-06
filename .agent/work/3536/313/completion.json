@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 4002,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/313",
+  "contract_sha256": "6be59cf9df06493700211c401fee8e3001ae3bf126f3488d2f577af2f8041c36",
+  "head_sha": "e56814ca15475fbcadd67ad453f47291602dd9df",
+  "base_sha": "c86be424f89162bbf9b450a02597616e5dcde298",
+  "files_changed": [
+    "docs/agents/active-contracts-and-plans.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Exact changed-file diff whitespace check PASS; documentation links unchanged and each linked workflow resolves locally. Existing unrelated whole-tree document-safety baseline failures disclosed to reviewer."
+    }
+  ],
+  "assumptions_resolved": [
+    "Automatic success means verified drift alarm delivery, never cleanDB.",
+    "Manual actionable drift remains failure; unknown remains failure.",
+    "GitHub token-generated merges may suppress events; live automatic delivery requires actual observed run.",
+    "No DB reads/writes or baseline document-safety edits."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,57 @@
+# Issue #2437: absence is not proof. Gate the ANALYSIS path.
+#
+# - On issues: an issue labeled `destructive-proposal` must carry every checklist
+#   heading from .github/ISSUE_TEMPLATE/destructive-proposal.md in its BODY.
+# - On pull requests: SQL added outside migrations/test fixtures may not introduce
+#   DROP / TRUNCATE / VACUUM FULL / DELETE without WHERE unless marked with
+#   `-- destructive-proposal: #<issue>`.
+#
+# The pull-request half (the required context "Destructive SQL outside
+# migrations") now runs as the `destructive-sql` job of pr-guards.yml (#3746);
+# this file keeps only the issue-event checklist.
+#
+# No `paths:` filter (a filtered guard reports a stale green), unique check names,
+# no secrets, no database contact.
+name: Destructive Analysis Guard
+
+on:
+  issues:
+    types: [opened, edited, labeled, reopened]
+
+permissions:
+  contents: read
+  # Read-only: verify every `-- destructive-proposal: #<n>` marker names a real,
+  # labeled issue with a complete checklist.
+  issues: read
+
+concurrency:
+  group: destructive-analysis-guard-${{ github.event.issue.number || github.ref }}
+  # Never cancel a merge_group run (#2530): a required context must report on the group SHA.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  proposal-checklist:
+    name: Destructive proposal checklist
+    # Only a `destructive-proposal` issue needs the checklist (the script no-ops on
+    # every other issue). Skipping here spares a runner on every ordinary issue
+    # open/edit/label, which agents generate constantly (#3745). contains() on a
+    # string array compares case-insensitively, matching the script's lowercasing;
+    # the literal must equal PROPOSAL_LABEL in scripts/lib/destructive-analysis-guard.mjs.
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'destructive-proposal')
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require the checklist headings in the issue body
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          body_file="$(mktemp)"
+          printf '%s' "$ISSUE_BODY" > "$body_file"
+          node scripts/check-destructive-analysis.mjs --issue-body-file "$body_file" --labels "$ISSUE_LABELS"
+

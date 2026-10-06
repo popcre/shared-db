@@ -1,0 +1,133 @@
+name: ColdLion Promotion Contract Tests
+
+# WHY THIS WORKFLOW EXISTS
+# ------------------------
+# The ColdLion recurring-promotion contract tests existed but NEVER RAN on a pull request.
+# `tools/coldlion-recurring-promotion.test.mjs` was listed only inside
+# .github/workflows/coldlion-licensor-property-production.yml, and every job in that file is
+# gated on repository variable COLDLION_LICENSOR_PROPERTY_PRODUCTION_ENABLED — which does not
+# exist and must not be created before Step 8 approval. So the tests that prove the promotion
+# contract were, in practice, dead: a change could break them and no check would ever go red.
+#
+# These tests are the runner half of the Step 5.6 plan cross-check — the assertion that the
+# changes the promotion applies match the plan computed independently beforehand. That guard
+# is only worth anything if the two implementations stay in step, and nothing keeps them in
+# step except these tests actually running on the pull request that changes one of them.
+#
+# NO `paths:` FILTER, ON PURPOSE (AGENTS.md §5.2).
+# ------------------------------------------------
+# The tests read across tools/** AND supabase/migrations/** — they assert that the SQL
+# migration's 5.6 predicate still matches its 5.8 predicate, and that the accent-fold map is
+# identical on both sides. A narrow filter over a checker that reads more than the filter
+# watches produces STALE VERDICTS: a file outside the filter breaks the check, and fixing it
+# never re-runs it, so `main` displays the old result forever. That has already bitten this
+# repository once. This job is a few seconds of Node with no services, no secrets and no
+# database, so running it on every pull request costs nothing worth optimising away.
+#
+# It is READ-ONLY. No Supabase CLI, no project ref, no credentials, no network. It cannot
+# touch preview or production, and it does not enable the production lane.
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    # Replacement lane for a run no runner picked up (#2729). Leave empty for the default lane.
+    # Options must equal scripts/orchestrator-flow/runner-lanes.json (enforced by its tests).
+    inputs:
+      lane:
+        description: Free standard GitHub-hosted runner lane for a replacement run
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-24.04-arm
+          - ubuntu-22.04-arm
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coldlion-promotion-contract-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  contract-tests:
+    # The default name stays the stable required context; a lane run reports a distinct name
+    # that the "Queue-sensitive checks (aggregate)" job counts exactly once.
+    name: ${{ inputs.lane && format('Promotion contract tests (offline) [lane {0}]', inputs.lane) || 'Promotion contract tests (offline)' }}
+    runs-on: ${{ inputs.lane || 'ubuntu-latest' }}
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - name: Refuse an unregistered runner lane
+        # Defence in depth beyond the choice list: the lane must be one registered in runner-lanes.json.
+        env:
+          LANE: ${{ inputs.lane }}
+        run: |
+          case "$LANE" in
+            ''|ubuntu-latest|ubuntu-24.04|ubuntu-22.04|ubuntu-24.04-arm|ubuntu-22.04-arm) ;;
+            *) echo "::error::Unregistered runner lane: $LANE"; exit 1 ;;
+          esac
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # TRUSTED PURE-PROSE FAST CI ROUTE (issue #3383).
+      #
+      # A proven pure-prose change skips the contract tests below. The proof is
+      # an exact base/head git inventory including file modes, computed by the
+      # classifier taken from the PROTECTED BASE, never from the pull request
+      # head. Fail closed: every other outcome keeps the full suite. The
+      # required context name is unchanged; this step only decides whether the
+      # suite needs to run.
+      - name: Decide the CI route from a trusted pure-prose inventory
+        id: route
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          echo 'pure_prose=false' >> "$GITHUB_OUTPUT"
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo 'Full engineering path: no base/head pair to prove an inventory against.'
+            exit 0
+          fi
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'Full engineering path: base/head objects could not be fetched.'
+            exit 0
+          fi
+          scratch="$(mktemp -d)"
+          if ! git archive "$BASE_SHA" scripts/check-documents-ci-route.mjs scripts/lib/documents-only-change.mjs | tar -x -C "$scratch"; then
+            echo 'Full engineering path: the protected base does not carry the route classifier.'
+            exit 0
+          fi
+          if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
+            echo 'Pure-prose fast route proven; the contract tests are skipped.'
+            echo '::notice::Pure-prose fast route proven from a trusted inventory; the contract tests below are skipped.'
+          else
+            echo 'Full engineering path: the change is not proven pure prose.'
+          fi
+
+      - name: Run the ColdLion promotion contract tests
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          node --test \
+            tools/coldlion-recurring-promotion.test.mjs \
+            tools/promote-coldlion-source-owned.test.mjs \
+            tools/coldlion-promotion-failure-recording.test.mjs \
+            tools/coldlion-promotion-serialization-lock.test.mjs \
+            tools/coldlion-production-authorization.test.mjs \
+            tools/coldlion-production-schedule-map.test.mjs \
+            tools/coldlion-licensor-property-production-workflow.test.mjs \
+            tools/phase6-preview-guards.test.mjs \
+            tools/phase6-cli-result-parse.test.mjs

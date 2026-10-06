@@ -1,0 +1,460 @@
+// Negative-path first: HANDOFF.md backlog item B7 -- "every guard ships with a
+// test that COMMITS THE VIOLATION and asserts the observable consequence". So
+// the first tests here construct real colliding pull requests and assert the
+// guard FAILS on them; only then do we assert it passes on the innocent cases.
+
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+import {
+  baseCompareSpec,
+  extractObjects,
+  findCollisions,
+  formatReport,
+  normalizeSql,
+  validateBaseFileAgreement,
+  validateFallbackIdentity,
+  validateFallbackPaths,
+  isCompareTransportFailure,
+  parseGitNameStatus,
+} from './check-pr-object-collisions.mjs'
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const readMigration = (name) =>
+  readFileSync(path.join(repoRoot, 'supabase', 'migrations', name), 'utf8')
+
+// ---------------------------------------------------------------------------
+// THE HISTORICAL CASE (2026-07-31): four independent sessions each authored a
+// forward migration doing `create or replace function
+// plm.promote_coldlion_source_owned`. Each passed CI alone. These are the real
+// migration files that came out of that incident, replayed as four separate
+// pull requests -- exactly the shape the guard must reject.
+// ---------------------------------------------------------------------------
+const HISTORICAL = [
+  '20260731163000_coldlion_recurring_promotion_drop_dead_failure_recording.sql',
+  '20260731180000_coldlion_recurring_promotion_serialization_lock.sql',
+  '20260731190000_coldlion_promotion_crosscheck_provenance_coverage.sql',
+  '20260731200000_coldlion_recurring_promotion_fanin_name_tiebreak.sql',
+]
+
+test('FIRES: the real 2026-07-31 four-way collision is detected', () => {
+  const sources = HISTORICAL.map((name, i) => ({
+    label: `PR #${100 + i}`,
+    files: [
+      { path: `supabase/migrations/${name}`, sql: readMigration(name) },
+    ],
+  }))
+
+  const result = findCollisions(sources)
+  const hit = result.collisions.find(
+    (c) => c.object === 'function plm.promote_coldlion_source_owned',
+  )
+  assert.ok(hit, 'expected plm.promote_coldlion_source_owned to be flagged')
+  assert.equal(hit.sources.length, 4, 'all four pull requests must be named')
+
+  const report = formatReport(result)
+  assert.match(report, /^ERROR: cross-PR database object collision detected\./)
+  assert.match(report, /plm\.promote_coldlion_source_owned/)
+  for (const name of HISTORICAL) assert.match(report, new RegExp(name))
+})
+
+test('FIRES: a pair is enough -- two PRs replacing one function', () => {
+  const sql = (body) =>
+    `create or replace function plm.f(a int) returns void language sql as $$ ${body} $$;`
+  const result = findCollisions([
+    { label: 'PR #1', files: [{ path: 'supabase/migrations/1_a.sql', sql: sql('select 1') }] },
+    { label: 'PR #2', files: [{ path: 'supabase/migrations/2_b.sql', sql: sql('select 2') }] },
+  ])
+  assert.deepEqual(
+    result.collisions.map((c) => c.object),
+    ['function plm.f'],
+  )
+})
+
+test('FIRES: the base branch counts as a source (the B6 stale-base rule)', () => {
+  // The precise form of "a stale base is a failure": it matters when the base
+  // moved in a way that touched an object this PR also replaces.
+  const result = findCollisions([
+    {
+      label: 'PR #7 (this PR)',
+      files: [{ path: 'supabase/migrations/a.sql', sql: 'create or replace view api.x as select 1;' }],
+    },
+    {
+      label: 'main (merged since this PR branched)',
+      files: [{ path: 'supabase/migrations/b.sql', sql: 'CREATE OR REPLACE VIEW api.x AS SELECT 2;' }],
+    },
+  ])
+  assert.deepEqual(result.collisions.map((c) => c.object), ['view api.x'])
+})
+
+test('FIRES: triggers and policies collide per (name, table)', () => {
+  const trigger = (when) =>
+    `create trigger touch ${when} update on public.assets for each row execute function public.f();`
+  const t = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: trigger('before') }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: trigger('after') }] },
+  ])
+  assert.deepEqual(t.collisions.map((c) => c.object), ['table public.assets', 'trigger touch on public.assets'])
+
+  const p = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create policy p on core.customer for select using (true);' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'create policy p on core.customer for all using (false);' }] },
+  ])
+  assert.deepEqual(p.collisions.map((c) => c.object), ['policy p on core.customer', 'table core.customer'])
+})
+
+test('FIRES: `drop` + `create` collides with `create or replace` (Kimi K3 finding)', () => {
+  // The repo's other house idiom. Only the create-or-replace side was modelled
+  // in the first version of this guard, so this pair -- just as much a lost
+  // overwrite -- passed silently.
+  const result = findCollisions([
+    {
+      label: 'PR #1',
+      files: [{ path: 'a.sql', sql: 'create or replace function plm.promote_coldlion_source_owned(m text) returns void;' }],
+    },
+    {
+      label: 'PR #2',
+      files: [{
+        path: 'b.sql',
+        sql: 'drop function if exists plm.promote_coldlion_source_owned(text);\n'
+          + 'create function plm.promote_coldlion_source_owned(m text) returns void;',
+      }],
+    },
+  ])
+  assert.deepEqual(
+    result.collisions.map((c) => c.object),
+    ['function plm.promote_coldlion_source_owned'],
+  )
+})
+
+test('FIRES: two PRs dropping the same view collide', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'drop view api.v;' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'drop view if exists api.v; create view api.v as select 2;' }] },
+  ])
+  assert.deepEqual(result.collisions.map((c) => c.object), ['view api.v'])
+})
+
+test('the base-branch compare uses the MERGE BASE, not pull_request.base.sha', () => {
+  // Kimi K3's sharpest finding, confirmed against the live GitHub API: three-dot
+  // compare `<headSha>...<baseRef>` starts at merge-base(head, base) -- the real
+  // branch point -- while `base.sha` is the base branch's tip at event time, so
+  // `base.sha...baseRef` compares the base branch to itself and returns nothing.
+  // That made the entire stale-base leg dead code in the first version.
+  assert.equal(
+    baseCompareSpec('u2giants/shared-db', 'HEADSHA', 'main'),
+    'repos/u2giants/shared-db/compare/HEADSHA...main',
+  )
+})
+
+test('compare and fallback must name the exact same complete file set', () => {
+  const fallback = [{ filename: 'docs/x.md' }, { filename: 'supabase/migrations/a.sql' }]
+  assert.deepEqual(
+    validateBaseFileAgreement(
+      [{ filename: 'supabase/migrations/a.sql' }, { filename: 'docs/x.md' }],
+      fallback,
+    ),
+    fallback,
+  )
+})
+
+test('fails closed when fallback is incomplete or mismatched', () => {
+  assert.throws(() => validateBaseFileAgreement(
+    [{ filename: 'supabase/migrations/a.sql' }, { filename: 'supabase/migrations/b.sql' }],
+    [{ filename: 'supabase/migrations/a.sql' }],
+  ), /disagree/)
+})
+
+// GitHub Compare silently truncates `files` at 300. A stale pull request whose
+// base has moved past that cap used to fail closed with "disagree" and then
+// perform NO collision checking at all (PR #2835). The proven-complete
+// commit-graph fallback must win in that case.
+test('a Compare list truncated at the file cap defers to the complete fallback', () => {
+  const fallback = Array.from({ length: 301 }, (_, i) => ({ filename: `f${i}.md` }))
+  const truncatedCompare = fallback.slice(0, 300) // GitHub's silent cap
+  assert.deepEqual(validateBaseFileAgreement(truncatedCompare, fallback), fallback)
+})
+
+test('under-cap subset is still a real disagreement, not truncation', () => {
+  assert.throws(() => validateBaseFileAgreement(
+    [{ filename: 'a.md' }],
+    [{ filename: 'a.md' }, { filename: 'b.md' }],
+  ), /disagree/)
+})
+
+test('at-cap non-subset is still a real disagreement', () => {
+  const compare = Array.from({ length: 300 }, (_, i) => ({ filename: `c${i}.md` }))
+  const fallback = [...Array.from({ length: 299 }, (_, i) => ({ filename: `c${i}.md` })), { filename: 'other.md' }]
+  assert.throws(() => validateBaseFileAgreement(compare, fallback), /disagree/)
+})
+
+test('fallback binds the exact pull request, base, and head identities', () => {
+  const sha = 'a'.repeat(40)
+  assert.doesNotThrow(() => validateFallbackIdentity(
+    { number: 7, head: { sha }, base: { ref: 'main' } }, 'b'.repeat(40), 7, 'main', sha,
+  ))
+  assert.throws(() => validateFallbackIdentity(
+    { number: 8, head: { sha }, base: { ref: 'main' } }, 'b'.repeat(40), 7, 'main', sha,
+  ), /identity mismatch/)
+})
+
+test('fallback rejects a shallow graph or duplicate path evidence', () => {
+  assert.throws(() => validateFallbackPaths(['a.sql'], true), /truncated/)
+  assert.throws(() => validateFallbackPaths(['a.sql', 'a.sql']), /duplicate\/truncated/)
+})
+
+test('only Compare 404 and server failures activate the fallback', () => {
+  assert.equal(isCompareTransportFailure(new Error('gh: Not Found (HTTP 404)')), true)
+  assert.equal(isCompareTransportFailure(new Error('HTTP 503')), true)
+  assert.equal(isCompareTransportFailure(new Error('HTTP 403')), false)
+  assert.equal(isCompareTransportFailure(new Error('incomplete file data')), false)
+})
+
+test('fallback preserves deletions and complete rename paths', () => {
+  assert.deepEqual(parseGitNameStatus('D\0old.sql\0A\0new.sql\0R100\0before.sql\0after.sql\0'), [
+    { filename: 'old.sql', status: 'removed' },
+    { filename: 'new.sql', status: 'added' },
+    { filename: 'after.sql', status: 'renamed' },
+  ])
+  assert.throws(() => parseGitNameStatus('R100\0before.sql\0'), /truncated/)
+})
+
+// ---------------------------------------------------------------------------
+// DOES NOT FIRE -- the false-positive side. A guard that blocks every pull
+// request is worse than the bug it prevents.
+// ---------------------------------------------------------------------------
+
+test('does NOT fire on a single pull request replacing one object four times', () => {
+  const sources = [
+    {
+      label: 'PR #1 (this PR)',
+      files: HISTORICAL.map((name) => ({
+        path: `supabase/migrations/${name}`,
+        sql: readMigration(name),
+      })),
+    },
+  ]
+  assert.deepEqual(findCollisions(sources).collisions, [])
+})
+
+test('does NOT fire on an INNOCENT PR when two OTHER PRs collide', () => {
+  // Found by the live drill, not by reasoning: three real pull requests were
+  // opened, two colliding on plm.promote_coldlion_source_owned and one touching
+  // an unrelated view, and the first version of this guard FAILED the innocent
+  // one. Blocking an unrelated author over someone else's collision is the
+  // false positive the design posture forbids.
+  const collide = 'create or replace function plm.promote_coldlion_source_owned(m text) returns void;'
+  const sources = [
+    { label: 'PR #401 (this PR)', files: [{ path: 'c.sql', sql: 'create or replace view api.unrelated as select 1;' }] },
+    { label: 'PR #398', files: [{ path: 'a.sql', sql: collide }] },
+    { label: 'PR #399', files: [{ path: 'b.sql', sql: collide }] },
+  ]
+  const result = findCollisions(sources, 'PR #401 (this PR)')
+  assert.deepEqual(result.collisions, [], 'the innocent PR must not be failed')
+  assert.deepEqual(
+    result.bystanderCollisions.map((c) => c.object),
+    ['function plm.promote_coldlion_source_owned'],
+    'the other two must still be reported as a note',
+  )
+  const report = formatReport(result)
+  assert.match(report, /^No cross-PR object collisions detected involving this pull request\./)
+  assert.match(report, /NOTE \(not a failure for this pull request\)/)
+
+  // ...and the guilty parties are still failed when THEY are the primary.
+  assert.equal(findCollisions(sources, 'PR #398').collisions.length, 1)
+  assert.equal(findCollisions(sources, 'PR #399').collisions.length, 1)
+})
+
+test('does NOT fire on unrelated PRs touching different objects', () => {
+  const result = findCollisions([
+    { label: 'PR #1', files: [{ path: 'a.sql', sql: 'create or replace function crm.a() returns void language sql as $$ select $$;' }] },
+    { label: 'PR #2', files: [{ path: 'b.sql', sql: 'create or replace function crm.b() returns void language sql as $$ select $$;' }] },
+    { label: 'PR #3', files: [{ path: 'c.sql', sql: 'create or replace view api.c as select 1;' }] },
+  ])
+  assert.deepEqual(result.collisions, [])
+  assert.match(formatReport(result), /^No cross-PR object collisions detected involving this pull request.$/)
+})
+
+test('does NOT fire on a same-named trigger attached to different tables', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create trigger touch before update on public.assets for each row execute function f();' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'create trigger touch before update on public.style_groups for each row execute function f();' }] },
+  ])
+  assert.deepEqual(result.collisions, [])
+})
+
+test('does NOT fire on a same-named function in different schemas', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create or replace function crm.f() returns void language sql as $$ select $$;' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'create or replace function pim.f() returns void language sql as $$ select $$;' }] },
+  ])
+  assert.deepEqual(result.collisions, [])
+})
+
+test('does NOT fire on a commented-out create or replace', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create or replace function plm.real() returns void language sql as $$ select $$;' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: '-- create or replace function plm.real() -- historical note\nselect 1;' }] },
+  ])
+  assert.deepEqual(result.collisions, [])
+})
+
+test('FAIL-CLOSED POSTURE: no pull-request context exits 2', () => {
+  // The guard's core promise (a false positive blocking every PR is worse than
+  // the bug it prevents) had no test until Kimi K3's review said so.
+  const script = path.join(repoRoot, 'scripts', 'check-pr-object-collisions.mjs')
+  const run = spawnSync(process.execPath, [script], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot }, // no GITHUB_* at all
+  })
+  assert.equal(run.status, 2, run.stderr)
+  assert.match(run.stderr, /could not gather complete inputs/)
+  assert.match(run.stderr, /No collision checking was performed/)
+})
+
+// ---------------------------------------------------------------------------
+// Extraction details.
+// ---------------------------------------------------------------------------
+
+test('extraction is case-insensitive, whitespace- and newline-tolerant', () => {
+  assert.deepEqual(
+    extractObjects('CREATE   OR\n  REPLACE\tFUNCTION  Plm . Promote_X ( a int )'),
+    ['function plm.promote_x'],
+  )
+})
+
+test('CRLF comments are still stripped (backlog item B1 trap)', () => {
+  const crlf = '-- create or replace function plm.ghost()\r\ncreate or replace view api.v as select 1;\r\n'
+  assert.deepEqual(extractObjects(crlf), ['view api.v'])
+  assert.ok(!normalizeSql(crlf).includes('ghost'))
+})
+
+test('quoted identifiers preserve exact case and whitespace; unquoted ones are lower-cased', () => {
+  assert.deepEqual(
+    extractObjects('create or replace function "Plm"."Weird Name"() returns void;'),
+    ['function "Plm"."Weird Name"'],
+  )
+  assert.deepEqual(
+    extractObjects('create or replace function PLM.Mixed() returns void;'),
+    ['function plm.mixed'],
+  )
+  assert.deepEqual(
+    extractObjects('create or replace function "core"."lowercase"() returns void;'),
+    ['function core.lowercase'],
+  )
+  assert.deepEqual(
+    extractObjects('create or replace function core."a""b"() returns void;'),
+    ['function core."a""b"'],
+  )
+})
+
+test('overloads collapse to one key -- deliberately coarse', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create or replace function plm.f(a int) returns void;' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'create or replace function plm.f(a text, b int) returns void;' }] },
+  ])
+  assert.deepEqual(result.collisions.map((c) => c.object), ['function plm.f'])
+})
+
+test('materialized views and procedures are recognised', () => {
+  assert.deepEqual(extractObjects('create materialized view if not exists rep.m as select 1;'), [
+    'materialized view rep.m',
+  ])
+  assert.deepEqual(extractObjects('create or replace procedure app.p() language sql as $$ select $$;'), [
+    'procedure app.p',
+  ])
+})
+
+test('DOCUMENTED BLIND SPOT: an UNQUALIFIED name does not collide with a qualified one', () => {
+  // Pinned as intended behaviour, not left to be rediscovered. There is no safe
+  // static resolution of `set search_path`; migrations here schema-qualify by
+  // convention and this guard depends on that convention holding.
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create or replace function plm.promote_x() returns void;' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'set search_path to plm; create or replace function promote_x() returns void;' }] },
+  ])
+  assert.deepEqual(result.collisions, [], 'documented miss -- change this test if it is ever fixed')
+})
+
+test('DOCUMENTED BLIND SPOT: plain `create table`/`alter` is not modelled', () => {
+  // Asserted so the limitation stays honest and visible rather than drifting
+  // into an assumption that the guard covers it. See the header comment.
+  assert.deepEqual(extractObjects('alter table core.customer add column x int;'), [])
+  assert.deepEqual(extractObjects('create table core.thing (id int);'), [])
+  assert.deepEqual(extractObjects("execute 'create or replace function plm.hidden()';"), [
+    'function plm.hidden', // string-built DDL happens to match here; it is not guaranteed
+  ])
+})
+
+test('merge collisions use broad claim identities for create/alter table', () => {
+  const result = findCollisions([
+    { label: 'A', files: [{ path: 'a.sql', sql: 'create table core.thing (id int);' }] },
+    { label: 'B', files: [{ path: 'b.sql', sql: 'alter table core.thing add column x int;' }] },
+  ])
+  assert.deepEqual(result.collisions.map((x) => x.object), ['table core.thing'])
+})
+
+// --- issue #3183: real PR #2835 statement shapes ---------------------------
+test('#3183: "--" inside a comment literal does not hide the grants after it', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_resolution_queue with (security_invoker = true) as select 1 as n;
+
+comment on view api.licensing_resolution_queue is
+  'Audited licensing resolution backlog. '
+  'Aggregate only -- it exposes no source identifier and no row content, so it stays readable '
+  'policies, so the counts a caller sees are the counts that caller is entitled to see.';
+
+revoke all on api.licensing_resolution_queue from public, anon;
+grant select on api.licensing_resolution_queue to authenticated, service_role;
+`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_resolution_queue'), ops.join('\n'))
+  // The migration creates the name as a view, so the table half is dropped.
+  assert.ok(!ops.includes('grant table api.licensing_resolution_queue'), ops.join('\n'))
+})
+
+test('#3183: a keyword-less grant on a view collides with the view key', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_entity_candidates with (security_invoker = true) as select 1 as n;
+grant select on api.licensing_entity_candidates to authenticated, service_role;`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_entity_candidates'), ops.join('\n'))
+  // explicit non-table keywords keep their own kind only
+  const schemaOps = extractOperations('grant usage on schema api to anon;').map((o) => o.kind)
+  assert.deepEqual(schemaOps, ['schema'])
+})
+
+test('grant on a table created in the same migration is keyed as table only (PR #3190)', async () => {
+  const { extractOperations, dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create table if not exists plm.sesame_submission_property_option (id bigint primary key);
+grant select on plm.sesame_submission_property_option to authenticated;
+grant insert on table plm.sesame_submission_property_option to service_role;`
+  const keys = dispatchObjectKeys(sql)
+  assert.ok(keys.includes('table plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(!keys.includes('view plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(extractOperations(sql).every((o) => !('relationGuess' in o)))
+})
+
+test('grant on a view created in the same migration stays a view write, not a table', async () => {
+  const { dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  for (const create of ['create or replace view', 'create materialized view']) {
+    const keys = dispatchObjectKeys(`${create} api.v1 as select 1;
+grant select on api.v1 to anon;
+grant select on table api.v1 to authenticated;`)
+    assert.ok(keys.includes('view api.v1'), keys.join('\n'))
+    assert.ok(!keys.includes('table api.v1'), keys.join('\n'))
+  }
+  // with no CREATE in the migration the kind stays unknown: both keys remain
+  const bare = dispatchObjectKeys('grant select on api.unknown_rel to anon;')
+  assert.ok(bare.includes('view api.unknown_rel') && bare.includes('table api.unknown_rel'), bare.join('\n'))
+})
+
+test('#3183: comment stripping still removes real comments and keeps literals', async () => {
+  const { normalizeSql } = await import('./check-pr-object-collisions.mjs')
+  assert.equal(normalizeSql("select 'a -- b' -- gone\n/* x */ , 'it''s';").trim(), "select 'a -- b' , 'it''s';")
+  assert.equal(normalizeSql("do $$ begin -- don't\n perform 1; end $$;").includes("don't"), false)
+})

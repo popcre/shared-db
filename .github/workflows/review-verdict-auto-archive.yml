@@ -1,0 +1,68 @@
+# Scheduled retirement of old reviewer verdicts (issue #3806).
+#
+# refs/db-review-verdict* refuses to list at REVIEW_REF_ROW_LIMIT (1000) and every
+# reviewer draw, release and replacement then stops (#2152). On 2026-09-28 the
+# namespace hit that ceiling and a session had to run the #2987 archive by hand.
+# This job runs that same governed command on a schedule, with a threshold, so the
+# namespace is trimmed long before the ceiling. The ceiling is NOT raised.
+#
+# SAME SAFETY AS THE MANUAL PATH. --archive-old-review-verdicts moves (never
+# deletes) only verdicts of closed pull requests that nothing can still ask for,
+# re-proves each one under the review mutex, and uses compare-and-swap pushes.
+# --archive-threshold 800 makes it a no-op while the namespace holds 800 refs or
+# fewer, so a quiet repository sees no ref writes at all.
+#
+# SEPARATE FROM THE AUTHOR LANE ABANDONMENT AUDIT ON PURPOSE. That audit's
+# read-only token is load-bearing; this job must write refs, so it gets its own
+# workflow and its own narrowly scoped `contents: write`.
+#
+# No push/pull_request trigger: growth comes from reviews over time, not from a
+# changed file.
+
+name: Review Verdict Auto-Archive
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: review-verdict-auto-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: Archive old reviewer verdicts above threshold
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Archive old verdicts when the namespace exceeds 800 refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/manage-migration-author-lanes.mjs --archive-old-review-verdicts --archive-threshold 800 --apply-recovery > /tmp/verdict-archive.json
+          CODE=$?
+          set -e
+          {
+            echo "## Review verdict auto-archive"
+            echo
+            echo '```json'
+            grep -v '^ *"refs/' /tmp/verdict-archive.json || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CODE" -ne 0 ]; then echo "::error::Verdict archive could not run (exit ${CODE}); nothing is proven about the namespace."; exit "$CODE"; fi
+          REMAINING=$(node -e 'console.log(require("/tmp/verdict-archive.json").remaining)')
+          if [ "$REMAINING" -gt 900 ]; then echo "::error::${REMAINING} verdict refs remain after archiving; the 1000-ref ceiling is close and needs a human-directed fix (do not raise the ceiling, #2152)."; exit 1; fi
+          echo "Verdict refs remaining: ${REMAINING}"

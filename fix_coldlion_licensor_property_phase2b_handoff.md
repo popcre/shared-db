@@ -1,0 +1,144 @@
+# Handoff — ColdLion licensor/property Phase 2B
+
+## 1. What this application is
+
+`u2giants/shared-db` owns the shared Supabase schema and data-integration contracts used by
+CRM, DAM/PopSG, PM/PIM, DB Data Admin, and DesignFlow-adjacent workflows. Licensors and
+Properties remain canonical in `core.licensor` and `core.property`; ColdLion Phase 2 only
+mirrors source evidence into `plm.erp_licensor` and `plm.erp_property`.
+
+## 2. What this session set out to do
+
+Execute Phase 2B only against preview `rjyboqwcdzcocqgmsyel`: capture baselines, run two
+complete `mirror_only` snapshots, prove idempotency and canonical immutability, reconcile
+every source/canonical row, audit preview consumers, and perform the forward-impact audit.
+
+## 3. Current state
+
+- Phase 2 correction completed on 2026-07-24.
+- Corrected proof run: `7fa7925a-4307-435d-ab3c-fcf99fa9a659`.
+- Its `metadata.prior_run` records `licensorCount=44` and `propertyCount=516`.
+- The run recorded 0 inserted, 0 updated, and 560 unchanged with snapshot hash
+  `a69332e05d9064723ffa1dfbd870506c`.
+- Canonical UUID/status/parent hashes, mirror key/source hashes, and the 505-row
+  source-reference hash remained identical before and after.
+- The DB Data Admin rollback fixture now enforces the exact-one-Licensor rule and passed
+  against preview.
+- Production was not connected to or modified.
+- DesignFlow remains enabled.
+- No schedule was created.
+- No canonical row, source reference, mirror canonical link, status, name, UUID, or parent
+  edge changed.
+- Successful run 1: `a7eb9c1b-3868-46bc-8d9a-615c0b8c98e4`.
+- Successful run 2: `8a18acf5-0ce6-4be1-a522-85ba5478be43`.
+- Both snapshot hashes: `a69332e05d9064723ffa1dfbd870506c`.
+- Mirror state: 44 Licensor + 516 Property rows.
+- Run 2: 0 inserted, 0 updated, 560 unchanged.
+- Canonical hashes and 505-row source-reference hash are unchanged.
+- Reconciliation artifacts:
+  `docs/verification/coldlion-licensor-property-phase2b-20260724/`.
+
+## 4. Everything tried that did not work
+
+1. The first command assigned the human-formatted 1Password CLI field output directly to
+   `COLDLION_API_KEY`. ColdLion rejected it as invalid before import. Preview correctly
+   recorded failed run `91f48764-47b9-4f80-8e5f-108eb3658828`. Parsing the field's JSON
+   `value` produced the real credential and both full runs succeeded.
+2. The first baseline query used psql `\pset` directives, unsupported by
+   `supabase db query`; they were removed.
+3. The baseline query initially used two stale column names (`category`, `completed_at`);
+   it was corrected to the applied review/sync-run schema.
+4. The rolled-back DB Data Admin tree test tries to insert a Property with no Licensor.
+   Phase 1 intentionally made that impossible, so the fixture now fails and must be updated.
+
+## 5. Root causes and key findings
+
+1. The Phase 2 runner prior-count guard defect is fixed. Supabase emits a JSON envelope in
+   direct shell use and a Unicode box table under the 1Password execution environment.
+   `parsePriorCounts` now supports both plus the existing psql format, with regression tests.
+2. The full typed reconciliation matches the Phase 0 ledger: 542 exact compatible-code
+   source rows, 2 NASA name-only rows, 14 ColdLion-only rows, 10 canonical-only rows, and
+   2 true unmatched FRIDA KAHLO Licensor-to-Property collisions.
+3. The database opened 30 conservative conflict findings for 15 codes used by both entity
+   types in both divisions. Most still have an exact same-entity canonical match. Phase 3
+   must not treat those 30 findings as 30 unmatched collisions.
+4. Latest DesignFlow success is still 2026-07-08. It is stale evidence; the Phase 6 clock
+   is not running.
+
+## 6. Exact next steps
+
+1. ~~Obtain a fresh trustworthy DesignFlow snapshot before declaring Phase 3 entry ready.~~
+   **Done (2026-07-25):** a fresh read-only DesignFlow comparison snapshot succeeded (HTTP 200,
+   37 licensors / 468 properties / 256 distinct property codes, edge hash
+   `151bc8cedc988f9ad3ddc5eba6036275`), matching the recorded staging shape.
+2. ~~Start Phase 3 only in its own fresh session after that remaining entry gate is satisfied.~~
+   **Done (2026-07-25):** Phase 3 reconciliation is complete. The 570-row ruling ledger (100%
+   coverage, zero unexplained ambiguity), typed dispositions with named owners for all 28
+   non-automatic rows, the frozen+hashed Phase 4 mapping, and the parent-edge comparison
+   (256/256 agree) are in
+   [`docs/verification/coldlion-licensor-property-phase3-20260725/`](docs/verification/coldlion-licensor-property-phase3-20260725/README.md).
+   The 30 conservative database findings are correctly distinguished from the two true unmatched
+   `FK` collisions, and NASA/ZAG/FRIDA KAHLO/FRIENDS TV each have explicit dispositions.
+
+   **Phase 4 is BLOCKED:** Phase 3 recorded no human approval, so the frozen approved-mapping
+   input is empty (`approved_mapping_hash = d41d8cd98f00b204e9800998ecf8427e`). The 542
+   exact-compatible matches are proposed (not approved), and 28 rows await Albert Hazan's
+   disposition. See `HANDOFF.md` current priority and the Phase 4 entry contract in
+   `fix_coldlion_licensor_property_cutover.md`.
+
+## 7. Constraints and gotchas
+
+- Preview only; no production access.
+- No schedule before Phase 6.
+- No canonical linking before Phase 4.
+- No canonical creation before Phase 5.
+- Never classify or link across entity types by code alone.
+- DesignFlow remains enabled and remains the comparison source for lifecycle/parents.
+
+## 8. Access and environment
+
+- Preview: `rjyboqwcdzcocqgmsyel`.
+- Secrets: 1Password vault `vibe_coding`; no values in git.
+- Linked Supabase CLI target was explicitly verified.
+- Preview pooler queries use Node `pg` from `C:\repos\oracle\node_modules`.
+- Production credentials/URLs were not used.
+
+## 9. Open questions and risks
+
+- The prior-count parser correction is complete and proven by run
+  `7fa7925a-4307-435d-ab3c-fcf99fa9a659`.
+- DesignFlow staleness blocks the later parallel-run clock.
+- Phase 3 must assign human dispositions to all 28 blocking ledger rows and interpret the
+  30 conservative database findings with typed context.
+
+## Forward-impact audit
+
+Phases 3–8 are updated in `fix_coldlion_licensor_property_cutover.md`. No schema, key,
+permission, function signature, source-reference encoding, or schedule changed. Later entry
+tests now explicitly require the repaired prior-count guard and the updated DB Data Admin
+fixture.
+
+## Handoff self-audit
+
+Passed on 2026-07-24 after rereading the handoff without relying on chat context:
+
+1. **Could a developer walking in today continue with no questions? Yes.** Sections 1–3
+   explain the repository, shared consumers, authority boundary, exact preview project,
+   run UUIDs, snapshot hash, mirror state, forbidden production actions, and evidence path.
+2. **Could that developer continue as effectively as this session can? Yes.** Sections 4–5
+   preserve the failed credential handoff, unsupported SQL directives, stale column names,
+   stale DB Data Admin fixture, prior-count parser root cause, complete reconciliation
+   totals, DesignFlow staleness, and the 30-versus-2 collision distinction.
+3. **Are everything tried and every failure explained? Yes.** Section 4 records each failed
+   attempt, why it failed, whether it changed preview, and the working replacement. Section 5
+   distinguishes the operational parser defect from expected conservative review findings.
+4. **Is every next step concrete and verifiable? Yes.** Section 6 gives eight ordered actions.
+   The final gate is a new preview run whose `prior_run` is 44/516 while the snapshot,
+   canonical, and source-reference hashes remain unchanged.
+5. **Is every term, path, environment, and constraint explained? Yes.** Sections 1, 3, 7,
+   and 8 define `mirror_only`, the canonical/mirror split, preview identity, 1Password
+   location, Node/Postgres path, phase boundaries, scheduling prohibition, and DesignFlow
+   ownership. Section 9 names the remaining risks.
+
+No gap remained after this audit. This handoff is comprehensive enough for a fresh developer
+to execute the correction safely without this conversation.

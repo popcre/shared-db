@@ -1,0 +1,2607 @@
+#!/usr/bin/env python3
+"""Validate a fail-closed production migration allowlist and dry run."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+from migration_derivation import (
+    DerivationError,
+    DerivationRefusal,
+    assert_derivation_bases,
+    declared_bases,
+    parse_overrides,
+)
+
+VERSION_RE = re.compile(r"^\d{14}$")
+REMOTE_TABLE_RE = re.compile(r"^\s*(?:\d{14})?\s*\|\s*(\d{14})\s*\|")
+MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
+# Versions the general production lane refuses outright.
+#
+# There are TWO opposite kinds of block here and they must never be confused.
+# The rationale for the original blocks was once lost entirely and had to be
+# recovered by archaeology (PR #407,
+# docs/hard-blocked-migrations-dossier-20260802.md). One line of reason per
+# entry, permanently, so that never happens again.
+#
+# UNBLOCKED 2026-08-04 by owner ruling (Albert Hazan), AGENTS.md section 6.8 --
+# all four together, bundled with the negative test below and the whole-batch
+# preflight closure check. NEVER unblock a HARD_BLOCKED ColdLion version on its
+# own: a lone unblock hands a half-composable batch to a forward-only lane.
+#   20260726030000  ColdLion phase 4, approved 542-link machinery.
+#                   Blocked 2026-07-27 (PR #259) pending owner sign-off of the
+#                   ColdLion cutover -- a process gate, never a defect.
+#                   Unblocked 2026-08-04: the owner signed off (AGENTS 6.8).
+#   20260726031000  Phase 4 empty-input guard correction. Same gate, meaningless
+#                   without 20260726030000. Unblocked 2026-08-04 (AGENTS 6.8).
+#   20260726032000  Phase 4 REVOKE of browser-role EXECUTE. A security
+#                   improvement; blocked only because it is meaningless before
+#                   20260726030000 exists. Unblocked 2026-08-04 (AGENTS 6.8).
+#   20260726180000  ColdLion phase 6 parallel-run. Creates plm.taxonomy_sync_alert
+#                   and plm.taxonomy_parallel_observation, which 20260727221500
+#                   and 20260728134500 need at DDL time (42P01 otherwise). Same
+#                   process gate. Unblocked 2026-08-04 (AGENTS 6.8).
+#
+# STILL BLOCKED, PERMANENTLY -- these two are a different animal. They are
+# already applied to production and are listed to stop anyone re-running a known
+# mistake. Do not "tidy" them out of this set.
+#
+# PROVENANCE OF "already applied", stated so nobody launders it into a fact I
+# checked. The agent that unblocked the four (2026-08-04) was forbidden to read
+# production and did NOT verify this itself. It rests on two independent
+# production ledger reads recorded on 2026-08-02:
+#   - docs/production-migration-lane-design-20260802.md section 3.2, whose
+#     ledger query over all six versions returned only 20260724030000,
+#     20260726190000 and 20260726200000; and
+#   - docs/hard-blocked-migrations-dossier-20260802.md section 7, "20260726190000
+#     and 20260726200000 are applied; the other four are not".
+# Re-verify against the live production ledger before any promotion. If either
+# ever turns out NOT to be applied, that changes the count in AGENTS.md 6.8 and
+# this set must be revisited before anything is promoted.
+HARD_BLOCKED = {
+    # #3911: PR #3913 merged-stranded original. Preview applied it, but its
+    # production risk sign-off review recorded a durable refusal on the merged
+    # head. Never apply it; promote only forward replacement 20261002222102.
+    "20261002204050",
+    # Issue #2478: retain both historical files and any applied preview ledger.
+    # Only a fresh governed claim-2745 reissue may promote these definitions.
+    "20260911212849",
+    "20260917112129",
+    # #2741: preview applied an older body under this timestamp. Preserve that
+    # ledger/file history, but promote only the complete forward replacement.
+    "20260906222338",
+    # #2439 merged-stranded original. Preview applied this version, but its
+    # producer checked out 53937748ee2b8fdba2ada40a79219f4d62d02f77 and used
+    # different lane-manager bytes than current main, so the production
+    # business-risk gate correctly refuses its evidence. Preview already holds
+    # the version, making a fresh qualifying ledger delta impossible.
+    # 20260909202801 carries the exact same Git blob under the atomic claim
+    # reissue for #2443. Never apply this original.
+    "20260908195056",
+    # #2792 stranded preview-only original. Preview apply run 34920902290
+    # applied it at unmerged PR #2930 head a119760e; a later derived-from header
+    # changed the bytes, so the applied version can never be re-bound. Never
+    # merged, never applied to production. Reissued with the same function
+    # bodies plus the derived-from header as 20260915023506 under claim #2931.
+    # Never apply this original.
+    "20260915015414",
+    # #3458 merged-stranded original (claim #3483). Its only preview apply
+    # (run 36427442828) ran at PR #3487 head b38c082a before PR #3641 changed
+    # the migrations workflow, so that evidence can never bind merge commit
+    # 4b451fb0, and preview already holds the version. Reissued with identical
+    # executable SQL as 20260929040458. Never apply this original.
+    "20260928003740",
+    # #3458 second merged-stranded reissue (claim #3483). Preview holds
+    # 20260929040458 only through ledger reconciliation run 36546629950 (a
+    # rename of 20260928145444), so no preview run recorded evidence for it and
+    # the merged-main rehearsal refuses it (run 36760878045). Reissued with
+    # identical executable SQL as 20260930185929. Never apply this original.
+    "20260929040458",
+    # #505 merged-stranded original. Its first preview apply refused and rolled
+    # back transactionally after live app drift invalidated an over-broad
+    # licensor_id-is-null assumption. 20260830204711 carries the preserved
+    # capability with the evidence-backed invariant. Never apply this original.
+    "20260830195655",
+    # #1750 code-truth restoration. Production already holds this exact ledger
+    # version and its one statement is byte-identical to the governed historical
+    # 20260817150944 restoration. The file exists only so main agrees with the
+    # protected ledger. Never replay it in preview or production.
+    "20260828052706",
+    # #1645 / #1692 merged-stranded original. Preview applied this version, but
+    # an unrelated producer-path change made its historical evidence permanently
+    # ineligible for production. The atomic claim reissue retains its exact
+    # object lock under a fresh version; this original must never promote.
+    "20260827183011",
+    # #1517 fresh-version recovery. The original 20260814170749 Warner cleanup
+    # was merged without a preview rehearsal before the preview project was
+    # replaced. Current producer bytes therefore cannot create qualifying
+    # evidence for that version. 20260825201330 carries the same executable SQL;
+    # it was applied alone to production in run 32901820150 after PR #1541 merged.
+    # The original must never enter any preview or production allowlist.
+    "20260814170749",
+    # These historical originals are superseded and their replacements are live.
+    # 20260819011639 cannot satisfy the producer-provenance binding; its executable
+    # SQL was reissued byte-for-byte as 20260820142402. 20260819151536 times out in
+    # its production-only verification block; 20260820004338 carries the same end
+    # state with catalogue-only verification. Applying either original is forbidden.
+    "20260819011639",
+    "20260819151536",
+    # #2171 / #2349 merged-stranded original. Its only preview apply (run
+    # 33754529571) was a pre-merge branch rehearsal carrying a different
+    # scripts/production_migration_guard.py than the authoring PR #2199 merge
+    # commit 477ef03cd516c79188d81b6c21260575a43a9239, so the production
+    # business-risk gate refuses its byte binding (measured, run 33926573085).
+    # Preview already holds the version after the orphan-reconciliation rename
+    # in run 33821298999, so no fresh preview ledger delta can ever exist for
+    # it. 20260905024139 carries byte-identical executable SQL (git blob
+    # adc49fb5a103a70e03d9a98afc5be4b6518ac92a). Never apply this original.
+    "20260903200951",
+    # #1532 original Universe B contract. The original is byte-identical to
+    # 20260825192610, which was rehearsed under current producer machinery and
+    # applied alone to production in run 32892984889. Never apply both versions.
+    "20260824181600",
+    # #679 REPLACED, 2026-08-25. Both carry correct SQL and BOTH ARE UNPROMOTABLE:
+    # their only preview applies ran on commits a squash merge left outside main's
+    # history, so prove_historical_original_apply_runs refuses their byte binding
+    # (measured, runs 32845346966 and 32850264285), and neither can ever earn a
+    # qualifying run because preview already has them applied. Replaced by
+    # 20260825124200 (the pmt_collection vocabulary DDL) and 20260825130500 (the
+    # forward loader repair), both applied to production on 2026-08-25.
+    # Promoting either now would overwrite the repaired plm.load_pmt_capture_chunk
+    # body with an older rewrite and silently restore the issue #1418 defect.
+    "20260814223552",
+    "20260825094455",
+    # Held historical FR ruling is superseded by guarded forward 20260818174350.
+    "20260802171000",
+    # #853/#868 unsafe transaction-framed bridge cutover. The explicit COMMIT
+    # can commit DDL before Supabase inserts its migration-ledger row. A pinned
+    # CLI 2.105.0 disposable failure test proved SQL present + ledger absent.
+    # Never apply production; 20260816110750 is the transaction-safe replacement.
+    "20260816045130",
+    # Master Data lockdown: restricted editing of public.style_tracker_rows to
+    # admins. WRONG -- it locked all 33 plain 'user' accounts out of the Styles
+    # grid, which is open BY DESIGN (AGENTS.md section 0.4). Applied to
+    # production, then reversed by 20260726200000. Never re-apply.
+    "20260726190000",
+    # The reversal of 20260726190000. Already applied to production, so listing
+    # it is inert; kept so the pair stays legible together.
+    "20260726200000",
+    # A THIRD KIND. Read this before assuming it matches either pair above.
+    #
+    # NEVER APPLIED, and must NEVER be applied: promoting it would REGRESS a
+    # security control that is live on production right now. It rewrites
+    # public.lock_down_new_public_function_execute back to a narrower body
+    # (`command_tag = 'CREATE FUNCTION'`, `revoke execute on function`) than the
+    # one production runs today (`command_tag in ('CREATE FUNCTION',
+    # 'CREATE PROCEDURE')`, `revoke execute on routine`), so newly created public
+    # PROCEDURES would stop being locked down. Its `create or replace` and
+    # `drop event trigger`/`create event trigger` overwrite unconditionally, and
+    # it sorts BELOW the already-applied 20260729180000, which will therefore
+    # never re-run to repair the damage.
+    #
+    # Its whole end state is already on production, from two migrations that ARE
+    # in the ledger: 20260729130000 (the identical `alter default privileges`)
+    # and 20260729180000 (the live event-trigger body, md5 735985606362e032...
+    # matched bit-exactly after CRLF normalisation).
+    #
+    # Do NOT reach for the old argument that it would abort anyway on a missing
+    # public/pim.sync_clickup_tasks. That is true only for a lone promotion. In
+    # the full 50-file backlog 20260728174500 creates those functions FIRST, so
+    # the file would succeed and regress production silently.
+    # Evidence: docs/verification/production-apply-set-and-rehearsal-20260809.md
+    "20260729120000",
+    # RETIRED and NEVER APPLIED. Supabase CLI 2.105.0 runs explicit COMMIT from
+    # this file before it writes the migration ledger, so a later ledger error
+    # can leave its DDL applied but unrecorded. Issue #853 replaces it with the
+    # transaction-safe 20260816110750 migration and the exceptional atomic path.
+    # Keep the retired version impossible to name in preview or production.
+    "20260816045130",
+    # RETIRED and NEVER APPLIED. This creates plm.source_resolution with a
+    # foreign key to core.character. Issue #1374 retires that empty Universe A
+    # table, so applying this older version later would recreate an obsolete
+    # dependency and make the repository's ordered history regress its settled
+    # schema. A separate future workstream may author a safe source-resolution
+    # replacement; this historical version itself must never run.
+    "20260814224937",
+    # RETIRED and NEVER APPLIED. The companion to 20260814224937: it backfills
+    # and guards plm.source_resolution, so its first reference to that table --
+    # the conflict-gate join at line 152, before any INSERT -- fails 42P01
+    # without the retired version's table. It cannot be rescued by applying the
+    # pair, because the pair is exactly what issue #1374 made impossible, and it
+    # cannot be rescued by a replacement either: any replacement sorts ABOVE
+    # this version, so ordered application always runs this file first. Were it
+    # somehow to run after one, it would clobber it -- blanking resolution
+    # columns, rebuilding api.opa_property_reconciliation from the old body and
+    # installing its own trigger set. The same future workstream that authors
+    # the safe source-resolution replacement supersedes this file; this
+    # historical version itself must never run.
+    "20260814233423",
+    # RETIRED and NEVER APPLIED, and unsafe in a way no post-apply check can
+    # see. It is a whole-view `create or replace` of api.source_capture_inventory
+    # carrying the 2026-08-14 body. Later APPLIED migrations (20260819015333,
+    # 20260819125713, 20260819151536, 20260820004338) rebuilt that view with the
+    # identical ten-column output contract, so this older body would replace it
+    # cleanly, with no error, and silently downgrade Sega, Peanuts and WildBrain
+    # to count_basis 'retained_only'. The view still exists afterwards, so
+    # catalog verification passes while coverage reporting has regressed.
+    # Evidence: docs/verification/unapplied-20260814-migrations-audit-20260823.md
+    "20260814233342",
+    # #1427 original contract. Preview applied it, but production cannot: its
+    # single normalization DO statement timed out and rolled back. The complete
+    # replay-safe forward replacement is 20260825031841.
+    "20260825010603",
+    # #1427 partial accelerator. Preview applied it after the original contract,
+    # while production requires it before that earlier version; ascending-order
+    # promotion correctly refuses the inverse dependency. Superseded in full by
+    # the self-contained 20260825031841 forward replacement.
+    "20260825025154",
+    # #1471 single-statement forward. Production cleanly rolled it back after
+    # the enclosing DO statement reached the unchanged 10-minute timeout.
+    # Superseded by the governed two-transaction recovery beginning at
+    # prerequisite 20260825041343.
+    "20260825031841",
+}
+
+# One authority for versions that must never be applied. The post-batch
+# verifier imports these names from here; pending-status policy must not import
+# that application verifier back into the production guard's execution closure.
+RETIRED_VERSION_REASONS = {
+    "20261002204050": "merged-stranded: PR 3913 head a564ec1b2b9a424679fa1b42749351e00ba48332 carries a durable reviewer refusal on its production risk sign-off, so it can never be automatically promoted; preview applied it (run 37069288545); retain historical file and preview ledger, never apply, use re-runnable forward replacement 20261002222102 under issue 3911 (claim 3912 reissued)",
+    "20260911212849": "issue 2478 original already superseded through claim 2745; retain its SQL and permanent reservation, never apply this original; use the fresh governed SKU-helper reissue",
+    "20260917112129": "issue 2478 preview-only reissue has no qualifying original migration-content manifest; retain original SQL and preview ledger, never apply this version to production; use the fresh governed claim-2745 reissue with new exact-head review and rehearsal",
+    "20260906222338": "preview run 34066470075 applied SHA256 67dc237a6968ad1a63a8d446e7bd0b1a2cb6efc52a9685dc9c5eb753008f204e, while final reviewed PR2415/main holds cb7bf087c6fd2eb2c21faaee786bdf8103ca8cf9f7bed37af0da2367f8c9d438 under the same timestamp; retain historical file and preview ledger, never apply the mismatched original, use complete forward replacement 20260911152203 under issue2741",
+    "20260908195056": "unpromotable producer provenance (preview apply run 34273765771 checked out 53937748ee2b8fdba2ada40a79219f4d62d02f77 with lane-manager bytes different from current main) and preview already holds the version, so no fresh qualifying ledger delta can be produced; reissued with identical migration content as 20260909202801 under issue 2439 and claim 2443",
+    "20260915015414": "stranded preview-only version (preview apply run 34920902290 at unmerged PR 2930 head a119760e, never merged, never applied to production) and preview already holds the version, so its bytes can never change; reissued with the same function bodies plus derived-from header as 20260915023506 under issue 2792 and claim 2931",
+    "20260928003740": "unpromotable producer provenance (only preview apply run 36427442828 was dispatched at PR 3487 head b38c082a before PR 3641 changed .github/workflows/shared-supabase-migrations.yml, so its evidence cannot bind merge commit 4b451fb0961ecc074ad24487c5d1b8df87cf1d78) and preview already holds the version, so no qualifying evidence can ever be produced; reissued with identical executable SQL as 20260929040458 under issue 3458 and claim 3483",
+    "20260929040458": "unpromotable preview provenance (preview holds it only through ledger reconciliation run 36546629950, a rename of 20260928145444 whose sole apply was run 36456516739; no preview run recorded evidence for this version and merged-main rehearsal run 36760878045 refused it as already applied) and production never held it; reissued with identical executable SQL as 20260930185929 under issue 3458 and claim 3483",
+    "20260814170749": "stranded without qualifying preview evidence after the preview project replacement; reissued with identical executable SQL as 20260825201330 under issue 1517, applied to production 2026-08-25 (PR 1541, run 32901820150)",
+    "20260819011639": "unpromotable producer provenance; replaced byte-for-byte by 20260820142402, applied to production 2026-08-20 (issue 1171)",
+    "20260819151536": "production verification times out and rolls the migration back; replaced by 20260820004338, applied to production 2026-08-20 (issue 1280)",
+    "20260824181600": "unpromotable producer provenance; replaced byte-for-byte by 20260825192610, applied to production 2026-08-25 (issue 1532, run 32892984889)",
+    "20260814223552": "unpromotable byte binding (PR 1032 merged unrehearsed); replaced by 20260825124200, applied to production 2026-08-25 (issue 679)",
+    "20260825094455": "unpromotable byte binding (only preview apply ran on a squash-orphaned commit); replaced by 20260825130500, applied to production 2026-08-25",
+    "20260729120000": "applying it would regress a live production security control whose safe end state is already present",
+    "20260816045130": "explicit COMMIT separates DDL from the Supabase migration ledger; never apply production; use safe replacement 20260816110750",
+    "20260814224937": "never applied; it would recreate an obsolete core.character foreign key after issue 1374 retires the empty Universe A character tables",
+    "20260814233423": "never applied; it cannot run without plm.source_resolution from the retired 20260814224937, and no replacement can rescue it because every replacement sorts above this version; a future source-resolution workstream supersedes both",
+    "20260814233342": "never applied and fully superseded; it replaces api.source_capture_inventory wholesale with the 2026-08-14 body, which silently regresses the Sega, Peanuts and WildBrain branches added by later applied migrations",
+    "20260825010603": "preview-only historical #1427 contract; production timed out and rolled back, and complete forward replacement 20260825031841 supersedes it",
+    "20260825025154": "preview-only historical #1427 accelerator; its later version cannot precede the earlier production-pending contract, and 20260825031841 supersedes both",
+    "20260903200951": "unpromotable producer provenance (original apply run 33754529571 was a pre-merge branch rehearsal whose producer files differ from PR 2199 merge commit 477ef03cd516c79188d81b6c21260575a43a9239) and preview already holds the version after orphan reconciliation run 33821298999, so no qualifying evidence can ever be produced; replaced byte-for-byte by 20260905024139 under issue 2349",
+    "20260825031841": "preview-only historical #1471 forward; production timed out and rolled back because its full reconciliation remained one statement; use prerequisite 20260825041343 and its governed dependent recovery",
+}
+RETIRED_VERSIONS = frozenset(RETIRED_VERSION_REASONS)
+HELD_VERSIONS = frozenset({"20260802170000", "20260802171000"})
+
+# Preview contains this authenticated historical migration, but production does
+# not. The repository file exists only to keep source truth aligned with the
+# preview ledger. No production allowlist may carry it.
+PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
+    "20260817150944",
+    "20260824150630",
+}
+
+# ---------------------------------------------------------------------------
+# MIGRATION TARGET SCOPE (issue #2820)
+#
+# THE GAP THIS CLOSES. Until now nothing in this repository recorded WHICH
+# DATABASE a merged migration is for. Every merged file was implicitly "for the
+# shared Supabase projects", so a migration authored against a DIFFERENT
+# database appeared in the ledger-drift report as ordinary promotable work: it
+# is absent from the production ledger for a legitimate reason, but the checker
+# could not tell that apart from a genuinely overdue migration. Acting on one
+# would apply schema to a database it was never reviewed against.
+#
+# THIS IS A TARGET REGISTRY, NOT A SKIP LIST. Each entry names the migration's
+# ACTUAL target. Exclusion is DERIVED by comparing that target with the target
+# being checked -- it is not asserted per version. A future migration aimed at
+# `preview` would therefore still be reported as outstanding on `preview` and
+# excluded only on `production`. A bare "skip this version" list would leave the
+# next cross-project migration in exactly the same trap.
+#
+# NEVER SILENT. `classify_pending_version` returns the kind `foreign-target`
+# with a reason naming the real target and the issue, and the drift checker
+# prints those entries in their own clearly-labelled section. A reader must be
+# able to SEE the claim and challenge it; an invisible exclusion is its own
+# hazard.
+#
+# ADDING AN ENTRY IS A SCOPE CLAIM. Record it only when the migration's own
+# header and its issue both say so, and cite the issue here.
+# ---------------------------------------------------------------------------
+
+# Every target name the repository knows. A registry entry naming anything else
+# is a typo or an invented database, and fails closed rather than silently
+# excluding a version from a target that does not exist.
+KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod"})
+
+FOREIGN_TARGET_MIGRATIONS = {
+    "20260909121403": {
+        "target": "designflow-nonprod",
+        "project": (
+            "the DesignFlow consolidated non-production Supabase project "
+            "(reached by the DB_*_SANDBOX settings in GCP project "
+            "lithe-breaker-323913) -- neither shared production nor the "
+            "shared-db-schema-rehearsal preview branch"
+        ),
+        "issue": "#2403",
+        "note": (
+            "Creates the empty, isolated `hts_rag_split` schema transcribed from the "
+            "read-only structure dump of the live DesignFlow non-production database, "
+            "as the second physical target for the designflow-backend "
+            "HTS_RAG_DB_ENABLED pilot. It was never reviewed against shared production."
+        ),
+    },
+}
+
+for _version, _entry in FOREIGN_TARGET_MIGRATIONS.items():
+    # ValueError, not GuardError: this runs at IMPORT time and GuardError is
+    # defined further down the module. A bad entry must fail loudly on import.
+    if _entry["target"] not in KNOWN_MIGRATION_TARGETS:
+        raise ValueError(
+            f"migration {_version} declares unknown target {_entry['target']!r}; "
+            f"known targets: {', '.join(sorted(KNOWN_MIGRATION_TARGETS))}"
+        )
+del _version, _entry
+
+
+def foreign_target_entry(version: str, target: str) -> dict[str, str] | None:
+    """The scope record for ``version`` when it is NOT meant for ``target``.
+
+    Returns ``None`` when the version has no recorded target (the normal case --
+    an unregistered migration is treated as in scope, so forgetting to register
+    something can only ever OVER-report, never hide work) or when its recorded
+    target IS the one being checked.
+    """
+    entry = FOREIGN_TARGET_MIGRATIONS.get(version)
+    if entry is None or entry["target"] == target:
+        return None
+    return entry
+
+# The four unblocked above. This is ENFORCED, not documentary: `parse_allowlist`
+# requires an allowlist to contain either ALL FOUR or NONE of them. AGENTS.md
+# section 6.8 forbids unblocking them "one at a time, a few at a time, or just
+# the safe ones -- there is no size of subset that makes it allowed", because a
+# partial set hands a half-composable batch to a forward-only lane and leaves
+# production PARTIALLY PROMOTED with no undo.
+BUNDLE_20260804 = {
+    "20260726030000",
+    "20260726031000",
+    "20260726032000",
+    "20260726180000",
+}
+
+# AGENTS.md section 6.5 -- OWNER RULING (Albert Hazan, 2026-08-03), "hold it and
+# ship it together with the removal work".
+#
+# NEITHER of these two may reach production by ANY route until the `FR`
+# "FRIENDS TV" REMOVAL work is ready to ship with them, as ONE bounded apply in
+# dependency order. Not alone, not as a pair, not inside a wider backlog sweep,
+# not via `--include-all`, not re-issued under a fresh timestamp.
+#
+# WHY the block is here and not in HARD_BLOCKED. HARD_BLOCKED means "never, by
+# any route, full stop". Section 6.5 is NOT that: it names a legal future event.
+# Putting these in HARD_BLOCKED would force a GUARD EDIT to perform a promotion
+# the owner has already authorised -- the wrong shape, and the kind of edit that
+# gets made carelessly under deadline. So this is a CO-PRESENCE rule instead,
+# the same shape as the 6.8 all-four-or-none rule above: the two held versions
+# are legal in an allowlist if and only if the whole FR ship set is in it too.
+#
+# Unblocking is therefore a DATA change, not a policy change: when the removal
+# migrations exist, list their versions in FR_REMOVAL_VERSIONS below and the
+# combined promotion parses. Until then FR_REMOVAL_VERSIONS is empty, so any
+# allowlist containing either held version is refused -- which is exactly right,
+# because the one legal event cannot yet be assembled.
+#
+# ***** THE VERSION STRINGS BELOW ARE A SAFETY CONTROL, NOT A FILE INDEX. *****
+#
+# Issue #1182: on 2026-08-18 `--supersede-active-claim-version` renamed the
+# guarded forward migration from 20260817232425 to 20260818174350 and this set
+# was NOT updated. The old string then named nothing, and the file that really
+# existed sat in NO hold set at all -- one allowlist away from leaving `FR`
+# inactive on production forever. Nothing caught it but an independent review.
+#
+# If you rename or re-reserve a migration that appears here, you MUST change it
+# here in the same commit. `test_every_hold_set_member_is_a_real_migration_file`
+# now fails the build if you forget.
+FR_HELD_20260803 = {
+    # plm.import_master_data preserves curated licensor/property status.
+    "20260802170000",
+    # Fresh guarded replacement for held historical version 20260802171000.
+    # RE-RESERVED 2026-08-18 from 20260817232425 (issue #1182). The old string
+    # names no file; never reintroduce it here.
+    "20260818174350",
+}
+
+# The `FR` removal migrations. POPULATED 2026-08-20 (issue #1339) by the change
+# that added the file, which is the ONLY legitimate way this set ever grows:
+# the hold releases by DATA, never by editing the co-presence check below.
+#
+# 20260820183334 erases core.licensor `FR` "FRIENDS TV" outright, on the owner's
+# 2026-08-03 ruling reaffirmed 2026-08-20 ("erase FRIENDS TV completely"). It
+# extends the licensing write guard to cover DELETE and performs the removal
+# through a one-use transaction-bound authorization, so the destructive step is
+# audited rather than routed around.
+#
+# THE SAME SAFETY-CONTROL RULE APPLIES TO THIS STRING as to the ones above
+# (issue #1182): it is not a file index. If this migration is ever renamed or
+# re-reserved, change it here, in
+# `test_every_hold_set_member_is_a_real_migration_file`, and in AGENTS.md 6.5,
+# all in the same commit.
+FR_REMOVAL_VERSIONS: set[str] = {
+    # Erase core.licensor FR "FRIENDS TV" (#1339).
+    "20260820183334",
+}
+
+# Narrow prerequisite that lets the held owner-ruling migration cross the
+# licensing guard only under its exact migration identity. It remains held with
+# the FR bundle and is not itself removal work, so it must never make an empty
+# FR_REMOVAL_VERSIONS set appear complete.
+#
+# IT IS HELD IN ITS OWN RIGHT, NOT ONLY AS A COMPANION (fixed 2026-08-18, #1145
+# review). AGENTS.md 6.5 says in terms: "Neither 20260802170000, compatibility
+# prerequisite 20260817225127, nor guarded replacement 20260818174350 may reach
+# production until the FR removal work is ready with them. Not alone, not as a
+# subset." The rule is the owner's; the code used to enforce it only when an
+# FR_HELD member was ALSO in the allowlist, so `20260817225127` promoted ALONE
+# parsed clean. The prose is authoritative, so `parse_allowlist` now triggers
+# the 6.5 refusal on ANY member of FR_SHIP_SET_HOLD, this set included.
+FR_COMPATIBILITY_VERSIONS = {"20260817225127"}
+
+# Every version AGENTS.md 6.5 holds. Presence of ANY ONE of these in an
+# allowlist triggers the 6.5 co-presence rule. Removal members are required to
+# complete a legal ship set but are not themselves a trigger, because until
+# FR_REMOVAL_VERSIONS is populated there is nothing to trigger on.
+FR_SHIP_SET_HOLD = FR_HELD_20260803 | FR_COMPATIBILITY_VERSIONS
+
+
+# ---------------------------------------------------------------------------
+# SECURITY CO-PRESENCE RULES (added 2026-08-10, issue #660)
+#
+# Each entry is: "if the CREATE migration is in the allowlist, the FIX migration
+# must be too". Between the create and its fix, production sits in a state the
+# owner would not accept, so the two must land in one bounded apply.
+#
+# ****** THE RULE IS ONE-DIRECTIONAL, AND THAT IS DELIBERATE. ******
+#
+# Read this before you "make it symmetric for consistency". It is the single
+# most important property of this block.
+#
+# `validate_candidates()` REFUSES any allowlist containing a version that is
+# already applied on production. So consider the exact scenario these rules
+# exist for: a bounded apply dies after the CREATE migration has landed and
+# before the FIX migration runs. Production is now in the insecure state. The
+# only legal recovery allowlist is the FIX ALONE -- the create cannot be
+# re-listed, because it is applied.
+#
+# A symmetric rule ("the fix requires the create") would REFUSE that recovery.
+# The operator's only way out would be to EDIT THIS SAFETY GUARD, under
+# time pressure, while production sits exposed. That is precisely the shape of
+# change that gets made carelessly, and it is why AGENTS.md 6.5 was written as a
+# co-presence rule rather than a HARD_BLOCKED entry in the first place.
+#
+# So: `20260810090000` ALONE is legal. `20260810080000` ALONE is legal.
+# `20260810110000` + `20260810120000` without `20260810030000` is legal.
+# There are explicit tests for each of those recovery cases; if you change this
+# structure and they still pass, you have broken the tests, not proved the change.
+#
+# ****** ONE-DIRECTIONAL IS NOT THE SAME AS "SILENT ONCE THE CREATE LANDS". ******
+#
+# Issue #672 item 1. The rule fires when the create is in the ALLOWLIST **or**
+# already in the LEDGER. What stays one-directional is which versions it
+# DEMANDS: it demands the outstanding fixes, never the create. So a recovery run
+# after a mid-batch abort is still legal -- it just has to carry EVERY fix that
+# is not yet applied, instead of an arbitrary subset. `20260810110000` ALONE
+# with `20260810030000` already applied is REFUSED, because it leaves
+# `20260810120000` unapplied and production holding the wrong read claim with
+# `service_role` still able to INSERT. `20260810110000` + `20260810120000`
+# together is ACCEPTED in that same state. See `parse_allowlist`.
+#
+# NOT LISTED HERE, ON PURPOSE: `20260810110000` also alters `api.dam_order_list`,
+# which `20260810010000` creates. That is a DEPENDENCY, not a policy, and it is
+# already enforced by `preflight_batch` -- which reads the real production ledger
+# and therefore stays silent when `20260810010000` is already applied. Encoding
+# it here would be ledger-blind and would break exactly the recovery case above.
+# Dependencies belong in the preflight; policy belongs here.
+#
+# ALSO NOT LISTED, ON PURPOSE: `20260810030000` (Warner) does NOT require
+# `20260810180000`. 20260810180000 touches only the 23 plm.pmt_* and 16
+# plm.nbcu_* tables; Warner's `20260810110000` already revokes the full
+# PostgreSQL 17 set (update, delete, truncate, references, trigger, maintain) and
+# is the pattern 20260810180000 brings the other two up to. Adding it to the
+# Warner rule would couple three landing schemas that do not depend on each
+# other and would enlarge every Warner recovery allowlist for no security gain.
+# A co-presence rule is a claim that promoting X without Y leaves production
+# insecure; that claim is not true here, and a rule that is not true is a rule
+# the next operator learns to route around.
+#
+# WHY `20260810180000` IS SAFE AS A REQUIRED FIX ON BOTH RULES. It is a FIX in
+# two rules and a CREATE in none, so `test_no_rule_is_symmetric` still holds and
+# `20260810180000` ALONE remains a legal allowlist. That matters more here than
+# usual: every one of its 39 table references goes through `execute format(...)`,
+# which `preflight_batch` explicitly does not model, so the migration itself
+# handles a missing family all-or-nothing from a catalog read instead of
+# aborting mid-batch. The rules below stop the lane producing that state; the
+# migration copes if anything else does.
+CO_PRESENCE_RULES: tuple[tuple[str, frozenset[str], str], ...] = (
+    (
+        # Paramount
+        "20260810020000",
+        frozenset({"20260810090000", "20260810180000"}),
+        "20260810020000 creates the Paramount Creative Library landing schema and "
+        "leaves `service_role` holding TRUNCATE on 23 tables. TRUNCATE does not "
+        "fire the row-level triggers those tables rely on, so between these two "
+        "migrations production is one statement away from silently bypassing "
+        "every one of them. 20260810090000 is the loader target guard and the "
+        "TRUNCATE revoke. 20260810180000 COMPLETES that fix and is required with "
+        "it: 20260810090000 was written against the pre-PostgreSQL-17 privilege "
+        "list and revokes only TRUNCATE and TRIGGER, leaving REFERENCES and "
+        "MAINTAIN on all 23 tables (issue #664). 20260810180000 also narrows the "
+        "plm schema default privilege that hands every new table all eight bits "
+        "at CREATE TABLE, before any GRANT in the creating migration runs (issue "
+        "#649); promoting the create without it re-opens that hole on 23 more "
+        "tables and loses the one chance to prevent rather than repair it.",
+    ),
+    (
+        # NBCU
+        "20260810070000",
+        frozenset({"20260810080000", "20260810180000"}),
+        "20260810070000 creates the NBCU creative-asset landing schema with "
+        "default-granted write privileges still in place. 20260810080000 revokes "
+        "them. Promoting the create without the revoke leaves production writable "
+        "by roles that must not write there. 20260810180000 is required for the "
+        "same reason it is required alongside Paramount: 20260810080000 revokes "
+        "only UPDATE, DELETE and TRUNCATE and leaves REFERENCES, TRIGGER and "
+        "MAINTAIN on all 16 tables (issue #664), and only 20260810180000 closes "
+        "the plm schema default-privilege hole behind them (issue #649).",
+    ),
+    (
+        # Warner
+        "20260810030000",
+        frozenset({"20260810110000", "20260810120000"}),
+        "20260810030000 creates the Warner STARLABS landing schema before its "
+        "grants, RLS and read-claim corrections exist. 20260810110000 applies the "
+        "grants/RLS (and makes api.dam_order_list security-invoker); "
+        "20260810120000 corrects the read claim and revokes the service_role "
+        "INSERT. All three land together or not at all.",
+    ),
+    (
+        # Disney DCP Vault (issue #665)
+        "20260810190000",
+        frozenset({"20260810190100"}),
+        "20260810190000 creates the nine plm.dcp_* Disney DCP Vault landing tables, the "
+        "frozen row-hash function and the immutability triggers, but NO loader. The only "
+        "path to plm.dcp_crawl.status = 'complete' is plm.finalize_dcp_crawl, and the only "
+        "way to put a row in any of the nine tables is the chunked loader -- both live in "
+        "20260810190100. Promoting the create alone therefore leaves production holding "
+        "nine permanently empty tables that cannot be loaded, cannot be finalized, and "
+        "whose immutability triggers can never arm because no crawl can ever reach "
+        "'complete'. That is a half-build, not a shippable state, and the two were "
+        "authored as one bounded change. "
+        "DIRECTION, DELIBERATE, READ THE HEADER COMMENT BEFORE 'FIXING' IT: the create "
+        "requires the loader, NOT the reverse. Stating it the other way round -- "
+        "'20260810190100 requires 20260810190000' -- would be the obvious reading of the "
+        "dependency and would be WRONG here, because validate_candidates refuses any "
+        "allowlist naming an already-applied version. A batch that died between the two "
+        "can only be recovered by an allowlist of 20260810190100 ALONE, and the reversed "
+        "rule would refuse exactly that recovery and force an edit of this safety guard "
+        "while production sat half-built. The genuine 'the loader needs its tables' "
+        "dependency is ledger-aware and belongs to preflight_batch, which reads the real "
+        "production ledger and stays silent once 20260810190000 is applied.",
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
+# ATOMIC BATCHES (added 2026-08-11)
+#
+# ****** TWO PROVENANCES, ONE MECHANISM (issue #784, added 2026-08-12). ******
+#
+# Read this before deciding an entry is mislabelled. Every entry below states
+# the same enforced property -- PRODUCTION MUST NOT COME TO REST INSIDE THIS SET
+# -- but it is derived from the contract in one of two ways, and the `basis`
+# field says which:
+#
+#   "ATOMIC"     the contract's section 5 table declares the batch atomic in so
+#                many words. B1, B3, B7, B9 (and B10a, B10c in section 5A.4).
+#
+#   "NEVER-REST" the contract does NOT use the word atomic, but its section 6
+#                never-rest list names EVERY member of the batch except the
+#                last, and section 6's legal-resting-point list names that last
+#                member. The set of legal resting states is therefore exactly
+#                {none of it, all of it} -- mechanically identical to atomic,
+#                derived rather than declared. B2, B4, B5, B6, B8.
+#
+# WHY ONE MECHANISM AND NOT TWO. Issue #784 asked for the shape to be decided
+# first, and warned that the non-atomic batches "are not all-or-nothing like the
+# atomic four". They were checked one by one against section 6 and they ARE: for
+# each of B2, B4, B5, B6 and B8 the contract forbids resting on every member but
+# the terminal one, so "an allowlist may not stop at a version section 6 forbids
+# resting on" and "all members or none" describe the same set of accepted
+# allowlists. Inventing a second checker to express an identical rule would give
+# the lane two places to look and two places to drift. If a future batch ever
+# gains a genuine INTERNAL legal resting point, that is when a second shape is
+# warranted -- and it must be added with the contract text quoted beside it,
+# never by weakening this one.
+#
+# B4 IS INCLUDED THOUGH #784 DID NOT NAME IT. #784 listed B2, B5, B6 and B8.
+# Section 6 names `20260731210000` (B4's first of two) as a never-rest state and
+# `20260731220000` as its legal resting point, so B4 is the same gap by the same
+# derivation. Leaving it out because an issue body did not list it would rebuild
+# the exact defect -- a rule that exists only in prose -- for one batch, and
+# AGENTS.md 4.3 is explicit that the CONTRACT is the authority for batch
+# membership, never an issue body. B4 is already applied to production, so the
+# entry is inert today; it is here so the mechanism has no hole in it.
+#
+# THE COVERAGE IS PINNED BY A TEST, NOT BY THIS COMMENT. `test_every_section_6
+# _never_rest_version_is_enforced` parses the contract's own section 6 list and
+# asserts every version in it belongs to a registered batch and is not that
+# batch's terminal member. That is what stops the next never-rest state from
+# being added to the contract and enforced by nothing.
+#
+# docs/production-promotion-app-tolerance-contract.md declares FOUR of its nine
+# promotion batches ATOMIC -- B1, B3, B7 and B9 (contract section 5 table, and
+# section 10: "B1, B3, B7 and B9 are atomic. Do not split them, whatever a
+# description implies"). Until today that was PROSE ONLY. The guard encoded
+# fragments of it -- BUNDLE_20260804 covers four of B1's eleven files, and the
+# CO_PRESENCE_RULES cover four of B9's fourteen -- and nothing at all for B3 or
+# B7.
+#
+# The hole was not theoretical. `20260810050000` sits inside atomic B9 and
+# appeared in NO HARD_BLOCKED entry, NO bundle and NO co-presence rule, so a
+# single-file allowlist of `20260810050000` alone PASSED this guard while
+# violating the contract. That is the exact shortcut that would let issue #729
+# ship early and leave production at rest inside the Warner window (contract
+# section 6: eight tables of confidential STARLABS data readable by every
+# authenticated account). A guard that reads as strict and behaves as permissive
+# is worse than no guard, because people trust it.
+#
+# WHY A NEW CONSTANT RATHER THAN AN EXISTING MECHANISM. The shape needed here is
+# ALL-OR-NONE over a named set -- exactly BUNDLE_20260804's shape, and NOT
+# CO_PRESENCE_RULES' shape (which is one-directional create-implies-fix, and must
+# stay that way; see its header). So this generalises the BUNDLE mechanism to N
+# named sets instead of inventing a parallel system. BUNDLE_20260804 is kept
+# where it is: it is a SUBSET of B1 with its own independent provenance
+# (AGENTS.md section 6.8, an owner ruling about unblocking, not about batching),
+# it is enforced ledger-blind in `parse_allowlist` so no subcommand can route
+# around it, and deleting it would lose that ruling. The two checks agree; the
+# stricter one wins, which is the safe direction.
+#
+# ****** THE CHECK IS LEDGER-AWARE, AND THAT IS DELIBERATE. ******
+#
+# Read this before you "simplify" it into a plain all-or-none set check.
+#
+# `validate_candidates()` REFUSES any allowlist containing a version that is
+# already applied on production. So consider the scenario this lane must survive:
+# a bounded apply of atomic B9 dies at file 13 of 14. Thirteen versions are now
+# in the production ledger. The ONLY legal recovery allowlist is the fourteenth
+# ALONE -- the thirteen cannot be re-listed.
+#
+# A ledger-blind all-or-none rule would REFUSE that recovery. The operator's only
+# way out would be to EDIT THIS SAFETY GUARD, at 2am, while production sat in one
+# of the three exposed states in contract section 6. That is precisely the shape
+# of change that gets made carelessly, and it is the same reasoning that made
+# AGENTS.md 6.5 a co-presence rule instead of a HARD_BLOCKED entry.
+#
+# So the requirement is stated the way the contract actually means it: PRODUCTION
+# MUST NOT COME TO REST INSIDE AN ATOMIC BATCH. Required membership is therefore
+# `members - already_applied`. Completing a batch is always legal; stopping short
+# of finishing one never is. There are explicit tests for the resume case; if you
+# make this ledger-blind and they still pass, you have broken the tests, not
+# proved the change.
+#
+# MEMBERSHIP IS TRANSCRIBED FROM THE CONTRACT, NOT INFERRED. Each set below is
+# the batch's never-rest versions from contract section 6 plus that batch's one
+# legal resting point from the same section, and each count reconciles exactly
+# with the section 5 table -- EXCEPT B3, which carries one SECURITY appendage the
+# contract predates: 20260812020000 (issue #822, the service_role TRUNCATE revoke
+# on three append-only tables plus core.property_alias). So the guard counts are (11, 11, 6, 14) while
+# the contract's functional section-5 counts stay (11, 10, 6, 14). The divergence
+# is deliberate and is documented in the B3 entry below; the contract's ten are a
+# strict subset of the guard's eleven.
+#
+# B3/B4 OVERLAP, RESOLVED: `20260731150000` and `20260731153000` (PopSG) are
+# recorded on issues #773 and #710 as appearing in both batch definitions. The
+# contract as it stands today does NOT carry that defect -- its section 5
+# correction note ("The two PopSG files therefore belong INSIDE B3, making B3 ten
+# files and B4 two") and its section 6 lists are consistent. The two versions are
+# encoded here as B3 members and B4 is not an atomic batch, so the overlap is not
+# reproduced in the guard.
+ATOMIC_BATCHES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
+    (
+        "B1",
+        "ATOMIC",
+        "the ColdLion circuit-breaker batch. It carries the BUNDLE_20260804 "
+        "four AND the sync_coldlion_licensors_properties 2-arg -> 3-arg "
+        "signature change at 20260726030000, whose 2-arg predecessor is created "
+        "by 20260724060000/061000. The breaker is only fully armed and "
+        "gap-closed by 20260728134500.",
+        frozenset(
+            {
+                "20260724060000",
+                "20260724061000",
+                "20260726030000",
+                "20260726031000",
+                "20260726032000",
+                "20260726180000",
+                "20260727221500",
+                "20260727223000",
+                "20260727224500",
+                "20260727230000",
+                "20260728134500",
+            }
+        ),
+    ),
+    (
+        "B2",
+        "NEVER-REST",
+        "the ClickUp importer batch. Contract section 6 forbids resting after "
+        "20260728171500 and after 20260728174500, and lists 20260728181500 as "
+        "the batch's only legal resting point -- so the legal states are none of "
+        "it or all of it. 20260728174500 creates the ClickUp incremental "
+        "importer and 20260728181500 corrects it: resting between them ships a "
+        "KNOWN-DEFECTIVE importer to production. (Contract section 7.3 also "
+        "records this batch as the one most likely to abort, so a partial "
+        "landing here is not a hypothetical.)",
+        frozenset(
+            {
+                "20260728171500",
+                "20260728174500",
+                "20260728181500",
+            }
+        ),
+    ),
+    (
+        "B3",
+        "ATOMIC",
+        "the plm.promote_coldlion_source_owned chain. Eight successive bodies of "
+        "the same function, of which only the eighth (20260731200000) is safe to "
+        "rest on functionally. Earlier bodies leave a known ambiguous-column "
+        "runtime error, broken absence detection, no serialization lock, or "
+        "INCOMPLETE PROVENANCE, which is UNRECOVERABLE after the fact. The two "
+        "PopSG files (20260731150000, 20260731153000) sort inside this span, and "
+        "`supabase db push` applies in version order, so they cannot be "
+        "leapfrogged into a later batch. 20260812020000 is the SECURITY appendage "
+        "added by issue #822: the creates in this span `grant all` (including "
+        "TRUNCATE) to service_role on three append-only evidence/decision tables "
+        "plus core.property_alias (controlled shared alias truth whose writes go "
+        "through public.promote_property_alias_batch()). For the three append-only "
+        "tables, TRUNCATE does not fire the BEFORE UPDATE OR DELETE row triggers "
+        "that enforce their append-only semantics -- so service_role is one "
+        "statement away from silently wiping them; core.property_alias is revoked "
+        "alongside as defense in depth. 20260812020000 revokes truncate plus the "
+        "DDL-adjacent bits and keeps the DML, so production must not rest at "
+        "20260731200000 without it. It sorts after every other member, so the "
+        "revoke runs once the over-grant exists; the recovery allowlist of "
+        "20260812020000 ALONE remains legal once the rest of B3 has landed "
+        "(validate_candidates refuses to re-list applied versions).",
+        frozenset(
+            {
+                "20260729230000",
+                "20260729234500",
+                "20260729235500",
+                "20260730000500",
+                "20260731150000",
+                "20260731153000",
+                "20260731163000",
+                "20260731180000",
+                "20260731190000",
+                "20260731200000",
+                "20260812020000",
+            }
+        ),
+    ),
+    (
+        "B4",
+        "NEVER-REST",
+        "the core.licensor alias batch. Contract section 6 forbids resting after "
+        "20260731210000 and lists 20260731220000 as the legal resting point, so "
+        "the alias table must not land without the owner-approved remaining five "
+        "aliases that fill it. NOT NAMED BY #784 -- derived from section 6 by "
+        "the same rule as B2/B5/B6/B8; see the header. Already applied to "
+        "production, so this entry is inert today and exists so the mechanism "
+        "has no hole.",
+        frozenset(
+            {
+                "20260731210000",
+                "20260731220000",
+            }
+        ),
+    ),
+    (
+        "B5",
+        "NEVER-REST",
+        "the taxonomy alert acknowledgement RPC and its three corrections. "
+        "Contract section 6 forbids resting after 20260802140000, 20260802141000 "
+        "and 20260802150000, and lists 20260802160000 as the legal resting "
+        "point. 20260802160000 fixes the EFFECTIVE-ROLE CHECK, so every earlier "
+        "resting state leaves the acknowledgement RPC judging the wrong "
+        "principal. NOTE: the two AGENTS.md 6.5 held versions (20260802170000, "
+        "20260802171000) sort just above 20260802160000 and are deliberately NOT "
+        "members -- FR_HELD_20260803 refuses them by a separate, stricter rule.",
+        frozenset(
+            {
+                "20260802140000",
+                "20260802141000",
+                "20260802150000",
+                "20260802160000",
+            }
+        ),
+    ),
+    (
+        "B6",
+        "NEVER-REST",
+        "the item identity/UPC contract, temp status watch and taxonomy baseline "
+        "pins. Contract section 6 forbids resting after 20260803150000, "
+        "20260803200000, 20260803201000 and 20260804120000, and lists "
+        "20260804120100 as the legal resting point. 20260804120100 drops the "
+        "8-arg trip_taxonomy_circuit_breaker and re-creates it, so resting "
+        "before it leaves the pin table without its environment/provenance "
+        "columns.",
+        frozenset(
+            {
+                "20260803150000",
+                "20260803200000",
+                "20260803201000",
+                "20260804120000",
+                "20260804120100",
+            }
+        ),
+    ),
+    (
+        "B7",
+        "ATOMIC",
+        "the Disney OPA batch. 20260807190000 does `drop view if exists "
+        "api.opa_property_reconciliation` followed by a `create view` -- a "
+        "genuine column-set change that `create or replace view` cannot do, so "
+        "there is a window with NO VIEW AT ALL. It is also a security fix, not "
+        "optional polish, and it is the third link of the "
+        "plm.sync_opa_property_character chain (170100 -> 180000 -> 190000). "
+        "Rest only after 20260807200000.",
+        frozenset(
+            {
+                "20260807030000",
+                "20260807170000",
+                "20260807170100",
+                "20260807180000",
+                "20260807190000",
+                "20260807200000",
+            }
+        ),
+    ),
+    (
+        "B8",
+        "NEVER-REST",
+        "the core.product_size / core.product_depth foundation, both seeds, the "
+        "guarded importer, the api pickers and the DB Data Admin mutations. "
+        "Contract section 6 forbids resting after 20260809170000, 20260809170100, "
+        "20260809170200, 20260809170300 and 20260809170400, and lists "
+        "20260809170500 as the legal resting point. A HALF-SEEDED "
+        "core.product_size is the single failure PopDAM swallows SILENTLY -- it "
+        "falls back to style_groups.size_name, which looks plausible and is "
+        "wrong (contract section 3.2). There is no monitoring that would catch "
+        "it, so this batch's partial state is discovered by a user or not at all.",
+        frozenset(
+            {
+                "20260809170000",
+                "20260809170100",
+                "20260809170200",
+                "20260809170300",
+                "20260809170400",
+                "20260809170500",
+            }
+        ),
+    ),
+    (
+        "B9",
+        "ATOMIC",
+        "the licensor landing batch. It carries all three security co-presence "
+        "pairs (Paramount TRUNCATE, Warner `using (true)`, NBCU direct write -- "
+        "the three worst resting states in the whole backlog), the "
+        "api.dam_order_list security_invoker fix that 20260810010000 needs, and "
+        "both DAM function chains. The contract states there is NO safe internal "
+        "boundary anywhere in it. Resting between 20260810030000 and "
+        "20260810110000 leaves eight tables of confidential Warner STARLABS data "
+        "readable by EVERY authenticated account in the shared project.",
+        frozenset(
+            {
+                "20260810010000",
+                "20260810020000",
+                "20260810030000",
+                "20260810050000",
+                "20260810060000",
+                "20260810070000",
+                "20260810080000",
+                "20260810090000",
+                "20260810100000",
+                "20260810110000",
+                "20260810120000",
+                "20260810130000",
+                "20260810160000",
+                "20260810170000",
+            }
+        ),
+    ),
+    (
+        # Issue #819, contract section 5A.4 and 5A.8.
+        "B10a",
+        "ATOMIC",
+        "the Disney DCP Vault source landing plus its chunked loader. "
+        "20260810190000 creates nine plm.dcp_* tables, the frozen row-hash "
+        "function and the immutability triggers but NO loader; 20260810190100 "
+        "supplies the chunked loader, plm.dcp_chunk_ledger and "
+        "plm.finalize_dcp_crawl -- the only CHECKED path to "
+        "dcp_crawl.status = 'complete'. State the exposure accurately, because "
+        "the loose version of it was wrong: 20260810190000 grants service_role "
+        "select AND insert and installs no header INSERT trigger, so a caller "
+        "CAN write rows directly and can insert a dcp_crawl row already marked "
+        "'complete', arming the immutability triggers over data nothing ever "
+        "validated. That is worse than 'nothing can happen', not better. What "
+        "is missing between the pair is the supported, checked, finalizable "
+        "path -- not the ability to write. "
+        "WHY THIS ENTRY EXISTS ALONGSIDE THE CO-PRESENCE RULE, which already "
+        "covers the pair one-directionally (issue #665): the co-presence rule "
+        "fires on the CREATE, so it is the right tool for 'the create must "
+        "carry its fix'. This entry states the batch property the contract "
+        "actually declares -- B10a is ATOMIC (section 5A.4) -- and section 5A.8 "
+        "names registering B10a and B10c in ATOMIC_BATCHES as the correct fix. "
+        "The two checks agree and the stricter one wins, which is the safe "
+        "direction; neither is redundant, because deleting either would leave a "
+        "claim the contract makes with nothing behind it.",
+        frozenset(
+            {
+                "20260810190000",
+                "20260810190100",
+            }
+        ),
+    ),
+    (
+        # Issue #819. THE GAP THIS ISSUE WAS FILED ABOUT.
+        "B10c",
+        "ATOMIC",
+        "the DCP Vault metadata landing plus its chunked loader. Declared ATOMIC "
+        "by contract section 5A.4 and enforced by NOTHING until now -- not by "
+        "ATOMIC_BATCHES, and (unlike B10a) not by any co-presence rule either, "
+        "so the guard accepted an allowlist of 20260811050000 ALONE and only the "
+        "operator stood between the contract and that state. 20260811050000 "
+        "creates plm.dcp_metadata_*, dcp_property, dcp_character, dcp_term and "
+        "three observation tables with no loader; 20260811060000 supplies "
+        "begin_dcp_metadata_run / load_dcp_metadata_chunk / "
+        "finalize_dcp_metadata_run plus plm.dcp_metadata_chunk_ledger and "
+        "plm.dcp_metadata_load_exception. Identical shape to B10a, including the "
+        "precision: 20260811050000 DOES grant service_role select and insert, so "
+        "the gap is the supported loader and finalizer, not raw writability. "
+        "Rest only after 20260811060000 (contract section 6). "
+        "B10b (20260811030000) and B10d (20260811070000) are single files and "
+        "therefore trivially atomic -- there is no internal boundary to stop at, "
+        "so they get no entry.",
+        frozenset(
+            {
+                "20260811050000",
+                "20260811060000",
+            }
+        ),
+    ),
+)
+
+
+class GuardError(ValueError):
+    pass
+
+
+def assert_atomic_batches(allowlist: list[str], remote: set[str]) -> None:
+    """Refuse an allowlist that would leave production resting inside a batch.
+
+    LEDGER-AWARE ON PURPOSE -- see the ATOMIC_BATCHES header. `remote` is the
+    real production ledger, and members already in it are excluded from the
+    requirement, because `validate_candidates` forbids re-listing them and a
+    resume after a mid-batch abort would otherwise be impossible without editing
+    this guard under time pressure.
+    """
+    chosen = set(allowlist)
+    for name, basis, why, members in ATOMIC_BATCHES:
+        already = members & remote
+        remote_is_partial = bool(already) and already != members
+        remaining = members - already
+        if remote_is_partial and not remaining.issubset(chosen):
+            missing_recovery = sorted(remaining - chosen)
+            raise GuardError(
+                f"production is already resting inside batch {name}; "
+                f"batch {name} is {basis}. "
+                f"The allowlist must include every remaining batch member before "
+                f"anything else may be promoted.\n"
+                f"  Excluded because production already has them "
+                f"({len(already)}): {', '.join(sorted(already))}\n"
+                f"  recovery still required ({len(missing_recovery)}): "
+                f"{', '.join(missing_recovery)}\n"
+                f"Promote every remaining {name} version together before any "
+                f"unrelated migration. This fail-closed recovery rule prevents "
+                f"production from silently remaining in a state the contract "
+                f"forbids."
+            )
+        present = chosen & members
+        if not present:
+            continue
+        missing = sorted((members - already) - chosen)
+        if not missing:
+            continue
+        resume = (
+            f" (Excluded because production already has them: "
+            f"{', '.join(sorted(already))}.)"
+            if already
+            else ""
+        )
+        citation = (
+            f"section 5 declares {name} atomic"
+            if basis == "ATOMIC"
+            else f"section 6 forbids resting on every member of {name} but the last"
+        )
+        raise GuardError(
+            f"batch {name} is {basis} and this allowlist would split it. "
+            f"docs/production-promotion-app-tolerance-contract.md "
+            f"{citation}: {why}\n"
+            f"  batch {name} has {len(members)} members\n"
+            f"  supplied ({len(present)}): {', '.join(sorted(present))}\n"
+            f"  MISSING ({len(missing)}): {', '.join(missing)}{resume}\n"
+            f"Add every missing version to the allowlist, or remove all "
+            f"{len(present)} {name} version(s) from it. There is no size of "
+            f"subset that makes a partial atomic batch legal -- stopping short "
+            f"leaves production in a state the contract says must never be "
+            f"rested on, and this lane is forward-only with no undo."
+        )
+
+
+def parse_allowlist(raw: str, remote: set[str] | frozenset[str] = frozenset()) -> list[str]:
+    """Parse and policy-check a production allowlist.
+
+    ``remote`` is the real production ledger when the caller has one. It is
+    used by exactly ONE rule -- the co-presence check at the bottom of this
+    function -- and it is optional so that callers with no ledger in hand
+    (``verify-dry-run`` without ``--remote-ledger``, and
+    ``production_catalog_verification``) keep the STRICTER ledger-blind
+    behaviour. Defaulting to "no ledger" fails closed, never open.
+    """
+    items = raw.split(",")
+    if not items or any(not item.strip() for item in items):
+        raise GuardError("production allowlist is empty")
+    values = [item.strip() for item in items]
+    if any(not VERSION_RE.fullmatch(value) for value in values):
+        raise GuardError("every entry must be an exact 14-digit version")
+    if len(values) != len(set(values)):
+        raise GuardError("production allowlist contains a duplicate")
+    blocked = sorted(set(values) & HARD_BLOCKED)
+    if blocked:
+        raise GuardError(f"general production lane blocks: {', '.join(blocked)}")
+    preview_only = sorted(set(values) & PREVIEW_ONLY_HISTORICAL_RESTORATIONS)
+    if preview_only:
+        raise GuardError(
+            "preview-only historical restoration may never enter a production allowlist: "
+            + ", ".join(preview_only)
+        )
+    # Issue #2820: a migration whose recorded target is a DIFFERENT database may
+    # never enter a production allowlist by any route. Enforced in the same
+    # single choke point every promotion subcommand must call, so no subcommand
+    # can route around it. Derived from the registry, never a version literal.
+    foreign = sorted(
+        value for value in values if foreign_target_entry(value, "production") is not None
+    )
+    if foreign:
+        details = "; ".join(
+            f"{value} targets {FOREIGN_TARGET_MIGRATIONS[value]['project']} "
+            f"(issue {FOREIGN_TARGET_MIGRATIONS[value]['issue']})"
+            for value in foreign
+        )
+        raise GuardError(
+            "migration authored for another database may never enter a production allowlist: "
+            + details
+        )
+    if values != sorted(values):
+        raise GuardError("production allowlist must be in migration order")
+    # AGENTS.md section 6.8: all four or none. Enforced here, in the one function
+    # every entry point (`prepare`, `preflight`, `verify-dry-run`) must call, so
+    # it cannot be bypassed by choosing a different subcommand.
+    present = BUNDLE_20260804 & set(values)
+    if present and present != BUNDLE_20260804:
+        missing = sorted(BUNDLE_20260804 - present)
+        raise GuardError(
+            "AGENTS.md 6.8 forbids promoting the 2026-08-04 ColdLion bundle in "
+            "parts: this allowlist has "
+            f"{', '.join(sorted(present))} but is missing {', '.join(missing)}. "
+            "Include all four (20260726030000, 20260726031000, 20260726032000, "
+            "20260726180000) or none."
+        )
+    # AGENTS.md section 6.5: the two held versions ship WITH the FR removal work
+    # or not at all. Enforced in the same single choke point as 6.8, so no
+    # subcommand can route around it.
+    #
+    # TRIGGERED BY THE WHOLE HOLD SET, NOT ONLY FR_HELD_20260803 (2026-08-18).
+    # 6.5's prose holds the compatibility prerequisite 20260817225127 by name and
+    # "not alone, not as a subset". The old trigger was `FR_HELD_20260803` only,
+    # so an allowlist of just 20260817225127 parsed clean -- the code was
+    # narrower than the owner ruling it claims to enforce. The prose wins.
+    #
+    # EVERY VERSION NAMED IN THESE MESSAGES IS DERIVED FROM THE SETS ABOVE. Do
+    # not hardcode a version string here again: issue #1182 happened because a
+    # rename updated one place and left the literals behind.
+    held = FR_SHIP_SET_HOLD & set(values)
+    if held:
+        required = FR_SHIP_SET_HOLD | FR_REMOVAL_VERSIONS
+        missing = sorted(required - set(values))
+        ship_set = ", ".join(sorted(FR_SHIP_SET_HOLD))
+        if not FR_REMOVAL_VERSIONS:
+            raise GuardError(
+                "AGENTS.md 6.5 (OWNER RULING, 2026-08-03) holds "
+                f"{', '.join(sorted(held))}: none of {ship_set} "
+                "may reach production by any route until the FR "
+                "'FRIENDS TV' removal work ships with them, as ONE bounded "
+                "apply in dependency order. Not alone, not as a subset. No FR "
+                "removal migration exists yet, so that combined change cannot "
+                "be assembled and this allowlist is refused. Drop those "
+                "versions from the allowlist. Do NOT edit "
+                "this guard to unblock them -- author the removal migrations "
+                "and register their versions in FR_REMOVAL_VERSIONS."
+            )
+        if missing:
+            raise GuardError(
+                "AGENTS.md 6.5 (OWNER RULING, 2026-08-03) forbids promoting the "
+                "FR ship set in parts: this allowlist has "
+                f"{', '.join(sorted(held & set(values)))} but is missing "
+                f"{', '.join(missing)}. The permitted event is exactly one -- a "
+                "single bounded apply carrying the FR compatibility migration, "
+                f"{ship_set} and the FR removal migrations "
+                "together, in dependency order. "
+                "Include the full set or none of it."
+            )
+    # Security co-presence (issue #660). ONE-DIRECTIONAL by design -- see the
+    # long comment on CO_PRESENCE_RULES. Never add the reverse implication.
+    #
+    # LEDGER-AWARE ON PURPOSE (added 2026-08-11) -- a required FIX that is
+    # ALREADY APPLIED ON PRODUCTION satisfies the rule. See the header block
+    # above CO_PRESENCE_RULES. This is the SAME reasoning that made
+    # `assert_atomic_batches` ledger-aware: `validate_candidates` REFUSES any
+    # allowlist naming an already-applied version, so a ledger-blind
+    # requirement for an applied fix is not "strict", it is UNSATISFIABLE by
+    # any string, and the only escape is editing this guard under pressure.
+    #
+    # THE DEADLOCK THIS FIXES, CONCRETELY. `20260810180000` was promoted early
+    # and alone on 2026-08-11 (it sorts ABOVE B9's own end version
+    # `20260810170000`). It is a required fix on both the Paramount
+    # (`20260810020000`) and NBCU (`20260810070000`) rules. So B9's 14 versions
+    # were refused for missing it, and B9's 14 PLUS it were refused for naming
+    # an applied version. B9 -- the licensor landing batch -- became impossible
+    # to apply by ANY allowlist string.
+    #
+    # THIS DOES NOT WEAKEN THE RULE, AND THE DIFFERENCE MATTERS. An APPLIED fix
+    # satisfies the rule because the property the rule protects -- production
+    # must never hold the create without the fix -- is already true and stays
+    # true. A MISSING fix (neither applied nor in the allowlist) still REFUSES,
+    # because that is exactly the exposed state. Do not collapse those two
+    # cases; there are tests for both, plus one for the missing-and-unapplied
+    # case, and they are what tells you what you broke.
+    #
+    # THE RULE ALSO FIRES WHEN THE CREATE IS ALREADY APPLIED (issue #672 item 1,
+    # deliberately deferred by PR #747 because it turns a PASS into a FAIL).
+    #
+    # `create in remote` is the state the rule exists to end, not a state that
+    # excuses it. Before this, the rule was gated on `create in chosen` alone, so
+    # once the CREATE had landed the guard stopped compelling anything: with
+    # Warner's `20260810030000` applied, an allowlist of `20260810110000` ALONE
+    # passed, leaving `20260810120000` unapplied -- production holding the wrong
+    # read claim with `service_role` still able to INSERT. The rule's whole claim
+    # is "production must never hold the create without the fixes", and that
+    # claim is violated exactly as hard by a half-finished repair as by a
+    # half-finished first promotion.
+    #
+    # THIS DOES NOT BREAK RECOVERY, AND THE DISTINCTION IS THE WHOLE DESIGN.
+    # Required membership stays `fixes - already_applied`, so completing the
+    # repair is always legal and re-listing an applied version (which
+    # `validate_candidates` refuses outright) is never required. What is now
+    # refused is stopping short: a repair allowlist that names SOME outstanding
+    # fixes and not all of them. That is the same "you may finish, you may not
+    # rest inside" shape `assert_atomic_batches` already uses, and for the same
+    # reason -- this lane is forward-only with no undo.
+    #
+    # Paramount and NBCU each have two fixes and Warner two, so every rule can
+    # surface this; Warner is where it was found. A rule whose fixes are all
+    # applied is silent, so a fully repaired production stays promotable.
+    chosen = set(values)
+    for create, fixes, why in CO_PRESENCE_RULES:
+        create_applied = create in remote
+        if create not in chosen and not create_applied:
+            continue
+        already = fixes & set(remote)
+        missing = sorted((fixes - already) - chosen)
+        if missing:
+            satisfied = (
+                f" (Already applied on production, so not required here: "
+                f"{', '.join(sorted(already))}.)"
+                if already
+                else ""
+            )
+            if create_applied:
+                raise GuardError(
+                    f"co-presence rule: {create} is ALREADY APPLIED on production "
+                    f"and its fix(es) {', '.join(missing)} are neither applied nor "
+                    f"in this allowlist.{satisfied} Production is sitting in the "
+                    f"exposed state right now, so an allowlist that repairs only "
+                    f"part of it is refused. {why} Add every missing version to "
+                    f"the allowlist. (Do NOT add {create} back -- "
+                    "`validate_candidates` refuses any allowlist naming an "
+                    "already-applied version, and it does not need re-applying.)"
+                )
+            raise GuardError(
+                f"co-presence rule: {create} may not be promoted without "
+                f"{', '.join(missing)}.{satisfied} {why} Add the missing version(s) to the "
+                "allowlist. (This rule is one-directional on purpose: promoting "
+                f"{', '.join(sorted(fixes))} WITHOUT {create} is allowed, because "
+                "that is the only legal way to recover a run that died between "
+                "them -- but the recovery must carry EVERY outstanding fix, not "
+                "just some of them.)"
+            )
+    return values
+
+
+def parse_remote_versions(path: Path) -> set[str]:
+    raw = path.read_text(encoding="utf-8")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        versions = {
+            match.group(1)
+            for line in raw.splitlines()
+            if (match := REMOTE_TABLE_RE.match(line))
+        }
+    else:
+        versions: set[str] = set()
+
+        def visit(item: object) -> None:
+            if isinstance(item, dict):
+                for key, child in item.items():
+                    if key in {"version", "remote"} and isinstance(child, str):
+                        if VERSION_RE.fullmatch(child):
+                            versions.add(child)
+                    visit(child)
+            elif isinstance(item, list):
+                for child in item:
+                    visit(child)
+
+        visit(value)
+    if not versions:
+        raise GuardError("production migration ledger contained no versions")
+    return versions
+
+
+def local_migrations(repo: Path) -> dict[str, Path]:
+    migrations: dict[str, Path] = {}
+    for path in sorted((repo / "supabase" / "migrations").glob("*.sql")):
+        version = path.name[:14]
+        if not VERSION_RE.fullmatch(version):
+            raise GuardError(f"invalid migration filename: {path.name}")
+        if version in migrations:
+            raise GuardError(f"duplicate migration version: {version}")
+        migrations[version] = path
+    return migrations
+
+
+def classify_pending_version(
+    version: str,
+    applied_versions: set[str] | frozenset[str],
+    repo: Path,
+    migration_paths: dict[str, Path] | None = None,
+    target: str = "production",
+) -> dict[str, str]:
+    """Return the one authoritative pending-status classification.
+
+    Keep every registry behind this function. Callers in other languages must
+    consume its answer rather than importing the sets and rebuilding policy.
+
+    ``target`` is the database being CHECKED (see ``KNOWN_MIGRATION_TARGETS``).
+    It defaults to ``production`` so every existing caller keeps the strictest
+    behaviour. It exists so scope can be DERIVED from a comparison against each
+    migration's recorded target rather than asserted per version.
+    """
+    if target not in KNOWN_MIGRATION_TARGETS:
+        raise GuardError(
+            f"unknown migration target {target!r}; known targets: "
+            f"{', '.join(sorted(KNOWN_MIGRATION_TARGETS))}"
+        )
+    applied = set(applied_versions)
+    if version in RETIRED_VERSIONS:
+        reason = RETIRED_VERSION_REASONS.get(
+            version,
+            "never apply this version; its safe replacement or end state is already present",
+        )
+        return {"kind": "retired", "reason": f"RETIRED_VERSIONS: {reason}."}
+    # HARD_BLOCKED is tested BEFORE the owner-hold branch on purpose. A version can
+    # sit in both registries -- 20260802171000 is held AND hard-blocked, because the
+    # held historical FR ruling was superseded by the guarded forward 20260818174350
+    # and the original must never be applied at all. Reporting it as "held for one
+    # bounded apply" would tell a reader it is merely waiting its turn, which is the
+    # opposite of what the production lane does with it. The strictest true statement
+    # wins; both kinds are intentionally-excluded, so the actionable drift count is
+    # unchanged either way and only the sentence a human reads differs.
+    if version in HARD_BLOCKED:
+        return {
+            "kind": "retired",
+            "reason": "production_migration_guard.HARD_BLOCKED: the general production lane refuses this version outright. Do not apply it.",
+        }
+    # SCOPE IS CHECKED AFTER the two never-apply branches on purpose. "Retired"
+    # and "hard-blocked" are the stricter statements -- they mean "never apply
+    # this anywhere" -- and a strictly-true sentence must win over "not for this
+    # database". Both outcomes are excluded from actionable drift either way, so
+    # only the sentence a human reads differs. Scope is checked BEFORE the hold,
+    # batch and base-absent branches below, because those all reason about THIS
+    # database's ledger and none of them is meaningful for a migration whose
+    # target is a different database entirely.
+    foreign = foreign_target_entry(version, target)
+    if foreign is not None:
+        return {
+            "kind": "foreign-target",
+            "reason": (
+                f"NOT IN SCOPE FOR {target.upper()}. This migration targets {foreign['project']}. "
+                f"{foreign['note']} Recorded under issue {foreign['issue']}. Its absence from this "
+                "database's ledger is the intended end state, not overdue work: do not promote it "
+                "here. If this scope claim is wrong, correct FOREIGN_TARGET_MIGRATIONS in "
+                "scripts/production_migration_guard.py rather than promoting it by hand."
+            ),
+        }
+    if version in HELD_VERSIONS or version in FR_SHIP_SET_HOLD or version in FR_REMOVAL_VERSIONS:
+        suffix = (
+            "The required FR removal migration set is not yet defined."
+            if not FR_REMOVAL_VERSIONS
+            else f"Full held bundle: {', '.join(sorted(FR_SHIP_SET_HOLD | FR_REMOVAL_VERSIONS))}."
+        )
+        return {
+            "kind": "deliberately-held",
+            "reason": (
+                "AGENTS.md 6.5 owner ruling holds the compatibility prerequisite, both FR versions, "
+                f"and every FR removal member for one bounded apply. {suffix}"
+            ),
+        }
+    if version in PREVIEW_ONLY_HISTORICAL_RESTORATIONS:
+        return {
+            "kind": "deliberately-held",
+            "reason": "Preview-only historical restoration: retain truthful preview history and never include this version in a production allowlist.",
+        }
+
+    migration = (migration_paths if migration_paths is not None else local_migrations(repo)).get(version)
+    bases = sorted(declared_bases(version, path=migration) or ()) if migration else []
+    absent = [base for base in bases if base not in applied]
+    if absent:
+        return {
+            "kind": "base-absent",
+            "reason": (
+                f"Declares `-- derived-from: {', '.join(bases)}` and this database does NOT have {', '.join(absent)}. "
+                "It re-derives a whole object body, so applying it here would not fail — it would replace the object "
+                "with a body written against a base this database never got (issue #1608). Apply the missing base(s) "
+                "in the same bounded window, or promote with a recorded --derivation-override naming the resulting state."
+            ),
+        }
+
+    matches: list[str] = []
+    if version in BUNDLE_20260804:
+        matches.append("AGENTS.md 6.8 requires the complete four-version ColdLion bundle, never a subset.")
+    for name, basis, why, members in ATOMIC_BATCHES:
+        if version in members:
+            outstanding = ", ".join(sorted(member for member in members if member not in applied))
+            matches.append(f"{name} {basis} batch: {why} Outstanding set: {outstanding}.")
+    for create, fixes, why in CO_PRESENCE_RULES:
+        outstanding = sorted(fix for fix in fixes if fix not in applied)
+        if version == create or (create in applied and version in outstanding):
+            create_note = f"Create {create} is already applied; fix-only recovery must carry every outstanding fix. " if create in applied else ""
+            matches.append(f"{why} {create_note}Outstanding required fixes: {', '.join(outstanding)}.")
+    if matches:
+        return {"kind": "guarded-batch", "reason": " ".join(matches)}
+    return {
+        "kind": "genuinely-pending",
+        "reason": "No retirement, owner-hold, atomic-batch, bundle, or ledger-aware co-presence rule names this version. It is still unapproved until the normal bounded promotion workflow passes.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# FILE-CONTENT DIGEST PINNING (issue #617)
+#
+# `prepare` prunes a bounded checkout down to exactly `remote-ledger | allowlist`
+# and `assert_bounded` re-proves that set immediately before the push. That
+# proves the SET of files but not their BYTES: nothing here watched whether a
+# file's contents drifted between `prepare` and the push (an editor, a line-
+# ending rewrite, a partial write), or whether the record of what was prepared
+# was hand-edited. A bounded checkout whose membership is correct but whose
+# contents have moved is still untrustworthy, so `prepare` now pins the byte
+# content of every file that survived pruning and `assert_bounded` re-proves it.
+#
+# The manifest is a JSON object mapping version -> sha256 hex digest of the
+# migration file's raw bytes, keys sorted for determinism. It lives INSIDE the
+# bounded checkout (a sibling of `migrations/`, never inside it), so the two
+# functions stay self-contained: `prepare` writes `<output>/supabase/<name>`
+# and `assert_bounded` reads `<directory>/supabase/<name>` with no extra state.
+#
+# WHAT THE PIN IS AND IS NOT. It is a byte-for-byte tamper seal between two
+# steps of the same job. It is not a defence against an actor who can write
+# both the migration files and the manifest at once -- such an actor could
+# re-pin whatever they liked. It defends against the realistic failure for this
+# lane: a process or person changes a file (or the manifest) AFTER `prepare`
+# committed the bounded set and BEFORE the push, where the change is invisible
+# to the membership check. Every divergence fails CLOSED.
+#
+# NO VERSION/TABLE SPECIAL CASES. Every file on disk is hashed unconditionally;
+# nothing here keys on a particular version or object. The pin is generic.
+# ---------------------------------------------------------------------------
+
+MANIFEST_FILENAME = "migration-content-manifest.json"
+
+
+def manifest_path(directory: Path) -> Path:
+    """Where ``prepare`` writes the content manifest inside a bounded checkout.
+
+    A sibling of ``migrations/`` rather than inside it, so the Supabase CLI's
+    ``supabase/migrations/*.sql`` glob (and every member check here) never sees
+    it and it cannot be mistaken for a migration.
+    """
+    return directory / "supabase" / MANIFEST_FILENAME
+
+
+def compute_content_manifest(directory: Path) -> dict[str, str]:
+    """SHA-256 digest of every migration file on disk, keyed by version.
+
+    Keyed by the 14-digit version because that is the identity the ledger, the
+    allowlist and every file-set check already use; the digest pins the bytes.
+    Reads raw bytes so a line-ending or encoding change registers as drift.
+    """
+    return {
+        version: hashlib.sha256(path.read_bytes()).hexdigest()
+        for version, path in local_migrations(directory).items()
+    }
+
+
+def write_content_manifest(directory: Path) -> Path:
+    """Pin the current byte content of every migration file in ``directory``.
+
+    Called by ``prepare`` once the bounded set is final, so the manifest records
+    exactly the files that survived pruning. Deterministic output (sorted keys)
+    so a byte-identical re-pin is text-identical too.
+    """
+    path = manifest_path(directory)
+    path.write_text(
+        json.dumps(compute_content_manifest(directory), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def assert_content_manifest(directory: Path) -> None:
+    """Fail closed unless the on-disk bytes still match what ``prepare`` pinned.
+
+    Every branch refuses: a missing manifest (never prepared, or deleted), a
+    corrupt/unreadable manifest, a shape that is not the expected object, a file
+    added or removed since the pin, and any byte drift -- which is also exactly
+    what a hand-edited manifest digest looks like, so manifest tampering and
+    content drift are the same comparison and both fail the same way.
+    """
+    path = manifest_path(directory)
+    if not path.is_file():
+        raise GuardError(
+            f"content manifest missing: {path}. `prepare` must write one before "
+            "the checkout is pushed; a missing manifest means the byte content "
+            "of the bounded files was never pinned and cannot be trusted."
+        )
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GuardError(
+            f"content manifest at {path} is unreadable/corrupt ({exc}); treat "
+            "the bounded checkout as untrusted."
+        )
+    if not isinstance(stored, dict):
+        raise GuardError(f"content manifest at {path} is not a JSON object")
+    recomputed = compute_content_manifest(directory)
+    if recomputed == stored:
+        return
+    missing = sorted(set(stored) - set(recomputed))
+    added = sorted(set(recomputed) - set(stored))
+    drifted = sorted(
+        version
+        for version in (set(stored) & set(recomputed))
+        if stored[version] != recomputed[version]
+    )
+    details: list[str] = []
+    if missing:
+        details.append(f"removed from disk: {missing}")
+    if added:
+        details.append(f"added to disk: {added}")
+    if drifted:
+        details.append(f"byte drift / manifest tamper: {drifted}")
+    raise GuardError(
+        "bounded checkout content manifest mismatch -- the files on disk no "
+        f"longer match what `prepare` pinned ({'; '.join(details)}). Refusing "
+        "to push. Re-run `prepare` to re-pin, or investigate the drift."
+    )
+
+
+# The ledgers the shared guard can be pointed at. Only used to word refusals
+# truthfully; every check runs identically whichever ledger was read.
+LEDGER_NAMES = ("production", "preview", "sandbox")
+
+
+def validate_candidates(
+    migrations: dict[str, Path],
+    allowlist: list[str],
+    remote: set[str],
+    derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
+) -> None:
+    if ledger_name not in LEDGER_NAMES:
+        raise GuardError(f"unknown ledger name: {ledger_name!r}")
+    unknown = [version for version in allowlist if version not in migrations]
+    if unknown:
+        raise GuardError(f"unknown migration version: {', '.join(unknown)}")
+    applied = [version for version in allowlist if version in remote]
+    if applied:
+        # Issue #3193: the guard is shared, so name the ledger it actually read.
+        # The preview job passes its OWN ledger, and the old fixed wording
+        # ("already applied on production") sent operators the wrong way.
+        message = f"already applied on {ledger_name}: {', '.join(applied)}"
+        if ledger_name == "preview":
+            message += (
+                ". An applied version is never applied again. To produce fresh "
+                "evidence at exact main, dispatch the historical-recovery lane "
+                "(mode=apply with historical_preview_source_pr or "
+                "historical_preview_source_pr_map, plus "
+                "historical_preview_original_run_map naming the run that "
+                "originally applied each version); never weaken this guard"
+            )
+        raise GuardError(message)
+    # Contract section 5 / section 10: B1, B3, B7 and B9 are ATOMIC. Enforced
+    # here rather than in `parse_allowlist` because the check needs the real
+    # production ledger to stay resumable (see the ATOMIC_BATCHES header).
+    # `validate_candidates` is called by both `prepare` and `preflight`, and
+    # `assert_bounded` calls `assert_atomic_batches` directly, so no subcommand
+    # that can reach production routes around it.
+    assert_atomic_batches(allowlist, remote)
+    # Issue #1608: a migration that re-derives a whole object body carries a
+    # silent dependency on its base being IN THE TARGET DATABASE. Ledger-aware
+    # for the same reason `assert_atomic_batches` is, and placed here so both
+    # `prepare` and `preflight` route through it. `assert_bounded` calls it
+    # directly, so no subcommand that can reach production skips it.
+    assert_declared_bases_present(migrations, allowlist, remote, derivation_overrides)
+
+
+def assert_declared_bases_present(
+    migrations: dict[str, Path],
+    allowlist: list[str],
+    remote: set[str] | frozenset[str],
+    derivation_overrides: dict[tuple[str, str], str] | None = None,
+) -> None:
+    """Translate the derivation gate's refusal into this module's ``GuardError``.
+
+    The refusal is a promotion decision and belongs in the same failure channel
+    as every other guard rule. A MALFORMED declaration is an authoring fault and
+    is deliberately left as itself rather than dressed up as a lane refusal.
+    """
+    try:
+        recorded = assert_derivation_bases(
+            allowlist, migrations, remote, derivation_overrides
+        )
+    except DerivationRefusal as exc:
+        raise GuardError(str(exc)) from exc
+    for line in recorded:
+        print(line)
+
+
+# ---------------------------------------------------------------------------
+# Whole-batch preflight (AGENTS.md section 6.8 requirement 2)
+#
+# WHAT THIS IS, STATED HONESTLY UP FRONT. It is a whole-BATCH check rather than a
+# per-file one: it walks the ordered batch and rejects it when a file would run
+# before something it needs. It does NOT "prove the batch can run end to end" --
+# no static scanner can, and an earlier version of this header claimed it could,
+# which was wrong. It is a fast pre-filter that may REJECT but must never be read
+# as APPROVAL. The authoritative gate is the rehearsal of the whole batch against
+# a production-shaped scratch database (lane design section 2.3, Change C).
+#
+# Concretely it knows about the reference positions listed in REFERENCE_RES
+# below. Positions it does NOT model -- most obviously anything reached only
+# through dynamic `execute format(...)`, and any object whose creator is not a
+# local migration file -- pass silently by design. A pass means "nothing known to
+# be broken", never "safe".
+#
+# The failure it exists to catch is real and live: the 14-file ColdLion batch
+# aborts at file 3
+# (20260727221500) with SQLSTATE 42P01, because that file's
+# `create table if not exists plm.taxonomy_circuit_breaker` carries
+# `references plm.taxonomy_sync_alert(id)` and the referenced table is created
+# by 20260726180000, which was excluded. `if not exists` does not save it: the
+# create runs, and the foreign key is resolved immediately. 20260728134500 fails
+# the same way on `create trigger ... on plm.taxonomy_sync_alert`.
+#
+# HONESTY ABOUT WHAT THIS IS. Per the lane design's revised Change C
+# (docs/production-migration-lane-design-20260802.md section 2.3), a text scan is
+# a fast pre-filter that may REJECT but must never be read as APPROVAL. The
+# authoritative gate stays the full rehearsal against a production-shaped
+# scratch database. This check therefore only fails when it has POSITIVE
+# evidence: the referenced object is created by a local migration file that is
+# neither already applied nor earlier in the batch. When no local creator is
+# known it stays silent rather than guessing.
+# ---------------------------------------------------------------------------
+
+# DELIBERATELY REMOVED: DOLLAR_QUOTE_RE, LINE_COMMENT_RE, BLOCK_COMMENT_RE.
+# They were the three-pass stripper that `strip_sql` replaced, and they are gone
+# rather than left unused on purpose -- a dead regex named DOLLAR_QUOTE_RE is an
+# invitation to reintroduce the exact defect (see the `strip_sql` docstring).
+
+IDENT = r"([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)"
+
+CREATE_RES = (
+    re.compile(
+        r"\bcreate\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?" + IDENT
+    ),
+    re.compile(
+        r"\bcreate\s+(?:or\s+replace\s+)?(?:materialized\s+|recursive\s+)?view\s+"
+        r"(?:if\s+not\s+exists\s+)?" + IDENT
+    ),
+    re.compile(
+        r"\bcreate\s+(?:or\s+replace\s+)?(?:function|procedure)\s+" + IDENT
+    ),
+    re.compile(r"\bcreate\s+type\s+" + IDENT),
+    re.compile(r"\bcreate\s+sequence\s+(?:if\s+not\s+exists\s+)?" + IDENT),
+)
+
+# Non-deferrable reference positions: Postgres resolves these at DDL time and
+# cannot postpone them to first call.
+REFERENCE_RES = (
+    ("foreign key", re.compile(r"\breferences\s+" + IDENT)),
+    (
+        "trigger target",
+        re.compile(
+            r"\b(?:create|drop)\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\b"
+            r"[\s\S]{0,400}?\bon\s+" + IDENT
+        ),
+    ),
+    (
+        "alter table",
+        re.compile(r"\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?" + IDENT),
+    ),
+    (
+        # Both the named and the nameless `create index [name] on sch.tab` forms.
+        "index target",
+        re.compile(
+            r"\bcreate\s+(?:unique\s+)?index\s+(?:concurrently\s+)?"
+            r"(?:if\s+not\s+exists\s+)?(?:[^\s(]+\s+)?on\s+(?:only\s+)?" + IDENT
+        ),
+    ),
+    (
+        # GRANT/REVOKE resolve their target immediately. This is the
+        # `20260729120000` trap recorded in AGENTS.md 10.2: it revokes EXECUTE on
+        # public.sync_clickup_tasks(jsonb, text), created by the pending
+        # 20260728174500, and aborts with undefined_function if promoted first.
+        "grant/revoke target",
+        re.compile(
+            r"\b(?:grant|revoke)\b[\s\S]{0,300}?\bon\s+"
+            r"(?:function|procedure|routine|table|sequence|view|type)\s+" + IDENT
+        ),
+    ),
+    (
+        "comment target",
+        re.compile(r"\bcomment\s+on\s+[a-z ]+?\s+" + IDENT),
+    ),
+    (
+        "policy target",
+        re.compile(r"\bcreate\s+policy\b[\s\S]{0,200}?\bon\s+" + IDENT),
+    ),
+    (
+        "partition parent",
+        re.compile(r"\bpartition\s+of\s+" + IDENT),
+    ),
+    (
+        # `default nextval('plm.s'::regclass)` and every other regclass literal.
+        "regclass literal",
+        re.compile(r"'" + IDENT + r"'\s*::\s*regclass"),
+    ),
+    (
+        # A view body is resolved when the view is created, and a top-level
+        # INSERT/UPDATE/SELECT is resolved when the migration runs. Function
+        # bodies are already stripped, so what is left here is apply-time.
+        "query target",
+        re.compile(r"\b(?:from|join|into|update)\s+(?:only\s+)?" + IDENT),
+    ),
+    (
+        # A function called inside a CHECK constraint or a GENERATED expression
+        # is resolved at DDL time, not at first call.
+        "check/generated expression",
+        re.compile(
+            r"\b(?:check|generated\s+always\s+as)\s*\([^;]{0,400}?\b"
+            + IDENT
+            + r"\s*\("
+        ),
+    ),
+)
+
+
+DOLLAR_OPEN_RE = re.compile(r"\$([A-Za-z_]\w*)?\$")
+
+# A literal is KEPT only when it is immediately cast to `regclass` -- that is the
+# one position where the text inside a literal is a real, apply-time resolved
+# object reference (`default nextval('plm.s'::regclass)`). Every other literal is
+# blanked; see `strip_sql`.
+REGCLASS_AHEAD_RE = re.compile(r"\s*::\s*regclass\b", re.IGNORECASE)
+
+# The archaic, pre-dollar-quote function body: `... as 'select 1';`. Postgres
+# still accepts it, and this lexer CANNOT see inside it (the body is a string
+# literal, and blanking it is exactly what makes prose safe). Rather than leave a
+# silent blind spot, `assert_no_archaic_function_body` REFUSES any migration that
+# uses the form. A repo sweep on 2026-08-10 found exactly one, 20260729120000
+# (`language sql security definer as 'select 1';`), which is RETIRED and
+# permanently HARD_BLOCKED -- so no promotable file is affected today.
+ARCHAIC_BODY_AS_RE = re.compile(r"\bas\s+'")
+CREATE_ROUTINE_RE = re.compile(
+    r"\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:function|procedure)\b"
+)
+
+# #672 item 2. The SAME blind spot reached by a different route. A DO block's
+# body may be a plain string literal instead of a dollar-quoted one:
+#
+#   do 'begin ... end';
+#   do language plpgsql 'begin ... end';
+#
+# Neither matches ARCHAIC_BODY_AS_RE (there is no `as`) nor CREATE_ROUTINE_RE
+# (there is no create/alter function header), so such a body was blanked by
+# `strip_sql` and became invisible to preflight with nothing raised -- exactly
+# the silent condition `assert_no_archaic_function_body` exists to prevent.
+#
+# Latent, not live: a sweep of supabase/migrations/ for `do '` returns ZERO
+# occurrences, so no existing file's result changes.
+BARE_DO_LITERAL_RE = re.compile(r"\bdo\s+(?:language\s+\w+\s+)?'")
+
+
+def assert_no_archaic_function_body(version: str, raw: str) -> None:
+    """Refuse a migration whose function body is an old-style string literal.
+
+    `strip_sql` blanks single-quoted literals so English prose inside a
+    `comment on ... is '...'` stops being parsed as SQL. That is correct, but it
+    means a routine body written as `as 'select 1'` becomes invisible to the
+    preflight scanner. Invisible is the one outcome this lane must never have:
+    the whole point of the check is that a REJECT is trustworthy and a PASS is
+    merely "nothing known to be broken". A body we cannot read is neither.
+
+    So this turns the residual blind spot into a LOUD REFUSAL. If a future
+    migration legitimately needs this form, rewrite it with dollar quoting --
+    do not delete this check.
+    """
+    # keep_dollar=True as well: the one real instance in this repo
+    # (20260729120000) writes `as 'select 1'` INSIDE a `do $$ ... $$` block, so a
+    # scan that stripped dollar bodies would have found nothing and reported a
+    # clean sweep. Comments are still stripped, so prose cannot trip this.
+    text = strip_sql(raw, keep_literals=True, keep_dollar=True)
+    for match in ARCHAIC_BODY_AS_RE.finditer(text):
+        # Only inside a CREATE/ALTER FUNCTION|PROCEDURE statement: take the text
+        # back to the previous statement terminator and look for the header.
+        statement = text[: match.start()].rsplit(";", 1)[-1]
+        if CREATE_ROUTINE_RE.search(statement):
+            raise GuardError(
+                f"{version} defines a routine with an archaic single-quoted body "
+                f"(`as '...'`). The preflight scanner blanks string literals, so "
+                f"it cannot read that body and cannot judge what the migration "
+                f"depends on. Rewrite the body with dollar quoting ($$ ... $$) "
+                f"before promoting it. Do not delete this check to get past it."
+            )
+
+    # #672 item 2. A bare `do '...'` reaches the same blind spot without an `as`
+    # and without a routine header, so the loop above cannot see it.
+    #
+    # ⚠️ Scoped to STATEMENT START, and that scoping is load-bearing. This scan
+    # runs on keep_literals=True text, so English prose inside a kept
+    # `comment on ... is '...'` is visible to it -- and a comment reading
+    # `'we do ''this'''` contains the byte sequence `do '`. An unscoped search
+    # would HARD-REFUSE a blameless migration over its own prose. A real DO is a
+    # top-level statement, so nothing but whitespace may precede it since the
+    # last terminator.
+    for match in BARE_DO_LITERAL_RE.finditer(text):
+        if text[: match.start()].rsplit(";", 1)[-1].strip():
+            continue
+        raise GuardError(
+            f"{version} contains a DO block whose body is a single-quoted string "
+            f"(`do '...'`). The preflight scanner blanks string literals, so it "
+            f"cannot read that body and cannot judge what the migration depends "
+            f"on. Rewrite it as `do $$ ... $$` before promoting it. Do not delete "
+            f"this check to get past it."
+        )
+
+
+def strip_sql(
+    raw: str,
+    keep_literals: bool = False,
+    keep_dollar: bool = False,
+    keep_regclass: bool = True,
+) -> str:
+    """Lowercase SQL with comments and dollar-quoted bodies removed.
+
+    Function bodies are stripped on purpose: names inside them resolve at CALL
+    time, not at apply time, so they are deferrable and must not be treated as
+    batch-ordering dependencies.
+
+    THIS IS A SINGLE LEFT-TO-RIGHT LEXER, AND IT MUST STAY ONE. The previous
+    implementation ran three independent regex passes -- dollar bodies first,
+    then block comments, then line comments. That is wrong, and it silently
+    destroyed real DDL in 8 of the 411 migrations in this repo:
+
+        -- `create index if not exists`, `create or replace function`, guarded
+        -- `do $$` block)          <-- a $$ inside a COMMENT
+
+    Postgres never sees that `$$`, but a dollar-first regex pass does. It became
+    the OPENING half of a pair, matched the next genuine `$$` hundreds of lines
+    later, and deleted every statement in between. For
+    20260728174500 that meant `created_objects` returned an EMPTY SET for a file
+    that creates `pim.sync_clickup_tasks`, `public.sync_clickup_tasks` and
+    `api.clickup_task_sync_run_list` -- so `preflight_batch` reported the file as
+    depending on a function that the very same file creates, and refused a batch
+    that is in fact correctly ordered. The same defect hid all 17 objects created
+    by 20260727154500, which is ALREADY APPLIED, so it also corrupted the
+    `available` set that every later file is judged against.
+
+    A false REJECT is the safe direction, but it is still a fault: it blocks
+    `prepare`, so the production lane could not be exercised at all.
+
+    Lexing order below is Postgres's own: at any point the next token decides.
+
+    SINGLE-QUOTED LITERALS ARE BLANKED (fixed 2026-08-10). They used to be kept,
+    and that was the SAME CLASS OF DEFECT as the `$$`-inside-a-comment bug above:
+    ordinary English prose inside a `comment on ... is '...'` literal was parsed
+    as SQL. The live example is 20260807170000, whose documentation reads
+
+        'character can appear in multiple properties. Distinct from
+         core.style_guide_character, '
+
+    -- and `from core.style_guide_character` matched the "query target" pattern,
+    so `preflight_batch` reported the file as depending on a table created by an
+    unapplied migration and REFUSED it. A repo-wide sweep found 30 such phantom
+    references across 23 migration files.
+
+    It fires hardest on exactly the allowlists this lane is built for: a large
+    batch usually contains the phantom's real creator anyway, so nobody notices,
+    while a SMALL BOUNDED allowlist -- bounded promotion, the whole point -- gets
+    rejected. False rejects are the safe direction, but a lane that cannot run is
+    still a broken lane.
+
+    THE ONE EXCEPTION, and why it is narrow: `'plm.seq'::regclass` really is an
+    apply-time object reference. So a literal is kept only when the very next
+    non-space tokens are `::regclass`. Nothing else about a literal's contents is
+    a dependency -- text inside `execute format(...)` resolves at CALL time and
+    was never modelled (see the module header's honesty note).
+
+    `keep_literals=True` returns the pre-blanking text. It exists ONLY for
+    `assert_no_archaic_function_body`, which must see the `as '...'` form that
+    blanking would otherwise hide.
+    """
+    out: list[str] = []
+    i, n = 0, len(raw)
+    while i < n:
+        ch = raw[i]
+        if raw.startswith("--", i):
+            end = raw.find("\n", i)
+            i = n if end == -1 else end
+            out.append(" ")
+        elif raw.startswith("/*", i):
+            # Postgres block comments nest.
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if raw.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif raw.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            out.append(" ")
+        elif ch == "'" or (
+            ch in "eE" and raw.startswith("'", i + 1)
+        ):
+            # `E'...'` uses BACKSLASH escapes, so `E'it\'s'` does not end at the
+            # second quote. A plain `'...'` string does not honour backslashes;
+            # only `''` ends it. Getting this wrong mis-terminates the literal
+            # and desynchronises everything after it. (Kimi K3, 2026-08-09.)
+            escaped = ch in "eE"
+            start = i
+            j = i + (2 if escaped else 1)
+            while j < n:
+                if escaped and raw[j] == "\\" and j + 1 < n:
+                    j += 2
+                    continue
+                if raw[j] == "'":
+                    if j + 1 < n and raw[j + 1] == "'":
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            if keep_literals or (keep_regclass and REGCLASS_AHEAD_RE.match(raw, j)):
+                out.append(raw[start:j])
+            else:
+                # Blank the body but keep the quotes, so an adjacent token cannot
+                # be glued to its neighbour (`is'x'from` must not become `isfrom`).
+                out.append("''")
+            i = j
+        elif ch == '"':
+            # A double-quoted identifier is opaque: `"weird--name"` contains no
+            # comment and `"a$$b"` opens no dollar quote.
+            j = i + 1
+            while j < n:
+                if raw[j] == '"':
+                    if j + 1 < n and raw[j + 1] == '"':
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            out.append(raw[i:j])
+            i = j
+        elif (
+            ch == "$"
+            and (m := DOLLAR_OPEN_RE.match(raw, i))
+            # #609 F1. A dollar quote opens only at a TOKEN BOUNDARY. Without this
+            # guard, the `$$` inside an unquoted identifier such as `my$$col`
+            # matched, latched onto the next genuine `$$`, and BLANKED EVERYTHING
+            # BETWEEN -- so a real hard reference silently disappeared and the
+            # preflight reported no dependency. That is the false-ACCEPT direction.
+            #
+            #   baseline (mycol):  created={plm.t, plm.f}  refs=[(plm.missing_dep, ...)]
+            #   with    (my$$col): created={plm.t}         refs=[]   <- ref lost
+            #
+            # Measured exposure when filed: the pattern `[A-Za-z0-9_]\$\$` matched
+            # 0 of 411 migration files, so this changes no existing file's result.
+            and not (i > 0 and (raw[i - 1].isalnum() or raw[i - 1] == "_"))
+        ):
+            close = raw.find(m.group(0), m.end())
+            if close == -1:
+                # Unterminated: not a dollar quote at all (e.g. `$1`-adjacent
+                # text). Emit the character and carry on rather than eating the
+                # rest of the file.
+                out.append(ch)
+                i += 1
+            elif keep_dollar:
+                out.append(raw[i : close + len(m.group(0))])
+                i = close + len(m.group(0))
+            else:
+                out.append(" ")
+                i = close + len(m.group(0))
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out).lower()
+
+
+def created_objects(raw: str) -> set[str]:
+    # #609 F2 / #672 item 3 -- THE PHANTOM CREATE.
+    #
+    # `strip_sql` keeps a literal that is cast to `::regclass`, because there the
+    # text really is an apply-time object reference. But the kept text was then
+    # scanned by CREATE_RES as well as REFERENCE_RES, so a literal whose contents
+    # read like `create table a.b` registered an object that IS NEVER CREATED. A
+    # phantom in `available` can satisfy a later file's dependency that production
+    # cannot actually meet -- the false-ACCEPT direction.
+    #
+    # The regclass exception exists for REFERENCES, so only `hard_references`
+    # needs it. Blanking it for the CREATE scan removes the phantom without
+    # touching the dependency the exception was added to find; `hard_references`
+    # below still calls `strip_sql` with the exception intact.
+    #
+    # Measured exposure when filed: 2 of 411 files contain a `'create ...'`
+    # literal, both `command_tag` strings with no `schema.object`, so 0 phantom
+    # objects are produced today and no existing file's result changes.
+    text = strip_sql(raw, keep_regclass=False)
+    found: set[str] = set()
+    for pattern in CREATE_RES:
+        for match in pattern.finditer(text):
+            found.add(f"{match.group(1)}.{match.group(2)}")
+    return found
+
+
+# ---------------------------------------------------------------------------
+# #609 F5 -- `available` NEVER SHRANK.
+#
+# The preflight modelled object CREATION only. `drop table plm.old` in file N
+# produced `created_objects == {}` and removed nothing, so a later
+# `alter table plm.old` was still satisfied from the remote ledger and the batch
+# passed -- the false-ACCEPT direction. The issue records this as an
+# ARCHITECTURAL limit rather than a regex bug, and it is: closing it means the
+# preflight has to model removal as well as creation. That is what this does.
+#
+# LAST EVENT WINS, AND THAT IS THE WHOLE MODEL. Within one file the events are
+# read in TEXT ORDER and only the final one for an object counts, because that
+# is the file's end state -- which is the only thing a later file can observe.
+# So the near-universal `drop view if exists api.x; create view api.x ...`
+# (contract section 5, B7 and B10b both do it) leaves api.x AVAILABLE, and the
+# reverse order leaves it gone. Getting this backwards would turn a
+# false-ACCEPT into a wave of false REJECTs across the whole backlog.
+#
+# `created_objects` IS DELIBERATELY UNCHANGED. It still reports every object the
+# file creates anywhere. `preflight_batch` applies `available |= created` and
+# then `available -= dropped_objects(raw)`, and because `dropped_objects` only
+# reports objects whose LAST event is a removal, the order of those two lines
+# gives the correct end state either way. Leaving `created_objects` alone keeps
+# every existing caller and test meaning exactly what it meant before.
+#
+# WHAT IS AND IS NOT MODELLED. Removals reached only through
+# `execute format(...)` are invisible here for the same reason creations are
+# (module header). A drop this scanner cannot see leaves `available` too large,
+# which is the pre-existing behaviour, not a new hole. This check may REJECT;
+# it is still never an APPROVAL.
+#
+# MEASURED EXPOSURE. Across every file in supabase/migrations/, walked in
+# version order, no object that a migration drops-and-does-not-recreate is
+# hard-referenced by any later migration -- so no existing batch's verdict
+# changes. See test_f5_no_existing_migration_becomes_a_new_rejection.
+# ---------------------------------------------------------------------------
+
+# Object kinds whose removal this models. Deliberately the same five kinds
+# `CREATE_RES` recognises: modelling the removal of something whose creation is
+# invisible would produce refusals nothing could ever satisfy.
+DROP_RES = (
+    re.compile(r"\bdrop\s+(?:unlogged\s+)?table\s+(?:if\s+exists\s+)?"),
+    re.compile(r"\bdrop\s+(?:materialized\s+)?view\s+(?:if\s+exists\s+)?"),
+    re.compile(r"\bdrop\s+type\s+(?:if\s+exists\s+)?"),
+    re.compile(r"\bdrop\s+sequence\s+(?:if\s+exists\s+)?"),
+)
+DROP_ROUTINE_RE = re.compile(
+    r"\bdrop\s+(?:function|procedure)\s+(?:if\s+exists\s+)?"
+)
+# Where a `drop` object list ends. `cascade`/`restrict` are not object names and
+# a `;` ends the statement outright.
+DROP_LIST_END_RE = re.compile(r"\(|;|\bcascade\b|\brestrict\b")
+# `alter <kind> [if exists] [only] sch.obj rename to newname` -- the old name
+# STOPS EXISTING and a new one appears in the same schema. `rename column`,
+# `rename constraint` and friends do not match, because they carry the noun
+# between `rename` and `to`.
+RENAME_RE = re.compile(
+    r"\balter\s+(?:table|view|materialized\s+view|sequence|type|function|procedure)\s+"
+    r"(?:if\s+exists\s+)?(?:only\s+)?" + IDENT + r"\s+rename\s+to\s+([a-z_][a-z0-9_]*)"
+)
+# `alter <kind> sch.obj set schema other` -- same object, different qualified
+# name, so the old qualified name stops resolving.
+SET_SCHEMA_RE = re.compile(
+    r"\balter\s+(?:table|view|materialized\s+view|sequence|type|function|procedure)\s+"
+    r"(?:if\s+exists\s+)?(?:only\s+)?" + IDENT + r"\s+set\s+schema\s+([a-z_][a-z0-9_]*)"
+)
+
+
+def object_events(raw: str) -> list[tuple[int, str, bool]]:
+    """Every creation and removal in the file, as ``(position, object, created)``.
+
+    Positions come from the SAME stripped text `created_objects` scans
+    (``keep_regclass=False``), so a `create table a.b` sitting inside a kept
+    ``::regclass`` literal cannot register here either -- the #609 F2 phantom.
+    """
+    text = strip_sql(raw, keep_regclass=False)
+    events: list[tuple[int, str, bool]] = []
+    for pattern in CREATE_RES:
+        for match in pattern.finditer(text):
+            events.append(
+                (match.start(), f"{match.group(1)}.{match.group(2)}", True)
+            )
+    for pattern in DROP_RES:
+        for match in pattern.finditer(text):
+            end = DROP_LIST_END_RE.search(text, match.end())
+            segment = text[match.end() : end.start() if end else len(text)]
+            # `drop table a.b, c.d` removes both.
+            for obj in re.finditer(IDENT, segment):
+                events.append(
+                    (match.end() + obj.start(), f"{obj.group(1)}.{obj.group(2)}", False)
+                )
+    for match in DROP_ROUTINE_RE.finditer(text):
+        # A routine list is different from every other DROP list: commas inside
+        # argument signatures are not item separators. Walk balanced
+        # parentheses so `drop function plm.f(integer), plm.g(text)` records
+        # both routines, while qualified argument types never become objects.
+        item_start = match.end()
+        depth = 0
+        cursor = item_start
+        while cursor <= len(text):
+            at_end = cursor == len(text)
+            char = "" if at_end else text[cursor]
+            item_so_far = text[item_start:cursor].rstrip()
+            trailing_modifier = bool(
+                item_so_far.endswith(")")
+                and re.match(r"(?:cascade|restrict)\b", text[cursor:])
+            )
+            terminal = depth == 0 and (
+                at_end
+                or char == ";"
+                or trailing_modifier
+            )
+            separator = depth == 0 and char == ","
+            if terminal or separator:
+                item = text[item_start:cursor]
+                obj = re.search(IDENT, item)
+                if obj:
+                    events.append(
+                        (
+                            item_start + obj.start(),
+                            f"{obj.group(1)}.{obj.group(2)}",
+                            False,
+                        )
+                    )
+                if terminal:
+                    break
+                item_start = cursor + 1
+            elif char == "(":
+                depth += 1
+            elif char == ")" and depth:
+                depth -= 1
+            cursor += 1
+    for match in RENAME_RE.finditer(text):
+        schema, old, new = match.group(1), match.group(2), match.group(3)
+        events.append((match.start(), f"{schema}.{old}", False))
+        events.append((match.start() + 1, f"{schema}.{new}", True))
+    for match in SET_SCHEMA_RE.finditer(text):
+        schema, obj, new_schema = match.group(1), match.group(2), match.group(3)
+        # #2809. The move must be booked at the END of its own statement. The
+        # statement names the table it is moving, and `hard_reference_events`
+        # records that name at `match.start(1)` -- INSIDE this match. Booking
+        # the removal at `match.start()` therefore withdrew the table from
+        # `available` before `preflight_batch` reached the very reference that
+        # performs the move, so every archive-a-table migration self-flagged as
+        # "references missing <table>; it was DROPPED (or renamed away)".
+        events.append((match.end(), f"{schema}.{obj}", False))
+        events.append((match.end() + 1, f"{new_schema}.{obj}", True))
+    events.sort(key=lambda item: item[0])
+    return events
+
+
+def dropped_objects(raw: str) -> set[str]:
+    """Objects this file removes and does NOT put back. Last event wins.
+
+    The complement of `created_objects` for `preflight_batch`'s `available` set.
+    An object dropped and then re-created in the same file is NOT here -- the
+    drop-and-recreate is the normal way to change a view's column set, and
+    treating it as a removal would reject most of B7 and all of B10b.
+    """
+    final: dict[str, bool] = {}
+    for _position, obj, created in object_events(raw):
+        final[obj] = created
+    return {obj for obj, created in final.items() if not created}
+
+
+def hard_reference_events(raw: str) -> list[tuple[int, str, str]]:
+    """Non-deferrable references in statement order.
+
+    Ordering matters inside one migration: dropping a trigger on a table and
+    then dropping that table is valid, while touching the table after its drop
+    is not.  The batch preflight therefore consumes these positions together
+    with ``object_events`` instead of judging every reference against only the
+    file's final catalog state.
+    """
+    text = strip_sql(raw)
+    found: list[tuple[int, str, str]] = []
+    for reason, pattern in REFERENCE_RES:
+        for match in pattern.finditer(text):
+            found.append(
+                # A bounded regex may begin at an earlier keyword (for example
+                # an unrelated GRANT before a CREATE FUNCTION).  The catalog
+                # lookup happens at the qualified target, so order by that
+                # identifier rather than by the regex's broad match start.
+                (match.start(1), f"{match.group(1)}.{match.group(2)}", reason)
+            )
+    return sorted(found, key=lambda item: item[0])
+
+
+def hard_references(raw: str) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for _position, obj, reason in hard_reference_events(raw):
+        key = (obj, reason)
+        if key not in seen:
+            seen.add(key)
+            found.append(key)
+    return found
+
+
+RETIRED_OBJECT_RESTORATION_RE = re.compile(
+    r"^\s*--\s*restores-retired-object:\s*"
+    r"([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)\s+"
+    r"dropped-by:\s*(\d{14})\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def retired_object_restorations(raw: str) -> dict[str, str]:
+    """Return exact declarations for intentional restoration of retired objects."""
+    declarations: dict[str, str] = {}
+    for match in RETIRED_OBJECT_RESTORATION_RE.finditer(raw):
+        obj, dropped_by = match.group(1).lower(), match.group(2)
+        if obj in declarations:
+            raise GuardError(f"duplicate retired-object restoration declaration for {obj}")
+        declarations[obj] = dropped_by
+    return declarations
+
+
+def validate_retired_object_restorations(
+    version: str, raw: str, removed_by: dict[str, str]
+) -> set[str]:
+    """Require each declaration to match both a real create and the exact remover."""
+    created = created_objects(raw)
+    valid: set[str] = set()
+    for obj, declared_drop in retired_object_restorations(raw).items():
+        if obj not in created:
+            raise GuardError(
+                f"{version} declares restoration of {obj} but does not create it"
+            )
+        actual_drop = removed_by.get(obj)
+        if actual_drop != declared_drop:
+            actual = actual_drop or "no recorded prior drop"
+            raise GuardError(
+                f"{version} declares {obj} was dropped by {declared_drop}, "
+                f"but history shows {actual}"
+            )
+        valid.add(obj)
+    return valid
+
+
+def _created_by_applied_dynamic_ddl(
+    obj: str, migrations: dict[str, Path], remote: set[str]
+) -> bool:
+    """True when an APPLIED migration creates `obj` inside a dollar-quoted body.
+
+    Only the remote-applied prefix is consulted, so no PENDING file can feed
+    this path. It reads a widened body, so a dollar-quoted block that is not
+    executed DDL could still contradict a refusal wrongly -- the same residual
+    the module header already owns: this check may REJECT, never APPROVE, and
+    the rehearsal against a production-shaped database stays the real gate. See
+    the call site in `preflight_batch` for why it is not a widening of
+    `available`.
+    """
+    for version in sorted(remote):
+        path = migrations.get(version)
+        if path is None:
+            continue
+        raw = path.read_text(encoding="utf-8")
+        text = strip_sql(raw, keep_regclass=False, keep_dollar=True)
+        for pattern in CREATE_RES:
+            for match in pattern.finditer(text):
+                if f"{match.group(1)}.{match.group(2)}" == obj:
+                    return True
+    return False
+
+
+def preflight_batch(
+    migrations: dict[str, Path], allowlist: list[str], remote: set[str]
+) -> None:
+    """Reject a batch that cannot run end to end. Never an approval."""
+    creators: dict[str, list[str]] = {}
+    for version, path in migrations.items():
+        for obj in created_objects(path.read_text(encoding="utf-8")):
+            creators.setdefault(obj, []).append(version)
+
+    # #609 F5. `available` now SHRINKS on a drop/rename, so the ledger prefix has
+    # to be walked in version order -- an unordered union would let a create in a
+    # later applied file be cancelled by a drop in an earlier one, or vice versa.
+    # `removed_by` remembers WHICH version removed an object, so the refusal can
+    # say "dropped by X" instead of the misleading "created by X, which is not
+    # applied" the creation-only model would have printed.
+    available: set[str] = set()
+    removed_by: dict[str, str] = {}
+    for version in sorted(remote):
+        path = migrations.get(version)
+        if path is None:
+            continue
+        raw = path.read_text(encoding="utf-8")
+        created = created_objects(raw)
+        dropped = dropped_objects(raw)
+        available |= created
+        available -= dropped
+        for obj in created:
+            removed_by.pop(obj, None)
+        for obj in dropped:
+            removed_by[obj] = version
+
+    problems: list[str] = []
+    for version in allowlist:
+        path = migrations[version]
+        raw = path.read_text(encoding="utf-8")
+        # Refuse a body this scanner cannot read, rather than passing it
+        # silently. Collected rather than raised so a file with BOTH an archaic
+        # body and a real missing dependency reports both at once.
+        try:
+            assert_no_archaic_function_body(version, raw)
+        except GuardError as exc:
+            problems.append(str(exc))
+        try:
+            validate_retired_object_restorations(version, raw, removed_by)
+        except GuardError as exc:
+            problems.append(str(exc))
+        # Judge references against the catalog state at their exact statement
+        # position.  The old final-state shortcut falsely rejected a valid
+        # `drop trigger ... on table; drop table ... restrict` because the
+        # table was (correctly) absent at end-of-file.
+        ordered_events = [
+            (position, 0, obj, created, "")
+            for position, obj, created in object_events(raw)
+        ] + [
+            (position, 1, obj, False, reason)
+            for position, obj, reason in hard_reference_events(raw)
+        ]
+        for _position, kind, obj, created, reason in sorted(ordered_events):
+            if kind == 0:
+                if created:
+                    available.add(obj)
+                    removed_by.pop(obj, None)
+                else:
+                    available.discard(obj)
+                    removed_by[obj] = version
+                continue
+            if obj in available:
+                continue
+            # #609 F5. A POSITIVE, RECORDED REMOVAL. This is the one case the
+            # creation-only model could not see at all, and it is reported
+            # separately because the advice is the opposite: the object is not
+            # "coming later", it is GONE, and no amount of adding versions to the
+            # allowlist will bring it back.
+            if obj in removed_by:
+                problems.append(
+                    f"{version} references missing {obj} ({reason}); it was "
+                    f"DROPPED (or renamed away) by {removed_by[obj]} and not "
+                    f"re-created -- would abort the batch (42P01 undefined_table "
+                    f"/ 42883 undefined_function). Adding versions to the "
+                    f"allowlist cannot fix this: either {version} is referencing "
+                    f"the wrong name, or {removed_by[obj]} should not be in this "
+                    f"batch."
+                )
+                continue
+            known = sorted(creators.get(obj, []))
+            if not known:
+                # No local file creates it -- it predates the tracked history or
+                # is not ours. Stay silent: this check may reject, never approve.
+                continue
+            # #1645. THE EVIDENCE CAN BE CONTRADICTED BY AN APPLIED FILE.
+            #
+            # `created_objects` reads a stripped body, so an object created by
+            # an ALREADY-APPLIED migration through a dollar-quoted DDL literal
+            # (20260825082910 creates public.style_group_tags inside
+            # `pg_temp.popdam_1479_apply_final_ddl($ddl$create table ...$ddl$)`)
+            # never enters `available`. The scanner then blamed the object on
+            # the OLDEST file that creates it in plain text -- here the
+            # permanently HARD_BLOCKED 20260825010603 -- and refused a batch
+            # whose dependency production has satisfied since 2026-08-25. That
+            # is a false REJECT with no legal remedy: the named prerequisite may
+            # never be promoted.
+            #
+            # This is deliberately a RESCUE, not a widening of `available`. The
+            # strict scan still decides what is available to UNAPPLIED files, so
+            # no false ACCEPT is introduced: the widened read is consulted only
+            # against the remote-applied prefix, and only to decide whether the
+            # positive evidence for a refusal survives. When it is contradicted
+            # the check falls back to the module's standing policy for an
+            # unknown creator -- stay silent. It may still REJECT; it is still
+            # never an APPROVAL.
+            if _created_by_applied_dynamic_ddl(obj, migrations, remote):
+                continue
+            problems.append(
+                f"{version} references missing {obj} ({reason}); "
+                f"created by {', '.join(known)} which is not applied and not "
+                f"earlier in the batch -- would abort the batch "
+                f"(42P01 undefined_table / 42883 undefined_function)"
+            )
+    if problems:
+        raise GuardError(
+            "whole-batch preflight failed; the batch cannot run end to end:\n  "
+            + "\n  ".join(problems)
+        )
+
+
+def preflight(
+    repo: Path,
+    raw_allowlist: str,
+    ledger: Path,
+    derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
+) -> None:
+    remote = parse_remote_versions(ledger)
+    allowlist = parse_allowlist(raw_allowlist, remote)
+    migrations = local_migrations(repo)
+    validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
+    preflight_batch(migrations, allowlist, remote)
+    print(
+        f"PREFLIGHT OK: {len(allowlist)} migrations, no missing non-deferrable "
+        "dependency. This is a pre-filter, NOT an approval -- the rehearsal "
+        "against a production-shaped database remains the authoritative gate."
+    )
+
+
+def prepare(
+    repo: Path,
+    output: Path,
+    commit_sha: str,
+    raw_allowlist: str,
+    ledger: Path,
+    derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
+) -> None:
+    remote = parse_remote_versions(ledger)
+    allowlist = parse_allowlist(raw_allowlist, remote)
+    migrations = local_migrations(repo)
+    validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
+    # AGENTS.md section 6.8: the whole batch must be proven runnable end to end
+    # before anything is applied, never one migration at a time.
+    preflight_batch(migrations, allowlist, remote)
+    if output.exists():
+        raise GuardError(f"bounded checkout already exists: {output}")
+    subprocess.run(
+        ["git", "worktree", "add", "--detach", str(output), commit_sha],
+        cwd=repo,
+        check=True,
+    )
+    keep = remote | set(allowlist)
+    for version, path in local_migrations(output).items():
+        if version not in keep:
+            path.unlink()
+    remaining = set(local_migrations(output))
+    expected = set(migrations) & keep
+    if remaining != expected:
+        raise GuardError("bounded checkout does not match the approved file set")
+    # Pin the exact byte content of every file that survived pruning, so the
+    # later `assert_bounded` can refuse any drift between this step and the
+    # push. Written last, after the file-set check, so it reflects the final
+    # bounded state and nothing after it mutates the checkout.
+    write_content_manifest(output)
+
+
+def assert_bounded(
+    directory: Path,
+    raw_allowlist: str,
+    ledger: Path,
+    derivation_overrides: dict[tuple[str, str], str] | None = None,
+) -> None:
+    """Re-prove that a checkout is still bounded, immediately before it is pushed.
+
+    ``prepare`` prunes the checkout to exactly ``remote | allowlist`` and that
+    pruning is the ONLY thing that makes ``--include-all`` safe: the bound is the
+    filesystem, not the flag. ``prepare`` and the push happen in separate steps,
+    so this re-checks the invariant at the point of use rather than trusting a
+    result computed earlier in the job.
+    """
+    remote = parse_remote_versions(ledger)
+    allowlist = parse_allowlist(raw_allowlist, remote)
+    # Re-prove atomicity at the point of use too, for the same reason this
+    # function re-proves boundedness: `prepare` and the push are separate steps.
+    assert_atomic_batches(allowlist, remote)
+    # Re-prove the declared derivation bases here too, and against the files
+    # ACTUALLY IN THE CHECKOUT about to be pushed rather than the ones `prepare`
+    # read. This is the last step before the push, and a declaration that changed
+    # in between must not be taken on trust (issue #1608).
+    assert_declared_bases_present(
+        local_migrations(directory), allowlist, remote, derivation_overrides
+    )
+    keep = remote | set(allowlist)
+    on_disk = set(local_migrations(directory))
+    if not on_disk:
+        raise GuardError(f"no migrations found in bounded checkout: {directory}")
+    extra = sorted(on_disk - keep)
+    if extra:
+        raise GuardError(
+            "bounded checkout is NOT bounded -- --include-all would sweep "
+            f"unapproved migrations: {extra}"
+        )
+    # Re-prove the BYTE CONTENT too, not just the file set. The membership check
+    # above cannot see a file whose contents drifted (or whose pinned digest was
+    # hand-edited) between `prepare` and this push; this comparison can, and it
+    # fails closed on every form of divergence. Run AFTER the file-set checks so
+    # an added file still produces the existing, named-membership message.
+    assert_content_manifest(directory)
+    print(
+        f"BOUNDED OK: {len(on_disk)} migration files on disk, all within "
+        f"remote-ledger | allowlist ({len(allowlist)} allowlisted), content "
+        "manifest verified."
+    )
+
+
+def verify_dry_run(path: Path, raw_allowlist: str, ledger: Path | None = None) -> None:
+    # `ledger` is OPTIONAL and only feeds the ledger-aware co-presence rule.
+    # Omitting it keeps the stricter ledger-blind behaviour, which fails closed.
+    # The lane workflow passes it so an already-applied required fix does not
+    # deadlock this step after `prepare` and `preflight` have already accepted
+    # the same allowlist.
+    remote = parse_remote_versions(ledger) if ledger is not None else frozenset()
+    allowlist = parse_allowlist(raw_allowlist, remote)
+    raw = path.read_text(encoding="utf-8")
+    marker = "Would push these migrations:"
+    if marker not in raw:
+        raise GuardError("dry run did not contain the expected migration list")
+    actual = [
+        match.group(1)
+        for line in raw.split(marker, 1)[1].splitlines()
+        if (match := MIGRATION_LINE_RE.match(line))
+    ]
+    if actual != allowlist:
+        raise GuardError(
+            f"dry run did not exactly match: expected {allowlist}, got {actual}"
+        )
+
+
+def _add_derivation_override(sub: argparse.ArgumentParser) -> None:
+    """The recorded escape hatch for the issue #1608 derivation gate.
+
+    Repeatable, and each value must name the resulting state -- see
+    `migration_derivation.parse_overrides`. Accepted overrides are PRINTED into
+    the run log rather than merely honoured, so the decision survives the run.
+    """
+    sub.add_argument(
+        "--derivation-override",
+        action="append",
+        default=[],
+        metavar="VERSION:BASE=NOTE",
+        help=(
+            "Promote VERSION even though its declared base BASE is absent from the "
+            "target ledger. NOTE must state what the database will actually hold "
+            "afterwards and is recorded verbatim in the run log."
+        ),
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    subs = parser.add_subparsers(dest="command", required=True)
+    prep = subs.add_parser("prepare")
+    prep.add_argument("--repo", type=Path, required=True)
+    prep.add_argument("--output", type=Path, required=True)
+    prep.add_argument("--commit-sha", required=True)
+    prep.add_argument("--allowlist", required=True)
+    prep.add_argument("--remote-ledger", type=Path, required=True)
+    prep.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
+    _add_derivation_override(prep)
+    pre = subs.add_parser("preflight")
+    pre.add_argument("--repo", type=Path, required=True)
+    pre.add_argument("--allowlist", required=True)
+    pre.add_argument("--remote-ledger", type=Path, required=True)
+    pre.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
+    _add_derivation_override(pre)
+    bounded = subs.add_parser("assert-bounded")
+    bounded.add_argument("--dir", dest="directory", type=Path, required=True)
+    bounded.add_argument("--allowlist", required=True)
+    bounded.add_argument("--remote-ledger", type=Path, required=True)
+    _add_derivation_override(bounded)
+    verify = subs.add_parser("verify-dry-run")
+    verify.add_argument("--dry-run-output", type=Path, required=True)
+    # REQUIRED on the CLI even though the Python function's `ledger` is
+    # optional. The function stays optional for `production_catalog_verification`
+    # and other direct callers; the LANE must never be able to omit it, because
+    # an omitted ledger silently restores the exact B9 deadlock this flag exists
+    # to remove (a loud refusal, but at the last gate, after everything else has
+    # already passed). All four workflow call sites pass it; there is a test
+    # asserting they always will.
+    verify.add_argument("--remote-ledger", type=Path, required=True)
+    verify.add_argument("--allowlist", required=True)
+    args = parser.parse_args()
+    try:
+        overrides = parse_overrides(getattr(args, "derivation_override", []))
+        if args.command == "prepare":
+            prepare(
+                args.repo.resolve(),
+                args.output.resolve(),
+                args.commit_sha,
+                args.allowlist,
+                args.remote_ledger,
+                overrides,
+                args.ledger_name,
+            )
+        elif args.command == "preflight":
+            preflight(
+                args.repo.resolve(), args.allowlist, args.remote_ledger, overrides,
+                args.ledger_name,
+            )
+        elif args.command == "assert-bounded":
+            assert_bounded(
+                args.directory.resolve(), args.allowlist, args.remote_ledger, overrides
+            )
+        else:
+            verify_dry_run(args.dry_run_output, args.allowlist, args.remote_ledger)
+    except (GuardError, DerivationError, OSError, subprocess.CalledProcessError) as exc:
+        print(f"BLOCKED: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

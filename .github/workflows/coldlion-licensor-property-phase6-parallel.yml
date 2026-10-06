@@ -1,0 +1,305 @@
+# Phase 6 parallel-run workflow (PREVIEW ONLY).
+#
+# workflow_dispatch is enabled now for manual dry-runs and apply after migration
+# deploy + forced-failure proof. The schedule: triggers were removed by the #3536
+# CI audit (they were idle); workflow_dispatch is the only trigger. If schedules are
+# ever re-added they stay GUARDED: set PHASE6_SCHEDULE_ENABLED=true only after:
+#   1) Phase 6 migration applied to the CURRENT preview branch (repository variable
+#      PREVIEW_PROJECT_REF; the old rjyboqwcdzcocqgmsyel was deleted on 2026-08-18)
+#   2) forced-failure health+comparison drills succeeded
+#   3) at least one successful manual ColdLion + compare run
+#      (the DesignFlow lane was removed by #2794; see "Host PLM Import" in README.md)
+#
+# Readiness is INVARIANT-BASED, never elapsed-time-based. The old 14-day / 2026-08-09
+# waiting rule was retired on 2026-07-26 and is not an exit condition anywhere. Runs of
+# this workflow are supporting evidence; the exit gate is the readiness command
+# (tools/evaluate-coldlion-licensor-property-cutover-readiness.mjs), which proves the
+# 542-row mapping identity, a closed circuit breaker, and green health/comparison.
+# Counting days proves nothing about slow-moving source data.
+# Production project qsllyeztdwjgirsysgai is hard-refused.
+#
+# Required GitHub secrets (names only — values from 1Password vibe_coding):
+#   SUPABASE_ACCESS_TOKEN          — Supabase CLI Personal Access Token
+#   SUPABASE_DB_PASSWORD_PREVIEW   — preview branch DB password
+#   COLDLION_API_KEY               — Coldlion ERP API key x5.coldlion.com
+#
+# Optional repository variable:
+#   PHASE6_SCHEDULE_ENABLED=true   — unlocks schedule-triggered jobs (default off)
+
+name: ColdLion Licensor/Property Phase 6 Parallel Run (preview)
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which Phase 6 step to run"
+        type: choice
+        required: true
+        default: health
+        options:
+          - coldlion
+          - compare
+          - health
+          - force-fail-health
+          - force-fail-compare
+      apply:
+        description: "Persist to preview DB (false = dry-run only)"
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+  issues: write   # required so a failing lane can deliver its own alert immediately
+
+concurrency:
+  group: coldlion-phase6-parallel-preview
+  cancel-in-progress: false
+
+env:
+  # CONFIGURED, not hard-coded: the preview project ref changes whenever the preview
+  # branch is rebuilt (rjyboqwcdzcocqgmsyel was deleted on 2026-08-18). An unset
+  # repository variable is REFUSED below, never defaulted. See AGENTS.md rule 2.
+  PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+  PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
+  PHASE6_PREVIEW_ONLY: "1"
+  PHASE6_MAX_SUCCESS_AGE: "36 hours"
+
+jobs:
+  phase6:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse production identity
+        run: |
+          set -euo pipefail
+          if [ "${PREVIEW_PROJECT_REF}" = "${PRODUCTION_PROJECT_REF}" ]; then
+            echo "PREVIEW and PRODUCTION refs must differ" >&2
+            exit 1
+          fi
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo "REFUSED: repository variable PREVIEW_PROJECT_REF is not set. Set it to the CURRENT preview branch project ref. An unset ref is never treated as a default." >&2
+            exit 1
+          fi
+          if ! printf '%s' "${PREVIEW_PROJECT_REF}" | grep -Eq '^[a-z]{20}$'; then
+            echo "REFUSED: PREVIEW_PROJECT_REF is not a 20-character Supabase project ref." >&2
+            exit 1
+          fi
+          echo "Target preview project: ${PREVIEW_PROJECT_REF}"
+
+      - name: Gate scheduled runs until schedule is explicitly enabled
+        if: github.event_name == 'schedule'
+        run: |
+          set -euo pipefail
+          if [ "${{ vars.PHASE6_SCHEDULE_ENABLED }}" != "true" ]; then
+            echo "Schedule trigger ignored: set repository variable PHASE6_SCHEDULE_ENABLED=true after preview deploy + forced-failure proof."
+            echo "skip=true" >> "$GITHUB_ENV"
+          else
+            echo "skip=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Mark workflow_dispatch as runnable
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "skip=false" >> "$GITHUB_ENV"
+
+      - name: Resolve job + apply mode
+        if: env.skip != 'true'
+        id: plan
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            JOB="${{ inputs.job }}"
+            APPLY="${{ inputs.apply }}"
+          else
+            # Exact match on github.event.schedule (the cron expression that fired).
+            # NEVER use wall-clock date/hour — delayed runners must not pick the wrong lane.
+            # Keep in lockstep with tools/phase6-schedule-map.mjs.
+            SCHEDULE='${{ github.event.schedule }}'
+            case "$SCHEDULE" in
+              "0 4 * * *") JOB=coldlion ;;
+              "0 5 * * *") JOB=compare ;;
+              "15 * * * *") JOB=health ;;
+              *)
+                echo "Unknown github.event.schedule expression: [$SCHEDULE]" >&2
+                exit 1
+                ;;
+            esac
+            APPLY=true
+          fi
+          echo "job=$JOB" >> "$GITHUB_OUTPUT"
+          echo "apply=$APPLY" >> "$GITHUB_OUTPUT"
+          echo "Resolved job=$JOB apply=$APPLY schedule=${{ github.event.schedule }}"
+
+      - name: Setup Node
+        if: env.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests (offline)
+        if: env.skip != 'true'
+        run: |
+          node --test \
+            tools/phase6-preview-guards.test.mjs \
+            tools/phase6-schedule-map.test.mjs \
+            tools/phase6-cli-result-parse.test.mjs \
+            tools/coldlion-licensor-property-phase6.test.mjs \
+            tools/compare-coldlion-designflow-daily.test.mjs \
+            tools/check-coldlion-designflow-sync-health.test.mjs \
+            tools/sync-coldlion-licensors-properties.test.mjs \
+            tools/evaluate-coldlion-licensor-property-cutover-readiness.test.mjs \
+            tools/dispatch-coldlion-taxonomy-alerts.test.mjs
+
+      - name: Setup Supabase CLI
+        if: env.skip != 'true' && steps.plan.outputs.apply == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link preview project only
+        if: env.skip != 'true' && steps.plan.outputs.apply == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "Missing secret SUPABASE_ACCESS_TOKEN" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "Missing secret SUPABASE_DB_PASSWORD_PREVIEW" >&2
+            exit 1
+          fi
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$PREVIEW_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          LINKED=$(cat supabase/.temp/project-ref)
+          if [ "$LINKED" != "$PREVIEW_PROJECT_REF" ]; then
+            echo "Linked project $LINKED is not preview $PREVIEW_PROJECT_REF" >&2
+            exit 1
+          fi
+          if [ "$LINKED" = "$PRODUCTION_PROJECT_REF" ]; then
+            echo "Refusing production link" >&2
+            exit 1
+          fi
+
+      # The DesignFlow sync lane was removed by #2794 together with the importer
+      # plm.import_master_data(jsonb,jsonb) and tools/sync-plm-master-data.mjs.
+
+      - name: Run ColdLion mirror_only sync (preview)
+        if: env.skip != 'true' && steps.plan.outputs.job == 'coldlion'
+        env:
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.plan.outputs.apply }}" = "true" ]; then
+            if [ -z "${COLDLION_API_KEY:-}" ]; then
+              echo "Missing secret COLDLION_API_KEY" >&2
+              exit 1
+            fi
+            node tools/sync-coldlion-licensors-properties.mjs --apply --linked
+          else
+            node tools/sync-coldlion-licensors-properties.mjs
+          fi
+
+      - name: Run daily comparison (preview)
+        if: env.skip != 'true' && steps.plan.outputs.job == 'compare'
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.plan.outputs.apply }}" = "true" ]; then
+            node tools/compare-coldlion-designflow-daily.mjs --apply --linked
+          else
+            node tools/compare-coldlion-designflow-daily.mjs
+          fi
+
+      - name: Run health check (preview)
+        if: env.skip != 'true' && steps.plan.outputs.job == 'health'
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.plan.outputs.apply }}" = "true" ]; then
+            node tools/check-coldlion-designflow-sync-health.mjs --apply --linked
+          else
+            node tools/check-coldlion-designflow-sync-health.mjs
+          fi
+
+      # INSTANT DELIVERY. Waiting for the */10 alert-monitor cron was the wrong
+      # design: GitHub throttled it to 57-201 minute gaps on 2026-07-27/28, so a
+      # failure could sit unseen for over three hours. The run that DETECTS the
+      # failure is already awake and already knows, so it delivers the alert
+      # itself here — seconds, not hours. The alert-monitor cron stays as a slow
+      # backstop for anything that fails outside a GitHub run.
+      - name: Deliver alert immediately on failure (naming the human response owner)
+        if: failure() && env.skip != 'true' && steps.plan.outputs.apply == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          node tools/dispatch-coldlion-taxonomy-alerts.mjs --apply --linked --out alert-plan.json
+          CODE=$?
+          if [ "$CODE" -ne 1 ]; then
+            TITLE="ColdLion preview lane failed before an alert row was readable (run ${{ github.run_id }})"
+            {
+              echo "The ColdLion preview lane failed, and its database-backed alert dispatcher could not read an undelivered alert row (dispatcher exit ${CODE})."
+              echo ""
+              echo "This is the pre-link/fault fallback: GitHub is delivering the alert without depending on the database connection that failed."
+              echo ""
+              echo "Job: ${{ steps.plan.outputs.job }}"
+              echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              echo "Human response owner: Albert Hazan."
+            } > alert-body.md
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body-file alert-body.md \
+              --label "coldlion-taxonomy-alert" \
+              || gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body-file alert-body.md
+            echo "::error::ColdLion preview failure delivered through the database-independent fallback. Human response owner: Albert Hazan."
+            exit 0
+          fi
+          TITLE=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('alert-plan.json','utf8')).title)")
+          node -e "require('fs').writeFileSync('alert-body.md', JSON.parse(require('fs').readFileSync('alert-plan.json','utf8')).body)"
+          {
+            echo ""
+            echo "Delivered immediately by the detecting run ${{ github.run_id }} (job: ${{ steps.plan.outputs.job }}) at $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC."
+            echo ""
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> alert-body.md
+          gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body-file alert-body.md \
+            --label "coldlion-taxonomy-alert" \
+            || gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body-file alert-body.md
+          echo "::error::ColdLion taxonomy alert delivered immediately. Human response owner: Albert Hazan."
+
+      - name: Forced-failure health drill (safe; no canonical mutation)
+        if: env.skip != 'true' && steps.plan.outputs.job == 'force-fail-health'
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.plan.outputs.apply }}" != "true" ]; then
+            echo "force-fail-health requires apply=true against preview" >&2
+            exit 1
+          fi
+          set +e
+          node tools/check-coldlion-designflow-sync-health.mjs --apply --linked --force-fail
+          CODE=$?
+          set -e
+          if [ "$CODE" -eq 0 ]; then
+            echo "Expected non-zero exit from --force-fail health drill" >&2
+            exit 1
+          fi
+          echo "Forced-failure health drill produced expected non-zero exit ($CODE)"
+
+      - name: Forced-failure comparison drill (safe; no canonical mutation; append-only)
+        if: env.skip != 'true' && steps.plan.outputs.job == 'force-fail-compare'
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.plan.outputs.apply }}" != "true" ]; then
+            echo "force-fail-compare requires apply=true against preview" >&2
+            exit 1
+          fi
+          set +e
+          node tools/compare-coldlion-designflow-daily.mjs --apply --linked --force-fail
+          CODE=$?
+          set -e
+          if [ "$CODE" -eq 0 ]; then
+            echo "Expected non-zero exit from --force-fail comparison drill" >&2
+            exit 1
+          fi
+          echo "Forced-failure comparison drill produced expected non-zero exit ($CODE) (append-only is_drill row)"

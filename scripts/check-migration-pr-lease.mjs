@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+import { execFileSync } from 'node:child_process'
+import { runGitHubCommand } from './lib/github-transport.mjs'
+import { createTreeReader } from './lib/github-tree.mjs'
+import { readFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
+import path from 'node:path'
+import { dispatchObjectKeys } from './check-pr-object-collisions.mjs'
+import { parseAuthorLease, REPO } from './manage-migration-author-lanes.mjs'
+import { validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
+
+export class LeaseCheckError extends Error {}
+const normalize = (x) => String(x).trim().replace(/\s+/g,' ').toLowerCase()
+
+export function declarationCoversActual(declared, actual) {
+  if (declared.has(actual)) return true
+  const column = /^column ([a-z_][a-z0-9_$]*\.[a-z_][a-z0-9_$]*)\.[a-z_][a-z0-9_$]*$/.exec(actual)
+  return Boolean(column && declared.has(`table ${column[1]}`))
+}
+
+export function validateMigrationLease({ claims, branch, files, now = new Date(), reservationExists, retirementExists = () => false }) {
+  const migrations=files.filter(f=>f.filename?.startsWith('supabase/migrations/')&&f.filename.endsWith('.sql')&&f.status!=='removed')
+  if (!migrations.length) return { relevant:false }
+  if(migrations.length===1){
+    try{
+      const restoration=validateHistoricalRestorationFile(migrations[0].filename,migrations[0].sql)
+      if(restoration.codeTruthOnly===true)return {relevant:false,historicalCodeTruth:true,version:path.basename(migrations[0].filename).slice(0,14)}
+    }catch{}
+  }
+  const matching=[]
+  for(const claim of claims){
+    let lease
+    try{ lease=parseAuthorLease(claim.body,now) }catch(error){ throw new LeaseCheckError(`claim #${claim.number} is unreadable: ${error.message}`) }
+    if(!lease.legacy && lease.branch===branch) matching.push({...claim,lease})
+  }
+  if(matching.length!==1) throw new LeaseCheckError(`migration PR branch ${branch} must have exactly one active ref-backed claim; found ${matching.length}`)
+  const holder=matching[0]
+  if(!holder.lease.active) throw new LeaseCheckError(`claim #${holder.number} is expired`)
+  if(holder.lease.capacityState !== 'active') throw new LeaseCheckError(`claim #${holder.number} author capacity is ${holder.lease.capacityState}`)
+  // WRITES ONLY. A migration's statically extracted objects are things it CHANGES,
+  // so only the claim's writes can cover them. A read declaration must never
+  // satisfy a write: that is the whole point of separating the two lists.
+  const declared=new Set(holder.lease.writes.map(normalize))
+  const declaredReads=new Set((holder.lease.reads??[]).map(normalize))
+  const actual=new Set()
+  const versions=new Set()
+  for(const file of migrations){
+    const version=path.basename(file.filename).slice(0,14)
+    if(!/^\d{14}$/.test(version)) throw new LeaseCheckError(`${file.filename} has no 14-digit migration version`)
+    versions.add(version)
+    if(!String(file.sql??'').trim()) throw new LeaseCheckError(`${file.filename} returned empty SQL`)
+    for(const object of dispatchObjectKeys(file.sql)) actual.add(normalize(object))
+  }
+  let historical=null
+  if(versions.size===1&&!versions.has(holder.lease.version)){
+    if(migrations.length!==1)throw new LeaseCheckError('historical restoration must add exactly one migration file')
+    try{historical=validateHistoricalRestorationFile(migrations[0].filename,migrations[0].sql)}catch(error){throw new LeaseCheckError(`migration version does not match claim and ${error.message}`)}
+  } else if(versions.size!==1) throw new LeaseCheckError(`migration version must exactly match claim #${holder.number}`)
+  if(!reservationExists(holder.lease.version)) throw new LeaseCheckError(`permanent reservation ref is missing for ${holder.lease.version}`)
+  // #2301 Step 3. A terminally retired version can never merge again, no matter
+  // what state its claim is in. The claim above is open and looks healthy
+  // precisely because somebody reopened it; the tombstone is the record that
+  // outlives that reopening, so the merge gate reads the tombstone, not the issue.
+  // A successor does not lose anything here: successors take a fresh version.
+  if(retirementExists(holder.lease.version)) throw new LeaseCheckError(`migration version ${holder.lease.version} was terminally retired; it can never be merged again. Successor work needs a fresh claim, branch, worktree and migration version.`)
+  const undeclared=[...actual].filter(x=>!declarationCoversActual(declared,x))
+  if(undeclared.length){
+    // Name the read-vs-write mistake explicitly. "undeclared" would send an author
+    // hunting for a missing line when the line is there under the wrong heading.
+    const declaredAsRead=undeclared.filter(x=>declarationCoversActual(declaredReads,x))
+    if(declaredAsRead.length) throw new LeaseCheckError(`migration WRITES objects the claim only declares as reads: ${declaredAsRead.join(', ')}. Move them to writes: and re-acquire the lane; a read claim does not serialise against other writers.`)
+    throw new LeaseCheckError(`migration writes undeclared objects: ${undeclared.join(', ')}`)
+  }
+  return { relevant:true, claim:holder.number, version:historical?versions.values().next().value:holder.lease.version, reservationVersion:holder.lease.version, historical:Boolean(historical), objects:[...actual].sort() }
+}
+
+// Issue #2342: shared transport, identical refusal.
+function gh(args){return runGitHubCommand(args,{wrapError:(detail)=>new LeaseCheckError(`GitHub read failed: ${detail}`)})}
+function json(args){const raw=gh(args);try{return JSON.parse(raw)}catch{throw new LeaseCheckError('GitHub returned malformed JSON')}}
+export function flattenPages(result, endpoint='GitHub API'){if(!Array.isArray(result)||result.some(x=>!Array.isArray(x)))throw new LeaseCheckError(`GitHub pagination for ${endpoint} is malformed`);return result.flat()}
+function pages(endpoint){return flattenPages(json(['api','--paginate','--slurp',endpoint]),endpoint)}
+// Issue #2342: one recursive tree read per ref, then blobs by SHA. A Contents
+// call per file is what made a single spurious 404 stop three production runs.
+const treeReader=createTreeReader({wrapError:(detail)=>new LeaseCheckError(`GitHub read failed: ${detail}`)})
+function rawFile(filename,ref){const text=treeReader.readFileAtRef(REPO,filename,ref);if(text===null)throw new LeaseCheckError(`${filename} is not tracked at ${ref}; refusing rather than treating it as empty`);return text}
+
+export function openClaimIssues(issues){return issues.filter(x=>!x.pull_request&&(x.labels??[]).some(l=>(typeof l==='string'?l:l?.name)==='db-claim')).map(x=>({number:x.number,body:x.body}))}
+export function gatherPrInput(env=process.env){
+  let event={};if(env.GITHUB_EVENT_PATH)event=JSON.parse(readFileSync(env.GITHUB_EVENT_PATH,'utf8'))
+  const number=Number(env.PR_NUMBER||event.pull_request?.number);if(!number)throw new LeaseCheckError('PR number is unavailable')
+  const pr=json(['api',`repos/${REPO}/pulls/${number}`]);if(!pr?.head?.sha||!pr?.head?.ref)throw new LeaseCheckError('PR head branch/SHA is unavailable')
+  const apiFiles=pages(`repos/${REPO}/pulls/${number}/files?per_page=100`)
+  if(Number(pr.changed_files)!==apiFiles.length)throw new LeaseCheckError(`incomplete PR pagination: expected ${pr.changed_files}, received ${apiFiles.length}`)
+  if(apiFiles.length>=3000)throw new LeaseCheckError('GitHub REST file limit reached; collision coverage is incomplete')
+  const files=apiFiles.map(f=>({...f,sql:f.status==='removed'||!f.filename?.endsWith('.sql')?'':rawFile(f.filename,pr.head.sha)}))
+  // #2958: the `labels=` filtered listing returned [] for open, labelled claims; filter client-side.
+  // The claim list is read only when the PR changes a migration: without one the
+  // validator returns before it looks at claims, so the full issue listing was wasted.
+  const claims=files.some(f=>f.filename?.startsWith('supabase/migrations/')&&f.filename.endsWith('.sql')&&f.status!=='removed')?openClaimIssues(pages(`repos/${REPO}/issues?state=open&per_page=100`)):[]
+  return {claims,branch:pr.head.ref,files,reservationExists:(version)=>{try{return Boolean(json(['api',`repos/${REPO}/git/ref/db-claims/${version}`])?.object?.sha)}catch{return false}},
+    // A retirement lookup is a single ref read for the ONE version this PR
+    // carries, so it costs nothing per claim. It is fail-CLOSED on an unreadable
+    // answer only when the ref exists: a hard failure here would let a retired
+    // version merge, so anything other than a confirmed absence refuses.
+    retirementExists:(version)=>{try{return Boolean(json(['api',`repos/${REPO}/git/ref/db-claims-retired/${version}`])?.object?.sha)}catch(error){if(/not found|404/i.test(String(error.message)))return false;throw new LeaseCheckError(`retirement ref for ${version} is unreadable: ${error.message}`)}}}
+}
+
+export function main(env=process.env){try{const result=validateMigrationLease(gatherPrInput(env));console.log(result.relevant?`Migration claim verified: #${result.claim}, version ${result.version}.`:result.historicalCodeTruth?'Migration code-truth restoration verified; claim check is not applicable.':'No migration files changed; claim check is not applicable.');return 0}catch(e){console.error(`REFUSED: ${e.message}`);return 2}}
+if(import.meta.url===pathToFileURL(process.argv[1]??'').href)process.exitCode=main()

@@ -1,0 +1,492 @@
+// One shared GitHub transport for every governed gate (issue #2342).
+//
+// WHY THIS EXISTS
+// ---------------
+// Three consecutive production-apply runs (33920952504, 33921168245,
+// 33921406952) each refused promotion while naming a DIFFERENT file that
+// demonstrably existed. Three different names for the same corrupt state is not
+// what a real fault looks like; it is what a spurious per-file read looks like.
+// The gate was making up to 112 sequential Contents calls per run and any single
+// one of them could stop production.
+//
+// At that point EIGHT hand-rolled `gh` wrappers existed across scripts/, and
+// exactly two of them retried anything. This module is the one wrapper. The
+// conformance test (scripts/check-github-transport-conformance.mjs) fails the
+// build if a ninth appears.
+//
+// WHY BATCHING IS THE PRIMARY FIX AND RETRY IS ONLY THE BACKSTOP
+// --------------------------------------------------------------
+// AGENTS.md records a prior lesson pointing the other way: a retry wrapper that
+// turned a fast failure into a slower, identically-named failure. Retrying a
+// read you should not have been making 112 times is exactly that mistake with a
+// longer wall clock. The exposure is removed by asking GitHub ONCE per ref (a
+// recursive tree read) instead of once per file; the retry here only covers the
+// genuinely irreducible single call.
+//
+// WHY 404 IS NOT A TRANSIENT MARKER, EVEN THOUGH THE OBSERVED FAILURES WERE 404s
+// ------------------------------------------------------------------------------
+// This is the one place it is tempting to widen the classifier, and it must not
+// be widened. Across this repository 404 is an ANSWER, not a fault: "does this
+// ref exist yet?" is asked with a read whose negative reply is HTTP 404, and
+// several gates depend on believing that reply. A classifier that retries 404
+// would make every one of those reads spend its full attempt budget on a
+// correct answer, and -- far worse -- a gate that concludes "absent" only after
+// retrying is a gate whose absence proof now depends on a timeout. That is a
+// fail-open shape, and a gate that fails open is worse than one that fails
+// closed.
+//
+// The observed spurious 404s were removed at the source instead: the promotion
+// gate no longer makes per-file Contents calls at all, so the read that was
+// lying is no longer made. Fixing the caller beats teaching the classifier to
+// distrust a true answer.
+//
+// WHY MUTATIONS ARE NEVER RETRIED
+// -------------------------------
+// A retried read costs a duplicate read. A retried POST can create a ref twice,
+// post a second comment, or double-advance a lease. `gh` reports a transport
+// failure identically whether the request never landed or landed and the
+// RESPONSE was lost, so a retry here cannot tell "did nothing" from "already
+// did it". Mutating calls therefore get exactly one attempt unless a caller
+// proves idempotency by passing `idempotentWrite: true`.
+//
+// WHY A QUOTA EXHAUSTION GETS ONE BOUNDED WAIT, AND NOTHING ELSE DOES
+// -------------------------------------------------------------------
+// The Actions installation token shares one hourly budget across every run.
+// Around ten active pull requests it ran out, and production applies failed on
+// "API rate limit exceeded" -- a condition with a known end time, unlike a 404.
+// A READ that hits a primary exhaustion (that text with HTTP 403/429) asks the
+// free `rate_limit` endpoint when the quota resets and waits ONCE if that is 15
+// minutes away or less -- but ONLY for a caller that opted in by setting
+// GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS (capped at 900). The default is no wait, so
+// no step holding a lock can sit on it, including steps nobody edited. A further reset, an
+// unreadable reset, a second exhaustion, a write, a secondary rate limit, or any
+// other 403 fails closed exactly as before. The wait never changes what a gate
+// reads or how it judges it.
+
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+
+export class GitHubTransportError extends Error {}
+
+// Deliberately identical to the classifier this repository already proved in
+// manage-migration-author-lanes.mjs. Widening it is a governed decision, not a
+// convenience: see the 404 note above.
+export const TRANSIENT_TRANSPORT =
+  /HTTP 5\d\d|connection (?:reset|timed out)|TLS handshake timeout|No server is currently available/i
+
+export function isTransientGitHubTransport(error) {
+  return TRANSIENT_TRANSPORT.test(String(error?.stderr ?? error?.message ?? error ?? ''))
+}
+
+// PRIMARY RATE-LIMIT EXHAUSTION IS NOT TRANSIENT, BUT IT HAS A KNOWN END.
+// ----------------------------------------------------------------------
+// With about ten active pull requests the Actions installation token ran out of
+// quota and production applies failed with "API rate limit exceeded for
+// installation". That refusal is neither a fault to back off from (retrying in
+// 1-2-4 seconds only burns attempts) nor a permanent answer: GitHub states the
+// exact moment the quota refills. So it gets exactly one bounded wait for that
+// moment, and only when the moment is close.
+//
+// Deliberately narrow:
+//   * only HTTP 403/429 whose text says "rate limit exceeded" -- every other 403
+//     (permissions, "Resource not accessible by integration") still fails once;
+//   * the "secondary rate limit" wording does not match and is unchanged;
+//   * reads only -- a mutation still gets exactly one attempt;
+//   * the reset time is READ (`gh api -i rate_limit`: its `retry-after` header if
+//     present, else the exhausted resource's `reset`, else `x-ratelimit-reset`).
+//     `gh` does not surface the failed response's headers, and GitHub documents
+//     that the rate_limit endpoint does not count against the quota;
+//   * a reset further away than the cap, an unreadable reset, or a second
+//     exhaustion after the wait all fail CLOSED with the original refusal.
+export const RATE_LIMIT_EXHAUSTED = /rate limit exceeded/i
+const RATE_LIMIT_STATUS = /HTTP (?:403|429)\b/
+export const DEFAULT_RATE_LIMIT_MAX_WAIT_MS = 15 * 60 * 1000
+
+// EVERY gh CHILD HAS A WALL-CLOCK BOUND (Reviewer Start Watch run 36487949025).
+// A gh call that never answers (a stalled connection, not a refusal) used to block
+// execFileSync forever. When that call ran inside a coordination mutex the mutex
+// was never released -- the run sat 3h49m holding refs/db-coordination/author-
+// acquisition and every reviewer draw stalled behind it. A timed-out child is
+// killed and the call FAILS (it is not reclassified as transient and not retried:
+// a timed-out write may have landed), so the caller's finally releases its lock.
+export const DEFAULT_GH_COMMAND_TIMEOUT_MS = 2 * 60 * 1000
+export const MAX_GH_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
+export function ghCommandTimeoutMs(env = process.env) {
+  const raw = env?.GITHUB_COMMAND_TIMEOUT_SECONDS
+  if (raw === undefined || String(raw).trim() === '') return DEFAULT_GH_COMMAND_TIMEOUT_MS
+  const seconds = Number(raw)
+  // Zero, negative or unreadable would disable the bound; refuse to, keep the default.
+  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_GH_COMMAND_TIMEOUT_MS
+  return Math.min(seconds * 1000, MAX_GH_COMMAND_TIMEOUT_MS)
+}
+export const isCommandTimeout = (error) => error?.code === 'ETIMEDOUT'
+
+export function isRateLimitExhausted(error) {
+  const text = String(error?.stderr ?? error?.message ?? error ?? '')
+  return RATE_LIMIT_EXHAUSTED.test(text) && RATE_LIMIT_STATUS.test(text)
+}
+
+// OPT-IN. Unset means 0: fail fast, exactly as before this wait existed. Only a
+// step that holds no lock sets GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS (e.g. 900). A
+// lock-holding step therefore never waits, whether or not anyone remembered to
+// say so on that step.
+export function rateLimitMaxWaitMs(env = process.env) {
+  const raw = env?.GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS
+  if (raw === undefined || String(raw).trim() === '') return 0
+  const seconds = Number(raw)
+  if (!Number.isFinite(seconds) || seconds < 0) return 0
+  return Math.min(seconds * 1000, DEFAULT_RATE_LIMIT_MAX_WAIT_MS)
+}
+
+// `gh api graphql` spends graphql, `gh api <path>` spends core, and any other gh
+// subcommand (`gh pr view`, `gh run list`, ...) may spend either.
+function quotaBucketsFor(args) {
+  const list = (args ?? []).map(String)
+  if (list[0] !== 'api') return ['core', 'graphql']
+  return [list[1] === 'graphql' ? 'graphql' : 'core']
+}
+
+/**
+ * Milliseconds until the exhausted quota refills, from a `gh api -i rate_limit`
+ * response, or null when no trustworthy reset can be read.
+ */
+export function rateLimitResetDelayMs(raw, args, nowMs) {
+  const text = String(raw ?? '').replace(/\r\n/g, '\n')
+  const boundary = text.indexOf('\n\n')
+  if (boundary < 0) return null
+  const headers = new Map()
+  for (const line of text.slice(0, boundary).split('\n').slice(1)) {
+    const at = line.indexOf(':')
+    if (at > 0) headers.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim())
+  }
+  const retryAfter = headers.get('retry-after')
+  if (retryAfter !== undefined && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000
+  let body = null
+  try { body = JSON.parse(text.slice(boundary + 2)) } catch { body = null }
+  let resetSeconds = null
+  const buckets = quotaBucketsFor(args)
+  const resources = buckets.map((bucket) => body?.resources?.[bucket])
+  if (resources.every((resource) => resource && Number.isFinite(resource.reset) && Number.isFinite(resource.remaining))) {
+    // A non-api gh command may have spent either bucket: wait for every bucket it could need.
+    const exhausted = resources.filter((resource) => resource.remaining <= 0)
+    if (!exhausted.length) return 0
+    resetSeconds = Math.max(...exhausted.map((resource) => resource.reset))
+  } else if (/^\d+$/.test(headers.get('x-ratelimit-reset') ?? '')) {
+    resetSeconds = Number(headers.get('x-ratelimit-reset'))
+  }
+  if (resetSeconds === null) return null
+  return Math.max(0, resetSeconds * 1000 - nowMs)
+}
+
+// REAL-BUCKET RESET (issue #3743)
+// --------------------------------
+// For the Actions token, GET /rate_limit reports a fresh per-token view
+// ("5000 of 5000") while GitHub refuses real calls with "API rate limit exceeded
+// for installation" -- the shared per-repository budget it actually enforces.
+// Reading that probe as "not exhausted" produced a 0ms delay ("waiting 1s"), an
+// immediate second refusal, and a 60-second unknown-reset latch on every rerun.
+// When the free probe contradicts the refusal, one real REST read is made and
+// the reset is taken from ITS x-ratelimit-* headers (gh prints them on stdout
+// with -i, including on a 403). Anything unreadable stays null: never guessed.
+export function realBucketResetDelayMs(raw, nowMs) {
+  const text = String(raw ?? '').replace(/\r\n/g, '\n')
+  const boundary = text.indexOf('\n\n')
+  const head = boundary < 0 ? text : text.slice(0, boundary)
+  if (!/^HTTP\//.test(head)) return null
+  const headers = new Map()
+  for (const line of head.split('\n').slice(1)) {
+    const at = line.indexOf(':')
+    if (at > 0) headers.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim())
+  }
+  const retryAfter = headers.get('retry-after')
+  if (retryAfter !== undefined && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000
+  const remaining = headers.get('x-ratelimit-remaining')
+  const reset = headers.get('x-ratelimit-reset')
+  if (!/^\d+$/.test(remaining ?? '') || !/^\d+$/.test(reset ?? '')) return null
+  if (Number(remaining) > 0) return null
+  return Math.max(0, Number(reset) * 1000 - nowMs)
+}
+
+// HOST-WIDE EXHAUSTION LATCH (issue #2773)
+// ----------------------------------------
+// Every session on a machine shares one hourly bucket per token. Before this
+// latch, each session discovered exhaustion by spending its own failing request,
+// then each one retried on its own schedule -- N sessions made N refusals per
+// attempt against a bucket that could not answer any of them. The first caller
+// to observe a primary exhaustion now records the bucket's reset time in a
+// host-wide file; every later call for that bucket, from any process, stops
+// WITHOUT a wire request until the reset (or waits for it, if it opted in to the
+// bounded wait above). The latch only ever REFUSES or DELAYS a call; it never
+// answers one, so no gate can read a stale fact through it.
+//
+// Keyed by bucket (core/graphql) and a truncated SHA-256 of the token identity,
+// so the Actions installation token and a person's login never block each other.
+// An unreadable or malformed latch file is ignored and removed: the latch is a
+// traffic brake, and the call it would have stopped still fails closed on its own
+// real 403 if the bucket is in fact empty.
+export const UNKNOWN_RESET_LATCH_MS = 60 * 1000
+
+export function hostQuotaLatch(env = process.env) {
+  if (String(env?.GITHUB_QUOTA_LATCH ?? '').toLowerCase() === 'off') return null
+  const dir = env?.GITHUB_QUOTA_LATCH_DIR || path.join(tmpdir(), 'shared-db-github-quota')
+  const identity = createHash('sha256').update(String(env?.GH_TOKEN || env?.GITHUB_TOKEN || 'gh-cli-login')).digest('hex').slice(0, 16)
+  const file = (bucket) => path.join(dir, `${identity}-${bucket}.json`)
+  // A non-api gh subcommand is stopped by EITHER latch. When it observes an
+  // exhaustion itself, the caller names the exhausted buckets from the free
+  // rate_limit probe; with no probe both are braked for the short fallback window.
+  const readOne = (bucket) => {
+    try {
+      const row = JSON.parse(readFileSync(file(bucket), 'utf8'))
+      return Number.isFinite(row?.resetMs) ? row.resetMs : null
+    } catch (error) {
+      if (error?.code !== 'ENOENT') rmSync(file(bucket), { force: true })
+      return null
+    }
+  }
+  return {
+    read(args) {
+      const resets = quotaBucketsFor(args).map(readOne).filter((value) => value !== null)
+      return resets.length ? Math.max(...resets) : null
+    },
+    write(args, resetMs, buckets = quotaBucketsFor(args)) {
+      mkdirSync(dir, { recursive: true })
+      for (const bucket of buckets) {
+        const target = file(bucket)
+        const staging = `${target}.${process.pid}.${Date.now()}.tmp`
+        try {
+          writeFileSync(staging, JSON.stringify({ resetMs }))
+          renameSync(staging, target)
+        } finally {
+          rmSync(staging, { force: true })
+        }
+      }
+    },
+  }
+}
+
+// The buckets a probe shows exhausted, among those the command could spend.
+// An unreadable body falls back to every bucket the command could spend.
+function exhaustedBuckets(raw, args) {
+  const text = String(raw ?? '').replace(/\r\n/g, '\n')
+  let body = null
+  try { body = JSON.parse(text.slice(text.indexOf('\n\n') + 2)) } catch { body = null }
+  const candidates = quotaBucketsFor(args)
+  const exhausted = candidates.filter((bucket) => Number.isFinite(body?.resources?.[bucket]?.remaining) && body.resources[bucket].remaining <= 0)
+  return exhausted.length ? exhausted : candidates
+}
+
+export function latchedRateLimitError(args, resetMs, wrapError) {
+  const detail = `GitHub API rate limit exceeded (host-wide latch; no request sent): the quota resets at ${new Date(resetMs).toISOString()}`
+  const error = wrapError ? wrapError(detail, null) : new GitHubTransportError(`GitHub command failed: ${detail}`)
+  error.rateLimitExhausted = true
+  error.transientTransport = false
+  error.quotaLatched = true
+  error.stderr = detail
+  return error
+}
+
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
+const MUTATING_SUBCOMMANDS = new Set([
+  'merge', 'close', 'edit', 'comment', 'create', 'review', 'cancel', 'rerun', 'delete', 'reopen',
+  'set', 'update', 'upload', 'enable', 'disable', 'add', 'remove', 'fork', 'logout', 'refresh',
+])
+
+export function isMutatingCall(args) {
+  const list = (args ?? []).map((a) => String(a))
+  for (let i = 0; i < list.length; i += 1) {
+    if ((list[i] === '-X' || list[i] === '--method') &&
+        MUTATING_METHODS.has(String(list[i + 1] ?? '').toUpperCase())) return true
+    const inline = list[i].match(/^(?:-X|--method=)(.+)$/)
+    if (inline && MUTATING_METHODS.has(inline[1].toUpperCase())) return true
+  }
+  // `gh api -f k=v` / `-F k=v` / `--input` imply POST even with no explicit -X.
+  if (list[0] === 'api' &&
+      list.some((a) => a === '-f' || a === '-F' || a === '--input' || a === '--field' ||
+                       a === '--raw-field')) return true
+  // Non-`api` mutating subcommands.
+  if (MUTATING_SUBCOMMANDS.has(list[1])) return true
+  return false
+}
+
+/**
+ * Run one `gh` invocation, retrying ONLY transient transport failures.
+ *
+ * Every option exists so a caller can adopt this module without changing the
+ * refusal its own gate emits -- the eight wrappers this replaces each threw a
+ * different named error, and those names are what operators read.
+ *
+ * @param {string[]} args            argv for `gh`
+ * @param {object}   [opts]
+ * @param {(detail: string, cause: Error) => Error} [opts.wrapError]
+ *        Build the caller's own error type. Defaults to GitHubTransportError.
+ * @param {number}   [opts.attempts] Max attempts for a retryable call (default 4).
+ * @param {boolean}  [opts.idempotentWrite] Allow retries on a mutating call.
+ * @param {RegExp}   [opts.expectedFailure] A failure that is an ANSWER, not a
+ *        fault (e.g. HTTP 404 for "does this ref exist?"). Never re-printed to
+ *        stderr, never retried, still thrown.
+ */
+export function runGitHubCommand(args, {
+  executor = execFileSync,
+  wait = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  attempts = 4,
+  idempotentWrite = false,
+  expectedFailure = null,
+  wrapError = null,
+  reportStderr = (text) => process.stderr.write(text),
+  maxBuffer = 64 * 1024 * 1024,
+  input,
+  encoding = 'utf8',
+  // A caller that asked for exactly ONE attempt asked never to be replayed --
+  // a locked reviewer wire budget counts every request, and a quota wait costs
+  // an uncounted probe plus a replay. It therefore fails fast by default.
+  maxRateLimitWaitMs = attempts <= 1 ? 0 : rateLimitMaxWaitMs(),
+  now = Date.now,
+  // Only the real binary shares the host latch by default. An injected fake
+  // executor is a test fixture and must never read or write the machine's latch.
+  quotaLatch = executor === execFileSync ? hostQuotaLatch() : null,
+  // Only the real binary probes the real bucket by default; tests inject it.
+  repository = executor === execFileSync ? (process.env.GITHUB_REPOSITORY || null) : null,
+  timeoutMs = ghCommandTimeoutMs(),
+} = {}) {
+  const mutating = isMutatingCall(args) || input !== undefined
+  const allowed = mutating && !idempotentWrite ? 1 : Math.max(1, attempts)
+  // A request BODY only reaches the child through a piped stdin. An earlier
+  // hand-rolled wrapper set stdio:['ignore',...] alongside `input`, so gh sent
+  // an EMPTY body and GitHub answered `422 ... nil is not an object` — while
+  // every unit test passed, because the fake transport read `options.input`
+  // directly and never exercised the real stdin path. Naming 'ignore' here
+  // would silently discard the body, so it is omitted when input is present.
+  const spawnOptions = input === undefined
+    ? { encoding, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' }
+    : { encoding, maxBuffer, input, timeout: timeoutMs, killSignal: 'SIGKILL' }
+  let attempt = 0
+  let rateLimitWaited = false
+  for (;;) {
+    let latchedReset = null
+    try { latchedReset = quotaLatch ? quotaLatch.read(args) : null } catch { latchedReset = null }
+    if (latchedReset !== null && latchedReset > now()) {
+      const delay = latchedReset - now()
+      if (!mutating && !rateLimitWaited && maxRateLimitWaitMs > 0 && delay <= maxRateLimitWaitMs) {
+        rateLimitWaited = true
+        reportStderr(`gh ${args.join(' ')}
+GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1000) + 1}s for the stated reset
+`)
+        wait(delay + 1000)
+        continue
+      }
+      throw latchedRateLimitError(args, latchedReset, wrapError)
+    }
+    try {
+      return executor('gh', args, spawnOptions)
+    } catch (error) {
+      const transient = isTransientGitHubTransport(error)
+      const exhausted = isRateLimitExhausted(error)
+      if (exhausted && !mutating && !rateLimitWaited && maxRateLimitWaitMs > 0) {
+        let delay = null
+        let probe = null
+        try {
+          probe = executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
+          delay = rateLimitResetDelayMs(probe, args, now())
+        } catch {
+          delay = null // an unreadable reset is refused below, never guessed
+        }
+        if (delay === 0 && repository) {
+          // The free probe says "not exhausted" about a call that WAS refused:
+          // it is reading the wrong bucket (#3743). Ask a real endpoint.
+          let real = null
+          try {
+            real = executor('gh', ['api', '-i', `repos/${repository}`], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
+          } catch (probeError) {
+            real = probeError?.stdout ?? null
+          }
+          delay = realBucketResetDelayMs(real, now())
+          probe = null
+        }
+        if (quotaLatch) {
+          const buckets = delay === null ? quotaBucketsFor(args) : exhaustedBuckets(probe, args)
+          try { quotaLatch.write(args, now() + (delay ?? UNKNOWN_RESET_LATCH_MS), buckets) } catch { /* the brake is best-effort; the refusal below is not */ }
+        }
+        if (delay !== null && delay <= maxRateLimitWaitMs) {
+          rateLimitWaited = true
+          reportStderr(`gh ${args.join(' ')}\nGitHub API rate limit exhausted; waiting ${Math.ceil(delay / 1000) + 1}s for the stated reset, then retrying once\n`)
+          wait(delay + 1000)
+          continue
+        }
+      }
+      if (exhausted && quotaLatch && (mutating || rateLimitWaited || maxRateLimitWaitMs <= 0)) {
+        // No free probe was made (fail-fast caller or a write): brake every other
+        // caller for a short bounded window rather than guess a reset time.
+        try { if ((quotaLatch.read(args) ?? 0) <= now()) quotaLatch.write(args, now() + UNKNOWN_RESET_LATCH_MS) } catch { /* best-effort */ }
+      }
+      // A timed-out child is never replayed, even if its stderr looks transient (#3791).
+      if (!transient || isCommandTimeout(error) || attempt >= allowed - 1) {
+        const captured = String(error?.stderr ?? '').trim()
+        const timedOut = isCommandTimeout(error)
+        const detail = timedOut
+          ? `gh did not answer within ${Math.round(timeoutMs / 1000)}s and was killed; the call is failed, not retried${captured ? `\n${captured}` : ''}`
+          : (captured || String(error?.message ?? '').trim())
+        const wrapped = wrapError
+          ? wrapError(detail, error)
+          : new GitHubTransportError(`GitHub command failed: ${detail}`)
+        wrapped.transientTransport = transient
+        wrapped.rateLimitExhausted = exhausted
+        wrapped.stderr = captured
+        // `gh api -i` prints the refused response's headers on stdout; keep them
+        // so a quota preflight can read the real reset (#3743).
+        if (error?.stdout !== undefined) wrapped.stdout = error.stdout
+        // Quieter for the expected answers, LOUDER for real faults.
+        if (captured && !(expectedFailure && expectedFailure.test(detail))) {
+          reportStderr(`gh ${args.join(' ')}\n${captured}\n`)
+        }
+        throw wrapped
+      }
+      wait(2 ** attempt * 1000)
+      attempt += 1
+    }
+  }
+}
+
+/**
+ * The spawnSync-shaped front door onto the SAME policy.
+ *
+ * Some callers must inspect `.status` and `.stdout` rather than catch — the
+ * governed-review runner posts findings, then voids its own comment if the
+ * verdict fails to record, and every branch there turns on the exit status of
+ * the previous call. Rewriting that control flow into try/catch to satisfy a
+ * lint rule would be changing delicate, proven code for the linter's benefit.
+ *
+ * So the shape differs and the POLICY does not: this is still the one place
+ * that decides what may be replayed. Every call it accepts carries a request
+ * body or an explicit method, i.e. it is a mutation, and a mutation is issued
+ * exactly once unless the caller proves idempotency. Nothing here retries.
+ */
+export function spawnGitHub(args, { executor, input, maxBuffer = 64 * 1024 * 1024, idempotentWrite = false } = {}) {
+  if (typeof executor !== 'function') {
+    throw new GitHubTransportError('spawnGitHub requires an executor with spawnSync semantics')
+  }
+  if (!isMutatingCall(args) && input === undefined) {
+    throw new GitHubTransportError(
+      `spawnGitHub is for mutations; use runGitHubCommand for reads so they retry: gh ${args.join(' ')}`,
+    )
+  }
+  if (idempotentWrite) {
+    throw new GitHubTransportError('spawnGitHub never replays a write; use runGitHubCommand for a retryable call')
+  }
+  const options = { encoding: 'utf8', maxBuffer, stdio: ['pipe', 'pipe', 'pipe'] }
+  if (input !== undefined) options.input = input
+  return executor('gh', args, options)
+}
+
+/** runGitHubCommand plus a JSON parse that refuses malformed bodies by name. */
+export function ghJson(args, opts = {}) {
+  const raw = runGitHubCommand(args, opts)
+  try {
+    return JSON.parse(raw)
+  } catch (cause) {
+    const detail = `GitHub returned invalid JSON for: gh ${args.join(' ')}`
+    throw opts.wrapError ? opts.wrapError(detail, cause) : new GitHubTransportError(detail)
+  }
+}

@@ -1,0 +1,3493 @@
+#!/usr/bin/env python3
+"""Offline tests for the post-apply catalog verification (issue #697).
+
+NO DATABASE. Nothing here connects to anything. Every test drives the pure
+derivation, SQL-building and reporting logic on temporary files or literal
+strings, which is the point: #695 records that `supabase/tests/` exists and
+nothing runs it, and this module must not join that pile. These run in the
+`validate` job of .github/workflows/shared-supabase-migrations.yml, on every
+pull request, alongside the existing production-guard tests.
+"""
+
+from pathlib import Path
+from unittest import mock
+import io
+import json
+import re
+import sys
+import tempfile
+import unittest
+import urllib.error
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from production_catalog_verification import (  # noqa: E402
+    USER_AGENT,
+    build_query_request,
+    read_error_body,
+    run_query,
+    ALWAYS_PROBED_ROLES,
+    BASE_PRIVILEGES,
+    CATALOG_CONTRACTS,
+    INDEXDEF_NORMALIZE,
+    MAINTAIN_PRIVILEGE,
+    PrivilegeExpectation,
+    Targets,
+    _objtype_array,
+    _strict_keys,
+    assert_privileges,
+    build_catalog_sql,
+    build_behavior_sql,
+    build_row_count_sql,
+    catalog_contract_objects,
+    derive_targets,
+    extract_report,
+    parse_dynamic_acl,
+    load_behavior_sidecars,
+    mark_superseded_contract_checks,
+    render_report,
+    split_statements,
+    verify,
+    _validate_marker_reviews,
+)
+from production_migration_guard import GuardError, strip_sql  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+class ThroughputSequenceContractTests(unittest.TestCase):
+    def test_popdam_query_expansion_rows_contract_is_exact(self):
+        sql = CATALOG_CONTRACTS["popdam_query_expansion_rows_v1"]
+        self.assertIn("to_regprocedure('public.expand_dam_search_queries(text)')", sql)
+        self.assertIn("p.prorows = 32", sql)
+
+    def test_sequence_contract_compares_next_value_with_live_table_maximum(self):
+        sql = CATALOG_CONTRACTS["dflow_sequence_ceilings_v1"]
+        self.assertIn("is_called then last_value + 1", sql)
+        self.assertIn("coalesce(max(\"id\"),0)", sql)
+        self.assertIn("greatest(1000000", sql)
+
+    def test_style_tracker_contract_is_exact_about_columns_indexes_and_policies(self):
+        sql = CATALOG_CONTRACTS["style_tracker_tables_v1"]
+        self.assertIn("information_schema.columns", sql)
+        self.assertIn("column_name=expected.name", sql)
+        self.assertIn("c.data_type=expected.data_type", sql)
+        self.assertIn("c.is_nullable=expected.is_nullable", sql)
+        self.assertIn("coalesce(c.column_default,'')=expected.column_default", sql)
+        self.assertIn("i.indrelid=to_regclass('plm.style_tracker_item_bridge')", sql)
+        self.assertIn("pg_get_indexdef", sql)
+        self.assertIn("pg_get_constraintdef", sql)
+        self.assertIn("upper(p.cmd)='DELETE'", sql)
+        self.assertIn("p.roles=array['authenticated']::name[]", sql)
+        self.assertIn("p.with_check", sql)
+
+    def test_orderlist_bridge_covering_index_contract_is_registered_and_normalized(self):
+        # Pins the contract key the sidecar for migration 20260830013942 names. If the
+        # key is renamed or dropped, the sidecar resolves to nothing and the production
+        # promotion gate loses this check silently -- so the key itself is an assertion.
+        sql = CATALOG_CONTRACTS["orderlist_bridge_covering_index_v1"]
+
+        # It must compare through the SHARED normalizer, not a byte-exact literal.
+        # pg_get_indexdef is reconstructed from the catalog, so matching the server's
+        # formatting by hand is a guess that fails at production promotion.
+        self.assertIn(INDEXDEF_NORMALIZE % "pg_get_indexdef(i.indexrelid)", sql)
+        self.assertNotIn("and pg_get_indexdef(i.indexrelid) =\n", sql)
+
+        # Normalizing is a LOOSENING. These structural predicates are what keep the
+        # contract able to return dirty, so each one is pinned individually and a
+        # single failure names which property broke.
+        for predicate in (
+            "i.indnkeyatts = 1",
+            "i.indnatts = 4",
+            "not i.indisunique",
+            "i.indisvalid",
+            "i.indisready",
+            "i.indpred is null",
+            "i.indexprs is null",
+            "am.amname = 'btree'",
+            "ns.nspname = 'plm'",
+            "idx.relname = 'style_tracker_item_bridge_plm_item_cover_idx'",
+            "to_regclass('plm.style_tracker_item_bridge_plm_item_idx') is null",
+        ):
+            with self.subTest(predicate=predicate):
+                self.assertIn(predicate, sql)
+
+    def test_indexdef_normalizer_is_one_shared_definition(self):
+        # Both indexdef comparisons must use the same normalizer. Two equivalent
+        # copies can drift apart; one constant cannot.
+        normalized_indexdef = INDEXDEF_NORMALIZE % "pg_get_indexdef(i.indexrelid)"
+        self.assertIn(normalized_indexdef, CATALOG_CONTRACTS["style_tracker_tables_v1"])
+        self.assertIn(normalized_indexdef, CATALOG_CONTRACTS["orderlist_bridge_covering_index_v1"])
+
+    def test_indexdef_normalizer_still_separates_a_genuinely_wrong_index(self):
+        # The normalizer strips whitespace and lowercases, which is a LOOSENING -- the
+        # fix traded "can never pass" for "might not be able to fail". This proves the
+        # second risk did not land: formatting-only differences must collapse together,
+        # but a changed key column, method, or INCLUDE payload must stay apart.
+        def norm(text):
+            return re.sub(r"\s+", "", text.replace('"', "")).lower()
+
+        right = (
+            "CREATE INDEX style_tracker_item_bridge_plm_item_cover_idx ON "
+            "plm.style_tracker_item_bridge USING btree (plm_item_id) "
+            "INCLUDE (id, style_tracker_row_id, tracker_type)"
+        )
+        self.assertEqual(norm(right), norm(right.replace(", ", ",").replace(" ON ", "\n  ON ")))
+        self.assertNotEqual(norm(right), norm(right.replace("INCLUDE (id, ", "INCLUDE (")))
+        self.assertNotEqual(norm(right), norm(right.replace("btree", "hash")))
+        self.assertNotEqual(norm(right), norm(right.replace("(plm_item_id)", "(id)")))
+        self.assertNotEqual(
+            norm(right),
+            norm(right.replace("(id, style_tracker_row_id", "(style_tracker_row_id, id")),
+        )
+
+
+def targets_for(sql: str) -> Targets:
+    """Derive targets from one throwaway migration file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        migrations = root / "supabase" / "migrations"
+        migrations.mkdir(parents=True)
+        path = migrations / "20260810140000_test.sql"
+        path.write_text(sql, encoding="utf-8")
+        return derive_targets({"20260810140000": path}, ["20260810140000"])
+
+
+def collapse_ws(sql: str) -> str:
+    """Collapse every run of whitespace to one space.
+
+    ISSUE #702 POINT 1. The two SQL lines the whole function-privilege
+    verification rests on were pinned only by loose substring assertions, so an
+    edit that changed the PREDICATE to something wrong still passed green. The
+    fix is to assert the exact predicate -- but the exact predicate is indented
+    differently in each ACL block, and re-indenting the SQL is not a defect.
+    Normalising whitespace first is what makes an exact-text assertion both
+    strict about semantics and tolerant of reformatting.
+    """
+    return " ".join(sql.split())
+
+
+# ISSUE #702 POINT 1. `case when a.grantee = 0 then 'PUBLIC' ...` is the line
+# that makes a grant-to-everyone searchable by name instead of rendering as a
+# bare `-`. It appears once in EACH of the three ACL blocks the catalog query
+# builds, and that is exactly why a bare `assertIn` proved nothing: break the
+# copy in one block and the other two keep the substring alive. Pinning the
+# COUNT is what makes each block's copy individually load-bearing. If a fourth
+# ACL block is ever added, raise this deliberately -- do not loosen the check.
+PUBLIC_GRANTEE_EXPR = (
+    "'grantee', case when a.grantee = 0 then 'PUBLIC' else a.grantee::regrole::text end"
+)
+PUBLIC_GRANTEE_BLOCKS = 3
+
+
+class StructuralInputGuardTests(unittest.TestCase):
+    """Focused falsification coverage for issue #2373's surviving guards."""
+
+    def test_privilege_expectation_refuses_an_unknown_kind(self):
+        with self.assertRaisesRegex(GuardError, "unknown privilege expectation kind"):
+            PrivilegeExpectation(
+                "sequence",
+                "plm.widget_id_seq",
+                "anon",
+                ("USAGE",),
+                False,
+                "test",
+            )
+
+    def test_strict_keys_refuses_a_non_object_with_the_exact_allowed_keys(self):
+        # Matching the allowed-key set is deliberate: if the type guard is
+        # disabled, the remaining key checks accept and return this list.
+        with self.assertRaisesRegex(GuardError, "contract must be a JSON object"):
+            _strict_keys(["required"], {"required"}, "contract")
+
+
+class DeriveTargetsTests(unittest.TestCase):
+    def test_alter_schema_rename_and_comment_are_derived(self):
+        t = targets_for(
+            "alter schema designflow rename to designflow_frozen_20260710;\n"
+            "comment on schema designflow_frozen_20260710 is 'Frozen owner''s history';"
+        )
+        self.assertEqual(
+            t.schema_renames,
+            [("designflow", "designflow_frozen_20260710", "Frozen owner's history")],
+        )
+        self.assertFalse(t.is_empty())
+
+    def test_real_778_schema_rename_is_derived_with_exact_comment(self):
+        path = REPO / "supabase" / "migrations" / "20260831041658_freeze_orphan_designflow_schema.sql"
+        t = derive_targets({"20260831041658": path}, ["20260831041658"])
+        self.assertEqual(len(t.schema_renames), 1)
+        source, destination, comment = t.schema_renames[0]
+        self.assertEqual((source, destination), ("designflow", "designflow_frozen_20260710"))
+        self.assertIn("FROZEN 2026-08-27", comment)
+
+    def test_index_dropped_later_in_the_batch_is_not_expected(self):
+        # Issue #2035: the review-fix migration removes an index the contract
+        # migration created. The batch's expected-object set must follow the
+        # drop, or enforcing verification fails on a database that is exactly
+        # right. The positive control is the first assertion: without the drop
+        # the index MUST still be demanded.
+        created = "create index widget_name_idx on plm.widget (name);"
+        self.assertIn(
+            ("plm.widget_name_idx", "plm.widget"), targets_for(created).indexes
+        )
+        t = targets_for(created + "\ndrop index if exists plm.widget_name_idx;")
+        self.assertEqual(t.indexes, [])
+        self.assertTrue(any("dropped index" in note for note in t.notes))
+
+    def test_unqualified_drop_index_is_recorded_not_guessed_at(self):
+        created = "create index widget_name_idx on plm.widget (name);"
+        t = targets_for(created + "\ndrop index widget_name_idx;")
+        self.assertIn(("plm.widget_name_idx", "plm.widget"), t.indexes)
+        self.assertTrue(
+            any("DROP INDEX was not safely parseable" in note for note in t.notes)
+        )
+
+    def test_real_2042_drop_index_batch_from_the_repository_files(self):
+        # Issue #2043 item 1. PR #2042's own tests used a synthetic
+        # single-file fixture, so a regression that re-breaks the REAL
+        # two-file batch would not fail the suite. This is that batch:
+        # 20260831234750 creates
+        # public.hts_rag_product_family_allowlist_enabled_idx and
+        # 20260901011306 (the #2035 review fixes) drops it. The files are
+        # exercised exactly as they sit in supabase/migrations -- no invented
+        # shape -- so the derivation must follow the drop across files in the
+        # ordered allowlist, exactly as production applies them.
+        versions = ["20260831234750", "20260901011306"]
+        migrations = {
+            path.name[:14]: path
+            for path in (REPO / "supabase" / "migrations").glob("*.sql")
+        }
+        missing = [v for v in versions if v not in migrations]
+        if missing:
+            self.fail(
+                "the real #2042 drop-index batch is not in the tree: "
+                f"{', '.join(missing)}. Rebuild the fixture from the recorded "
+                "content of 20260831234750_hts_rag_durable_precedent_contract.sql "
+                "and "
+                "20260901011306_hts_rag_durable_precedent_contract_review_fixes"
+                ".sql rather than inventing a shape."
+            )
+        dropped = (
+            "public.hts_rag_product_family_allowlist_enabled_idx",
+            "public.hts_rag_product_family_allowlist",
+        )
+        # Positive control: without the second file the index MUST be demanded.
+        first_only = derive_targets(migrations, versions[:1])
+        self.assertIn(dropped, first_only.indexes)
+        batch = derive_targets(migrations, versions)
+        self.assertNotIn(dropped, batch.indexes)
+        # The drop removed exactly that one expectation -- every sibling the
+        # first file created is still required, so a lexer that loses the
+        # whole file's indexes cannot pass this either.
+        self.assertEqual(set(first_only.indexes) - set(batch.indexes), {dropped})
+        self.assertIn(
+            (
+                "public.hts_rag_extraction_jobs_pending_claim_idx",
+                "public.hts_rag_extraction_jobs",
+            ),
+            batch.indexes,
+        )
+        self.assertTrue(any("dropped index" in note for note in batch.notes))
+
+    def test_create_table_is_found(self):
+        t = targets_for("create table if not exists plm.widget (id bigint);")
+        self.assertIn("plm.widget", t.tables)
+        self.assertIn("plm.widget", t.relations)
+
+    def test_create_view_is_a_view_not_a_table(self):
+        t = targets_for("create or replace view api.widget_list as select 1;")
+        self.assertEqual(t.views, ["api.widget_list"])
+        self.assertNotIn("api.widget_list", t.tables)
+
+    def test_function_and_procedure(self):
+        t = targets_for(
+            "create or replace function plm.f() returns int language sql as $$ select 1 $$;\n"
+            "create procedure plm.p() language plpgsql as $$ begin end $$;"
+        )
+        self.assertEqual(t.functions, ["plm.f", "plm.p"])
+
+    def test_rls_enable_is_detected(self):
+        t = targets_for(
+            "create table plm.widget (id int);\n"
+            "alter table plm.widget enable row level security;"
+        )
+        self.assertIn("plm.widget", t.rls_relations)
+
+    def test_every_relation_gets_an_rls_reading(self):
+        # RLS-on-with-zero-policies was the ONE check the canary run could not
+        # confirm at all, so a relation is probed whether or not its migration
+        # says anything about RLS.
+        t = targets_for("create table plm.widget (id int);")
+        self.assertIn("plm.widget", t.rls_relations)
+
+    def test_policy_target(self):
+        t = targets_for("create policy p on plm.widget for select using (true);")
+        self.assertIn("plm.widget", t.rls_relations)
+
+    def test_insert_is_recorded_as_seeded(self):
+        t = targets_for("insert into plm.widget (note) values ('x');")
+        self.assertEqual(t.seeded, ["plm.widget"])
+
+    def test_expression_index_is_derived_with_exact_table(self):
+        t = targets_for(
+            "create index if not exists item_upper_trim_item_number_idx "
+            "on plm.item ((upper(trim(item_number))));"
+        )
+        self.assertEqual(
+            t.indexes,
+            [("plm.item_upper_trim_item_number_idx", "plm.item")],
+        )
+        self.assertIn("plm.item", t.tables)
+        self.assertFalse(t.is_empty())
+
+    def test_unique_concurrent_index_is_derived(self):
+        t = targets_for(
+            "create unique index concurrently if not exists widget_code_idx "
+            "on plm.widget (code);"
+        )
+        self.assertEqual(t.indexes, [("plm.widget_code_idx", "plm.widget")])
+
+    def test_unsupported_index_forms_are_not_silently_dropped(self):
+        for sql in (
+            'create index "MixedCase" on plm.widget (id);',
+            "create index widget_idx on widget (id);",
+            "create index on plm.widget (id);",
+        ):
+            with self.subTest(sql=sql):
+                t = targets_for(sql)
+                self.assertEqual(t.indexes, [])
+                self.assertTrue(
+                    any("not safely parseable" in note for note in t.notes),
+                    t.notes,
+                )
+
+    def test_grant_roles_are_probed(self):
+        t = targets_for("grant select on table plm.widget to loader_role;")
+        self.assertIn("loader_role", t.roles)
+        self.assertIn("plm.widget", t.tables)
+
+    def test_revoke_roles_are_probed(self):
+        t = targets_for("revoke all on plm.widget from some_other_role;")
+        self.assertIn("some_other_role", t.roles)
+
+    def test_multiple_grantees_in_one_statement(self):
+        t = targets_for("grant select on plm.widget to alpha, beta with grant option;")
+        self.assertIn("alpha", t.roles)
+        self.assertIn("beta", t.roles)
+
+    def test_the_four_roles_are_always_probed(self):
+        t = targets_for("create table plm.widget (id int);")
+        for role in ALWAYS_PROBED_ROLES:
+            self.assertIn(role, t.roles)
+
+    def test_all_tables_in_schema_is_not_guessed_at(self):
+        # It names a SCHEMA, not a relation. Guessing its membership is exactly
+        # the mis-parse this module refuses to make.
+        t = targets_for("grant select on all tables in schema plm to anon;")
+        self.assertEqual(t.tables, [])
+
+    def test_prose_in_a_comment_literal_cannot_invent_an_object(self):
+        # The live 20260807170000 defect: prose inside a `comment on ... is '...'`
+        # literal used to be parsed as SQL. `strip_sql` blanks literals; assert
+        # the derivation inherits that.
+        t = targets_for(
+            "create table plm.widget (id int);\n"
+            "comment on table plm.widget is "
+            "'character can appear in multiple properties. Distinct from "
+            "core.style_guide_character, and insert into evil.table too';"
+        )
+        self.assertEqual(t.tables, ["plm.widget"])
+        self.assertEqual(t.seeded, [])
+
+    def test_dollar_quote_inside_a_comment_does_not_eat_the_file(self):
+        # The other recorded lexer bug: a `$$` inside a `--` comment became the
+        # opening half of a pair and deleted every statement after it.
+        t = targets_for(
+            "-- guarded do $$ block\n"
+            "create table plm.widget (id int);\n"
+            "create table plm.gadget (id int);"
+        )
+        self.assertEqual(t.tables, ["plm.gadget", "plm.widget"])
+
+    def test_keyword_mid_statement_is_not_a_statement_head(self):
+        t = targets_for(
+            "create table plm.widget (id int references plm.other(id));"
+        )
+        self.assertEqual(t.tables, ["plm.widget"])
+
+    def test_alter_view_is_derived(self):
+        # 20260810110000's ONLY statement outside a `do $$` block is
+        # `alter view api.dam_order_list set (security_invoker = true)`, a real
+        # security fix. A table-only pattern derived nothing at all from it.
+        t = targets_for("alter view api.dam_order_list set (security_invoker = true);")
+        self.assertIn("api.dam_order_list", t.required_relations)
+
+    def test_alter_materialized_view_is_derived(self):
+        t = targets_for("alter materialized view plm.mv owner to postgres;")
+        self.assertIn("plm.mv", t.required_relations)
+
+    def test_alter_if_exists_is_optional_not_required(self):
+        # The migration itself tolerates absence, so hard-failing on it would be
+        # a false positive that blocks a correct promotion.
+        t = targets_for("alter table if exists plm.maybe add column x int;")
+        self.assertEqual(t.optional, ["plm.maybe"])
+        self.assertNotIn("plm.maybe", t.required_relations)
+        self.assertIn("plm.maybe", t.relations)
+
+    def test_alter_view_does_not_claim_row_level_security(self):
+        t = targets_for("alter view api.v set (security_invoker = true);")
+        self.assertNotIn("api.v", t.rls_relations)
+
+    # ------------------------------------------------------------------
+    # THE NON-CLAIMS. Each of these is something the report says it does NOT
+    # check. They are tested precisely because a future regex tweak could
+    # silently start claiming them, and a claim this module cannot stand behind
+    # is worse than no claim at all.
+    # ------------------------------------------------------------------
+
+    def test_execute_format_is_not_claimed(self):
+        t = targets_for(
+            "do $$ begin execute format('create table plm.dynamic (id int)'); end $$;"
+        )
+        self.assertEqual(t.tables, [])
+        self.assertTrue(t.is_empty())
+
+    def test_quoted_identifiers_are_not_claimed(self):
+        t = targets_for('create table "PLM"."Widget" (id int);')
+        self.assertEqual(t.tables, [])
+
+    def test_search_path_relative_names_are_not_claimed(self):
+        # An unqualified name depends on the session search_path, which this
+        # module does not model. Silence beats a guess at the schema.
+        t = targets_for("set search_path to plm;\ncreate table widget (id int);")
+        self.assertEqual(t.tables, [])
+
+    def test_alter_default_privileges_is_not_claimed(self):
+        # 20260710135975's `alter default privileges in schema plm grant all on
+        # tables to service_role` names no relation, and inventing the set of
+        # tables it will affect is exactly the mis-parse to avoid.
+        t = targets_for(
+            "alter default privileges in schema plm grant all on tables to service_role;"
+        )
+        self.assertEqual(t.tables, [])
+        self.assertTrue(t.is_empty())
+
+    def test_unqualified_grant_target_is_not_claimed(self):
+        t = targets_for("grant select on widget to anon;")
+        self.assertEqual(t.tables, [])
+
+    def test_unknown_version_is_refused(self):
+        with self.assertRaises(GuardError):
+            derive_targets({}, ["20260810140000"])
+
+    def test_empty_targets_are_detectable(self):
+        t = targets_for("select 1;")
+        self.assertTrue(t.is_empty())
+
+    def test_targets_are_sorted_and_stable(self):
+        t = targets_for(
+            "create table plm.zebra (id int);\ncreate table plm.alpha (id int);"
+        )
+        self.assertEqual(t.tables, ["plm.alpha", "plm.zebra"])
+
+
+class CanaryDerivationTests(unittest.TestCase):
+    """Against the real canary file, whose apply is the reason #697 exists."""
+
+    PATH = REPO / "supabase" / "migrations" / "20260810140000_production_lane_canary.sql"
+
+    def setUp(self):
+        if not self.PATH.exists():
+            self.skipTest("canary migration not present")
+        self.targets = derive_targets({"20260810140000": self.PATH}, ["20260810140000"])
+
+    def test_the_canary_table_is_derived(self):
+        self.assertIn("plm.production_lane_canary", self.targets.relations)
+
+    def test_the_canary_is_rls_probed(self):
+        # Check 3 of 5 on issue #677: "RLS enabled with zero policies" was NOT
+        # CONFIRMED AT ALL. This is the line that closes it.
+        self.assertIn("plm.production_lane_canary", self.targets.rls_relations)
+
+    def test_the_canary_row_is_counted(self):
+        # Check 2 of 5: "exactly 1 row" was inferred, never counted.
+        self.assertEqual(self.targets.seeded, ["plm.production_lane_canary"])
+
+    def test_the_four_revoked_roles_are_probed(self):
+        for role in ("public", "anon", "authenticated", "service_role"):
+            self.assertIn(role, self.targets.roles)
+
+
+class SqlBuildTests(unittest.TestCase):
+    def test_schema_rename_catalog_query_reads_both_names_and_comments(self):
+        sql = build_catalog_sql(
+            targets_for("alter schema designflow rename to designflow_frozen_20260710;")
+        )
+        self.assertIn("designflow", sql)
+        self.assertIn("designflow_frozen_20260710", sql)
+        self.assertIn("pg_namespace", sql)
+        self.assertIn("obj_description(n.oid, 'pg_namespace')", sql)
+
+    def test_maintain_is_probed_conditionally(self):
+        sql = build_catalog_sql(targets_for("create table plm.widget (id int);"))
+        self.assertIn(MAINTAIN_PRIVILEGE, sql)
+        self.assertIn("server_version_num", sql)
+        for priv in BASE_PRIVILEGES:
+            self.assertIn(priv, sql)
+
+    def test_catalog_sql_is_a_single_read_only_statement(self):
+        sql = build_catalog_sql(targets_for("create table plm.widget (id int);"))
+        self.assertTrue(sql.lower().startswith("with "))
+        self.assertEqual(sql.count(";"), 0)
+        # Blank the string literals before looking for writing keywords --
+        # 'TRUNCATE' is a privilege NAME inside a literal here, not a statement.
+        body = strip_sql(sql)
+        for forbidden in (
+            "insert into",
+            "update ",
+            "delete from",
+            "drop ",
+            "alter ",
+            "grant ",
+            "revoke ",
+            "truncate",
+            "create ",
+        ):
+            self.assertNotIn(forbidden, body, forbidden)
+
+    def test_catalog_sql_uses_catalogs_not_the_filtered_views(self):
+        sql = build_catalog_sql(targets_for("create table plm.widget (id int);"))
+        self.assertIn("pg_policy ", sql)
+        self.assertNotIn("pg_policies", sql)
+        self.assertIn("to_regclass", sql)
+        self.assertIn("relrowsecurity", sql)
+        self.assertIn("aclexplode", sql)
+        self.assertIn("pg_get_functiondef", sql)
+
+    def test_catalog_sql_reads_exact_index_definition_and_state(self):
+        sql = build_catalog_sql(
+            targets_for(
+                "create index if not exists widget_expr_idx "
+                "on plm.widget ((upper(trim(code))));"
+            )
+        )
+        self.assertIn("pg_get_indexdef", sql)
+        self.assertIn("pg_index", sql)
+        self.assertIn("indisvalid", sql)
+        self.assertIn("indisready", sql)
+        self.assertIn("plm.widget_expr_idx", sql)
+
+    def test_function_privileges_are_queried(self):
+        # H1: without these the report shows a function existing with a readable
+        # definition and says NOTHING about whether its revoke took.
+        sql = build_catalog_sql(
+            targets_for("create or replace function plm.f() returns int language sql as $$ select 1 $$;")
+        )
+        self.assertIn("aclexplode(p.proacl)", sql)
+        self.assertIn("has_function_privilege", sql)
+
+        # ISSUE #702 POINT 1. `assertIn("acl_is_default", sql)` only proved the
+        # LABEL was present, never the predicate behind it. `proacl is null`
+        # means DEFAULT privileges, and for a function the default is EXECUTE
+        # to PUBLIC -- exactly the state a missing `revoke` leaves behind. Get
+        # the polarity or the column wrong and a Paramount promotion whose
+        # revoke silently failed produces a report that reads clean. So assert
+        # the whole predicate including the trailing comma, which pins the
+        # column, the polarity and the field it is bound to. The inverted form
+        # is asserted absent as well: it is the one wrong edit a reviewer is
+        # most likely to wave through, and it reverses the meaning of every
+        # HARD FAIL downstream.
+        normalised = collapse_ws(sql)
+        self.assertIn("'acl_is_default', p.proacl is null,", normalised)
+        self.assertNotIn("'acl_is_default', p.proacl is not null", normalised)
+
+        # The label and the predicate must stay welded to the function ACL
+        # block: a correct predicate reported under the wrong object is the
+        # same misread with extra steps.
+        self.assertIn(
+            "'acl_is_default', p.proacl is null, 'acl', coalesce(( select jsonb_agg(jsonb_build_object( "
+            + PUBLIC_GRANTEE_EXPR,
+            normalised,
+        )
+
+    def test_public_grantee_is_named_not_rendered_as_a_dash(self):
+        # aclexplode returns OID 0 for PUBLIC, never NULL, and 0::regrole::text
+        # renders as a bare `-`. A grant to PUBLIC is the drift class of
+        # #664/#649 and must be searchable by name in the artifact.
+        sql = build_catalog_sql(targets_for("create table plm.widget (id int);"))
+        normalised = collapse_ws(sql)
+
+        # ISSUE #702 POINT 1. The old assertion was `assertIn("a.grantee = 0
+        # then 'PUBLIC'", sql)`. Three other copies of that literal live in the
+        # same query, so breaking any ONE block's copy left the substring alive
+        # and all tests green. Assert the FULL expression -- including the
+        # `else` branch that does the regrole lookup, which is the half that
+        # actually renders a named role -- and assert it appears once per ACL
+        # block, so each copy is individually load-bearing.
+        self.assertEqual(
+            normalised.count(PUBLIC_GRANTEE_EXPR),
+            PUBLIC_GRANTEE_BLOCKS,
+            "the PUBLIC grantee expression must appear intact in every ACL "
+            "block; a changed count means a block lost it, gained a variant, "
+            "or a new ACL block was added without pinning it here",
+        )
+
+        # The grantor side renders from the same aclexplode OID space and has
+        # the same bare-dash failure, so it is pinned identically.
+        self.assertEqual(
+            normalised.count(
+                "'grantor', case when a.grantor = 0 then 'PUBLIC' "
+                "else a.grantor::regrole::text end"
+            ),
+            PUBLIC_GRANTEE_BLOCKS,
+            "the PUBLIC grantor expression must appear intact in every ACL block",
+        )
+
+        # The rejected shape: `coalesce` cannot rescue this, because aclexplode
+        # returns OID 0 for PUBLIC and never NULL, so the coalesce never fires
+        # and PUBLIC renders as a bare `-`.
+        self.assertNotIn("coalesce(a.grantee::regrole::text", sql)
+        self.assertNotIn("coalesce(a.grantor::regrole::text", sql)
+
+    def test_reloptions_are_read(self):
+        # So `security_invoker` on an altered view is observable.
+        sql = build_catalog_sql(targets_for("alter view api.v set (security_invoker = true);"))
+        self.assertIn("reloptions", sql)
+
+    def test_row_count_sql_is_empty_when_nothing_is_seeded(self):
+        self.assertEqual(build_row_count_sql([]), "")
+
+    def test_row_count_sql_names_each_relation(self):
+        sql = build_row_count_sql(["plm.a", "plm.b"])
+        self.assertIn("from plm.a", sql)
+        self.assertIn("from plm.b", sql)
+        self.assertIn("union all", sql)
+
+    def test_row_count_sql_orders_composite_rows_by_their_name_field(self):
+        # The derived-table alias is a PostgreSQL composite record, not JSON.
+        # `x->>'name'` failed production run 34807646359 with SQLSTATE 42883
+        # ("operator does not exist: record ->> unknown"), taking the row-count
+        # report down. Composite field access is the valid deterministic shape.
+        for relations in (["plm.a"], ["plm.b", "plm.a"]):
+            with self.subTest(relations=relations):
+                sql = build_row_count_sql(relations)
+                self.assertIn("jsonb_agg(x order by x.name) as report", sql)
+                self.assertNotIn("->>", sql)
+                self.assertNotIn("order by x)", sql)
+
+    def test_unsafe_identifiers_are_refused_not_interpolated(self):
+        bad = Targets({"plm.widget'; drop table x --"}, set(), set(), set(), set(), set())
+        with self.assertRaises(GuardError):
+            build_catalog_sql(bad)
+        with self.assertRaises(GuardError):
+            build_row_count_sql(["plm.x'; drop table y --"])
+
+
+class RecoveryWorkflowTests(unittest.TestCase):
+    def test_current_and_historical_main_are_bound_separately(self):
+        workflow = (
+            REPO / ".github" / "workflows" /
+            "production-catalog-verification-recovery.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('MAIN_SHA: "${{ inputs.main_sha }}"', workflow)
+        self.assertIn('APPLY_MAIN_SHA: ${{ inputs.apply_main_sha }}', workflow)
+        # Narrowed 2026-09-01 (#2047): the tip is proven by
+        # check-main-tip-freshness.mjs, which accepts an origin/main that has
+        # advanced by DOCUMENTATION ONLY and refuses every other move. The bare
+        # equality this replaced voided a promotion for any commit at all,
+        # including a handover note. The binding itself is unchanged: this job
+        # still names the exact main SHA and still refuses a code-bearing move.
+        self.assertIn(
+            'MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs',
+            workflow,
+        )
+        self.assertNotIn('git rev-parse origin/main)" = "$MAIN_SHA"', workflow)
+        self.assertIn('jq -r .head_sha <<<"$run")" = "$APPLY_MAIN_SHA"', workflow)
+        self.assertIn('production-migration-apply-$APPLY_MAIN_SHA', workflow)
+        self.assertNotIn('production-migration-apply-$MAIN_SHA', workflow)
+
+
+class ExtractReportTests(unittest.TestCase):
+    def test_bare_list_of_rows(self):
+        self.assertEqual(extract_report([{"report": {"a": 1}}]), {"a": 1})
+
+    def test_wrapped_in_result_key(self):
+        self.assertEqual(extract_report({"result": [{"report": 7}]}), 7)
+
+    def test_empty_result_is_an_error_not_a_pass(self):
+        with self.assertRaises(GuardError):
+            extract_report([])
+
+    def test_unexpected_shape_is_an_error(self):
+        with self.assertRaises(GuardError):
+            extract_report([{"something_else": 1}])
+
+
+class RenderReportTests(unittest.TestCase):
+    TARGETS = Targets({"plm.widget"}, set(), {"plm.widget"}, set(), {"anon"}, set())
+
+    def render(self, catalog, enforcing=True, targets=None, errors=None):
+        return render_report(
+            ["20260810140000"],
+            targets or self.TARGETS,
+            catalog,
+            None,
+            errors or [],
+            enforcing,
+        )
+
+    def test_missing_relation_is_a_hard_failure(self):
+        _, failures = self.render(
+            {"relations": [{"name": "plm.widget", "to_regclass": None}]}
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("to_regclass is NULL", failures[0])
+
+    def test_present_relation_is_not_a_failure(self):
+        _, failures = self.render(
+            {"relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}]}
+        )
+        self.assertEqual(failures, [])
+
+    def test_schema_rename_requires_old_absent_new_present_and_exact_comment(self):
+        targets = targets_for(
+            "alter schema designflow rename to designflow_frozen_20260710;\n"
+            "comment on schema designflow_frozen_20260710 is 'frozen';"
+        )
+        catalog = {"schemas": [
+            {"name": "designflow", "exists": False, "comment": None},
+            {"name": "designflow_frozen_20260710", "exists": True, "comment": "frozen"},
+        ]}
+        report, failures = self.render(catalog, targets=targets)
+        self.assertEqual(failures, [])
+        self.assertIn("designflow_frozen_20260710", report)
+
+    def test_schema_rename_fails_closed_for_each_wrong_end_state(self):
+        targets = targets_for(
+            "alter schema designflow rename to designflow_frozen_20260710;\n"
+            "comment on schema designflow_frozen_20260710 is 'frozen';"
+        )
+        bad_catalogs = (
+            {"schemas": []},
+            {"schemas": [
+                {"name": "designflow", "exists": True, "comment": None},
+                {"name": "designflow_frozen_20260710", "exists": True, "comment": "frozen"},
+            ]},
+            {"schemas": [
+                {"name": "designflow", "exists": False, "comment": None},
+                {"name": "designflow_frozen_20260710", "exists": False, "comment": None},
+            ]},
+            {"schemas": [
+                {"name": "designflow", "exists": False, "comment": None},
+                {"name": "designflow_frozen_20260710", "exists": True, "comment": "wrong"},
+            ]},
+        )
+        for catalog in bad_catalogs:
+            with self.subTest(catalog=catalog):
+                _, failures = self.render(catalog, targets=targets)
+                self.assertTrue(failures)
+
+    def test_index_definition_is_reported_and_enforced(self):
+        targets = targets_for(
+            "create index if not exists widget_expr_idx "
+            "on plm.widget ((upper(trim(code))));"
+        )
+        catalog = {
+            "indexes": [{
+                "name": "plm.widget_expr_idx",
+                "relation": "plm.widget",
+                "exists": True,
+                "actual_relation": "plm.widget",
+                "valid": True,
+                "ready": True,
+                "definition": "CREATE INDEX widget_expr_idx ON plm.widget USING btree (upper(TRIM(BOTH FROM code)))",
+            }],
+            "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+        }
+        report, failures = self.render(catalog, targets=targets)
+        self.assertEqual(failures, [])
+        self.assertIn("CREATE INDEX widget_expr_idx", report)
+
+    def test_missing_or_wrong_table_index_fails(self):
+        targets = targets_for("create index widget_idx on plm.widget (id);")
+        for row in (
+            {"name": "plm.widget_idx", "exists": False},
+            {"name": "plm.widget_idx", "exists": True,
+             "actual_relation": "plm.other", "valid": True, "ready": True,
+             "definition": "CREATE INDEX widget_idx ON plm.other USING btree (id)"},
+        ):
+            with self.subTest(row=row):
+                _, failures = self.render(
+                    {"indexes": [row], "relations": [
+                        {"name": "plm.widget", "to_regclass": "plm.widget"}
+                    ]},
+                    targets=targets,
+                )
+                self.assertTrue(failures)
+
+    def test_absent_evidence_is_a_hard_failure(self):
+        # The whole point of #697: "no evidence" must never render as
+        # "evidence passed".
+        _, failures = self.render(None)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("NO evidence", failures[0])
+
+    def test_nothing_to_check_is_a_hard_failure(self):
+        # #697 exists because a green tick was mistaken for evidence. A run in
+        # which this step proved NOTHING must not report itself green.
+        empty = Targets(set(), set(), set(), set(), set(), set())
+        _, failures = self.render(None, targets=empty)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("proved nothing", failures[0])
+
+    def test_missing_function_is_a_hard_failure(self):
+        # The lane knows this expected answer identically to to_regclass: an
+        # applied `create or replace function` with nothing in pg_proc.
+        _, failures = self.render(
+            {
+                "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+                "functions": [{"name": "plm.sync_wb_character", "overloads": []}],
+            }
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("pg_proc", failures[0])
+
+    def test_present_function_is_not_a_failure(self):
+        _, failures = self.render(
+            {
+                "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+                "functions": [
+                    {
+                        "name": "plm.f",
+                        "overloads": [
+                            {
+                                "identity": "plm.f(uuid)",
+                                "prokind": "f",
+                                "has_definition": True,
+                                "acl_is_default": False,
+                                "acl": [],
+                                "execute_held_by": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(failures, [])
+
+    def test_function_privileges_are_rendered_and_never_failed(self):
+        markdown, failures = self.render(
+            {
+                "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+                "functions": [
+                    {
+                        "name": "plm.load_pmt_capture_chunk",
+                        "overloads": [
+                            {
+                                "identity": "plm.load_pmt_capture_chunk(uuid,text,jsonb)",
+                                "prokind": "f",
+                                "has_definition": True,
+                                # proacl NULL == EXECUTE TO PUBLIC, i.e. the
+                                # revoke did NOT take. Reported, not enforced --
+                                # the lane has no expected value for it.
+                                "acl_is_default": True,
+                                "acl": [],
+                                "execute_held_by": ["anon", "authenticated", "public"],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(failures, [])
+        self.assertIn("Function privileges", markdown)
+        self.assertIn("load_pmt_capture_chunk(uuid,text,jsonb)", markdown)
+        self.assertIn("EXECUTE` to `PUBLIC", markdown)
+
+    def test_optional_relation_absence_is_not_a_failure(self):
+        # `alter table if exists` says in the SQL that absence is tolerated.
+        targets = Targets(set(), set(), set(), set(), set(), set(), {"plm.maybe"})
+        _, failures = render_report(
+            ["20260810140000"],
+            targets,
+            {"relations": [{"name": "plm.maybe", "to_regclass": None}]},
+            None,
+            [],
+            True,
+        )
+        self.assertEqual(failures, [])
+
+    def test_privileges_are_recorded_never_failed(self):
+        # A held grant is EVIDENCE. The lane has no expected value for it, and
+        # inventing one manufactures false positives that block correct
+        # promotions. If this test ever fails, someone made grants blocking --
+        # read the module docstring before "fixing" it.
+        _, failures = self.render(
+            {
+                "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+                "effective_privileges": [
+                    {"name": "plm.widget", "role": "anon", "privilege": "MAINTAIN"}
+                ],
+                "acl": [
+                    {
+                        "name": "plm.widget",
+                        "grantee": "service_role",
+                        "privilege": "TRUNCATE",
+                        "grantor": "postgres",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(failures, [])
+
+    def test_rls_off_is_recorded_never_failed(self):
+        markdown, failures = self.render(
+            {
+                "relations": [{"name": "plm.widget", "to_regclass": "plm.widget"}],
+                "row_security": [
+                    {
+                        "name": "plm.widget",
+                        "exists": True,
+                        "relrowsecurity": False,
+                        "policy_count": 0,
+                        "policies": [],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(failures, [])
+        self.assertIn("relrowsecurity", "".join(markdown.splitlines()[:0]) or markdown)
+
+    def test_report_states_its_own_limits(self):
+        markdown, _ = self.render({"relations": []})
+        self.assertIn("not a clean bill of health", markdown)
+        self.assertIn("EVIDENCE", markdown)
+
+    def test_record_mode_is_labelled_in_the_artifact(self):
+        markdown, _ = self.render({"relations": []}, enforcing=False)
+        self.assertIn("RECORD ONLY", markdown)
+
+    def test_errors_are_rendered(self):
+        markdown, _ = self.render(
+            {"relations": []}, errors=["row-count query failed: boom"]
+        )
+        self.assertIn("row-count query failed: boom", markdown)
+
+
+class OutgoingRequestTests(unittest.TestCase):
+    """Issue #709: no network here -- only the constructed request is inspected."""
+
+    def request(self):
+        return build_query_request("abc123", "token-value", "select 1")
+
+    def test_user_agent_is_explicit_and_not_the_urllib_default(self):
+        ua = self.request().get_header("User-agent")
+        self.assertTrue(ua)
+        self.assertNotIn("Python-urllib", ua)
+        self.assertEqual(ua, USER_AGENT)
+
+    def test_user_agent_constant_is_descriptive(self):
+        self.assertTrue(USER_AGENT.strip())
+        self.assertNotIn("Python-urllib", USER_AGENT)
+
+    def test_request_still_carries_auth_and_read_only(self):
+        request = self.request()
+        self.assertEqual(request.get_header("Authorization"), "Bearer token-value")
+        self.assertEqual(request.method, "POST")
+        self.assertTrue(json.loads(request.data.decode("utf-8"))["read_only"])
+        self.assertIn("/v1/projects/abc123/database/query", request.full_url)
+
+
+class HTTPErrorReportingTests(unittest.TestCase):
+    """The failure message must carry the status AND the body."""
+
+    @staticmethod
+    def http_error(body):
+        return urllib.error.HTTPError(
+            "https://api.supabase.com/v1/projects/abc123/database/query",
+            403,
+            "Forbidden",
+            {},
+            io.BytesIO(body) if isinstance(body, bytes) else body,
+        )
+
+    def run_with_error(self, exc):
+        with mock.patch(
+            "production_catalog_verification.urllib.request.urlopen", side_effect=exc
+        ):
+            with self.assertRaises(GuardError) as caught:
+                run_query("abc123", "token-value", "select 1")
+        return str(caught.exception)
+
+    def test_status_and_body_are_both_reported(self):
+        message = self.run_with_error(
+            self.http_error(b'{"error":"error code: 1010"}')
+        )
+        self.assertIn("403", message)
+        self.assertIn("1010", message)
+        self.assertIn("/v1/projects/abc123/database/query", message)
+
+    def test_unreadable_body_does_not_mask_the_error(self):
+        class Exploding:
+            def read(self, *args):
+                raise OSError("stream gone")
+
+            def close(self):
+                pass
+
+        message = self.run_with_error(self.http_error(Exploding()))
+        self.assertIn("403", message)
+        self.assertIn("unreadable", message)
+
+    def test_empty_body_is_labelled(self):
+        self.assertIn("empty response body", read_error_body(self.http_error(b"")))
+
+    def test_failure_is_still_raised_not_swallowed(self):
+        """Change #709 makes the failure louder, never more forgiving."""
+        with mock.patch(
+            "production_catalog_verification.urllib.request.urlopen",
+            side_effect=self.http_error(b"nope"),
+        ):
+            with self.assertRaises(GuardError):
+                run_query("abc123", "token-value", "select 1")
+
+
+class SplitStatementTests(unittest.TestCase):
+    def test_semicolons_inside_stripped_constructs_cannot_split(self):
+        raw = (
+            "create table plm.a (id int);\n"
+            "-- a comment with ; inside\n"
+            "create function plm.f() returns int language sql as $$ select 1; $$;\n"
+            "comment on table plm.a is 'has ; inside';\n"
+            "create table plm.b (id int);"
+        )
+        heads = [s.strip().split()[0] for s in split_statements(strip_sql(raw))]
+        self.assertEqual(heads.count("create"), 3)
+        self.assertIn("comment", heads)
+
+
+class PrivilegeDerivationTests(unittest.TestCase):
+    """Issue #790 point 1: privilege-shaped migrations must derive targets."""
+
+    def test_alter_default_privileges_is_derived(self):
+        t = targets_for(
+            "alter default privileges for role postgres in schema plm\n"
+            "  revoke truncate, references, trigger, maintain on tables "
+            "from service_role;"
+        )
+        self.assertFalse(t.is_empty(), "the #790 migration shape derived nothing")
+        self.assertEqual(t.default_acls, [("plm", "postgres", "r")])
+        self.assertEqual(len(t.privileges), 1)
+        expectation = t.privileges[0]
+        self.assertEqual(expectation.kind, "default_acl")
+        self.assertEqual(expectation.grantee, "service_role")
+        self.assertFalse(expectation.expect_held)
+        self.assertEqual(
+            expectation.privileges, ("MAINTAIN", "REFERENCES", "TRIGGER", "TRUNCATE")
+        )
+
+    def test_the_real_migration_that_failed_now_derives_an_assertion(self):
+        """20260810180000 is the file whose CORRECT apply went red."""
+        from production_migration_guard import local_migrations
+
+        t = derive_targets(local_migrations(REPO), ["20260810180000"])
+        self.assertFalse(t.is_empty())
+        self.assertIn(("plm", "postgres", "r"), t.default_acls)
+
+    def test_default_privileges_without_for_role_is_recorded_not_guessed(self):
+        t = targets_for(
+            "alter default privileges in schema plm grant select on tables to anon;"
+        )
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("for role" in n for n in t.notes))
+
+    def test_default_privileges_without_schema_is_recorded_not_guessed(self):
+        t = targets_for(
+            "alter default privileges for role postgres grant select on tables "
+            "to anon;"
+        )
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("in schema" in n for n in t.notes))
+
+    def test_grant_on_table_is_derived(self):
+        t = targets_for("grant select, insert on plm.widget to anon;")
+        self.assertEqual(len(t.privileges), 1)
+        e = t.privileges[0]
+        self.assertEqual((e.kind, e.target, e.grantee), ("relation", "plm.widget", "anon"))
+        self.assertTrue(e.expect_held)
+        self.assertIn("plm.widget", t.tables)
+
+    def test_revoke_on_function_is_derived_and_the_routine_is_required(self):
+        t = targets_for(
+            "revoke all on function plm.load_pmt_capture_chunk(bigint, jsonb) "
+            "from public, anon, authenticated;"
+        )
+        self.assertIn("plm.load_pmt_capture_chunk", t.functions)
+        grantees = {e.grantee for e in t.privileges}
+        self.assertEqual(grantees, {"PUBLIC", "anon", "authenticated"})
+        self.assertTrue(all(e.kind == "function" for e in t.privileges))
+        self.assertTrue(all(not e.expect_held for e in t.privileges))
+
+    def test_all_tables_in_schema_is_recorded_not_invented(self):
+        t = targets_for("grant select on all tables in schema plm to anon;")
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("not modelled" in n for n in t.notes))
+
+    def test_column_level_grant_is_recorded_not_guessed(self):
+        t = targets_for("grant select (a, b) on plm.widget to anon;")
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("column-level" in n for n in t.notes))
+
+    def test_all_expands_per_object_type(self):
+        table = PrivilegeExpectation("relation", "plm.w", "anon", ("ALL",), False, "v")
+        self.assertIn("TRUNCATE", table.expand(maintain_probed=False))
+        self.assertNotIn("MAINTAIN", table.expand(maintain_probed=False))
+        self.assertIn("MAINTAIN", table.expand(maintain_probed=True))
+        fn = PrivilegeExpectation("function", "plm.f", "anon", ("ALL",), False, "v", "f")
+        self.assertEqual(fn.expand(maintain_probed=True), ("EXECUTE",))
+
+    def test_default_acl_targets_reach_the_sql(self):
+        t = targets_for(
+            "alter default privileges for role postgres in schema plm "
+            "revoke truncate on tables from service_role;"
+        )
+        sql = build_catalog_sql(t)
+        self.assertIn("pg_default_acl", sql)
+        self.assertIn("'plm'", sql)
+        self.assertIn("'postgres'", sql)
+        self.assertIn("'r'", sql)
+        self.assertEqual(sql.count(";"), 0)
+
+    def test_objtype_array_refuses_an_unknown_code(self):
+        with self.assertRaises(GuardError):
+            _objtype_array(["r; drop table x"])
+
+
+class PrivilegeAssertionTests(unittest.TestCase):
+    """Issue #790 point 2: assert the end state, do not merely print an ACL."""
+
+    def assert_for(self, sql, catalog):
+        return assert_privileges(targets_for(sql), catalog)
+
+    DEFACL_SQL = (
+        "alter default privileges for role postgres in schema plm "
+        "revoke truncate, references, trigger, maintain on tables "
+        "from service_role;"
+    )
+
+    def defacl_catalog(self, privileges, row_exists=True, objtype="r"):
+        return {
+            "maintain_probed": True,
+            "probe_roles": ["anon", "authenticated", "public", "service_role"],
+            "default_acl": [
+                {
+                    "schema": "plm",
+                    "defacl_role": "postgres",
+                    "objtype": objtype,
+                    "role_exists": True,
+                    "row_exists": row_exists,
+                    "acl_text": "{...}",
+                    "acl": [
+                        {"grantee": "service_role", "privilege": p}
+                        for p in privileges
+                    ],
+                }
+            ],
+        }
+
+    def test_the_production_end_state_passes(self):
+        """`{service_role=arwd/postgres}` — the state the apply actually left."""
+        rows, failures = self.assert_for(
+            self.DEFACL_SQL,
+            self.defacl_catalog(["INSERT", "SELECT", "UPDATE", "DELETE"]),
+        )
+        self.assertEqual(failures, [])
+        self.assertEqual([r[1] for r in rows], ["PASS"])
+
+    def test_the_pre_apply_state_fails(self):
+        """`{service_role=arwdDxtm/postgres}` — the revoke did NOT take."""
+        rows, failures = self.assert_for(
+            self.DEFACL_SQL,
+            self.defacl_catalog(
+                [
+                    "INSERT",
+                    "SELECT",
+                    "UPDATE",
+                    "DELETE",
+                    "TRUNCATE",
+                    "REFERENCES",
+                    "TRIGGER",
+                    "MAINTAIN",
+                ]
+            ),
+        )
+        self.assertEqual([r[1] for r in rows], ["FAIL"])
+        self.assertIn("STILL in the default privileges", failures[0])
+
+    def test_a_public_default_grant_defeats_a_role_revoke(self):
+        catalog = self.defacl_catalog(["SELECT"])
+        catalog["default_acl"][0]["acl"].append(
+            {"grantee": "PUBLIC", "privilege": "TRUNCATE"}
+        )
+        _, failures = self.assert_for(self.DEFACL_SQL, catalog)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("TRUNCATE", failures[0])
+
+    def test_missing_default_acl_row_for_functions_is_execute_to_public(self):
+        """#790 point 4, the default-privilege half of the blind spot."""
+        _, failures = self.assert_for(
+            "alter default privileges for role postgres in schema plm "
+            "revoke execute on functions from public;",
+            self.defacl_catalog([], row_exists=False, objtype="f"),
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("BUILT-IN default", failures[0])
+
+    def test_missing_default_acl_row_for_tables_is_owner_only(self):
+        _, failures = self.assert_for(
+            self.DEFACL_SQL, self.defacl_catalog([], row_exists=False)
+        )
+        self.assertEqual(failures, [])
+
+    def test_a_default_acl_row_that_could_not_be_read_is_a_failure(self):
+        _, failures = self.assert_for(
+            self.DEFACL_SQL, {"maintain_probed": True, "default_acl": []}
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("not read back", failures[0])
+
+    # -- relations ---------------------------------------------------------
+    def relation_catalog(self, held, owner="postgres"):
+        return {
+            "maintain_probed": True,
+            "probe_roles": ["anon", "authenticated", "public", "service_role"],
+            "relations": [
+                {
+                    "name": "plm.widget",
+                    "to_regclass": "plm.widget",
+                    "owner": owner,
+                }
+            ],
+            "effective_privileges": [
+                {"name": "plm.widget", "role": "service_role", "privilege": p}
+                for p in held
+            ],
+        }
+
+    def test_relation_revoke_that_took_passes(self):
+        _, failures = self.assert_for(
+            "revoke truncate on plm.widget from service_role;",
+            self.relation_catalog(["SELECT"]),
+        )
+        self.assertEqual(failures, [])
+
+    def test_relation_revoke_that_did_not_take_fails(self):
+        _, failures = self.assert_for(
+            "revoke truncate on plm.widget from service_role;",
+            self.relation_catalog(["SELECT", "TRUNCATE"]),
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("STILL HELD", failures[0])
+
+    def test_relation_grant_that_did_not_take_fails(self):
+        _, failures = self.assert_for(
+            "grant select on plm.widget to service_role;",
+            self.relation_catalog([]),
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("not held after the apply", failures[0])
+
+    def public_relation_catalog(self, held_by_public):
+        """PUBLIC's effective privileges as the SQL actually reports them.
+
+        The `probe_roles` CTE probes the pseudo-role under its literal lowercase
+        name `public`, so `effective_privileges` rows carry `role = 'public'`.
+        `PrivilegeExpectation` normalises the grantee to `PUBLIC`. If the lookup
+        does not fold the two together, PUBLIC matches nothing and every revoke
+        reads green while every grant reads red.
+        """
+        catalog = self.relation_catalog([])
+        catalog["effective_privileges"] = [
+            {"name": "plm.widget", "role": "public", "privilege": p}
+            for p in held_by_public
+        ]
+        return catalog
+
+    def test_public_revoke_that_did_not_take_fails(self):
+        """The silent-pass direction: PUBLIC still holds it, and it must FAIL."""
+        rows, failures = self.assert_for(
+            "revoke truncate on plm.widget from public;",
+            self.public_relation_catalog(["SELECT", "TRUNCATE"]),
+        )
+        self.assertEqual([r[1] for r in rows], ["FAIL"])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("STILL HELD", failures[0])
+        self.assertIn("TRUNCATE", failures[0])
+
+    def test_public_grant_that_took_passes(self):
+        """The false-negative direction: a correct apply must not be blocked."""
+        rows, failures = self.assert_for(
+            "grant select on plm.widget to public;",
+            self.public_relation_catalog(["SELECT"]),
+        )
+        self.assertEqual(failures, [])
+        self.assertEqual([r[1] for r in rows], ["PASS"])
+
+    def test_owner_is_recorded_with_a_reason_not_failed(self):
+        rows, failures = self.assert_for(
+            "revoke truncate on plm.widget from service_role;",
+            self.relation_catalog(["TRUNCATE"], owner="service_role"),
+        )
+        self.assertEqual(failures, [])
+        self.assertEqual(rows[0][1], "RECORD")
+        self.assertIn("OWNS", rows[0][2])
+
+    # -- functions ---------------------------------------------------------
+    def function_catalog(self, overloads):
+        return {
+            "maintain_probed": True,
+            "probe_roles": ["anon", "authenticated", "public", "service_role"],
+            "functions": [{"name": "plm.f", "overloads": overloads}],
+        }
+
+    def test_null_proacl_is_execute_to_public_not_no_grants(self):
+        """ISSUE #790 POINT 4 — the whole point: NULL must not read as safe."""
+        rows, failures = self.assert_for(
+            "revoke all on function plm.f(bigint) from public;",
+            self.function_catalog(
+                [
+                    {
+                        "identity": "plm.f(bigint)",
+                        "owner": "postgres",
+                        "acl_is_default": True,
+                        "acl": [],
+                        "execute_held_by": [],
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(rows[0][1], "FAIL")
+        self.assertIn("EXECUTE TO PUBLIC", failures[0])
+
+    def test_a_function_revoke_that_took_passes(self):
+        _, failures = self.assert_for(
+            "revoke all on function plm.f(bigint) from public;",
+            self.function_catalog(
+                [
+                    {
+                        "identity": "plm.f(bigint)",
+                        "owner": "postgres",
+                        "acl_is_default": False,
+                        "acl": [{"grantee": "postgres", "privilege": "EXECUTE"}],
+                        "execute_held_by": ["service_role"],
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(failures, [])
+
+    def test_a_role_that_still_holds_execute_fails(self):
+        _, failures = self.assert_for(
+            "revoke all on function plm.f(bigint) from anon;",
+            self.function_catalog(
+                [
+                    {
+                        "identity": "plm.f(bigint)",
+                        "owner": "postgres",
+                        "acl_is_default": False,
+                        "acl": [{"grantee": "anon", "privilege": "EXECUTE"}],
+                        "execute_held_by": ["anon"],
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("STILL holds EXECUTE", failures[0])
+
+    def test_ambiguous_overloads_record_a_grant_with_the_reason(self):
+        rows, failures = self.assert_for(
+            "grant execute on function plm.f(bigint) to anon;",
+            self.function_catalog(
+                [
+                    {"identity": "plm.f(bigint)", "acl_is_default": False,
+                     "acl": [], "execute_held_by": ["anon"]},
+                    {"identity": "plm.f(text)", "acl_is_default": False,
+                     "acl": [], "execute_held_by": []},
+                ]
+            ),
+        )
+        self.assertEqual(failures, [])
+        self.assertEqual(rows[0][1], "RECORD")
+        self.assertIn("overloads", rows[0][2])
+
+
+class PrivilegeOrderTests(unittest.TestCase):
+    """A batch may grant then revoke. Only the LAST statement is the end state."""
+
+    SQL = (
+        "grant truncate on plm.widget to service_role;\n"
+        "revoke truncate on plm.widget from service_role;\n"
+    )
+
+    def catalog(self, held):
+        return {
+            "maintain_probed": True,
+            "probe_roles": ["service_role"],
+            "relations": [
+                {"name": "plm.widget", "to_regclass": "plm.widget", "owner": "postgres"}
+            ],
+            "effective_privileges": [
+                {"name": "plm.widget", "role": "service_role", "privilege": p}
+                for p in held
+            ],
+        }
+
+    def test_derivation_keeps_statement_order(self):
+        t = targets_for(self.SQL)
+        self.assertEqual([e.expect_held for e in t.privileges], [True, False])
+
+    def test_the_later_revoke_wins_and_the_run_is_green(self):
+        rows, failures = assert_privileges(targets_for(self.SQL), self.catalog([]))
+        self.assertEqual(failures, [])
+        self.assertIn("RECORD", [r[1] for r in rows])
+        self.assertIn("PASS", [r[1] for r in rows])
+
+    def test_the_later_revoke_is_still_asserted(self):
+        _, failures = assert_privileges(
+            targets_for(self.SQL), self.catalog(["TRUNCATE"])
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("STILL HELD", failures[0])
+
+
+class NoopDeclarationTests(unittest.TestCase):
+    """Issue #790 point 3: a genuine no-op needs a recorded, CHECKED reason."""
+
+    DATA_ONLY = (
+        "-- catalog-verification: no-op corrects three mistyped rows only, "
+        "touches no catalog object\n"
+        "update plm.widget set name = 'x' where id = 1;\n"
+        "delete from plm.widget where id = 2;\n"
+    )
+
+    def render(self, sql):
+        targets = targets_for(sql)
+        return targets, render_report(
+            ["20260810140000"], targets, {"relations": []}, None, [], True
+        )
+
+    def test_an_undeclared_empty_migration_still_fails(self):
+        targets, (markdown, failures) = self.render("update plm.widget set a = 1;")
+        self.assertTrue(targets.is_empty())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("proved nothing", failures[0])
+
+    def test_a_declared_and_checked_no_op_passes_with_its_reason_recorded(self):
+        targets, (markdown, failures) = self.render(self.DATA_ONLY)
+        self.assertEqual(failures, [])
+        self.assertTrue(targets.noop_declaration["accepted"])
+        self.assertIn("Declared no-op", markdown)
+        self.assertIn("mistyped rows", markdown)
+
+    def test_the_declaration_cannot_excuse_a_privilege_migration(self):
+        """The escape hatch is CHECKED, so it is not a bypass flag."""
+        sql = (
+            "-- catalog-verification: no-op this file changes nothing at all, "
+            "honestly\n"
+            "alter default privileges for role postgres in schema plm "
+            "revoke truncate on tables from service_role;\n"
+        )
+        targets = targets_for(sql)
+        self.assertFalse(targets.noop_declaration["accepted"])
+        self.assertFalse(targets.is_empty())
+        _, failures = render_report(
+            ["20260810140000"], targets, {"relations": []}, None, [], True
+        )
+        self.assertTrue(any("claim is false" in f for f in failures))
+
+    def test_a_declaration_over_ddl_is_rejected_and_the_run_still_fails(self):
+        sql = (
+            "-- catalog-verification: no-op nothing to see here at all, move along\n"
+            "do $$ begin perform 1; end $$;\n"
+        )
+        targets, (_, failures) = self.render(sql)
+        self.assertTrue(targets.is_empty())
+        self.assertFalse(targets.noop_declaration["accepted"])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("REJECTED", failures[0])
+
+    def test_a_reasonless_declaration_is_rejected(self):
+        targets = targets_for(
+            "-- catalog-verification: no-op meh\nupdate plm.widget set a = 1;"
+        )
+        self.assertFalse(targets.noop_declaration["accepted"])
+
+    def test_verify_records_the_reason_in_the_json_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            migrations = root / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "20260810140000_data.sql").write_text(
+                self.DATA_ONLY, encoding="utf-8"
+            )
+            out = root / "out"
+            code = verify(
+                root,
+                "20260810140000",
+                out,
+                "abc123",
+                "token-value",
+                enforcing=True,
+            )
+            payload = json.loads(
+                (out / "production-catalog-verification.json").read_text("utf-8")
+            )
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["noop_declaration"]["accepted"])
+        self.assertTrue(any("DECLARES itself" in e for e in payload["errors"]))
+
+
+class BehavioralSidecarTests(unittest.TestCase):
+    VERSION = "20260101000000"
+    SQL = "do $$ begin update core.property set name = 'x'; end $$;\n"
+
+    def fixture(self, sidecar_changes=None, sql=None):
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_data.sql"
+        migration.write_text(sql or self.SQL, encoding="utf-8")
+        import hashlib
+        sidecar = {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [{
+                "id": "property_has_expected_parent",
+                "kind": "exact_row_count",
+                "relation": "core.property",
+                "filters": [
+                    {"column": "id", "type": "uuid",
+                     "equals": "5c03fc46-5a02-4da1-bcac-8969e74bbd8f"},
+                    {"column": "name", "type": "text", "equals": "O'Reilly"},
+                ],
+                "expected_count": 1,
+            }],
+        }
+        if sidecar_changes:
+            sidecar_changes(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def load(self, root, migration):
+        return load_behavior_sidecars(
+            root, {self.VERSION: migration}, [self.VERSION]
+        )
+
+    def test_positive_sidecar_is_hash_bound_and_builds_select_only(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            sql = build_behavior_sql(checks)
+        self.assertTrue(sql.lower().startswith("select "))
+        self.assertNotIn(";", sql[:-1])
+        self.assertIn("from core.property", sql)
+        self.assertIn("O''Reilly", sql)
+        self.assertNotIn("do $$", sql.lower())
+
+    def test_changed_migration_invalidates_the_sidecar_hash(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            migration.write_text(self.SQL + "-- changed\n", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "hash mismatch"):
+                self.load(root, migration)
+
+    def test_crlf_and_lf_have_the_same_canonical_hash(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            sidecar_path = (
+                root / "scripts" / "production-verification-sidecars"
+                / f"{self.VERSION}.json"
+            )
+            expected = json.loads(sidecar_path.read_text("utf-8"))["migration_sha256"]
+            migration.write_bytes(migration.read_bytes().replace(b"\r\n", b"\n"))
+            checks = self.load(root, migration)
+        self.assertEqual(checks[0]["migration_sha256"], expected)
+
+    def test_unknown_sidecar_field_fails_closed(self):
+        temp, root, migration = self.fixture(lambda s: s.update({"sql": "select 1"}))
+        with temp, self.assertRaisesRegex(GuardError, "unknown=.*sql"):
+            self.load(root, migration)
+
+    def test_arbitrary_sql_cannot_be_supplied_as_a_check_kind(self):
+        def change(sidecar):
+            sidecar["checks"][0]["kind"] = "sql"
+        temp, root, migration = self.fixture(change)
+        with temp, self.assertRaisesRegex(GuardError, "unsupported check kind"):
+            self.load(root, migration)
+
+    def test_catalog_contract_is_named_hash_bound_and_select_only(self):
+        def change(sidecar):
+            sidecar["checks"] = [{
+                "id": "popdam_final_marker",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 1,
+            }]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            checks = self.load(root, migration)
+            sql = build_behavior_sql(checks)
+        self.assertIn("col_description", sql)
+        self.assertIn("final #1427 contract active", sql)
+        self.assertNotIn("pg_temp.popdam_1479", sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_forward_catalog_is_exact_body_and_security_bound(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_bounded", "kind": "catalog_contract", "contract": "popsg_search_v2_bounded_paging_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260908214749_popsg_search_v2_bounded_paging.sql"
+        import hashlib
+        expected = hashlib.md5(forward.read_text().split("$function$")[1].encode()).hexdigest()
+        self.assertIn(expected, sql)
+        for term in ["p.prosecdef", "p.provolatile='s'", "search_path=pg_catalog, auth", "not has_function_privilege('anon'", "has_function_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_production_performance_catalog_binds_forward_body(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_perf", "kind": "catalog_contract", "contract": "popsg_search_v2_production_performance_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260911213429_popsg_search_v2_production_performance.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")
+        expected = hashlib.md5(body[1].encode()).hexdigest()
+        self.assertIn("md5(p.prosrc)='" + expected + "'", sql)
+        for term in ["p.prosecdef", "p.provolatile='s'", "search_path=pg_catalog, auth", "not has_function_privilege('anon'", "has_function_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_default_timeout_catalog_binds_forward_body(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_perf", "kind": "catalog_contract", "contract": "popsg_search_v2_default_timeout_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")
+        expected = hashlib.md5(body[1].encode()).hexdigest()
+        self.assertIn("md5(p.prosrc)='" + expected + "'", sql)
+        for term in ["p.prosecdef", "p.provolatile='s'", "search_path=pg_catalog, auth", "work_mem=64MB", "not has_function_privilege('anon'", "has_function_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_refresh_search_sync_queue_binds_forward_bodies(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_queue", "kind": "catalog_contract", "contract": "popsg_refresh_search_sync_queue_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 5, "forward migration must define exactly two $function$ bodies")
+        for index in (1, 3):
+            self.assertIn("md5(p.prosrc)='" + hashlib.md5(body[index].encode()).hexdigest() + "'", sql)
+        for term in ["style_guide_search_sync_queue", "c.relrowsecurity", "trg_style_guide_files_queue_search_sync", "not has_table_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_unknown_catalog_contract_and_extra_sql_fail_closed(self):
+        def unknown(sidecar):
+            sidecar["checks"] = [{
+                "id": "unknown_contract",
+                "kind": "catalog_contract",
+                "contract": "invented_contract",
+                "expected_count": 1,
+            }]
+        temp, root, migration = self.fixture(unknown)
+        with temp, self.assertRaisesRegex(GuardError, "unsupported catalog contract"):
+            self.load(root, migration)
+
+        def injected(sidecar):
+            sidecar["checks"] = [{
+                "id": "injected_contract",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 1,
+                "sql": "select true",
+            }]
+        temp, root, migration = self.fixture(injected)
+        with temp, self.assertRaisesRegex(GuardError, "unknown=.*sql"):
+            self.load(root, migration)
+
+    def test_pg_temp_objects_are_not_durable_catalog_targets(self):
+        sql = (
+            "create table pg_temp.popdam_cursor(id uuid);\n"
+            "create function pg_temp.popdam_helper() returns void language sql as $$ select $$;\n"
+            "create table public.durable_popdam(id uuid);\n"
+        )
+        temp, root, migration = self.fixture(sql=sql)
+        with temp:
+            targets = derive_targets({self.VERSION: migration}, [self.VERSION])
+        self.assertNotIn("pg_temp.popdam_cursor", targets.tables)
+        self.assertNotIn("pg_temp.popdam_helper", targets.functions)
+        self.assertIn("public.durable_popdam", targets.tables)
+        self.assertTrue(any("session-temporary" in note for note in targets.notes))
+
+    def test_unsafe_relation_and_column_identifiers_fail_closed(self):
+        def relation(sidecar):
+            sidecar["checks"][0]["relation"] = "core.property; drop table x"
+        temp, root, migration = self.fixture(relation)
+        with temp, self.assertRaisesRegex(GuardError, "invalid relation"):
+            self.load(root, migration)
+
+        def column(sidecar):
+            sidecar["checks"][0]["filters"][0]["column"] = "id) or true --"
+        temp, root, migration = self.fixture(column)
+        with temp, self.assertRaisesRegex(GuardError, "invalid column"):
+            self.load(root, migration)
+
+    def test_wrong_value_type_fails_closed(self):
+        def change(sidecar):
+            sidecar["checks"][0]["filters"][0]["equals"] = "not-a-uuid"
+        temp, root, migration = self.fixture(change)
+        with temp, self.assertRaisesRegex(GuardError, "invalid UUID"):
+            self.load(root, migration)
+
+    def test_fixed_entity_status_enum_is_typed_and_invalid_labels_fail_closed(self):
+        def active(sidecar):
+            sidecar["checks"][0]["filters"].append({
+                "column": "status",
+                "type": "app.entity_status",
+                "equals": "active",
+            })
+        temp, root, migration = self.fixture(active)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        self.assertIn("status = 'active'::app.entity_status", sql)
+
+        def invented(sidecar):
+            sidecar["checks"][0]["filters"].append({
+                "column": "status",
+                "type": "app.entity_status",
+                "equals": "invented",
+            })
+        temp, root, migration = self.fixture(invented)
+        with temp, self.assertRaisesRegex(GuardError, "invalid app.entity_status"):
+            self.load(root, migration)
+
+    def test_missing_and_wrong_behavior_results_fail(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            targets = derive_targets({self.VERSION: migration}, [self.VERSION])
+            _, missing = render_report(
+                [self.VERSION], targets, None, None, [], True,
+                behavior_checks=checks, behavior_results=None,
+            )
+            _, wrong = render_report(
+                [self.VERSION], targets, None, None, [], True,
+                behavior_checks=checks,
+                behavior_results={"behavior_checks": [{
+                    "id": checks[0]["id"], "actual_count": 0,
+                    "expected_count": 1,
+                }]},
+            )
+        self.assertTrue(any("received None" in f for f in missing))
+        self.assertTrue(any("received 0" in f for f in wrong))
+
+    def test_matching_behavior_result_passes_data_only_migration(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            targets = derive_targets({self.VERSION: migration}, [self.VERSION])
+            markdown, failures = render_report(
+                [self.VERSION], targets, None, None, [], True,
+                behavior_checks=checks,
+                behavior_results={"behavior_checks": [{
+                    "id": checks[0]["id"], "actual_count": 1,
+                    "expected_count": 1,
+                }]},
+            )
+        self.assertEqual(failures, [])
+        self.assertIn("**PASS**", markdown)
+
+    def test_real_b7_sidecar_preserves_every_sibling_catalog_target(self):
+        versions = [
+            "20260807030000", "20260807170000", "20260807170100",
+            "20260807180000", "20260807190000", "20260807200000",
+        ]
+        migrations = {
+            path.name[:14]: path
+            for path in (REPO / "supabase" / "migrations").glob("*.sql")
+        }
+        checks = load_behavior_sidecars(REPO, migrations, versions)
+        full = derive_targets(migrations, versions)
+        siblings = derive_targets(migrations, versions[1:])
+        self.assertEqual(
+            {check["id"] for check in checks},
+            {"coco_property_is_parented_to_disney", "coco_owner_ruling_if_available"},
+        )
+        self.assertEqual(full.as_dict(), siblings.as_dict())
+        self.assertFalse(full.is_empty())
+        self.assertIn("api.opa_property_reconciliation", full.views)
+        self.assertIn("plm.sync_opa_property_character", full.functions)
+
+    def test_real_popdam_sidecar_is_hash_bound_and_excludes_temp_helpers(self):
+        version = "20260825082910"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+        self.assertEqual(len(checks), 5)
+        self.assertTrue(all(check["kind"] == "catalog_contract" for check in checks))
+        self.assertNotIn("pg_temp.popdam_1479_cursor", targets.tables)
+        self.assertFalse(any(name.startswith("pg_temp.") for name in targets.functions))
+        self.assertTrue(targets.is_empty())
+        self.assertIn("final #1427 contract active", sql)
+
+    def test_real_1703_rows_sidecar_is_hash_bound_and_catalog_only(self):
+        version = "20260831104325"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "4da12c32355833d33d80902483d3ec75197fd803b030dcb06a1be1db6aa21aa4",
+        )
+        self.assertTrue(targets.is_empty())
+        self.assertIn("expand_dam_search_queries(text)", sql)
+        self.assertIn("p.prorows = 32", sql)
+
+    def test_real_1703_forward_4_rows_sidecar_is_hash_bound_and_catalog_only(self):
+        version = "20260831145707"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "b8396e694cd162805ffe994d04964ed9154937ff071704542710d78d7f1a2111",
+        )
+        self.assertTrue(targets.is_empty())
+        self.assertIn("expand_dam_search_queries(text)", sql)
+        self.assertIn("p.prorows = 4", sql)
+
+    def test_real_1703_forward_5_sidecar_is_hash_bound_and_catalog_only(self):
+        version = "20260831173841"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "c08f3a2207bde361e9784b6ec9ab7b2322ae7da8c138ff634a39932fce220000",
+        )
+        self.assertEqual(
+            targets.functions,
+            ["public.get_filter_counts", "public.search_dam_documents"],
+        )
+        self.assertEqual(
+            targets.roles,
+            ["anon", "authenticated", "public", "service_role"],
+        )
+        self.assertIn("select f.id, f.style_group_id, f.file_type, f.status,", sql)
+        self.assertIn("get_effective_filter_counts_unchecked_1703", sql)
+        self.assertIn("has_function_privilege('authenticated'", sql)
+
+    def test_real_1703_forward_6_sidecar_is_hash_bound_and_catalog_only(self):
+        version = "20260831184547"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+        migration_sql = migration.read_text(encoding="utf-8").lower()
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "a33c22920120dee3ed2fc7f8f54a37377eb5c801141522d5b8b965bb59b14eac",
+        )
+        self.assertIn("public.filter_effective_assets", targets.functions)
+        self.assertIn("public.search_dam_documents", targets.functions)
+        self.assertIn("from candidate_asset_ids c", sql)
+        self.assertIn("join public.assets a on a.id = c.id", sql)
+        self.assertIn("select a.file_type, a.status, a.workflow_status, a.stage, a.is_licensed", sql)
+        self.assertIn("position('select a.*'", sql)
+        self.assertIn("bounds as materialized", sql)
+        self.assertIn("authorized as materialized", sql)
+        self.assertIn("not p.prosecdef", sql)
+        self.assertIn("p.proconfig is null", sql)
+        self.assertIn(
+            "alter function public.filter_effective_assets(jsonb) security invoker;",
+            migration_sql,
+        )
+        self.assertIn(
+            "alter function public.filter_effective_assets(jsonb) reset all;",
+            migration_sql,
+        )
+        self.assertLess(
+            migration_sql.index("create or replace function public.filter_effective_assets"),
+            migration_sql.index("alter function public.filter_effective_assets(jsonb) reset all;"),
+        )
+        self.assertIn("has_function_privilege('authenticated'", sql)
+
+    def test_real_2054_sidecar_is_hash_bound_and_asserts_indexed_union_counts(self):
+        version = "20260901142825"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "bc8ef9e10f5ef6fd91f61d7b03516464cfc1a799d9dbae27944c1551742a15ba",
+        )
+        self.assertIn("public.filter_effective_assets", targets.functions)
+        self.assertIn("public.get_effective_filter_counts", targets.functions)
+        self.assertIn("public.get_filter_counts", targets.functions)
+        self.assertIn("identity_asset_ids as", sql)
+        self.assertIn("union all", sql)
+        self.assertIn("a.licensor_id = ", sql)
+        self.assertIn("sg.licensor_id = ", sql)
+        self.assertIn("a.customer_id = ", sql)
+        self.assertIn("sg.customer_id = ", sql)
+        self.assertIn("__includeOwnFacets2054", sql)
+        self.assertIn("has_function_privilege('authenticated'", sql)
+
+    def test_real_1703_forward_7_sidecar_is_hash_bound_and_asserts_single_heap_fetch(self):
+        version = "20260831212757"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+        migration_sql = migration.read_text(encoding="utf-8").lower()
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "8cae66fd16b67b12371103696d9c79ed37cacf828c6a105c79a02c101ec5f8b9",
+        )
+        self.assertEqual(targets.functions, ["public.search_dam_documents"])
+        self.assertIn("full_text_matches as materialized", sql)
+        self.assertIn("d.search_tsv @@ any(array(select q.tsq from queries q))", sql)
+        self.assertIn("select max(ts_rank_cd(d.search_tsv, q.tsq))", sql)
+        self.assertIn("has_function_privilege('authenticated'", sql)
+        self.assertIn("full_text_matches as materialized", migration_sql)
+        self.assertNotIn(
+            "join public.dam_search_documents d on d.search_tsv @@ q.tsq",
+            migration_sql,
+        )
+
+    def test_real_1703_forward_8_sidecar_is_hash_bound_and_asserts_rank_keys_through_visibility(self):
+        version = "20260831221607"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+        migration_sql = migration.read_text(encoding="utf-8").lower()
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "b0902414ec5eac846ae0e1469d79630aa7692ef1f3dcb0ae52ca97852d600b20",
+        )
+        self.assertIn("public.search_dam_documents", targets.functions)
+        self.assertIn("c.keyword_rank, c.semantic_rank, c.rank, c.asset_id id", sql)
+        self.assertIn("select distinct a.document_type, a.entity_id, a.asset_id", sql)
+        self.assertIn("join visible_assets a on a.id = c.asset_id", sql)
+        self.assertIn("derived-from: 20260831212757", migration_sql)
+        self.assertNotIn("join visible_assets a on a.id = c.asset_id", migration_sql)
+
+    def test_real_1732_sidecar_is_hash_bound_catalog_only_and_exact_shape(self):
+        version = "20260828021051"
+        migration = next((REPO / "supabase" / "migrations").glob(f"{version}_*.sql"))
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        targets = derive_targets({version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(
+            checks[0]["migration_sha256"],
+            "a13a0d1bd93cf733bd6592a567483c9cca5e20d1f412f7001fa4aa4f3e7b4c41",
+        )
+        self.assertTrue(targets.is_empty())
+        self.assertIn("from pg_constraint", sql)
+        self.assertIn("join pg_index", sql)
+        self.assertIn("c.conname = 'licensor_code_key'", sql)
+        self.assertIn("c.contype = 'u'", sql)
+        self.assertIn("c.convalidated", sql)
+        self.assertIn("c.conkey = array[", sql)
+        self.assertIn("a.attname = 'code'", sql)
+        self.assertIn("not i.indnullsnotdistinct", sql)
+        self.assertNotIn("from core.licensor", sql)
+
+    def test_real_1177_sidecar_binds_current_migration_and_covers_full_outcome(self):
+        version = "20260825050407"
+        migration = REPO / "supabase" / "migrations" / (
+            f"{version}_coldlion_paramount_five_approved_gate.sql"
+        )
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        sql = build_behavior_sql(checks)
+
+        self.assertEqual(len(checks), 25)
+        self.assertEqual(
+            {check["relation"] for check in checks},
+            {"core.property", "core.taxonomy_source_ref", "plm.erp_property"},
+        )
+        self.assertEqual(
+            sum(check["relation"] == "core.property" for check in checks), 5
+        )
+        self.assertEqual(
+            sum(check["relation"] == "core.taxonomy_source_ref" for check in checks), 10
+        )
+        self.assertEqual(
+            sum(check["relation"] == "plm.erp_property" for check in checks), 10
+        )
+        self.assertTrue(all(
+            check["migration_sha256"]
+            == "1c128b018f1dce969116292e5a7db2e9ccfbc140e6bd2bb873c98f48cac294ef"
+            for check in checks
+        ))
+        self.assertEqual(sql.count("status = 'active'::app.entity_status"), 5)
+        self.assertNotIn("status = 'active'::text", sql)
+
+
+class SupersededContractBatchTests(unittest.TestCase):
+    """Issue #2029: an intermediate contract must not fail a correct batch.
+
+    Every behavioral check is asserted against the FINAL state the whole
+    ordered batch left behind. When a later version in the SAME allowlist
+    re-asserts an object an earlier version's contract also asserts, the
+    earlier check is SUPERSEDED -- recorded, visible, never a failure -- and
+    only the last version's assertion for that object runs.
+    """
+
+    BATCH = ["20260831184547", "20260831212757", "20260831221607"]
+    FORWARD_6 = "popdam_ranked_search_private_keyed_visibility_forward_6"
+    FORWARD_7 = "popdam_ranked_search_single_heap_fetch_forward_7"
+    FORWARD_8 = "popdam_ranked_search_rank_keys_through_visibility_forward_8"
+
+    @staticmethod
+    def real_checks(versions):
+        migrations = {
+            path.name[:14]: path
+            for path in (REPO / "supabase" / "migrations").glob("*.sql")
+        }
+        return load_behavior_sidecars(REPO, migrations, versions)
+
+    @staticmethod
+    def load_versions(specs):
+        """Build temp migrations + hash-bound sidecars for several versions.
+
+        specs: list of (version, migration sql, sidecar checks list). The
+        versions are loaded in the order given, which is the ordered batch.
+        """
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        index = {}
+        for version, sql, checks in specs:
+            path = migrations / f"{version}_test.sql"
+            path.write_text(sql, encoding="utf-8")
+            index[version] = path
+            (sidecars / f"{version}.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "migration_version": version,
+                        "migration_sha256": hashlib.sha256(
+                            path.read_bytes().replace(b"\r\n", b"\n")
+                        ).hexdigest(),
+                        "checks": checks,
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return temp, root, index
+
+    @staticmethod
+    def contract_check(check_id, contract):
+        return {
+            "id": check_id,
+            "kind": "catalog_contract",
+            "contract": contract,
+            "expected_count": 1,
+        }
+
+    def test_real_2029_batch_marks_forwards_6_and_7_superseded_and_asserts_8(self):
+        # The exact production batch from the issue: forward 6 installs
+        # popdam_ranked_search_private_keyed_visibility_v2 over
+        # public.search_dam_documents, forwards 7 and 8 rewrite that body, so
+        # forward 6's contract asserts strings that are deliberately gone.
+        checks = self.real_checks(self.BATCH)
+        by_id = {check["id"]: check for check in checks}
+        self.assertEqual(
+            set(by_id), {self.FORWARD_6, self.FORWARD_7, self.FORWARD_8}
+        )
+        for early in (self.FORWARD_6, self.FORWARD_7):
+            self.assertEqual(by_id[early]["superseded_by"], "20260831221607")
+            self.assertEqual(
+                by_id[early]["superseded_objects"],
+                [
+                    "routine:public.search_dam_documents("
+                    "text,jsonb,integer,integer,text[],extensions.vector,real,real)"
+                ],
+            )
+        self.assertNotIn("superseded_by", by_id[self.FORWARD_8])
+        # Only the last version's contract reaches the database.
+        sql = build_behavior_sql(checks)
+        self.assertNotIn(self.FORWARD_6, sql)
+        self.assertNotIn(self.FORWARD_7, sql)
+        self.assertIn(self.FORWARD_8, sql)
+        # The superseded intermediate expectation is gone from the probe...
+        self.assertNotIn("from candidate_asset_ids c", sql)
+        # ...and the final one is what runs.
+        self.assertIn("c.keyword_rank, c.semantic_rank, c.rank, c.asset_id id", sql)
+
+    def test_superseded_checks_are_visible_in_the_report_and_never_a_failure(self):
+        checks = self.real_checks(self.BATCH)
+        final = next(c for c in checks if c["id"] == self.FORWARD_8)
+        markdown, failures = render_report(
+            self.BATCH,
+            Targets(set(), set(), set(), set(), set(), set()),
+            None,
+            None,
+            [],
+            True,
+            behavior_checks=checks,
+            behavior_results={"behavior_checks": [{
+                "id": final["id"], "actual_count": 1, "expected_count": 1,
+            }]},
+        )
+        self.assertEqual(failures, [])
+        # Not silence: the verdict, the superseded check ids, the superseding
+        # version and the objects that caused it are all in the artifact.
+        self.assertEqual(markdown.count("| **SUPERSEDED** |"), 2)
+        self.assertIn(self.FORWARD_6, markdown)
+        self.assertIn(self.FORWARD_7, markdown)
+        self.assertIn("superseded by `20260831221607`", markdown)
+        self.assertIn("routine:public.search_dam_documents(", markdown)
+        self.assertIn("was SUPERSEDED by migration `20260831221607`", markdown)
+
+    def test_a_failing_final_contract_is_not_masked_by_supersession(self):
+        # Supersession hides only intermediate expectations. The LAST
+        # version's contract still runs, and when it fails the job fails.
+        checks = self.real_checks(self.BATCH)
+        final = next(c for c in checks if c["id"] == self.FORWARD_8)
+        _, failures = render_report(
+            self.BATCH,
+            Targets(set(), set(), set(), set(), set(), set()),
+            None,
+            None,
+            [],
+            True,
+            behavior_checks=checks,
+            behavior_results={"behavior_checks": [{
+                "id": final["id"], "actual_count": 0, "expected_count": 1,
+            }]},
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn(self.FORWARD_8, failures[0])
+        self.assertIn("expected 1 row(s) but received 0", failures[0])
+
+    def test_supersession_never_reaches_outside_the_allowlist(self):
+        # Scoping constraint: the sidecars for forwards 7 and 8 exist in the
+        # repository, but a single-version allowlist is its own ordered batch,
+        # so nothing outside it may supersede forward 6's contract.
+        checks = self.real_checks(["20260831184547"])
+        self.assertEqual(len(checks), 1)
+        self.assertNotIn("superseded_by", checks[0])
+        sql = build_behavior_sql(checks)
+        self.assertIn(self.FORWARD_6, sql)
+        self.assertIn("from candidate_asset_ids c", sql)
+
+    def test_a_check_whose_objects_no_later_version_asserts_is_still_asserted(self):
+        # The normal case is untouched. Three temp versions: A asserts the
+        # plm style-tracker routines, B and C assert
+        # public.search_dam_documents. Only B -- not A -- is superseded.
+        specs = [
+            ("20260101000001", "do $ begin perform 1; end $;\n",
+             [self.contract_check("style_tracker_functions_hold",
+                                  "style_tracker_functions_v1")]),
+            ("20260101000002", "do $ begin perform 1; end $;\n",
+             [self.contract_check("single_heap_fetch_hold",
+                                  "popdam_ranked_search_single_heap_fetch_v3")]),
+            ("20260101000003", "do $ begin perform 1; end $;\n",
+             [self.contract_check("rank_keys_hold",
+                                  "popdam_ranked_search_rank_keys_through_visibility_v4")]),
+        ]
+        temp, root, index = self.load_versions(specs)
+        with temp:
+            versions = [spec[0] for spec in specs]
+            checks = load_behavior_sidecars(root, index, versions)
+        by_id = {check["id"]: check for check in checks}
+        self.assertNotIn("superseded_by", by_id["style_tracker_functions_hold"])
+        self.assertEqual(
+            by_id["single_heap_fetch_hold"]["superseded_by"], "20260101000003"
+        )
+        self.assertNotIn("superseded_by", by_id["rank_keys_hold"])
+        sql = build_behavior_sql(checks)
+        self.assertIn("style_tracker_functions_hold", sql)
+        self.assertNotIn("single_heap_fetch_hold", sql)
+        self.assertIn("rank_keys_hold", sql)
+
+    def test_checks_in_the_same_version_do_not_supersede_each_other(self):
+        # Only a STRICTLY LATER VERSION supersedes. Two checks in one version
+        # are both "the last version" for the object and both stay asserted.
+        specs = [
+            ("20260101000001", "do $ begin perform 1; end $;\n", [
+                self.contract_check("heap_fetch_first",
+                                    "popdam_ranked_search_single_heap_fetch_v3"),
+                self.contract_check("rank_keys_second",
+                                    "popdam_ranked_search_rank_keys_through_visibility_v4"),
+            ]),
+        ]
+        temp, root, index = self.load_versions(specs)
+        with temp:
+            checks = load_behavior_sidecars(root, index, [specs[0][0]])
+        self.assertTrue(all("superseded_by" not in check for check in checks))
+        self.assertEqual(
+            len(build_behavior_sql(checks).split(" union all ")), 2
+        )
+
+    def test_the_extractor_only_claims_unambiguous_literal_objects(self):
+        # Fail-safe direction of issue #2029: a contract that names its
+        # objects through format('%I', ...) or array unnest extracts NO
+        # objects, so it can never be superseded and stays asserted as today.
+        self.assertEqual(
+            catalog_contract_objects(CATALOG_CONTRACTS["core_person_role_lookups_v1"]),
+            set(),
+        )
+        self.assertEqual(
+            catalog_contract_objects(CATALOG_CONTRACTS["api_rls_realtime_v1"]),
+            set(),
+        )
+        # The literal spellings ARE claimed, with the full routine identity.
+        self.assertEqual(
+            catalog_contract_objects(
+                CATALOG_CONTRACTS["popdam_ranked_search_single_heap_fetch_v3"]
+            ),
+            {
+                "routine:public.search_dam_documents("
+                "text,jsonb,integer,integer,text[],extensions.vector,real,real)",
+            },
+        )
+        # Overload precision: a different argument signature is a different
+        # object and must not collide with the search routine above.
+        self.assertEqual(
+            catalog_contract_objects("select to_regprocedure('public.f(text)') is null"),
+            {"routine:public.f(text)"},
+        )
+
+
+class CatalogAbsenceCheckTests(unittest.TestCase):
+    """Issue #2043 item 2: assert a named object is genuinely ABSENT.
+
+    The inverse of every present-assertion. An index that survives a
+    legitimate DROP INDEX used to pass silently, because the drop removed it
+    from the expected-object set and nothing ever probed it again. A
+    `catalog_absence` check fails when the object is still there.
+    """
+
+    VERSION = "20260101000000"
+    # The real dropped index from the #2035/#2043 batch.
+    DROPPED_INDEX = "public.hts_rag_product_family_allowlist_enabled_idx"
+
+    def fixture(self, object_name=None, mutate=None):
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_test.sql"
+        migration.write_text("do $ begin perform 1; end $;\n", encoding="utf-8")
+        check = {
+            "id": "retired_index_is_gone",
+            "kind": "catalog_absence",
+            "object": object_name or self.DROPPED_INDEX,
+            "expected_count": 1,
+        }
+        sidecar = {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [check],
+        }
+        if mutate:
+            mutate(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def load(self, root, migration):
+        return load_behavior_sidecars(
+            root, {self.VERSION: migration}, [self.VERSION]
+        )
+
+    def render(self, actual_count, checks):
+        return render_report(
+            [self.VERSION],
+            Targets(set(), set(), set(), set(), set(), set()),
+            None,
+            None,
+            [],
+            True,
+            behavior_checks=checks,
+            behavior_results={"behavior_checks": [{
+                "id": checks[0]["id"],
+                "actual_count": actual_count,
+                "expected_count": 1,
+            }]},
+        )
+
+    def test_relation_absence_probes_to_regclass_and_stays_select_only(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            sql = build_behavior_sql(checks)
+        self.assertEqual(checks[0]["relation"], f"absent:{self.DROPPED_INDEX}")
+        self.assertIn(f"to_regclass('{self.DROPPED_INDEX}') is null", sql)
+        self.assertNotIn("to_regprocedure", sql)
+        self.assertTrue(sql.lower().startswith("select "))
+        self.assertNotIn(";", sql[:-1])
+        # A BARE schema.name is a RELATION probe, the convention to_regclass
+        # itself uses -- pinned so nobody reads a bare routine name as a
+        # routine assertion. A routine must carry its argument signature
+        # (see test_routine_absence_probes_to_regprocedure); without one the
+        # probe looks at the relation namespace and would pass while the
+        # routine exists, which is exactly the silent pass this kind refuses.
+
+    def test_routine_absence_probes_to_regprocedure(self):
+        temp, root, migration = self.fixture("public.get_filter_counts(jsonb)")
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        self.assertIn("to_regprocedure('public.get_filter_counts(jsonb)') is null", sql)
+        self.assertNotIn("to_regclass", sql)
+
+    def test_absent_as_expected_passes(self):
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            markdown, failures = self.render(1, checks)
+        self.assertEqual(failures, [])
+        self.assertIn("**PASS**", markdown)
+
+    def test_a_surviving_dropped_object_fails(self):
+        # The exact gap #2043 item 2 names: the DROP INDEX was legitimate, the
+        # index survived anyway, and nothing used to notice. Now it is a
+        # FAILURE like any other broken expectation.
+        temp, root, migration = self.fixture()
+        with temp:
+            checks = self.load(root, migration)
+            markdown, failures = self.render(0, checks)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("retired_index_is_gone", failures[0])
+        self.assertIn("expected 1 row(s) but received 0", failures[0])
+        self.assertIn("**FAIL**", markdown)
+
+    def test_malformed_and_unsafe_absence_objects_fail_closed(self):
+        for object_name in (
+            "public.x'; drop table y --",
+            "widget",                      # no schema: search-path relative
+            "PUBLIC.Widget",               # not a plain lowercase identifier
+        ):
+            with self.subTest(object=object_name):
+                temp, root, migration = self.fixture(object_name)
+                with temp:
+                    with self.assertRaisesRegex(GuardError, "invalid absence object"):
+                        self.load(root, migration)
+
+    def test_absence_check_extra_fields_and_wrong_count_fail_closed(self):
+        def inject_sql(sidecar):
+            sidecar["checks"][0]["sql"] = "select 1"
+        temp, root, migration = self.fixture(mutate=inject_sql)
+        with temp:
+            with self.assertRaisesRegex(GuardError, "unknown=.*sql"):
+                self.load(root, migration)
+
+        def wrong_count(sidecar):
+            sidecar["checks"][0]["expected_count"] = 0
+        temp, root, migration = self.fixture(mutate=wrong_count)
+        with temp:
+            with self.assertRaisesRegex(GuardError, "expected_count must be 1"):
+                self.load(root, migration)
+
+    def test_a_later_absence_supersedes_an_earlier_contract_on_the_same_object(self):
+        # The object key space is polarity-agnostic, so the LAST version's
+        # assertion wins whichever way it points: a later drop supersedes an
+        # earlier present-contract just as a later rewrite does.
+        specs = [
+            ("20260101000001", "do $ begin perform 1; end $;\n", [{
+                "id": "helper_is_present", "kind": "catalog_contract",
+                "contract": "popdam_ranked_search_single_heap_fetch_v3",
+                "expected_count": 1,
+            }]),
+            ("20260101000002", "do $ begin perform 1; end $;\n", [{
+                "id": "helper_is_gone", "kind": "catalog_absence",
+                "object": "public.search_dam_documents(text,jsonb,integer,integer,"
+                          "text[],extensions.vector,real,real)",
+                "expected_count": 1,
+            }]),
+        ]
+        temp, root, index = SupersededContractBatchTests.load_versions(specs)
+        with temp:
+            checks = load_behavior_sidecars(root, index, [s[0] for s in specs])
+        by_id = {check["id"]: check for check in checks}
+        self.assertEqual(by_id["helper_is_present"]["superseded_by"], "20260101000002")
+        self.assertNotIn("superseded_by", by_id["helper_is_gone"])
+        sql = build_behavior_sql(checks)
+        self.assertNotIn("helper_is_present", sql)
+        self.assertIn("helper_is_gone", sql)
+        self.assertIn("to_regprocedure('public.search_dam_documents(text,jsonb,"
+                      "integer,integer,text[],extensions.vector,real,real)') is null", sql)
+
+
+class NetAclTests(unittest.TestCase):
+    """GRANT ALL followed by a later partial REVOKE: the net ACL must be modeled.
+
+    These are the five regression requirements from the task. Each uses TWO
+    migration files in version order so cross-migration ordering is exercised
+    alongside within-file ordering. The earlier migration grants ALL; the later
+    one revokes a subset. Only the NET end state is the expectation.
+    """
+
+    GRANT_ALL_SQL = "grant all on plm.widget to service_role;\n"
+    REVOKE_PARTIAL_SQL = (
+        "revoke truncate, references, trigger, maintain "
+        "on plm.widget from service_role;\n"
+    )
+
+    def derive_two(self, first_sql, second_sql):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mig = root / "supabase" / "migrations"
+            mig.mkdir(parents=True)
+            (mig / "20260101000000_first.sql").write_text(first_sql, encoding="utf-8")
+            (mig / "20260102000000_second.sql").write_text(second_sql, encoding="utf-8")
+            return derive_targets(
+                {
+                    "20260101000000": mig / "20260101000000_first.sql",
+                    "20260102000000": mig / "20260102000000_second.sql",
+                },
+                ["20260101000000", "20260102000000"],
+            )
+
+    def catalog(self, held, name="plm.widget"):
+        return {
+            "maintain_probed": True,
+            "probe_roles": ["service_role"],
+            "relations": [
+                {"name": name, "to_regclass": name, "owner": "postgres"}
+            ],
+            "effective_privileges": [
+                {"name": name, "role": "service_role", "privilege": p}
+                for p in held
+            ],
+        }
+
+    DML = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+    DDL = ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"]
+
+    # 1. The intended final state passes.
+    def test_intended_final_state_passes(self):
+        t = self.derive_two(self.GRANT_ALL_SQL, self.REVOKE_PARTIAL_SQL)
+        _, failures = assert_privileges(t, self.catalog(self.DML))
+        self.assertEqual(failures, [])
+
+    # 2. A required retained privilege missing still fails.
+    def test_missing_retained_privilege_fails(self):
+        t = self.derive_two(self.GRANT_ALL_SQL, self.REVOKE_PARTIAL_SQL)
+        # service_role lost INSERT (over-revoke or mis-grant).
+        _, failures = assert_privileges(
+            t, self.catalog(["SELECT", "UPDATE", "DELETE"])
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("INSERT", failures[0])
+        self.assertIn("not held", failures[0])
+
+    # 3. A forbidden revoked privilege retained still fails.
+    def test_retained_revoked_privilege_fails(self):
+        t = self.derive_two(self.GRANT_ALL_SQL, self.REVOKE_PARTIAL_SQL)
+        # TRUNCATE was revoked but service_role still holds it.
+        _, failures = assert_privileges(
+            t, self.catalog(self.DML + ["TRUNCATE"])
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("TRUNCATE", failures[0])
+        self.assertIn("STILL HELD", failures[0])
+
+    # 4. Unrelated object/grantee assertions remain independent.
+    def test_unrelated_assertions_are_independent(self):
+        sql = (
+            "grant all on plm.widget to service_role;\n"
+            "revoke truncate, references, trigger, maintain "
+            "on plm.widget from service_role;\n"
+            "grant select on plm.other to authenticated;\n"
+        )
+        t = targets_for(sql)
+        # service_role has arwd on widget; authenticated has SELECT on other.
+        catalog = self.catalog(self.DML)
+        catalog["relations"].append(
+            {"name": "plm.other", "to_regclass": "plm.other", "owner": "postgres"}
+        )
+        catalog["effective_privileges"].append(
+            {"name": "plm.other", "role": "authenticated", "privilege": "SELECT"}
+        )
+        catalog["probe_roles"] = ["service_role", "authenticated"]
+        _, failures = assert_privileges(t, catalog)
+        self.assertEqual(failures, [])
+        # If authenticated LOSES select on other, that fails independently.
+        catalog2 = self.catalog(self.DML)
+        catalog2["relations"].append(
+            {"name": "plm.other", "to_regclass": "plm.other", "owner": "postgres"}
+        )
+        catalog2["probe_roles"] = ["service_role", "authenticated"]
+        _, failures2 = assert_privileges(t, catalog2)
+        auth_fails = [f for f in failures2 if "authenticated" in f]
+        self.assertEqual(len(auth_fails), 1)
+        self.assertIn("SELECT", auth_fails[0])
+
+    # 5. Migration ordering determines the final expectation.
+    def test_ordering_grant_after_revoke_keeps_all(self):
+        """If the GRANT ALL comes AFTER the REVOKE, ALL wins: every privilege
+        must be held, including the ones the earlier revoke removed."""
+        t = self.derive_two(self.REVOKE_PARTIAL_SQL, self.GRANT_ALL_SQL)
+        _, failures = assert_privileges(t, self.catalog(self.DML + self.DDL))
+        self.assertEqual(failures, [])
+        # And holding only the DML set now FAILS (the later GRANT ALL requires all 8).
+        _, failures2 = assert_privileges(t, self.catalog(self.DML))
+        self.assertTrue(
+            any("MAINTAIN" in f or "TRUNCATE" in f for f in failures2),
+            f"later GRANT ALL must require the full set: {failures2}",
+        )
+
+
+class DynamicAclExtractionTests(unittest.TestCase):
+    """execute format('grant/revoke ...') inside do-blocks must be visible.
+
+    strip_sql removes dollar-quoted bodies, so a revoke issued dynamically
+    through execute format(...) is invisible to the plain pass. The dynamic-ACL
+    reader extracts it by resolving the foreach loop variable to its array
+    literal, so the net-ACL logic can reduce an earlier GRANT ALL.
+    """
+
+    # The B3 shape: named array + foreach + execute format with %s.
+    B3_SHAPE = (
+        "do $$\n"
+        "declare\n"
+        "  t text;\n"
+        "  v_tables text[] := array[\n"
+        "    'plm.coldlion_promotion_audit',\n"
+        "    'plm.coldlion_promotion_quarantine'\n"
+        "  ];\n"
+        "begin\n"
+        "  foreach t in array v_tables loop\n"
+        "    execute format(\n"
+        "      'revoke truncate, references, trigger, maintain on %s "
+        "from service_role', t);\n"
+        "  end loop;\n"
+        "end;\n"
+        "$$;\n"
+    )
+
+    def test_named_array_foreach_is_resolved(self):
+        exps, rels, fns, notes = parse_dynamic_acl(self.B3_SHAPE, "v")
+        self.assertEqual(len(notes), 0)
+        self.assertEqual(
+            sorted(rels),
+            ["plm.coldlion_promotion_audit", "plm.coldlion_promotion_quarantine"],
+        )
+        grantees = {e.grantee for e in exps}
+        self.assertEqual(grantees, {"service_role"})
+        for e in exps:
+            self.assertFalse(e.expect_held)
+            self.assertEqual(
+                e.privileges,
+                ("MAINTAIN", "REFERENCES", "TRIGGER", "TRUNCATE"),
+            )
+
+    def test_inline_array_foreach_is_resolved(self):
+        sql = (
+            "do $$\n"
+            "declare t text;\n"
+            "begin\n"
+            "  foreach t in array array['alpha', 'beta'] loop\n"
+            "    execute format('revoke all on plm.%I from public', t);\n"
+            "  end loop;\n"
+            "end;\n"
+            "$$;\n"
+        )
+        exps, rels, _fns, notes = parse_dynamic_acl(sql, "v")
+        self.assertEqual(len(notes), 0)
+        self.assertEqual(sorted(rels), ["plm.alpha", "plm.beta"])
+        self.assertTrue(all(e.grantee == "PUBLIC" for e in exps))
+        self.assertTrue(all("ALL" in e.privileges for e in exps))
+
+    def test_concatenated_arrays_are_resolved(self):
+        sql = (
+            "do $$\n"
+            "declare\n"
+            "  t text;\n"
+            "  v_a text[] := array['plm.one'];\n"
+            "  v_b text[] := array['plm.two'];\n"
+            "begin\n"
+            "  foreach t in array (v_a || v_b) loop\n"
+            "    execute format('revoke truncate on %s from service_role', t);\n"
+            "  end loop;\n"
+            "end;\n"
+            "$$;\n"
+        )
+        exps, rels, _fns, notes = parse_dynamic_acl(sql, "v")
+        self.assertEqual(len(notes), 0)
+        self.assertEqual(sorted(rels), ["plm.one", "plm.two"])
+
+    def test_unresolvable_argument_is_recorded_not_guessed(self):
+        sql = (
+            "do $$\n"
+            "declare r record;\n"
+            "begin\n"
+            "  for r in select * from pg_tables loop\n"
+            "    execute format('revoke all on %s from public', r.schemaname);\n"
+            "  end loop;\n"
+            "end;\n"
+            "$$;\n"
+        )
+        exps, rels, _fns, notes = parse_dynamic_acl(sql, "v")
+        self.assertEqual(exps, [])
+        self.assertEqual(rels, set())
+        self.assertTrue(any("could not be resolved" in n for n in notes))
+
+    def test_non_grant_format_is_ignored(self):
+        sql = (
+            "do $$\n"
+            "begin\n"
+            "  execute format('drop table if exists %s', 'plm.temp');\n"
+            "end;\n"
+            "$$;\n"
+        )
+        exps, rels, _fns, notes = parse_dynamic_acl(sql, "v")
+        self.assertEqual(exps, [])
+        self.assertEqual(notes, [])
+
+    def test_full_b3_batch_passes_correct_state(self):
+        """The exact scenario from production run 31558201593: GRANT ALL in one
+        migration, REVOKE via execute format in a later one. The correct end
+        state (arwd only) must pass."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mig = root / "supabase" / "migrations"
+            mig.mkdir(parents=True)
+            (mig / "20260101000000_grant.sql").write_text(
+                "grant all on plm.evidence to service_role;\n", encoding="utf-8"
+            )
+            (mig / "20260102000000_revoke.sql").write_text(
+                "do $$\n"
+                "declare t text;\n"
+                "begin\n"
+                "  foreach t in array array['plm.evidence'] loop\n"
+                "    execute format(\n"
+                "      'revoke truncate, references, trigger, maintain "
+                "on %s from service_role', t);\n"
+                "  end loop;\n"
+                "end;\n"
+                "$$;\n",
+                encoding="utf-8",
+            )
+            t = derive_targets(
+                {
+                    "20260101000000": mig / "20260101000000_grant.sql",
+                    "20260102000000": mig / "20260102000000_revoke.sql",
+                },
+                ["20260101000000", "20260102000000"],
+            )
+        dml = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+        catalog = {
+            "maintain_probed": True,
+            "probe_roles": ["service_role"],
+            "relations": [
+                {"name": "plm.evidence", "to_regclass": "plm.evidence",
+                 "owner": "postgres"}
+            ],
+            "effective_privileges": [
+                {"name": "plm.evidence", "role": "service_role", "privilege": p}
+                for p in dml
+            ],
+        }
+        _, failures = assert_privileges(t, catalog)
+        self.assertEqual(failures, [])
+
+    def test_full_b3_batch_fails_when_revoke_did_not_take(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mig = root / "supabase" / "migrations"
+            mig.mkdir(parents=True)
+            (mig / "20260101000000_grant.sql").write_text(
+                "grant all on plm.evidence to service_role;\n", encoding="utf-8"
+            )
+            (mig / "20260102000000_revoke.sql").write_text(
+                "do $$\n"
+                "declare t text;\n"
+                "begin\n"
+                "  foreach t in array array['plm.evidence'] loop\n"
+                "    execute format(\n"
+                "      'revoke truncate, references, trigger, maintain "
+                "on %s from service_role', t);\n"
+                "  end loop;\n"
+                "end;\n"
+                "$$;\n",
+                encoding="utf-8",
+            )
+            t = derive_targets(
+                {
+                    "20260101000000": mig / "20260101000000_grant.sql",
+                    "20260102000000": mig / "20260102000000_revoke.sql",
+                },
+                ["20260101000000", "20260102000000"],
+            )
+        # Revoke did NOT take: all 8 still held.
+        all8 = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE",
+                "REFERENCES", "TRIGGER", "MAINTAIN"]
+        catalog = {
+            "maintain_probed": True,
+            "probe_roles": ["service_role"],
+            "relations": [
+                {"name": "plm.evidence", "to_regclass": "plm.evidence",
+                 "owner": "postgres"}
+            ],
+            "effective_privileges": [
+                {"name": "plm.evidence", "role": "service_role", "privilege": p}
+                for p in all8
+            ],
+        }
+        _, failures = assert_privileges(t, catalog)
+        self.assertTrue(
+            any("STILL HELD" in f and "TRUNCATE" in f for f in failures),
+            f"expected TRUNCATE still-held failure: {failures}",
+        )
+
+
+class ContractSqlQuotingTests(unittest.TestCase):
+    """A search needle must be a SQL STRING LITERAL, never a quoted identifier.
+
+    Production apply run 33647723083 applied nine migrations and then failed its
+    post-apply catalog verification with a `column "..." does not exist` error
+    naming a whole SQL comparison expression as if it were a column,
+    because two `position(...)` needles were written as Python double-quoted
+    strings, so they reached Postgres as double-quoted IDENTIFIERS. Every
+    behavioural check is one branch of a single `union all`, so that one bad
+    branch made all seven contracts report MISSING -- which reads as "the
+    contract is absent from the database" when it means "the check never ran".
+    """
+
+    IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*\Z")
+
+    @staticmethod
+    def _double_quoted_tokens_outside_literals(sql: str):
+        """Yield every `"..."` token that is NOT inside a single-quoted literal."""
+        tokens = []
+        i = 0
+        n = len(sql)
+        while i < n:
+            ch = sql[i]
+            if ch == "'":
+                i += 1
+                while i < n:
+                    if sql[i] == "'":
+                        if i + 1 < n and sql[i + 1] == "'":
+                            i += 2
+                            continue
+                        i += 1
+                        break
+                    i += 1
+                continue
+            if ch == '"':
+                end = sql.find('"', i + 1)
+                if end == -1:
+                    tokens.append(sql[i + 1 :])
+                    break
+                tokens.append(sql[i + 1 : end])
+                i = end + 1
+                continue
+            i += 1
+        return tokens
+
+    def test_no_contract_uses_a_double_quoted_string_as_a_search_needle(self):
+        for name, sql in CATALOG_CONTRACTS.items():
+            with self.subTest(contract=name):
+                self.assertNotIn(
+                    'position("',
+                    sql,
+                    f"{name} passes a double-quoted IDENTIFIER to position(); "
+                    "Postgres rejects the whole union and every contract in it "
+                    "is then reported MISSING",
+                )
+
+    def test_every_double_quoted_token_in_a_contract_is_a_plain_identifier(self):
+        for name, sql in CATALOG_CONTRACTS.items():
+            for token in self._double_quoted_tokens_outside_literals(sql):
+                with self.subTest(contract=name, token=token):
+                    self.assertRegex(
+                        token,
+                        self.IDENTIFIER,
+                        f"{name} contains the double-quoted token {token!r} "
+                        "outside any string literal. Postgres reads that as a "
+                        "column name, not as text to search for.",
+                    )
+
+    def test_dcp_opa_authority_needles_are_literals_with_doubled_inner_quotes(self):
+        sql = CATALOG_CONTRACTS["dcp_opa_property_authority_v1"]
+        self.assertIn("position('r.contract_asserted_studio_code = ''", sql)
+        self.assertIn("position('o.opa_studio_code = ''", sql)
+
+    def test_built_behaviour_union_carries_no_quoted_identifier_needle(self):
+        checks = [
+            {
+                "id": "dcp-opa-authority",
+                "kind": "catalog_contract",
+                "contract": "dcp_opa_property_authority_v1",
+                "expected_count": 1,
+                "migration_version": "20260902120000",
+                "relation": "n/a",
+            }
+        ]
+        sql = build_behavior_sql(checks)
+        self.assertNotIn('position("', sql)
+        for token in self._double_quoted_tokens_outside_literals(sql):
+            self.assertRegex(token, self.IDENTIFIER)
+
+
+class BehaviourQueryErrorHonestyTests(unittest.TestCase):
+    """A check that never ran is an ERROR, not a MISSING row."""
+
+    CHECKS = [
+        {
+            "id": "dcp-opa-authority",
+            "kind": "catalog_contract",
+            "contract": "dcp_opa_property_authority_v1",
+            "expected_count": 1,
+            "migration_version": "20260902120000",
+            "relation": "n/a",
+        }
+    ]
+
+    def _render(self, behavior_error):
+        return render_report(
+            ["20260902120000"],
+            Targets(set(), set(), set(), set(), set(), set()),
+            None,
+            None,
+            [f"behavioral query failed: {behavior_error}"] if behavior_error else [],
+            True,
+            behavior_checks=self.CHECKS,
+            behavior_results=None,
+            behavior_error=behavior_error,
+        )
+
+    def test_failed_query_reports_error_not_missing(self):
+        report, failures = self._render('column "x" does not exist')
+        self.assertIn("ERROR", report)
+        self.assertNotIn("| MISSING |", report)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("DID NOT RUN", failures[0])
+        self.assertIn("not evidence that the contract is absent", failures[0])
+
+    def test_absent_row_without_a_query_error_is_still_missing(self):
+        report, failures = self._render(None)
+        self.assertIn("MISSING", report)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("expected 1 row(s)", failures[0])
+
+
+class SupersessionStatesTheCoverageItDrops(unittest.TestCase):
+    """Issue #2279 review finding: whole-check supersession loses coverage.
+
+    A check is ONE boolean over possibly several objects. When a later version
+    re-asserts even one of them, the whole check stops running -- including
+    everything it said about objects the later version never mentioned. That is
+    deliberate (the alternative does not fix the real #2029 batch), but it must
+    never be SILENT: after supersession, nothing in the batch asserts those
+    objects at all, and a reviewer has to be able to see exactly which ones.
+    """
+
+    def checks(self):
+        # Two versions. The earlier asserts A and B; the later re-asserts only
+        # A. B is then asserted by nothing.
+        return [
+            {
+                "id": "earlier",
+                "kind": "catalog_absence",
+                "object": "public.thing_a",
+                "expected_count": 1,
+                "migration_version": "20260101000000",
+                "relation": "public.thing_a",
+            },
+            {
+                "id": "later",
+                "kind": "catalog_absence",
+                "object": "public.thing_a",
+                "expected_count": 1,
+                "migration_version": "20260102000000",
+                "relation": "public.thing_a",
+            },
+        ]
+
+    def test_the_dropped_objects_are_recorded_on_the_superseded_check(self):
+        # A contract-shaped check carrying two objects, superseded on one of
+        # them. `catalog_contract` objects come from the contract SQL, so drive
+        # the marker directly with a stubbed extraction to keep the fixture
+        # honest about what it is testing.
+        checks = self.checks()
+        with mock.patch(
+            "production_catalog_verification.asserted_objects",
+            side_effect=[
+                {"relation:public.thing_a", "relation:public.thing_b"},
+                {"relation:public.thing_a"},
+            ],
+        ):
+            mark_superseded_contract_checks(
+                checks, ["20260101000000", "20260102000000"]
+            )
+        self.assertEqual(checks[0]["superseded_by"], "20260102000000")
+        self.assertEqual(checks[0]["superseded_objects"], ["relation:public.thing_a"])
+        self.assertEqual(
+            checks[0]["unreasserted_objects"], ["relation:public.thing_b"]
+        )
+        self.assertNotIn("superseded_by", checks[1])
+
+    def test_nothing_is_reported_dropped_when_everything_is_re_asserted(self):
+        checks = self.checks()
+        mark_superseded_contract_checks(checks, ["20260101000000", "20260102000000"])
+        self.assertEqual(checks[0]["superseded_by"], "20260102000000")
+        self.assertEqual(checks[0]["unreasserted_objects"], [])
+
+    def test_the_report_names_the_dropped_objects_and_says_nothing_asserts_them(self):
+        checks = self.checks()
+        checks[0]["superseded_by"] = "20260102000000"
+        checks[0]["superseded_objects"] = ["relation:public.thing_a"]
+        checks[0]["unreasserted_objects"] = ["relation:public.thing_b"]
+        report, failures = render_report(
+            ["20260101000000", "20260102000000"],
+            derive_targets({}, []),
+            {"rows": []},
+            None,
+            [],
+            True,
+            behavior_checks=checks,
+            behavior_results={"behavior_checks": [
+                {"id": "later", "expected_count": 1, "actual_count": 1}
+            ]},
+        )
+        self.assertIn("COVERAGE DROPPED", report)
+        self.assertIn("relation:public.thing_b", report)
+        self.assertIn("NOTHING", report)
+        # Visibility is not a failure: the batch is still correct.
+        self.assertEqual(failures, [])
+
+    def test_the_dropped_line_is_absent_when_no_coverage_was_lost(self):
+        checks = self.checks()
+        checks[0]["superseded_by"] = "20260102000000"
+        checks[0]["superseded_objects"] = ["relation:public.thing_a"]
+        checks[0]["unreasserted_objects"] = []
+        report, _ = render_report(
+            ["20260101000000", "20260102000000"],
+            derive_targets({}, []),
+            {"rows": []},
+            None,
+            [],
+            True,
+            behavior_checks=checks,
+            behavior_results={"behavior_checks": [
+                {"id": "later", "expected_count": 1, "actual_count": 1}
+            ]},
+        )
+        self.assertNotIn("COVERAGE DROPPED", report)
+
+
+class AbsenceNamesAreRevalidatedAtSqlBuildTime(unittest.TestCase):
+    """The build-time re-validation must be load-bearing, not decorative.
+
+    `load_behavior_sidecars` validates absence object names, so every test that
+    goes through a sidecar file feeds `build_behavior_sql` an already-clean
+    name -- and the re-validation there could be deleted with the whole suite
+    still green (the mutation the #2279 reviewer named). These tests hand the
+    builder a check directly, which is the only way that second gate is ever
+    exercised.
+    """
+
+    def check(self, object_name):
+        return {
+            "id": "absent",
+            "kind": "catalog_absence",
+            "object": object_name,
+            "expected_count": 1,
+            "migration_version": "20260101000000",
+            "relation": object_name,
+        }
+
+    def test_a_clean_name_still_builds(self):
+        sql = build_behavior_sql([self.check("public.widget_idx")])
+        self.assertIn("to_regclass('public.widget_idx')", sql)
+
+    def test_a_quote_in_the_name_is_refused_at_build_time(self):
+        with self.assertRaises(GuardError):
+            build_behavior_sql([self.check("public.widget'; drop table x --")])
+
+    def test_a_semicolon_in_the_name_is_refused_at_build_time(self):
+        with self.assertRaises(GuardError):
+            build_behavior_sql([self.check("public.widget; select 1")])
+
+    def test_an_uppercase_name_is_refused_at_build_time(self):
+        # Mixed case is not merely stylistic: an unquoted uppercase identifier
+        # folds, so the probe would silently target a different object.
+        with self.assertRaises(GuardError):
+            build_behavior_sql([self.check("PUBLIC.Widget")])
+
+    def test_an_unqualified_name_is_refused_at_build_time(self):
+        with self.assertRaises(GuardError):
+            build_behavior_sql([self.check("widget")])
+
+
+class CatalogMarkerReviewMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every marker-review guard from issue #2374."""
+
+    VERSION = "20260101000000"
+    REASON = (
+        "This marker is tied to the named durable verification contract and "
+        "cannot be accepted as unreviewed dynamic SQL."
+    )
+
+    def fixture(self, mutate=None, sql="execute dynamic_catalog_change;\n"):
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_marker.sql"
+        migration.write_text(sql, encoding="utf-8")
+        sidecar = {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [{
+                "id": "dynamic_contract",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 1,
+            }],
+            "marker_schema_version": 1,
+            "marker_reviews": [{
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "checks",
+                "check_ids": ["dynamic_contract"],
+                "reason": self.REASON,
+            }],
+        }
+        if mutate:
+            mutate(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def assert_rejected(self, mutate, message, sql="execute dynamic_catalog_change;\n"):
+        temp, root, migration = self.fixture(mutate, sql)
+        with temp, self.assertRaisesRegex(GuardError, message):
+            load_behavior_sidecars(root, {self.VERSION: migration}, [self.VERSION])
+
+    def test_marker_schema_version_must_be_exact(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_schema_version=2),
+            "marker_schema_version must be exactly 1",
+        )
+
+    def test_marker_reviews_must_be_a_non_empty_array(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_reviews=[]),
+            "marker_reviews must be a non-empty array",
+        )
+
+    def test_each_marker_review_must_be_an_object(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_reviews=["not-an-object"]),
+            "marker review 0 must be an object",
+        )
+
+    def test_marker_disposition_is_closed_to_the_two_supported_values(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["disposition"] = "ignore"
+
+        self.assert_rejected(mutate, "invalid marker disposition")
+
+    def test_marker_review_range_must_be_positive_and_ordered(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0].update(line_start=2, line_end=1)
+
+        self.assert_rejected(mutate, "invalid marker review range")
+
+    def test_marker_review_ranges_cannot_overlap(self):
+        def mutate(sidecar):
+            first = sidecar["marker_reviews"][0]
+            first.update(line_start=1, line_end=1)
+            second = dict(first, line_start=1, line_end=2)
+            sidecar["marker_reviews"] = [first, second]
+
+        self.assert_rejected(
+            mutate,
+            "marker review ranges overlap or are not strictly ordered",
+            "execute first_dynamic_change;\nexecute second_dynamic_change;\n",
+        )
+
+    def test_checks_disposition_must_name_a_present_check(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["check_ids"] = ["absent_check"]
+
+        self.assert_rejected(mutate, "marker review cites an absent check")
+
+    def test_checks_disposition_requires_substantive_reason(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["reason"] = "too short"
+
+        self.assert_rejected(
+            mutate, "checks disposition requires a substantive marker-to-contract rationale"
+        )
+
+    def test_no_target_disposition_requires_substantive_reason(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0] = {
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "no_durable_target",
+                "reason": "too short",
+            }
+
+        self.assert_rejected(
+            mutate, "no_durable_target reason must contain 40 non-whitespace characters"
+        )
+
+    def test_marker_reviews_must_cover_every_marker_exactly_once(self):
+        self.assert_rejected(
+            None,
+            "marker reviews must cover every marker line exactly once",
+            "execute first_dynamic_change;\nexecute second_dynamic_change;\n",
+        )
+
+    def test_empty_checks_cannot_claim_a_checks_disposition(self):
+        # The loader normally derives check_ids from item["checks"]. Drive the
+        # validator directly so its final consistency boundary is independently
+        # load-bearing instead of being masked by the earlier absent-id refusal.
+        item = {
+            "checks": [],
+            "marker_schema_version": 1,
+            "marker_reviews": [{
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "checks",
+                "check_ids": ["externally_supplied_check"],
+                "reason": self.REASON,
+            }],
+        }
+        with self.assertRaisesRegex(
+            GuardError, "empty checks require only no_durable_target reviews"
+        ):
+            _validate_marker_reviews(
+                item,
+                Path("marker.json"),
+                "execute dynamic_catalog_change;\n",
+                {"externally_supplied_check"},
+            )
+
+
+class CatalogSidecarLoadingMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every surviving loader guard from issue #2375."""
+
+    VERSION = "20260101000000"
+
+    def base_check(self):
+        return {
+            "id": "typed_row_check",
+            "kind": "exact_row_count",
+            "relation": "core.property",
+            "filters": [{"column": "name", "type": "text", "equals": "Alice"}],
+            "expected_count": 1,
+        }
+
+    def fixture(self, mutate=None, raw=None):
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_data.sql"
+        migration.write_text("update core.property set name = name;\n", encoding="utf-8")
+        sidecar = raw if raw is not None else {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [self.base_check()],
+        }
+        if mutate:
+            mutate(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def assert_rejected(self, mutate, message, raw=None, migrations=True):
+        temp, root, migration = self.fixture(mutate, raw)
+        index = {self.VERSION: migration} if migrations else {}
+        with temp, self.assertRaisesRegex(GuardError, message):
+            load_behavior_sidecars(root, index, [self.VERSION])
+
+    def test_sidecar_top_level_must_be_an_object(self):
+        self.assert_rejected(None, "sidecar must be an object", raw=[])
+
+    def test_sidecar_schema_version_is_exact(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(schema_version=2),
+            "schema_version must be exactly 1",
+        )
+
+    def test_sidecar_migration_version_matches_filename(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(migration_version="20260101000001"),
+            f"migration_version must equal {self.VERSION}",
+        )
+
+    def test_sidecar_requires_the_migration_in_repository_index(self):
+        self.assert_rejected(
+            None, f"migration {self.VERSION} is missing from the repository", migrations=False
+        )
+
+    def test_sidecar_hash_must_be_lowercase_sha256(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(migration_sha256="NOT-A-SHA"),
+            "migration_sha256 must be lowercase SHA-256",
+        )
+
+    def test_checks_must_be_an_array(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks={}), "checks must be an array"
+        )
+
+    def test_each_check_must_be_an_object(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks=["not-an-object"]),
+            "check 0 must be an object",
+        )
+
+    def test_check_id_has_closed_lowercase_shape(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["id"] = "Bad-ID"
+
+        self.assert_rejected(mutate, "invalid check id")
+
+    def test_check_ids_are_unique_across_sidecars(self):
+        def mutate(sidecar):
+            sidecar["checks"].append(dict(sidecar["checks"][0]))
+
+        self.assert_rejected(mutate, "duplicate behavioral check id")
+
+    def test_expected_count_is_a_non_negative_integer_not_boolean(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["expected_count"] = True
+
+        self.assert_rejected(mutate, "expected_count must be a non-negative integer")
+
+    def test_catalog_contract_count_is_exactly_one(self):
+        def mutate(sidecar):
+            sidecar["checks"] = [{
+                "id": "catalog_contract_check",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 0,
+            }]
+
+        self.assert_rejected(mutate, "catalog contract expected_count must be 1")
+
+    def test_row_count_filters_are_a_non_empty_array(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"] = []
+
+        self.assert_rejected(mutate, "filters must be a non-empty array")
+
+    def test_row_count_filter_columns_are_unique(self):
+        def mutate(sidecar):
+            filt = sidecar["checks"][0]["filters"][0]
+            sidecar["checks"][0]["filters"].append(dict(filt))
+
+        self.assert_rejected(mutate, "duplicate filter column")
+
+    def test_filter_scalar_type_is_allowlisted(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0]["type"] = "decimal"
+
+        self.assert_rejected(mutate, "unsupported scalar type")
+
+    def test_text_filter_value_must_be_a_string(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0]["equals"] = 7
+
+        self.assert_rejected(mutate, "text value must be a string")
+
+    def test_integer_filter_rejects_booleans(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0].update(type="integer", equals=True)
+
+        self.assert_rejected(mutate, "integer value must be an integer")
+
+    def test_boolean_filter_requires_a_boolean(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0].update(type="boolean", equals="true")
+
+        self.assert_rejected(mutate, "boolean value must be true or false")
+
+    def test_empty_checks_require_reviewed_marker_declaration(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks=[]),
+            "empty checks require a reviewed marker declaration",
+        )
+
+
+class CatalogBehaviorSqlMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every SQL-builder guard from issue #2376."""
+
+    def row_check(self):
+        return {
+            "id": "row_check",
+            "kind": "exact_row_count",
+            "relation": "core.property",
+            "filters": [{"column": "name", "type": "text", "equals": "Alice"}],
+            "expected_count": 1,
+            "migration_version": "20260101000000",
+        }
+
+    def test_builder_refuses_an_empty_check_list(self):
+        with self.assertRaisesRegex(GuardError, "without checks"):
+            build_behavior_sql([])
+
+    def test_builder_refuses_an_unknown_catalog_contract(self):
+        check = {
+            "id": "unknown_contract",
+            "kind": "catalog_contract",
+            "contract": "not_registered",
+            "expected_count": 1,
+            "migration_version": "20260101000000",
+        }
+        with self.assertRaisesRegex(GuardError, "unknown catalog contract"):
+            build_behavior_sql([check])
+
+    def test_builder_revalidates_row_relation(self):
+        check = self.row_check()
+        check["relation"] = "core.property; drop table core.property"
+        with self.assertRaisesRegex(GuardError, "unsafe behavioral relation"):
+            build_behavior_sql([check])
+
+    def test_builder_revalidates_row_filter_column(self):
+        check = self.row_check()
+        check["filters"][0]["column"] = "name) or true --"
+        with self.assertRaisesRegex(GuardError, "unsafe behavioral column"):
+            build_behavior_sql([check])
+
+    def test_builder_refuses_when_every_check_is_superseded(self):
+        check = self.row_check()
+        check["superseded_by"] = "20260102000000"
+        with self.assertRaisesRegex(GuardError, "every check is superseded"):
+            build_behavior_sql([check])
+
+
+class HtsProductPhraseContractTests(unittest.TestCase):
+    """Issue #2986: the phrase migration's own post-apply evidence."""
+
+    VERSION = "20260928182014"
+
+    def migration(self):
+        return next((REPO / "supabase" / "migrations").glob(f"{self.VERSION}_*.sql"))
+
+    def test_phrase_contract_is_registered_and_schema_conditioned(self):
+        sql = CATALOG_CONTRACTS["hts_product_phrase_columns_v1"]
+        self.assertIn("table_schema = 'plm'", sql)
+        # The dflow_prod half is owed only where the schema exists, mirroring the
+        # sandbox conditioning lane; the plm half is owed everywhere.
+        self.assertIn("not exists (select 1 from pg_namespace where nspname = 'dflow_prod')", sql)
+        self.assertIn("table_schema = 'dflow_prod'", sql)
+        self.assertEqual(sql.count("'hts_product_phrase_at'"), 4)
+        self.assertEqual(sql.count("'RFQItem'"), 6)
+        self.assertIn("is_nullable = 'YES'", sql)
+        self.assertIn("column_default is null", sql)
+        self.assertNotRegex(sql.lower(), r";.*(insert|update|delete|drop table|create table|alter table)")
+
+    def test_phrase_sidecar_binds_the_contract_to_the_real_file(self):
+        checks = load_behavior_sidecars(REPO, {self.VERSION: self.migration()}, [self.VERSION])
+        self.assertEqual([check["id"] for check in checks], ["hts_product_phrase_columns_contract"])
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(checks[0]["contract"], "hts_product_phrase_columns_v1")
+        self.assertEqual(checks[0]["expected_count"], 1)
+        sql = build_behavior_sql(checks)
+        self.assertIn("hts_product_phrase_columns_contract", sql)
+        self.assertIn("hts_product_phrase_columns_v1", CATALOG_CONTRACTS)
+
+    def test_phrase_migration_derives_no_lexer_target_so_the_sidecar_is_the_only_evidence(self):
+        # The quoted mixed-case identifiers are invisible to the statement lexer,
+        # so without the sidecar a phrase-only allowlist verifies NOTHING and
+        # enforcing mode refuses. This pin keeps that reason honest.
+        self.assertTrue(derive_targets({self.VERSION: self.migration()}, [self.VERSION]).is_empty())
+
+
+if __name__ == "__main__":
+    unittest.main()

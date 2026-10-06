@@ -1,0 +1,89 @@
+# Advisory-lock registry (shared Supabase database)
+
+PostgreSQL advisory locks are **global to the database and keyed only by a number**.
+Nothing in the database validates them, nothing names them, and nothing warns you when two
+unrelated features pick the same key. When that happens the symptom is not an error — it is
+two features mysteriously blocking each other, or a `pg_try_*` call returning `false` for a
+reason that appears nowhere in either feature's code.
+
+Every app in POP Creations shares one database, so this file is the registry. **Before
+introducing a new advisory lock, add its key here. Before choosing a key, read the table.**
+
+## Rules
+
+1. **Literal constants for singleton lane locks.** Do not derive a singleton key with
+   `hashtext('some.function')`. `hashtext()` is only guaranteed stable *within* a PostgreSQL
+   major version, so an upgrade can silently move the lock and let two runs interleave with
+   no code change and no visible signal anywhere. Derived keys are fine for **per-row**
+   locks, where the point is a key per entity rather than a stable global identity.
+2. **Transaction-scoped (`pg_*_advisory_xact_lock`) by default.** The lock is released by
+   `COMMIT` or `ROLLBACK`, so a crashed, cancelled or timed-out session cannot leave a lane
+   wedged. A lock taken inside a subtransaction (a savepoint or a PL/pgSQL exception block)
+   is also released when that subtransaction aborts; it is kept only if the subtransaction
+   commits. `supabase/tests/wb_qualified_baseline_publication_contracts.sql` proves this at
+   runtime before relying on it (#3691). Session-scoped locks need an explicit unlock and a documented reason.
+3. **`try`, not a blocking wait, for scheduled work.** A scheduled job that queues behind a
+   long-running one applies a plan computed against a snapshot that has since moved. Prefer
+   "skip this cycle and report it" over "wait and then act on stale input".
+4. **Losing the race is never a silent no-op.** This repository forbids silent failures.
+   A skipped run must be durably recorded and must be distinguishable, by the caller, from
+   both success and failure — including by the alerting that watches it.
+
+## Registered keys
+
+| Key | Scope | Owner | Purpose |
+|---|---|---|---|
+| `720260729` | transaction, `try` | `plm.promote_coldlion_source_owned` | Serializes the ColdLion Licensor/Property **recurring promotion lane** (Step 7A). The lane is driven both by a scheduled GitHub Actions workflow and by manual drills; without this, a drill and a scheduled run could promote the same mirror rows concurrently and write two overlapping `ingest.sync_run` rows plus duplicate `plm.coldlion_promotion_audit` entries for the same field. Digits encode the lane: `7` = Step 7A, `20260729` = the date the recurring promotion shipped. Added 2026-07-31 by `supabase/migrations/20260731180000_coldlion_recurring_promotion_serialization_lock.sql`. |
+| `620260823` | **session**, `try` | `scripts/apply-lane-advisory-lock.mjs`, called by the migration apply workflows | Serializes a `supabase db push` against ONE target so two live applies cannot overlap. Digits encode the lane: `6` = plan Step 6, `20260823` = the date it shipped. **Session-scoped by explicit exception to rule 2, and the reason matters:** the lock must outlive individual statements for the whole duration of an apply, and `db push` runs its own transactions that this code does not control, so a transaction-scoped lock would release between them and protect nothing. It is taken on a dedicated connection whose lifetime IS the apply, and dropping that connection releases it, so a crashed apply cannot wedge the lane. **Read the honest limit below before relying on it.** Added 2026-08-23 by issue #1366 Step 6. |
+| `21450` + `sample_id_fk` | transaction, blocking | sample-movement trigger (`20260722221400_sample_tracking_movements_and_closeouts.sql`) | Per-sample serialization of movement/closeout accounting. Two-argument form, so the second int is the row identity, not a second lane. |
+
+### Derived (per-row) keys — not singleton lanes
+
+These use `hashtextextended(<entity uuid>, <classifier>)`, i.e. a key **per row pair**, so
+rule 1 does not apply. They are listed so the classifiers are not reused with a different
+meaning.
+
+| Classifier | Owner | Purpose |
+|---|---|---|
+| `0`, `1` | `20260722004500_db_data_admin_merge_fk_coverage.sql` | DB Data Admin merge FK coverage — locks the loser/survivor pair in a fixed order to avoid deadlock. |
+| `10` (customer), `11` (vendor) | `20260722194000_db_data_admin_merge_workflow.sql` | DB Data Admin merge workflow, same loser/survivor ordering discipline. |
+
+## What key `620260823` does and does NOT protect (issue #1366 Step 6)
+
+**It prevents two LIVE applies overlapping on one target.** That is real, and worth having.
+
+**It does not close the dying-backend window, and must never be described as if it does.**
+When a crashed apply's lane is recovered at the GitHub layer, the old job's database session
+may still be finishing. A lock held on the applier's own connection is released the instant
+that connection dies — which is exactly the moment the race opens. So the next holder can
+still, in principle, begin while the previous backend is winding down.
+
+What actually bounds that window is the **10-minute recovery grace** in
+`scripts/lib/exclusive-lease.mjs`: a lane cannot be taken over until its recorded GitHub run
+is conclusively finished and ten minutes have passed. The window is *bounded*, not
+*eliminated*.
+
+Closing it properly would mean pinning the lock to the session that executes the DDL —
+replacing or wrapping `supabase db push` with a session-pinned applier. That is a larger
+change than it sounds and has not been made. It is recorded as an open judgment in
+`plan_multi_agent_database_coordination_hardening.md` Step 6 rather than quietly assumed.
+
+## What "skipped" looks like on the ColdLion promotion lane
+
+The one lane with a documented skip contract, as of 2026-07-31:
+
+- **Database** — `plm.promote_coldlion_source_owned` commits an `ingest.sync_run` row with
+  `status = 'cancelled'` (not `failed`), `source_name = coldlion_licensors_properties_promote_source_owned`,
+  and `metadata.outcome = 'skipped_already_running'`; it returns `mode = 'skipped_already_running'`
+  with every count zero, and raises a `warning` naming the run id and the lock key.
+- **Runner** — `tools/promote-coldlion-source-owned.mjs` exits **3**, distinct from success
+  (`0`) and failure (`1`).
+- **Alerting** — nothing fires. The skip path never calls `record_taxonomy_sync_alert` and
+  never writes a `failed` row, so it cannot contribute to the **two-consecutive-failure**
+  `pg_notify('coldlion_sync_alert', …)` breaker in `tools/coldlion-sync-common.mjs`. That
+  separation is the whole point: two healthy overlapping cycles must not manufacture an
+  outage by tripping the breaker.
+- **Workflow** — the `promote` step in
+  `.github/workflows/coldlion-licensor-property-production.yml` maps exit 3 to a green job
+  with a `::notice::`. (That workflow remains **disabled**; this mapping is part of its
+  standing contract, not an enablement.)

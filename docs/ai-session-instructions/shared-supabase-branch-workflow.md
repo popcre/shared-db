@@ -1,0 +1,318 @@
+# Shared Supabase Branch Workflow For App Rewrite Sessions
+
+Use this guide for AI sessions rewriting POP app frontends from Directus to Supabase.
+
+- [plan_shared_db_workflow_refactor.md](../../plan_shared_db_workflow_refactor.md)
+
+## Goal
+
+CRM and PM/PIM are being rewritten to use Supabase directly. Their new backend tables, views, RPCs, RLS changes, and realtime configuration must land in the shared Supabase database design owned by this repo.
+
+Do not create app-specific Supabase projects for CRM or PM. Use the shared project.
+
+## Repos And Ownership
+
+| Concern | Owner |
+|---|---|
+| Database schemas, migrations, RLS, API views, RPCs, realtime publication | `popcre/shared-db` |
+| CRM frontend rewrite | `u2giants/popcrm-web` |
+| PM/PIM frontend rewrite | `u2giants/poppim-web` |
+| Existing live DAM data/project | Supabase project `qsllyeztdwjgirsysgai` |
+
+The app repos may contain generated client types and frontend code, but any database **structure** change belongs in `shared-db/supabase/migrations`. Data is different: the rows an application creates, edits, or deletes in the normal course of its work belong to that application's own session, with no issue and no dispatch — owner ruling 2026-08-13, [`AGENTS.md` §0.0-B](../../AGENTS.md). The one exception is bulk or ad-hoc loading of outside-sourced content into curated Master Data (`core.licensor`, `core.property`, `core.character`, `core.customer`, `core.factory`, `*_ext`), which stays gated under §6.4. §4.2's connection-target proof applies to every data write either way.
+
+## Supabase Targets
+
+Production/main project:
+
+```text
+Project ref: qsllyeztdwjgirsysgai
+URL: https://qsllyeztdwjgirsysgai.supabase.co
+Purpose: live PopDAM project; do not apply untested app migrations here.
+```
+
+Preview branch for CRM/PM rewrite work:
+
+```text
+Branch name: shared-db-schema-rehearsal
+Preview project ref: read the repository variable PREVIEW_PROJECT_REF — never a literal
+Created with data: true
+Persistent: true
+Purpose: shared integration target for schema/app rewrite testing.
+```
+
+⚠️ **Do not hardcode a preview project ref anywhere in this doc, a script, or an
+app's config.** Preview is rebuilt from time to time and its ref changes when it
+is — `rjyboqwcdzcocqgmsyel` was deleted 2026-08-18, its replacement was itself
+rebuilt again, and the current ref is `mvpkijzfmfcxhnzqogzs` as of 2026-09-03
+(verify with `gh variable get PREVIEW_PROJECT_REF -R popcre/shared-db` before
+trusting even that). This doc previously hardcoded the dead ref in five places;
+that staleness is exactly what broke `data-dev.designflow.app`'s Coolify env
+vars and a preview-branch 1Password credential item on 2026-09-03 — both had
+been pointed at `rjyboqwcdzcocqgmsyel` and nobody updated them when the branch
+was rebuilt, so calls returned 401 until fixed that day. See
+[`docs/db-data-admin-deployment.md`](../db-data-admin-deployment.md) and
+[`AGENTS.md` §4 rule 2 / §8](../../AGENTS.md) for the same rule applied
+elsewhere in this repo.
+
+## Current Baseline On The Preview Branch
+
+The preview branch already has the baseline shared schema migrations applied:
+
+```text
+20260621150714_foundation.sql
+20260621150815_app_core.sql
+20260621151024_domain_tables.sql
+20260621151155_api_rls_realtime.sql
+```
+
+Baseline result:
+
+```text
+8 logical schemas
+85 tables
+6 API views
+153 RLS policies
+```
+
+## Required Working Pattern
+
+1. Clone or open `popcre/shared-db`.
+2. Authenticate the installed Supabase CLI with the canonical 1Password PAT:
+
+   ```bash
+   SUPABASE_ACCESS_TOKEN="$(op read 'op://vibe_coding/Supabase CLI Personal Access Token/SUPABASE_ACCESS_TOKEN')"
+   supabase login --token "$SUPABASE_ACCESS_TOKEN"
+   supabase projects list
+   ```
+
+   If the one-command environment form returns Unauthorized, do not rotate the
+   PAT until you have tested `supabase login --token ...` and the direct
+   Management API. The installed CLI may need its stored login refreshed.
+
+3. Link the Supabase CLI to the preview branch, not production, using the
+   preview branch database password from 1Password:
+
+   ```bash
+   PREVIEW_DB_PASSWORD="$(op read 'op://vibe_coding/Supabase Preview Branch Credentials - shared POP database (shared-db-schema-rehearsal)/password')"
+   PREVIEW_PROJECT_REF="$(gh variable get PREVIEW_PROJECT_REF -R popcre/shared-db)"
+   supabase link --project-ref "$PREVIEW_PROJECT_REF" --password "$PREVIEW_DB_PASSWORD"
+   ```
+
+4. Create new migration files in `supabase/migrations`.
+5. Keep changes additive whenever possible.
+6. Run local/static checks:
+
+   ```bash
+   scripts/check-sql.sh
+   ```
+
+7. Dry-run against the preview branch:
+
+   ```bash
+   supabase db push --dry-run
+   ```
+
+8. Apply only to the preview branch:
+
+   ```bash
+   supabase db push
+   ```
+
+9. Point the app rewrite to the preview branch URL and test the frontend there.
+10. Commit the migration files and any docs to `shared-db`.
+11. **Open and land the PR promptly.** Step 8 leaves your migrations in the
+    preview ledger. Until they also exist in `main`, every *other* workstream is
+    blocked — see the next section.
+
+## When preview holds another workstream's unmerged rehearsal
+
+The preview branch is **persistent and shared**, so its ledger accumulates the
+migrations of every branch that has ever run step 8 — including branches that
+were never merged. A checkout based on `main` cannot reconcile against that
+ledger, so a second concurrent workstream's step 7 dies before it starts:
+
+```text
+Remote migration versions not found in local migrations directory.
+...
+supabase migration repair --status reverted 20260727013000 20260727013100 ...
+```
+
+**Never run the repair command the CLI suggests here.** Those versions are
+another team's *applied, working* rehearsal. Repairing them to `reverted` deletes
+their ledger rows while the functions, tables and indexes stay in the preview
+database — so the next push from their branch tries to create objects that
+already exist. You will have broken someone else's workstream to unblock your
+own.
+
+The correct response, in order of preference:
+
+1. **Land the other branch.** If its work is complete and rehearsed, open its PR
+   and merge it (§5). Once it is in `main`, preview and `main` reconcile and step
+   7 works again for everyone. This is usually the right answer, and it is the
+   whole point of `AGENTS.md` §4 rule 1 — *finish or land the in-flight change
+   first.*
+2. **Coordinate with its owner** if the work is genuinely mid-flight and cannot
+   land yet.
+3. **Only if neither is possible**, run your step 7/8 from a temporary
+   integration checkout that contains both `main` and the in-flight branch's
+   migration files. That checkout mirrors what preview actually is — the shared
+   integration target — so the comparison is honest. Do not commit that merge;
+   it exists to make the CLI's view match reality.
+
+Real occurrence, 2026-07-27: `codex/poppim-audit-remediation` applied 17
+migrations (`20260727013000`–`20260727024300`) to preview and never opened a PR.
+Every other session's preview dry-run failed until the branch was merged as
+PR #271. Two `dam_customer_hub_*` versions from a third concurrent session showed
+up on preview during the same window. Diagnose with:
+
+```bash
+# versions on preview that are absent from main == the blocking set
+comm -13 \
+  <(git ls-tree --name-only origin/main supabase/migrations/ | sed 's|.*/||' | cut -c1-14 | sort) \
+  <(psql "$PREVIEW_URL" -t -A -c 'select version from supabase_migrations.schema_migrations order by version')
+```
+
+Empty output means preview and `main` are reconciled and nothing is blocking.
+
+If `supabase db push` or `supabase migration list` fails with a login role or
+connection error, relink with the branch password from 1Password. Do not switch
+to manual SQL or dashboard edits:
+
+```bash
+PREVIEW_DB_PASSWORD="$(op read 'op://vibe_coding/Supabase Preview Branch Credentials - shared POP database (shared-db-schema-rehearsal)/password')"
+PREVIEW_PROJECT_REF="$(gh variable get PREVIEW_PROJECT_REF -R popcre/shared-db)"
+supabase link --project-ref "$PREVIEW_PROJECT_REF" --password "$PREVIEW_DB_PASSWORD"
+supabase db push --dry-run
+```
+
+Do not commit passwords, service-role keys, anon keys, or generated `.env` files.
+If a script builds a database URL from an environment variable, export the
+variable or pass it into that command; otherwise child processes such as `node`
+may see `undefined` and make a valid password look rejected.
+
+## Migration Naming
+
+Use timestamped names that identify the app and purpose:
+
+```text
+supabase/migrations/YYYYMMDDHHMMSS_crm_<short_description>.sql
+supabase/migrations/YYYYMMDDHHMMSS_pim_<short_description>.sql
+```
+
+Examples:
+
+```text
+20260621103000_crm_account_rpc_contracts.sql
+20260621104500_pim_product_board_indexes.sql
+```
+
+Parallel sessions must avoid duplicate timestamps. Before creating a migration, run:
+
+```bash
+ls supabase/migrations
+```
+
+## Schema Boundaries
+
+Use these schemas:
+
+| Schema | Use |
+|---|---|
+| `app` | profiles, roles, app access, comments, activity, notifications, generic files |
+| `core` | shared companies, contacts, licensors, properties, characters, factories, taxonomy, SKU refs |
+| `crm` | CRM-only operational tables |
+| `pim` | PM/PIM product/project/design/workflow/order tables |
+| `dam` | DAM assets/style groups/style guides/queues |
+| `plm` | item master, production order, licensing/RFQ operational records |
+| `ingest` | raw imports, snapshots, sync runs, dedupe candidates |
+| `api` | browser-facing views and RPC contracts |
+
+Do not create duplicate customer/contact/product/factory/taxonomy tables inside `crm` or `pim`. Use `core` FKs.
+
+## Cross-App Realtime Rule
+
+For one frontend action to instantly affect another frontend, write to canonical shared rows in this one Supabase project.
+
+Do not make frontend A call frontend B. Do not dual-write from browser code.
+
+Preferred patterns:
+
+- Shared entity change: write canonical table, subscribe to canonical table or `api` contract.
+- Workflow side effect: database trigger or service-side Edge Function writes the downstream table.
+- UI-specific shape: create an `api` view or RPC over canonical tables.
+
+## Promotion To Production
+
+Do not copy objects manually from the preview branch in the Supabase dashboard.
+
+The promotion path is migration-file based:
+
+1. Confirm the app rewrite works against the current preview project — read
+   `PREVIEW_PROJECT_REF`, never a hardcoded ref.
+2. Commit and push the migration files to `popcre/shared-db`.
+3. Review schema diff, RLS exposure, and frontend behavior.
+4. Authenticate the installed Supabase CLI with the canonical 1Password PAT:
+
+   ```bash
+   SUPABASE_ACCESS_TOKEN="$(op read 'op://vibe_coding/Supabase CLI Personal Access Token/SUPABASE_ACCESS_TOKEN')"
+   supabase login --token "$SUPABASE_ACCESS_TOKEN"
+   supabase projects list
+   ```
+
+5. Link a clean checkout of `shared-db` to production with the production DB
+   password from 1Password:
+
+   ```bash
+   PROD_DB_PASSWORD="$(op read 'op://vibe_coding/Supabase DB Password - shared POP database/password')"
+   supabase link --project-ref qsllyeztdwjgirsysgai --password "$PROD_DB_PASSWORD"
+   ```
+
+6. Dry-run production:
+
+   ```bash
+   supabase db push --dry-run
+   ```
+
+7. Confirm only approved migrations are listed.
+8. Apply to production during an approved window:
+
+   ```bash
+   supabase db push
+   ```
+
+9. Immediately verify:
+
+   ```bash
+   supabase migration list
+   ```
+
+If production auth fails, fix the CLI login or 1Password credential notes before
+continuing. A valid PAT can still return Unauthorized through the installed CLI
+until `supabase login --token ...` refreshes local CLI auth. A valid DB password
+can look bad if a shell variable was not exported before a child process used
+it. Prefer the linked CLI migration path; if direct DB access is required, use
+the Supabase pooler host `aws-1-us-east-1.pooler.supabase.com`, port `6543`,
+user `postgres.qsllyeztdwjgirsysgai`, database `postgres`.
+
+For the first production promotion, production does not yet have the baseline shared schema migrations. Expect the baseline migrations plus any accepted CRM/PM migrations to appear in the dry-run. If that is not desired, stop and split the rollout deliberately.
+
+## What Not To Do
+
+- Do not run unreviewed SQL directly in production SQL Editor.
+- Do not put database DDL only in `popcrm-web` or `poppim-web`.
+- Do not create another Supabase project for CRM or PM.
+- Do not expose base PLM/RFQ/pricing tables directly to general authenticated users.
+- Do not grant vendor product/order access until vendor row scoping exists.
+- Do not move DAM object storage as part of CRM/PM rewrites.
+- Do not rename/move existing PopDAM `public` tables during app rewrite work.
+
+## Required Handoff From Each AI Session
+
+Each app migration session must leave:
+
+- Migration files committed in `shared-db`.
+- A short doc under `docs/app-migration-notes/` describing frontend env vars, tested screens, table/view/RPC usage, and remaining gaps.
+- Confirmation that the app was tested against the current preview project
+  (`https://$PREVIEW_PROJECT_REF.supabase.co` — read the ref, never hardcode it).
+- A production promotion checklist naming exactly which migrations should be applied.

@@ -1,0 +1,107 @@
+# Syncs the shareable root of this repo (popcre/shared-db) into the
+# `shared-db/` subfolder of each consumer repo, on every push to main.
+#
+# - Mirror semantics: the destination subfolder becomes an exact copy of this
+#   repo's root (files deleted here are deleted there). `.git`, `.github`, and
+#   the top-level `apps/` application workspace are never copied.
+# - Direct push to each target's default branch (main or develop, auto-detected
+#   by `git clone`).
+# - Deploy suppression is handled by consumer CI/CD path filters, not by
+#   removing consumers from this matrix. The popcre sandbox Cloud Build triggers
+#   should ignore `shared-db/**`.
+# - Auth: a classic PAT with `repo` scope, stored as the `SYNC_TOKEN` secret.
+#
+# To change the destination folder, edit DEST_SUBDIR below.
+# To add/remove a consumer, edit the matrix.target list.
+
+name: Sync shared-db to consumers
+
+on:
+  push:
+    branches: [main]
+  # Guarded merges land as github-actions using the workflow token, and GitHub
+  # starts no `push` workflow for a push made with that token — so a guarded
+  # merge previously left every consumer stale (#3264). The guarded merge
+  # workflow dispatches this trigger on main right after its own merge lands.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-shared-db
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A manual workflow_dispatch takes whatever ref the caller names; without
+    # this gate a write collaborator (or any actions:write token) could
+    # dispatch this job on an unmerged branch and push it straight to every
+    # consumer, bypassing main's protection entirely. The guarded-merge
+    # dispatch always passes --ref main, so it is unaffected (#3264 review).
+    if: github.ref == 'refs/heads/main'
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - u2giants/popcrm-web
+          - u2giants/popdam3
+          - u2giants/poppim-web
+          - popcre/designflow-bff
+          - popcre/designflow-frontend
+          - popcre/designflow-backend
+          - popcre/designflow-item-master
+          - popcre/designflow-tracking
+          - popcre/designflow-data-syncing
+    env:
+      DEST_SUBDIR: shared-db
+    steps:
+      - name: Checkout canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+          fetch-depth: 1
+
+      - name: Clone target repo
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ matrix.target }}.git" \
+            target
+
+      - name: Mirror source root into destination subfolder
+        run: |
+          # Keep this probe so the exclusion remains tested even before an app
+          # exists in the canonical apps/ workspace.
+          mkdir -p source/apps
+          touch source/apps/.sync-exclusion-probe
+
+          mkdir -p "target/${DEST_SUBDIR}"
+          rsync -a --delete --delete-excluded \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='/apps/' \
+            source/ "target/${DEST_SUBDIR}/"
+
+      - name: Verify mirror boundary
+        run: |
+          test ! -e "target/${DEST_SUBDIR}/apps"
+          cmp source/AGENTS.md "target/${DEST_SUBDIR}/AGENTS.md"
+
+      - name: Commit and push if changed
+        working-directory: target
+        run: |
+          git config user.name "shared-db-sync[bot]"
+          git config user.email "shared-db-sync@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes for ${{ matrix.target }} — already up to date."
+            exit 0
+          fi
+          git commit -m "chore: sync shared-db @ ${{ github.repository }}@${GITHUB_SHA::7}"
+          git push

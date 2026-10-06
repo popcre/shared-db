@@ -1,0 +1,1267 @@
+# AGENTS.md §4 — the five anti-collision rules, full text
+
+> **Orchestrator role retired (owner ruling, Albert Hazan, 2026-10-02: "there is no longer an
+> orchestrator"; AGENTS.md §0.0-D).** Structural work is claim-first. Wherever this file says
+> "the orchestrator", read "the session doing the structural work". Instructions to resolve a
+> marker, route or hand over to an orchestrator, or wait for dispatch are historical. Text that
+> describes what current automation does (the `route: shared-db-orchestrator` value, marker reads,
+> engine exclusion) describes code, not a role; retiring that code is open on #3874.
+
+- [current-workflow.md](current-workflow.md)
+
+> **Active hardening plan:** [`../../plan_multi_agent_database_coordination_hardening.md`](../../plan_multi_agent_database_coordination_hardening.md), issue #1366. Read its STATUS table first. It preserves the rules below while adding read/write dependencies, proven prerequisites, provider-neutral work contracts, lifecycle traces, recoverable fenced stage leases, and an opt-in Supabase branch pilot. Its implementation is repository maintenance outside the structure/schema orchestrator.
+>
+> **Completed reviewer API-budget plan:** [`../../plan_reviewer_assignment_api_budget.md`](../../plan_reviewer_assignment_api_budget.md), issue #1767. Read its STATUS table and verification link before changing reviewer assignment. It replaced historical availability scans with a bounded active-reviewer index, strict pre-lock quota/request checks, cached PR/verdict reads, and exhaustive mutex-cleanup tests. The current fixed per-operation ceiling is 25 requests; see the dated re-derivations and #2550 repair in the verification record.
+
+Reviewer availability is the bounded active-lease index. Before the parallel-review cutover it was keyed one ref per provider, `refs/db-review-active/<reviewer>`; since #2694 a lease is keyed by the assignment it covers, `refs/db-review-active-v2/<reviewer>/<issue>-<pr>-<head>[-slotN]`, so one provider may hold several independent live reviews at once and a reviewer name no longer identifies at most one lease. Both namespaces are read; the pre-cutover name is still honoured for a review that was already live when the cutover landed. Because a tuple-keyed lease is never drawn again, it is not reclaimed implicitly by that provider's next draw: recording a verdict releases its own lease, and the listing ceiling on the namespace is a refusal that names itself rather than a silent truncation. Permanent assignment, replacement, and failure refs remain immutable audit evidence and are never scanned to decide availability. Each command reads the active prefix once, caches repeated evidence, refuses before creating an owner commit or mutex when GitHub quota is unreadable or below reserve, and stops before the enforced ceiling (`REVIEW_OPERATION_REQUEST_LIMIT` — **25 since 2026-09-01**, so request 26 is refused). Replacement preflight batches the immutable failure ref named by each suffixed replacement record, and absence in the complete active-reviewer snapshot is not reread; neither optimization replaces the fresh checks inside the mutex. Read the constant, never a number copied from a document. Quota reset errors use `America/New_York`.
+
+An exact-head verdict, terminal failure/replacement, moved head, merged PR, or closed PR makes a lease stale; a verdict additionally releases the lease it was recorded against, so the stale classification is the fallback for leases no verdict path reclaimed. Stale leases are deleted only while the global mutex is owned and the fixed ref still matches its expected SHA. If release cannot be proved, preserve the named ref/SHA and use the guarded `recover-author-mutex.yml` procedure.
+
+Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The live orchestrator engine is excluded from review; Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. **With zero open orchestrator markers (`state: none`) the exclusion list is empty and the whole rotation stays drawable** (issue #2127): the exclusion is a same-engine conflict guard, and with no live engine there is no conflict, so closing a marker must not freeze merging repository-wide. `ambiguous`, `invalid` and `unsafe` marker states still refuse. The marker resolver exits non-zero for answers it is certain of (3 for `none`, 1 for the refusing states), so a non-zero exit carrying parseable JSON is an ANSWER; only unreadable output is a resolver fault, and the refusal names which it was.
+
+Relocated from `AGENTS.md` on 2026-08-20 (issue #1331, PR #1212) so the router stays under its
+80 KB ceiling. **Text unchanged, section number unchanged.** `AGENTS.md` §4 carries the operative
+summary and points here; where the two differ in wording, `AGENTS.md` wins.
+
+## 4. The five anti-collision rules (shared database)
+
+1. **There is no limit on how many unrelated migrations may be authored at once. Preview, merges,
+   and production promotion remain one at a time.** Albert's owner ruling of
+   2026-08-14 set a cap of three; it rose to five (2026-08-25), eight
+   (2026-08-28) and twenty-four (2026-09-11). Later on 2026-09-11 he ruled
+   there must be no limit on migration author lanes at all, ever (marker #2758,
+   issue #2775), and the cap was removed. Concurrent authors must use isolated
+   worktrees, exact object claims and centrally reserved versions. Protected
+   blocked claims continue blocking every overlapping object and version.
+   Reviewer draws have no global queue: any pull request draws any usable
+   reviewer immediately; a reviewer holding other live leases is not busy and
+   is never a reason to wait (no per-reviewer concurrency limit).
+
+   Isolation never depended on a lane count. It comes from the exact object
+   claim, the global acquisition mutex, the permanent version reservation and
+   the single-holder preview/merge/production refs, all of which remain
+   enforced. More authors never means more sessions touching a live database;
+   it means more drafts queueing for the same serial stages. Do not reintroduce
+   a lane cap in `scripts/manage-migration-author-lanes.mjs`; a test refuses it.
+
+   **Do not open a migration file first.** Acquire an author lane, object claim
+   and unique 14-digit version as one dispatch operation:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --claim \
+     --task "<issue and outcome>" --owner "<agent/session>" \
+     --branch "<branch>" --worktree "<absolute isolated worktree>" \
+     --objects "<every exact object written, comma-separated>"
+   ```
+
+   Allocation is serialized across computers by a GitHub-backed lock. The command
+   fails closed if claims are unreadable, objects overlap an open claim or pull
+   request, GitHub is unavailable, or version reservation fails. It never refuses
+   for lack of author capacity. Older claims protect objects until explicitly
+   released; a guarded capacity relinquishment marks a claim as blocked.
+   The created issue body is authoritative and machine-readable. Never hand-edit
+   its fenced blocks. The permanent version ref prevents reuse even after a lease
+   ends. Clock expiry releases neither protection nor capacity. When durable
+   external evidence blocks clean work, use `--relinquish-author-lease
+   --claim-number <n> --owner <owner> --blocked-on issue:#<n>`; after the blocker
+   clears, use `--resume-author-lease --claim-number <n> --owner <owner>
+   --lease-hours <hours>`. The value flag is `--claim-number` on both: a bare
+   `--claim` is the boolean that claims a lane. If a resumed claim still carries
+   `blocked_on`, `worktree_state` or `recovery` (refused as unreadable), repair it
+   with `--repair-resumed-claim --claim-number <n> --owner <owner>`; it only
+   removes that residue, and only after a recorded `author_capacity_resumed`
+   event (issue #3170).
+
+   **An expired lease is not an abandoned lane (issue #2301).** Expiry is
+   created by time passing. It proves that nobody renewed a claim; it does not
+   prove the author is gone, and it never releases either the object protection
+   or the capacity slot. Detection and decision are therefore separate steps,
+   and nothing in this repository transitions a claim because a clock ran out.
+
+   Detect with the read-only audit:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --abandonment-audit
+   ```
+
+   It prints the same report as `--reconcile-flow` but cannot write: the
+   sole-orchestrator marker reads as gone and every mutation hook throws before
+   the reconciler can reach it, so a regression fails loudly instead of writing.
+   Its exit code is the answer — `0` no expired lane, `2` at least one expired
+   lane needs a decision, `3` unverifiable — the state could not be read and
+   nothing may be concluded from the run. `3` outranks `2`: an audit that could not read
+   everything is not trusted to have seen the expiry either. The same report
+   runs hourly as the `Author Lane Abandonment Audit` workflow, which holds only
+   `read` scopes and files no issue and no comment; the failing run and its job
+   summary are the report. Never run `--reconcile-flow` from a scheduled job.
+
+   **The abandonment record.** Before any lane is touched, open an abandonment
+   audit issue using
+   [`.github/ISSUE_TEMPLATE/author-lane-abandonment.md`](../../.github/ISSUE_TEMPLATE/author-lane-abandonment.md).
+   It must identify the claim, the pull request and its exact head, the recorded
+   owner, the branch, the migration version, the last known worktree and
+   machine, the expiry, the evidence that the author is terminal or unreachable,
+   the observed worktree state, and the recovery or successor references. Record
+   the machine and worktree as their recorded identifiers only; never paste
+   personal paths, account names, tokens, or message contents into the issue.
+   The issue carries its own `db-work-scope` fence so the queue can order it:
+
+   ````text
+   ```db-work-scope
+   status: ready
+   work_type: repo-maintenance
+   route: repo-maintenance
+   change_type: repo-maintenance
+   priority: 100
+   depends_on:
+   writes:
+   reads:
+   ```
+   ````
+
+   `writes:` and `reads:` are empty on purpose. An abandonment audit claims no
+   database object; claiming one would collide with the very claim it is
+   investigating. It is `repo-maintenance` work on the `repo-maintenance` route,
+   not orchestrator structural work: it changes no database structure, and
+   `route: shared-db-orchestrator` is refused for this work type.
+
+   The issue also carries a second, REQUIRED fence — the machine-readable half of
+   the record:
+
+   ````text
+   ```abandonment-audit
+   claim: <claim issue number>
+   pr: <pull request number>
+   head_sha: <the full 40-character head SHA>
+   owner: <the claim's recorded owner>
+   ```
+   ````
+
+   Without it the record is prose only. The reconciler that suggests the guarded
+   relinquish command and the guarded command that revalidates the evidence both
+   read this one fence, and a fence that is absent, incomplete or malformed is
+   read as no evidence at all: no command is suggested, and a relinquish falls
+   through to the ordinary-blocker path with none of the exact-tuple, head,
+   marker and worktree-state revalidation the abandonment path exists to
+   perform. The four values must match the live claim exactly.
+
+   **Procedure 1 — quarantine and recovery** (the work may still come back):
+
+   1. Open the durable abandonment audit issue above and let the audit output
+      stand as its first evidence.
+   2. Relinquish capacity with the observed worktree state:
+      `--relinquish-author-lease --claim-number <n> --owner <owner> --blocked-on issue:#<audit issue> --worktree-state <clean|dirty|absent|remote>`.
+      The value flag is `--claim-number`; the CLI parses a bare `--claim` as the
+      boolean that claims a lane, so giving it a value dies in the parser on the
+      bare number.
+      `--worktree-state` is not optional on this path — acting on abandonment
+      evidence is refused without it, because the observation is the operator's
+      own and may never be inferred from a stale audit. The reconciler prints
+      this exact command for you; prefer its printed line to a hand-typed one.
+   3. Change nothing else. The pull request, the claim, the object locks, the
+      version reservation, the branch and the worktree all stay exactly as they
+      are. Never delete a ref, a branch, a claim or a worktree to free a lane.
+   4. Recover the work when the author or a successor returns, and record the
+      recovery evidence on the audit issue.
+   5. Resume atomically with
+      `--resume-author-lease --claim-number <n> --owner <owner> --lease-hours <hours>`,
+      which re-runs every current collision, capacity and version check.
+
+   **Procedure 2 — terminal retirement** (the work cannot or should not return):
+
+   1. Record the evidence that the work is terminal on the audit issue.
+   2. For potentially recoverable work, preserve a rescue branch or patch backup,
+      leave the claim protective, and retire it only with `--preservation` plus the
+      allocator-assigned AI reviewer's APPROVE — see the authority boundary below.
+   3. Close the pull request through the normal authenticated operator flow.
+      Never delete its branch or its refs.
+   4. Retire the claim with the tombstoning `--release-claim`, which writes an
+      immutable tombstone and reads it back before the claim closes.
+   5. A successor takes a fresh claim tuple and a fresh migration version. The
+      retired version can never be reissued, and a retired claim is refused on
+      every reactivation path.
+
+   **Authority boundary (settled).** The session doing the structural work may retire work on its own
+   evidence where the worktree is `clean`, or `absent` with its absence proven
+   and its durable branch and pull-request evidence complete — in both cases
+   nothing unrecoverable is being discarded. Potentially recoverable uncommitted
+   work (any worktree observed `dirty` or
+   `remote`) is never abandoned as-is and never sent to Albert (owner ruling
+   2026-09-28): preserve a rescue branch or patch backup, leave the claim
+   protective, and report it `Blocked —` until retired as follows.
+   A terminal retirement from `dirty`/`remote` takes `--preservation artifact:<rescue commit or patch object>`
+   (dereferenced before anything is written) plus the allocator-assigned AI reviewer's durable
+   exact-head APPROVE for `--pr`/`--head-sha`, read automatically; `--owner-decision` is refused
+   (#3675). An `ambiguous` observation
+   is not a state; re-observe, or treat it as `3` and stop.
+
+   Audit lanes with `node scripts/manage-migration-author-lanes.mjs --audit`.
+   Audit and refill the dynamic queues with
+   `node scripts/manage-migration-author-lanes.mjs --queue-audit`. Every open
+   `db-work` issue must contain one authoritative block:
+
+   ````text
+   ```db-work-scope
+   status: ready
+   work_type: structural
+   route: shared-db-orchestrator
+   priority: 100
+   depends_on:
+   objects:
+     - table schema.name
+   ````
+   ```
+
+   Queue order is derived, not manually nominated: the issue that unblocks the
+   most other open issues through direct or chained `depends_on` relationships
+   goes first; equal blocker counts are ordered oldest first. `priority:` remains
+   required for scope compatibility but cannot override blocker impact or age.
+
+   **READS AND WRITES ARE DECLARED SEPARATELY (Step 2, issue #1366).** Use
+   `writes:` for every object the work CHANGES and `reads:` for every object it
+   DEPENDS ON without changing. The queue serialises on this matrix:
+
+   |            | B reads | B writes |
+   |---|---|---|
+   | **A reads**  | parallel | serialised |
+   | **A writes** | serialised | serialised |
+
+   Two sessions may read the same table at once. Anything involving a write
+   serialises, in both directions.
+
+   ````text
+   ```db-work-scope
+   status: ready
+   work_type: structural
+   route: shared-db-orchestrator
+   priority: 40
+   depends_on:
+   writes:
+     - table plm.wb_asset
+   reads:
+     - table core.licensor
+   ````
+   ```
+
+   Structural work must declare at least one write; reads alone are not enough.
+   Declaring the same object as both is refused — a write already implies
+   exclusive access. Mixing the legacy `objects:` list with `writes:`/`reads:` is
+   refused too.
+
+   **`objects:` is the deprecated spelling of `writes:`** and still works during
+   the compatibility window. It is read as a WRITE, never as a read: an old claim
+   that only said "objects" always meant "I am changing these", and treating it as
+   a read would let a new writer start against work already in flight. Step 8A
+   removes the alias once no open claim uses it.
+
+   **YOU MUST DECLARE INDIRECT AND SEMANTIC READS YOURSELF.** Static SQL analysis
+   finds objects your migration names. It cannot see a view that depends on the
+   column you are dropping, a function that queries the table you are rewriting,
+   or an application that reads a value your data change alters. The parser does
+   not know what it has missed, and it will never tell you the list is complete.
+   If your work depends on an object, declare it — an over-declared read costs a
+   little parallelism; a missed one costs correctness.
+
+   A migration's statically extracted objects are compared against `writes:`
+   only. If it changes something you declared under `reads:`, the guard says so by
+   name and refuses.
+
+   **A DEPENDENCY MUST PROVE IT SUCCEEDED (Step 3, issue #1366).** `depends_on:`
+   used to be satisfied by the dependency simply not being open. That released
+   downstream work when an issue was closed without merging, cancelled, returned,
+   superseded, or when the number was a typo for an issue that never existed.
+
+   A dependency is now satisfied only by a `db-work-completion` record whose
+   outcome is `merged` or `owner-ruling-recorded`. `returned`, `cancelled`,
+   `superseded`, and `failed` are legitimate endings that never release anything;
+   the audit repeats their recorded reason. A missing issue, a self-dependency, a
+   duplicate, or a dependency cycle fails the audit and names the exact path.
+
+   Publish the record with the ONE command that does it, then close the issue:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --complete-work --issue <n> --report-file report.json
+   ```
+
+   It re-derives the evidence rather than trusting the file: a `merged` record must
+   name a pull request GitHub reports as merged, a `merge_sha` matching GitHub's own
+   `merge_commit_sha` (the squash commit, not the branch head), migration versions
+   matching the files the PR actually added, and a commit contained in `main`. The
+   comment is read back before you are told you may close.
+
+   Completion is immutable. A second record on one issue is an error, not
+   latest-wins.
+
+   **THE REPORT FILE (issue #2824).** `--complete-work` is the only publishing
+   path for a `db-work-completion` record, and a missing record is what stalled
+   #2357 for a day. Sessions used to reach the end of merged work, find no
+   schema here, and write prose where the record belonged. The schema is:
+
+   | Field | Required | Meaning |
+   | --- | --- | --- |
+   | `schema_version` | always, must be `1` | the record schema |
+   | `work_issue` | always | the issue number; must equal `--issue` |
+   | `outcome` | always | one of `merged`, `live_verified`, `ready-for-merge`, `owner-ruling-recorded`, `returned`, `cancelled`, `superseded`, `failed` |
+   | `pr` | `merged`, `live_verified`, `ready-for-merge` | the pull request number |
+   | `merge_sha` | `merged`, `live_verified` | GitHub's `merge_commit_sha` |
+   | `migration_versions` | `merged`, `ready-for-merge` | the 14-digit versions the PR added; `[]` when it added none |
+   | `application_repository`, `application_commit_sha`, `live_evidence` | `live_verified` | where the outcome was proved live |
+   | `ruling_url`, `resolved_by` | `owner-ruling-recorded` | the durable ruling, and the commit or issue-comment URL that resolved it |
+   | `reason` | `returned`, `cancelled`, `superseded`, `failed` | free text; downstream work is told this exact wording |
+   | `invalidates`, `supersedes` | optional | advisory issue-number lists; they surface in an audit and never auto-block anything |
+
+   Three rules the schema alone does not tell you:
+
+   - **Only `merged` and `owner-ruling-recorded` RELEASE a dependent.** Every
+     other outcome is a legitimate ending that releases nothing.
+   - **`ready-for-merge` must NOT carry a `merge_sha`.** GitHub has not created
+     one yet, so naming it is refused rather than accepted and ignored.
+   - **`merge_sha` is GitHub's `merge_commit_sha`**, which is the squash commit.
+     The source branch head is NOT what lands on `main`, and a branch head here
+     is refused against the live pull request.
+
+   A worked example, for merged repository-maintenance work that shipped no
+   migration:
+
+   ```json
+   {
+     "schema_version": 1,
+     "work_issue": 2824,
+     "outcome": "merged",
+     "pr": 3321,
+     "merge_sha": "0f5d93e8c1a24b6f7e8d9a0b1c2d3e4f5a6b7c8d",
+     "migration_versions": []
+   }
+   ```
+
+   Record it, confirm the read-back, then close:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --complete-work --issue 2824 --report-file report.json
+   ```
+
+   #### Changing a scope `status:` — `--set-scope-status` (issue #2824)
+
+   Moving a db-work issue from `blocked` to `ready` is the single most
+   consequential edit in the queue: it is what makes the work dispatchable. It
+   used to be an unaudited hand edit through `gh issue edit --body-file`, which
+   took no mutex, got no read-back, and left no machine-readable trail. It was
+   also error-prone — the recorded #2212 attempt lost its multiline body to
+   PowerShell argument splitting, a follow-up `gh api` attempt sent an array
+   instead of a string, and the remote never changed with nothing to say so.
+
+   Hand editing a scope block is no longer the sanctioned route. Use:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --set-scope-status --issue <n> --status <ready|blocked|owner-decision> --reason "<one line>"
+   ```
+
+   It takes the author mutex, re-parses the block, writes exactly the one
+   `status:` line (a rewrite that moves any other line is refused), reads the
+   body back from GitHub, and comments an audit line naming the old status, the
+   new status, the reason, and its mutex owner commit.
+
+   **It cannot mark work complete.** It writes one queue field and nothing else:
+   it publishes no completion record, closes no issue, touches no lease, and
+   releases no dependent. A `ready` transition is refused unless every
+   `depends_on` entry satisfies the same `classifyDependencies` gate the queue
+   itself uses — so a dependency that is still open, or closed with no
+   `db-work-completion` record, refuses the write. A dependency that could not be
+   read refuses it too: "I could not check" is never "nothing to check".
+
+
+   Dependencies closed before **2026-08-23** are GRANDFATHERED: they could not have
+   carried a record, so they are accepted and listed under
+   `GRANDFATHERED DEPENDENCIES` to stay countable. The cutoff never rescues a
+   record that says the work did not succeed, and it is never moved forward to
+   unblock something.
+
+   Status, work type, and route are independent. Allowed statuses are `ready`,
+   `blocked`, and `owner-decision`. Allowed work types are `structural`,
+   `curated-master-data`, `application-data`, `source-data`, `repo-maintenance`,
+   `documentation`, and `security-settings`. There is no default route. Only
+   `ready + structural + shared-db-orchestrator` normally enters a
+   migration-author lane, and it must name every exact database object. The
+   narrow exception is a `curated-master-data` fork that ships
+   `supabase/migrations/*`: it must claim a lane before authoring and name the
+   exact objects needed by the migration. Other non-structural work must not
+   claim database objects.
+
+   **Each non-structural work type has a named exit** (AGENTS.md §0.0-C, and
+   `NON_STRUCTURAL_EXITS` in `scripts/manage-migration-author-lanes.mjs`, which is
+   the enforced form):
+
+   | work type | exit | who does it |
+   |---|---|---|
+   | `structural` | `accept` | the claiming session, via a migration-author lane |
+   | `curated-master-data` | `fork` | a claiming session, under §6.4 |
+   | `application-data`, `source-data` | `reject` | the owning application repository, after being forwarded |
+   | `repo-maintenance`, `documentation` | `repo-session` | a **separately started** repository session — not an orchestrator assignment at all |
+   | `security-settings` | `repo-session` | a **separately started** AI session that obtains the needed access itself (owner ruling 2026-09-28, #3675: never ask a human to approve) |
+
+   **Owner ruling, 2026-08-21 (issue #1366).** The orchestrator does database
+   structure and schema only. `repo-maintenance` and `documentation` are not
+   orchestrator work **even to dispatch**; `--queue-audit` lists them under
+   `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` so nothing accumulates unseen,
+   and that list is not a worklist. The ruling deliberately left
+   `curated-master-data` on `fork`; do not move it without a separate ruling.
+
+   **Work whose exit is REJECT — `application-data` and `source-data` — must
+   also carry a `return_to:` line naming the owning repository as an
+   `owner/repo` slug** (AGENTS.md §0.0-C). `curated-master-data` does NOT: §6.4
+   governs it inside this repo, so it forks to a sub-agent here and never
+   leaves:
+
+   ````text
+   ```db-work-scope
+   status: ready
+   work_type: application-data
+   route: application-session
+   return_to: u2giants/popdam3
+   priority: 40
+   depends_on:
+   ````
+   ```
+
+   A malformed slug is a hard parse error; a missing one is reported as
+   `NO RETURN ADDRESS` and makes `--queue-audit` exit `2`. Return the issue with
+   `node scripts/manage-migration-author-lanes.mjs --return-issue <n>`, which
+   files it in the owning repository first and only then closes it here. Never
+   close a rejected issue by hand. `return_to` is forbidden on structural work,
+   which stays here.
+
+   Outside-sourced writes into curated `core.*` Master Data use
+   `work_type: curated-master-data` and
+   `route: curated-master-data-governance`. This preserves §6.4 governance and
+   normally stays outside a migration-author lane. If the fork ships a file
+   under `supabase/migrations/`, however, it must claim a lane before authoring:
+   atomic version reservation and exact-object collision locking are safety
+   controls, not ownership of the work. Source-data review such as NBCU rights
+   classification uses `work_type: source-data` and
+   `route: source-data-session`, even while `status: owner-decision`. Changing
+   only the status after Albert answers can never change its owner route.
+
+   Exact object overlap forms a serial queue; unrelated object
+   groups each get their own lane, with no limit on lanes. A relinquished claim stays visible
+   in its collision component without occupying a slot. When capacity releases, rerun the queue
+   audit and dispatch every reported `REFILL REQUIRED NOW` issue in the same
+   turn. Never wait for Albert to ask or approve routine dispatch. Ask him only
+   for a genuine business ruling or material production risk. Recompute after
+   every merge. Preview and merge stay globally serialized.
+
+   An empty author lane is valid only when the audit has classified every open
+   `db-work` issue and reports no eligible issue for it. Unclassified, malformed,
+   blocked, owner-decision, and every non-structural work type never consume a
+   lane; unclassified or malformed issues also prevent a claim that no work
+   exists. While an author waits for CI, review, preview, or merge, continue safe
+   local work or prepare the next queued issue without creating overlapping
+   migration files.
+
+   After an issue reaches an exact reviewed head, atomically assign its external
+   reviewer with:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --assign-reviewer \
+     --issue <issue> --pr <pr> --head-sha <exact-head>
+   ```
+
+   When the owner restricts one workstream to named reviewers, add
+   `--reviewer-allowlist <canonical-name,...>` to assignment and replacement.
+   The canonical set is stored with the durable assignment: an omitted retry
+   inherits it and an explicit mismatch refuses. Later slots inherit slot one's
+   set, and returning an assignment never erases
+   its permission restriction when that slot is redrawn.
+   The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
+   slot independence still decide who is usable. It creates no concurrency cap.
+
+   For new assignments, the shared cursor (the sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run) rotates GLM
+   5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
+   V4.1 Flash → StepFun Step 5 → repeat, with Grok 4.6 kept active as the fallback drawn
+   only when none of those preferred reviewers can take the exact review (owner
+   preference 2026-09-27, #3592; applies to slot 2 and failed-reviewer replacements too),
+   skipping any reviewer whose engine matches the live orchestrator, and on a
+   non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
+   was restored on 2026-09-30 (owner instruction: "add GLM back into the
+   reviewer rotation") after its 2026-09-18 weekly-usage pause. Kimi K3
+   (paused 2026-09-22, account out of credit, issue #3423) is not drawable
+   until removed from `RETIRED_REVIEWERS`.
+   Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
+   by owner instruction and is no longer drawable.
+   That is exactly `ACTIVE_REVIEWERS` in
+   [`scripts/manage-migration-author-lanes.mjs`](../../scripts/manage-migration-author-lanes.mjs),
+   which is `REVIEWERS` minus `RETIRED_REVIEWERS` and `QUARANTINED_REVIEWERS`;
+   the code is the truth and this sentence must be re-derived from it, never the
+   other way round.
+   Codex cannot review when Codex orchestrates; Claude cannot review when Claude
+   orchestrates; and GLM cannot review when a ZCode orchestrator runs, because
+   ZCode's engine is GLM-5.3 — the exclusion follows the model engine behind the
+   harness, not the harness name (owner ruling 2026-09-17, "I never want GLM
+   reviewing GLM code", enforced by PR #3232: the glm rows carry
+   `orchestratorEngine:'glm'`, a marker may declare `engine: zcode` with a
+   `sess_<uuid>` id, and `ENGINE_REVIEWER_EXCLUSION` maps zcode → glm before the
+   draw, while codex and claude map to themselves unchanged). ZCode is not a
+   reviewer; adding it as one was permanently rejected by the same ruling.
+   Albert approved Codex on 2026-08-28 after its wrapper
+   qualified.
+
+   **Gemini 3.8 Flash High is ACTIVE again as of 2026-09-06** (PR #2438,
+   ai-devops issue #285). It was held out from 2026-08-28 while ai-devops
+   reviewer reliability was repaired; the hold was lifted on recorded evidence —
+   a live safety qualification bound to the wrapper sha256 and model, and a live
+   review of merged commit `99fbefcb` that returned a well-formed verdict line
+   above real analysis citing specific lines.
+
+   **Kimi K3 is PAUSED again as of 2026-09-22 (issue #3423) and is not drawable.**
+   History: it was unpaused on 2026-09-07 (PR #2483). It
+   had been paused 2026-09-03T16:55Z by owner instruction after a confirmed
+   account-wide weekly usage cap (403, not retryable); the cap lifted and the
+   name was removed from `RETIRED_REVIEWERS` at that time; it is back in that
+   list since 2026-09-22.
+   **Codex GPT-5.6 Sol was RETIRED on 2026-09-06 (issue #2485) and is not
+   drawable.** The owner retired the account permanently once five other
+   reviewers were working; it is carried in `RETIRED_REVIEWERS`. This is a
+   disposition on the account, not on the wrapper: its `REVIEWERS` row stays
+   with `readsRepository: true`, so every durable verdict it already recorded
+   still authorizes a merge. **Qwen 3.8 Max was UNQUARANTINED on 2026-09-07** by
+   owner instruction (ai-devops PR #316, merge `795902d8`) and is drawable again;
+   `QUARANTINED_REVIEWERS` is empty. The retired `glm-5.2` label is paused until
+   an explicit owner instruction restores it.
+
+   **DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is ACTIVE as of 2026-09-23**
+   (owner instruction, issue #3468). `ai-deepseek-agent --review` gained
+   read-only repository tools (`list_dir`, `read_file`, `grep`; ai-devops PR
+   #730), so its row carries `readsRepository: true`. Re-entry followed the
+   Gemini precedent: a live qualification and a live governed review of merged
+   commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
+   above a report citing specific lines.
+
+   **StepFun Step 5 (`stepfun-step-5-preview`) is ACTIVE as of 2026-09-25,
+   Ubuntu/Linux only** (owner instruction). `ai-stepfun review` (ai-devops PR
+   #849) runs StepCode `step/step-5-preview` with only read/grep/find/ls under
+   strict approval inside bubblewrap, over the shared sealed evidence packet, and
+   ends in a head-bound `VERDICT:` line; a live review of `94bf83c6` returned
+   `VERDICT: REVISE 94bf83c64889c2c29e229a2faa66d8ee183e911c` above a report
+   citing specific lines. The allocator has no platform field: on Windows,
+   `ai-review-preflight usable` reports stepfun `unsupported-platform`, so that
+   machine never draws it.
+
+   **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
+   and stays retired.** At that time
+   `ai-deepseek-agent` was a conversational API client with no filesystem, no
+   diff and no tools, so it can only review a change as *described* in the
+   brief, never as *written*. On PR #1989 it produced a complete, confidently
+   ranked review of a file, five functions, two tables and two columns that do
+   not exist, and the pipeline recorded it as a durable verdict artifact. The
+   roster now records `readsRepository` per reviewer, and `recordReviewVerdict`
+   refuses outright — before any commit or ref is created — to record a
+   code-review verdict from a reviewer whose wrapper cannot read the repository.
+   Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
+   an `ai-review-sandbox` clone (as is GLM), Qwen via a sealed
+   evidence-packet checkout, Gemini via a disposable sandbox copy of
+   the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
+   DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root, and
+   StepFun Step 5 (Linux machines only) via `ai-stepfun review`: read/grep/find/ls
+   inside bubblewrap over a read-only disposable copy with the sealed evidence
+   packet. The retired Codex reviewer was equipped the same way, via `codex exec --sandbox
+   read-only`, but is no longer drawable.
+
+   No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,
+   2026-09-16).** One reviewer provider may run any number of independent
+   reviews at the same time; each exact review (issue, PR, head, slot) holds its
+   own lease ref, so a live review never makes its provider wait, reroute, or
+   queue. Independence still applies per head (slot 2 never draws slot 1's
+   provider), a reviewer never reviews its own orchestrator engine, and a
+   provider `ai-review-preflight` does not report `usable` is not drawn.
+
+   A reviewer that is truthfully unusable for one pull request is excluded with
+   `--exclude-reviewer --issue <issue> --pr <pr> --reviewer <name> --reason
+   <independence-conflict|terminal-unavailable> --evidence-sha
+   <durable-assignment-or-replacement-sha>`. The exclusion is immutable,
+   PR-local, requires an existing assignment or replacement for the same
+   reviewer, and releases that exact active lease when present. It does not
+   create a failure record. New heads skip the reviewer; if exclusions consume the
+   roster, assignment refuses loudly and names each durable
+   reason. Never use this to shop for a preferred verdict.
+
+   The exclusion also RETURNS every assignment AND every replacement of that
+   pull request the excluded reviewer still holds, so the slot can be filled
+   again. Each return is a create-only record under `refs/db-review-returns/`,
+   named for the exact record it retires and committed on top of it, and only
+   then is that ref compare-and-cleared. Nothing is deleted silently: the record
+   keeps who was assigned, to which head, slot and replacement sequence, and why
+   it came back. An assignment that already carries a durable verdict is never
+   returned, and that check is re-read inside the reviewer mutex immediately
+   before the write, so a verdict recorded concurrently still refuses. Returning
+   a slot requires the atomic compare-and-swap ref writer; it never falls back
+   to a compare-then-delete.
+
+   A returned slot is an UNAPPROVED slot, never a vanished one. The merge gate
+   still demands a durable APPROVE for every slot that was ever returned for
+   that head: the slot must carry a live assignment at least as new as the
+   newest record returned for it, and that assignment must have its own APPROVE.
+   Another slot's APPROVE can never answer for it.
+
+   "At least as new" is the GLOBAL reviewer cursor sequence, not the
+   replacement namespace tail. Every assignment and every replacement spends one
+   strictly increasing sequence from the same durable counter, so a re-drawn
+   reviewer is always newer than the record that was returned, whichever
+   namespace each of them lives in.
+
+   To continue the same head after excluding slot N, draw a fresh reviewer for
+   that exact head and slot. WHICH COMMAND depends on what was returned, and
+   only one of the two will work:
+
+   - the returned record was the ORIGINAL assignment -> re-run
+     `--assign-reviewer` for that head and slot;
+   - the returned record was a REPLACEMENT -> re-run
+     `--replace-failed-reviewer` with the SAME `--failed-sequence`.
+     `--assign-reviewer` recreates the original ref, which the merge gate will
+     not accept as an answer for a returned replacement.
+
+   Either way the excluded reviewer stays barred from this pull request, and the
+   newly drawn reviewer must record its OWN durable APPROVE. A pull
+   request excluded before returns existed is repaired by re-running the
+   IDENTICAL `--exclude-reviewer` command, which completes the return without
+   recording a second exclusion.
+
+   ONE exclusion reason, and only one, can be lifted:
+   `--reinstate-reviewer-exclusion --issue <issue> --pr <pr> --reviewer <name>`.
+   NO LIMIT ON REUSING A REVIEWER (owner ruling, marker #2893, 2026-09-14): the
+   `already-reviewed` reason is retired. A new exclusion with it is refused, and a
+   historical record of it still parses but never bars a draw -- the same
+   reviewer may review the same pull request any number of times. Slot 2 of one
+   exact head must still be a different provider from slot 1 (two approvals).
+   `independence-conflict` is an INDEPENDENCE guarantee -- a provider that is the
+   orchestrating or authoring engine is never drawn, and no later evidence
+   changes that. It is
+   refused before any provider is probed. `terminal-unavailable` is different:
+   it is a claim about the WORLD, and a misdiagnosis of it used to be permanent.
+   Issue #2224 is the incident -- three of five reviewers carried
+   `terminal-unavailable` for one pull request while the other two held leases on
+   pull requests that could not merge until that one did, and at least one of the
+   three demonstrably ran fine the same day. There was no route back and the
+   queue deadlocked.
+
+   Reinstatement is a REPAIR, not a bypass. It runs the reviewer's own wrapper
+   `doctor` AT RUN TIME and refuses unless that probe passes with a readable PASS
+   check -- a failing probe, unreadable output, silence, or no probe at all are
+   all refusals, and the exclusion stands. The probe output is stored verbatim in
+   the record with a SHA-256 digest, so edited evidence stops parsing. The record
+   is APPEND-ONLY under `refs/db-review-reinstatements/<issue>-<pr>-<reviewer>`,
+   committed on top of the exclusion it names: the original exclusion ref is
+   never deleted or rewritten, and a reinstatement naming a different exclusion
+   than the one on file stops the reviewer read for audit. Re-running is
+   idempotent and writes no second record. The reason is proved from the
+   EXCLUSION commit, never from the reinstatement's copy of it.
+
+   A LIFT DOES NOT SPEND THE SLOT. An exclusion ref is create-only, so a
+   reinstatement used to occupy the reviewer's only exclusion record for that
+   pull request forever: a later `independence-conflict`
+   exclusion -- was refused as a different durable exclusion, and
+   the independence rule became unenforceable for that reviewer on that pull
+   request. A later exclusion is now written to the NEXT GENERATION ref,
+   `refs/db-review-exclusions/<issue>-<pr>-<reviewer>-gen<N>` (generation 1 keeps
+   the historical name unchanged), and each generation is barred until its OWN
+   `-gen<N>` reinstatement lifts it. Nothing is deleted or rewritten: the whole
+   history -- exclusion, lift, re-exclusion -- stays readable, and
+   `--reinstate-reviewer-exclusion` always answers the NEWEST generation, so an
+   independence re-exclusion after a lift can never itself be lifted. Four
+   generations are read; using all four is a refusal, not a silent overwrite.
+
+   The merge gate that reads these records is `check-exact-head-approval.mjs`,
+   the script the guarded merge workflow runs BEFORE the merge -- not only the
+   preview gate, which under merge-first runs after it. Both read the return
+   namespace and order it the same way.
+
+   A verdict that lands in the instant between the exclusion's in-mutex check and
+   its push answers an assignment that no longer exists. It is not deleted and it
+   does not pin the head: the exclusion re-files it under
+   `refs/db-review-retired-verdicts/`, freeing the create-only verdict ref, so
+   the next reviewer can record a verdict for that head normally and the raced
+   object remains readable for audit. That re-filing is its own atomic
+   compare-and-swap push, made after the push that records the exclusion and its
+   returns -- so if it fails, re-run the IDENTICAL `--exclude-reviewer` command.
+   The re-run rebuilds the returned records from the return namespace and
+   completes the re-filing, recording no second exclusion and no second return.
+
+   **No reviewer wrapper serializes reviews by provider (owner ruling,
+   2026-09-16; popcre/ai-devops#401 Step 7A).** Any number of reviews by any provider in the active
+   rotation (currently Grok, Qwen, Muse or Gemini) may run at once, in this repository or any other,
+   each in its own session and sandbox. Never treat another live review by the
+   same provider as a reason to skip, wait for, or replace it. Historical Qwen assignments, failures, and
+   replacement evidence remain readable and must be recovered or replaced
+   through `scripts/manage-migration-author-lanes.mjs`, never hand-edited. Use
+   only the wrapper returned by the manager and its fixed model settings. Reuse
+   one named session for rebuttals. Require
+   a current exact-head re-read and `APPROVE` or `REVISE` with evidence. Verify
+   every claim independently. Relay disagreements with
+   `templates/delegation/debate-turn.md`, stopping at agreement or the initial
+   review plus three rebuttals. If material disagreement remains, stop the merge and route it to a third allocator-assigned reviewer or an engineer; never ask Albert to decide a technical dispute (owner ruling 2026-09-28). Never send secrets or licensed rows.
+   Do not impose a fixed hard-kill timer on a reviewer that is still making progress.
+
+   Run the returned wrapper only through `scripts/run-governed-review.mjs`. The
+   adapter withholds the result until it has posted the complete findings and
+   created the immutable verdict ref while the exact reviewer lease is still
+   held. Calling a wrapper directly produces supplementary diligence, never
+   merge or preview evidence; there is no manual verdict-recording fallback.
+   The manager CLI rejects `--record-review-verdict`; only the terminal adapter
+   can call the create-only recorder after posting the assigned wrapper output.
+   Prose may free reviewer capacity during cutover, but it never authorizes a
+   merge, preview, or replacement; those gates consume durable artifacts only.
+
+   **A verdict with no coverage statement is not review evidence** (issue #1220,
+   fixed wrapper-side in `ai-devops` PR #43). Two wrappers could finish a run
+   having produced no findings and no verdict at all and still exit 0, and one
+   printed a complete five-finding review as a bare two-line `VERDICT: APPROVE`
+   because it discarded everything above the verdict heading. The wrappers now
+   emit the whole body and exit non-zero when no verdict was reached, so the
+   evidence is guaranteed to be PRINTED. Nothing can guarantee it is READ, and
+   that half is this repository's job:
+
+   - **Never record a bare verdict.** An `APPROVE` with no findings and no
+     statement of what was actually examined is a wrapper or provider failure,
+     not a clean review. Treat it as `verdict=none` and use
+     `--replace-failed-reviewer` exactly as for a transport failure.
+   - **Require the reviewer to say what it covered** — which files, which
+     migrations, which conditions — not merely what it concluded. A review whose
+     coverage cannot be checked cannot be relied on to have missed nothing.
+   - **If a wrapper's stdout looks truncated, read the raw provider stream before
+     recording anything.** The failure that prompted this rule was recoverable in
+     full from `stream.jsonl` after the wrapper had already printed two lines. Both
+     recovered reviews were posted to their PRs in full, with the recovery method
+     stated, so the audit trail records what was checked rather than the wrapper's
+     summary of it. Do the same.
+   - **Silence is never approval.** The failure mode here is silent and biased
+     toward "looks approved", which is exactly the shape that gets waved through
+     under time pressure.
+
+   **Reviewer transport failures never pause the queue.** Run reviewer wrappers
+   from the full-access orchestrator process, not from a delegated sandbox. Before
+   starting, prove the selected wrapper can read its own authentication file and
+   create its session directory. A permission denial, missing authentication,
+   provider quota error, or wrapper timeout with no verdict is a transport failure,
+   not a review. Stop that process, record `verdict=none` and `artifact=none`, and
+   immediately use `--replace-failed-reviewer` with the matching terminal failure
+   code. Continue with the manager-selected replacement from the full-access
+   orchestrator in the same turn. Never leave an author, preview, merge, or
+   production lane waiting on a reviewer process that cannot authenticate or
+   write its own state. A real `REVISE` verdict is not a transport failure and
+   must never be replaced.
+
+   **Out of credit: tell Albert in the same reply (owner requirement,
+   2026-09-24).** When `REFUSED:` contains `insufficient_quota: OUT OF CREDIT:`,
+   the reviewer's provider account has run out of credit. In that same reply,
+   tell Albert in plain words which provider needs credits and where, quoting
+   the `OUT OF CREDIT:` text as printed. Never make him open another session to
+   learn it. Then replace the reviewer with `--replace-failed-reviewer
+   --failure-code insufficient_quota --confirm-no-verdict --confirm-no-artifact`
+   and continue with the replacement.
+
+   **`--replace-failed-reviewer` is slot-aware, and the slot must be named.** It
+   defaults to `--review-slot 1`. Pass `--review-slot 2` to replace a failed
+   second reviewer; the request is then resolved only against slot 2's own
+   assignment and replacement refs, and the replacement is chosen to stay
+   independent of whoever currently holds slot 1. Naming the wrong slot is
+   refused with `durable reviewer assignment or replacement does not match the
+   replacement request` — that refusal is a correct fail-closed, not a bug, and
+   is never to be worked around by loosening the match. Before issue #1832 the
+   flag was silently ignored, so a slot-2 failure had no working replacement
+   route at all and a slot-2 request could only ever be answered from slot 1's
+   records. A slot-2 replacement still requires the issue open, the PR still at
+   the exact head, and no verdict yet recorded for that head — including slot 1's
+   own verdict. If slot 1 has already reported at that head, slot 2 cannot be
+   replaced there; assign against the current head instead.
+
+   Append objective reviewer evidence through an `ai-devops` PR to
+   `models_comparison_grok_kim_glm.md`: issue/PR, requested and proven model,
+   verdict, confirmed/disproved findings, defects, false positives, policy/tool
+   adherence, continuity, latency, turns, and only metrics the wrapper reports.
+   Kimi headless metrics and returned model are unavailable; never invent them.
+   **The exact-head approval rule is ENFORCED at the merge gate, not merely documented (#1816, 2026-08-29).** Until then `guarded-migration-merge` proved head identity, base currency, object collisions and the author lease, but never asked whether the bytes being merged had been approved -- and under merge-first the preview gate that does ask only runs AFTER the merge. So `REJECT` at head A, a new commit B answering it, then merging B put unapproved bytes on `main`. That happened on PR #1809 (issue #1769): grok-4.6 REJECTed `b494401`, commit `8d3c31a` answered it, and `8d3c31a` merged as `2b68e7e` with zero approvals tied to it. `scripts/check-exact-head-approval.mjs` now runs twice in that workflow -- once up front and once re-proven under the merge lock -- and refuses unless a reviewer assignment AND an `APPROVE` are both pinned to the exact head being merged, with no unanswered refusal at that head. **An assignment is not an approval, and an approval of an earlier head is not an approval of these bytes.** A new commit answering a review always needs a fresh exact-head review before it can merge. A reviewer *replacement* does not change any of this: replacement exists for a reviewer that produced **silence** (the TERMINAL_FAILURE_CODES -- quota, provider unavailable, dependency unavailable, wrapper failure, turn-limit cancellation), not for one that produced a verdict. Replacing a reviewer who timed out mid-review is legitimate, but if that reviewer had already emitted a refusal, the refusal survives the replacement -- the distinction is verdict-vs-silence, not reviewer identity. Conversely, a replacement reviewer's assignment (and a slot 2 assignment, suffixed `-slot<N>`) counts as a genuine assignment at that head, so the gate reads both the assignment and the replacement ref namespaces. **What that gate still does NOT check:** free-text verdicts are now unauthorized by default and count only when GitHub reports an `OWNER`, `MEMBER` or `COLLABORATOR` association. This closes public-comment forgery in both the merge and lane gates. It still does not prove the assigned provider authored the verdict, because assignment refs carry no provider-to-GitHub-author binding. "Independent" describes the rotation process and must not be inferred from the commenter identity. A fenced or indented verdict line still counts. **The approval head tie is asymmetric, and the asymmetry closed a live fail-open (codex-gpt-5.6-sol, 2026-08-30).** An earlier draft tied approvals to a head by finding the SHA anywhere in the body, and recorded that as a deliberate limit. It was not a limit, it was #1809 rebuilt inside the tool meant to close it: a comment approving head A that merely *mentions* head B is tied to B and opens a line with `APPROVE`, so it authorized B — bytes nobody had looked at. Confirmed by probe before it was fixed. An **approval** now requires an unambiguous reference: either GitHub's own `commit_id` binding, which is structured data rather than prose, or a body that names this head and no other commit-length SHA at all. Two SHAs in one body means the reader cannot tell which the verdict is about, and an ambiguous authorization is refused. Requiring the SHA on the verdict line was rejected instead, because genuine wrapper reviews name the head in a header and some end with a bare `VERDICT: APPROVE`, so that rule would refuse real approvals. A **refusal** deliberately keeps the permissive tie: over-counting a refusal locks a head that may not have needed locking and costs a re-review, while over-counting an approval merges unreviewed bytes, so when a tie is uncertain both errors must fall on the side of not merging. The gate authenticates repository permission, not reviewer identity, and must never be cited as proof that the assigned provider authored the verdict. **Verdict recognition is on the claim, not the token (grok-4.6, 2026-08-30).** Markdown emphasis is stripped on both sides of the `VERDICT:` label, because `## VERDICT: **APPROVED**` is a genuine archived approval form (`.ai/reviews/phase6-glm-review.md`) that an earlier draft refused; a conditional approval is detected by the phrase "with condition(s)" anywhere on the verdict line or the line after it, rather than by `WITH` sitting next to `APPROVE`, which both missed `APPROVE ONLY WITH CONDITIONS` and wrongly refused `APPROVE WITH confidence`; and `REQUEST CHANGES` with a space refuses exactly as `REQUEST_CHANGES` does. Of the two failure directions, **refusing valid input is the more dangerous one**: it presents as reviewers not returning verdicts, so the wrappers get blamed and re-run while the gate is never suspected. **Measure the endpoint before calling a read broken.** The same review flagged the unpaginated assignment-ref listing as a defect that would make the gate impossible to pass, reasoning from the ~370-ref namespace and GitHub's usual 30/100 page sizes. Measured live on 2026-08-30, `git/matching-refs` is not a paged collection: unpaginated and `--paginate` both returned all 421 assignment refs and all 114 replacement refs. The listing stays unpaginated deliberately, and the extra requests would count against the per-process wire budget (#1767).
+
+   **Merged-PR audit mode (#2839, PR #3375, 2026-09).** Re-running the live gate on a pull request that has already merged re-evaluates today's reviewer records, so a refusal posted after the merge, or an archived verdict, could make a lawful merge look unauthorized. Setting `APPROVAL_AUDIT=merged PR_NUMBER=<n>` selects an opt-in audit path instead. It reads the pull request's merge time and exact merged head, keeps only `Migration guarded merge authorization` statuses on that head whose server timestamp is at or before `merged_at` (a status with an unreadable timestamp is kept so the shared reader refuses it rather than guessing), and takes the newest. It passes only when that status is `success`, was created by `github-actions[bot]`, and carries either the guarded lane's description or the documents-only lane's description; the documents-only form is accepted only when the merged PR's own changed files still classify documents-only. It reports the merge time, merge commit, head, authorization time and status id. It refuses an open PR (use the live gate), a closed-unmerged PR (nothing to audit), an inconsistent open-and-merged state, and a PR with no readable merge time, merge commit or head. Without the variable the gate is unchanged for every caller, merged or not -- the automatic-promotion re-proof still runs the live verdict check on a merged source PR. **What the audit does not prove:** that the guarded lane itself performed the merge (a cancelled run can leave a success standing), which PR a status was posted for when two share a head SHA, or any post-merge revocation. **Known limit: the merge commit SHA is shape-checked and reported only; it is not bound to the authorized head.**
+
+   **What a verdict is worth depends on how it was obtained (#1816, #1824, 2026-08-30).**
+   Six failures in two days shared one shape: a claim that was true when made,
+   relayed onward, and acted on after it stopped being checkable. Four were
+   true-but-stale -- a real value, correctly read, since superseded. Two were
+   unrecorded-but-relayed: a review that genuinely ran, reported honestly, whose
+   outcome survived only in one session's scrollback or in local files on one
+   machine. Truthfulness is not the failure mode here; durability is, and a
+   report that a review happened is not evidence that a review happened. The
+   governed evidence channel -- PR reviews plus issue and PR comments matched to
+   the exact head, read by `previewGateProof` and by
+   `scripts/check-exact-head-approval.mjs` -- exists and works; both misses were
+   wrapper runs made outside it. **A review conducted outside the governed
+   channel did not happen, for merge purposes.** Post the verdict there or it is
+   not evidence. Two further rules follow. A reviewer holding a lease on another
+   issue is not independent even when its verdict is correctly pinned: check
+   lease state, not just head state, and count such findings as supplementary
+   diligence only. And a claim written into a governance record is a merge, not a
+   comment -- durable, citable, and owed the same standard of evidence as code.
+   #1824 tracks making the verdict an output of the review path rather than a
+   transcription by the session that ran it; until it lands, an artifact a
+   session can transcribe is prose with a schema.
+
+   **Verification doctrine: the remedy is never care, it is any procedure whose
+   outcome the author does not control.** A second reader is the most reliable
+   instance and the most available one, but it is an instance, not the principle
+   -- a session running alone at 03:00 cannot summon a peer and can still run
+   something whose answer it does not already know. Three instances, each of
+   which caught a real defect in this repository:
+   1. **Read the head at the moment of assignment or merge.** Never carry a SHA
+      across a message boundary. Every wrong value in the #1816 sequence was a
+      real value that had been true when it was read.
+   2. **Break the code on purpose. If the suite stays green, the suite is
+      furniture.** Reverting one constant and finding exactly one test fail is
+      what distinguishes a fix from a fix-shaped edit.
+   3. **Drive conversion layers with production-shaped payloads.** Twice in one
+      week a defect hid in an adapter whose test-time shape diverged from the
+      shape production emits, with the suite green throughout. *A test that
+      asserts on a value the production path never receives is not a weak test,
+      it is a test of a different program.* Coverage of an evaluation core says
+      nothing about the adapter that feeds it.
+
+   **A pin proves a value is current, never that it is the right value, and
+   never what was actually examined (2026-08-30).** Codex approved PR #1813 at
+   exactly `47f918e5` -- the correct head, the pin every gate in this section
+   checks -- having reviewed `scripts/orchestrator-flow/reconcile.mjs`, a file
+   with **zero lines in that PR's delta**. That delta is seven files and does
+   not include it. The head was a merge commit (two parents) and the wrapper
+   offers no base selection, so "the change" resolved to the merge's incoming
+   side: someone else's work. Right commit, wrong content, and the third
+   wrong-scope review of the session. Nobody was confused about anything and the
+   head pin did exactly what it promises. **Currency and subject are independent
+   properties and the check reads only the first: an approval can be perfectly
+   pinned and about nothing.** Remedy: hand reviewers a linear delta or state
+   the base explicitly -- a reviewer given a merge commit and no base is
+   reviewing an unspecified diff -- and read every identifier an action depends
+   on, not only the one that moves. The assignment ref already carries the
+   binding as `<issue>-<pr>-<headSha>`, so it can be read off the artifact
+   rather than held in memory.
+
+   **The same shape a third time, on the predicate rather than the subject.**
+   A session reported four failing checks on PR #1819. The four were `preview`,
+   `production-dry-run` and both production-apply gates, all **SKIPPED** -- the
+   correct outcome for a PR shipping no migration, and the PR was MERGEABLE with
+   nothing red. The filter treated "not SUCCESS" as "failure". Right check,
+   right head, right PR, false conclusion, because *not success* and *failed*
+   are different sets. **A status is a value, not a verdict; read what the value
+   means before reporting what it implies.**
+
+   This is the sharpest group in this section, and it is worth being precise
+   about why. Every other failure recorded here is a rule not followed. These
+   are rules followed perfectly, passing cleanly, on the wrong subject or with
+   the wrong predicate. The head check did not confirm a true fact about the
+   wrong thing by accident -- it confirmed the only fact it was ever capable of
+   confirming. It has no access to subject, so it cannot fail at subject, and
+   therefore cannot warn about it. **A rule not followed leaves a gap someone
+   may notice; a rule followed perfectly on the wrong object produces a clean
+   record that actively argues against looking further.** A passing check is
+   more convincing than no check at all. So a procedure whose outcome the author
+   does not control is necessary and not sufficient: it constrains only the
+   value it actually reads, and says nothing whatever about the values it
+   assumes or the meaning it is given.
+
+   **Two corrections belong with this entry, because the entry was wrong once
+   before it was right.** An earlier version said a lane had worked PR #1813 for
+   hours believing it was #1748. That is false and is retracted. The lane's
+   worktree, branch and HEAD were #1813 throughout; its assignment, head pin,
+   tests and revert check were all against #1813; its reports named #1813. The
+   real errors were a mislabelled dispatch name and one stale SHA in a passing
+   reference -- true, and far smaller than the account built on them. That
+   account was assembled from a real but minor fact because the larger story was
+   the more interesting one: the same overreach, from the same cause, as calling
+   an absent review record a fabricated one a day earlier (#1816). **The second
+   correction is how it reached this file.** It was recorded on a peer's report.
+   The SHAs in that report were independently verified and were correct -- but
+   what was verified were *artifacts*, and what was written down was a
+   *narrative about a session's belief*, which no artifact can evidence.
+   Verifying the checkable part of a claim and then recording the unfalsifiable
+   part is not verification. **Record what the artifacts show; attribute
+   anything past that to whoever reported it.**
+
+   **The counterpart, so this section is not only a list of things caught by
+   someone else.** A lane prepared a hazard report -- four files, roughly four
+   hundred deleted lines -- and retracted it before sending, having found on its
+   own that it had compared against main's tip instead of the branch point.
+   Unprompted, by the author, at the only moment it was free to catch. Most
+   procedures here exist to catch what someone else missed; the cheapest catch
+   remains the author re-deriving a result before reporting it, and a wrong
+   diff base is the first thing to suspect in any surprising delta.
+
+   After review approval, green checks, preview proof, and guarded merge, the
+   production workflow runs `scripts/production_business_risk_gate.py`. It
+   derives the result from the exact merged PR and required checks, immutable
+   review artifact, pinned preview-apply artifact and ledger, current-main SQL,
+   and the activation record. Caller-written booleans or prose are never
+   evidence. Automatically promote only when those governed records prove: no
+   existing data is deleted or permanently rewritten, no expected user downtime,
+   no material access change, a tested credible recovery path, and no unresolved
+   material objection. Ambiguous SQL stops for Albert. Ask him one plain
+   business-risk question. Never ask him to approve migration numbers, project
+   identifiers, SQL, or other technical details. This policy cannot authorize
+   its own rollout. The current activation record is active; the completed
+   rollout evidence is recorded in `config/production-risk-policy-activation.json`.
+   The gate still verifies that record, its immutable forward-test proof,
+   canonical skill hashes and the qualified delivery evidence before allowing
+   automatic promotion. Historical pre-activation requirements are evidence of
+   that rollout, not an instruction to repeat it or disable the active route.
+   Record Qwen High as requested, but never override the wrapper's qualified
+   fixed configuration.
+
+   Audit reports malformed claims without hiding the healthy ones; allocation
+   still refuses while any malformed claim exists. **Expiry never unlocks an
+   object.** Renew active work or explicitly release a claim after proving its
+   branch/worktree/PR is finished. Cleanup may report stale work, but it must not
+   silently close it. A reserved version is never freed for reuse because an
+   abandoned version may already exist in preview's ledger.
+
+   **If you cannot list the objects up front, your task is read-only** — and read-only work cannot
+   collide. Close your claim when the work merges or is abandoned; an open claim
+   is a lock on those objects, not a note.
+
+   This runs BEFORE the work. The `Cross-PR object collision` CI check is the
+   backstop AFTER it, and by the time that one fires, somebody's session is
+   already wasted — on 2026-07-31, three of four were.
+
+   Before preview and again before merge, acquire the exclusive GitHub-backed
+   `preview` or `merge` lease. Instructions in chat are not a lock. Fetch `origin/main`, update the branch
+   from newly merged `main`, and re-run the version/object checks and all existing
+   SQL/cross-PR guards. A clean author lane does not grant access to preview.
+   The lane tooling grants the single preview lane, then the single merge lane.
+   Release each stage lease explicitly when that stage ends. Required CI rejects
+   a migration PR unless its exact version and normalized objects match a live,
+   branch-bound author claim; merge CI also requires that PR's merge lease.
+   **The concrete symptom when this rule is broken:** the preview branch is
+   persistent, so its ledger holds every branch that ever ran `db push` —
+   including unmerged ones. A `main`-based checkout then cannot dry-run against
+   preview at all; it aborts with `Remote migration versions not found in local
+   migrations directory` and suggests `supabase migration repair --status
+   reverted …`. **Never run that repair** — those rows belong to another team's
+   applied work, and clearing them leaves the objects in place so their next
+   push collides. Land or coordinate the other branch instead. Full procedure:
+   [`docs/ai-session-instructions/shared-supabase-branch-workflow.md`](docs/ai-session-instructions/shared-supabase-branch-workflow.md)
+   → "When preview holds another workstream's unmerged rehearsal". A migration
+   left rehearsed-but-unmerged blocks everyone, so **open its PR the same
+   session** (seen 2026-07-27: 17 PopPIM migrations blocked all preview
+   dry-runs until PR #271 landed).
+2. **Preview database first. Production never receives untested schema.** Apply
+   every migration to the preview branch, prove it works, *then* promote to
+   production (`qsllyeztdwjgirsysgai`). The preview project ref is NOT written
+   down here: preview is rebuilt from time to time and its ref changes when it
+   is — `rjyboqwcdzcocqgmsyel` was deleted on 2026-08-18. The current ref lives
+   in the repository variable `PREVIEW_PROJECT_REF`, and **every** workflow that
+   targets preview reads it from there. An unset variable is refused, never
+   defaulted. The older workflows that used to hard-code the deleted ref
+   (`generate-database-types.yml`, `preview-ledger-orphan-reconciliation.yml`,
+   the `coldlion-*` workflows) were converted to the same pattern, and
+   `scripts/check-workflow-preview-ref.test.mjs` now fails the *Shared Supabase
+   Migrations* guard job if any workflow pins a preview ref literal again.
+
+   > **SUPERSESSION POINTER — 2026-09-09 (orchestrator EDGE-DEV-2 closeout, marker #2597).**
+   > The wording used in this file (line 11), in `AGENTS.md` §4, and in
+   > `docs/production-promotion-procedure.md` — "run
+   > `--prepare-preview-dispatch <issue>` ... and **use only the matching stored
+   > instruction**" — reads as though that flag merely *prints* instructions you then
+   > dispatch by hand. **It does not. It is a MUTATING command.** Traced 2026-09-09 in
+   > `scripts/orchestrator-flow/reconcile.mjs`: when a live sole-orchestrator marker
+   > resolves and its `calling_task` matches the marker's own task, the call takes the
+   > mutex and **persists preview-ready state** (`persist-preview-ready` /
+   > `io.persistReady`), returning `status: RECONCILED`. Only when the marker is not
+   > the caller's own does it degrade to `REPORT_ONLY`. Treat it as a state change that
+   > must be deliberate, never as a read-only "show me the command" step. It also
+   > refuses outright from a non-orchestrator session with `REFUSED: matching live
+   > sole-orchestrator marker is required`, which is a *different* refusal from the
+   > dependency-closure one and is easy to misread as the same thing.
+   >
+   > The paragraph immediately below (merge first, then rehearse) is **correct and is
+   > NOT superseded** — it was re-read and confirmed on 2026-09-09. It is restated here
+   > because ignoring it is expensive: a preview-apply performed *before* merging
+   > permanently red-checks the pull request, and on PR #2542 that cost three review
+   > rounds. Superseded text above is left in place on purpose; it is the audit trail.
+
+   **Post-merge rehearsal (the normal order).** Merge first, then rehearse on
+   preview from merged `main`, then promote. Dispatch *Shared Supabase
+   Migrations* with `target=preview`, `mode=apply`,
+   `merged_preview_source_pr=<the merged PR>`, `commit_sha=<the current main
+   tip>` and `preview_allowlist=<the exact versions>`. Do NOT pass `claim_pr`:
+   a merged pull request has no live author claim, and naming both is refused.
+
+   The exclusive preview lock for that run is authorised by **merge-commit
+   ancestry of the main tip**, not by a live author claim — the guarded merge
+   released the claim and deleted the branch, which is exactly why the rule
+   above used to be unexecutable (#1208). It is the same `refs/db-coordination/preview`
+   lock, so it is mutually exclusive with an ordinary preview run and with a
+   historical recovery — every lane that writes preview holds one ref, and this
+   lane adds no second door.
+
+   **Repository-maintenance rehearsal.** A ready `repo-maintenance` issue that
+   must write only temporary preview objects uses
+   `node scripts/manage-preview-maintenance-lock.mjs --acquire`
+   with its issue number and the exact current `main` SHA. This route requires
+   no migration pull request or author claim, because inventing either would
+   misclassify repository maintenance as structural delivery. The command
+   re-reads the open issue and refuses unless its scope is exactly ready
+   `repo-maintenance`; it holds the same preview ref and releases it with
+   `node scripts/manage-preview-maintenance-lock.mjs --release --owner-sha <acquisition SHA>`.
+   The acquisition workflow remains live while that ref is held (up to 235
+   minutes) and exits promptly after the owner-bound release. This keeps the
+   existing recovery test honest: a rehearsal in progress is backed by an
+   in-progress GitHub run, never by a run that already reported success.
+   A transient unreadable ref API is treated as still held; only a proved 404
+   is treated as an owner-bound release.
+
+   **What that lock does NOT do, stated exactly.** It does not exclude a merge
+   or a production promotion. `EXCLUSIVE_REFS` gives merge and production their
+   own refs, and only two cross-checks exist — both inside `acquireExclusive` in
+   [`scripts/manage-migration-author-lanes.mjs`](scripts/manage-migration-author-lanes.mjs),
+   findable by their refusal text rather than by a line number, which drifts:
+   a promotion waits for the merge ref (`a guarded merge is active; production
+   promotion must wait`), and a merge waits for the production ref
+   (`production promotion is active; merges are frozen`). Nothing in
+   either direction reads the preview ref. That is pre-existing behaviour of the
+   ordinary preview lane, unchanged here — an earlier draft of this section
+   claimed the exclusion existed, and it never did. Promotions are serialised
+   among themselves by the workflow `concurrency` group, not by this lock.
+
+   **Code and executable instructions use the guarded merge lane.** A change with
+   no migration needs no migration-author claim; its applicable exact-head review,
+   current-main relationship and collision protections remain enforced.
+
+   **Documentation-only changes use the lightweight route** (owner ruling
+   2026-09-20), including standalone `plan_*.md` files. Prove the complete change
+   with the base-owned classifier in `scripts/lib/documents-only-change.mjs`;
+   empty, unreadable or incomplete inventory cannot qualify. Full engineering
+   CI and external reviewer waits are not required. `AGENTS.md`, `CLAUDE.md`,
+   skill/agent/command instructions and any mixed executable change retain
+   engineering protection. The existing narrow link-only routing-pointer
+   classifier does not exempt behavior-changing instructions. Exact-head
+   refusals remain binding. See the current workflow for the route map.
+
+   When production acquires its lock, the production
+   workflow revokes every open pull request's earlier merge authorization before
+   releasing the lock. This prevents a stale green authorization from surviving
+   the production freeze.
+
+   The lock fails closed if the PR is not merged, if its
+   merge commit is not carried by the main tip, if the named versions were not
+   *added* by that PR, or if GitHub state cannot be read.
+
+   The evidence that run uploads carries the exact commit it checked out and the
+   preview project ref it wrote to, and the production gate checks both. A
+   rehearsal against a preview database that has since been rebuilt is therefore
+   no longer proof for a production write.
+
+   **A rehearsal runs ONCE. Do not re-run it — recover it.** An applied version
+   can never be applied again, so there is no second bite. If the versions are
+   already in preview's ledger, both ways of trying again are refused, and both
+   refusals are correct:
+
+   * **A fresh dispatch** fails at *Hard guard preflight*: the versions are now
+     in preview's ledger and the guard refuses to re-apply an applied version.
+     The run's conclusion becomes `failure`, and the production gate accepts
+     evidence only from a run whose status is `completed` and whose conclusion is
+     `success`.
+   * **GitHub's "Re-run jobs"** keeps the same run id, so a second
+     `preview-migration-apply-<sha>` upload lands on that one run. The gate
+     requires *exactly one* apply artifact per run — two make the applied commit
+     ambiguous, and an ambiguous commit is not provenance — so it refuses rather
+     than pick one.
+
+   ⚠️ **SUPERSEDED IN PART, 2026-08-20 (#1321): the historical-recovery lane
+   CANNOT recover a POST-MERGE rehearsal — i.e. evidence produced by the order
+   this very document mandates.** The lane pins the original run's producer files
+   to the AUTHORING PULL REQUEST'S MERGE COMMIT. A post-merge rehearsal runs from
+   a LATER main tip, so any producer file that changed in between (ten did, in one
+   day) makes the pin fail. Measured on `20260819011639`: merged, correct,
+   six-times reviewed, and refused — *"produced evidence with a different
+   .github/workflows/shared-supabase-migrations.yml than the merge commit"*. No
+   database write occurred. The only way through was to **supersede** the
+   migration with byte-identical SQL (`20260820142402`), which costs a migration
+   version and a fresh review round.
+
+   ⚠️ **NARROWED, 2026-08-20 (orchestrator marker #1338).** The claim above is too broad. The lane
+   **DOES** recover a post-merge rehearsal **when the rehearsal ran AT the authoring merge commit**.
+   Measured that day on `20260820165926` (PR #1335): merged via the guarded lane to `1247d125`,
+   rehearsed immediately from that exact tip, then an unrelated PR (#1340) moved main and changed
+   `scripts/manage-migration-author-lanes.mjs`. The production gate refused on the producer-file
+   pin, re-rehearsing was impossible (`BLOCKED: already applied on production`), and the recovery
+   lane then **succeeded** — run 32402833543 — because the rehearsal commit *was* the authoring
+   merge commit. Production applied as run 32402996954.
+   **So the discriminator is not pre-merge versus post-merge. It is whether anything merged BETWEEN
+   the authoring merge commit and the rehearsal.** `20260819011639` failed because ten producer
+   files changed in between; it may well have been recoverable had it been rehearsed promptly.
+   **Practical rule: rehearse in the same breath as the merge.** Do not pay a supersession — which
+   costs a version and a fresh review round — before trying the lane.
+
+   **The paragraph below is still correct for a
+   PRE-merge rehearsal, which is what the lane was built for. Read #1321 before
+   relying on it for anything rehearsed after its pull request merged.**
+
+   First check whether you need a second run at all: if the original rehearsal
+   completed successfully, its artifact is still the proof, and the promotion
+   should simply name that run in `preview_run_id`. If it did not, **the way
+   forward is the historical-recovery lane, not a weakened guard.** Dispatch
+   `target=preview`, `mode=apply` with `historical_preview_source_pr` (or
+   `historical_preview_source_pr_map` for a batch authored across several pull
+   requests), **`historical_preview_original_run_map`**, plus
+   `commit_sha=<current main tip>` and the same `preview_allowlist`. That lane
+   performs **no database write**.
+
+   `historical_preview_original_run_map` is `version:runId` pairs naming the
+   preview run that **originally applied** each version, and it is **required**.
+   It is not bookkeeping: because a recovery run writes nothing, it can produce
+   no content manifest of its own, so the production gate goes and reads the
+   named run's manifest and byte-compares the digest it recorded against the file
+   on exact main. Find the run id in the Actions history — it is the successful
+   `apply` run whose artifact is `preview-migration-apply-<sha>` for that batch.
+
+   **The named run is pinned on BOTH of its commits.** The commit it advertised
+   in its artifact name *and* `head_sha`, the ref GitHub read the workflow file
+   from, must each be a commit of the authoring pull request or a commit exact
+   main contains, and each must carry the **same producer files as the merge
+   commit of the pull request that authored that version** — a commit the gate
+   re-derives from GitHub, never one the promoter supplies. Without that second
+   pin, anyone who can dispatch this workflow could push a branch whose copy of
+   it performs no database write, hand-write a ledger delta and a content
+   manifest naming exact main's digest, name that run as the "original apply",
+   and promote bytes preview never executed. Pinning the two commits **to each
+   other** — the #1213 round-5 wording, removed in round 7 — was a no-op: one
+   commit used for both pins compared nothing at all (round 6, finding 1).
+
+   A producer file that **did not exist yet** at the merge commit is skipped,
+   and only when it is absent from *both* commits. The producer list grows, so
+   an old recovery cannot be required to carry files added later; a file present
+   on one side only is a real difference in the machinery that ran, and is
+   refused. Absence is read from each commit's **git tree**, so it is a proved
+   fact rather than an inference from a failed API read, and an unreadable or
+   truncated tree refuses (#1213 round 7, finding 1).
+
+   **What this lane proves, stated exactly.** A real, successful run of this
+   workflow, whose dispatch ref and whose checkout both carry the producer code
+   of the merge commit that landed the version, added each named version to
+   *a* preview ledger and recorded a digest equal to the bytes on exact main; and
+   a merged pull request added each version.
+
+   **What it does not prove, and do not let anyone tell you otherwise.**
+   (a) That preview's *catalog* matches its ledger — a half-applied or
+   hand-repaired preview looks identical from here.
+   (b) That **today's** machinery produced the evidence. The original run's
+   producer code is pinned to the authoring pull request's **merge commit**,
+   never to today's main, because an older commit necessarily carries older
+   producer files and that rule would refuse every genuine recovery. It is *not*
+   pinned to the run's own checkout: round 6 of the #1213 review showed that one
+   attacker-chosen pull-request commit used as both the dispatch ref and the
+   checkout compares nothing at all, and this repository squash-merges, so every
+   commit ever pushed to a pull request stays citable forever.
+   (c) **Which preview database it was.** The original run is deliberately not
+   required to bind to the current `PREVIEW_PROJECT_REF`: preview
+   `rjyboqwcdzcocqgmsyel` was deleted and rebuilt as `mvpkijzfmfcxhnzqogzs` on
+   2026-08-18, so requiring it would refuse every recovery that exists, including
+   the stranded merges this lane was built for. A binding it *does* carry must be
+   readable and must not name the production project. The residual: the ledger
+   half of this lane can be satisfied by one database and the byte half by
+   another if a version reappears in the current preview by restore, clone, or a
+   later apply of different bytes.
+
+   The earlier wording here — "as strong as the claim lane was on the day of that
+   rehearsal" — was **withdrawn as false** in #1213 round 5 and must not return in
+   any file. The claim lane pins both of a run's commits to exact main, so a
+   doctored intermediate commit can never be the promoted rehearsal; this lane
+   pins them to the authoring pull request's merge commit, which is weaker at
+   least in the specific, named ways listed above. Do NOT read that list as
+   exhaustive: no code can establish an exhaustive negative about an attack
+   surface, and the "and in no other way" tail this sentence used to carry was
+   removed in #1213 round 7 for claiming one.
+
+   **If a version's file changed after its rehearsal, this lane will refuse it,
+   and that refusal is correct** — preview never ran the bytes you are asking
+   production to apply. The way forward there is a new migration, never a
+   recovery.
+
+   If you find yourself editing a guard, an `if:` condition or an artifact name
+   to make a re-run go through, stop. That is how the trap this section exists to
+   describe was built in the first place (#1194, #1208). Open an issue instead.
+3. **Additive by default (expand, then contract).** Adding a column or table
+   cannot break another app. **Renaming or dropping** one that another app reads
+   *will*. Default to additive changes. Only rename/drop after the allocator-assigned AI reviewer's exact-head
+   APPROVE and a checked deprecation across all dependent apps (owner ruling
+   2026-09-28: never ask a human to approve).
+4. **New timestamped migration files only.** Each change is a new
+   `YYYYMMDDHHMMSS_*.sql` file. Never edit a migration that has already been
+   applied anywhere — that is how two sessions silently clobber each other.
+5. **Never reuse a timestamp — a duplicate SILENTLY SKIPS a migration.**
+   Supabase's ledger (`supabase_migrations.schema_migrations`) keys on the
+   **version (the timestamp) alone — not the filename**. If two migrations share
+   one timestamp, whichever applies first claims that version and **the other is
+   treated as already-applied and never runs**. No error, no warning.
+   *This actually happened (2026-07-22):* `20260722220000` was used by BOTH the
+   PopSG trigram-index migration and the Sample Tracking
+   `restore_dflow_sample_shipment_item` migration. Production recorded 220000 as
+   the PopSG one and skipped the table restore, so `dflow.sample_shipment_item`
+   never existed in production and the whole dependent feature (movements,
+   closeouts, views) could never apply — while the ledger claimed success.
+   *It happened again (2026-07-28):* `20260728160000` was used by BOTH
+   `clickup_incremental_task_import` and `popdam_user_tables_foreign_keys`. See
+   the second-order failure below.
+   **This is now enforced in CI** — `scripts/check-sql.sh` fails the PR on any
+   duplicate version, so you no longer have to remember the manual check
+   (`ls supabase/migrations | cut -c1-14 | sort | uniq -d`, which must print
+   nothing). **Before trusting a migration:** confirm the OBJECT exists
+   (`to_regclass`), never just the ledger row.
+
+   **A duplicate has a SECOND failure mode that outlives the skip: it blocks
+   every future push.** The ledger holds one row per version, so the CLI matches
+   that row to one of the two files and reports the other as pending *forever*.
+   Every `supabase db push` then tries to re-insert the version and aborts:
+
+   ```text
+   ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
+   Key (version)=(20260728160000) already exists.
+   ```
+
+   `supabase migration list` shows it plainly — the same version twice, once
+   matched and once with an empty REMOTE column.
+
+   Fixing a collision — choose by whether the loser's content has landed yet:
+   - **Not yet applied anywhere:** re-timestamp the loser (pure rename) so it
+     sorts after the winner, keeping dependent migrations in order.
+   - **Already landed via a later re-issue:** **delete** the superseded file.
+     Re-timestamping it would apply stale DDL *after* the newer fixes and
+     `create or replace` the corrected objects back to their old bodies. This
+     was the 2026-07-29 resolution for `20260728160000`: the ClickUp half had
+     been re-issued as `20260728174500` and then fixed by `20260728181500`, so
+     renumbering it would have reverted the fixes.
+
+   Deleting the loser is safe for the ledger **only because the winner keeps the
+   version** — the CLI still finds a local file for every `schema_migrations`
+   row, so it does not abort with `Remote migration versions not found in local
+   migrations directory`.
+
+   **Working doctrine learned while building the exact-head approval gate.**
+
+   - **Check supersethood before taking a side in a merge conflict.** A side that
+     looks newer may still omit unique work from the other side. Compare the
+     complete competing content before choosing or rebuilding the result.
+   - **Regenerate on drift; verify otherwise.** Regenerate derived evidence when
+     its source moved. When the source did not move, verify the existing artifact
+     rather than replacing it merely to make it look current.
+   - **Two ways to absorb a repeated cost is the signal to find its cause.** If
+     the same workaround, retry, or manual correction is needed twice, stop
+     paying the symptom cost and investigate the shared cause.
+   - **The instrument rule.** A check that can only ever return "clean" must be
+     proven capable of returning "dirty" before its clean result means anything.
+     Every check asserts that its own precondition held, and verdict matching is
+     tested in the same regex engine production uses. Do not use `jq` for verdict
+     matching: a collapsed `\b` can become an Oniguruma backspace and silently
+     test for a control character instead of a word boundary.
+   - **The stacked-mutation rule.** A mutation check that cannot say which change
+     caused the failure is coincidence, not evidence. Restore, mutate one thing,
+     observe the expected failure, then restore before testing the next mutation.
+   - **The venue rule.** Before publishing an artifact, decide whether its content
+     may exist in this repository, separately from whether the change is correct.
+     Evidence capture does not authorize public storage of licensed, private, or
+     sensitive source material.

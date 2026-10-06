@@ -1,0 +1,39 @@
+name: Business Rule Library
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'docs/business-rules/**'
+      - 'docs/merch-group-taxonomy-architecture.md'
+      - 'docs/style-guides-characters-and-royalties.md'
+      - 'docs/core-master-data-consolidation-aim.md'
+      - 'scripts/check-business-rule-library*'
+      - '.github/workflows/business-rule-library.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'AGENTS.md'
+      - 'docs/business-rules/**'
+      - 'docs/merch-group-taxonomy-architecture.md'
+      - 'docs/style-guides-characters-and-royalties.md'
+      - 'docs/core-master-data-consolidation-aim.md'
+      - 'scripts/check-business-rule-library*'
+
+# A new push to a pull request supersedes the run for its older head; pushes to
+# main are never cancelled.
+concurrency:
+  group: business-rule-library-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-business-rule-library.test.mjs

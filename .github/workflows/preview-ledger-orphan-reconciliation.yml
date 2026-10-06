@@ -1,0 +1,248 @@
+name: Preview Ledger Orphan Reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_sha: {description: "Exact current main SHA", required: true, type: string}
+      orphan_version: {description: "Exact abandoned preview-only version", required: true, type: string}
+      replacement_version: {description: "Exact approved replacement version", required: true, type: string}
+      issue: {description: "Owning work issue", required: true, type: string}
+      claim: {description: "Owning claim issue", required: true, type: string}
+      source_pr: {description: "Merged source PR", required: true, type: string}
+      preview_run_id: {description: "Successful replacement preview run", required: true, type: string}
+      preview_artifact_id: {description: "Immutable replacement preview artifact ID", required: true, type: string}
+      preview_artifact_digest: {description: "Pinned sha256 artifact digest", required: true, type: string}
+      confirmation: {description: "Type RECONCILE <orphan> AS <replacement>", required: true, type: string}
+
+permissions:
+  contents: write
+  actions: read
+  issues: write # admission may reopen the validated merge-closed source issue
+  pull-requests: read
+
+concurrency:
+  group: shared-supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile one proven preview ledger orphan
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: preview
+    timeout-minutes: 15
+    env:
+      # CONFIGURED, not hard-coded: the preview project ref changes whenever the preview
+      # branch is rebuilt (rjyboqwcdzcocqgmsyel was deleted on 2026-08-18). An unset
+      # repository variable is REFUSED below, never defaulted. See AGENTS.md rule 2.
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+      EXPECTED_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.main_sha }}", fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: supabase/setup-cli@v1
+        with: {version: 2.105.0}
+      - name: Ensure a working PostgreSQL client (psql)
+        run: |
+          set -euo pipefail
+
+          # WHY THIS IS NOT JUST `apt-get install postgresql-client` (issue #1261)
+          # ---------------------------------------------------------------------
+          # The hosted runner image ALREADY ships a PostgreSQL client, so the apt
+          # install was buying nothing and risking everything. On 2026-08-19 a stalled
+          # `apt-get update` against azure.archive.ubuntu.com consumed an entire
+          # 45-minute job budget five times across three PRs; every later step was
+          # skipped, so NOT ONE LINE OF SQL RAN -- and it surfaced as a plain red X,
+          # indistinguishable from a genuine failure. That is the hosted-runner
+          # starvation mode described in AGENTS.md 5.2-A.
+          #
+          # So: prove the client FIRST and skip apt entirely when it is already there;
+          # if apt is genuinely needed, bound every command with `timeout` and retry
+          # with backoff; and if a working client still cannot be had, fail FAST and
+          # BY NAME so nobody mistakes an infrastructure stall for a fault in the
+          # change under review. This step never continues without a real client --
+          # failing loudly is the point.
+          if command -v psql >/dev/null 2>&1 && psql --version; then
+            echo "psql already present on the runner image; no apt install needed."
+            exit 0
+          fi
+
+          echo "::warning::psql absent from the runner image; falling back to apt."
+          attempts=3
+          for i in $(seq 1 "$attempts"); do
+            if timeout --kill-after=10 60 sudo apt-get update \
+              && timeout --kill-after=10 120 sudo apt-get install -y --no-install-recommends postgresql-client; then
+              if command -v psql >/dev/null 2>&1 && psql --version; then
+                echo "psql installed and proved working on attempt ${i}."
+                exit 0
+              fi
+            fi
+            echo "::warning::psql install attempt ${i} of ${attempts} failed or timed out."
+            # No backoff after the LAST attempt: it would only delay the
+            # named error below by a further 30s. The worst-case budget is
+            # 3*(60+120)+10+20 = 570s, which must stay inside the TIGHTEST
+            # job ceiling that runs this block (`reconcile`, 15 minutes).
+            # Shorten the budget, never raise the ceiling -- a generic job
+            # timeout would swallow the named diagnostic exactly when it
+            # is needed, which is the whole defect of #1261.
+            if [ "$i" -lt "$attempts" ]; then
+              sleep $(( i * 10 ))
+            fi
+          done
+
+          echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO RECONCILIATION WAS PERFORMED"
+          exit 1
+      - name: Prove exact current main and preview-only intent
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          REPLACEMENT: ${{ inputs.replacement_version }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          ISSUE: ${{ inputs.issue }}
+          CLAIM: ${{ inputs.claim }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo "REFUSED: repository variable PREVIEW_PROJECT_REF is not set. Set it to the CURRENT preview branch project ref. An unset ref is never treated as a default." >&2
+            exit 1
+          fi
+          printf '%s' "$PREVIEW_PROJECT_REF" | grep -Eq '^[a-z]{20}$'
+          test "$PREVIEW_PROJECT_REF" != "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE"
+          test "$EXPECTED_PROJECT_REF" = "$PREVIEW_PROJECT_REF"
+          test "$CONFIRMATION" = "RECONCILE $ORPHAN AS $REPLACEMENT"
+          python - "$ISSUE" "$CLAIM" "$SOURCE_PR" "$ORPHAN" "$REPLACEMENT" <<'PY'
+          import json,sys
+          data=json.load(open('config/preview-ledger-orphan-reconciliations.json',encoding='utf-8'))
+          issue,claim,source_pr=map(int,sys.argv[1:4]); orphan,replacement=sys.argv[4:6]
+          matches=[row for row in data.get('cases',[]) if row.get('issue')==issue and row.get('claim')==claim and row.get('source_pr')==source_pr and row.get('orphan_version',orphan)==orphan and row.get('replacement_version',replacement)==replacement]
+          if data.get('schema')!='shared-db-preview-ledger-orphan-reconciliations/v1' or len(matches)!=1:
+              raise SystemExit('REFUSED: reconciliation tuple is not uniquely allowlisted by the reviewed manifest')
+          PY
+          [[ "$ORPHAN" =~ ^[0-9]{14}$ && "$REPLACEMENT" =~ ^[0-9]{14}$ ]]
+          if [ "$ORPHAN" = "$REPLACEMENT" ]; then
+            python - "$ISSUE" "$CLAIM" "$SOURCE_PR" "$ORPHAN" <<'PY'
+          import json,sys
+          data=json.load(open('config/preview-ledger-orphan-reconciliations.json',encoding='utf-8'))
+          issue,claim,source_pr=int(sys.argv[1]),int(sys.argv[2]),int(sys.argv[3]); version=sys.argv[4]
+          if not any(row.get('issue')==issue and row.get('claim')==claim and row.get('source_pr')==source_pr and row.get('mode')=='rehearsal_reset' and row.get('orphan_version')==version and row.get('replacement_version')==version for row in data.get('cases',[])):
+              raise SystemExit('REFUSED: same-version rehearsal reset is not allowlisted by the reviewed manifest')
+          PY
+            test -n "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)"
+          else
+            test -z "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)"
+          fi
+      - name: Acquire exclusive preview recovery lock
+        env: {MAIN_SHA: "${{ inputs.main_sha }}", SOURCE_PR: "${{ inputs.source_pr }}", ISSUE: "${{ inputs.issue }}"}
+        run: node scripts/manage-migration-author-lanes.mjs --acquire-preview-recovery --admit-issue "$ISSUE" --owner "github-actions:${GITHUB_RUN_ID}" --pr "$SOURCE_PR" --head-sha "$MAIN_SHA" > "$RUNNER_TEMP/preview-lock.json"
+      - name: Fetch immutable GitHub evidence
+        env:
+          ISSUE: ${{ inputs.issue }}
+          CLAIM: ${{ inputs.claim }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+          PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
+          ARTIFACT_ID: ${{ inputs.preview_artifact_id }}
+        run: |
+          set -euo pipefail
+          # Issue #2342: seven sequential reads under `set -euo pipefail`, each of
+          # which used to abort this whole reconciliation on one spurious 502. They
+          # go through the one shared transport now, which retries transport faults
+          # only and still fails closed -- nothing this step verifies is relaxed.
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/issue.json" api "repos/${GITHUB_REPOSITORY}/issues/$ISSUE"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/claim.json" api "repos/${GITHUB_REPOSITORY}/issues/$CLAIM"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/pr.json" api "repos/${GITHUB_REPOSITORY}/pulls/$SOURCE_PR"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/pr-files-pages.json" api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$SOURCE_PR/files?per_page=100"
+          python -c 'import json,sys; p=json.load(open(sys.argv[1])); json.dump([x for page in p for x in page] if p and isinstance(p[0],list) else p,open(sys.argv[2],"w"))' "$RUNNER_TEMP/pr-files-pages.json" "$RUNNER_TEMP/pr-files.json"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/run.json" api "repos/${GITHUB_REPOSITORY}/actions/runs/$PREVIEW_RUN_ID"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/artifact.json" api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/preview.zip" api -H 'Accept: application/vnd.github+json' "repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID/zip"
+          mkdir "$RUNNER_TEMP/preview-evidence"
+          unzip -q "$RUNNER_TEMP/preview.zip" -d "$RUNNER_TEMP/preview-evidence"
+      - name: Materialize exact reviewed and applied source commits
+        run: |
+          set -euo pipefail
+          PR_HEAD="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["sha"])' "$RUNNER_TEMP/pr.json")"
+          RUN_HEAD="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["head_sha"])' "$RUNNER_TEMP/run.json")"
+          # The applied source commit is read from the immutable artifact NAME, never from a
+          # dispatch input. When the apply was dispatched from the branch itself this equals
+          # RUN_HEAD; when it was dispatched from main against a PR commit it does not. The
+          # reconciler re-checks this sha against the pinned supported case.
+          ORPHAN_HEAD="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"].rsplit("-",1)[1])' "$RUNNER_TEMP/artifact.json")"
+          git fetch origin "$PR_HEAD" "$RUN_HEAD" "$ORPHAN_HEAD"
+          git worktree add --detach "$RUNNER_TEMP/source-pr" "$PR_HEAD"
+          git worktree add --detach "$RUNNER_TEMP/orphan-source" "$ORPHAN_HEAD"
+      - name: Link only to preview
+        run: |
+          set -euo pipefail
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$PREVIEW_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          grep -F "$PREVIEW_PROJECT_REF" supabase/.temp/pooler-url
+          ! grep -F "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE" supabase/.temp/pooler-url
+      - name: Exact proof with no write
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          REPLACEMENT: ${{ inputs.replacement_version }}
+          ISSUE: ${{ inputs.issue }}
+          CLAIM: ${{ inputs.claim }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+          PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
+          ARTIFACT_ID: ${{ inputs.preview_artifact_id }}
+          ARTIFACT_DIGEST: ${{ inputs.preview_artifact_digest }}
+        run: |
+          python scripts/preview_ledger_orphan_reconcile.py --mode check \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" --source-pr-dir "$RUNNER_TEMP/source-pr" --orphan-source-dir "$RUNNER_TEMP/orphan-source" --expected-project-ref "$PREVIEW_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --replacement-version "$REPLACEMENT" \
+            --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
+            --preview-run-id "$PREVIEW_RUN_ID" --preview-artifact-id "$ARTIFACT_ID" --preview-artifact-digest "$ARTIFACT_DIGEST" \
+            --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
+            --run-json "$RUNNER_TEMP/run.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-check.json"
+      - name: Transactional one-row reconciliation
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          ORPHAN: ${{ inputs.orphan_version }}
+          REPLACEMENT: ${{ inputs.replacement_version }}
+          ISSUE: ${{ inputs.issue }}
+          CLAIM: ${{ inputs.claim }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+          PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
+          ARTIFACT_ID: ${{ inputs.preview_artifact_id }}
+          ARTIFACT_DIGEST: ${{ inputs.preview_artifact_digest }}
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          python scripts/preview_ledger_orphan_reconcile.py --mode apply \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" --source-pr-dir "$RUNNER_TEMP/source-pr" --orphan-source-dir "$RUNNER_TEMP/orphan-source" --expected-project-ref "$PREVIEW_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --replacement-version "$REPLACEMENT" \
+            --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
+            --preview-run-id "$PREVIEW_RUN_ID" --preview-artifact-id "$ARTIFACT_ID" --preview-artifact-digest "$ARTIFACT_DIGEST" \
+            --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
+            --run-json "$RUNNER_TEMP/run.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-apply.json"
+      - name: Upload immutable before and after evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-ledger-orphan-reconciliation-${{ inputs.orphan_version }}
+          path: |
+            ${{ runner.temp }}/reconciliation-check.json
+            ${{ runner.temp }}/reconciliation-apply.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Release preview recovery lock
+        if: always()
+        run: |
+          if [ -s "$RUNNER_TEMP/preview-lock.json" ]; then
+            OWNER_SHA="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["ownerSha"])' "$RUNNER_TEMP/preview-lock.json")"
+            node scripts/manage-migration-author-lanes.mjs --release-preview-recovery --owner-sha "$OWNER_SHA"
+          fi

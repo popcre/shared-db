@@ -1,0 +1,341 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  parseArgs, planUnion, PROTECTED_CONTEXTS, renderPlan, validateLiveDocument, readLive, applyUnion,
+  verifyReadback, main, RequiredChecksError, DEFAULT_BRANCH, ghSpawnOptions, mirrorDocument, writeMirror, MIRROR_PATH } from './update-required-checks.mjs'
+import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
+
+// The repository is resolved, never hard-coded (#2530).
+const DEFAULT_REPO = resolveRepositoryIdentity()
+
+const LIVE = Object.freeze({
+  strict: false,
+  contexts: [
+    'Promotion contract tests (offline)', 'Cross-PR object collision', 'Tools offline tests',
+    'SQL migration guards', 'Domain ownership', 'Intake pointer guard', 'Handoff contract',
+    'Migration author lease', 'Migration guarded merge authorization',
+  ],
+})
+
+const THE_TWO = ['Orchestrator marker guard', 'Cancelled work guard']
+
+function io(sequence) {
+  const calls = []
+  // NEVER let a test reach the real filesystem. `main --apply` rewrites the committed
+  // mirror, and an unstubbed write here overwrote the repository's own
+  // `docs/verification/main-required-status-checks.json` with this file's fixture --
+  // which made the committed mirror evidence of a test run, not of a live readback.
+  const written = []
+  let index = 0
+  return {
+    calls,
+    written,
+    root: '/nowhere',
+    readEffective() {
+      const last = sequence.at(-1)
+      return { mode: 'live-effective-settings', revision: 'a'.repeat(64), checks: last.contexts.map((context) => ({ context, app_id: null })), sources: { classic: { requiresStatusChecks: true, requiresStrictStatusChecks: last.strict, requiredStatusCheckContexts: last.contexts } } }
+    },
+    write: (path, body) => written.push([String(path), body]),
+    run(args, options) {
+      calls.push({ args, input: options?.input })
+      const next = sequence[Math.min(index, sequence.length - 1)]
+      index++
+      if (next instanceof Error) throw next
+      return typeof next === 'string' ? next : JSON.stringify(Array.isArray(next?.contexts) ? { ...next, checks: next.checks ?? next.contexts.map((context) => ({ context, app_id: -1 })) } : next)
+    },
+    log() {}, error() {},
+  }
+}
+
+test('parseArgs collects repeated --add and defaults repo, branch and dry run', () => {
+  const options = parseArgs(['--add', 'A', '--add', 'B'])
+  assert.deepEqual(options.add, ['A', 'B'])
+  assert.equal(options.repo, DEFAULT_REPO)
+  assert.equal(options.branch, DEFAULT_BRANCH)
+  assert.equal(options.apply, false, 'apply must be opt-in; a tool that writes by default will eventually write by accident')
+})
+
+test('parseArgs rejects a missing value, a flag as a value, and an unknown argument', () => {
+  assert.throws(() => parseArgs(['--add']), /--add requires a context name/)
+  assert.throws(() => parseArgs(['--add', '--apply']), /--add requires a context name/)
+  assert.throws(() => parseArgs(['--repo']), /--repo requires owner\/name/)
+  assert.throws(() => parseArgs(['--wat']), /unknown argument --wat/)
+})
+
+// FAIL CLOSED. Each of these would otherwise become "there are no contexts", and
+// the union would then be a silent replacement of the whole list.
+test('an unreadable or implausible live document is refused, never treated as empty', () => {
+  assert.throws(() => validateLiveDocument(null), /not an object/)
+  assert.throws(() => validateLiveDocument([]), /not an object/)
+  assert.throws(() => validateLiveDocument({ strict: false }), /contexts is missing/)
+  assert.throws(() => validateLiveDocument({ strict: false, contexts: 'a' }), /not an array/)
+  assert.throws(() => validateLiveDocument({ strict: false, contexts: ['ok', ''] }), /non-string or empty/)
+  assert.throws(() => validateLiveDocument({ strict: false, contexts: ['ok', 7] }), /non-string or empty/)
+  assert.throws(() => validateLiveDocument({ contexts: ['ok'] }), /strict is missing/)
+  assert.throws(() => validateLiveDocument({ strict: 'false', contexts: ['ok'] }), /strict is missing or not a boolean/)
+  assert.throws(() => validateLiveDocument({ strict: false, contexts: [] }), /EMPTY/)
+})
+
+test('the union adds only what is missing and never drops or reorders an existing context', () => {
+  const plan = planUnion(LIVE, THE_TWO)
+  assert.deepEqual(plan.toAdd, THE_TWO)
+  assert.deepEqual(plan.next.slice(0, LIVE.contexts.length), LIVE.contexts, 'existing contexts must survive in their original order')
+  assert.equal(plan.next.length, LIVE.contexts.length + 2)
+  for (const context of LIVE.contexts) assert.ok(plan.next.includes(context), `${context} must survive`)
+  assert.equal(plan.changed, true)
+})
+
+test('strict is carried through byte-for-value and is never authored by this tool', () => {
+  assert.equal(planUnion(LIVE, THE_TWO).strict, false)
+  assert.equal(planUnion({ ...LIVE, strict: true }, THE_TWO).strict, true,
+    'the tool echoes whatever is live; it must not have an opinion about strict')
+})
+
+test('re-running with contexts that are already required is a no-op, not a duplicate', () => {
+  const plan = planUnion(LIVE, ['Handoff contract', 'Tools offline tests'])
+  assert.deepEqual(plan.toAdd, [])
+  assert.deepEqual(plan.alreadyPresent, ['Handoff contract', 'Tools offline tests'])
+  assert.deepEqual(plan.next, LIVE.contexts)
+  assert.equal(plan.changed, false)
+})
+
+test('duplicate --add values collapse to one addition', () => {
+  const plan = planUnion(LIVE, ['New guard', 'New guard'])
+  assert.deepEqual(plan.toAdd, ['New guard'])
+  assert.equal(plan.next.filter((c) => c === 'New guard').length, 1)
+})
+
+test('an empty or whitespace context is refused rather than added', () => {
+  assert.throws(() => planUnion(LIVE, ['']), /must not be empty/)
+  assert.throws(() => planUnion(LIVE, ['   ']), /must not be empty/)
+  assert.throws(() => planUnion(LIVE, []), /at least one --add or --remove context is required/)
+})
+
+// A RENAME is a REMOVE plus an ADD. This tool must never be the thing that
+// performs one, because the removed half is invisible in a diff of the request.
+test('a near-miss name is treated as a new context, so a rename can never happen silently', () => {
+  const plan = planUnion(LIVE, ['Handoff Contract'])
+  assert.ok(plan.next.includes('Handoff contract'), 'the original casing must survive')
+  assert.ok(plan.next.includes('Handoff Contract'), 'the near-miss is an addition, not a replacement')
+  assert.equal(plan.next.length, LIVE.contexts.length + 1)
+})
+
+test('the rendered plan states the mode, preserves strict visibly, and shows no removals', () => {
+  const text = renderPlan(planUnion(LIVE, THE_TWO), { repo: DEFAULT_REPO, branch: 'main', apply: false })
+  assert.match(text, /DRY RUN/)
+  assert.match(text, /strict: false {2}\(PRESERVED EXACTLY/)
+  assert.match(text, /\+ Orchestrator marker guard/)
+  assert.match(text, /\+ Cancelled work guard/)
+  assert.match(text, /no context removed, no context renamed/)
+  assert.doesNotMatch(text, /^\s*- /m, 'a removal line must never appear; this tool only adds')
+})
+
+test('readLive uses the NARROW endpoint, never the full branch-protection object', () => {
+  const transport = io([LIVE])
+  readLive({ repo: DEFAULT_REPO, branch: 'main' }, transport)
+  const args = transport.calls[0].args.join(' ')
+  assert.match(args, /branches\/main\/protection\/required_status_checks$/)
+  assert.doesNotMatch(args, /-X (PUT|PATCH)/, 'reading must not mutate')
+})
+
+test('readLive fails closed on transport failure and on non-JSON', () => {
+  assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, io([new Error('boom')])), /could not read live required status checks/)
+  assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, io(['not json'])), /not valid JSON; nothing was compared/)
+})
+
+test('applyUnion PATCHes the narrow endpoint with the union and the live strict value', () => {
+  const transport = io(['{}'])
+  const plan = planUnion(LIVE, THE_TWO)
+  applyUnion({ repo: DEFAULT_REPO, branch: 'main' }, plan, transport)
+  const call = transport.calls[0]
+  assert.match(call.args.join(' '), /-X PATCH/)
+  assert.match(call.args.join(' '), /protection\/required_status_checks/)
+  assert.doesNotMatch(call.args.join(' '), /protection$/, 'must never write the full branch-protection object')
+  const body = JSON.parse(call.input)
+  assert.equal(body.strict, false)
+  assert.deepEqual(body.contexts, plan.next)
+  assert.deepEqual(Object.keys(body).sort(), ['contexts', 'strict'], 'the narrow body must carry nothing else')
+})
+
+// REGRESSION, 2026-08-23. The first live --apply failed with
+// `422 ... nil is not an object` because the real gh() helper dropped `input` and
+// set stdin to 'ignore', so `--input -` read an empty body. Every unit test passed,
+// because the fake transport read options.input directly and never went near stdin.
+// A mocked transport cannot prove a real subprocess contract; these two tests
+// exercise the REAL helper's spawn options.
+test('the real transport forwards the request body to the child stdin', () => {
+  const options = ghSpawnOptions('{"strict":false,"contexts":["A"]}')
+  assert.equal(options.input, '{"strict":false,"contexts":["A"]}', 'the body must reach the child or gh sends an empty request')
+  assert.notEqual(options.stdio?.[0], 'ignore', "stdin must not be 'ignore' when a body is supplied")
+})
+
+test('the real transport still ignores stdin when there is no body to send', () => {
+  assert.deepEqual(ghSpawnOptions(undefined).stdio, ['ignore', 'pipe', 'pipe'])
+})
+
+test('the readback refuses a lost context, a missing addition, or a flipped strict', () => {
+  const plan = planUnion(LIVE, THE_TWO)
+  assert.doesNotThrow(() => verifyReadback({ strict: false, contexts: plan.next }, plan))
+  assert.throws(() => verifyReadback({ strict: false, contexts: LIVE.contexts }, plan), /is not required after the write/)
+  const lostOne = plan.next.filter((c) => c !== 'Handoff contract')
+  assert.throws(() => verifyReadback({ strict: false, contexts: lostOne }, plan), /previously required Handoff contract is GONE/)
+  assert.throws(() => verifyReadback({ strict: true, contexts: plan.next }, plan), /strict changed from false to true.*#1286/s)
+})
+
+test('main dry-runs by default, writes nothing, and exits 0', async () => {
+  const transport = io([LIVE])
+  const code = await main(['--add', THE_TWO[0], '--add', THE_TWO[1]], transport)
+  assert.equal(code, 0)
+  assert.equal(transport.calls.length, 1, 'a dry run must make exactly one read and no write')
+  assert.doesNotMatch(transport.calls[0].args.join(' '), /-X PATCH/)
+})
+
+test('main with --apply writes once, reads back, and exits 0', async () => {
+  const after = { strict: false, contexts: [...LIVE.contexts, ...THE_TWO] }
+  const transport = io([LIVE, '{}', after])
+  const code = await main(['--add', THE_TWO[0], '--add', THE_TWO[1], '--apply'], transport)
+  assert.equal(code, 0)
+  assert.equal(transport.calls.length, 3, 'read, write, readback')
+  assert.match(transport.calls[1].args.join(' '), /-X PATCH/)
+  // The mirror must be rewritten, and rewritten from the READBACK. Removing the
+  // writeMirror call, or feeding it the requested plan instead, fails here.
+  assert.equal(transport.written.length, 1, 'a successful --apply must rewrite the committed mirror')
+  const doc = JSON.parse(transport.written[0][1])
+  assert.deepEqual([...doc.contexts].sort(), [...after.contexts].sort())
+  assert.equal(doc.strict, after.strict)
+})
+
+test('a failed readback does not rewrite the mirror', async () => {
+  const transport = io([LIVE, '{}', LIVE])
+  assert.equal(await main(['--add', THE_TWO[0], '--apply'], transport), 1)
+  assert.equal(transport.written.length, 0, 'a mirror written on a failed write is a lie about main')
+})
+
+test('main exits 1 when the readback proves the write did not take effect', async () => {
+  const transport = io([LIVE, '{}', LIVE])
+  assert.equal(await main(['--add', THE_TWO[0], '--apply'], transport), 1)
+})
+
+test('main exits 1 when the readback shows strict was flipped, and says to restore it', async () => {
+  const flipped = { strict: true, contexts: [...LIVE.contexts, THE_TWO[0]] }
+  const messages = []
+  const transport = io([LIVE, '{}', flipped])
+  transport.error = (text) => messages.push(String(text))
+  assert.equal(await main(['--add', THE_TWO[0], '--apply'], transport), 1)
+  assert.match(messages.join('\n'), /strict changed from false to true/)
+  assert.match(messages.join('\n'), /Restore it immediately/)
+})
+
+// EXIT 2 IS NOT "NO DRIFT" AND NOT "NOTHING TO DO". It means the current state
+// was never established, which is the one case where retrying blind is dangerous.
+test('main exits 2 when the live document cannot be established', async () => {
+  assert.equal(await main(['--add', 'X'], io([new Error('network down')])), 2)
+  assert.equal(await main(['--add', 'X'], io(['not json'])), 2)
+  assert.equal(await main(['--add', 'X'], io([{ strict: false, contexts: [] }])), 2)
+  assert.equal(await main([], io([LIVE])), 2, 'no --add is a usage error, not a silent success')
+})
+
+test('main exits 0 and writes nothing when every requested context is already required', async () => {
+  const transport = io([LIVE])
+  assert.equal(await main(['--add', 'Handoff contract', '--apply'], transport), 0)
+  assert.equal(transport.calls.length, 1, 'nothing to do must mean nothing written')
+})
+
+test('--help exits 0 without touching GitHub', async () => {
+  const transport = io([new Error('should not be called')])
+  assert.equal(await main(['--help'], transport), 0)
+  assert.equal(transport.calls.length, 0)
+})
+
+test('RequiredChecksError is the single error type callers can catch', () => {
+  assert.throws(() => validateLiveDocument(null), RequiredChecksError)
+  assert.throws(() => parseArgs(['--nope']), RequiredChecksError)
+})
+
+
+// The committed mirror is informational only and is never merge authority, so a
+// mirror that does not match what was actually written is a stale record. It is
+// built from the READBACK, never from the requested change.
+test('the mirror is written from the readback and is sorted, stable and complete', () => {
+  const written = []
+  writeMirror({ contexts: ['Zed', 'Alpha'], strict: false }, { repo: 'u2giants/shared-db', branch: 'main' },
+    { root: '/repo', write: (path, body) => written.push([path, body]), now: new Date('2026-09-04T00:00:00Z') })
+  assert.equal(written.length, 1)
+  assert.ok(written[0][0].endsWith('main-required-status-checks.json'.replace(/\//g, '')) || written[0][0].includes('main-required-status-checks.json'))
+  const doc = JSON.parse(written[0][1])
+  assert.deepEqual(doc.contexts, ['Alpha', 'Zed'])
+  assert.equal(doc.strict, false)
+  assert.equal(doc.branch, 'main')
+  assert.equal(doc.capturedIso, '2026-09-04T00:00:00.000Z')
+  assert.ok(doc._why.includes('never merge authority'))
+})
+
+test('the mirror records strict exactly as read back, not as requested', () => {
+  const doc = JSON.parse(mirrorDocument({ contexts: ['A'], strict: true }, 'u2giants/shared-db', 'main', new Date(0)))
+  assert.equal(doc.strict, true)
+  assert.equal(MIRROR_PATH, 'docs/verification/main-required-status-checks.json')
+})
+
+
+test('app-bound settings updates preserve every existing producer and readback rejects weakened binding', () => {
+  const live = { strict: false, contexts: ['required'], checks: [{ context: 'required', app_id: 15368 }] }
+  const plan = planUnion(live, ['new'])
+  const transport = io(['{}'])
+  applyUnion({ repo: DEFAULT_REPO, branch: 'main' }, plan, transport)
+  // GitHub's "any source" encoding omits app_id — never -1 or null.
+  assert.deepEqual(JSON.parse(transport.calls[0].input).checks, [{ context: 'required', app_id: 15368 }, { context: 'new' }])
+  assert.doesNotThrow(() => verifyReadback({ strict: false, contexts: plan.next, checks: [{ context: 'required', app_id: 15368 }, { context: 'new' }] }, plan), 'GitHub may omit app_id for an unrestricted check')
+  assert.throws(() => verifyReadback({ strict: false, contexts: plan.next, checks: plan.next.map((context) => ({ context, app_id: -1 })) }, plan), /producer binding changed/)
+  assert.throws(() => readLive({ repo: DEFAULT_REPO, branch: 'main' }, { run: () => JSON.stringify({ strict: false, contexts: ['required'] }) }), /producer bindings are missing/)
+})
+test('refresh reads effective settings into informational evidence with no settings write', async () => {
+  const transport = io([LIVE])
+  assert.equal(await main(['--refresh-mirror'], transport), 0)
+  assert.equal(transport.calls.length, 0)
+  assert.equal(transport.written.length, 1)
+  assert.equal(JSON.parse(transport.written[0][1]).authority.mode, 'live-effective-settings')
+  assert.equal(await main(['--refresh-mirror', '--apply'], transport), 2)
+})
+test('mirror keeps classic contexts as merge-queue baseline while recording inherited ruleset authority separately', () => {
+  const doc = JSON.parse(mirrorDocument({ strict: false, contexts: ['classic'] }, DEFAULT_REPO, 'main', new Date(0), { checks: [{ context: 'classic', app_id: null }, { context: 'ruleset', app_id: null }] }))
+  assert.deepEqual(doc.contexts, ['classic'])
+  assert.deepEqual(doc.authority.checks.map((check) => check.context), ['classic', 'ruleset'])
+})
+test('refresh mirror keeps a ruleset-only context out of the classic coverage baseline', async () => {
+  const transport = io([LIVE])
+  transport.readEffective = () => ({
+    mode: 'live-effective-settings', revision: 'a'.repeat(64),
+    sources: { classic: { requiresStatusChecks: true, requiresStrictStatusChecks: false, requiredStatusCheckContexts: ['classic'] }, rulesets: [{ type: 'required_status_checks' }] },
+    checks: [{ context: 'classic', app_id: null }, { context: 'ruleset-only', app_id: null }],
+  })
+  assert.equal(await main(['--refresh-mirror'], transport), 0)
+  const mirror = JSON.parse(transport.written[0][1])
+  assert.deepEqual(mirror.contexts, ['classic'])
+  assert.deepEqual(mirror.authority.checks.map((check) => check.context), ['classic', 'ruleset-only'])
+  assert.equal(transport.calls.length, 0)
+})
+
+// Owner ruling 2026-09-28 (docs/agents/owner-rulings.md §0.5): a named context may be retired.
+test('--remove retires exactly the named context and nothing else', () => {
+  const target = LIVE.contexts.find((context) => !PROTECTED_CONTEXTS.includes(context))
+  const plan = planUnion(LIVE, [], [target])
+  assert.deepEqual(plan.toRemove, [target])
+  assert.equal(plan.next.length, LIVE.contexts.length - 1)
+  assert.ok(!plan.next.includes(target))
+  assert.ok(plan.changed)
+  const text = renderPlan(plan, { repo: DEFAULT_REPO, branch: 'main', apply: false })
+  assert.ok(text.includes(`- ${target}`))
+  assert.match(text, /only the contexts named above removed/)
+})
+
+test('--remove refuses the production-promotion contexts and unknown names', () => {
+  for (const context of PROTECTED_CONTEXTS) assert.throws(() => planUnion({ ...LIVE, contexts: [...LIVE.contexts, context] }, [], [context]), /production promotion/)
+  assert.throws(() => planUnion(LIVE, [], ['No such guard']), /not currently required/)
+})
+
+test('readback fails when a retired context is still required', () => {
+  const target = LIVE.contexts.find((context) => !PROTECTED_CONTEXTS.includes(context))
+  const plan = planUnion(LIVE, [], [target])
+  assert.throws(() => verifyReadback(LIVE, plan), /still required after the write/)
+  assert.doesNotThrow(() => verifyReadback({ ...LIVE, contexts: plan.next, checks: LIVE.checks?.filter((c) => c.context !== target) }, plan))
+})

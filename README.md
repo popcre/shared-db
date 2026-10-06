@@ -1,0 +1,134 @@
+> ⚠️ **Auto-synced — do not hand-edit the copies.**
+>
+> [`popcre/shared-db`](https://github.com/popcre/shared-db) is the **single source of truth**. Its entire contents are automatically mirrored into the **`shared-db/` folder** of every active consumer repo (CRM, DAM, PM/PIM, and the `popcre/designflow-*` repos) on each push to `main`, via [`.github/workflows/sync.yml`](https://github.com/popcre/shared-db/blob/main/.github/workflows/sync.yml).
+>
+> **Reading this inside a consumer repo's `shared-db/` folder?** These files are a read-only copy — any edits here are **overwritten on the next sync**. Make changes in the canonical repo instead.
+>
+> The `popcre/designflow-*` mirrors intentionally push to each repo's default branch. Sandbox deploy suppression belongs in the Cloud Build trigger path filters (`ignored_files = ["shared-db/**"]` in `popcre/infrastructure`), not by removing consumers from this sync.
+
+---
+
+# Shared DB
+
+Planning and migration repo for the unified POP shared database on Supabase.
+
+This repo holds schema mapping, relationship design, migration gaps, Supabase migrations, branch verification notes, and cutover preparation for consolidating DAM, CRM, PM, and the operational PLM data needed by those apps into one Supabase project.
+
+## Companywide business rules
+
+Business rules are owned by the business, not by an application. Start with the [application and task map](docs/business-rules/application-map.md) to load only the topics relevant to the work. The [business-rules home](docs/business-rules/README.md) defines how rules are collected, approved, stored, corrected, and shared with every application.
+
+## DB Data Admin hostname
+
+`https://data.designflow.app` belongs exclusively to **DB Data Admin**, whose
+source lives in [`u2giants/popdam3`](https://github.com/u2giants/popdam3) at
+`apps/db-data-admin/` (moved from this repository on 2026-09-16). Although a retired
+application used the same DNS name historically, it has no live, rollback,
+credential, data-connection, or deployment relationship to the current
+application. The permanent ownership contract and AI guardrails are in
+[`docs/db-data-admin-domain-ownership.md`](docs/db-data-admin-domain-ownership.md).
+
+## Shared-db Gatekeeper
+
+All database schema changes for the shared Supabase project start in this repo.
+That includes DesignFlow PLM tables even when a consumer repo has Sequelize
+models, old inline startup migrations, or local docs that mention `models/db.js`.
+
+**This is a structure rule, not a data rule.** This repo governs the *shape* of the database. The rows an application creates, edits, or
+deletes in the normal course of its work belong to the session working on that
+application — no issue, no dispatch, no migration. The one exception is curated
+Master Data (`core.licensor`, `core.property`, `core.character`, `core.customer`,
+`core.factory` and their `*_ext` tables), where bulk or ad-hoc loading of
+outside-sourced content stays gated. Owner ruling 2026-08-13; full text in
+[`AGENTS.md` §0.0-B](AGENTS.md).
+
+For future sessions with no chat context: do not add columns, tables, indexes,
+RLS policies, triggers, functions, views, enums, storage policies, realtime
+publication changes, or extension changes inside a consumer repo. Create a new
+timestamped migration under `supabase/migrations/` here, test it against the
+preview branch, then update the app repos after the shared migration lands.
+
+On 2026-07-10, the six `popcre/designflow-*` repos were updated with an
+always-on Cursor rule at `.cursor/rules/shared-db-gatekeeper.mdc`. The file is
+duplicated across:
+
+- `designflow-bff`
+- `designflow-frontend`
+- `designflow-backend`
+- `designflow-item-master`
+- `designflow-tracking`
+- `designflow-data-syncing`
+
+If any agent changes that Cursor rule in one repo, the same change must be made
+to the other five repos in the same session, then all six must be committed and
+pushed together. `designflow-frontend/AGENTS.md` now has a shared-db section near
+the top, and `designflow-item-master/AGENTS.md` was created so future agents see
+the rule even before reading app-specific docs.
+
+## Current Documents
+
+- [Cross-app coordination playbook](AGENTS.md) - **read first.** The operating contract for every AI session: which repos use `main` vs DesignFlow PR workflow vs shared-db PR workflow, the four rules that stop dependent apps from breaking each other through the shared database, and the merge protocol the AI runs.
+- [DesignFlow production DB-port incident](docs/incidents/20260717-designflow-production-db-port.md) - full postmortem, correct environment contract, infrastructure/application/IAM remediation, PRs and revision evidence, failed hard-gate bootstrap, Uma approval boundary, 1Password handling, and the exact Google Cloud organization prerequisite still blocking final enforcement.
+- [AI tagging keyset timeout remediation](docs/app-migration-notes/ai-tagging-keyset-timeout-20260714.md) - service-only candidate RPC, query-shaped indexes, rollout evidence, and the cross-app list/search optimization standard.
+- [Merch-group taxonomy architecture](docs/merch-group-taxonomy-architecture.md) - how licensors, properties, themes, style guides and artists actually flow from Coldlion ERP through DesignFlow PLM into `core.*`. **Read before touching any of those.**
+- [Unified Supabase schema map](docs/unified-supabase-schema-map.md) - canonical entity/table ownership map across DAM, CRM, PM, and PLM.
+- [Shared database vision](docs/shared-database-vision.md) - the grander intention: one shared Supabase database for DAM, CRM, PM/PIM, and PLM.
+- [Unified Supabase relationships](docs/unified-supabase-relationships.md) - crossover relationships, join strategy, realtime boundaries, and browser-facing API contracts.
+- [Unified Supabase migration gaps](docs/unified-supabase-migration-gaps.md) - duplicates, conflicts, risky tables, missing links, and migration-order risks.
+- [Schema implementation notes](docs/implementation/schema-implementation-notes.md) - what the migration package implements and what remains intentionally unresolved.
+- [AI session instructions](docs/ai-session-instructions/README.md) - the current shared preview and production-promotion workflow.
+
+## Host PLM Import (removed)
+
+The Designflow PLM master-data sync no longer exists. Issue #1090 Step 1.0 retired the
+importer because it could not be allowed to write canonical licensing identity, and issue
+#2794 removed the function `plm.import_master_data(jsonb, jsonb)` along with every runtime
+vestige: the import tool, the host wrapper, the `systemd/plm-sync.*` unit templates, and the
+`DESIGNFLOW_API_KEY` / `/home/ai/.plm-sync.env` secret wiring.
+
+Nothing in this repository imports DesignFlow PLM master data, and no host timer runs it.
+Do not recreate these files. The licensing write-authority guard
+(`plm.licensing_write_authorization`, `plm.licensing_write_guard_audit`, and the
+`*_licensing_write_guard` triggers) is unrelated to the importer and remains fully in force.
+Historical detail is preserved under `docs/verification/` and `docs/archive/`.
+
+## Migration Package
+
+The first-pass DDL package lives in [`supabase/migrations`](supabase/migrations):
+
+- `20260621150714_foundation.sql`
+- `20260621150815_app_core.sql`
+- `20260621151024_domain_tables.sql`
+- `20260621151155_api_rls_realtime.sql`
+
+These migrations are for disposable rehearsal targets first. Do not apply them to the live project until source dumps, dedupe rules, RLS tests, and cutover order are approved.
+
+Production also has older PopDAM migrations in its Supabase migration ledger from
+before this repo became the shared database source of truth. Those already-applied
+legacy versions are represented in `supabase/migrations/` as no-op marker files
+so `supabase db push --dry-run` can compare the local ledger with production
+without trying to replay PopDAM history from this repo.
+
+## Preview Branch
+
+The migration package has been applied to a persistent Supabase preview branch for review:
+
+```text
+Parent project: qsllyeztdwjgirsysgai
+Branch name: shared-db-schema-rehearsal
+Preview project ref: xjcyeuvzkhtzsheknaiu
+```
+
+Verification notes are in [docs/verification/preview-branch-20260621.md](docs/verification/preview-branch-20260621.md).
+
+AI sessions migrating CRM and PM should use [docs/ai-session-instructions/shared-supabase-branch-workflow.md](docs/ai-session-instructions/shared-supabase-branch-workflow.md), then their app-specific guide.
+
+## Target
+
+Supabase project:
+
+```text
+https://qsllyeztdwjgirsysgai.supabase.co
+```
+
+The shared schema migrations and CRM contact segment API have been applied to the production/default project.

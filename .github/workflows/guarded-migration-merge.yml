@@ -1,0 +1,335 @@
+name: Guarded Merge
+
+# WHO MAY DISPATCH THIS WORKFLOW (issue #3199 §8, locked 2026-09-17): ANY
+# write-authenticated session — orchestrator, repo-maintenance, or an
+# application session that has taken the self-service additive lane — for a
+# pull request that already carries its exact-head approval and green required
+# checks. The workflow, not the caller's identity, is the gate: it re-proves
+# required checks, exact-head approval, lease and admission itself, under its
+# own lock. This comment grants nobody anything new; it writes down a capability
+# the plain workflow_dispatch trigger already had, so approved pull requests
+# stop aging while the orchestrator is busy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: "Pull request number"
+        required: true
+        type: string
+      head_sha:
+        description: "Exact reviewed pull request head SHA"
+        required: true
+        type: string
+
+concurrency:
+  group: shared-db-guarded-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write # admission may reopen a merge-closed linked issue after full validation
+  pull-requests: write
+  # `statuses: write` implies read for the combined-status call, but the read is a
+  # real dependency of the pre-flight and is declared as one.
+  statuses: write
+  # The pre-flight reads `commits/{sha}/check-runs`. Unspecified permissions are
+  # `none`, so without this the read is a 403 and every merge dies at the pre-flight
+  # -- a parseable workflow that still cannot merge.
+  checks: read
+  # Scoped to this job only: lets the post-merge step below dispatch
+  # sync.yml (workflow_dispatch is allowed from GITHUB_TOKEN, unlike push).
+  actions: write
+  # THERE IS NO `administration` PERMISSION IN GITHUB ACTIONS. Adding one made this
+  # file unparseable, and because this workflow is the ONLY path to `main`, every
+  # merge in the repository was refused at dispatch with HTTP 422. Since #3369 the
+  # pre-flight reads FRESH effective settings (classic branch protection plus the
+  # applicable rulesets) and REFUSES when that read cannot complete: there is no
+  # committed-mirror fallback and no snapshot or expiry can authorize a merge.
+  #
+  # The authority reads (GraphQL branchProtectionRule + REST /rules/branches)
+  # require ADMIN-LEVEL access. GITHUB_TOKEN (github.token) has no administration
+  # permission and gets "Resource not accessible by integration" (live run
+  # 36186790619). A classic PAT with `repo` scope (secrets.SYNC_TOKEN) provides
+  # the needed access and is passed as AUTHORITY_TOKEN for the authority-read
+  # steps ONLY; every other step keeps github.token. See
+  # `scripts/check-required-checks-preflight.mjs`.
+
+jobs:
+  merge:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capture trusted executable path before pull-request code runs
+        id: trusted_tools
+        run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
+      - name: Check out protected main policy separately from the pull request
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted-policy
+          # Full history (#3669): the merge-lane acquisition asks
+          # classifyBranchFreshness for the merge base of the head and the main
+          # tip. A depth-1 checkout has no merge base, so "main moved
+          # independently" (#2758) was always refused.
+          fetch-depth: 0
+      - name: Pre-flight the required status checks before taking the merge lane
+        id: trusted_preflight
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Protected-main checkout is stale' >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo 'Protected-main checkout is dirty' >&2
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
+      - name: Refuse out-of-boundary self-service changes before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+        run: node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}"
+      # The protected-main preflight above fetches and proves current main before
+      # any pull-request script runs. Quota exhaustion waits outside the lock.
+      - name: Check the GitHub API quota before taking the merge lane
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
+          # Quota multiplier note: the probe and preflight below add a handful of
+          # authority reads (GraphQL + REST) on top of the status/check reads;
+          # the absolute quota cost is not yet metered per merge.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+        run: node scripts/check-actions-quota.mjs
+      - name: Acquire the exclusive merge lane
+        id: merge_lock
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # The freshness re-check below runs git merge-base / merge-tree on the
+          # head and the live main tip: both commits must exist locally (#3669).
+          # Fetching objects only; nothing from the head is checked out or run.
+          git fetch --no-tags --quiet origin main "$HEAD_SHA"
+          node scripts/manage-migration-author-lanes.mjs --acquire-merge \
+            --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
+            --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
+          echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
+      - name: Re-read required-check authority under the merge lock from protected main
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+          PREFLIGHT_WAIT_SECONDS: '0'
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Protected-main checkout is stale under the merge lock' >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo 'Protected-main checkout is dirty under the merge lock' >&2
+            exit 1
+          fi
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      - name: Require current main and rerun every applicable coordination guard
+        env:
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          PR_NUMBER: ${{ inputs.pull_request }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          node scripts/check-main-tip-freshness.mjs --contains
+          bash scripts/check-sql.sh
+          node scripts/check-production-verification-sidecars.mjs --base origin/main
+          node scripts/check-migration-pr-lease.mjs
+          node scripts/check-live-proof-probe.mjs
+          PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+      - name: Re-prove the head and merge while the lock is held
+        id: guarded_merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The merge lane is held: never sit on it waiting for a quota reset.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
+          PR_NUMBER: ${{ inputs.pull_request }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+          git fetch origin main
+          node scripts/check-main-tip-freshness.mjs --contains
+          node scripts/check-pr-object-collisions.mjs
+          node scripts/check-migration-pr-lease.mjs
+          node scripts/check-live-proof-probe.mjs
+          # Re-proven under the lock: a reviewer can withdraw, or a refusal can
+          # land, between the first pass and the merge itself. Protected main's
+          # copy, never the pull request's own, on BOTH passes.
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
+          # The status write above and the mergeability GitHub evaluates below are
+          # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked
+          # GitHub to honour an approval it had not recorded yet, so every attempt was
+          # refused with "the base branch policy prohibits the merge" and the revoke step
+          # then set this same context back to failure -- a deadlock the workflow inflicted
+          # on itself. Observed live on PR #1175: success at 21:18:12Z, refusal at
+          # 21:18:14Z, four attempts in a row.
+          #
+          # Wait for THIS context to read back as success before merging, then retry the
+          # merge itself a bounded number of times. Fails closed: if the readback never
+          # turns green, or every merge attempt is refused, the step exits non-zero and the
+          # revoke step withdraws authorization exactly as before. Nothing is merged on an
+          # unproven approval.
+          #
+          # The readback below does NOT swallow API errors. A 401/403 or a network
+          # failure used to be turned into an empty string by `2>/dev/null || echo ''`,
+          # which is indistinguishable from "not green yet", so a broken token spent a
+          # full minute of the exclusive lock looking like eventual consistency (#1201).
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            observed="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
+            [ "$observed" = 'success' ] && break
+            echo "authorization not visible yet (attempt $attempt, observed='${observed:-none}'); waiting"
+            sleep 6
+          done
+          test "$observed" = 'success'
+          # QUEUE-AWARE ADMISSION (#2530 Phase C Step 7). This lane stays the sole
+          # admission path in both modes; only the final merge verb changes. The
+          # live ruleset read decides:
+          #   active   — the exact approved one-PR queue ruleset is live. GitHub
+          #              becomes the sole merger: with checks green, `gh pr merge`
+          #              adds the PR to the queue (or arms auto-merge, as the CLI
+          #              documents). The administrator bypass flag is never used.
+          #   inactive — the pre-queue direct merge, unchanged.
+          #   unknown  — the read failed (this token has no administration scope,
+          #              so rulesets may be unreadable). Attempt the direct merge;
+          #              only a refusal that NAMES the merge queue switches the
+          #              attempt to queue admission, once. Any other refusal
+          #              behaves exactly as before.
+          queue_mode="$(node scripts/merge-queue-contract.mjs --queue-mode)" || queue_mode="unknown"
+          echo "merge queue mode: $queue_mode"
+          if [ "$queue_mode" = 'active' ]; then
+            gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+            echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+            exit 0
+          fi
+          # Retry ONLY the eventual-consistency refusal this loop exists for. Any other
+          # refusal is a policy or state fact no retry can change, and retrying it holds
+          # the repository-wide merge lock for two more minutes before failing (#1201).
+          merged=0
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}" 2>"$RUNNER_TEMP/merge-error.txt"; then
+              merged=1; break
+            fi
+            cat "$RUNNER_TEMP/merge-error.txt"
+            if grep -qi 'merge queue' "$RUNNER_TEMP/merge-error.txt"; then
+              # The queue ruleset went active while this run held the lock (or the
+              # ruleset read was impossible for this token). Direct merging is now
+              # refused by GitHub itself, so the same admission becomes queue
+              # admission — still exact-head pinned, still without the
+              # administrator bypass.
+              echo "GitHub requires the merge queue; switching this admission to queue mode"
+              gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+              echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
+              exit 0
+            fi
+            if ! grep -qi 'base branch policy prohibits the merge' "$RUNNER_TEMP/merge-error.txt"; then
+              echo "guarded merge was refused for a reason no retry can resolve; releasing the merge lane now"
+              break
+            fi
+            echo "guarded merge attempt $attempt hit the known authorization propagation delay; re-proving the head and retrying"
+            test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+            git fetch origin main
+            node scripts/check-main-tip-freshness.mjs --contains
+            sleep 10
+          done
+          test "$merged" = '1'
+      - name: Start the consumer sync for the merge that just landed
+        # The merge above pushed to main as github-actions; GitHub starts no
+        # `push` workflow for that token, so sync.yml never fires on its own
+        # (#3264). Dispatch it explicitly, only after a real merge, and fail
+        # the job loudly if the dispatch itself fails.
+        if: steps.guarded_merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: Revoke authorization if the guarded merge did not complete
+        id: revoke_authorization
+        if: failure() && steps.merge_lock.outputs.owner_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=failure -f context='Migration guarded merge authorization' -f description='Guarded merge failed; authorization revoked before lock release'
+      - name: Release the exclusive merge lane with ownership proof
+        if: always() && steps.merge_lock.outputs.owner_sha != '' && (steps.guarded_merge.outcome == 'success' || steps.revoke_authorization.outcome == 'success')
+        working-directory: trusted-policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER_SHA: ${{ steps.merge_lock.outputs.owner_sha }}
+          TRUSTED_MAIN_SHA: ${{ steps.trusted_preflight.outputs.sha }}
+          TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          BASH_ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          set -euo pipefail
+          export PATH="$TRUSTED_PATH"
+          test "$(git rev-parse HEAD)" = "$TRUSTED_MAIN_SHA"
+          test -z "$(git status --porcelain)"
+          node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"

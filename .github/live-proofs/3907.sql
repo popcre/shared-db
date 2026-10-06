@@ -1,6 +1,6 @@
 -- Read-only proof of the last three mapped DesignFlow user relationships.
 SELECT (
-  EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261006203938')
+  EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261006221530')
   AND (SELECT count(*) FROM (VALUES
     ('app."RolePermissions"', 'RolePermissions_UserId_fkey', 'UserId'),
     ('plm.art_piece_attachment', 'art_piece_attachment_created_by_fkey', 'created_by'),

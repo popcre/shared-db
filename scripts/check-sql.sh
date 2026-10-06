@@ -56,7 +56,7 @@ const diff = fs.readFileSync(process.argv[2], 'utf8')
 // never an exemption for arbitrary proofs, runtime references, or later edits.
 const proofHashes = {
   'scripts/proofs/3882-contract.json': '22ee55499288d95abf3b1e01314232f514a1011725085cdfe6a053f5b1c01419',
-  'scripts/proofs/3882-production.sql': '8c6959ae622172b76b863adaf9d3b2257f55f4a179a3104357299dd8f687bc21',
+  'scripts/proofs/3882-production.sql': 'f221936cb0c8dbb405589297906ad8d933796faa09c40003633bf96d0ce29030',
   'scripts/proofs/3882-sandbox.sql': 'e76702725e5c283b0da7f95cd4da96b8b7df764db756f68d385bf6775788c90d',
 }
 const exactProofAdditions = new Set()

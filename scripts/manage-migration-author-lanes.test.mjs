@@ -11202,3 +11202,22 @@ test('completed replacement pause failure repairs through exact immutable no-wri
  assert.throws(()=>releaseFailedReviewer(replacementRequest,io),/replacement binding mismatch|immutable replacement/)
  assert.deepEqual([...io.refs],missing)
 })
+
+
+test('supported claim validator and queue accept exact global roles without schema aliases', () => {
+  assert.deepEqual(validateClaimObjects(['role "Worker"', 'role "Two  Spaces"', 'role plain']), ['role "Worker"', 'role "Two  Spaces"', 'role plain'])
+  assert.throws(() => validateClaimObjects(['role core.worker']), /exact global role/)
+  assert.throws(() => validateClaimObjects(['role plain', 'role "plain"']), /duplicate/)
+  const parsed = parseQueueScope(scope('ready','structural','claim-first',1,['role "Worker"']))
+  assert.deepEqual(parsed.writes, ['role "Worker"'])
+})
+
+test('preview admission refuses an unclaimed role owner dependency and accepts a claimed read', () => {
+  const migrationBody = 'CREATE TABLE plm.wwe_property(); ALTER TABLE plm.wwe_property OWNER TO worker;'
+  assert.throws(() => deriveLivePreviewCandidate(1769,mergedRehearsalIo({migrationBody}).io), /ownership role dependencies/)
+  const fixture = mergedRehearsalIo({migrationBody}), claims = fixture.io.openClaims()
+  claims[0].body = claims[0].body.replace('objects:', 'writes:').replace('```\n\n```db-author-lease', 'reads:\n  - role worker\n```\n\n```db-author-lease')
+  fixture.io.openClaims = () => claims
+  const candidate = deriveLivePreviewCandidate(1769,fixture.io)
+  assert.equal(candidate.pr,1809)
+})

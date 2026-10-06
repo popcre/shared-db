@@ -98,6 +98,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -115,23 +116,6 @@ jobs:
           scripts/lib/evidence-generation-lineage.test.mjs
           scripts/check-documents-only-pull-request.test.mjs
           scripts/check-closeout-readiness.test.mjs
-
-      - name: Report the activation mode, so nobody has to guess
-        run: |
-          set -euo pipefail
-          MODE=$(node scripts/agent-work-contract-activation.mjs --mode --config-file config/agent-work-contract-activation.json)
-          echo "mode=$MODE" >> "$GITHUB_ENV"
-          {
-            echo "## Agent work contract — $MODE"
-            echo
-            if [ "$MODE" = "report-only" ]; then
-              echo "A pull request with no contract passes. A malformed contract or a"
-              echo "report that contradicts its contract still FAILS."
-            else
-              echo "Enforced. Every non-grandfathered pull request must carry a valid"
-              echo "contract and a report that satisfies it."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve the exact queued or manually selected pull request
         id: queue
@@ -194,6 +178,23 @@ jobs:
           # is NOT documents only: the pair stays required (fail closed).
           if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
 
+      - name: Report the activation mode, so nobody has to guess
+        run: |
+          set -euo pipefail
+          MODE=$(node trusted-policy/scripts/agent-work-contract-activation.mjs --mode --config-file trusted-policy/config/agent-work-contract-activation.json)
+          echo "mode=$MODE" >> "$GITHUB_ENV"
+          {
+            echo "## Agent work contract — $MODE"
+            echo
+            if [ "$MODE" = "report-only" ]; then
+              echo "A pull request with no contract passes. A malformed contract or a"
+              echo "report that contradicts its contract still FAILS."
+            else
+              echo "Enforced. Every non-grandfathered pull request must carry a valid"
+              echo "contract and a report that satisfies it."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Validate any contract and report carried by this pull request
         env:
           MODE: ${{ env.mode }}
@@ -218,7 +219,7 @@ jobs:
           REPORT=.agent/completion.json
 
           if [ -n "$PR_NUMBER" ]; then
-            RESOLVED=$(node scripts/agent-work-contract-git-evidence.mjs \
+            RESOLVED=$(node trusted-policy/scripts/agent-work-contract-git-evidence.mjs \
               --resolve-evidence-pair \
               --pr-base-sha "$PR_BASE_SHA" \
               --pr-head-sha "$PR_HEAD_SHA")
@@ -256,7 +257,7 @@ jobs:
               echo "No current contract on this pull request; report-only mode allows it."
               exit 0
             fi
-            if node scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
+            if node trusted-policy/scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file trusted-policy/config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
               exit 0
             fi
             # THE DOCUMENTS-ONLY EXEMPTION (issue #2591, owner approved 2026-09-08).
@@ -293,14 +294,14 @@ jobs:
           if [ ! -f "$CONTRACT" ]; then echo "::error::$REPORT exists but $CONTRACT does not; a report with no contract cannot be checked."; exit 1; fi
           if [ ! -f "$REPORT" ]; then echo "::error::$CONTRACT exists but $REPORT does not; the work never reported against its contract."; exit 1; fi
 
-          node scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
+          node trusted-policy/scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
           PR_ARGS=()
           if [ -n "$PR_NUMBER" ]; then
             PR_ARGS+=(--expected-pr "$PR_NUMBER" --expected-head-sha "$PR_HEAD_SHA")
           fi
-          node scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
+          node trusted-policy/scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
           if [ -n "$PR_NUMBER" ]; then
-            node scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
+            node trusted-policy/scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
           fi
 
   # ---- moved from .github/workflows/cancelled-work-guard.yml (#3746) ----

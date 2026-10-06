@@ -1,6 +1,6 @@
 // Owner: reviewer assignment lane. Immutable start records bound paid rounds.
 import { LaneError } from './claims.mjs'
-import { REVIEW_STARTED_REF_PREFIX } from './constants.mjs'
+import { REVIEW_STARTED_REF_PREFIX, REVIEW_REF_ROW_LIMIT } from './constants.mjs'
 import { parseTerminalFailureEvidence } from './review-replacement.mjs'
 
 export function paidStart(row, commit) {
@@ -23,9 +23,11 @@ export function paidStart(row, commit) {
 }
 
 export function assertPaidReviewCapacity(request, io) {
+  if(!Number.isInteger(request.pr)||request.pr<1||!Number.isInteger(request.slot)||request.slot<1)throw new LaneError('review circuit breaker: exact positive PR and slot required')
   const prefix=`${REVIEW_STARTED_REF_PREFIX}/`
   const rows = typeof io.readPaidReviewStarts === 'function' ? io.readPaidReviewStarts(prefix,request.pr) : io.listRefs(prefix)
   if (!Array.isArray(rows)) throw new LaneError('review circuit breaker: immutable start listing unreadable')
+  if(rows.length>=REVIEW_REF_ROW_LIMIT)throw new LaneError('review circuit breaker: bounded start listing may be truncated')
   const starts = rows.map(row=>paidStart(row,row.commit ?? io.getCommit(row.sha))).filter(row=>row && row.pr === request.pr && row.slot === request.slot)
   let count=0
   const comparisonContext={}

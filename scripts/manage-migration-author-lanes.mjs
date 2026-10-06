@@ -88,7 +88,9 @@ export function pauseProviderFailure(record,{resolveCommand=resolveCommandPath,e
     const invoke=(args)=>{
       const plan=platform==='win32'&&/\.(cmd|bat)$/i.test(resolved)
         ?{file:env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,...args]}:{file:resolved,args}
-      return JSON.parse(execute(plan.file,plan.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_PREFLIGHT_TIMEOUT_MS}))
+      let text
+      try{text=execute(plan.file,plan.args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:REVIEWER_PREFLIGHT_TIMEOUT_MS});return JSON.parse(text)}
+      catch(error){throw new LaneError(`supported provider pause/status command failed or returned unreadable JSON: ${String(error.message).split('\n')[0]}`)}
     }
     const result=invoke(['pause',reviewer.provider,record.failureCode,'--seconds','3600','--observed',String(record.observedEpoch)])
     const actual=invoke(['pause-status',reviewer.provider])
@@ -727,8 +729,9 @@ export const githubIo = {
   readReviewFailureCommit(sha) { return readGitCommits([sha]).get(sha) },
   pauseReviewerFailure(record) { return pauseProviderFailure(record) },
   readPaidReviewStarts(prefix,pr) {
+    if(!Number.isInteger(pr)||pr<1)throw new LaneError('review circuit breaker: exact positive PR number required')
     const rows=[...gitRemoteRefs([`${prefix}*-${Number(pr)}-*`])].map(([ref,sha])=>({ref,sha}))
-    if(rows.length>REVIEW_REF_ROW_LIMIT)throw new LaneError('review circuit breaker: complete start history exceeds bounded row ceiling')
+    if(rows.length>=REVIEW_REF_ROW_LIMIT)throw new LaneError('review circuit breaker: complete start history reaches bounded row ceiling; possibly truncated history refused')
     const commits=readGitCommits(rows.map(row=>row.sha))
     return rows.map(row=>({...row,commit:commits.get(row.sha)}))
   },
@@ -2462,8 +2465,16 @@ export function releaseFailedReviewer(options,io=githubIo){
     const request=validateTerminalReviewerFailure(options,'reviewer release'),failureRef=reviewerFailureRef(request)
     const original=resolveFailedReviewRecord(request,io),priorFailureSha=io.readRef(failureRef)
     if(priorFailureSha){
-      const prior=parseReviewRelease(io.getCommit(priorFailureSha))
+      const priorCommit=io.getCommit(priorFailureSha),prior=parseTerminalFailureEvidence(priorCommit)
       if(prior.issue!==request.issue||prior.pr!==request.pr||prior.headSha!==request.headSha||prior.failedSequence!==request.failedSequence||prior.reviewer!==original.reviewer||prior.failureCode!==String(options.failureCode))throw new LaneError('immutable reviewer release evidence does not match this request')
+      if(prior.selfReplacement){
+        const replacement=parseReviewReplacement(priorCommit)
+        const base=`${REVIEW_REPLACEMENT_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}${assignmentSlotSuffix(request.slot)}`
+        const rows=io.listRefs(base)
+        if(!Array.isArray(rows)||rows.length>=REVIEW_REF_ROW_LIMIT)throw new LaneError('immutable replacement pause repair inventory unreadable or incomplete')
+        const matching=rows.filter(row=>row.ref===base||row.ref===`${base}-${request.failedSequence}`)
+        if(matching.length!==1||matching[0].sha!==priorFailureSha||(replacement.slot??1)!==request.slot||replacement.failedSequence!==request.failedSequence||replacement.issue!==request.issue||replacement.pr!==request.pr||replacement.headSha!==request.headSha||replacement.failureSha!=='self')throw new LaneError('immutable replacement pause repair protected replacement binding mismatch or ambiguity')
+      }
       if(reviewLeaseRefCandidates({...original,slot:request.slot},Boolean(io.requiresExactReviewHeadSha)).some((candidate)=>leaseRefHoldsAssignment(candidate,{...original,slot:request.slot},io)))throw new LaneError('reviewer release evidence exists but the active lease is still present; reconciliation requires manual audit')
       if(!['insufficient_quota','provider_unavailable'].includes(prior.failureCode))throw new LaneError(`reviewer ${original.reviewer} terminal failure was already released with immutable evidence ${priorFailureSha}`)
       const pause=pauseActualReviewFailure({...request,reviewer:original.reviewer,failureCode:prior.failureCode,failureSha:priorFailureSha},io)

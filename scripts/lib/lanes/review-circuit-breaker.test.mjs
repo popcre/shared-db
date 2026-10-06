@@ -63,3 +63,8 @@ test('provider pause refuses unknown immutable timestamp and reports expired ori
  x.pauseReviewerFailure=r=>{assert.equal(r.observedEpoch,1791309600);return{status:'expired',provider:'glm',observed_epoch:r.observedEpoch,expires_epoch:r.observedEpoch+3600}}
  const result=pauseActualReviewFailure(record,x);assert.equal(result.paused,false);assert.equal(result.reason,'original failure window expired')
 })
+
+test('exact row ceiling and malformed PR cannot be accepted as complete paid history',()=>{
+ assert.throws(()=>assertPaidReviewCapacity(request,io(Array.from({length:1000},()=>row()))),/may be truncated/)
+ for(const pr of [NaN,'4000',0,-1])assert.throws(()=>assertPaidReviewCapacity({...request,pr},io([])),/exact positive PR/)
+})

@@ -11151,6 +11151,7 @@ test('Windows monotonic pause invokes supported command launcher and independent
  assert.deepEqual(calls[1].args,['/d','/s','/c','C:/tools/ai-review-preflight.cmd','pause-status','glm'])
  let n=0
  assert.throws(()=>pauseProviderFailure(record,{...deps,execute:()=>JSON.stringify(++n===1?hold:{...hold,record_id:'tampered'})}),/readback mismatch/)
+ assert.throws(()=>pauseProviderFailure(record,{...deps,execute:()=> 'invalid JSON'}),/returned unreadable JSON/)
  const stronger={...hold,expires_epoch:10000,failure_class:'out-of-credit'}
  assert.deepEqual(pauseProviderFailure(record,{...deps,execute:()=>JSON.stringify(stronger)}),stronger)
  const expired={status:'expired',provider:'glm',observed_epoch:1000,expires_epoch:4600};n=0
@@ -11183,4 +11184,21 @@ test('string CLI replacement binds normalized original paid failure rather than 
  let paused;io.pauseReviewerFailure=record=>{paused=record}
  const result=replaceFailedReviewer({...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()},io)
  assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'grok-4.6');assert.notEqual(result.reviewer,paused.reviewer);assert.equal(paused.observedEpoch,1791309600)
+})
+
+test('completed replacement pause failure repairs through exact immutable no-write release retry',()=>{
+ const io=failedReviewIo(),get=io.getCommit;io.getCommit=sha=>({...get(sha),committedDate:'2026-10-06T18:00:00Z'})
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ let calls=0;io.pauseReviewerFailure=()=>{calls++;throw Error('supported pause store unavailable')}
+ assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/pause store unavailable/)
+ const snapshot=[...io.refs],cursor=io.refs.get(REVIEW_CURSOR_REF)
+ io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'grok-4.6');return{status:'expired'}}
+ const result=releaseFailedReviewer(replacementRequest,io)
+ assert.equal(result.alreadyReleased,true);assert.equal(result.pause.paused,false);assert.equal(calls,2)
+ assert.deepEqual([...io.refs],snapshot);assert.equal(io.refs.get(REVIEW_CURSOR_REF),cursor)
+ const replacementRef=[...io.refs.keys()].find(ref=>ref.startsWith('refs/db-review-replacements/'))
+ assert.ok(replacementRef)
+ io.refs.delete(replacementRef);const missing=[...io.refs]
+ assert.throws(()=>releaseFailedReviewer(replacementRequest,io),/replacement binding mismatch|immutable replacement/)
+ assert.deepEqual([...io.refs],missing)
 })

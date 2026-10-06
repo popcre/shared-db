@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "work_issue": 3398,
+  "generation": 15,
+  "evidence_parent": {
+    "work_issue": 3398,
+    "generation": 14,
+    "contract_sha256": "937f6a50904e221143368cc255e67b7723cbd7c750e620165d0bf89a667075ca"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Implement the already-declared generation 14 exact-identifier corrections in an independent owned checkout, preserving the protected review source; batch independent review findings before fast-forwarding the existing PR",
+  "base_sha": "655c8201607a0aae47881c9a6aa0d6a5812ab88c",
+  "dispatcher": "Codex 01a1128b-9a65-7b51-b3e3-b7183be434d5",
+  "worker": "Codex 01a1128b-9a65-7b51-b3e3-b7183be434d5",
+  "branch": "codex/3398-final",
+  "worktree": "/home/ahazan/.codex/worktrees/3398-final/shared-db",
+  "allowed_paths": [
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-dispatch-collision.test.mjs",
+    "scripts/lib/lanes/claims.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    ".github/workflows/tools-offline-tests.yml",
+    ".agent/work/3398/15/contract.json",
+    ".agent/work/3398/15/completion.json",
+    "scripts/lib/lanes/preview-admission.mjs",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    ".agent/work/3398/13/contract.json",
+    ".agent/work/3398/13/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-dispatch-collision.test.mjs",
+    "scripts/lib/lanes/claims.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    ".github/workflows/tools-offline-tests.yml",
+    ".agent/work/3398/15/contract.json",
+    ".agent/work/3398/15/completion.json",
+    "scripts/lib/lanes/preview-admission.mjs",
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    ".agent/work/3398/13/contract.json",
+    ".agent/work/3398/13/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database, role, infrastructure, secret mutation",
+    "No aliases, synthetic evidence, count caps, weakened dynamic refusals",
+    "Preserve other sessions work"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/sql-role-operations.test.mjs scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-cancelled-work.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Helper-only PR is incomplete and superseded only after full replacement lands",
+    "Live open-PR inventory has no competing writes on integration paths",
+    "Existing PR branch will receive only a fast-forward of this owned branch after the current protected review ends; original review checkout remains unchanged"
+  ],
+  "stop_conditions": [
+    "Refuse uncertain dynamic role targets",
+    "Stop on active conflicting file ownership",
+    "Stop if a path outside allowed scope is required"
+  ]
+}

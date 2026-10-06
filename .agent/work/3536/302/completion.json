@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3990,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/302",
+  "contract_sha256": "9977cee6ddd496437a9fd1174318909f460346d2221fe76d3e5d6f97168804fa",
+  "head_sha": "c3d56148afbc185f9e0bfec12ab99b9ad0dd0fdd",
+  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "files_changed": [
+    ".github/workflows/migration-ledger-drift.yml",
+    "scripts/report-ledger-drift-alarm.mjs",
+    "scripts/report-ledger-drift-alarm.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/report-ledger-drift-alarm.test.mjs scripts/report-ledger-drift-status.test.mjs",
+      "exit_code": 0,
+      "evidence": "39 focused tests passed; full 94 producer, reporter, alarm, freshness and truth tests passed without skips or failures. Temporary task PATH alias maps python to installed python3 for producer tests."
+    }
+  ],
+  "assumptions_resolved": [
+    "No database write or promotion.",
+    "Automatic events succeed only after verified report and alarm readback.",
+    "Manual dispatch and unknown failures remain red; unchanged alarm does not create repeated comments."
+  ],
+  "stop_conditions_hit": []
+}

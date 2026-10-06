@@ -1,0 +1,16 @@
+{
+  "schema_version": 1, "work_issue": 3943, "outcome": "ready-for-merge", "pr": 3952,
+  "migration_versions": [], "contract_ref": "refs/db-contracts/3943/6",
+  "contract_sha256": "467942793bd485d1a8d5dc163d37057bd3a1d1be9a7075241e1d6473e9bed803",
+  "head_sha": "96250c3e16402b4b52c5b50ca7158a2bd962e668", "base_sha": "77bd99d72ccfd1a48328e778048d5862fc103c9e", "files_changed": [
+  "scripts/production_business_risk_gate.py",
+  "scripts/test_production_business_risk_gate.py"
+],
+  "db_reads": [], "db_writes": [],
+  "checks": [
+    { "command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed; 0 added migrations (re-proved at 96250c3e after refreshing onto origin/main 77bd99d7)." },
+    { "command": "python -m pytest scripts/test_production_business_risk_gate.py -q", "exit_code": 0, "evidence": "221 passed, 347 subtests passed (re-proved at 96250c3e after refreshing onto origin/main 77bd99d7): the token assertion is ordinal:digest16:skeleton ([0-9a-f]{16}), and test_demonstrated_collision_no_longer_matches reproduces the round-14 demonstrated 4-hex collision (both literals hash to d6b9) and asserts 'collision-62654' no longer normalises equal to the production queue literal under the 64-bit digest." }
+  ],
+  "assumptions_resolved": ["Tolerated set unchanged: ONLY byte-identical positive-position literals normalise equal (now digest16, 64 bits, of the literal in the token); the demonstrated 16-bit collision ('collision-62654' vs the production literal, round 14 report 2026-10-06T011858) is refused, and any forgery is ~2^32 birthday work."],
+  "stop_conditions_hit": []
+}

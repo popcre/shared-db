@@ -1114,8 +1114,10 @@ def _redact_concurrency_queue_literals(line: str) -> str:
     # 4-hex digest (d6b9) as the production queue literal
     # 'shared-supabase-migrations-production' (plan-review round 14 report
     # 2026-10-06T011858, .ai/reviews/ in worktree coldlion-intake-rot). 64
-    # bits makes finding any collision ~2^32 birthday work — infeasible by
-    # accident — so a differing queue literal cannot normalise equal.
+    # bits makes finding any collision ~2^32 birthday work, and forging a
+    # match against the FIXED production literal a ~2^64 second preimage —
+    # both infeasible by accident or by hand — so a differing queue literal
+    # cannot normalise equal.
     # Empty literals are verbatim: an emptied queue operand merges queues, and
     # verbatim comparison refuses it.
     import re as _re

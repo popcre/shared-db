@@ -491,3 +491,12 @@ test('real collision extraction refuses unresolved dynamic role statements', () 
   assert.throws(() => dispatchObjectKeys("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;"), /dynamic role/)
   assert.throws(() => findCollisions([{label:'A',files:[{path:'A.sql',sql:"DO $$ BEGIN EXECUTE 'alter ' || 'role ' || name; END $$;"}]}]), /dynamic role/)
 })
+
+
+test('quoted keyword role identities survive the whole-object keyword filter', () => {
+  for (const role of ['all','table','if','view','only']) {
+    assert.deepEqual(dispatchObjectKeys(`CREATE ROLE "${role}";`), [`role ${role}`])
+    assert.deepEqual(dispatchObjectKeys(`ALTER ROLE "${role}" NOLOGIN;`), [`role ${role}`])
+    assert.equal(findCollisions([{label:'A',files:[{path:'A.sql',sql:`CREATE ROLE "${role}";`}]},{label:'B',files:[{path:'B.sql',sql:`DROP ROLE "${role}";`}]}]).collisions[0].object, `role ${role}`)
+  }
+})

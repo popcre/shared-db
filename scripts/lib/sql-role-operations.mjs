@@ -61,12 +61,12 @@ const QUALIFIED = String.raw`(?:${IDENT}\s*\.\s*)?${IDENT}`
 // Filtering these is what keeps membership separate from privilege grants
 // (`grant select on t to r`) and from `PUBLIC`/`CURRENT_USER` grantees.
 const NON_ROLE_KEYWORDS = new Set([
-  // privilege names (so a privilege list never reads as a membership list)
-  'select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger',
-  'usage', 'create', 'connect', 'temp', 'temporary', 'execute', 'all',
-  'alter', 'set', 'reset', 'role', 'user', 'group',
-  // special grantees / role references
-  'public', 'current_user', 'current_role', 'session_user', 'user',
+  // Fully reserved grammar tokens and pseudo-role references. Nonreserved
+  // words such as ROLE, SET, INSERT, CONNECT and EXECUTE are valid role names;
+  // ON distinguishes privilege grants from membership, not a keyword denylist.
+  // Source: PostgreSQL REL_17_STABLE parser/gram.y RoleSpec and parser/kwlist.h.
+  'select', 'all', 'create', 'references', 'group', 'user',
+  'public', 'current_user', 'current_role', 'session_user',
   'current_catalog', 'current_schema',
 ])
 
@@ -123,12 +123,6 @@ function hasNamedRoleToken(text) {
   return false
 }
 
-/** Whether every name in a raw role list is an unquoted pseudo-role grantee. */
-function rawIsPseudoOnly(raw) {
-  const parts = splitRoleList(raw)
-  if (!parts.length) return false
-  return parts.every((p) => !p.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(p.toLowerCase()))
-}
 
 /**
  * Canonical identity for one cluster-global role name.
@@ -151,10 +145,17 @@ export function canonicalRoleName(raw) {
   if (!m) return null
   if (m[1] !== undefined) {
     const value = m[1].replace(/""/g, '"')
-    if (!value) return null
+    if (!value || Buffer.byteLength(value, 'utf8') > 63) return null
     return /^[a-z_][a-z0-9_$]*$/.test(value) ? value : `"${value.replace(/"/g, '""')}"`
   }
+  if (Buffer.byteLength(m[2], 'utf8') > 63) return null
   return m[2].toLowerCase()
+}
+
+function canonicalSqlRoleOrThrow(raw) {
+  const name = canonicalRoleName(raw)
+  if (!name) throw new RoleExtractionError(`SQL role target is not one exact supported identifier: ${raw}`)
+  return name
 }
 
 function canonicalRoleOrThrow(raw) {
@@ -191,6 +192,7 @@ export function normalizeRoleClaim(object) {
 function pushOwnership(deps, kind, nameRaw, ownerRaw) {
   // CURRENT_USER / SESSION_USER / CURRENT_ROLE / USER name no fixed role, so
   // they create no role dependency to track.
+  if (!String(ownerRaw).trim().startsWith('"') && PSEUDO_ROLE_GRANTEES.has(String(ownerRaw).trim().toLowerCase())) throw new RoleExtractionError('ownership role is implicit and has no provable exact identity')
   if (!isNamedOwnerToken(ownerRaw)) return
   deps.push({ action: 'owner_dependency', role: canonicalRoleName(ownerRaw), ownerKind: kind, ownerTarget: nameRaw })
 }
@@ -204,7 +206,17 @@ function pushOwnership(deps, kind, nameRaw, ownerRaw) {
 
 /** PostgreSQL accepts `DO $$…$$` and `DO LANGUAGE plpgsql $tag$…$tag$`. */
 function dollarQuoteStartsDo(source, offset) {
-  return /\bdo(?:\s+language\s+[a-z_][a-z0-9_$]*)?\s*$/i.test(source.slice(0, offset))
+  let cursor = offset
+  const word = () => {
+    while (cursor > 0 && /\s/.test(source[cursor - 1])) cursor--
+    const end = cursor
+    while (cursor > 0 && /[A-Za-z_0-9$]/.test(source[cursor - 1])) cursor--
+    const token = source.slice(cursor, end)
+    return (Array.isArray(token) ? token.join('') : token).toLowerCase()
+  }
+  const last = word()
+  if (last === 'do') return true
+  return /^[a-z_][a-z_0-9$]*$/.test(last) && word() === 'language' && word() === 'do'
 }
 
 function beginsExecutedSql(source, offset) {
@@ -276,7 +288,7 @@ function stripSqlComments(sql) {
       if (tag) {
         const end = sql.indexOf(tag, i + tag.length)
         if (end < 0 || end >= finish) throw new RoleExtractionError('unterminated dollar SQL body')
-        if (!insideDo && dollarQuoteStartsDo(output.join(''), i)) scan(i + tag.length, end, true)
+        if (!insideDo && dollarQuoteStartsDo(output, i)) scan(i + tag.length, end, true)
         i = end + tag.length; continue
       }
       i++
@@ -366,8 +378,10 @@ function splitRoleList(raw) {
 }
 
 function roleNamesFrom(listRaw) {
-  return splitRoleList(listRaw)
-    .map((p) => ({ name: canonicalRoleName(p), quoted: p.startsWith('"') }))
+  const parts = splitRoleList(listRaw)
+  if (parts.some((part) => !part.startsWith('"') && NON_ROLE_KEYWORDS.has(part.toLowerCase()) && !PSEUDO_ROLE_GRANTEES.has(part.toLowerCase()))) return []
+  return parts
+    .map((p) => ({ name: canonicalSqlRoleOrThrow(p), quoted: p.startsWith('"') }))
     .filter(({ name, quoted }) => {
       if (!name) return false
       const bare = name.replace(/^"|"$/g, '').toLowerCase()
@@ -386,7 +400,7 @@ function looksLikeRoleStatement(content) {
     if (!s) return false
     if (/^(?:create|alter|drop)\s+user\s+mapping\b/i.test(s)) return false
     if (/^(?:create|alter|drop)\s+(?:role|user|group)\b/i.test(s)) return true
-    const mem = /^(?:grant|revoke)\s+(?:admin\s+option\s+for\s+)?([\s\S]*?)\s+(?:to|from)\s+([\s\S]*)$/i.exec(s)
+    const mem = /^(?:grant|revoke)\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?([\s\S]*?)\s+(?:to|from)\s+([\s\S]*)$/i.exec(s)
     if (!mem) return false
     // A privilege grant carries `on <object>` before the connector; membership does not.
     return !/\bon\b/i.test(mem[1])
@@ -412,7 +426,7 @@ function looksLikeOwnershipChange(content) {
       new RegExp(`^create\\s+database\\b[\\s\\S]*?\\bowner\\s*(?:=\\s*)?(${POSSIBLE_OWNER_TARGET})`, 'i').exec(s)
     // A format placeholder can become any role at execution time. It is not
     // an exact dependency, but it is a reason to refuse instead of clearing.
-    return !!m && (m[1].startsWith('%') || isNamedOwnerToken(m[1]))
+    return !!m && (m[1].startsWith('%') || isNamedOwnerToken(m[1]) || PSEUDO_ROLE_GRANTEES.has(m[1].toLowerCase()))
   })
 }
 
@@ -443,7 +457,7 @@ export function findDynamicRoleMutations(sql) {
   const { extractable, hidden, scanSource } = extractableAndHidden(sql)
   const dynamicKinds = new Set(['string-literal', 'nested-dollar-string', 'dollar-body'])
   const direct = hidden
-    .filter((h) => dynamicKinds.has(h.kind) && (
+    .filter((h) => dynamicKinds.has(h.kind) && (h.kind !== 'dollar-body' || h.executed || h.executeExpression) && (
       looksLikeRoleMutation(h.text) ||
       ((h.executed || h.executeExpression || h.formatted) && /\b(?:role|user|group)\b/i.test(h.text)) ||
       (h.formatted && h.text.includes('%') && /\b(?:role|user|group)\b/i.test(h.text))
@@ -508,7 +522,7 @@ export function assertNoDynamicRoleMutations(sql) {
  * }}
  */
 function opKey(op) {
-  return `${op.action}|${op.target ?? ''}|${op.from ?? ''}|${op.to ?? ''}|${(op.members ?? []).join(',')}|${(op.grantees ?? []).join(',')}`
+  return JSON.stringify([op.action, op.target ?? null, op.from ?? null, op.to ?? null, op.members ?? [], op.grantees ?? []])
 }
 
 function compareOperations(a, b) {
@@ -549,29 +563,49 @@ function extractRoleOperationsUnchecked(sql) {
     while ((m = re.exec(text)) !== null) { if (!quotedPositions.has(m.index)) fn(m) }
   }
 
+  // Reject unsupported role token spellings rather than accepting an ASCII
+  // prefix, including schema qualification, Unicode escape identifiers and
+  // names PostgreSQL would truncate to its 63-byte identifier limit.
+  const rawTarget = String.raw`("(?:[^"]|"")*"|[^\s;,()]+)`
+  run(new RegExp(String.raw`\b(?:create|alter|drop)\s+${ROLE_COMMAND}\s+(?:if\s+(?:not\s+)?exists\s+)?${rawTarget}`, 'gi'), (m) => {
+    const raw = m[1].toLowerCase()
+    if (!m[1].startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw)) throw new RoleExtractionError('role mutation names an implicit or reserved role, not an exact identity')
+    if (raw !== 'all') canonicalSqlRoleOrThrow(m[1])
+  })
+  run(new RegExp(String.raw`\bowner\s+to\s+${rawTarget}`, 'gi'), (m) => {
+    canonicalSqlRoleOrThrow(m[1])
+  })
+
   // CREATE ROLE | USER | GROUP  (the three spellings are one PostgreSQL command;
   // covering all three so no role mutation is skipped, while identity stays
   // exact and un-aliased per name).
   run(new RegExp(String.raw`\bcreate\s+${ROLE_COMMAND}\s+(?:if\s+not\s+exists\s+)?(${IDENT})`, 'gi'), (m) => {
-    const target = canonicalRoleName(m[1])
+    const target = canonicalSqlRoleOrThrow(m[1])
     if (target) add({ action: 'create', kind: 'role', target })
   })
 
   // DROP ROLE a, b  → one drop op per name.
-  run(new RegExp(String.raw`\bdrop\s+${ROLE_COMMAND}\s+(?:if\s+exists\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)`, 'gi'), (m) => {
-    for (const part of splitRoleList(m[1])) {
-      const target = canonicalRoleName(part)
-      if (target) add({ action: 'drop', kind: 'role', target })
+  run(new RegExp(String.raw`\bdrop\s+${ROLE_COMMAND}\s+(?:if\s+exists\s+)?`, 'gi'), (m) => {
+    const start = m.index + m[0].length
+    let finish = start, quoted = false
+    for (; finish < text.length; finish++) {
+      if (text[finish] === '"') {
+        if (quoted && text[finish + 1] === '"') { finish++; continue }
+        quoted = !quoted
+      } else if (!quoted && text[finish] === ';') break
+    }
+    for (const part of splitRoleList(text.slice(start, finish))) {
+      add({ action: 'drop', kind: 'role', target: canonicalSqlRoleOrThrow(part) })
     }
   })
 
   // ALTER ROLE x [RENAME TO y] — rename reserves BOTH identities (independent,
   // never aliased); a plain alter reserves the one.
   run(new RegExp(String.raw`\balter\s+${ROLE_COMMAND}\s+(?!all\b)(${IDENT})(?:\s+rename\s+to\s+(${IDENT}))?`, 'gi'), (m) => {
-    const from = canonicalRoleName(m[1])
+    const from = canonicalSqlRoleOrThrow(m[1])
     if (!from) return
     if (m[2]) {
-      const to = canonicalRoleName(m[2])
+      const to = canonicalSqlRoleOrThrow(m[2])
       if (to) add({ action: 'rename', kind: 'role', from, to })
     } else {
       add({ action: 'alter', kind: 'role', target: from })
@@ -602,33 +636,25 @@ function extractRoleOperationsUnchecked(sql) {
     }
   })
 
-  // Record one membership operation, keeping every named role on either side.
-  // When exactly one side is empty because it names only pseudo-role grantees
-  // (`GRANT worker TO PUBLIC`, `REVOKE worker FROM CURRENT_USER`), the named
-  // side is still recorded — PostgreSQL accepts those counterparts, and
-  // dropping the op would silently lose the named role. A side that is empty
-  // for any other reason (privilege keywords such as `ALL`) keeps the prior
-  // skip: `ALL` is not a membership counterpart, so `GRANT ALL TO worker`
-  // stays clear exactly as before.
+  // Membership writes need exact named roles on both sides. An implicit actor
+  // or PUBLIC counterpart cannot be turned into a partial reservation.
   const addMembership = (action, membersRaw, granteesRaw) => {
     const members = roleNamesFrom(membersRaw)
     const grantees = roleNamesFrom(granteesRaw)
+    if ((members.length || grantees.length) && [...splitRoleList(membersRaw), ...splitRoleList(granteesRaw)].some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('membership role is implicit or reserved and has no provable exact identity')
     if (members.length && grantees.length) {
       add({ action, kind: 'role', target: [...members, ...grantees].sort().join(' '), members, grantees })
-    } else if (members.length && rawIsPseudoOnly(granteesRaw)) {
-      add({ action, kind: 'role', target: members.slice().sort().join(' '), members, grantees: [] })
-    } else if (grantees.length && rawIsPseudoOnly(membersRaw)) {
-      add({ action, kind: 'role', target: grantees.slice().sort().join(' '), members: [], grantees })
+
     }
   }
 
   // Membership GRANT a, b TO c, d  (no `on`, so never a privilege grant).
-  run(new RegExp(String.raw`\bgrant\s+(?:admin\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+to\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+with\s+admin\s+option)?(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\bgrant\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+to\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+with\s+admin\s+option)?(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
     addMembership('grant_membership', m[1], m[2])
   })
 
   // Membership REVOKE a FROM c.
-  run(new RegExp(String.raw`\brevoke\s+(?:admin\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+from\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\brevoke\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+from\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
     addMembership('revoke_membership', m[1], m[2])
   })
 
@@ -706,7 +732,7 @@ export function extractRoleOperations(sql) {
   const operations = [...result.operations]
   const ownershipDependencies = [...result.ownershipDependencies]
   const seen = new Set(operations.map(opKey))
-  const seenDeps = new Set(ownershipDependencies.map((d) => `${d.role}|${d.ownerKind}|${d.ownerTarget}`))
+  const seenDeps = new Set(ownershipDependencies.map((d) => JSON.stringify([d.role, d.ownerKind, d.ownerTarget])))
   for (const item of result.dynamicRefusals) {
     if (item.kind === 'fragmented-execute' || !item.executed) {
       throw new RoleExtractionError(`dynamic role mutation has no provable executed exact target: ${item.text}`)
@@ -718,7 +744,7 @@ export function extractRoleOperations(sql) {
       operations.push(op)
     }
     for (const dep of inner.ownershipDependencies) {
-      const key = `${dep.role}|${dep.ownerKind}|${dep.ownerTarget}`
+      const key = JSON.stringify([dep.role, dep.ownerKind, dep.ownerTarget])
       if (seenDeps.has(key)) continue
       seenDeps.add(key)
       ownershipDependencies.push(dep)

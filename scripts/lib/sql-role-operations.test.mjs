@@ -50,8 +50,8 @@ test('a broad schema claim is not a reservation on a global role', () => {
   assert.equal(canonicalRoleName('   '), null)
   assert.equal(canonicalRoleName('1bad'), null)
   // The role key namespace is distinct from the schema key namespace.
-  assert.deepEqual(roleCollisionKeys('create role public'), ['role public'])
-  assert.notDeepEqual(roleCollisionKeys('create role public'), ['schema public'])
+  assert.deepEqual(roleCollisionKeys('create role shared'), ['role shared'])
+  assert.notDeepEqual(roleCollisionKeys('create role shared'), ['schema shared'])
 })
 
 // ---------------------------------------------------------------------------
@@ -98,12 +98,13 @@ test('USER MAPPING and empty quoted identifiers invent no role', () => {
     'create user mapping for alice server srv;',
     'drop user mapping if exists for alice server srv;',
     'alter user mapping for alice server srv options (add a b);',
-    'create role "";',
   ]) {
     assert.deepEqual(extractRoleOperations(sql).operations, [])
     assert.deepEqual(roleCollisionKeys(sql), [])
   }
   assert.equal(canonicalRoleName('""'), null)
+  assert.throws(() => roleCollisionKeys('create role "";'), RoleExtractionError)
+  assert.throws(() => extractRoleOperations('create role "";'), RoleExtractionError)
   assert.deepEqual(roleCollisionKeys("do $$ begin execute 'create user mapping for alice server srv'; end $$;"), [])
 })
 
@@ -196,29 +197,12 @@ test('special grantees and privilege keywords never become role names', () => {
   assert.deepEqual(roleCollisionKeys('revoke all from current_user;'), [])
 })
 
-test('membership with PUBLIC or current_user keeps every named role', () => {
-  // GRANT/REVOKE … TO/FROM PUBLIC or CURRENT_USER is valid PostgreSQL
-  // membership with a pseudo-role counterpart. The named side must still be
-  // accounted — dropping the whole op silently loses it.
-  assert.deepEqual(roleCollisionKeys('grant worker to public;'), ['role worker'])
-  assert.deepEqual(roleCollisionKeys('revoke worker from public;'), ['role worker'])
-  assert.deepEqual(roleCollisionKeys('grant worker to current_user;'), ['role worker'])
-  assert.deepEqual(roleCollisionKeys('revoke worker from current_role;'), ['role worker'])
-  assert.deepEqual(roleCollisionKeys('grant public to worker;'), ['role worker'])
-  assert.deepEqual(roleCollisionKeys('grant worker to app_group, current_user;'), ['role app_group', 'role worker'])
-  const g = extractRoleOperations('grant worker to public;').operations
-  assert.equal(g.length, 1)
-  assert.deepEqual(
-    { action: g[0].action, members: g[0].members, grantees: g[0].grantees },
-    { action: 'grant_membership', members: ['worker'], grantees: [] },
-  )
-  const r = extractRoleOperations('revoke worker from public;').operations
-  assert.equal(r.length, 1)
-  assert.equal(r[0].action, 'revoke_membership')
-  // Privilege keywords are NOT membership counterparts: `ALL` names no
-  // pseudo-role, so these stay exactly clear.
+test('membership with an implicit or reserved counterpart refuses partial accounting', () => {
+  for (const sql of ['GRANT worker TO PUBLIC;', 'REVOKE worker FROM PUBLIC;', 'GRANT worker TO CURRENT_USER;', 'REVOKE worker FROM CURRENT_ROLE;', 'GRANT PUBLIC TO worker;', 'GRANT worker TO app_group, CURRENT_USER;']) {
+    assert.throws(() => roleCollisionKeys(sql), RoleExtractionError)
+    assert.throws(() => extractRoleOperations(sql), RoleExtractionError)
+  }
   assert.deepEqual(roleCollisionKeys('grant all to worker;'), [])
-  assert.deepEqual(extractRoleOperations('grant all to worker;').operations, [])
 })
 
 test('quoted names that spell keywords remain real roles', () => {
@@ -280,7 +264,7 @@ test('bare schema authorization and equals-sign database owner are dependencies'
     assert.deepEqual(roleCollisionKeys(sql), [], sql)
     assert.deepEqual(roleOwnershipDependencies(sql).map((d) => `${d.ownerKind}:${d.role}`), [`${expectedKind}:${expectedRole}`], sql)
   }
-  assert.deepEqual(roleOwnershipDependencies('create schema authorization current_user;'), [])
+  assert.throws(() => roleOwnershipDependencies('create schema authorization current_user;'), RoleExtractionError)
 })
 
 test('exact EXECUTEd ownership literals match their static dependencies', () => {
@@ -309,7 +293,7 @@ test('ownership dependency recognizes ONLY and nested function argument types', 
 })
 
 test('owner to CURRENT_USER records no named role dependency', () => {
-  assert.deepEqual(roleOwnershipDependencies('alter table t owner to current_user;'), [])
+  assert.throws(() => roleOwnershipDependencies('alter table t owner to current_user;'), RoleExtractionError)
 })
 
 // ---------------------------------------------------------------------------
@@ -463,11 +447,11 @@ test('known-literal EXECUTE resolves identically in every extractor', () => {
   const halfKnown = `do $$ begin execute 'grant %I to app'; end $$;`
   assert.throws(() => roleCollisionKeys(halfKnown), RoleExtractionError)
   assert.throws(() => extractRoleOperations(halfKnown), RoleExtractionError)
-  // A keyword-only membership literal resolves to the same empty result as
-  // its static equivalent: no named role exists to lose.
+  // SELECT is reserved and this malformed SQL has no exact membership result.
+  // INSERT is a valid role name, so an executed ambiguous mixture must refuse.
   const keywordOnly = `do $$ begin execute 'grant select, insert to public'; end $$;`
-  assert.deepEqual(roleCollisionKeys(keywordOnly), [])
-  assert.deepEqual(extractRoleOperations(keywordOnly).operations, [])
+  assert.throws(() => roleCollisionKeys(keywordOnly), RoleExtractionError)
+  assert.throws(() => extractRoleOperations(keywordOnly), RoleExtractionError)
 })
 
 test('ownership changes inside resolved literal dynamic SQL stay visible', () => {
@@ -481,13 +465,13 @@ test('ownership changes inside resolved literal dynamic SQL stay visible', () =>
   assert.deepEqual(full.operations, [])
   assert.equal(full.ownershipDependencies.length, 1)
   assert.deepEqual(full.dynamicRefusals, [])
-  // A dynamic membership grant to a named role still keys that role.
+  // Implicit or reserved counterparts cannot be partially accounted.
   const grantDyn = `do $$ begin execute 'grant worker to public'; end $$;`
-  assert.deepEqual(roleCollisionKeys(grantDyn), ['role worker'])
-  // OWNER TO CURRENT_USER names no fixed role: clean, like the literal path.
+  assert.throws(() => roleCollisionKeys(grantDyn), RoleExtractionError)
+  // OWNER TO CURRENT_USER has no fixed identity and must refuse.
   const self = `do $$ begin execute 'alter table t owner to current_user'; end $$;`
-  assert.deepEqual(roleCollisionKeys(self), [])
-  assert.deepEqual(roleOwnershipDependencies(self), [])
+  assert.throws(() => roleCollisionKeys(self), RoleExtractionError)
+  assert.throws(() => roleOwnershipDependencies(self), RoleExtractionError)
   // A non-executed ownership lookalike is refused, like role-DDL prose.
   assert.throws(() => roleCollisionKeys(`comment on table t is 'alter table x owner to r'`), RoleExtractionError)
 })
@@ -595,4 +579,29 @@ test('comment and dollar markers in executed literals stay quoted and nested com
   assert.deepEqual(roleCollisionKeys(`DO $$ BEGIN EXECUTE 'CREATE ROLE "a--b"'; END $$;`), ['role "a--b"'])
   assert.deepEqual(roleCollisionKeys('/* outer /* CREATE ROLE phantom; */ still comment */ CREATE ROLE actual;'), ['role actual'])
   assert.deepEqual(roleCollisionKeys(`SELECT 'DO $tag$ CREATE ROLE phantom; $tag$'; CREATE ROLE actual;`), ['role actual'])
+})
+
+
+test('unquoted nonreserved keyword roles retain exact membership and ownership identities', () => {
+  for (const name of ['role','set','reset','insert','update','delete','truncate','trigger','usage','connect','temp','temporary','execute','alter']) {
+    assert.deepEqual(roleCollisionKeys(`GRANT ${name} TO worker;`), [`role ${name}`, 'role worker'].sort(), name)
+    assert.deepEqual(roleCollisionKeys(`REVOKE ${name} FROM worker;`), [`role ${name}`, 'role worker'].sort(), name)
+    assert.deepEqual(roleOwnershipDependencies(`ALTER TABLE core.t OWNER TO ${name};`).map((dep) => dep.role), [name], name)
+    assert.deepEqual(roleCollisionKeys(`CREATE ROLE worker IN ROLE ${name};`), [`role ${name}`, 'role worker'].sort(), name)
+  }
+})
+
+test('membership option revocation accounts for admin inherit and set options', () => {
+  for (const option of ['ADMIN','INHERIT','SET']) {
+    assert.deepEqual(roleCollisionKeys(`REVOKE ${option} OPTION FOR worker FROM recipient;`), ['role recipient','role worker'])
+  }
+})
+
+
+test('unsupported or truncating role token spellings refuse instead of aliasing an ASCII prefix', () => {
+  for (const sql of ['CREATE ROLE core.worker;', 'CREATE ROLE caf\u00e9;', 'CREATE ROLE U&"worker";', 'DROP ROLE first, core.worker;', `CREATE ROLE "${'a'.repeat(64)}";`, `GRANT "${'a'.repeat(64)}" TO worker;`, `ALTER TABLE core.t OWNER TO "${'a'.repeat(64)}";`]) {
+    assert.throws(() => roleCollisionKeys(sql), RoleExtractionError, sql)
+  }
+  assert.equal(canonicalRoleName('"' + 'a'.repeat(64) + '"'), null)
+  assert.deepEqual(roleCollisionKeys('DROP ROLE "a;b", second;'), ['role "a;b"','role second'])
 })

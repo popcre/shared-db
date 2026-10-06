@@ -777,7 +777,7 @@ export function extractOperations(sql) {
     'sequence', 'sequences', 'view', 'schema', 'index', 'if', 'as', 'only', 'exists', 'all'])
   const add = (op, sourceOffset = -1) => {
     if (!op.target) return
-    if (KEYWORDS.has(op.target)) return
+    if (op.kind !== 'role' && KEYWORDS.has(op.target)) return
     // PostgreSQL spells cleanup as plain `DROP TABLE`; there is no DROP TEMP
     // form. When the same migration created that name as a temporary table
     // earlier, the drop removes session-local scratch rather than a shared

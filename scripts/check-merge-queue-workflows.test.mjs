@@ -484,6 +484,7 @@ test('contract replay retains queue admission and validates exact selected PR id
   assert.match(job, /\.base\.ref == "main"/)
   assert.match(job, /\.base\.repo\.full_name == \$repo/)
   assert.match(job, /git fetch --no-tags origin "\$BASE_SHA" "\$HEAD_SHA"/)
+  assert.match(job, /if \[ "\$EVENT_NAME" = "workflow_dispatch" \]; then git checkout --detach "\$HEAD_SHA"; fi/)
   assert.match(job, /--pr-base-sha "\$PR_BASE_SHA"/)
   assert.match(job, /--pr-head-sha "\$PR_HEAD_SHA"/)
   assert.match(job, /--expected-pr "\$PR_NUMBER" --expected-head-sha "\$PR_HEAD_SHA"/)

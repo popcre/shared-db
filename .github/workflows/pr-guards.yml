@@ -158,6 +158,8 @@ jobs:
           BASE_SHA="$(echo "$facts" | jq -r .base.sha)"
           HEAD_SHA="$(echo "$facts" | jq -r .head.sha)"
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          # Replay must read the selected pair, not inherited main files.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then git checkout --detach "$HEAD_SHA"; fi
           {
             echo "pr_number=$PR_NUMBER"
             echo "pr_head_sha=$HEAD_SHA"

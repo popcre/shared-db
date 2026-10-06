@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 4000,
+  "outcome": "ready-for-merge",
+  "pr": 4001,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4000/1",
+  "contract_sha256": "d13afefa4d0bca2a003b96c40611293f5bb1c03a78688650f9756b5f6b950ef4",
+  "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
+  "head_sha": "6c7e3c1ed87e791d78f88b693b16640359917f6d",
+  "files_changed": [
+    "scripts/lib/lanes/admission.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merged-pr-issue-binding.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs",
+      "exit_code": 0,
+      "evidence": "976 passed, zero failed, one skipped; real CLI regression reproduced missing getIssue before repair; failed production and live proof still prevent closure"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Verified merged source binding and every completion proof remain mandatory",
+    "Adapter retains inherited behavior and copied own methods",
+    "Only this evidence pair follows implementation head"
+  ],
+  "stop_conditions_hit": []
+}

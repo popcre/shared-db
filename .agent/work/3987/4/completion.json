@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3998,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/4",
+  "contract_sha256": "f86cfd21f36d0c0e5e07635fbe41e6bb1d9a2ead4be16bf2b17f281ff688aa2c",
+  "head_sha": "69d41df94781c0f3632bb3238d6476785674db48",
+  "base_sha": "b8905b9a187133cb0e6ff1b13c62298920ed6ac3",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/pr-guards.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/main-required-status-checks.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/required-check-readback.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "139 tests passed, zero failures/skips in this exact six-file invocation after executable dispatch tests; earlier176 wording incorrectly associated broader tests with this command and is corrected here"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=91 derived_digest=6cd8ed349351"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in both working-tree check and origin/main...implementation diff."
+    },
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs scripts/lib/required-check-authority.test.mjs scripts/check-handoff-contract.test.mjs scripts/check-destructive-analysis.test.mjs scripts/check-domain-ownership.test.mjs scripts/lib/open-pr-files.test.mjs",
+      "exit_code": 0,
+      "evidence": "187 tests passed, zero failures/skips for this exact expanded eleven-file invocation"
+    }
+  ],
+  "assumptions_resolved": [
+    "Stage A merged; this first Stage B review head changes no settings and does not fabricate mirror/readback.",
+    "Exact recoverable prospective settings payload preserves twelve app15368 bindings and strict:false. Root may apply only after exact reviewed payload and fresh preconditions/live accounting proof.",
+    "Final actual readback head requires a fresh assigned review before merge.",
+    "First paid review emitted non-recordable REVISE; no approval or settings authority. All justified findings batched: source-bound restoration doc, actual14 pre-change mirror/readback, observed/prospective metadata, StageA test/source reference.",
+    "All first-head CI succeeded; no settings changed. Canonical contract hash and implementation-parent/evidence-only-tail protocol verified through existing validators.",
+    "Supported refresh refused shared test conflict without branch change; resolved exactly by retaining both current-main replay tests/fixtures and own group-only queue assertion. Fresh actual settings still14, all app15368 bindings unchanged; both mirror and dated artifact remain actual14.",
+    "Required aggregate skipped refuses protected preflight; future restoration uses explicit dispatch of both workflows on frozen exact PR branch, preserves app15368 and mandatory lane accounting. Bootstrap capability fix supersedes initial05 review; no settings authority until new exact assigned approval.",
+    "Settings exact reviewed14-to12 application actual12 verified; original provenance retained. Final5377 durable REVISE preserved; fixed deterministic sibling mirror16 expectation to actual12 and bothretired absence; corrected comments and dispatch exactPR input/all14 newestSUCCESS proof. Main refreshedc86; prospectivegen3 published before sibling edit. No further settings write.",
+    "Root held prior approved5d4 after real dispatch bootstrap audit. Prospectivegen4 precedes source fixes: exact trusted open canonical selectedPR/head/base identity reused by collision and handoff; domain dispatch real assertion; destructive dispatch fresh origin/main diff; all14 newest actualSUCCESS still mandatory. No settings write.",
+    "Supported refresh refused additive EOF test conflict without mutation; root approved explicit owned merge preserving both groups/imports verbatim. Current-main b890 implementation and exact two-file evidence tail independently rederived before push.",
+    "5399 durable REVISE retained. F1 truthful command/count repaired; executable bare-manual CLI exits2 without API, real empty-snapshot fresh gathering validates complete file counts/refuses incomplete lists, actual SQL dispatch shell executes fetch/scan and refuses failed fetch, actual Domain dispatch step executes original assertions. CrossPR excludes push; no routing changed for false push premise. Full unchanged source excerpts and validator evidence supplied for next review."
+  ],
+  "stop_conditions_hit": [],
+  "generation": 4
+}

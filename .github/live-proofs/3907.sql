@@ -15,4 +15,4 @@ SELECT (
   JOIN pg_attribute parent ON parent.attrelid = c.confrelid AND parent.attname = 'id'
     AND c.confkey = ARRAY[parent.attnum]
   ) = 3
-) AS passed;
+) as passed;

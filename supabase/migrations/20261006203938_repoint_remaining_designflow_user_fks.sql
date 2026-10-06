@@ -9,7 +9,6 @@ LOCK TABLE app."RolePermissions", plm.art_piece_attachment IN SHARE ROW EXCLUSIV
 DO $guard$
 DECLARE
   expected record;
-  orphan_count bigint;
 BEGIN
   FOR expected IN SELECT * FROM (VALUES
     ('app."RolePermissions"', 'RolePermissions_UserId_fkey', 'UserId'),
@@ -32,14 +31,16 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'Unexpected original foreign key: %.%', expected.child_table, expected.constraint_name;
     END IF;
-    EXECUTE format(
-      'SELECT count(*) FROM %s child WHERE child.%I IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dflow.users parent WHERE parent.id = child.%I)',
-      to_regclass(expected.child_table), expected.child_column, expected.child_column
-    ) INTO orphan_count;
-    IF orphan_count <> 0 THEN
-      RAISE EXCEPTION 'User relationship has % missing mapped parents: %.%', orphan_count, expected.child_table, expected.child_column;
-    END IF;
   END LOOP;
+  IF EXISTS (SELECT 1 FROM app."RolePermissions" child WHERE child."UserId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dflow.users parent WHERE parent.id = child."UserId")) THEN
+    RAISE EXCEPTION 'User relationship has missing mapped parents: app."RolePermissions"."UserId"';
+  END IF;
+  IF EXISTS (SELECT 1 FROM plm.art_piece_attachment child WHERE child.created_by IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dflow.users parent WHERE parent.id = child.created_by)) THEN
+    RAISE EXCEPTION 'User relationship has missing mapped parents: plm.art_piece_attachment.created_by';
+  END IF;
+  IF EXISTS (SELECT 1 FROM plm.art_piece_attachment child WHERE child.updated_by IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dflow.users parent WHERE parent.id = child.updated_by)) THEN
+    RAISE EXCEPTION 'User relationship has missing mapped parents: plm.art_piece_attachment.updated_by';
+  END IF;
 END
 $guard$;
 ALTER TABLE app."RolePermissions" DROP CONSTRAINT "RolePermissions_UserId_fkey";

@@ -1287,94 +1287,95 @@ $function$;
 CREATE OR REPLACE FUNCTION dflow_prod.sample_movement_auto_office_inventory()
  RETURNS trigger
  LANGUAGE plpgsql
-AS $function$
-DECLARE
-  v_remaining bigint;
-  v_to_id text;
-  v_to_label text;
-  v_idem text;
-BEGIN
-  -- Only onward shipments out of an office (not movements into terminal).
-  IF NEW.from_location_type IS DISTINCT FROM 'office' THEN
-    RETURN NEW;
-  END IF;
-  IF NEW.to_location_type IS DISTINCT FROM 'in_transit'
-     AND NEW.to_location_type IS DISTINCT FROM 'customer' THEN
-    RETURN NEW;
-  END IF;
-
-  -- Remaining office balance AFTER the inserted onward movement is applied.
-  SELECT COALESCE(b.quantity, 0)
-  INTO v_remaining
-  FROM dflow_prod.sample_balance_by_location b
-  WHERE b.sample_id_fk = NEW.sample_id_fk
-    AND b.location_type = 'office'
-    AND b.location_id = NEW.from_location_id;
-
-  v_remaining := COALESCE(v_remaining, 0);
-
-  IF v_remaining <= 0 THEN
-    RETURN NEW;
-  END IF;
-
-  -- Per-office inventory bucket (terminal disposition, not a deletion).
-  v_to_id := NEW.from_location_id || '_office_inventory';
-  v_to_label := CASE lower(NEW.from_location_id)
-    WHEN 'ningbo' THEN 'Ningbo Ofc Inventory'
-    WHEN 'nyc' THEN 'NY Ofc Inventory'
-    WHEN 'ny' THEN 'NY Ofc Inventory'
-    WHEN 'new_york' THEN 'NY Ofc Inventory'
-    ELSE initcap(replace(NEW.from_location_id, '_', ' ')) || ' Ofc Inventory'
-  END;
-
-  -- Deterministic unique idempotency per source movement
-  -- (UNIQUE (sample_id_fk, idempotency_key) on live table).
-  v_idem := 'auto-ofc-inv-' || NEW.movement_id::text;
-
-  -- Direct INSERT (not post_sample_movement) so we control every CHECK-facing
-  -- column. sample_movement_guard still runs as BEFORE INSERT on this row.
-  -- box_id_fk / shipment_line_id stay NULL: this is not a transit movement
-  -- (live CHECK only requires them when either side is in_transit).
-  -- lifecycle_action 'retain' is in the live CHECK list — do not invent values.
-  INSERT INTO dflow_prod.sample_movement (
-    sample_id_fk,
-    quantity,
-    from_location_type,
-    from_location_id,
-    from_location_label,
-    to_location_type,
-    to_location_id,
-    to_location_label,
-    box_id_fk,
-    shipment_line_id,
-    lifecycle_action,
-    actor_user,
-    actor_role,
-    actor_factory_id,
-    idempotency_key,
-    request_hash
-  ) VALUES (
-    NEW.sample_id_fk,
-    v_remaining::integer,
-    'office',
-    NEW.from_location_id,
-    NEW.from_location_label,
-    'terminal',
-    v_to_id,
-    v_to_label,
-    NULL,
-    NULL,
-    'retain',
-    NEW.actor_user,
-    NEW.actor_role,
-    NEW.actor_factory_id,
-    v_idem,
-    v_idem
-  );
-
-  RETURN NEW;
-END;
-$function$;
+-- Preserve the canonical function body's CRLF bytes across Git LF checkouts.
+AS E'\r
+DECLARE\r
+  v_remaining bigint;\r
+  v_to_id text;\r
+  v_to_label text;\r
+  v_idem text;\r
+BEGIN\r
+  -- Only onward shipments out of an office (not movements into terminal).\r
+  IF NEW.from_location_type IS DISTINCT FROM ''office'' THEN\r
+    RETURN NEW;\r
+  END IF;\r
+  IF NEW.to_location_type IS DISTINCT FROM ''in_transit''\r
+     AND NEW.to_location_type IS DISTINCT FROM ''customer'' THEN\r
+    RETURN NEW;\r
+  END IF;\r
+\r
+  -- Remaining office balance AFTER the inserted onward movement is applied.\r
+  SELECT COALESCE(b.quantity, 0)\r
+  INTO v_remaining\r
+  FROM dflow_prod.sample_balance_by_location b\r
+  WHERE b.sample_id_fk = NEW.sample_id_fk\r
+    AND b.location_type = ''office''\r
+    AND b.location_id = NEW.from_location_id;\r
+\r
+  v_remaining := COALESCE(v_remaining, 0);\r
+\r
+  IF v_remaining <= 0 THEN\r
+    RETURN NEW;\r
+  END IF;\r
+\r
+  -- Per-office inventory bucket (terminal disposition, not a deletion).\r
+  v_to_id := NEW.from_location_id || ''_office_inventory'';\r
+  v_to_label := CASE lower(NEW.from_location_id)\r
+    WHEN ''ningbo'' THEN ''Ningbo Ofc Inventory''\r
+    WHEN ''nyc'' THEN ''NY Ofc Inventory''\r
+    WHEN ''ny'' THEN ''NY Ofc Inventory''\r
+    WHEN ''new_york'' THEN ''NY Ofc Inventory''\r
+    ELSE initcap(replace(NEW.from_location_id, ''_'', '' '')) || '' Ofc Inventory''\r
+  END;\r
+\r
+  -- Deterministic unique idempotency per source movement\r
+  -- (UNIQUE (sample_id_fk, idempotency_key) on live table).\r
+  v_idem := ''auto-ofc-inv-'' || NEW.movement_id::text;\r
+\r
+  -- Direct INSERT (not post_sample_movement) so we control every CHECK-facing\r
+  -- column. sample_movement_guard still runs as BEFORE INSERT on this row.\r
+  -- box_id_fk / shipment_line_id stay NULL: this is not a transit movement\r
+  -- (live CHECK only requires them when either side is in_transit).\r
+  -- lifecycle_action ''retain'' is in the live CHECK list — do not invent values.\r
+  INSERT INTO dflow_prod.sample_movement (\r
+    sample_id_fk,\r
+    quantity,\r
+    from_location_type,\r
+    from_location_id,\r
+    from_location_label,\r
+    to_location_type,\r
+    to_location_id,\r
+    to_location_label,\r
+    box_id_fk,\r
+    shipment_line_id,\r
+    lifecycle_action,\r
+    actor_user,\r
+    actor_role,\r
+    actor_factory_id,\r
+    idempotency_key,\r
+    request_hash\r
+  ) VALUES (\r
+    NEW.sample_id_fk,\r
+    v_remaining::integer,\r
+    ''office'',\r
+    NEW.from_location_id,\r
+    NEW.from_location_label,\r
+    ''terminal'',\r
+    v_to_id,\r
+    v_to_label,\r
+    NULL,\r
+    NULL,\r
+    ''retain'',\r
+    NEW.actor_user,\r
+    NEW.actor_role,\r
+    NEW.actor_factory_id,\r
+    v_idem,\r
+    v_idem\r
+  );\r
+\r
+  RETURN NEW;\r
+END;\r
+';
 
 CREATE OR REPLACE FUNCTION dflow_prod.sample_movement_guard()
  RETURNS trigger

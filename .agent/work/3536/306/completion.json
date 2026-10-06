@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3984,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/306",
+  "contract_sha256": "316755770af3a7fb0d01e4ebc61abe5246b9425dd59e1639fb418d5e19edf400",
+  "head_sha": "c43de1c72a0481a2c24eb1494729984b175d36c1",
+  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "files_changed": [
+    ".github/workflows/pr-guards.yml",
+    "scripts/check-closeout-readiness.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs scripts/check-closeout-readiness.test.mjs",
+      "exit_code": 0,
+      "evidence": "147 tests pass including real Git versioned-pair replay refusing PR-forged evaluator; zero failures/skips."
+    }
+  ],
+  "assumptions_resolved": [
+    "Live protected contexts exclude Agent work contract; no branch protection mutation.",
+    "Replay resolves open exact main-target PR before fetching immutable base and head."
+  ],
+  "stop_conditions_hit": []
+}

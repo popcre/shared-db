@@ -21,6 +21,7 @@
     "supabase/migrations/20261006223501_scraped_inventory_warner_fallback_sesame_value_key_dedupe.sql",
     "supabase/tests/db_data_admin_scraped_source_inventory.sql",
     "supabase/tests/scraped_inventory_warner_sesame_dedupe.sql",
+    "supabase/tests/wildbrain_submissions_classic_option.sql",
     "HANDOFF.d/2026-10-06T2041Z-edge-dev3-codex-3947-production-recovery.md",
     "HANDOFF.d/2026-10-06T2130Z-edge-dev-mimo-3947-scraped-dedupe-obligations.md"
   ],
@@ -30,6 +31,7 @@
     "supabase/migrations/20261006223501_scraped_inventory_warner_fallback_sesame_value_key_dedupe.sql",
     "supabase/tests/db_data_admin_scraped_source_inventory.sql",
     "supabase/tests/scraped_inventory_warner_sesame_dedupe.sql",
+    "supabase/tests/wildbrain_submissions_classic_option.sql",
     "HANDOFF.d/2026-10-06T2041Z-edge-dev3-codex-3947-production-recovery.md",
     "HANDOFF.d/2026-10-06T2130Z-edge-dev-mimo-3947-scraped-dedupe-obligations.md"
   ],

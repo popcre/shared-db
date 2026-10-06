@@ -1002,6 +1002,36 @@ POPDAM_FORWARD_RECOVERY_CONTRACT = _shape_contract(
     triggers=(('public.asset_tags','asset_tags_sync_assets_tags'),('public.asset_tags','asset_tags_dam_search_refresh'),('public.style_group_tags','style_group_tags_dam_search_refresh'),('public.asset_characters','asset_characters_dam_search_refresh')),
 )
 CATALOG_CONTRACTS = {
+    # Issue #2986 / #3400. 20260928182014 adds the same six nullable, no-default
+    # phrase columns to plm."itemHeader"/plm."RFQItem" and to their dflow_prod
+    # counterparts. The quoted mixed-case identifiers are invisible to the
+    # statement lexer, so without this contract a phrase-only allowlist verifies
+    # nothing. The dflow_prod half is schema-conditioned, mirroring the sandbox
+    # conditioning lane exactly: on any database that carries the schema the six
+    # columns must be there; on one that does not carry it (the DesignFlow
+    # sandbox until the structural route creates it) the plm half is the whole
+    # obligation.
+    "hts_product_phrase_columns_v1": """
+      (select count(*) from information_schema.columns
+         where table_schema = 'plm' and is_nullable = 'YES' and column_default is null
+           and (table_name, column_name, data_type) in (
+             ('itemHeader', 'hts_product_phrase', 'text'),
+             ('itemHeader', 'hts_product_phrase_source', 'text'),
+             ('itemHeader', 'hts_product_phrase_at', 'timestamp with time zone'),
+             ('RFQItem', 'hts_product_phrase', 'text'),
+             ('RFQItem', 'hts_product_phrase_source', 'text'),
+             ('RFQItem', 'hts_product_phrase_at', 'timestamp with time zone'))) = 6
+      and (not exists (select 1 from pg_namespace where nspname = 'dflow_prod')
+           or (select count(*) from information_schema.columns
+                 where table_schema = 'dflow_prod' and is_nullable = 'YES' and column_default is null
+                   and (table_name, column_name, data_type) in (
+                     ('itemHeader', 'hts_product_phrase', 'text'),
+                     ('itemHeader', 'hts_product_phrase_source', 'text'),
+                     ('itemHeader', 'hts_product_phrase_at', 'timestamp with time zone'),
+                     ('RFQItem', 'hts_product_phrase', 'text'),
+                     ('RFQItem', 'hts_product_phrase_source', 'text'),
+                     ('RFQItem', 'hts_product_phrase_at', 'timestamp with time zone'))) = 6)
+    """,
     "popsg_search_v2_bounded_paging_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='4fdbef747897eb7d834b3b23858902ac' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "popsg_search_v2_production_performance_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='83b8190bca2ff2b7e08a5e87651785b3' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "popsg_search_v2_default_timeout_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth','work_mem=64MB']::text[] and md5(p.prosrc)='719d560bf41d61c8441aa806eb9406fa' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
@@ -4476,21 +4506,9 @@ CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
 # The landing layer is also unreachable by any application role, so the contract
 # asserts row level security on both tables and the absence of any anon or
 # authenticated grant -- the rule the whole coldlion schema depends on.
-COLDLION_UNIT_5B_LANDING_CONTRACT = (
-    _shape_contract(
-        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
-        constraints=(
-            ('coldlion.prepack_detail','prepack_detail_pkey'),
-            ('coldlion.prod_detail','prod_detail_pkey'),
-            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
-            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
-            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
-        ),
-    )
-    # The proven grain, stated exactly, on both tables.
-    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
-    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
-    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+# Shared, unchanged lockdown/field-disposition half of the coldlion unit 5b contracts.
+_COLDLION_UNIT_5B_LANDING_COMMON = (
+    ""
     # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
     # request-stamped company_code + 5 provenance. No field dropped, none invented.
     # information_schema views are role-filtered the same way role_table_grants is:
@@ -4521,8 +4539,53 @@ COLDLION_UNIT_5B_LANDING_CONTRACT = (
     + " and (select count(*) from pg_attribute a where a.attrelid in (to_regclass('coldlion.prepack_detail'),to_regclass('coldlion.prod_detail')) and a.attnum>0 and not a.attisdropped and a.attname='raw')=0"
     + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
 )
+
+COLDLION_UNIT_5B_LANDING_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    # The proven grain, stated exactly, on both tables.
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+    + _COLDLION_UNIT_5B_LANDING_COMMON
+)
 CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
     COLDLION_UNIT_5B_LANDING_CONTRACT
+)
+
+# Issue #3234, migration 20260930212107. ColdLion reuses prod_line_seq inside one
+# production order, so the (company_code, prod_order_no, prod_line_seq) unique key
+# was dropped; the vendor row id pkey stays the only identity. This contract is
+# v1 with that key replaced by an assertion that prod_detail carries NO unique
+# constraint at all. It reads pg_constraint (not information_schema, which is
+# role-filtered for coldlion under supabase_read_only_user), and as a
+# catalog_contract over the same relations it supersedes v1 in any batch that
+# carries both versions.
+COLDLION_UNIT_5B_LANDING_CONTRACT_V2 = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select count(*) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')=0"
+    + _COLDLION_UNIT_5B_LANDING_COMMON
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v2"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT_V2
 )
 
 
@@ -4623,6 +4686,65 @@ POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
 CATALOG_CONTRACTS["popsg_refresh_search_sync_queue_v1"] = (
     POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT
 )
+
+# Issue #2179. ColdLion /itemImages METADATA landing table. Structure only; the
+# post-apply check is the proven grain (company_code, pkey), the complete owner
+# field disposition (14 ingested source fields + 5 provenance), NO image-content
+# column, and the landing-layer lockdown (RLS on, no policy, no anon/authenticated
+# privilege). pg_attribute and has_table_privilege are used because
+# information_schema is role-filtered under supabase_read_only_user.
+COLDLION_ITEM_IMAGE_METADATA_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.item_image_metadata',),
+        constraints=(
+            ('coldlion.item_image_metadata','item_image_metadata_pkey'),
+            ('coldlion.item_image_metadata','item_image_metadata_run_id_fkey'),
+        ),
+    )
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select count(*) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='u')=0"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped)=19"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and a.attname in ('company_code','pkey','resource_id','division_code','item_no','color_code','label_code','file_name','file_type','item_image_desc','created_time','created_user','mod_time','mod_user','run_id','fetched_at','source_hash','first_seen_at','last_seen_at'))=19"
+    + " and (select relkind from pg_class where oid=to_regclass('coldlion.item_image_metadata'))='r'"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and ((a.attname='company_code' and a.atttypid='text'::regtype) or (a.attname='pkey' and a.atttypid='int8'::regtype) or (a.attname='resource_id' and a.atttypid='int8'::regtype) or (a.attname='division_code' and a.atttypid='text'::regtype) or (a.attname='item_no' and a.atttypid='text'::regtype) or (a.attname='color_code' and a.atttypid='text'::regtype) or (a.attname='label_code' and a.atttypid='text'::regtype) or (a.attname='file_name' and a.atttypid='text'::regtype) or (a.attname='file_type' and a.atttypid='text'::regtype) or (a.attname='item_image_desc' and a.atttypid='text'::regtype) or (a.attname='created_time' and a.atttypid='timestamptz'::regtype) or (a.attname='created_user' and a.atttypid='text'::regtype) or (a.attname='mod_time' and a.atttypid='timestamptz'::regtype) or (a.attname='mod_user' and a.atttypid='text'::regtype) or (a.attname='run_id' and a.atttypid='uuid'::regtype) or (a.attname='fetched_at' and a.atttypid='timestamptz'::regtype) or (a.attname='source_hash' and a.atttypid='text'::regtype) or (a.attname='first_seen_at' and a.atttypid='timestamptz'::regtype) or (a.attname='last_seen_at' and a.atttypid='timestamptz'::regtype)))=19"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c')=2"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c' and position('^[0-9a-f]{64}$' in pg_get_constraintdef(c.oid))>0)=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c' and pg_get_constraintdef(c.oid) ~ 'last_seen_at.*first_seen_at')=1"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and a.attnotnull and a.attname in ('company_code','pkey','run_id','fetched_at','source_hash','first_seen_at','last_seen_at'))=7"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and not a.attnotnull and a.attname in ('resource_id','division_code','item_no','color_code','label_code','file_name','file_type','item_image_desc','created_time','created_user','mod_time','mod_user'))=12"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) ~ 'FOREIGN KEY [(]run_id[)] REFERENCES coldlion[.]sync_run[(]id[)]')=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) !~* 'ON (DELETE|UPDATE)')=1"
+    + " and (select count(*) from pg_class i join pg_index x on x.indexrelid=i.oid where i.relname='item_image_metadata_pkey_idx' and x.indrelid=to_regclass('coldlion.item_image_metadata') and pg_get_indexdef(i.oid) ~ '[(]pkey[)]')=1"
+    + " and (select count(*) from pg_class i join pg_index x on x.indexrelid=i.oid where i.relname='item_image_metadata_run_id_idx' and x.indrelid=to_regclass('coldlion.item_image_metadata') and pg_get_indexdef(i.oid) ~ '[(]run_id[)]')=1"
+    + " and has_table_privilege('service_role','coldlion.item_image_metadata','SELECT')"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and (a.attname in ('resource_content','thumbnail128','thumbnail_128','raw') or a.atttypid='bytea'::regtype))=0"
+    + " and (select relrowsecurity from pg_class where oid=to_regclass('coldlion.item_image_metadata'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,'coldlion.item_image_metadata',p.v))=0"
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename='item_image_metadata')=0"
+    + " and (select count(*) from pg_constraint c join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and (rn.nspname<>'coldlion' or rt.relname<>'sync_run'))=0"
+    + " and (select count(*) from pg_constraint c join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and rn.nspname='coldlion' and rt.relname='sync_run')=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) ilike 'FOREIGN KEY (run_id) REFERENCES%sync_run(id)%')=1"
+)
+CATALOG_CONTRACTS["coldlion_item_image_metadata_v1"] = (
+    COLDLION_ITEM_IMAGE_METADATA_CONTRACT
+)
+
+WB_VALIDATE_NORMALIZED_ROW_STABLE_CONTRACT = (
+    # Issue #3725. ALTER-only migration 20260928183916 marks the validator STABLE
+    # (it casts text to timestamptz, which depends on TimeZone) and must leave the
+    # body, search_path, security mode, return type and grants unchanged.
+    "exists (select 1 from pg_proc p where p.oid=to_regprocedure('plm.wb_validate_normalized_row(text,jsonb)')"
+    " and p.provolatile='s' and not p.prosecdef and p.prorettype='void'::regtype"
+    " and p.proconfig=array['search_path=pg_catalog']"
+    " and md5(p.prosrc)='e28fedd3c0534399a3d890f5cf69a9ec'"
+    " and not has_function_privilege('anon',p.oid,'EXECUTE')"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
+)
+CATALOG_CONTRACTS["wb_validate_normalized_row_stable_v1"] = (
+    WB_VALIDATE_NORMALIZED_ROW_STABLE_CONTRACT
+)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

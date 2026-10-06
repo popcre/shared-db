@@ -33,24 +33,24 @@ decision.
 | Step | State | Evidence |
 |---|---|---|
 | 0. Land the business-rules + plan docs (one governed PR; the `.agent` evidence-pair `.json` files are not prose, so the change set is classified code and rides the guarded checks — `scripts/lib/documents-only-change.mjs` treats standalone `plan_*.md` as documents) | ✅ done | PR #3248 |
-| A0. db-work issue + author lane + reserved version (governance dispatch) | ⬜ open | — |
-| A. Migration: intake staging + routing-code map + quarantine | ⬜ open | — |
-| A2. Verify item case-pack landing (verify-only — already landed) | ⬜ open | — |
+| A0. db-work issue + author lane + reserved version (governance dispatch) | ✅ done 2026-09-28 | db-work issue #3679 — the plan's scope block extended per the current admission grammar (change_type/service_class/generated_types/live_assertion) and `--objects` including pre-existing `coldlion.sync_run` to exactly match the admitted writes; author-lane claim #3680; reserved version 20260928211543 (superseding 20260928155332 after base-main advance); contract published at refs/db-contracts/3679/3 |
+| A. Migration: intake staging + routing-code map + quarantine | ✅ done 2026-09-30 | PR #3693 (merge fd622fa142); version 20260928211543 (superseded from 20260928155332); 2× exact-head APPROVE (DeepSeek slot 1 + Grok slot 2 at 96d99d419); production apply run 36759340591; machine live-proof run 36761375751 passed (probe .github/live-proofs/3679.sql); issue #3679 closed live_verified |
+| A2. Verify item case-pack landing (verify-only — already landed) | ✅ done 2026-09-28 | live read on production: coldlion.item_detail = 26,227 rows; count(carton_qty) = 26,227 and count(inner_pack_qty) = 26,227 (100%) via aws-1-us-east-1.pooler.supabase.com |
 | C0. Owner ruling: salesOrderNo↔production_order cardinality + placeholder key | ✅ ruled 2026-09-17 (1:N; placeholder per sales order) | `docs/business-rules/erp-orders-and-source-meaning.md` intake section; sheet measurement 434/4,005 |
-| B. Poller tool (windows, paging, staging upsert, novelty detection) | ⬜ open | — |
-| B0. Bounded bootstrap mode (limit + claim-only + cron disabled until live proof) | ⬜ open | — |
-| B1. Poller entry point + window/fetch/stage/detect (Phase B detail) | ⬜ open | — |
-| C. Routing decode + canonical placeholder writer | ⬜ open | — |
-| C1. Routing decode step (post-poll join + quarantine) | ⬜ open | — |
-| C2. Canonical writer (placeholder create/claim + source refs) | ⬜ open | — |
+| B. Poller tool (windows, paging, staging upsert, novelty detection) | ✅ done 2026-10-01 | PR #3864 (merged via guarded lane): poller + staging upsert + novelty detection; `node --test tools/coldlion-order-intake-*.test.mjs` 33/33; `bash scripts/check-sql.sh` pass |
+| B0. Bounded bootstrap mode (limit + claim-only + cron disabled until live proof) | ✅ done 2026-10-01 | PR #3864 (merged via guarded lane): poller + staging upsert + novelty detection; `node --test tools/coldlion-order-intake-*.test.mjs` 33/33; `bash scripts/check-sql.sh` pass; workflow cron COMMENTED OUT (stays off until F1) |
+| B1. Poller entry point + window/fetch/stage/detect (Phase B detail) | ✅ done 2026-10-01 | PR #3864 (merged via guarded lane): poller + staging upsert + novelty detection; `node --test tools/coldlion-order-intake-*.test.mjs` 33/33; `bash scripts/check-sql.sh` pass; C1 decode module + its 6 tests also landed (row C1 stays open until the staged ladder runs it live) |
+| C. Routing decode + canonical placeholder writer | ✅ done 2026-10-02 | C1 + C2 both live: decode ran in the staged dispatch ladder (preview AND production); the writer's first live placeholders were minted on preview by ladder rung 2 (5 × `COLDLION-SO-<so>` with source refs, 0 quarantined — run ids on row C1). The production dispatch (rung 3, run 37046307914) stages and decodes only: the workflow's writer step is still the documented Phase D placeholder comment, so production placeholder minting happens when Phase D adds the step — that remainder is tracked under D |
+| C1. Routing decode step (post-poll join + quarantine) | ✅ done 2026-10-02 | Staged dispatch ladder (§9 B1 gate / §572-578): rung 1 preview `--dry-run --limit 5` exit 0 (window 2026-09-08..2026-09-14, fetched=121, 5 staged/0 new, NOTHING written — 0 sync_run rows verified read-only); rung 2 full local pipeline on preview at the gen-14 impl head (workflow is production-only, §12 local-run rule): intake exit 0 + decode `zero_so=0 new_unknown_codes=0 quarantined=0 decoded=6`, writer `--write` exit 0, sync_run 59a4b4b0 (stage) + 6bc92349 (write), 5 placeholders `COLDLION-SO-7127517/7127522/7127677/7127678/7127917`; rung 3 ONE bounded production dispatch run 37046307914 (workflow_dispatch main, limit=5) success — sync_run 138533f6 (121 fetched, 22 inserted), 5 detections, decode `decoded=5 quarantined=0`; cross-check: orderHistory?salesOrderNo=7127517 in-window matches staging (1 line, 1 component, FOB, start 2026-09-09). Fixes that unblocked it: PR #3878 (gen 13, stage-SQL terminator) + PR #3905 (gen 14, entry-point pre-flight destructuring) |
+| C2. Canonical writer (placeholder create/claim + source refs) | ✅ done 2026-10-02 | PR #3868 (guarded lane): `tools/coldlion-landing/order-intake-write.mjs` + `lib/order-intake-write.mjs` — source-ref-only idempotency, `COLDLION-SO-<so>` placeholders, winner selection at both grains, per-component line refs, quarantine on customer miss/disagreement/claim-failure; preview gate per §650-653 passed (synthetic order, second `--write` run a no-op); live first write is owned by the staged dispatch ladder (B gates), not this row |
 | D. Hourly GitHub Actions workflow + failure alerting | ⬜ open | — |
-| E. Offline unit tests (flat `tools/*.test.mjs` names) | ⬜ open | — |
+| E. Offline unit tests (flat `tools/*.test.mjs` names) | ✅ done 2026-10-02 | PR #3868: all five suites green — `node --test tools/coldlion-order-intake-*.test.mjs` 62/62 at impl head (window-arithmetic 9, decode 10, stage 14, entry 5 via PR #3864; claim 24 new — poNumber padding shapes, winner selection + constancy + deterministic ordinal + item-fork resolution, source-ref-only idempotency, customer-PO multi-match never quarantines, version fan-out, idempotent second run, EP001, 1900-01-01, negative quantity, is_primary, placeholder key, argument refusals, summary parser); `bash scripts/check-sql.sh` pass |
 | F. Live proof: sample-week comparison vs the Google sheet | ⬜ open | — |
 
-A fresh session starts at the first `⬜ open` row in order (currently **A0**), after reading
+A fresh session starts at the first `⬜ open` row in order (currently **A1**), after reading
 [`docs/business-rules/erp-orders-and-source-meaning.md`](docs/business-rules/erp-orders-and-source-meaning.md)
-(the intake section) and this whole file. As of 2026-09-25 every row except Step 0
-(✅ landed, PR #3248) and C0 (✅ ruled 2026-09-17) is open.
+(the intake section) and this whole file. As of 2026-09-28 every row except Step 0 (✅ PR #3248), C0 (✅ ruled
+2026-09-17), A0 (✅ claim #3680) and A2 (✅ live-verified) is open.
 
 ---
 
@@ -553,13 +553,22 @@ reads:
     loaded, and the very first live-proof week would find nothing. Index note: the
     `LIKE 'coldlion:so:<so>:%'` prefix predicate only rides the existing
     `unique (source_system, source_id)` b-tree when the column's collation supports LIKE
-    optimisation (C/POSIX). **Default to the range-scan rewrite** (`>= prefix AND <
-    prefix || chr(1)`), which rides the existing unique b-tree at `20260810010000:245` and
-    needs no new index. Only if the range scan is rejected should an implementer add
-    `(source_system, source_id text_pattern_ops)` on `plm.production_order_line_source_ref` —
-    and that is a write on a `plm` object A0 declares under `reads:`, so it requires
-    redeclaring A0's `writes:` list first. Name whichever is chosen, because the 3×-cadence
-    rule must never absorb an unindexed scan.
+    optimisation (C/POSIX). **Shipped form (PR #3864, corrected in review 2026-10-01): the
+    LIKE behind the equality** — `source_system = 'coldlion' AND source_id like
+    'coldlion:so:<so>:%'`. The equality narrows the existing unique b-tree at
+    `20260810010000:245` to the coldlion rows (a small set), the LIKE is the semantic
+    prefix test, and correctness is collation-proof. Two byte-order range forms were
+    tried in review and both withdrawn: `< prefix || chr(1)` bounds the range to the
+    bare prefix string (every real ref sorts above it, so it suppresses nothing), and
+    the prefix's last-byte successor (`< 'coldlion:so:<so>;'`) wrongly EXCLUDES real
+    refs under any collation that orders ':' and ';' unexpectedly — a silent missed
+    detection. Never reintroduce a byte-order range here without asserting the column's
+    collation first. If the LIKE filter over the coldlion subset ever shows up in the
+    cadence arithmetic, the sanctioned fix is `text_pattern_ops` on
+    `plm.production_order_line_source_ref` — and that is a write on a `plm` object A0
+    declares under `reads:`, so it requires redeclaring A0's `writes:` list first.
+    Name whichever is chosen, because the 3×-cadence rule must never absorb an
+    unindexed scan.
   - *Gate (staged dispatch ladder — no production write before its turn):* (1) preview
     `--dry-run --limit 5` from a laptop prints the windows it would fetch and the orders it
     would detect, touching nothing; (2) preview workflow-dispatch stages real preview windows;

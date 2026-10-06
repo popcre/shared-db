@@ -76,7 +76,8 @@ test('lane reads: a 404 is a free lane, anything else is a refusal', () => {
   assert.deepEqual(readHeldLanes('acme/widgets', { read: held }), ['refs/db-coordination/preview'])
   const broken = () => { throw new Error('HTTP 403: forbidden') }
   assert.throws(() => readHeldLanes('acme/widgets', { read: broken }), /could not be read/)
-  assert.equal(LANE_REFS.length, 4)
+  assert.equal(LANE_REFS.length, 5)
+  assert.ok(LANE_REFS.includes('refs/db-coordination/promotion-freeze'))
 })
 
 test('main tip preview gate: migration tips need the exact-SHA success first', () => {
@@ -133,6 +134,13 @@ test('read-back: every field must equal the desired document', () => {
   assert.throws(() => verifyReadback({ ...written, rules: [{ type: 'merge_queue', parameters: { ...QUEUE_RULE.parameters, max_entries_to_merge: 2 } }] }), /read-back mismatch: queue parameters/)
   assert.throws(() => verifyReadback({ ...written, rules: [] }), /exactly one merge_queue rule/)
   assert.throws(() => verifyReadback({ name: RULESET_NAME }), /did not read back with an ID/)
+})
+
+test('read-back accepts GitHub key order for identical queue parameters (#3566, ruleset 24024180)', () => {
+  const githubOrder = { merge_method: 'MERGE', max_entries_to_build: 1, min_entries_to_merge: 1, max_entries_to_merge: 1, min_entries_to_merge_wait_minutes: 0, grouping_strategy: 'ALLGREEN', check_response_timeout_minutes: 30 }
+  const written = { id: 24024180, ...desiredRuleset(), rules: [{ type: 'merge_queue', parameters: githubOrder }] }
+  assert.equal(verifyReadback(written).id, 24024180)
+  assert.throws(() => verifyReadback({ ...written, rules: [{ type: 'merge_queue', parameters: { ...githubOrder, grouping_strategy: 'HEADGREEN' } }] }), /read-back mismatch: queue parameters/)
 })
 
 test('rollback names only the recorded main merge queue ruleset', () => {

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "work_issue": 3981,
+  "outcome": "ready-for-merge",
+  "pr": 3996,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3981/2",
+  "contract_sha256": "9634a63c9857fd046822144d3066f48cf6079c6ec8aa92f5cf0693d0eeef3874",
+  "base_sha": "67555e9e25e2fac5dda27be02de13c3534c84cf7",
+  "head_sha": "8af8adfd62274411c052c0be603caf8d2324761c",
+  "files_changed": [
+    "scripts/lib/lanes/admission.mjs",
+    "scripts/lib/lanes/queue-routing.mjs",
+    "scripts/lib/lanes/review-leases.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/merged-pr-issue-binding.test.mjs",
+    "scripts/merged-review-lease-liveness.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merged-review-lease-liveness.test.mjs",
+      "exit_code": 0,
+      "evidence": "11 pass"
+    },
+    {
+      "command": "node --test scripts/merged-pr-issue-binding.test.mjs",
+      "exit_code": 0,
+      "evidence": "9 pass"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "769 pass"
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "101 pass; one existing optional test skipped"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static guards passed, no migrations changed"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "368 files pass"
+    }
+  ],
+  "assumptions_resolved": [
+    "Actual bounded GraphQL PR representation is covered by regression tests",
+    "Verified merged binding remains mandatory",
+    "Completed own slots cannot start; sibling verdicts do not release the pending slot"
+  ],
+  "stop_conditions_hit": []
+}

@@ -1571,12 +1571,12 @@ begin
   if v_src is null then
     raise exception '#3947 self-check: inventory function is missing';
   end if;
-  if position($w$where p.identity_method <> ''natural_key_fallback''$w$ in v_src) = 0
-     or position($w$and t.identity_method = ''source_id''$w$ in v_src) = 0 then
+  if position($w$where p.identity_method <> 'natural_key_fallback'$w$ in v_src) = 0
+     or position($w$and t.identity_method = 'source_id'$w$ in v_src) = 0 then
     raise exception '#3947 self-check: Warner fallback-twin hide predicate is missing';
   end if;
   if position($s$select distinct on (sb.value_key)$s$ in v_src) = 0
-     or position($s$order by sb.value_key, (sb.field_generation = ''current'') desc$s$ in v_src) = 0 then
+     or position($s$order by sb.value_key, (sb.field_generation = 'current') desc$s$ in v_src) = 0 then
     raise exception '#3947 self-check: Sesame value_key collapse predicate is missing';
   end if;
   if position($s$select distinct on (sb.value_label)$s$ in v_src) <> 0 then

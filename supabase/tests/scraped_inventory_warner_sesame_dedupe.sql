@@ -46,7 +46,7 @@ begin
      captured_by, source_url, started_at)
   values
     (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'loading', current_date,
-     'zztest', 'zztest-sha256', 2,
+     'zztest', repeat('a', 64), 2,
      'zztest', 'https://example.invalid', now())
   returning capture_id into v_capture_id;
 
@@ -62,10 +62,14 @@ begin
   -- Sesame: one value_key with both a legacy and a current generation row.
   insert into plm.sesame_capture
     (capture_key, source_repository, source_commit_sha, source_manifest_sha256,
-     portal_base_url, portal_slug, source_captured_at, status, expected_counts)
+     portal_base_url, portal_slug, source_captured_at, status, expected_counts,
+     load_completed_at, category_tree_walked, pagination_verified,
+     multivalue_parse_verified, raw_summary, created_by)
   values
-    ('zztest-3947-sesame', 'https://example.invalid', 'zztest', 'zztest',
-     'https://example.invalid', 'zztest', now(), 'complete', '{}'::jsonb)
+    ('zztest-3947-sesame', 'https://example.invalid', repeat('b', 40), repeat('c', 64),
+     'https://example.invalid', 'zztest', now(), 'complete', '{}'::jsonb,
+     now(), true, true,
+     true, '{}'::jsonb, 'zztest')
   returning id into v_sesame_capture_id;
 
   insert into plm.sesame_brand

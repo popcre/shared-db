@@ -22,7 +22,7 @@ export function publishAlarm({ result, report, repository, runUrl, event }, io) 
   const marker = `<!-- ledger-drift-fingerprint:${digest} -->`
   const matches = io.listIssues().filter(row => !row.pull_request && row.state === 'open' && row.title === TITLE)
   if (matches.length > 1) throw new Error('multiple open alarms; refusing ambiguous publication')
-  const body = `${marker}\nVerified production drift reported; the ledger is NOT clean.\n\nImmutable report: [workflow run](${runUrl})\n\n${report}\n\nNo production apply was performed. Keep this alarm open until a fresh read-only check proves clearance.\n\nPosted by Codex chat workflow-${runUrl.split('/').at(-1)} on GitHub Actions\n`
+  const body = `${marker}\nVerified production drift reported; the ledger is NOT clean.\n\nImmutable report: [workflow run](${runUrl})\n\n${report}\n\nNo production apply was performed. Keep this alarm open until a fresh read-only check proves clearance.\n\nPosted by Codex chat unknown on GitHub Actions\n`
   let issue = matches[0]
   if (!issue) issue = io.createIssue(TITLE, body)
   if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error('alarm issue identity unreadable')

@@ -40,8 +40,14 @@ begin
   perform set_config('request.jwt.claim.sub', v_auth::text, true);
 
   -- Warner: create a capture header then a source_id row and its fallback twin.
-  insert into plm.wb_capture (capture_id, chunk_number, target, status, captured_at)
-  values (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'loading', current_date)
+  insert into plm.wb_capture
+    (capture_id, chunk_number, target, status, captured_at,
+     private_source_commit, snapshot_sha256, expected_row_count,
+     captured_by, source_url, started_at)
+  values
+    (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'loading', current_date,
+     'zztest', 'zztest-sha256', 2,
+     'zztest', 'https://example.invalid', now())
   returning capture_id into v_capture_id;
 
   insert into plm.wb_property

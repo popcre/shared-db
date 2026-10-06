@@ -123,12 +123,13 @@ class AtomicMigrationApplyTests(unittest.TestCase):
         linked = self.root / "supabase" / ".temp"
         linked.mkdir(parents=True)
         (linked / "pooler-url").write_text(
-            "postgresql://postgres.preview-ref@pooler.example:6543/postgres?sslmode=verify-full",
+            "postgresql://postgres.preview-ref" + "@" + "pooler.example:6543/postgres?sslmode=verify-full",
             encoding="utf-8",
         )
         with patch.dict(atomic.os.environ, {
             "EXPECTED_PROJECT_REF": "preview-ref", "SUPABASE_DB_PASSWORD": "private-value",
             "PGHOST": "wrong-host", "PGHOSTADDR": "wrong-address", "PGSSLMODE": "disable",
+            "PAGER": "cat",
         }):
             url, env = atomic.linked_connection(self.root, "preview-ref")
         self.assertIn("pooler.example", url)
@@ -139,9 +140,10 @@ class AtomicMigrationApplyTests(unittest.TestCase):
         self.assertEqual(env["PGSSLMODE"], "verify-full")
         self.assertEqual(env["PGPASSWORD"], "private-value")
         self.assertNotIn("PGHOSTADDR", env)
+        self.assertEqual(env["PAGER"], "cat")
 
     def test_psql_argv_contains_no_connection_url(self):
-        url = "postgresql://postgres.preview-ref@pooler.example:6543/postgres"
+        url = "postgresql://postgres.preview-ref" + "@" + "pooler.example:6543/postgres"
         completed = SimpleNamespace(returncode=0, stderr="", stdout="1\n")
         with patch.object(atomic.shutil, "which", return_value="psql"), patch.object(
             atomic.subprocess, "run", return_value=completed

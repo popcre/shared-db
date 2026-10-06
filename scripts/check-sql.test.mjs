@@ -1305,6 +1305,24 @@ test('pg_url_to_env: URL-declared sslmode wins over ambient', () => {
   )
 })
 
+test('pg_url_to_env: uppercase sslmode retains the declared TLS setting', () => {
+  withFixture(['20260601120000_a.sql', '20260601130000_b.sql'], (dir) => {
+    const { captured } = runGuardsWithPsqlStub(dir, {
+      CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db?SSLMODE=verify-full',
+    })
+    assert.match(captured, /PGSSLMODE=verify-full/)
+  })
+})
+
+test('pg_url_to_env: bracketed IPv6 host reaches PGHOST without brackets', () => {
+  withFixture(['20260601120000_a.sql', '20260601130000_b.sql'], (dir) => {
+    const { captured } = runGuardsWithPsqlStub(dir, {
+      CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@[::1]:5432/db',
+    })
+    assert.match(captured, /PGHOST=::1/)
+  })
+})
+
 test('pg_url_to_env: percent-encoded password is decoded', () => {
   withFixture(
     ['20260701120000_a.sql', '20260701130000_b.sql'],

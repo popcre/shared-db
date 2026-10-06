@@ -31,6 +31,16 @@ EXPECTED_COLUMNS = {
     "statements": ({"ARRAY"}, "YES", {"_text"}),
     "name": ({"text", "character varying"}, "YES", {"text", "varchar"}),
 }
+LIBPQ_ENV_KEYS = frozenset({
+    "PGHOST", "PGHOSTADDR", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD",
+    "PGPASSFILE", "PGSERVICE", "PGSERVICEFILE", "PGSYSCONFDIR", "PGOPTIONS",
+    "PGAPPNAME", "PGSSLMODE", "PGSSLCERT", "PGSSLKEY", "PGSSLROOTCERT",
+    "PGSSLCRL", "PGSSLPASSWORD", "PGSSLCERTMODE", "PGSSLMINPROTOCOLVERSION",
+    "PGSSLMAXPROTOCOLVERSION", "PGCONNECT_TIMEOUT", "PGTARGETSESSIONATTRS",
+    "PGCHANNELBINDING", "PGLOADBALANCEHOSTS", "PGGSSENCMODE",
+    "PGSSLNEGOTIATION", "PGREQUIREAUTH", "PGCLIENTENCODING", "PGKRBSRVNAME",
+    "PGREALM", "PGGSSLIB",
+})
 
 
 class Refusal(RuntimeError):
@@ -210,7 +220,7 @@ def linked_connection(linked_dir: Path, expected_ref: str) -> tuple[str, dict[st
     sslmode = params[0][1] if params else "require"
     if sslmode not in {"require", "verify-ca", "verify-full"}:
         raise Refusal("linked pooler-url has an unsafe sslmode")
-    env = {key: value for key, value in os.environ.items() if not key.upper().startswith("PG")}
+    env = {key: value for key, value in os.environ.items() if key.upper() not in LIBPQ_ENV_KEYS}
     env.update(PGHOST=host, PGUSER=user, PGDATABASE=database, PGSSLMODE=sslmode)
     if port is not None:
         env["PGPORT"] = str(port)

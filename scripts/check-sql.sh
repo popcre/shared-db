@@ -442,7 +442,7 @@ pg_url_to_env() {
   fi
   # postgres(ql)://user:pass@host:port/dbname (host may be empty for unix sockets)
   # BASH_REMATCH groups: 4=user 6=pass 7=host 9=port 11=dbname
-  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/@]*)(:([0-9]+))?(/(.*))?$'
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?([[][^]]+[]]|[^:/@]*)(:([0-9]+))?(/(.*))?$'
   if [[ ! "$url" =~ $re ]]; then
     echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|[^/]*@|[redacted]@|')" >&2
     return 1
@@ -476,7 +476,7 @@ pg_url_to_env() {
       [[ -z "$kv" ]] && continue
       k="$(_pct_decode "${kv%%=*}")" || return 1
       v="$(_pct_decode "${kv#*=}")" || return 1
-      case "$k" in
+      case "${k,,}" in
         sslmode)
           url_declares_sslmode=1
           # Refuse weak TLS modes (muse review 2026-10-06 #2): disable/allow

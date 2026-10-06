@@ -84,7 +84,15 @@ set -euo pipefail
 
 PGPORT="${PGPORT:-55432}"
 PGPASSWORD="${PGPASSWORD:-canary}"
-DB_URL="postgresql://postgres:${PGPASSWORD}@127.0.0.1:${PGPORT}/postgres"
+# PG* env transport for the Supabase CLI — the connection URI is NEVER placed
+# in process argv (2026-10-02 leak class; same PG* transport as tools/runSql
+# after PR #3938).  pgconn's ParseConfigLibpq reads PGHOST/PGPORT/PGUSER/
+# PGPASSWORD/PGDATABASE natively; --db-url carries only a keyword/value
+# skeleton with no credential.
+PGHOST="127.0.0.1"
+PGUSER="postgres"
+PGDATABASE="postgres"
+export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
 WORK="$(mktemp -d)"
 CONTAINER="issue611-canary"
 
@@ -129,7 +137,7 @@ psql() { docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_ST
 # defects at once.
 echo "== 1b. CLI preflight =="
 echo "supabase --version: $(supabase --version 2>&1 || true)"
-if ! PREFLIGHT="$(supabase migration list --db-url "$DB_URL" 2>&1)"; then
+if ! PREFLIGHT="$(supabase migration list --db-url "host=${PGHOST}" 2>&1)"; then
   echo "$PREFLIGHT"
   echo
   echo "FATAL: the Supabase CLI could not talk to the throwaway database."
@@ -275,7 +283,7 @@ run_push() {  # takes no arguments -- which fixtures run is decided by the LEDGE
               # draft documented a `$1 = single version to leave pending`
               # parameter that was never read; it is removed rather than
               # implemented, so nobody can believe it is doing something.)
-  ( cd "$WORK" && supabase db push --db-url "$DB_URL" --include-all --yes 2>&1 ) || true
+  ( cd "$WORK" && supabase db push --db-url "host=${PGHOST}" --include-all --yes 2>&1 ) || true
 }
 
 # Reset between questions: forget every fixture ledger row and drop every object

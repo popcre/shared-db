@@ -377,6 +377,39 @@ check_ledger() {
   return 0
 }
 
+# Parse a PostgreSQL URI into PG* environment variables — the URI is NEVER
+# placed in process argv (2026-10-02 leak class; same PG* transport as
+# tools/runSql after PR #3938). Ambient PG* values are swept first so they
+# cannot override the declared target. Fails closed on shapes we cannot
+# safely represent.
+pg_url_to_env() {
+  local url="$1"
+  # Sweep ambient PG* — they must never override the declared target.
+  unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
+  # postgres(ql)://user:pass@host:port/dbname
+  # Captured via BASH_REMATCH: 1=scheme 2=user 3=pass 4=host 5=port 6=dbname
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/?]+)(:([0-9]+))?(/([^?]*))?$'
+  if [[ ! "$url" =~ $re ]]; then
+    echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|://[^@]*@|://[redacted]@|')" >&2
+    return 1
+  fi
+  local user="${BASH_REMATCH[4]}"
+  local pass="${BASH_REMATCH[6]}"
+  local host="${BASH_REMATCH[7]}"
+  local port="${BASH_REMATCH[9]}"
+  local dbname="${BASH_REMATCH[11]}"
+  # Strip IPv6 brackets for PGHOST (libpq wants bare form in PGHOST).
+  host="${host#\[}"
+  host="${host%\]}"
+  PGHOST="$host"
+  [[ -n "$port" ]] && PGPORT="$port"
+  [[ -n "$user" ]] && PGUSER="$user"
+  [[ -n "$pass" ]] && PGPASSWORD="$pass"
+  [[ -n "$dbname" ]] && PGDATABASE="$dbname"
+  export PGHOST ${PGPORT:+PGPORT} ${PGUSER:+PGUSER} ${PGPASSWORD:+PGPASSWORD} ${PGDATABASE:+PGDATABASE}
+  return 0
+}
+
 # Resolve a ledger to a file, either from a pre-fetched path or by querying the
 # database directly. Prints the path on stdout; empty means "not configured".
 resolve_ledger_file() {
@@ -397,10 +430,16 @@ resolve_ledger_file() {
       echo "NOPSQL:"
       return 0
     fi
+    # PG* env transport — the URL is NEVER passed in argv (2026-10-02 leak
+    # class; matches tools/runSql PG* approach after PR #3938).
+    if ! pg_url_to_env "$ledger_url"; then
+      echo "QUERYFAILED:"
+      return 0
+    fi
     out="$(mktemp)"
     # Read-only. `ON_ERROR_STOP` so a failed query is an empty file AND a
     # non-zero status, never a silently truncated ledger.
-    if psql "$ledger_url" --set ON_ERROR_STOP=1 -At \
+    if psql --set ON_ERROR_STOP=1 -At \
       -c 'select version from supabase_migrations.schema_migrations order by version' \
       > "$out"; then
       echo "$out"
@@ -533,8 +572,11 @@ grep -qF "enable row level security" "$migration_dir/20260621151155_api_rls_real
 
 if [[ -n "${DATABASE_URL:-}" ]]; then
   command -v psql >/dev/null
+  # PG* env transport — the URL is NEVER passed in argv (2026-10-02 leak class;
+  # matches tools/runSql PG* approach after PR #3938).
+  pg_url_to_env "$DATABASE_URL"
   for file in "${required_files[@]}"; do
-    psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --single-transaction --file "$migration_dir/$file"
+    psql --set ON_ERROR_STOP=1 --single-transaction --file "$migration_dir/$file"
   done
 else
   echo "Static checks passed. Set DATABASE_URL to run migrations against a disposable database."

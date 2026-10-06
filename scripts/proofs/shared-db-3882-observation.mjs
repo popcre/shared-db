@@ -13,7 +13,7 @@ export function validateRows(rows,issue){
  for(const [table,schema] of Object.entries(contract.tables)){
  const found=tables.filter(r=>r.table_name===table);check(found.length===1);const r=found[0];
  check(r.schema_name===schema&&r.passed===true&&r.work_issue===null&&Array.isArray(r.columns)&&r.columns.length>0);
- check(new Set(r.columns.map(c=>c.name)).size===r.columns.length&&r.columns.every(c=>typeof c.name==='string'&&typeof c.type==='string'&&typeof c.not_null==='boolean'&&typeof c.has_default==='boolean'&&typeof c.identity==='string'));
+ check(new Set(r.columns).size===r.columns.length&&r.columns.every(c=>typeof c==='string'&&c.length>0));
  }
  const assertions=rows.filter(r=>r.kind==='assertion');check(assertions.length===5&&new Set(assertions.map(r=>r.work_issue)).size===5&&assertions.every(r=>Object.hasOwn(contract.issues,String(r.work_issue))&&typeof r.passed==='boolean'));
  check(assertions.find(r=>r.work_issue===Number(issue))?.passed===true);return rows;

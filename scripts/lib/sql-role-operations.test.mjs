@@ -263,6 +263,18 @@ test('membership with an implicit or reserved counterpart refuses partial accoun
   assert.deepEqual(roleCollisionKeys('grant all to worker;'), [])
 })
 
+test('membership with two implicit actors refuses literal and executed SQL', () => {
+  for (const member of ['CURRENT_USER', 'CURRENT_ROLE', 'SESSION_USER']) {
+    for (const grantee of ['CURRENT_USER', 'CURRENT_ROLE', 'SESSION_USER']) {
+      for (const statement of [`GRANT ${member} TO ${grantee};`, `REVOKE ${member} FROM ${grantee};`]) {
+        for (const sql of [statement, `DO $$ BEGIN EXECUTE '${statement}'; END $$;`]) {
+          for (const extract of [extractRoleOperations, roleCollisionKeys, roleOwnershipDependencies]) assert.throws(() => extract(sql), RoleExtractionError, sql)
+        }
+      }
+    }
+  }
+})
+
 test('quoted names that spell keywords remain real roles', () => {
   assert.deepEqual(roleCollisionKeys('grant "select" to worker;'), ['role select', 'role worker'])
   assert.deepEqual(roleCollisionKeys('grant member to "PUBLIC";'), ['role "PUBLIC"', 'role member'])

@@ -648,7 +648,8 @@ function extractRoleOperationsUnchecked(sql) {
   const addMembership = (action, membersRaw, granteesRaw, grantorRaw) => {
     const members = roleNamesFrom(membersRaw)
     const grantees = roleNamesFrom(granteesRaw)
-    if ((members.length || grantees.length) && [...splitRoleList(membersRaw), ...splitRoleList(granteesRaw)].some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('membership role is implicit or reserved and has no provable exact identity')
+    const memberHasImplicitActor = splitRoleList(membersRaw).some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))
+    if ((members.length || grantees.length || memberHasImplicitActor) && [...splitRoleList(membersRaw), ...splitRoleList(granteesRaw)].some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('membership role is implicit or reserved and has no provable exact identity')
     if (members.length && grantees.length) {
       if (grantorRaw && !grantorRaw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(grantorRaw.toLowerCase())) throw new RoleExtractionError('membership grantor is implicit and has no provable exact identity')
       const grantor = grantorRaw ? canonicalSqlRoleOrThrow(grantorRaw) : null

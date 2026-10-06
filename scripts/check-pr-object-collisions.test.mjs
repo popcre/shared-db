@@ -521,3 +521,11 @@ test('quoted keyword role identities survive the whole-object keyword filter', (
     assert.equal(findCollisions([{label:'A',files:[{path:'A.sql',sql:`CREATE ROLE "${role}";`}]},{label:'B',files:[{path:'B.sql',sql:`DROP ROLE "${role}";`}]}]).collisions[0].object, `role ${role}`)
   }
 })
+
+test('integrated collision extraction refuses membership between implicit actors', () => {
+  for (const sql of ['GRANT CURRENT_USER TO SESSION_USER;', 'REVOKE CURRENT_ROLE FROM SESSION_USER;', "DO $$ BEGIN EXECUTE 'GRANT CURRENT_USER TO SESSION_USER;'; END $$;"]) {
+    assert.throws(() => dispatchObjectKeys(sql), /implicit or reserved/)
+    assert.throws(() => roleReadKeys(sql), /implicit or reserved/)
+    assert.throws(() => findCollisions([{label: 'A', files: [{path: 'A.sql', sql}]}]), /implicit or reserved/)
+  }
+})

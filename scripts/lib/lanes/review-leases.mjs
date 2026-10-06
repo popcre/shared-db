@@ -5,7 +5,7 @@ import { REVIEW_ACTIVE_CUTOVER_REF, REVIEW_ACTIVE_PARALLEL_REF_PREFIX, REVIEW_LE
 import { LaneError } from './claims.mjs'
 import { ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, REVIEWERS, allocatableReviewers } from './reviewer-roster.mjs'
 import { parseReviewLease, resolveAssignmentLeaseRef, reviewActiveRef, reviewLeaseIdentity, reviewLeaseRefForAssignment } from './review-records.mjs'
-import { hasVerdictForHead, leaseVerdictOptions } from './review-approval.mjs'
+import { hasVerdictForHead, leaseVerdictOptions, reviewAssignmentNeedsProtection } from './review-approval.mjs'
 import { resolveFailedReviewRecord } from './review-replacement.mjs'
 import { liveReviewerQueue } from './review-assignment.mjs'
 import { activityFingerprintForLease } from '../../manage-migration-author-lanes.mjs'
@@ -23,8 +23,8 @@ import { orderedReviewers } from './reviewer-roster.mjs'
 //
 // A reviewer is busy when it holds a durable assignment whose work is still
 // live: the PR is open, its head is still the head that reviewer was given, and
-// no verdict has landed for that head. Anything else -- a merged or closed PR, a
-// head that moved on, a recorded verdict -- frees the provider.
+// no verdict has landed for that slot. Pending post-merge slots >= 2 also stay
+// protected; a closed unmerged PR, moved head or own verdict frees the provider.
 //
 // NULL MEANS UNREADABLE, AND EVERY CALLER FAILS CLOSED ON IT. If the refs cannot
 // be listed this returns null; the draw, release, replacement, reap, capacity
@@ -85,7 +85,7 @@ export function findBusyReviewers(io,requested=[],{keepUnreadableLeases=false}={
       const state=states?.get(`${assignment.issue}:${assignment.pr}`)
       prRow=state?.pr??io.getPr(assignment.pr)
     }catch(error){throw leaseReadFailureError({read:'lease PR read',ref,kind:'transient',cause:error?.message??String(error)})}
-    if(prRow?.state!=='open'||prRow?.head?.sha!==assignment.headSha){stale.push({ref,sha,assignment});continue}
+    if(!reviewAssignmentNeedsProtection(assignment,prRow)){stale.push({ref,sha,assignment});continue}
     let verdict
     try{verdict=hasVerdictForHead(assignment.issue,assignment.pr,assignment.headSha,io,leaseVerdictOptions(assignment))}catch(error){
       // #2987. The verdict namespace at its row ceiling is determinate: no retry

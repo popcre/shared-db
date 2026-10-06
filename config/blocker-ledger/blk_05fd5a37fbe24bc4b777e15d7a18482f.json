@@ -1,0 +1,18 @@
+{
+  "id": "blk_05fd5a37fbe24bc4b777e15d7a18482f",
+  "opened_at": "2026-10-06T18:37:21.699925Z",
+  "resolved_at": null,
+  "first_red_check_at": "2026-10-06T18:37:44.576210Z",
+  "diagnosis_proved_at": "2026-10-06T18:37:44.576210Z",
+  "class": "reviewer-harness",
+  "issue_or_pr": "issue #3891",
+  "guard": "reviewer-harness",
+  "symptom": "Post-merge replacement replay drops the review reservation and the governed runner refuses to start",
+  "proof_command": "node --test scripts/merged-review-lease.test.mjs",
+  "resolution": null,
+  "fixed_by": null,
+  "corpus_fixture": null,
+  "active_minutes_lost": null,
+  "wall_minutes_blocked": null,
+  "estimate": true
+}

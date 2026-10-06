@@ -2072,11 +2072,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
         const freshVerdict=hasVerdictForHead(request.issue,request.pr,request.headSha,io,{fresh:true,slot:request.slot})
         if(!reviewIssueEligible(fresh?.issue,fresh?.pr,io)||!reviewTargetEligible(fresh?.pr,io)||fresh?.pr?.head?.sha!==request.headSha||freshVerdict)throw new LaneError(`review assignment issue, PR head, or verdict changed after mutex acquisition${freshVerdict?` -- a verdict for issue #${request.issue}, PR #${request.pr}, head ${request.headSha} already exists`:reviewEligibilityCause(request,fresh?.issue,fresh?.pr)}`)
         assertDistinct(reviewer.name)
-        if(selectedStale){
-          const revived=freshStates?.get(`${selectedStale.assignment.issue}:${selectedStale.assignment.pr}`)
-          const verdict=hasVerdictForHead(selectedStale.assignment.issue,selectedStale.assignment.pr,selectedStale.assignment.headSha,io,leaseVerdictOptions(selectedStale.assignment,{fresh:true}))
-          if(revived?.pr?.state==='open'&&revived?.pr?.head?.sha===selectedStale.assignment.headSha&&!verdict)throw new LaneError('selected reviewer lease became live after mutex acquisition')
-        }
+        if(selectedStale)assertReviewLeaseStillStale(selectedStale,freshStates,io)
         io.atomicReviewRefs([
           {ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},
           {ref:leaseRef,expected:selectedStale?.sha??null,sha:leaseSha},

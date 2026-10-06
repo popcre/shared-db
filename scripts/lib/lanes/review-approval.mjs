@@ -402,11 +402,21 @@ export function assertReviewLeaseStillStale(row,states,io){
   if(!row)return
   const state=states?.get(`${row.assignment.issue}:${row.assignment.pr}`)
   const verdict=hasVerdictForHead(row.assignment.issue,row.assignment.pr,row.assignment.headSha,io,leaseVerdictOptions(row.assignment,{fresh:true}))
-  if(state?.pr?.state==='open'&&state?.pr?.head?.sha===row.assignment.headSha&&!verdict)throw new LaneError(`reviewer ${row.assignment.reviewer} lease became live after mutex acquisition`)
+  if(reviewAssignmentNeedsProtection(row.assignment,state?.pr)&&!verdict)throw new LaneError(`reviewer ${row.assignment.reviewer} lease became live after mutex acquisition`)
 }
 
 export function isReviewAssignmentLive(assignment,states,io){
   const state=states?.get(`${assignment.issue}:${assignment.pr}`),pr=state?.pr??io.getPr(assignment.pr)
   const verdict=hasVerdictForHead(assignment.issue,assignment.pr,assignment.headSha,io,leaseVerdictOptions(assignment))
-  return pr?.state==='open'&&pr?.head?.sha===assignment.headSha&&!verdict
+  if(!reviewAssignmentNeedsProtection(assignment,pr)||verdict)return false
+  if(pr.state==='open')return true
+  return typeof io?.mergedPrReviewTarget==='function'&&io.mergedPrReviewTarget(Number(assignment.pr),Number(assignment.issue))===true
+}
+
+// Protection is deliberately broader than revival authority: unrelated lease
+// scanners must not reclaim a pending post-merge review merely because they
+// lack its verified issue binding. Only isReviewAssignmentLive can revive it.
+export function reviewAssignmentNeedsProtection(assignment,pr){
+  if(pr?.head?.sha!==assignment.headSha)return false
+  return pr?.state==='open'||(Number(assignment.slot)>=2&&mergedPrLive(pr,assignment.headSha))
 }

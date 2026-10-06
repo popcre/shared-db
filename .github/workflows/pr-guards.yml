@@ -50,6 +50,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      agent_contract_pr_number:
+        description: Exact open pull request to replay the agent work contract
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -81,7 +86,9 @@ jobs:
   # quiet mode is how a guard gets trusted without ever having worked.
   agent-work-contract:
     name: Agent work contract
-    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    # #3536: retain manual replay and queue admission; ordinary PRs already
+    # receive independent guarded review and the offline proof suite.
+    if: contains(fromJSON('["merge_group", "workflow_dispatch"]'), github.event_name)
     permissions:
       contents: read
       pull-requests: read
@@ -91,6 +98,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -109,47 +117,44 @@ jobs:
           scripts/check-documents-only-pull-request.test.mjs
           scripts/check-closeout-readiness.test.mjs
 
-      - name: Report the activation mode, so nobody has to guess
-        run: |
-          set -euo pipefail
-          MODE=$(node scripts/agent-work-contract-activation.mjs --mode --config-file config/agent-work-contract-activation.json)
-          echo "mode=$MODE" >> "$GITHUB_ENV"
-          {
-            echo "## Agent work contract — $MODE"
-            echo
-            if [ "$MODE" = "report-only" ]; then
-              echo "A pull request with no contract passes. A malformed contract or a"
-              echo "report that contradicts its contract still FAILS."
-            else
-              echo "Enforced. Every non-grandfathered pull request must carry a valid"
-              echo "contract and a report that satisfies it."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Resolve the queued pull request (merge group only)
-        # The merge_group payload carries no pull_request object. The one queued
-        # PR is resolved from the queue ref and re-verified live (open, base
-        # main, readable head) by the merge queue contract (#2530).
-        if: github.event_name == 'merge_group'
+      - name: Resolve the exact queued or manually selected pull request
         id: queue
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+          SELECTED_PR: ${{ inputs.agent_contract_pr_number }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
-          echo "$facts"
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
+            PR_NUMBER="$(echo "$facts" | jq -r .number)"
+          else
+            [[ "$SELECTED_PR" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Manual contract replay requires an exact PR number."; exit 1; }
+            PR_NUMBER="$SELECTED_PR"
+          fi
+          facts="$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          echo "$facts" | jq -e --arg repo "$GITHUB_REPOSITORY" --argjson number "$PR_NUMBER" '
+            .number == $number and .state == "open" and
+            .base.ref == "main" and .base.repo.full_name == $repo and
+            (.base.sha | test("^[a-f0-9]{40}$")) and
+            (.head.sha | test("^[a-f0-9]{40}$"))' > /dev/null
+          BASE_SHA="$(echo "$facts" | jq -r .base.sha)"
+          HEAD_SHA="$(echo "$facts" | jq -r .head.sha)"
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          # Replay must read the selected pair, not inherited main files.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then git checkout --detach "$HEAD_SHA"; fi
           {
-            echo "pr_number=$(echo "$facts" | jq -r .number)"
-            echo "pr_head_sha=$(echo "$facts" | jq -r .headRefOid)"
+            echo "pr_number=$PR_NUMBER"
+            echo "pr_head_sha=$HEAD_SHA"
+            echo "pr_base_sha=$BASE_SHA"
           } >> "$GITHUB_OUTPUT"
-          echo "pr_base_sha=$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/$(echo "$facts" | jq -r .number)" --jq .base.sha)" >> "$GITHUB_OUTPUT"
 
       # Classified from protected base policy whenever the pull request is known,
       # including the one queued PR on merge_group, so the documents-only
       # exemption behaves identically on both paths (#2596 review).
       - name: Check out the protected base policy for the documents-only decision
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
@@ -158,7 +163,7 @@ jobs:
 
       - name: Classify documents-only status from protected base policy
         id: documents_only
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
@@ -172,6 +177,23 @@ jobs:
           # 0 = documents only. Anything else, including an unreadable file list,
           # is NOT documents only: the pair stays required (fail closed).
           if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Report the activation mode, so nobody has to guess
+        run: |
+          set -euo pipefail
+          MODE=$(node trusted-policy/scripts/agent-work-contract-activation.mjs --mode --config-file trusted-policy/config/agent-work-contract-activation.json)
+          echo "mode=$MODE" >> "$GITHUB_ENV"
+          {
+            echo "## Agent work contract — $MODE"
+            echo
+            if [ "$MODE" = "report-only" ]; then
+              echo "A pull request with no contract passes. A malformed contract or a"
+              echo "report that contradicts its contract still FAILS."
+            else
+              echo "Enforced. Every non-grandfathered pull request must carry a valid"
+              echo "contract and a report that satisfies it."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate any contract and report carried by this pull request
         env:
@@ -197,7 +219,7 @@ jobs:
           REPORT=.agent/completion.json
 
           if [ -n "$PR_NUMBER" ]; then
-            RESOLVED=$(node scripts/agent-work-contract-git-evidence.mjs \
+            RESOLVED=$(node trusted-policy/scripts/agent-work-contract-git-evidence.mjs \
               --resolve-evidence-pair \
               --pr-base-sha "$PR_BASE_SHA" \
               --pr-head-sha "$PR_HEAD_SHA")
@@ -235,7 +257,7 @@ jobs:
               echo "No current contract on this pull request; report-only mode allows it."
               exit 0
             fi
-            if node scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
+            if node trusted-policy/scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file trusted-policy/config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
               exit 0
             fi
             # THE DOCUMENTS-ONLY EXEMPTION (issue #2591, owner approved 2026-09-08).
@@ -272,14 +294,14 @@ jobs:
           if [ ! -f "$CONTRACT" ]; then echo "::error::$REPORT exists but $CONTRACT does not; a report with no contract cannot be checked."; exit 1; fi
           if [ ! -f "$REPORT" ]; then echo "::error::$CONTRACT exists but $REPORT does not; the work never reported against its contract."; exit 1; fi
 
-          node scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
+          node trusted-policy/scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
           PR_ARGS=()
           if [ -n "$PR_NUMBER" ]; then
             PR_ARGS+=(--expected-pr "$PR_NUMBER" --expected-head-sha "$PR_HEAD_SHA")
           fi
-          node scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
+          node trusted-policy/scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
           if [ -n "$PR_NUMBER" ]; then
-            node scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
+            node trusted-policy/scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
           fi
 
   # ---- moved from .github/workflows/cancelled-work-guard.yml (#3746) ----
@@ -647,7 +669,7 @@ jobs:
       # this one job precisely so they cannot drift apart. This step adds no new
       # required status context -- the job name is unchanged.
       - name: Unit-test the dispatch-time collision checker (shares the parser)
-        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
+        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/route-lane-manager-patch.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
 
       # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
       # from the per-repository Actions installation limit. Writes keep github.token.

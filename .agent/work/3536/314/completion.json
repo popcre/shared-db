@@ -6,9 +6,11 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3536/314",
   "contract_sha256": "72da00ff07d925191e688c536be180ac7ea14016012c8faffa04b2c6f3dfdaef",
-  "head_sha": "7b3f17b4321611234b84a6f4b9b005fe69c71ec1",
+  "head_sha": "09c0451e2f0e189470432ff3e5e3e2ecab0bee01",
   "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
   "files_changed": [
+    ".agent/work/3536/312/completion.json",
+    ".agent/work/3536/312/contract.json",
     "config/orchestrator-global-invalidators-v1.json",
     "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",
     "scripts/lib/lanes/review-circuit-breaker.mjs",

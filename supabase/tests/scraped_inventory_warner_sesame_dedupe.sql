@@ -45,7 +45,7 @@ begin
      private_source_commit, snapshot_sha256, expected_row_count,
      captured_by, source_url, started_at)
   values
-    (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'loading', current_date,
+    (extensions.gen_random_uuid(), 0, 'wb_property', 'loading', current_date,
      'zztest', repeat('a', 64), 2,
      'zztest', 'https://example.invalid', now())
   returning capture_id into v_capture_id;

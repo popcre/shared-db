@@ -30,8 +30,9 @@ export function publishAlarm({ result, report, repository, runUrl, event }, io) 
   if (issue.state !== 'open' || issue.title !== TITLE || issue.pull_request) throw new Error('alarm issue is no longer open or has changed')
   const comments = io.listComments(issue.number)
   if (!Array.isArray(comments)) throw new Error('alarm comment history unreadable')
-  const latest = [...comments].sort((a,b) => a.id-b.id).filter(row => /<!-- ledger-drift-fingerprint:[a-f0-9]{64} -->/.test(row.body ?? '')).at(-1)
-  const current = latest?.body ?? issue.body ?? ''
+  const trustedReport = row => row?.user?.login === 'github-actions[bot]' && /<!-- ledger-drift-fingerprint:[a-f0-9]{64} -->/.test(row.body ?? '') && (row.body ?? '').includes(`https://github.com/${repository}/actions/runs/`)
+  const latest = [...comments].sort((a,b) => a.id-b.id).filter(trustedReport).at(-1)
+  const current = latest?.body ?? (trustedReport(issue) ? issue.body : '')
   if (!current.includes(marker)) {
     const posted = io.comment(issue.number, body)
     const readback = io.readComment(posted.id)

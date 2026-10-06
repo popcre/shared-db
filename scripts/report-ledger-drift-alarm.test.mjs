@@ -6,7 +6,7 @@ const result = () => ({ target:'production', projectRef:'production', baseRef:'o
 const args = () => ({result:result(),report:'Verified actionable version; promotion owner remains unchanged.',repository:'popcre/shared-db',runUrl:'https://github.com/popcre/shared-db/actions/runs/123',event:'push'})
 function fixture() {
   let issue={number:2508,title:TITLE,state:'open',body:'Original alarm'}, comments=[], writes=0
-  const io={listIssues:()=>[issue],readIssue:()=>issue,listComments:()=>comments,comment:(n,body)=>{writes++;const row={id:writes,body};comments.push(row);return row},readComment:id=>comments.find(c=>c.id===id),createIssue:(title,body)=>{writes++;issue={number:2508,title,state:'open',body};return issue}}
+  const io={listIssues:()=>[issue],readIssue:()=>issue,listComments:()=>comments,comment:(n,body)=>{writes++;const row={id:writes,body,user:{login:'github-actions[bot]'}};comments.push(row);return row},readComment:id=>comments.find(c=>c.id===id),createIssue:(title,body)=>{writes++;issue={number:2508,title,state:'open',body,user:{login:'github-actions[bot]'}};return issue}}
   return {io,writes:()=>writes,setIssue:row=>{issue=row},setComments:rows=>{comments=rows}}
 }
 test('automatic push and schedule publish verified drift without claiming clean',()=>{for(const event of ['push','schedule']){const f=fixture();const out=publishAlarm({...args(),event},f.io);assert.equal(out.issue,2508);assert.match(out.message,/NOT a clean/);assert.equal(f.writes(),1)}})
@@ -29,3 +29,5 @@ test('workflow keeps unknown/manual failures red and gates automatic success on 
   assert.match(s,/exit "\$CODE"/)
   assert.doesNotMatch(s,/continue-on-error:/)
 })
+
+test('untrusted fingerprint comments do not suppress actionable publication',()=>{const f=fixture();f.setComments([{id:999,body:`<!-- ledger-drift-fingerprint:${fingerprint(result())} -->\nhttps://github.com/popcre/shared-db/actions/runs/1`,user:{login:'outsider'}}]);publishAlarm(args(),f.io);assert.equal(f.writes(),1)})

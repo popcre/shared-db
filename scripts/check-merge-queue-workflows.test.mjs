@@ -29,7 +29,7 @@ const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the orchestrator marker guard was retired with the role (#3874);
 // live branch protection already omitted it (made advisory 2026-09-28).
-const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard'])
+const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard', 'Agent work contract'])
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the
@@ -37,7 +37,6 @@ const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard'])
 // an explicit SHA — by the guarded merge lane on the reviewed PR head, and by
 // the queue gate on the synthetic group SHA.
 const CONTEXT_MAP = {
-  'Agent work contract': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Agent work contract' },
   'Cancelled work guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cancelled work guard' },
   'Cross-PR object collision': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cross-PR object collision' },
   'Destructive SQL outside migrations': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Destructive SQL outside migrations' },
@@ -131,11 +130,11 @@ test('the job-level event check fails when a required job drops merge_group or p
   const text = readWorkflow('pr-guards.yml')
   for (const [event] of [['merge_group'], ['pull_request']]) {
     const broken = text.replace(
-      /(^ {4}name: Agent work contract\n {4}if: contains\(fromJSON\('\[)([^\]]*)(\]'\), github\.event_name\)$)/m,
+      /(^ {4}name: Cancelled work guard\n {4}if: contains\(fromJSON\('\[)([^\]]*)(\]'\), github\.event_name\)$)/m,
       (_, head, list, tail) => head + list.split(', ').filter((item) => item !== `"${event}"`).join(', ') + tail,
     )
     assert.notEqual(broken, text, 'the negative fixture did not change the file')
-    assert.deepEqual(requiredJobEventProblems(broken, 'Agent work contract'), [`job "Agent work contract" does not run on ${event}`])
+    assert.deepEqual(requiredJobEventProblems(broken, 'Cancelled work guard'), [`job "Cancelled work guard" does not run on ${event}`])
   }
   assert.match(requiredJobEventProblems("jobs:\n  a:\n    name: A\n    if: github.event_name != 'merge_group'\n", 'A')[0], /unrecognised/)
 })
@@ -472,4 +471,21 @@ test('Queue interlock job and the workflow level both grant exactly issues: read
   const block = /\n    permissions:\n((?:      [^\n]*\n)+)/.exec(job)
   assert.ok(block, 'authorize job has its own permissions block')
   assert.match(block[1], /^      issues: read\b/m)
+})
+
+// #3536: an explicit replay must inspect the selected PR, never inherited main evidence.
+test('contract replay retains queue admission and validates exact selected PR identity', () => {
+  const text = readWorkflow('pr-guards.yml')
+  const job = jobBlockByName(text, 'Agent work contract')
+  assert.deepEqual(jobEvents(job), ['merge_group', 'workflow_dispatch'])
+  assert.match(text, /agent_contract_pr_number:/)
+  assert.match(job, /\^\[1-9\]\[0-9\]\*\$/)
+  assert.match(job, /\.state == "open"/)
+  assert.match(job, /\.base\.ref == "main"/)
+  assert.match(job, /\.base\.repo\.full_name == \$repo/)
+  assert.match(job, /git fetch --no-tags origin "\$BASE_SHA" "\$HEAD_SHA"/)
+  assert.match(job, /--pr-base-sha "\$PR_BASE_SHA"/)
+  assert.match(job, /--pr-head-sha "\$PR_HEAD_SHA"/)
+  assert.match(job, /--expected-pr "\$PR_NUMBER" --expected-head-sha "\$PR_HEAD_SHA"/)
+  assert.match(job, /node --test/)
 })

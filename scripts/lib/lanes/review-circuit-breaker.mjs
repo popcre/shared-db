@@ -28,11 +28,12 @@ export function assertPaidReviewCapacity(request, io) {
   if (!Array.isArray(rows)) throw new LaneError('review circuit breaker: immutable start listing unreadable')
   const starts = rows.map(row=>paidStart(row,row.commit ?? io.getCommit(row.sha))).filter(row=>row && row.pr === request.pr && row.slot === request.slot)
   let count=0
+  const comparisonContext={}
   for (const start of starts) {
     let same=start.headSha === request.headSha
     if (!same) {
       if (typeof io.reviewContentComparison !== 'function') throw new LaneError('review circuit breaker: substantive content comparison unavailable')
-      const comparison=io.reviewContentComparison(start.headSha,request.headSha,request.pr)
+      const comparison=io.reviewContentComparison(start.headSha,request.headSha,request.pr,comparisonContext)
       if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
       same=comparison.before === comparison.after
     }
@@ -51,8 +52,12 @@ export function pauseActualReviewFailure(record,io) {
   const start=rows.map(row=>paidStart(row,row.commit??io.getCommit(row.sha))).find(row=>row&&row.issue===record.issue&&row.pr===record.pr&&row.headSha===record.headSha&&row.slot===record.slot&&row.sequence===record.failedSequence&&(!record.reviewer||row.reviewer===record.reviewer))
   if(!start)return {paused:false,reason:'no immutable paid-start evidence'}
   const boundRecord={...record,reviewer:start.reviewer}
-  const failure=parseTerminalFailureEvidence(typeof io.readReviewFailureCommit==='function'?io.readReviewFailureCommit(record.failureSha):io.getCommit(record.failureSha))
+  const commit=typeof io.readReviewFailureCommit==='function'?io.readReviewFailureCommit(record.failureSha):io.getCommit(record.failureSha)
+  const failure=parseTerminalFailureEvidence(commit)
   if(!failure || ['issue','pr','headSha','failedSequence','reviewer','failureCode'].some(key=>failure[key]!==boundRecord[key]))throw new LaneError('provider pause immutable terminal failure binding mismatch')
-  io.pauseReviewerFailure(boundRecord)
-  return {paused:true}
+  const timestamp=commit?.committedDate??commit?.commit?.committer?.date
+  const observed=Date.parse(timestamp)
+  if(typeof timestamp!=='string'||!Number.isFinite(observed)||observed<0)throw new LaneError('provider pause immutable failure timestamp unreadable')
+  const result=io.pauseReviewerFailure({...boundRecord,observedEpoch:Math.floor(observed/1000)})
+  return result?.status==='expired'?{paused:false,reason:'original failure window expired',...result}:{paused:true}
 }

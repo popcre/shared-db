@@ -542,7 +542,7 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   // written BEFORE the provider is launched and fails closed: a review whose start cannot be
   // recorded is not started, so the watcher can never reroute a review that is running.
   if(typeof deps.recordStart!=='function')throw new Error('review start recorder is required; no reviewer was started')
-  lifecycle.push(lifecycleEvent(deps,assignment,'review_started',{marker:deps.recordStart({...options,wrapperArgs:contractArgs,sourceIdentity,sourceReceiptPath:receipt.path})}))
+  lifecycle.push(lifecycleEvent(deps,assignment,'review_started',{marker:deps.recordStart({...options,wrapperArgs:brief.wrapperArgs,sourceIdentity,sourceReceiptPath:receipt.path})}))
   // Issue #2678: the wrapper is told WHO is calling it in the environment this
   // runner spawns, not left to whatever an operator happened to export first. A
   // programmatic caller of this function now gets the same environment the CLI does.

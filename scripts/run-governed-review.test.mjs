@@ -1342,3 +1342,15 @@ test('DeepSeek generated session requires wrapper-bound original receipt',()=>{
   companion.session_id=sid;writeFileSync(receiptPath+'.continuation.json',JSON.stringify(companion));writeFileSync(receiptPath,JSON.stringify(receipt)+'\n');assert.throws(()=>validateReviewContinuation(request,marker,deps),/lacks.*session\/source binding/)
  }finally{rmSync(root,{recursive:true,force:true})}
 })
+
+test('Gemini and Qwen start bindings use the actual session before governed flag injection',async()=>{
+ const {persistentReviewCommand}=await import('./run-governed-review.mjs')
+ for(const wrapper of ['ai-gemini','ai-qwen']){
+  let started,launched
+  runGovernedReview({...options,wrapper,wrapperArgs:['new','bound-session','--prompt-file','brief.md']},{
+   preflight:()=>{},resolve:x=>x,recordStart:o=>{started=persistentReviewCommand(o.wrapper,o.wrapperArgs);return 'bound'},
+   spawn:(file,args)=>{if(file==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://example.test/review'})};launched=args;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}},record:()=>({ref:'verdict',sha:'f'.repeat(40)})})
+  assert.equal(started.name,'bound-session');assert.equal(started.continuation,false)
+  assert.equal(launched[1],'--governed-verdict');assert.ok(launched.includes('bound-session'))
+ }
+})

@@ -32,7 +32,7 @@ test('actual quota/outage release pauses only exact paid provider failure',()=>{
  const record={...request,failedSequence:1,reviewer:'glm-5.3',failureCode:'insufficient_quota',failureSha:'f'.repeat(40)}
  const release=`db-coordination reviewer-failure-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} failed-sequence=1 code=insufficient_quota verdict=none artifact=none replacement=none`
  let paused=0
- const x={readPaidReviewStarts:()=>[{...row(),commit:{message:message()}}],getCommit:()=>({message:release}),pauseReviewerFailure:r=>{assert.deepEqual(r,record);paused++}}
+ const x={readPaidReviewStarts:()=>[{...row(),commit:{message:message()}}],getCommit:()=>({message:release,committedDate:'2026-10-06T18:00:00Z'}),pauseReviewerFailure:r=>{assert.deepEqual(r,{...record,observedEpoch:1791309600});paused++}}
  assert.equal(pauseActualReviewFailure(record,x).paused,true);assert.equal(paused,1)
  assert.equal(pauseActualReviewFailure({...record,failureCode:'local_dependency_unavailable'},x).paused,false)
  assert.equal(pauseActualReviewFailure({...record,failureCode:'wrapper_terminal_failure'},x).paused,false)
@@ -44,6 +44,22 @@ test('inline replacement pauses actual failed provider using immutable self fail
  const record={...request,failedSequence:1,failureCode:'provider_unavailable',failureSha:'f'.repeat(40)}
  const failure=`db-coordination reviewer-failure-replacement sequence=2 reviewer=muse-spark-1.3-contributor issue=3536 pr=4000 head=${head} slot=1 failed-sequence=1 prior-sequence=1 failure-ref=self failed-reviewer=glm-5.3 code=provider_unavailable verdict=none artifact=none`
  let paused=0
- const x={readPaidReviewStarts:()=>[{...row(),commit:{message:message()}}],readReviewFailureCommit:()=>({message:failure}),getCommit:()=>{throw Error('wire read forbidden')},pauseReviewerFailure:r=>{assert.equal(r.reviewer,'glm-5.3');paused++}}
+ const x={readPaidReviewStarts:()=>[{...row(),commit:{message:message()}}],readReviewFailureCommit:()=>({message:failure,committedDate:'2026-10-06T18:00:00Z'}),getCommit:()=>{throw Error('wire read forbidden')},pauseReviewerFailure:r=>{assert.equal(r.reviewer,'glm-5.3');paused++}}
  assert.equal(pauseActualReviewFailure(record,x).paused,true);assert.equal(paused,1)
+})
+
+test('all historical substantive comparisons share one operation base context',()=>{
+ const x=io([row(),row(2)]);let shared,calls=0
+ x.reviewContentComparison=(before,after,pr,context)=>{calls++;if(shared)assert.equal(context,shared);else shared=context;return{before:digest,after:'d'.repeat(64)}}
+ assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2);assert.equal(calls,2)
+})
+
+test('provider pause refuses unknown immutable timestamp and reports expired original window honestly',()=>{
+ const record={...request,failedSequence:1,failureCode:'provider_unavailable',failureSha:'f'.repeat(40)}
+ const messageFailure=`db-coordination reviewer-failure-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} failed-sequence=1 code=provider_unavailable verdict=none artifact=none replacement=none`
+ const x={readPaidReviewStarts:()=>[{...row(),commit:{message:message()}}],readReviewFailureCommit:()=>({message:messageFailure}),pauseReviewerFailure:()=>assert.fail('unknown timestamp must never invoke public pause')}
+ assert.throws(()=>pauseActualReviewFailure(record,x),/timestamp unreadable/)
+ x.readReviewFailureCommit=()=>({message:messageFailure,committedDate:'2026-10-06T18:00:00Z'})
+ x.pauseReviewerFailure=r=>{assert.equal(r.observedEpoch,1791309600);return{status:'expired',provider:'glm',observed_epoch:r.observedEpoch,expires_epoch:r.observedEpoch+3600}}
+ const result=pauseActualReviewFailure(record,x);assert.equal(result.paused,false);assert.equal(result.reason,'original failure window expired')
 })

@@ -243,6 +243,34 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- Issue #3947: Warner fallback-twin hide and Sesame value_key collapse are
+-- pinned in the function body. Definition-only: no licensed rows are read.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_definition text;
+begin
+  select pg_get_functiondef(
+    'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)
+    into v_definition;
+
+  if position('natural_key_fallback' in v_definition) = 0
+     or position($q$where p.identity_method <> 'natural_key_fallback'$q$ in v_definition) = 0
+     or position($q$and t.identity_method = 'source_id'$q$ in v_definition) = 0 then
+    raise exception '#3947: Warner fallback-twin hide predicate is missing';
+  end if;
+
+  if position($q$select distinct on (sb.value_key)$q$ in v_definition) = 0
+     or position($q$order by sb.value_key, (sb.field_generation = 'current') desc$q$ in v_definition) = 0 then
+    raise exception '#3947: Sesame value_key collapse predicate is missing';
+  end if;
+
+  if position($q$select distinct on (sb.value_label)$q$ in v_definition) <> 0 then
+    raise exception '#3947: Sesame still collapses on value_label';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Non-vacuous grouping proof (#3539): evaluate each installed arm's actual
 -- group CASE with synthetic rows whose known licensor_key contradicts the
 -- source_system. This works even when the throwaway database has no scraped

@@ -9,7 +9,7 @@
   "contract_ref": "refs/db-contracts/4010/1",
   "contract_sha256": "6e2e21658e9a6431172f9a0afaf8fdd1564e3ba71acd79d8d29fdeabd7daf5d0",
   "base_sha": "b8905b9a187133cb0e6ff1b13c62298920ed6ac3",
-  "head_sha": "661c4e4fb2d6a37dac0268299b8e632aa50c4c46",
+  "head_sha": "9852c73dc8b6407e3c800990cd91d828e63097aa",
   "files_changed": [
     ".github/live-proofs/4010.sql",
     "supabase/migrations/20261006205745_repoint_designflow_artist_parent_fks.sql"
@@ -42,6 +42,11 @@
       "command": "python3 /tmp/4010-sql-smoke.py",
       "exit_code": 0,
       "evidence": "Enforcement and rows/access preserved; each destination orphan and changed original action refuses atomically."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "28passed including allcommittedprobes singleSQLstatement and exact passed field."
     }
   ],
   "assumptions_resolved": [

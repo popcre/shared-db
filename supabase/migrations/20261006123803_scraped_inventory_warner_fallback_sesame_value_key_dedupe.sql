@@ -1,8 +1,8 @@
--- #3947: Scraped Properties — hide duplicate Warner fallback rows and collapse
--- Sesame brand generations in api.db_data_admin_scraped_source_inventory.
+-- #3947: Scraped Properties — hide duplicate Warner fallback rows, collapse
+-- Sesame brand generations, and hide Lucasfilm rows that duplicate a Disney
+-- DCP identity in api.db_data_admin_scraped_source_inventory.
 --
--- reserved-version: 20261006205216 (claim #3955; renamed from 20261006123803
--- because main advanced past that timestamp before merge — pure rename)
+-- reserved-version: 20261006123803 (claim #3955)
 -- derived-from: 20261002193034
 -- (api.db_data_admin_scraped_source_inventory body.)
 --
@@ -43,8 +43,23 @@
 --   2. Sesame: one row per value_key, preferring field_generation = 'current'.
 --      source_id stays 'label:' || value_label of the surviving row, so the
 --      curated proper-cased spelling is the inventory identity.
+--   3. Lucasfilm/Disney: hide a plm.lucasfilm_dcp_property row whose exact
+--      source_id already exists in plm.dcp_property with
+--      source_system = 'disney_dcpvault'. The Disney arm's surviving row is
+--      preserved; unique Lucasfilm identities are preserved. This is a
+--      display-level dedup only — it does not infer or change canonical
+--      licensor ownership. All saved matching decisions (DCP resolution /
+--      member associations, conflicts, exclusions) and source captures are
+--      preserved: the cross-vault resolution join keys on the shared dcpvault
+--      source_id, so the retained Disney row still surfaces every decision
+--      that the hidden Lucasfilm copy carried. Production evidence
+--      (2026-10-06): 30 shared dcpvault source_ids between
+--      plm.lucasfilm_dcp_property and plm.dcp_property
+--      (source_system = 'disney_dcpvault'); all 30 have DCP resolution
+--      history in plm.dcp_opa_property_resolution and 24 have approved
+--      members. Hide only the Lucasfilm display copy of those 30.
 --
--- Revert: fix forward. Restore the two arms from 20261002193034's body.
+-- Revert: fix forward. Restore the arms from 20261002193034's body.
 
 create or replace function api.db_data_admin_scraped_source_inventory(
   p_entity_kind text,
@@ -440,6 +455,17 @@ begin
           when o.opa_studio_code is not null then 'direct_' || o.opa_studio_code
         end as authority_status
       ) x on true
+      -- #3947: hide a Lucasfilm row whose exact source_id already exists as a
+      -- Disney dcp_property identity. The Disney arm's surviving row is kept;
+      -- unique Lucasfilm identities have no Disney twin and stay visible.
+      -- Display-level only: canonical licensor ownership is not inferred or
+      -- changed, and every DCP resolution / member association keyed on the
+      -- shared dcpvault source_id remains reachable through the Disney row.
+      where not exists (
+        select 1 from plm.dcp_property d
+        where d.source_system = 'disney_dcpvault'
+          and d.source_id = p.source_id
+      )
 
       union all
       select
@@ -1566,7 +1592,7 @@ comment on function api.db_data_admin_scraped_source_inventory(text,text,text,in
 revoke all on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) from public, anon, service_role;
 grant execute on function api.db_data_admin_scraped_source_inventory(text,text,text,integer) to authenticated;
 
--- #3947 self-check: the two dedupe predicates are present and the function's
+-- #3947 self-check: the three dedupe predicates are present and the function's
 -- security posture is unchanged.
 do $$
 declare
@@ -1589,6 +1615,11 @@ begin
   if position($s$select distinct on (sb.value_label)$s$ in v_src) <> 0 then
     raise exception '#3947 self-check: Sesame still collapses on value_label';
   end if;
+  if position($l$where not exists ($l$ in v_src) = 0
+     or position($l$from plm.dcp_property d$l$ in v_src) = 0
+     or position($l$and d.source_id = p.source_id$l$ in v_src) = 0 then
+    raise exception '#3947 self-check: Lucasfilm Disney-twin hide predicate is missing';
+  end if;
   -- Exact object checks: the columns this function now depends on must exist
   -- with the right names (review finding 2026-10-06; create-or-replace defers
   -- relation resolution to first call, so a missing column would migrate clean
@@ -1602,6 +1633,16 @@ begin
        where table_schema = 'plm' and table_name = 'sesame_brand'
          and column_name in ('value_key', 'value_label', 'field_generation', 'capture_id')) <> 4 then
     raise exception '#3947 self-check: plm.sesame_brand is missing one of value_key, value_label, field_generation, capture_id';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm' and table_name = 'lucasfilm_dcp_property'
+         and column_name in ('source_system', 'source_id')) <> 2 then
+    raise exception '#3947 self-check: plm.lucasfilm_dcp_property is missing source_system or source_id';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm' and table_name = 'dcp_property'
+         and column_name in ('source_system', 'source_id')) <> 2 then
+    raise exception '#3947 self-check: plm.dcp_property is missing source_system or source_id';
   end if;
   if not exists (select 1 from pg_proc p
                   where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure

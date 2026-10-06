@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3999,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/308",
+  "contract_sha256": "41d99b74662307c32e10237c4895b7b0d4cb59053955cd35769eb925a24daa5e",
+  "head_sha": "cf16ffd7d764e3a699a95f47ccbfd09223dd0985",
+  "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
+  "files_changed": [
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "Current merged-main887 tests886 passed,one existing platform skip,zero failures. Controlled actual start/cap entrypoints reject repeated new launch and third draw after two fake provider calls; no external provider or production mutation."
+    }
+  ],
+  "assumptions_resolved": [
+    "Protected original receipt plus companion preserves generated DeepSeek continuation.",
+    "No new Git authority namespace or request-budget increase.",
+    "Cause-bound same-content reset remains refused until supported proof exists."
+  ],
+  "stop_conditions_hit": []
+}

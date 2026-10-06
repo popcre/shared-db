@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "work_issue": 2874,
+  "outcome": "ready-for-merge",
+  "pr": 3707,
+  "migration_versions": [
+    "20261006211240"
+  ],
+  "contract_ref": "refs/db-contracts/2874/4",
+  "contract_sha256": "e47a5efd9517624598590e1ce440481eab5de92ea4eb46f5c144ea0b79bc86e8",
+  "db_reads": [
+    "table dflow_prod.users",
+    "table dflow_prod.RFQItem",
+    "table dflow_prod.RFQStep",
+    "function dflow.current_designflow_user_id",
+    "function dflow.set_item_user_assignment",
+    "function dflow.record_item_workflow_action"
+  ],
+  "db_writes": [
+    "column dflow_prod.item_workflow_action.actor_identity_source",
+    "column dflow_prod.item_workflow_action.source_action_id",
+    "column dflow_prod.user_notification.workflow_action_id",
+    "function dflow_prod.current_designflow_user_id",
+    "function dflow_prod.record_item_workflow_action",
+    "function dflow_prod.reject_item_assignment_history_rewrite",
+    "function dflow_prod.reject_item_workflow_action_rewrite",
+    "function dflow_prod.set_item_user_assignment",
+    "index dflow_prod.item_user_assignment_active_lookup",
+    "index dflow_prod.item_user_assignment_assigned_by_user_id_idx",
+    "index dflow_prod.item_user_assignment_one_active",
+    "index dflow_prod.item_user_assignment_user_id_idx",
+    "index dflow_prod.item_workflow_action_actor_user_id_idx",
+    "index dflow_prod.item_workflow_action_admin_review",
+    "index dflow_prod.item_workflow_action_fallback_recipient_idx",
+    "index dflow_prod.item_workflow_action_item_time",
+    "index dflow_prod.item_workflow_action_new_step_id_idx",
+    "index dflow_prod.item_workflow_action_one_return_per_source",
+    "index dflow_prod.item_workflow_action_open_handoff_lookup",
+    "index dflow_prod.item_workflow_action_prior_step_id_idx",
+    "index dflow_prod.user_notification_action_recipient",
+    "index dflow_prod.user_notification_idempotency_key",
+    "table dflow_prod.item_user_assignment",
+    "table dflow_prod.item_workflow_action",
+    "table dflow_prod.user_notification",
+    "trigger item_user_assignment_immutable on dflow_prod.item_user_assignment",
+    "trigger item_workflow_action_immutable on dflow_prod.item_workflow_action",
+    "view dflow_prod.item_workflow_handoff"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static guards passed after runtime identity change."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check passed."
+    },
+    {
+      "command": "Database Contract Tests on isolated ephemeral database",
+      "exit_code": 0,
+      "evidence": "Workflow parity and cutover-column contracts passed on disposable network-none PostgreSQL 17 with synthetic auth helpers. Workflow parity also passed on the CI-pinned Supabase postgres 17.6.1.171 image with synthetic auth helpers, authenticating as its non-superuser postgres through TCP then reconnecting to its existing supabase_admin before restoring postgres session identity. Every actual session case passed. Readback proved zero synthetic users and zero fixture runtime roles remain. Complete repository suite remains enforced by PR CI."
+    }
+  ],
+  "assumptions_resolved": [
+    "Guarded adoption and version supersession preserve original reservations; claim 3704 exact 28 objects.",
+    "2870 live acceptance verified; future backend runtime trusted only after id/email/active-user checks.",
+    "Reproduced CI non-superuser limitation on the pinned Supabase image and proved its existing fixture superuser connection; no role capability changed and no test case skipped."
+  ],
+  "stop_conditions_hit": [],
+  "head_sha": "b4842912ec7d60fbc66af7bbfee8203407c80931",
+  "files_changed": [
+    "supabase/migrations/20261006211240_dflow_prod_backend_workflow_parity.sql",
+    "supabase/tests/dflow_prod_contract.sql",
+    "supabase/tests/dflow_prod_workflow_parity_contracts.sql"
+  ]
+}

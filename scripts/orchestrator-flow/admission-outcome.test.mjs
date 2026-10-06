@@ -802,7 +802,7 @@ test('the completion CLI retains every proof check through a verified merged-PR 
       const errors=[],oldError=console.error,oldLog=console.log
       console.error=line=>errors.push(String(line));console.log=()=>{}
       let result
-      try{result=managerMain(['--complete-outcome','41','--owner','test','--evidence','https://github.com/u2giants/shared-db/issues/41#issuecomment-9'],new Date('2026-09-11T02:00:00Z'),mutex)}finally{console.error=oldError;console.log=oldLog}
+      try{result=managerMain(['--complete-outcome','41','--owner','test','--evidence',`https://github.com/${THIS_REPO}/issues/41#issuecomment-9`],new Date('2026-09-11T02:00:00Z'),mutex)}finally{console.error=oldError;console.log=oldLog}
       assert.equal(result,failedProof?2:0,errors.join('\n'))
       assert.equal(io.getIssue().state,failedProof?'open':'closed')
       assert.equal(outcomeHistory(comments).state,failedProof?'production_applied':'live_verified')

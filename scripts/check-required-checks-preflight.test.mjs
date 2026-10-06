@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluatePreflight, gatherPreflightInput, observedStates, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT, GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
+import { evaluatePreflight, gatherPreflightInput, observedStates, isWaitableRefusal, collectPages, requireWholePage, waitForPreflight, PreflightError, SELF_CONTEXT, GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
 import { readEffectiveRequiredChecks, computeRevision, RequiredCheckAuthorityError } from './lib/required-check-authority.mjs'
 const sha = 'a'.repeat(40)
 function makeAuthority(overrides = {}) {
@@ -212,4 +212,17 @@ test('protected merge preflight preserves exact-once runner lane accounting afte
 test('a required registered lane cannot remove the other assertion from merge accounting', () => {
   const laneAuthority = makeAuthority({ checks: [{ context: 'Tools offline tests', app_id: GITHUB_ACTIONS_APP_ID }, { context: SELF_CONTEXT, app_id: GITHUB_ACTIONS_APP_ID }] })
   assert.throws(() => evaluatePreflight({ authority: laneAuthority, sha, checkRuns: [ok('Tools offline tests')] }), /runner lane accounting refused:.*no run reported/)
+})
+
+
+test('lane accounting pending/absent results use the existing bounded waiter; failed/duplicate results cannot wait away', () => {
+  const laneAuthority = makeAuthority({ checks: [{ context: 'Tools offline tests', app_id: GITHUB_ACTIONS_APP_ID }, { context: SELF_CONTEXT, app_id: GITHUB_ACTIONS_APP_ID }] })
+  const attempt = (runs) => {
+    try { evaluatePreflight({ authority: laneAuthority, sha, checkRuns: runs }); assert.fail('expected refusal') }
+    catch (error) { assert.ok(error instanceof PreflightError); return isWaitableRefusal(error.message) }
+  }
+  assert.equal(attempt([ok('Tools offline tests')]), true)
+  assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)', { status: 'queued' })]), true)
+  assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)', { conclusion: 'failure' })]), false)
+  assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)'), ok('Tools offline tests [lane ubuntu-24.04]')]), false)
 })

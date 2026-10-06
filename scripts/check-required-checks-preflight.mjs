@@ -99,7 +99,15 @@ export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sh
   const registry = loadRegistry()
   if (registry.queue_sensitive_jobs.some((job) => required.some((item) => item.context === job.context))) {
     const accounting = aggregateVerdict(registry, checkRuns.filter((run) => run?.head_sha === sha && run.app?.id === GITHUB_ACTIONS_APP_ID))
-    if (accounting.verdict !== 'pass') throw new PreflightError(`runner lane accounting refused: ${[...(accounting.refusals ?? []), ...(accounting.pending ?? [])].join('; ')}`)
+    if (accounting.verdict !== 'pass') {
+      const absent = accounting.unreported ?? []
+      const failed = (accounting.refusals ?? []).filter((reason) => !absent.includes(reason))
+      const parts = []
+      if (failed.length) parts.push(`failing: ${failed.join(', ')}`)
+      if (accounting.pending?.length) parts.push(`still running: ${accounting.pending.join(', ')}`)
+      if (absent.length) parts.push(`never reported: ${absent.join(', ')}`)
+      throw new PreflightError(`runner lane accounting refused: ${parts.join('; ')}`)
+    }
   }
   const requiredNames = new Set(authority.checks.map((item) => item.context))
   const advisory = [...observedStates({ statuses, checkRuns, sha })].filter(([name, state]) => !requiredNames.has(name) && name !== SELF_CHECK_RUN && !REPORTED_SUCCESS.has(state))

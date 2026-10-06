@@ -6,7 +6,7 @@
   "route": "repo-maintenance",
   "goal": "Remove the connection-credential-in-argv leak class from the remaining local-rehearsal scripts flagged in PR #3938 review finding L9, using PG* env transport matching tools/runSql after PR #3938.",
   "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
-  "dispatcher": "MiMo non-orchestrator repo-maintenance session for issue #3944",
+  "dispatcher": "MiMo non-orchestrator repo-maintenance session for issue #3944 (evidence gen 1)",
   "worker": "MiMo chat on edge-dev",
   "branch": "mimo/3944-argv-leak",
   "worktree": "C:\\repos\\shared-db\\.ai\\worktrees\\fix-3944-argv-leak",

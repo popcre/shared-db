@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3972/1",
   "contract_sha256": "a3d0a74420d608c1d9e96702ae609fbed4ce947b4105db73ee41308624cdb6d0",
-  "head_sha": "f14b9278dac0980ad220822d8d0a9ce6bcad063b",
-  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "head_sha": "97bbb496544a99d072d025dab24a3446502bf0d9",
+  "base_sha": "021378fd2707c2d7c278417f2bac8da65cc04e59",
   "files_changed": [
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/claim-author-transfer.test.mjs"
@@ -18,17 +18,17 @@
     {
       "command": "node --test scripts/claim-author-transfer.test.mjs",
       "exit_code": 0,
-      "evidence": "17 passed; includes exact quarantined adoption and metadata, expiry, legacy, stale-head, missing recovery and scope refusal cases."
+      "evidence": "17 passed against refreshed main; exact quarantine recovery and refusal coverage."
     },
     {
       "command": "node scripts/check-github-transport-conformance.mjs",
       "exit_code": 0,
-      "evidence": "367 files scanned, every GitHub call conforms."
+      "evidence": "368 files scanned, every GitHub call conforms against refreshed main."
     },
     {
       "command": "git diff --check",
       "exit_code": 0,
-      "evidence": "No whitespace errors."
+      "evidence": "Both worktree and origin/main comparison whitespace checks passed against refreshed main."
     }
   ],
   "assumptions_resolved": [

@@ -104,6 +104,7 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 # Password via env-file, never -e NAME=value (that places the secret in the
 # docker client's argv — same leak class as --db-url, issue #3944).
 ENVF="$(mktemp)"
+trap 'rm -f "$ENVF"' EXIT
 printf 'POSTGRES_PASSWORD=%s\n' "$PGPASSWORD" > "$ENVF"
 docker run -d --name "$CONTAINER" --env-file "$ENVF" \
   -p "${PGPORT}:5432" postgres:15 >/dev/null

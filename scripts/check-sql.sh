@@ -424,11 +424,12 @@ pg_url_to_env() {
   # explicit list to avoid over-matching non-libpq vars like PAGER (L10).
   local _pg_var
   for _pg_var in PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGPASSWORD \
-    PGPASSFILE PGSERVICE PGSERVICEFILE PGOPTIONS PGAPPNAME PGSSLMODE \
-    PGSSLCERT PGSSLKEY PGSSLROOTCERT PGSSLCRL PGSSLPASSWORD PGSSLCERTMODE \
-    PGSSLMINPROTOCOLVERSION PGSSLMAXPROTOCOLVERSION PGCONNECT_TIMEOUT \
-    PGTARGETSESSIONATTRS PGCHANNELBINDING PGLOADBALANCEHOSTS PGGSSENCMODE \
-    PGSSLNEGOTIATION PGREQUIREAUTH PGCLIENTENCODING PGKRBSRVNAME; do
+    PGPASSFILE PGSERVICE PGSERVICEFILE PGSYSCONFDIR PGOPTIONS PGAPPNAME \
+    PGSSLMODE PGSSLCERT PGSSLKEY PGSSLROOTCERT PGSSLCRL PGSSLPASSWORD \
+    PGSSLCERTMODE PGSSLMINPROTOCOLVERSION PGSSLMAXPROTOCOLVERSION \
+    PGCONNECT_TIMEOUT PGTARGETSESSIONATTRS PGCHANNELBINDING \
+    PGLOADBALANCEHOSTS PGGSSENCMODE PGSSLNEGOTIATION PGREQUIREAUTH \
+    PGCLIENTENCODING PGKRBSRVNAME PGREALM PGGSSLIB; do
     unset "$_pg_var"
   done
   # Strip fragment (not representable in PG*).
@@ -439,9 +440,9 @@ pg_url_to_env() {
     query="${url#*\?}"
     url="${url%%\?*}"
   fi
-  # postgres(ql)://user:pass@host:port/dbname
+  # postgres(ql)://user:pass@host:port/dbname (host may be empty for unix sockets)
   # BASH_REMATCH groups: 4=user 6=pass 7=host 9=port 11=dbname
-  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/@]+)(:([0-9]+))?(/(.*))?$'
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/@]*)(:([0-9]+))?(/(.*))?$'
   if [[ ! "$url" =~ $re ]]; then
     echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|[^/]*@|[redacted]@|')" >&2
     return 1
@@ -504,8 +505,8 @@ pg_url_to_env() {
             return 1
           fi
           ;;
-        host|hostaddr|port|options|target_session_attrs|load_balance_hosts)
-          echo "ERROR: PostgreSQL URI query parameter '$k' can redirect the target or change server semantics; refusing it" >&2
+        host|hostaddr|port|options|target_session_attrs|load_balance_hosts|user|password|dbname|service|passfile|sslcert|sslkey|sslrootcert|sslcrl|sslpassword|requiressl|gssencmode|krbsrvname|channel_binding|sslnegotiation|sslcertmode|require_auth)
+          echo "ERROR: PostgreSQL URI query parameter '$k' can redirect the target, change credentials, or alter TLS; refusing it" >&2
           return 1
           ;;
         # Other query params (application_name, connect_timeout, etc.) are
@@ -513,14 +514,16 @@ pg_url_to_env() {
       esac
     done
   fi
-  # TLS floor: URL-declared sslmode wins; otherwise ambient survives only if
-  # stricter than 'require'; otherwise floor to 'require'.
+  # TLS floor: URL-declared sslmode wins (with weak modes refused above);
+  # otherwise ambient survives only if stricter than 'require'. When neither
+  # URL nor ambient says anything, leave PGSSLMODE unset — libpq's default
+  # 'prefer' works against both TLS and plaintext servers, which is what the
+  # disposable-DB local-rehearsal flow needs (muse review 2026-10-06 #1).
   if [[ "$url_declares_sslmode" -eq 0 && -n "$ambient_sslmode" ]]; then
     case "$ambient_sslmode" in
       verify-full|verify-ca|require) PGSSLMODE="$ambient_sslmode" ;;
     esac
   fi
-  [[ -z "${PGSSLMODE:-}" ]] && PGSSLMODE="require"
   export PGHOST ${PGPORT:+PGPORT} ${PGUSER:+PGUSER} ${PGPASSWORD:+PGPASSWORD} ${PGDATABASE:+PGDATABASE} PGSSLMODE
   return 0
 }

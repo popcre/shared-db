@@ -640,6 +640,8 @@ function reviewIo(){
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
   io.makeOwnerCommit=(message)=>{const sha=(++seq).toString(16).padStart(40,'0');commits.set(sha,{message});return sha}
   io.getCommit=(sha)=>commits.get(sha)
+  io.pauseReviewerFailure=()=>{}
+  io.readPaidReviewStarts=(prefix)=>[...io.refs].filter(([ref])=>ref.startsWith(prefix)).map(([ref,sha])=>({ref,sha,commit:commits.get(sha)}))
   io.updateRef=(ref,sha)=>io.refs.set(ref,sha)
   io.getIssue=()=>({state:'open'})
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:'abcdef9',ref:'codex/x'}})
@@ -2970,7 +2972,7 @@ test('a silence-released provider that later fails with a non-silence code stays
 
 // Issue #3027 Step 7: the reviewer START watcher's unstarted mode.
 function withStartMarker(fixture){
-  const ref=reviewStartedMarkerRef({...fixture.request,sequence:fixture.assigned.sequence,slot:1}),sha=fixture.io.makeOwnerCommit('db-coordination review-started')
+  const ref=reviewStartedMarkerRef({...fixture.request,sequence:fixture.assigned.sequence,slot:1}),sha=fixture.io.makeOwnerCommit(`db-coordination review-started issue=${fixture.request.issue} pr=${fixture.request.pr} head=${fixture.request.headSha} slot=1 sequence=${fixture.assigned.sequence} reviewer=${fixture.assigned.reviewer} at=2026-09-04T09:00:00Z`)
   fixture.io.refs.set(ref,sha)
   return ref
 }
@@ -2978,7 +2980,7 @@ test('an unstarted lease is probed and reclaimed after 10 minutes, then replaced
   const {io,request,assigned,leaseRef}=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true,unstarted:true}
   assert.throws(()=>probeSilentReviewer(options,new Date('2026-09-04T10:09:59Z'),io),/at least 10 minutes/)
   // A marker for an earlier draw sequence of the same slot is a different lease.
-  io.refs.set(reviewStartedMarkerRef({...request,sequence:assigned.sequence-1,slot:1}),io.makeOwnerCommit('db-coordination review-started'))
+  io.refs.set(reviewStartedMarkerRef({...request,sequence:assigned.sequence-1,slot:1}),io.makeOwnerCommit(`db-coordination review-started issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=1 sequence=${assigned.sequence-1} reviewer=${assigned.reviewer} at=2026-09-04T09:00:00Z`))
   probeSilentReviewer(options,new Date('2026-09-04T10:10:00Z'),io)
   const released=reclaimSilentReviewer(options,new Date('2026-09-04T10:10:05Z'),io)
   assert.ok(released.releaseSha);assert.equal(io.refs.get(leaseRef)??null,null)
@@ -11121,4 +11123,18 @@ test('the production job releases the promotion freeze for its source PR on alwa
 test('--ttl-minutes is refused with --release-promotion-freeze',()=>{
   const io=freezeIo(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
   try{assert.notEqual(main(['--release-promotion-freeze','--owner','x','--ttl-minutes','5'],NOW,io),0)}finally{console.log=oldLog;console.error=oldError}
+})
+
+
+test('assignment refuses third paid draw after evidence-only head change, but substantive change starts a round',()=>{
+  const io=reviewIo(),request={issue:1767,pr:1800,headSha:'a'.repeat(40),slot:1}
+  for(const sequence of [1,2]) {
+    const priorHead='b'.repeat(40)
+    const sha=io.makeOwnerCommit(`db-coordination review-started issue=1767 pr=1800 head=${priorHead} slot=1 sequence=${sequence} reviewer=glm-5.3 at=2026-10-06T18:00:00Z`)
+    io.refs.set(reviewStartedMarkerRef({...request,headSha:priorHead,sequence}),sha)
+  }
+  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'c'.repeat(64)})
+  assert.throws(()=>assignNextReviewer(request,io),/third draw refused/)
+  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'d'.repeat(64)})
+  assert.ok(assignNextReviewer(request,io).reviewer)
 })

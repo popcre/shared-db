@@ -33,7 +33,8 @@ import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './hi
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
-import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
+import { assertPaidReviewCapacity, pauseActualReviewFailure } from './lib/lanes/review-circuit-breaker.mjs'
+import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
 import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
 import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
@@ -701,6 +702,25 @@ export const githubIo = {
   // first parent (main as the merge saw it). The guarded migration lane uses
   // two-parent --merge; a squash has no reviewed second parent and cannot carry
   // a prior approval here. The broader merge gate also serves prose-only PRs.
+  readReviewFailureCommit(sha) { return readGitCommits([sha]).get(sha) },
+  pauseReviewerFailure(record) {
+    const reviewer=REVIEWERS.find(row=>row.name===record.reviewer)
+    if(!reviewer?.provider)throw new LaneError('provider pause reviewer registry binding unreadable')
+    execFileSync('ai-review-preflight',['pause',reviewer.provider,record.failureCode,'--seconds','3600'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS})
+  },
+  readPaidReviewStarts(prefix,pr) {
+    const rows=[...gitRemoteRefs([`${prefix}*-${Number(pr)}-*`])].map(([ref,sha])=>({ref,sha}))
+    if(rows.length>REVIEW_REF_ROW_LIMIT)throw new LaneError('review circuit breaker: complete start history exceeds bounded row ceiling')
+    const commits=readGitCommits(rows.map(row=>row.sha))
+    return rows.map(row=>({...row,commit:commits.get(row.sha)}))
+  },
+  reviewContentComparison(before,after,pr) {
+    const live=this.getPr(pr), base=live?.base?.sha
+    if(!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: exact protected comparison base unreadable')
+    execFileSync('git',['fetch','--no-tags','-q','origin',before,after,base],{stdio:['ignore','pipe','pipe']})
+    const excludePaths=verifiedEvidencePaths(before,after)
+    return {before:prContentDigest(before,base,{excludePaths}),after:prContentDigest(after,base,{excludePaths})}
+  },
   contentPreservingRefresh(approvedHead,head,pr=null,context=null,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})){
     const key=`${Number(pr)}:${String(head).toLowerCase()}`
     if(context?.key!==undefined&&context.key!==key)return{ok:false,reason:'review comparison context was reused for a different pull request or head'}
@@ -2018,6 +2038,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!reviewerEmitsGovernedVerdict(current.reviewer))throw new LaneError(`reviewer ${current.reviewer} is assigned to this head but its wrapper cannot emit the governed VERDICT line. Draw another reviewer with the exact command: ${nonVerdictReviewerReplacementCommand({issue:current.issue,pr:current.pr,headSha:current.headSha,slot:request.slot},current.sequence)}`)
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
+    assertPaidReviewCapacity(request,io)
     const sequence=(current?.sequence??0)+1
     // Ordinary path: rotate within the preferred pool. Grok is considered after
     // that pool for this exact assignment (#3592). The durable sequence remains
@@ -2463,6 +2484,7 @@ export function releaseFailedReviewer(options,io=githubIo){
       io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},{ref:failureRef,expected:null,sha:failureSha},{ref:leaseRefForRelease,expected:failedLeaseSha,sha:null}])
       const after=io.readReviewRefs([MUTEX_REF,failureRef,leaseRefForRelease])
       if(after.get(MUTEX_REF)!==ownerSha||after.get(failureRef)!==failureSha||after.get(leaseRefForRelease)!==null)throw new LaneError('atomic reviewer release readback mismatch')
+      pauseActualReviewFailure({...request,reviewer:original.reviewer,failureCode:String(options.failureCode),failureSha},io)
       return {...request,reviewer:original.reviewer,failureCode:String(options.failureCode),failureSha,releasedLeaseSha:failedLeaseSha}
     }finally{if(acquired)finalizeReviewMutex(ownerSha,io)}
   })
@@ -2725,6 +2747,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // The failing check rides along in the immutable evidence, so a later reader
     // can tell a real provider outage from a stopped local service without
     // re-deriving it from memory.
+    assertPaidReviewCapacity(request,io)
     const checkNote=String(failingCheck??'').trim()?` failing-check=${String(failingCheck).trim().replace(/\s+/g,'_')}`:''
     let failureSha
     // SKIP, DO NOT REFUSE (#1297). The rotation position is only a starting point.
@@ -2880,7 +2903,14 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   }finally{if(mutexAcquired)finalizeReviewMutexPreservingResult(ownerSha,io,completedResult)}
 }
 
-export function replaceFailedReviewer(request,io=githubIo){return withReviewRequestBudget(()=>replaceFailedReviewerOperation(request,reviewOperationIo(io)))}
+export function replaceFailedReviewer(request,io=githubIo){return withReviewRequestBudget(()=>{
+  const operationIo=reviewOperationIo(io)
+  const result=replaceFailedReviewerOperation(request,operationIo)
+  if(result.failureSha&&['insufficient_quota','provider_unavailable'].includes(result.failureCode)){
+    pauseActualReviewFailure({...request,slot:request.slot??1,failureCode:result.failureCode,failureSha:result.failureSha},operationIo)
+  }
+  return result
+})}
 
 function activateReviewCutoverOperation(io) {
   const already = io.readRef(REVIEW_ACTIVE_CUTOVER_REF)

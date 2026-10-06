@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 3944,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Remove the connection-credential-in-argv leak class from the remaining local-rehearsal scripts flagged in PR #3938 review finding L9, using PG* env transport matching tools/runSql after PR #3938.",
+  "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
+  "dispatcher": "MiMo non-orchestrator repo-maintenance session for issue #3944",
+  "worker": "MiMo chat on edge-dev",
+  "branch": "mimo/3944-argv-leak",
+  "worktree": "C:\\repos\\shared-db\\.ai\\worktrees\\fix-3944-argv-leak",
+  "allowed_paths": [
+    ".agent/work/3944/1/completion.json",
+    ".agent/work/3944/1/contract.json",
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/experiment_611_db_push_atomicity.sh"
+  ],
+  "file_writes": [
+    ".agent/work/3944/1/completion.json",
+    ".agent/work/3944/1/contract.json",
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/experiment_611_db_push_atomicity.sh"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration, database object, workflow schedule, or live database row.",
+    "Do not touch other issues' code paths or claim other objects."
+  ],
+  "required_checks": [
+    "node --test scripts/check-sql.test.mjs",
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "These are local-rehearsal paths CI never fires (no workflow sets CHECK_SQL_*_DB_URL or DATABASE_URL).",
+    "pgconn's ParseConfigLibpq reads PG* env vars for keyword/value connection strings (verified against supabase-go binary strings)."
+  ],
+  "stop_conditions": [
+    "Stop if the fix requires a database-structure change.",
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the implementation needs a file outside allowed_paths."
+  ]
+}

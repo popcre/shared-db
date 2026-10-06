@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "work_issue": 3944,
+  "outcome": "ready-for-merge",
+  "pr": 3958,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3944/1",
+  "contract_sha256": "bafadb611aa5bcba16a738c73445f0abb397eb1747757d6186d030794c5b7af8",
+  "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
+  "head_sha": "22329e1952299fae488407f9a12281bff25594ae",
+  "files_changed": [
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/experiment_611_db_push_atomicity.sh"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "64 passed, 0 failed"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Migration guards passed; Guard B2 warns (no ledger configured); static checks passed"
+    }
+  ],
+  "assumptions_resolved": [
+    "All four argv leak sites converted to PG* env transport: check-sql.sh:403 (ledger query), check-sql.sh:537 (DATABASE_URL migrations), experiment_611:132 (migration list), experiment_611:278 (db push).",
+    "pgconn ParseConfigLibpq reads PG* env for keyword/value --db-url strings (supabase-go binary contains PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE references).",
+    "64 tests pass including 6 new PG* transport tests (argv cleanliness, ambient sweep, PGSSLMODE floor, percent-decode)."
+  ],
+  "stop_conditions_hit": []
+}

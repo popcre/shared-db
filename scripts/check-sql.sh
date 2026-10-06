@@ -377,27 +377,46 @@ check_ledger() {
   return 0
 }
 
+# Percent-decode a single URI component (user, password, dbname).
+_pct_decode() {
+  local s="${1//+/ }"
+  printf '%b' "${s//%/\\x}"
+}
+
 # Parse a PostgreSQL URI into PG* environment variables — the URI is NEVER
 # placed in process argv (2026-10-02 leak class; same PG* transport as
 # tools/runSql after PR #3938). Ambient PG* values are swept first so they
-# cannot override the declared target. Fails closed on shapes we cannot
-# safely represent.
+# cannot override the declared target. PGSSLMODE is the one exception: a
+# stricter ambient value survives when the URI declares none (never the
+# other way around — the sweep must not downgrade TLS). Fails closed on
+# shapes we cannot safely represent.
 pg_url_to_env() {
   local url="$1"
+  # Save ambient PGSSLMODE before the sweep (PR #3938 pattern: a stricter
+  # operator-exported PGSSLMODE survives when the URL declares none).
+  local ambient_sslmode="${PGSSLMODE:-}"
   # Sweep ambient PG* — they must never override the declared target.
   unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
+  # Strip fragment (not representable in PG*).
+  url="${url%%#*}"
+  # Strip query string; recover sslmode if present.
+  local query=""
+  if [[ "$url" == *\?* ]]; then
+    query="${url#*\?}"
+    url="${url%%\?*}"
+  fi
   # postgres(ql)://user:pass@host:port/dbname
-  # Captured via BASH_REMATCH: 1=scheme 2=user 3=pass 4=host 5=port 6=dbname
-  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/?]+)(:([0-9]+))?(/([^?]*))?$'
+  # BASH_REMATCH groups: 4=user 6=pass 7=host 9=port 11=dbname
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?(\[[^\]]+\]|[^:/]+)(:([0-9]+))?(/(.*))?$'
   if [[ ! "$url" =~ $re ]]; then
     echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|://[^@]*@|://[redacted]@|')" >&2
     return 1
   fi
-  local user="${BASH_REMATCH[4]}"
-  local pass="${BASH_REMATCH[6]}"
+  local user="$(_pct_decode "${BASH_REMATCH[4]}")"
+  local pass="$(_pct_decode "${BASH_REMATCH[6]}")"
   local host="${BASH_REMATCH[7]}"
   local port="${BASH_REMATCH[9]}"
-  local dbname="${BASH_REMATCH[11]}"
+  local dbname="$(_pct_decode "${BASH_REMATCH[11]}")"
   # Strip IPv6 brackets for PGHOST (libpq wants bare form in PGHOST).
   host="${host#\[}"
   host="${host%\]}"
@@ -406,7 +425,38 @@ pg_url_to_env() {
   [[ -n "$user" ]] && PGUSER="$user"
   [[ -n "$pass" ]] && PGPASSWORD="$pass"
   [[ -n "$dbname" ]] && PGDATABASE="$dbname"
-  export PGHOST ${PGPORT:+PGPORT} ${PGUSER:+PGUSER} ${PGPASSWORD:+PGPASSWORD} ${PGDATABASE:+PGDATABASE}
+  # Query string: recover sslmode; refuse params we cannot represent.
+  local url_declares_sslmode=0
+  if [[ -n "$query" ]]; then
+    local IFS='&'
+    for kv in $query; do
+      [[ -z "$kv" ]] && continue
+      local k="${kv%%=*}"
+      k="$(_pct_decode "$k")"
+      if [[ "$k" == "sslmode" || "$k" == "ssl" ]]; then
+        url_declares_sslmode=1
+        local v="${kv#*=}"
+        v="$(_pct_decode "$v")"
+        PGSSLMODE="$v"
+      elif [[ "$k" == "hostaddr" || "$k" == "options" ]]; then
+        echo "ERROR: PostgreSQL URI parameter '$k' is refused (bypasses host validation or changes server semantics)" >&2
+        return 1
+      fi
+      # Other query params (application_name, connect_timeout, etc.) are
+      # accepted and ignored for this local-rehearsal parser — they do not
+      # redirect the target and psql reads them from PG* if needed.
+    done
+    unset IFS
+  fi
+  # TLS floor: URL-declared sslmode wins; otherwise ambient survives only if
+  # stricter than 'require'; otherwise floor to 'require'.
+  if [[ "$url_declares_sslmode" -eq 0 && -n "$ambient_sslmode" ]]; then
+    case "$ambient_sslmode" in
+      verify-full|verify-ca|require) PGSSLMODE="$ambient_sslmode" ;;
+    esac
+  fi
+  [[ -z "${PGSSLMODE:-}" ]] && PGSSLMODE="require"
+  export PGHOST ${PGPORT:+PGPORT} ${PGUSER:+PGUSER} ${PGPASSWORD:+PGPASSWORD} ${PGDATABASE:+PGDATABASE} PGSSLMODE
   return 0
 }
 
@@ -574,7 +624,10 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
   command -v psql >/dev/null
   # PG* env transport — the URL is NEVER passed in argv (2026-10-02 leak class;
   # matches tools/runSql PG* approach after PR #3938).
-  pg_url_to_env "$DATABASE_URL"
+  if ! pg_url_to_env "$DATABASE_URL"; then
+    echo "ERROR: DATABASE_URL could not be parsed into PG* environment variables." >&2
+    exit 1
+  fi
   for file in "${required_files[@]}"; do
     psql --set ON_ERROR_STOP=1 --single-transaction --file "$migration_dir/$file"
   done

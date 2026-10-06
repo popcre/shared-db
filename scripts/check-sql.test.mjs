@@ -1131,6 +1131,7 @@ function makePsqlStubDir() {
   echo "PGUSER=\${PGUSER:-}"
   echo "PGPASSWORD=\${PGPASSWORD:-}"
   echo "PGDATABASE=\${PGDATABASE:-}"
+  echo "PGSSLMODE=\${PGSSLMODE:-}"
 } > "${toBashPath(capture)}"
 exit 0
 `
@@ -1272,6 +1273,48 @@ test('pg_url_to_env: ambient PGHOST is swept before applying the URL target', ()
       assert.match(captured, /PGHOST=realhost/)
       assert.match(captured, /PGPORT=5432/)
       assert.ok(!captured.includes('attacker-host'), `ambient PGHOST leaked through:\n${captured}`)
+    },
+  )
+})
+
+test('pg_url_to_env: stricter ambient PGSSLMODE survives when URL declares none', () => {
+  withFixture(
+    ['20260501120000_a.sql', '20260501130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db',
+        PGSSLMODE: 'verify-full',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      assert.match(captured, /PGSSLMODE=verify-full/)
+    },
+  )
+})
+
+test('pg_url_to_env: URL-declared sslmode wins over ambient', () => {
+  withFixture(
+    ['20260601120000_a.sql', '20260601130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db?sslmode=require',
+        PGSSLMODE: 'verify-full',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      assert.match(captured, /PGSSLMODE=require/)
+    },
+  )
+})
+
+test('pg_url_to_env: percent-encoded password is decoded', () => {
+  withFixture(
+    ['20260701120000_a.sql', '20260701130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://user:p%40ss@host:5432/db',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      // p%40ss decodes to p@ss
+      assert.match(captured, /PGPASSWORD=p@ss/)
     },
   )
 })

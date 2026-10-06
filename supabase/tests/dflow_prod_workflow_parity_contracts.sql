@@ -1,6 +1,24 @@
 -- Issue #2874 real-DML contracts for the dflow_prod workflow parity migration.
 -- All fixtures are synthetic and every write is rolled back.
 
+-- Supabase's postgres login deliberately lacks SUPERUSER. Preserve actual
+-- session_user tests by authenticating as its existing fixture superuser first,
+-- then restoring postgres for the original actor contracts. The connection
+-- reuses the current database/host; no privilege is changed and no case skipped.
+select current_setting('is_superuser') = 'on' as fixture_session_authority \gset
+\if :fixture_session_authority
+\else
+  select exists (select 1 from pg_roles where rolname = 'supabase_admin' and rolsuper and rolcanlogin)
+    as fixture_superuser_available \gset
+  \if :fixture_superuser_available
+    \connect - supabase_admin
+    set session authorization postgres;
+  \else
+    \echo 'Actual session-identity contracts require a fixture superuser; no contract case was skipped.'
+    \quit 1
+  \endif
+\endif
+
 begin;
 
 do $backend_contracts$

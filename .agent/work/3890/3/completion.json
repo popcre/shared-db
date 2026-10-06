@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3890,
+  "outcome": "ready-for-merge",
+  "pr": 4009,
+  "migration_versions": [
+    "20261006203846"
+  ],
+  "contract_ref": "refs/db-contracts/3890/3",
+  "contract_sha256": "fcf798e787427649a62b102d9ef4ca256e90607084ceecbe6c0b1e0c22805ea7",
+  "base_sha": "c86be424f89162bbf9b450a02597616e5dcde298",
+  "head_sha": "bbe5534cc08d3c20c58198de1c367af7ff313d92",
+  "files_changed": [
+    ".github/live-proofs/3890.sql",
+    "scripts/check-sql.sh",
+    "scripts/check-sql.test.mjs",
+    "scripts/production-verification-sidecars/20261006203846.json",
+    "supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql"
+  ],
+  "db_reads": [
+    "table dflow.property_character_associations",
+    "table dflow.item_character_associations"
+  ],
+  "db_writes": [
+    "table core.properties_and_characters",
+    "table dflow.properties_and_characters"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed."
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "67passed; exact removal-only bytes required, altered bytes/new unrelated runtime dependencies refused."
+    },
+    {
+      "command": "python3 /tmp/3890-sql-smoke.py",
+      "exit_code": 0,
+      "evidence": "PG17 isolated fixture proves sameOID rows index incomingFK sequence readeraccess; replaynoop; wrong/ambiguous/missing relations refuse."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only sandbox source10122rows eightlegacycolumns targetabsent; sharedproduction correct dflow target/coreabsent. Hashboundtypedsidecar11checks passed."
+  ],
+  "stop_conditions_hit": []
+}

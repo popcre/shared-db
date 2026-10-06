@@ -1353,3 +1353,23 @@ test('3882 catalog evidence allowance accepts only exact new proof bytes', () =>
     assert.notEqual(run([...blocks,addedFileDiffText('apps/example/query.ts',['select * from core.properties_and_characters;'])]).status,0)
   })
 })
+
+// The removal-only sandbox correction must never become a filename-only bypass.
+test('3890 exact removal transition permits its evidence but rejects changed bytes and unrelated dependencies', () => {
+  const file = 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'
+  const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const transition = addedFileDiffText(file, lines)
+    const evidence = addedFileDiffText('.agent/work/3890/4/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const valid = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff([transition,evidence]))}})
+    assert.equal(valid.status, 0, valid.stderr)
+    for (const chunks of [
+      [addedFileDiffText(file, [...lines, 'select * from core.properties_and_characters;']), evidence],
+      [transition, addedFileDiffText('apps/example/query.sql', ['select * from core.properties_and_characters;'])],
+      [evidence],
+    ]) {
+      const refused = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+      assert.notEqual(refused.status, 0)
+    }
+  })
+})

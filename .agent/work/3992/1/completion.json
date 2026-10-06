@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3992,
+  "outcome": "ready-for-merge",
+  "pr": 3994,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3992/1",
+  "contract_sha256": "006ccfc82fbfe424cf507f563c95aa737b7eed6589b16af34839a7debb022e74",
+  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "head_sha": "ded3b25f524a092f579ac3c8b76fb0983809fc25",
+  "files_changed": [
+    "config/blocker-ledger/blk_05fd5a37fbe24bc4b777e15d7a18482f.json",
+    "scripts/lib/lanes/review-approval.mjs",
+    "scripts/lib/lanes/review-leases.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/merged-review-lease.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merged-review-lease.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs",
+      "exit_code": 0,
+      "evidence": "895 passed, 0 failed, 1 skipped; original regression failed before implementation"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Verified merged issue binding gates revival; lease protection alone gives no launch authority",
+    "Merged slots >=2 remain protected from unrelated stale cleanup until their own durable verdict"
+  ],
+  "stop_conditions_hit": []
+}

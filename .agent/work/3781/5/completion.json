@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3781,
+  "generation": 5,
+  "outcome": "ready-for-merge",
+  "pr": 4018,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3781/5",
+  "contract_sha256": "d363d069104703523b8e774b8054a90de26fa14795e83734d60e7f3b38ac4164",
+  "base_sha": "fd62f194fb9ca8fed3513d589a26c5ed9384f60d",
+  "head_sha": "24c1cee28fa8ce35f844e0a841d34e2b8712ef58",
+  "files_changed": [
+    "docs/verification/step10-lock-manager-proof-20261006.md",
+    "scripts/lib/lanes/exclusive-locks.mjs",
+    "scripts/lib/lanes/exclusive-policy.mjs",
+    "scripts/lib/lanes/exclusive-policy.test.mjs",
+    "scripts/target-queue-identity.mjs",
+    "scripts/target-queue-identity.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/target-queue-identity.test.mjs scripts/check-main-tip-freshness.test.mjs scripts/lib/lanes/exclusive-policy.test.mjs",
+      "exit_code": 0,
+      "evidence": "96 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 pass, 0 fail"
+    }
+  ],
+  "assumptions_resolved": [
+    "evaluateProductionFreshness and check-main-tip-freshness share isProductionInertPath",
+    "preview-recovery and production use distinct exclusive refs and may overlap",
+    "acquireExclusive call-site remains exact-main-SHA until contested PRs release the file"
+  ],
+  "stop_conditions_hit": []
+}

@@ -554,3 +554,37 @@ test('restoration dispatch runs every required PR Guards sibling with real colli
   assert.match(handoff,/export PR_TITLE PR_BODY/)
   assert.match(jobBlockByName(text,'Domain ownership'),/node scripts\/check-domain-ownership\.mjs/)
 })
+
+
+test('actual destructive dispatch shell fetches main and runs scan; failed fetch refuses before scanning', async () => {
+  const {mkdtempSync,writeFileSync,readFileSync,rmSync}=await import('node:fs')
+  const {tmpdir}=await import('node:os')
+  const {join}=await import('node:path')
+  const {spawnSync}=await import('node:child_process')
+  const step=stepBlock(jobBlockByName(readWorkflow('pr-guards.yml'),'Destructive SQL outside migrations'),'Scan SQL added by this change')
+  const script=step.split('        run: |\n')[1].split('\n').map(line=>line.replace(/^ {10}/,'')).join('\n').replace(/\$\{\{ github\.base_ref \|\| 'main' \}\}/g,'main')
+  const dir=mkdtempSync(join(tmpdir(),'queue-dispatch-wire-'));const record=join(dir,'calls')
+  try {
+    writeFileSync(join(dir,'git'),'#!/bin/sh\nprintf "git %s\\n" "$*" >> "$RECORD"\nexit "${FETCH_EXIT:-0}"\n',{mode:0o755})
+    writeFileSync(join(dir,'node'),'#!/bin/sh\nprintf "node %s\\n" "$*" >> "$RECORD"\n',{mode:0o755})
+    for(const fail of [false,true]) {
+      writeFileSync(record,'')
+      const result=spawnSync('/bin/bash',['-c',script],{env:{PATH:dir,GITHUB_EVENT_NAME:'workflow_dispatch',RECORD:record,FETCH_EXIT:fail?'42':'0'},encoding:'utf8'})
+      assert.equal(result.status,fail?42:0,result.stderr)
+      assert.equal(readFileSync(record,'utf8'),fail?'git fetch --no-tags origin main\n':'git fetch --no-tags origin main\nnode scripts/check-destructive-analysis.mjs --diff-base origin/main\n')
+    }
+  } finally {rmSync(dir,{recursive:true,force:true})}
+  assert.ok(!jobEvents(jobBlockByName(readWorkflow('pr-guards.yml'),'Cross-PR object collision')).includes('push'))
+})
+
+
+test('actual Domain dispatch step executes the original CLI assertion', async () => {
+  const {spawnSync}=await import('node:child_process')
+  const job=jobBlockByName(readWorkflow('pr-guards.yml'),'Domain ownership')
+  const step=stepBlock(job,'Enforce DB Data Admin domain ownership')
+  const script=step.split('        run: |\n')[1].split('\n').map(line=>line.replace(/^ {10}/,'')).join('\n')
+  assert.match(script,/node scripts\/check-domain-ownership\.mjs/)
+  const result=spawnSync('/bin/bash',['-e','-c',script],{cwd:new URL('..',import.meta.url),env:{PATH:process.env.PATH,GITHUB_EVENT_NAME:'workflow_dispatch'},encoding:'utf8'})
+  assert.equal(result.status,0,result.stderr)
+  assert.match(result.stdout,/passed|PASS|OK/i)
+})

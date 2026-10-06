@@ -564,3 +564,37 @@ test('integrated collision extraction refuses membership between implicit actors
     assert.throws(() => findCollisions([{label: 'A', files: [{path: 'A.sql', sql}]}]), /implicit or reserved/)
   }
 })
+
+
+test('bare manual collision CLI is actually red before any API read', () => {
+  const result=spawnSync(process.execPath,[path.join(repoRoot,'scripts/check-pr-object-collisions.mjs')],{cwd:repoRoot,env:{PATH:process.env.PATH,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REPOSITORY:'popcre/shared-db',GITHUB_SHA:dispatchHead,PR_NUMBER:''},encoding:'utf8'})
+  assert.equal(result.status,2,result.stderr)
+  assert.match(result.stderr,/requires a positive canonical pull request number/)
+  assert.match(result.stderr,/No collision checking was performed/)
+})
+
+test('empty or absent PR number retains existing push refusal; workflow never schedules this job on push', () => {
+  for (const env of [{}, {PR_NUMBER:''}]) {
+    let reads=0
+    assert.throws(()=>gatherSources({GITHUB_EVENT_NAME:'push',GITHUB_REPOSITORY:'popcre/shared-db',...env},{readPull:()=>{reads++;throw Error('unexpected GET')}}),/no PR number/)
+    assert.equal(reads,0)
+  }
+})
+
+test('dispatch empty snapshot performs real complete open-PR gathering and refuses incomplete files', async () => {
+  const {loadOpenPullFiles}=await import('./lib/open-pr-files.mjs')
+  for (const incomplete of [false,true]) {
+    const calls=[]
+    const read=args=>{
+      const endpoint=args.at(-1);calls.push(endpoint)
+      if(endpoint.includes('?state=open'))return [[dispatchPull()]]
+      if(endpoint.endsWith('/files?per_page=100'))return [[]]
+      if(endpoint.endsWith('/pulls/123'))return {...dispatchPull(),changed_files:incomplete?1:0}
+      throw Error('Unexpected endpoint '+endpoint)
+    }
+    const execute=()=>gatherSources({...dispatchEnv,OPEN_PR_FILES_SNAPSHOT:''},{readPull:()=>dispatchPull(),load:(repo,number)=>loadOpenPullFiles(repo,number,{env:{OPEN_PR_FILES_SNAPSHOT:''},read}),baseSource:()=>null})
+    if(incomplete)assert.throws(execute,/returned 0 of 1 changed files/)
+    else assert.equal(execute().length,1)
+    assert.deepEqual(calls,['repos/popcre/shared-db/pulls?state=open&per_page=100','repos/popcre/shared-db/pulls/123','repos/popcre/shared-db/pulls/123/files?per_page=100'])
+  }
+})

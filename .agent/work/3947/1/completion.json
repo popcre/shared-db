@@ -4,7 +4,7 @@
   "outcome": "ready-for-merge",
   "pr": 3957,
   "migration_versions": [
-    "20261006123803"
+    "20261006205216"
   ],
   "contract_ref": "refs/db-contracts/3947/1",
   "contract_sha256": "e9e0e5f5c303de048312c6e7f6adad4b97e129a6eb540d52ae8d5d97925ccf83",

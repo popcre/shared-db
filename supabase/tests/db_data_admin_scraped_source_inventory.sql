@@ -256,7 +256,7 @@ begin
 
   -- #3947 predicates are asserted only when the migration body is present.
   -- Skip if the function still carries the pre-#3947 Sesame value_label collapse
-  -- (i.e. migration 20261006123803 has not yet been applied to this database).
+  -- (i.e. migration 20261006205216 has not yet been applied to this database).
   if position('select distinct on (sb.value_label)' in v_definition) = 0 then
     if position('natural_key_fallback' in v_definition) = 0 then
       raise exception '#3947: Warner fallback-twin hide predicate is missing';

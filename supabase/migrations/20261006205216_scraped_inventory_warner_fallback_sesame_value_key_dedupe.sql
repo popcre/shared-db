@@ -1,7 +1,8 @@
 -- #3947: Scraped Properties — hide duplicate Warner fallback rows and collapse
 -- Sesame brand generations in api.db_data_admin_scraped_source_inventory.
 --
--- reserved-version: 20261006123803 (claim #3955)
+-- reserved-version: 20261006205216 (claim #3955; renamed from 20261006123803
+-- because main advanced past that timestamp before merge — pure rename)
 -- derived-from: 20261002193034
 -- (api.db_data_admin_scraped_source_inventory body.)
 --

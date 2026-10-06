@@ -24,19 +24,30 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "node --test scripts/lib/lanes/exclusive-policy.test.mjs",
+      "command": "node --test scripts/target-queue-identity.test.mjs scripts/check-main-tip-freshness.test.mjs scripts/lib/lanes/exclusive-policy.test.mjs",
       "exit_code": 0,
-      "evidence": "47 pass, 0 fail"
+      "evidence": "99 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/lib/exclusive-lease.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 pass, 0 fail"
     },
     {
       "command": "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs",
       "exit_code": 0,
       "evidence": "6 pass, 0 fail"
+    },
+    {
+      "command": "node --test scripts/lib/lanes/exclusive-policy.test.mjs",
+      "exit_code": 0,
+      "evidence": "47 pass, 0 fail"
     }
   ],
   "assumptions_resolved": [
     "house-pattern handoff retirement on Closes #3781 with reopen note",
     "fail-closed exclusive acquisition policy; policy-level proof only"
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [],
+  "notes": "head_sha is the implementation commit per agent-work-contract convention (docs/agents/agent-work-contract-repo-maintenance-evidence.md); the evidence commit adds only this pair. Closes #3781 follows PR #3822 house pattern with reopen note; Step 10 remains Partial until acquireExclusive wiring and live proof."
 }

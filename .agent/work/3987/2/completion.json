@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3998,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/2",
+  "contract_sha256": "b483e61fd90e6dd66ffaaba9c854b715a072a401292c782910430de8643720ba",
+  "head_sha": "81654e4f3fe4f4c195fa0a00adca708bb303d8c6",
+  "base_sha": "2d1d103dc96caf9f78b421c78a25a85ed7aa456a",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/pr-guards.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/main-required-status-checks.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs",
+      "exit_code": 0,
+      "evidence": "78 passed, 0 failed, 0 skipped"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=91 derived_digest=6cd8ed349351"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in both working-tree check and origin/main...implementation diff."
+    }
+  ],
+  "assumptions_resolved": [
+    "Stage A merged; this first Stage B review head changes no settings and does not fabricate mirror/readback.",
+    "Exact recoverable prospective settings payload preserves twelve app15368 bindings and strict:false. Root may apply only after exact reviewed payload and fresh preconditions/live accounting proof.",
+    "Final actual readback head requires a fresh assigned review before merge.",
+    "First paid review emitted non-recordable REVISE; no approval or settings authority. All justified findings batched: source-bound restoration doc, actual14 pre-change mirror/readback, observed/prospective metadata, StageA test/source reference.",
+    "All first-head CI succeeded; no settings changed. Canonical contract hash and implementation-parent/evidence-only-tail protocol verified through existing validators."
+  ],
+  "stop_conditions_hit": [],
+  "generation": 2
+}

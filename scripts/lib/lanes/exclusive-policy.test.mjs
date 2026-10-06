@@ -65,6 +65,7 @@ test('compatibility matrix cases cover the acceptance matrix', () => {
   assert.ok(names.some((n) => /same physical target/.test(n)))
   assert.ok(names.some((n) => /shared evidence/.test(n)))
   assert.ok(names.some((n) => /lock order/.test(n)))
+  assert.ok(names.some((n) => /preview-recovery vs preview/.test(n)))
 })
 
 for (const matrixCase of compatibilityMatrixCases()) {
@@ -221,9 +222,15 @@ test('evaluateProductionFreshness and assertProductionFreshnessForExclusive agre
 // Acquisition policy
 // ---------------------------------------------------------------------------
 
-test('acquisition policy: production with no freshness inputs defers to the caller', () => {
-  const result = assertExclusiveAcquisitionPolicy('production', {}, {})
-  assert.equal(result.pairKind, 'production')
+test('acquisition policy: production with no freshness inputs refuses (never defers)', () => {
+  assert.throws(
+    () => assertExclusiveAcquisitionPolicy('production', {}, { heldKinds: [] }),
+    (error) => {
+      assert.ok(error instanceof LaneError)
+      assert.match(error.message, /production freshness inputs are required/)
+      return true
+    },
+  )
 })
 
 test('acquisition policy: partial freshness inputs refuse fail-closed', () => {
@@ -231,13 +238,14 @@ test('acquisition policy: partial freshness inputs refuse fail-closed', () => {
     () => assertExclusiveAcquisitionPolicy('production', {}, {
       dispatchMainSha: 'a'.repeat(40),
       // currentMainSha and changedPaths missing
+      heldKinds: [],
     }),
     /partial/,
   )
 })
 
 test('acquisition policy: production with full fresh inputs returns the freshness result', () => {
-  const result = assertExclusiveAcquisitionPolicy('production', {}, FRESH_BASE)
+  const result = assertExclusiveAcquisitionPolicy('production', {}, { ...FRESH_BASE, heldKinds: [] })
   assert.equal(result.kind, 'production')
   assert.equal(result.pairKind, 'production')
 })
@@ -246,9 +254,18 @@ test('acquisition policy: unknown kind refuses', () => {
   assert.throws(() => assertExclusiveAcquisitionPolicy('preview-evil', {}, {}), LaneError)
 })
 
-test('acquisition policy: heldKinds must be an array when provided', () => {
+test('acquisition policy: heldKinds is required (missing refuses)', () => {
   assert.throws(
-    () => assertExclusiveAcquisitionPolicy('production', {}, { heldKinds: 'merge' }),
+    () => assertExclusiveAcquisitionPolicy('preview', {}, {
+      promotionFreeze: { expired: true },
+    }),
+    /heldKinds is required/,
+  )
+})
+
+test('acquisition policy: heldKinds must be an array', () => {
+  assert.throws(
+    () => assertExclusiveAcquisitionPolicy('preview', {}, { heldKinds: 'merge' }),
     /heldKinds must be an array/,
   )
 })
@@ -258,6 +275,7 @@ test('acquisition policy: preview-recovery held does not postpone approved produ
   // policy level: preview-recovery holds the preview exclusive ref, production
   // takes a different ref and a different pair kind, so the pair is ALLOW.
   const result = assertExclusiveAcquisitionPolicy('production', {}, {
+    ...FRESH_BASE,
     heldKinds: [{ kind: 'preview-recovery' }],
   })
   assert.equal(result.pairKind, 'production')
@@ -265,6 +283,7 @@ test('acquisition policy: preview-recovery held does not postpone approved produ
 
 test('acquisition policy: preview-rehearsal held does not postpone approved production', () => {
   const result = assertExclusiveAcquisitionPolicy('production', {}, {
+    ...FRESH_BASE,
     heldKinds: [{ kind: 'preview-rehearsal' }],
   })
   assert.equal(result.pairKind, 'production')
@@ -273,6 +292,7 @@ test('acquisition policy: preview-rehearsal held does not postpone approved prod
 test('acquisition policy: second production while one is held refuses (same role)', () => {
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('production', {}, {
+      ...FRESH_BASE,
       heldKinds: [{ kind: 'production' }],
     }),
     (error) => {
@@ -292,9 +312,19 @@ test('acquisition policy: preview-recovery while preview is held refuses (same r
   )
 })
 
+test('acquisition policy: preview while preview-recovery is held refuses (same ref)', () => {
+  assert.throws(
+    () => assertExclusiveAcquisitionPolicy('preview', {}, {
+      heldKinds: [{ kind: 'preview-recovery' }],
+    }),
+    /FORBID_SAME_ROLE/,
+  )
+})
+
 test('acquisition policy: production refuses while merge ref is held (cross-ref interlock)', () => {
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('production', {}, {
+      ...FRESH_BASE,
       heldKinds: [{ kind: 'merge' }],
     }),
     (error) => {
@@ -308,6 +338,7 @@ test('acquisition policy: production refuses while merge ref is held (cross-ref 
 test('acquisition policy: merge refuses while production ref is held (cross-ref interlock)', () => {
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('merge', {}, {
+      promotionFreeze: { expired: true },
       heldKinds: [{ kind: 'production' }],
     }),
     /production promotion is active; merges are frozen/,
@@ -318,6 +349,7 @@ test('acquisition policy: merge refuses under a live promotion freeze', () => {
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('merge', {}, {
       promotionFreeze: { sha: 'freeze-sha-1', owner: 'prod-run', pr: 7, issue: 50, expired: false },
+      heldKinds: [],
     }),
     /merges are paused for a production run/,
   )
@@ -327,14 +359,30 @@ test('acquisition policy: merge refuses under an unreadable promotion freeze (fa
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('merge', {}, {
       promotionFreeze: { sha: 'freeze-sha-2', unreadable: true, expired: false },
+      heldKinds: [],
     }),
     /unreadable/,
+  )
+})
+
+test('acquisition policy: merge refuses when the promotion freeze state is unknown (fail closed)', () => {
+  assert.throws(
+    () => assertExclusiveAcquisitionPolicy('merge', {}, { heldKinds: [] }),
+    /merges are paused for a production run/,
+  )
+  assert.throws(
+    () => assertExclusiveAcquisitionPolicy('merge', {}, {
+      promotionFreeze: null,
+      heldKinds: [],
+    }),
+    /merges are paused for a production run/,
   )
 })
 
 test('acquisition policy: an expired promotion freeze does not block merge', () => {
   const result = assertExclusiveAcquisitionPolicy('merge', {}, {
     promotionFreeze: { sha: 'freeze-sha-3', owner: 'prod-run', expired: true },
+    heldKinds: [],
   })
   assert.equal(result.kind, 'merge')
 })
@@ -342,13 +390,16 @@ test('acquisition policy: an expired promotion freeze does not block merge', () 
 test('acquisition policy: promotion freeze does not block production or preview', () => {
   assert.equal(
     assertExclusiveAcquisitionPolicy('production', {}, {
+      ...FRESH_BASE,
       promotionFreeze: { sha: 'f', expired: false },
+      heldKinds: [],
     }).kind,
     'production',
   )
   assert.equal(
     assertExclusiveAcquisitionPolicy('preview', {}, {
       promotionFreeze: { sha: 'f', expired: false },
+      heldKinds: [],
     }).kind,
     'preview',
   )
@@ -358,6 +409,7 @@ test('acquisition policy: same physical target under different roles refuses', (
   const shared = { role: 'production', targetId: 'shared-db', projectRef: 'onerefvalue0001' }
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('production', { target: shared }, {
+      ...FRESH_BASE,
       heldKinds: [{ kind: 'preview', target: shared }],
     }),
     /FORBID_SAME_TARGET/,
@@ -374,6 +426,7 @@ test('acquisition policy: shared evidence ref overlap refuses', () => {
       'production',
       { evidenceRefs: ['refs/db-evidence/promotion'] },
       {
+        ...FRESH_BASE,
         plan,
         heldKinds: [{ kind: 'preview', evidenceRefs: ['refs/db-evidence/promotion'] }],
       },
@@ -432,6 +485,7 @@ test('fake-lock: holding preview-recovery does NOT block acquiring production (d
   assert.equal(io.readRef(EXCLUSIVE_REFS.production), null)
   // And the acquisition policy allows production while preview-recovery is held.
   const result = assertExclusiveAcquisitionPolicy('production', {}, {
+    ...FRESH_BASE,
     heldKinds: [{ kind: 'preview-recovery' }],
   })
   assert.equal(result.kind, 'production')
@@ -445,6 +499,7 @@ test('fake-lock: second acquire of the same kind / same ref refuses (occupied)',
   // The policy refuses a second production while one is held.
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('production', {}, {
+      ...FRESH_BASE,
       heldKinds: [{ kind: 'production' }],
     }),
     /FORBID_SAME_ROLE/,
@@ -470,6 +525,7 @@ test('fake-lock: production refuses while the merge ref is held (existing interl
   assert.equal(io.readRef(EXCLUSIVE_REFS.production), null)
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('production', {}, {
+      ...FRESH_BASE,
       heldKinds: [{ kind: 'merge' }],
     }),
     /guarded merge is active; production promotion must wait/,
@@ -483,12 +539,14 @@ test('fake-lock: merge refuses under promotion freeze (existing interlock semant
   assert.throws(
     () => assertExclusiveAcquisitionPolicy('merge', {}, {
       promotionFreeze: { sha: 'freeze-1', owner: 'prod-run', pr: 7, issue: 50, acquiredAt: '2026-10-06T00:00:00.000Z', expiresAt: '2026-10-06T03:00:00.000Z', expired: false },
+      heldKinds: [],
     }),
     /merges are paused for a production run/,
   )
   // Once the freeze expires, merge is allowed again.
   const result = assertExclusiveAcquisitionPolicy('merge', {}, {
     promotionFreeze: { sha: 'freeze-1', owner: 'prod-run', expired: true },
+    heldKinds: [],
   })
   assert.equal(result.kind, 'merge')
 })

@@ -8,9 +8,10 @@
 // `acquireExclusive` call sites is a later change on accepted current main.
 //
 // FAIL-CLOSED IS THE WHOLE POINT. Every unknown kind, every non-ALLOW pair
-// decision, every non-fresh production tip, and every live promotion freeze
-// refuses with a LaneError. A policy that guesses in the permissive direction is
-// worse than no policy at all.
+// decision, every non-fresh production tip, every live promotion freeze, every
+// missing freshness input and every missing heldKinds list refuses with a
+// LaneError. A policy that guesses in the permissive direction is worse than no
+// policy at all.
 
 import {
   PAIR_DECISIONS,
@@ -106,7 +107,7 @@ export function assertProductionFreshnessForExclusive(state) {
 // live lock manager additionally refuses production while the merge ref is held
 // and merge while the production ref is held. Encoding them here keeps the
 // policy layer at least as strict as the lock manager it will be wired into.
-// An unreadable promotion freeze is live (expired: false) and blocks merge.
+// A missing, null or unreadable promotion freeze is LIVE and blocks merge.
 
 const CROSS_REF_INTERLOCKS = Object.freeze([
   {
@@ -122,10 +123,12 @@ const CROSS_REF_INTERLOCKS = Object.freeze([
 ])
 
 function promotionFreezeIsLive(freeze) {
-  if (!freeze) return false
+  // Fail closed: a missing, null or otherwise unreadable freeze state is
+  // unknown, and unknown is LIVE — it blocks merge. Only an explicit
+  // expired:true freeze (documented shape, optionally with active:false)
+  // releases merges.
+  if (freeze === null || freeze === undefined) return true
   if (freeze === true) return true
-  // Fail closed: an unreadable freeze has expired:false and must block. Only an
-  // explicit expired:true (or active:false with expired:true) releases merges.
   return freeze.expired !== true
 }
 
@@ -142,18 +145,32 @@ function sideFor(pairKind, details = {}) {
 /**
  * Assert that acquiring an exclusive lane is allowed right now.
  *
- * - kind 'production': when liveState carries dispatch/current SHAs plus
- *   changedPaths, the unified production-inert freshness policy must pass.
- *   Partial freshness inputs refuse (fail closed).
- * - kind 'merge': a live promotion freeze refuses (unreadable is live).
- * - any kind: when liveState.heldKinds is provided, the requested kind must be
- *   pair-compatible with every held kind, and the merge/production cross-ref
- *   interlocks must not fire.
+ * - kind 'production': liveState must carry dispatchMainSha, currentMainSha
+ *   and changedPaths together (all three). Missing or partial freshness inputs
+ *   refuse (fail closed — production acquisition never defers freshness).
+ *   When all three are present, the unified production-inert freshness policy
+ *   must pass.
+ * - kind 'merge': a live promotion freeze refuses. A missing, null or
+ *   unreadable freeze is live and blocks; only an explicit expired:true
+ *   freeze releases the lane.
+ * - any kind: liveState.heldKinds is REQUIRED (use [] when none are held).
+ *   The requested kind must be pair-compatible with every held kind, and the
+ *   merge/production cross-ref interlocks must not fire. A missing heldKinds
+ *   refuses — the pair matrix must always run.
  *
  * Returns `{ kind, pairKind }`. Throws LaneError on every refusal.
  */
 export function assertExclusiveAcquisitionPolicy(kind, metadata = {}, liveState = {}) {
   const pairKind = pairKindForExclusiveKind(kind)
+
+  if (liveState.heldKinds === undefined) {
+    throw new LaneError(
+      'heldKinds is required; provide the held kind list (use [] when none are held) so the pair matrix can run',
+    )
+  }
+  if (!Array.isArray(liveState.heldKinds)) {
+    throw new LaneError('heldKinds must be an array')
+  }
 
   if (kind === 'production') {
     const provided = [
@@ -161,42 +178,42 @@ export function assertExclusiveAcquisitionPolicy(kind, metadata = {}, liveState 
       liveState.currentMainSha !== undefined,
       liveState.changedPaths !== undefined,
     ]
-    if (provided.some(Boolean)) {
-      if (!provided.every(Boolean)) {
-        throw new LaneError(
-          'production freshness inputs are partial; provide dispatchMainSha, currentMainSha and changedPaths together or omit them all',
-        )
-      }
-      assertProductionFreshnessForExclusive(liveState)
+    if (!provided.some(Boolean)) {
+      throw new LaneError(
+        'production freshness inputs are required; provide dispatchMainSha, currentMainSha and changedPaths together (production acquisition never defers freshness)',
+      )
     }
+    if (!provided.every(Boolean)) {
+      throw new LaneError(
+        'production freshness inputs are partial; provide dispatchMainSha, currentMainSha and changedPaths together',
+      )
+    }
+    assertProductionFreshnessForExclusive(liveState)
   }
 
   if (kind === 'merge' && promotionFreezeIsLive(liveState.promotionFreeze)) {
     const freeze = liveState.promotionFreeze
     const detail = freeze === true
       ? 'promotion freeze is set'
-      : freeze.unreadable
-        ? `promotion freeze ${freeze.sha ?? 'unknown'} is unreadable`
-        : `promotion merge freeze held by ${JSON.stringify(freeze.owner ?? 'unknown')}`
+      : freeze === null || freeze === undefined
+        ? 'promotion freeze state is unknown (treated as live)'
+        : freeze.unreadable
+          ? `promotion freeze ${freeze.sha ?? 'unknown'} is unreadable`
+          : `promotion merge freeze held by ${JSON.stringify(freeze.owner ?? 'unknown')}`
     throw new LaneError(`merges are paused for a production run; ${detail}`)
   }
 
-  if (liveState.heldKinds !== undefined) {
-    if (!Array.isArray(liveState.heldKinds)) {
-      throw new LaneError('heldKinds must be an array when provided')
-    }
-    const requested = sideFor(pairKind, metadata)
-    for (const held of liveState.heldKinds) {
-      const heldPairKind = pairKindForExclusiveKind(held?.kind)
-      for (const interlock of CROSS_REF_INTERLOCKS) {
-        if (pairKind === interlock.requester && heldPairKind === interlock.held) {
-          throw new LaneError(`${interlock.reason}; ${JSON.stringify(held.kind)} is held`)
-        }
+  const requested = sideFor(pairKind, metadata)
+  for (const held of liveState.heldKinds) {
+    const heldPairKind = pairKindForExclusiveKind(held?.kind)
+    for (const interlock of CROSS_REF_INTERLOCKS) {
+      if (pairKind === interlock.requester && heldPairKind === interlock.held) {
+        throw new LaneError(`${interlock.reason}; ${JSON.stringify(held.kind)} is held`)
       }
-      const heldSide = sideFor(heldPairKind, held)
-      if (held.freeze !== undefined) heldSide.freeze = held.freeze
-      assertExclusivePairCompatibility(requested, heldSide, liveState.plan)
     }
+    const heldSide = sideFor(heldPairKind, held)
+    if (held.freeze !== undefined) heldSide.freeze = held.freeze
+    assertExclusivePairCompatibility(requested, heldSide, liveState.plan)
   }
 
   return { kind, pairKind }
@@ -302,8 +319,18 @@ export function compatibilityMatrixCases() {
     },
     {
       name: 'preview-recovery vs preview (same ref) FORBID_SAME_ROLE',
-      left: { kind: 'preview', target: previewTarget, locks: ['preview'], evidenceRefs: [] },
-      right: { kind: 'preview', target: previewTarget, locks: ['preview'], evidenceRefs: [] },
+      left: {
+        kind: pairKindForExclusiveKind('preview-recovery'),
+        target: previewTarget,
+        locks: ['preview'],
+        evidenceRefs: [],
+      },
+      right: {
+        kind: pairKindForExclusiveKind('preview'),
+        target: previewTarget,
+        locks: ['preview'],
+        evidenceRefs: [],
+      },
       plan,
       expected: PAIR_DECISIONS.FORBID_SAME_ROLE,
     },

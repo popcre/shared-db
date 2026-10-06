@@ -111,7 +111,7 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
 // merge SHA at all, which silently rejected every merged pull request after the mutex,
 // and a hand-written fixture in the tests could not catch that.
 export function projectReviewPr(pr){
-  return {state:String(pr?.state??'').toLowerCase(),merged:pr?.merged===true,merge_commit_sha:pr?.mergeCommit?.oid??'',head:{sha:pr?.headRefOid}}
+  return {state:String(pr?.state??'').toLowerCase(),merged:pr?.merged===true,merged_at:pr?.mergedAt??null,merge_commit_sha:pr?.mergeCommit?.oid??'',head:{sha:pr?.headRefOid}}
 }
 
 export function projectReviewerOperationRouteSnapshot(data){
@@ -154,7 +154,7 @@ export function reconcileReviewerOperationRouteFiles(snapshot,restFiles){
 // verdict predicate refuses association-less prose, so omitting this field here
 // makes a genuine OWNER verdict invisible to normal reviewer-lease cleanup.
 export function reviewStateGraphqlFields(lease,index){
-  return `p${index}:pullRequest(number:${lease.pr}){state merged mergeCommit{oid} headRefOid comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage} nodes{body state authorAssociation commit{oid}}}} i${index}:issue(number:${lease.issue}){state comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}}}`
+  return `p${index}:pullRequest(number:${lease.pr}){state merged mergedAt mergeCommit{oid} headRefOid comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage} nodes{body state authorAssociation commit{oid}}}} i${index}:issue(number:${lease.issue}){state comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}}}`
 }
 
 export const MERGE_ANCESTRY_MEMO=new WeakMap()

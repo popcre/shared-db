@@ -98,7 +98,7 @@
 //     lines (`create or\nreplace function`) is handled by whitespace
 //     normalisation, but a determined author can still hide DDL from it.
 
-import { extractRoleOperations, roleCollisionKeys, roleOwnershipDependencies } from './lib/sql-role-operations.mjs'
+import { extractRoleOperations, roleCollisionKeys } from './lib/sql-role-operations.mjs'
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
@@ -878,7 +878,8 @@ export function extractOperations(sql) {
  * `create table core.x` must produce the identical key `table core.x`.
  */
 export function roleReadKeys(sql) {
-  return [...new Set(roleOwnershipDependencies(sql).map((dep) => `role ${dep.role}`))].sort()
+  const { operations, ownershipDependencies } = extractRoleOperations(sql)
+  return [...new Set([...ownershipDependencies.map((dep) => `role ${dep.role}`), ...operations.filter((op) => op.grantor).map((op) => `role ${op.grantor}`)])].sort()
 }
 
 export function dispatchObjectKeys(sql) {

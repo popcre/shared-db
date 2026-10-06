@@ -522,7 +522,7 @@ export function assertNoDynamicRoleMutations(sql) {
  * }}
  */
 function opKey(op) {
-  return JSON.stringify([op.action, op.target ?? null, op.from ?? null, op.to ?? null, op.members ?? [], op.grantees ?? []])
+  return JSON.stringify([op.action, op.target ?? null, op.from ?? null, op.to ?? null, op.members ?? [], op.grantees ?? [], op.grantor ?? null])
 }
 
 function compareOperations(a, b) {
@@ -638,24 +638,25 @@ function extractRoleOperationsUnchecked(sql) {
 
   // Membership writes need exact named roles on both sides. An implicit actor
   // or PUBLIC counterpart cannot be turned into a partial reservation.
-  const addMembership = (action, membersRaw, granteesRaw) => {
+  const addMembership = (action, membersRaw, granteesRaw, grantorRaw) => {
     const members = roleNamesFrom(membersRaw)
     const grantees = roleNamesFrom(granteesRaw)
     if ((members.length || grantees.length) && [...splitRoleList(membersRaw), ...splitRoleList(granteesRaw)].some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('membership role is implicit or reserved and has no provable exact identity')
     if (members.length && grantees.length) {
-      add({ action, kind: 'role', target: [...members, ...grantees].sort().join(' '), members, grantees })
-
+      if (grantorRaw && !grantorRaw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(grantorRaw.toLowerCase())) throw new RoleExtractionError('membership grantor is implicit and has no provable exact identity')
+      const grantor = grantorRaw ? canonicalSqlRoleOrThrow(grantorRaw) : null
+      add({ action, kind: 'role', target: [...members, ...grantees].sort().join(' '), members, grantees, ...(grantor ? { grantor } : {}) })
     }
   }
 
   // Membership GRANT a, b TO c, d  (no `on`, so never a privilege grant).
-  run(new RegExp(String.raw`\bgrant\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+to\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+with\s+admin\s+option)?(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
-    addMembership('grant_membership', m[1], m[2])
+  run(new RegExp(String.raw`\bgrant\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+to\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+with\s+(?:admin|inherit|set)\s+(?:option|true|false)(?:\s*,\s*(?:admin|inherit|set)\s+(?:option|true|false))*)?(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
+    addMembership('grant_membership', m[1], m[2], m[3])
   })
 
   // Membership REVOKE a FROM c.
-  run(new RegExp(String.raw`\brevoke\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+from\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+granted\s+by\s+${IDENT})?`, 'gi'), (m) => {
-    addMembership('revoke_membership', m[1], m[2])
+  run(new RegExp(String.raw`\brevoke\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+from\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
+    addMembership('revoke_membership', m[1], m[2], m[3])
   })
 
   // Ownership dependencies: ALTER <kind> <name> OWNER TO <role>. The optional

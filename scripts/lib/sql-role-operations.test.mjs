@@ -14,6 +14,27 @@ import {
   RoleClaimError,
 } from './sql-role-operations.mjs'
 
+test('membership grantors preserve exact identity through literal and executed SQL', () => {
+  for (const statement of ['GRANT a TO b WITH ADMIN TRUE, INHERIT FALSE, SET TRUE GRANTED BY "Two  Spaces";', 'REVOKE ADMIN OPTION FOR a FROM b GRANTED BY "Two  Spaces" CASCADE;']) {
+    for (const sql of [statement, `DO $$ BEGIN EXECUTE '${statement}'; END $$;`]) {
+      const operations = extractRoleOperations(sql).operations
+      assert.equal(operations[0].grantor, '"Two  Spaces"')
+      assert.deepEqual(roleCollisionKeys(sql), ['role a', 'role b'])
+    }
+  }
+  assert.equal(extractRoleOperations('GRANT a TO b GRANTED BY c; GRANT a TO b GRANTED BY d;').operations.length, 2)
+})
+
+test('implicit or unsupported membership grantors refuse partial role accounting', () => {
+  for (const grantor of ['CURRENT_USER', 'CURRENT_ROLE', 'SESSION_USER', 'core.worker', 'U&"worker"', 'x'.repeat(64)]) {
+    for (const sql of [`GRANT a TO b GRANTED BY ${grantor};`, `REVOKE a FROM b GRANTED BY ${grantor};`]) {
+      assert.throws(() => extractRoleOperations(sql), RoleExtractionError, sql)
+      assert.throws(() => roleCollisionKeys(sql), RoleExtractionError, sql)
+    }
+  }
+  assert.equal(extractRoleOperations('GRANT a TO b GRANTED BY "current_user";').operations[0].grantor, 'current_user')
+})
+
 // ---------------------------------------------------------------------------
 // Exact global role identity — quoted case preserved, unquoted folded,
 // schema-qualified refused. Roles are cluster-global: one name, no schema.

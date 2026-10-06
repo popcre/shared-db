@@ -487,6 +487,17 @@ test('role ownership is a read dependency: reader pairs proceed and any competin
   assert.equal(findCollisions([first, third], 'unrelated').bystanderCollisions.length, 1)
 })
 
+test('membership grantor reads block competing role writes while separate grant pairs proceed', () => {
+  const source = (label, sql) => ({ label, files: [{ path: `${label}.sql`, sql }] })
+  const first = source('A', 'GRANT a TO b WITH SET FALSE GRANTED BY "Grantor Role";')
+  const second = source('B', 'REVOKE c FROM d GRANTED BY "Grantor Role";')
+  assert.deepEqual(roleReadKeys(first.files[0].sql), ['role "Grantor Role"'])
+  assert.deepEqual(dispatchObjectKeys(first.files[0].sql), ['role a', 'role b'])
+  assert.equal(findCollisions([first, second]).collisions.length, 0)
+  assert.equal(findCollisions([first, source('C', 'DROP ROLE "Grantor Role";')]).collisions[0].object, 'role "Grantor Role"')
+  assert.deepEqual(roleReadKeys(`DO $$ BEGIN EXECUTE '${first.files[0].sql}'; END $$;`), ['role "Grantor Role"'])
+})
+
 test('real collision extraction refuses unresolved dynamic role statements', () => {
   assert.throws(() => dispatchObjectKeys("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;"), /dynamic role/)
   assert.throws(() => findCollisions([{label:'A',files:[{path:'A.sql',sql:"DO $$ BEGIN EXECUTE 'alter ' || 'role ' || name; END $$;"}]}]), /dynamic role/)

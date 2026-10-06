@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "work_issue": 3781,
+  "generation": 7,
+  "evidence_parent": {
+    "work_issue": 3781,
+    "generation": 6,
+    "contract_sha256": "569ca3c05b4cc69a7f12ab103168ee8b85427a4ed65c12f1dc088755bdcf22b7"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Step 10 PR 4018 REVISE fixes: fail-closed exclusive acquisition policy, freshness widening rationale, policy-level proof honesty",
+  "base_sha": "fd62f194fb9ca8fed3513d589a26c5ed9384f60d",
+  "dispatcher": "MiMo session for issue #3781 Step 10 REVISE",
+  "worker": "mimo",
+  "branch": "mimo/3781-step10-locks",
+  "worktree": ".ai/worktrees/step10-locks-mimo",
+  "allowed_paths": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/step10-lock-manager-proof-20261006.md",
+    "scripts/lib/lanes/exclusive-locks.mjs",
+    "scripts/lib/lanes/exclusive-policy.mjs",
+    "scripts/lib/lanes/exclusive-policy.test.mjs",
+    "scripts/manage-migration-author-lanes-surface.test.mjs",
+    "scripts/target-queue-identity.mjs",
+    "scripts/target-queue-identity.test.mjs"
+  ],
+  "file_writes": [
+    "docs/verification/step10-lock-manager-proof-20261006.md",
+    "scripts/lib/lanes/exclusive-policy.mjs",
+    "scripts/lib/lanes/exclusive-policy.test.mjs",
+    "scripts/manage-migration-author-lanes-surface.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not edit scripts/manage-migration-author-lanes.mjs or its tests",
+    "do not remove or weaken object claims, exclusive production locks, exact-head approval, freeze interlock, or required checks",
+    "do not touch any migration or database object",
+    "do not mark #3781 complete"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/lanes/exclusive-policy.test.mjs",
+    "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs"
+  ],
+  "assumptions": [
+    "production-inert path policy is shared by check-main-tip-freshness and evaluateProductionFreshness; widening the docs-only manifest rule is deliberate",
+    "acquireExclusive call-site wiring and real live proof remain on #3781 (issue stays OPEN); Step 10 is not complete"
+  ],
+  "stop_conditions": [
+    "stop if freeze or lock interlocks would be weakened",
+    "stop if a required check is skipped or its exact command string is altered"
+  ]
+}

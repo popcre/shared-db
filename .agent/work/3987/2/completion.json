@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3987/2",
   "contract_sha256": "b483e61fd90e6dd66ffaaba9c854b715a072a401292c782910430de8643720ba",
-  "head_sha": "a21094c12de99ec92ffe7b2399f62c27aef182d6",
+  "head_sha": "e87c5c5348e927ab2ee38124989662f2010f2224",
   "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
   "files_changed": [
     ".github/workflows/merge-queue-gate.yml",
@@ -25,7 +25,7 @@
     {
       "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs",
       "exit_code": 0,
-      "evidence": "80 passed, 0 failed, 0 skipped, including current-main contract replay tests"
+      "evidence": "81 passed, 0 failed, 0 skipped; two-dispatch restoration bootstrap and negative exact-head/app/accounting fixtures"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
@@ -44,7 +44,8 @@
     "Final actual readback head requires a fresh assigned review before merge.",
     "First paid review emitted non-recordable REVISE; no approval or settings authority. All justified findings batched: source-bound restoration doc, actual14 pre-change mirror/readback, observed/prospective metadata, StageA test/source reference.",
     "All first-head CI succeeded; no settings changed. Canonical contract hash and implementation-parent/evidence-only-tail protocol verified through existing validators.",
-    "Supported refresh refused shared test conflict without branch change; resolved exactly by retaining both current-main replay tests/fixtures and own group-only queue assertion. Fresh actual settings still14, all app15368 bindings unchanged; both mirror and dated artifact remain actual14."
+    "Supported refresh refused shared test conflict without branch change; resolved exactly by retaining both current-main replay tests/fixtures and own group-only queue assertion. Fresh actual settings still14, all app15368 bindings unchanged; both mirror and dated artifact remain actual14.",
+    "Required aggregate skipped refuses protected preflight; future restoration uses explicit dispatch of both workflows on frozen exact PR branch, preserves app15368 and mandatory lane accounting. Bootstrap capability fix supersedes initial05 review; no settings authority until new exact assigned approval."
   ],
   "stop_conditions_hit": [],
   "generation": 2

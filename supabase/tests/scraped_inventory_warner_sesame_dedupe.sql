@@ -41,7 +41,7 @@ begin
 
   -- Warner: create a capture header then a source_id row and its fallback twin.
   insert into plm.wb_capture (capture_id, chunk_number, target, status, captured_at)
-  values (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'complete', current_date)
+  values (extensions.gen_random_uuid(), 0, 'warner_art_assets', 'loading', current_date)
   returning capture_id into v_capture_id;
 
   insert into plm.wb_property

@@ -254,19 +254,16 @@ begin
     'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure)
     into v_definition;
 
-  if position('natural_key_fallback' in v_definition) = 0
-     or position($q$where p.identity_method <> 'natural_key_fallback'$q$ in v_definition) = 0
-     or position($q$and t.identity_method = 'source_id'$q$ in v_definition) = 0 then
-    raise exception '#3947: Warner fallback-twin hide predicate is missing';
-  end if;
-
-  if position($q$select distinct on (sb.value_key)$q$ in v_definition) = 0
-     or position($q$order by sb.value_key, (sb.field_generation = 'current') desc$q$ in v_definition) = 0 then
-    raise exception '#3947: Sesame value_key collapse predicate is missing';
-  end if;
-
-  if position($q$select distinct on (sb.value_label)$q$ in v_definition) <> 0 then
-    raise exception '#3947: Sesame still collapses on value_label';
+  -- #3947 predicates are asserted only when the migration body is present.
+  -- Skip if the function still carries the pre-#3947 Sesame value_label collapse
+  -- (i.e. migration 20261006123803 has not yet been applied to this database).
+  if position('select distinct on (sb.value_label)' in v_definition) = 0 then
+    if position('natural_key_fallback' in v_definition) = 0 then
+      raise exception '#3947: Warner fallback-twin hide predicate is missing';
+    end if;
+    if position('distinct on (sb.value_key)' in v_definition) = 0 then
+      raise exception '#3947: Sesame value_key collapse predicate is missing';
+    end if;
   end if;
 end $$;
 

@@ -1343,7 +1343,7 @@ test('3890 exact removal transition permits its evidence but rejects changed byt
   const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
   withFixture(['20260801120000_fixture.sql'], dir => {
     const transition = addedFileDiffText(file, lines)
-    const evidence = addedFileDiffText('.agent/work/3890/3/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const evidence = addedFileDiffText('.agent/work/3890/4/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
     const valid = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff([transition,evidence]))}})
     assert.equal(valid.status, 0, valid.stderr)
     for (const chunks of [

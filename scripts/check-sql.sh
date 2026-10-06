@@ -61,7 +61,7 @@ const allowed = new Set([
 const sandboxTransition = 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'
 const sandboxEvidence = new Set([
   '.agent/work/3890/1/contract.json', '.agent/work/3890/2/contract.json',
-  '.agent/work/3890/3/contract.json', '.agent/work/3890/3/completion.json',
+  '.agent/work/3890/4/contract.json', '.agent/work/3890/4/completion.json',
   '.github/live-proofs/3890.sql',
   'scripts/production-verification-sidecars/20261006203846.json',
 ])

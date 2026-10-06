@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 4010,
+  "outcome": "ready-for-merge",
+  "pr": 4013,
+  "migration_versions": [
+    "20261006225513"
+  ],
+  "contract_ref": "refs/db-contracts/4010/3",
+  "contract_sha256": "41ca0c4b89a9bdd7bbd3671a5a7f3de00015048cfeeaa4648c03b28376db80eb",
+  "base_sha": "74e4ee847d3e960af5cfbcddfe2e0ae9aaafb248",
+  "head_sha": "181c10d4329599783f442da9d1225880f602ee52",
+  "files_changed": [
+    ".github/live-proofs/4010.sql",
+    "scripts/proofs/3882-production.sql",
+    "supabase/migrations/20261006225513_repoint_designflow_artist_parent_fks.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Fresh current-main source check; exact original migration body retained under safe reservation supersession."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs --issue 4010",
+      "exit_code": 0,
+      "evidence": "Fresh current-main source check; exact original migration body retained under safe reservation supersession."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Fresh current-main source check; exact original migration body retained under safe reservation supersession."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh production originals match guards; three mapped destination orphan counts0. Tracking cluster and separate HTS connection intentionally preserved."
+  ],
+  "stop_conditions_hit": []
+}

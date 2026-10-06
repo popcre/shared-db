@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "work_issue": 4010,
+  "generation": 3,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Repoint only the three artist foreign keys after the user release; preserve row/access behavior and bind fixed application proof to the new reserved migration.",
+  "base_sha": "74e4ee847d3e960af5cfbcddfe2e0ae9aaafb248",
+  "dispatcher": "Albert chat instruction: complete shared-db #3882 through to production, without the earlier one-child stop; existing exact-object claim acquired.",
+  "worker": "Codex chat 01a1126e-c598-7d60-8cf4-e14427127e20 on edge-dev3",
+  "branch": "codex/4010-artists",
+  "worktree": "/tmp/shared-db-4010-artists",
+  "allowed_paths": [
+    "supabase/migrations/20261006225513_repoint_designflow_artist_parent_fks.sql",
+    ".github/live-proofs/4010.sql",
+    ".agent/work/4010/3/contract.json",
+    ".agent/work/4010/3/completion.json",
+    "scripts/proofs/3882-production.sql"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261006225513_repoint_designflow_artist_parent_fks.sql",
+    ".github/live-proofs/4010.sql",
+    ".agent/work/4010/3/contract.json",
+    ".agent/work/4010/3/completion.json",
+    "scripts/proofs/3882-production.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "prohibited_actions": [
+    "Do not change or delete application rows, columns, keys or privilege policies.",
+    "Do not alter shared schema beyond the exact admitted objects.",
+    "Do not edit applied migrations or perform manual production writes."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "node scripts/check-live-proof-probe.mjs --issue 4010",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+  ],
+  "assumptions": [
+    "Fresh production inspection: all three original constraints are validated single-column nondeferrable MATCH SIMPLE NO ACTION; destination orphan counts are zero."
+  ],
+  "stop_conditions": [
+    "Any unexpected source/target shape, orphan, permission or claim collision refuses mutation.",
+    "Unreviewed changes or target identity ambiguity stop before a write."
+  ],
+  "evidence_parent": {
+    "work_issue": 4010,
+    "generation": 2,
+    "contract_sha256": "84a0287d47246874b4752666cb67b6b9ccb0bc460821ec51c098e99146456eee"
+  }
+}

@@ -149,3 +149,5 @@ newest-name normalization preserves rerun semantics". Trusted-policy invocation 
 and under the merge lock is retained in `guarded-migration-merge.yml`. Positive live
 execution on protected commit2d1d103dc96caf9f78b421c78a25a85ed7aa456a is recorded at
 https://github.com/popcre/shared-db/issues/3987#issuecomment-6023586049.
+
+The PR Guards dispatch must replay all required siblings as real assertions. Its selected positive `agent_contract_pr_number` is checked by a fresh trusted pull-request GET: the PR must remain open, both repository identities must be `popcre/shared-db`, the base must be `main`, and its exact head must equal the workflow run's `GITHUB_SHA`. Missing, moved, closed, foreign, or unknown identities refuse. Collision accounting uses that selected PR; the handoff assertion reads its validated title and body; Domain ownership runs its normal assertion; Destructive SQL scans the selected checkout against `origin/main`. A bare manual run without the selected PR remains red. All fourteen newest exact-head, app-bound contexts must actually succeed after both dispatches; skipped siblings never authorize restoration.

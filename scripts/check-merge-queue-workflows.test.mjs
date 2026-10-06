@@ -532,3 +532,25 @@ test('manual replay runs base-owned evaluators against exact head evidence', asy
     assert.match(job,/--config-file trusted-policy\/config\/agent-work-contract-activation\.json/)
   } finally {rmSync(cwd,{recursive:true,force:true})}
 })
+
+
+test('restoration dispatch runs every required PR Guards sibling with real collision, SQL and handoff inputs', () => {
+  const text=readWorkflow('pr-guards.yml')
+  for (const name of ['Cancelled work guard','Cross-PR object collision','Destructive SQL outside migrations','Domain ownership','Handoff contract','Intake pointer guard']) {
+    assert.ok(jobEvents(jobBlockByName(text,name)).includes('workflow_dispatch'), `${name} must assert on dispatch, never emit skipped`)
+  }
+  const collision=jobBlockByName(text,'Cross-PR object collision')
+  assert.match(stepBlock(collision,'No other open PR replaces the same database object'), /PR_NUMBER:.*github\.event\.pull_request\.number \|\| inputs\.agent_contract_pr_number/)
+  assert.match(stepBlock(collision,'No other open PR replaces the same database object'), /node scripts\/check-pr-object-collisions\.mjs/)
+  const sql=stepBlock(jobBlockByName(text,'Destructive SQL outside migrations'),'Scan SQL added by this change')
+  assert.match(sql,/github\.event_name == 'pull_request' \|\| github\.event_name == 'workflow_dispatch'/)
+  assert.match(sql,/git fetch --no-tags origin main/)
+  assert.match(sql,/--diff-base "origin\/\$\{\{ github\.base_ref \|\| 'main' \}\}"/)
+  const handoff=stepBlock(jobBlockByName(text,'Handoff contract'),'Check the handoff files this pull request touches')
+  assert.match(handoff,/PR_NUMBER:.*inputs\.agent_contract_pr_number/)
+  assert.match(handoff,/readDispatchPull\(\)/)
+  assert.match(handoff,/PR_TITLE=.*jq -r '\.title'/)
+  assert.match(handoff,/PR_BODY=.*jq -r '\.body/)
+  assert.match(handoff,/export PR_TITLE PR_BODY/)
+  assert.match(jobBlockByName(text,'Domain ownership'),/node scripts\/check-domain-ownership\.mjs/)
+})

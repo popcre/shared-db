@@ -361,7 +361,7 @@ jobs:
   # The guard stays here because it scans this repository's own docs for the hostname.
   domain-ownership:
     name: Domain ownership
-    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    if: contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name)
     permissions:
       contents: read
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -446,8 +446,15 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           MERGE_GROUP_PR: ${{ steps.queue.outputs.pr_number }}
+          PR_NUMBER: ${{ inputs.agent_contract_pr_number }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            facts="$(node --input-type=module -e 'import { readDispatchPull } from "./scripts/check-pr-object-collisions.mjs"; console.log(JSON.stringify(readDispatchPull()))')"
+            PR_TITLE="$(printf '%s' "$facts" | jq -r '.title')"
+            PR_BODY="$(printf '%s' "$facts" | jq -r '.body // ""')"
+            export PR_TITLE PR_BODY
+          fi
           if [ -n "${MERGE_GROUP_PR:-}" ]; then
             git fetch --no-tags origin main
             PR_TITLE="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)"
@@ -526,7 +533,7 @@ jobs:
   # no secrets, no database contact.
   destructive-sql:
     name: Destructive SQL outside migrations
-    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    if: contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name)
     permissions:
       contents: read
       issues: read
@@ -558,10 +565,13 @@ jobs:
           permission-pull-requests: read
           permission-statuses: read
       - name: Scan SQL added by this change
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then git fetch --no-tags origin main; fi
+          node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref || 'main' }}"
       - name: Scan SQL added by the queued group
         if: github.event_name == 'merge_group'
         env:
@@ -730,6 +740,7 @@ jobs:
         # so the proof still happens exactly once per merge (#2530).
         if: github.event_name != 'merge_group'
         env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.agent_contract_pr_number }}
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.

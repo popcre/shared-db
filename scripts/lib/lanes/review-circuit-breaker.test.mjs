@@ -70,7 +70,7 @@ test('exact row ceiling and malformed PR cannot be accepted as complete paid his
 })
 
 import {execFileSync} from 'node:child_process'
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
+import {mkdtempSync,writeFileSync,rmSync,mkdirSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 function realGitFixture(t) {
@@ -78,12 +78,12 @@ function realGitFixture(t) {
  const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']})
  git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test'])
  const commit=(file,text)=>{writeFileSync(path.join(dir,file),text);git(['add',file]);git(['commit','-qm','fixture']);return git(['rev-parse','HEAD']).trim()}
- const base=commit('app.txt','context\nseparator1\nseparator2\nseparator3\nauthor\nend\n');git(['switch','-qc','feature'])
- const before=commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ const base=commit('app.txt','context\nseparator1\nseparator2\nauthor\nend\n');git(['switch','-qc','feature'])
+ const before=commit('app.txt','context\nseparator1\nseparator2\nfixed\nend\n')
  return {git,commit,base,before,dir}
 }
 test('real Git main-context merge retains two spent attempts despite changed review context',t=>{
- const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nauthor\nend\n')
  f.git(['switch','feature']);f.git(['merge','-qm','main refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
  const proof=derivePaidContentProof(f.before,after,main,f.git)
  assert.equal(proof.kind,'unchanged')
@@ -93,7 +93,7 @@ test('real Git main-context merge retains two spent attempts despite changed rev
 test('real Git genuine author fix resets while net revert and empty commits retain budget',t=>{
  const f=realGitFixture(t);const changed=f.commit('app.txt','context\nrepaired\nend\n')
  assert.equal(derivePaidContentProof(f.before,changed,f.base,f.git).kind,'substantive')
- const reverted=f.commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ const reverted=f.commit('app.txt','context\nseparator1\nseparator2\nfixed\nend\n')
  assert.equal(derivePaidContentProof(f.before,reverted,f.base,f.git).kind,'unchanged')
  f.git(['commit','--allow-empty','-qm','empty']);assert.equal(derivePaidContentProof(f.before,f.git(['rev-parse','HEAD']).trim(),f.base,f.git).kind,'unchanged')
 })
@@ -113,23 +113,23 @@ test('real Git evidence-only changes retain count and missing proof cannot reset
 })
 test('complete bounded history refuses the 1000 boundary',t=>{
  const f=realGitFixture(t);const changed=f.commit('app.txt','substantive')
- const git=args=>args[0]==='rev-list'&&args.includes('--max-count=1000')?Array.from({length:1000},(_,i)=>i===999?f.before:changed).join('\n'):f.git(args)
+ const git=args=>args[0]==='rev-list'&&args.includes('--max-count=1001')?Array.from({length:1001},(_,i)=>i===1000?f.before:changed).join('\n'):f.git(args)
  assert.throws(()=>derivePaidContentProof(f.before,changed,f.base,git),/complete first-parent ancestry/)
 })
 
 test('production public Git IO derives budget proof from a real clean main-only merge',t=>{
- const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nauthor\nend\n')
  f.git(['switch','feature']);f.git(['merge','-qm','refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
  f.git(['remote','add','origin',f.dir])
  const moduleUrl=new URL('../../manage-migration-author-lanes.mjs',import.meta.url).href
  const script=`import {githubIo} from ${JSON.stringify(moduleUrl)};const p=githubIo.reviewContentComparison(${JSON.stringify(f.before)},${JSON.stringify(after)},4000,{base:${JSON.stringify(main)}});console.log(JSON.stringify(p))`
  const proof=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',script],{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}))
- assert.equal(proof.budgetProof.kind,'unchanged');assert.equal(proof.budgetProof.before,f.before);assert.equal(proof.budgetProof.after,after)
+ assert.notEqual(proof.before,proof.after);assert.equal(proof.budgetProof.kind,'unchanged');assert.equal(proof.budgetProof.before,f.before);assert.equal(proof.budgetProof.after,after)
 })
 
 test('real Git source-equivalent rewrite preserves count while a custom merge refuses',t=>{
  const f=realGitFixture(t)
- f.git(['switch','-qc','equivalent',f.base]);const equivalent=f.commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ f.git(['switch','-qc','equivalent',f.base]);const equivalent=f.commit('app.txt','context\nseparator1\nseparator2\nfixed\nend\n')
  assert.equal(derivePaidContentProof(f.before,equivalent,f.base,f.git).kind,'unchanged')
  f.git(['switch','main']);const main=f.commit('main-only.txt','main offset')
  f.git(['switch','feature']);f.git(['merge','--no-commit','main']);writeFileSync(path.join(f.dir,'custom.txt'),'custom merge source');f.git(['add','custom.txt']);f.git(['commit','-qm','custom merge'])
@@ -137,11 +137,98 @@ test('real Git source-equivalent rewrite preserves count while a custom merge re
  assert.throws(()=>derivePaidContentProof(f.before,after,main,f.git),/noncanonical/)
 })
 test('real Git offset-only main merge preserves count, but conflicting main ancestry refuses',t=>{
- const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nauthor\nend\n')
  f.git(['switch','feature']);f.git(['merge','-qm','offset refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
  assert.equal(derivePaidContentProof(f.before,after,main,f.git).kind,'unchanged')
- f.git(['switch','main']);const conflict=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nseparator3\nmain conflicting edit\nend\n')
+ f.git(['switch','main']);const conflict=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nmain conflicting edit\nend\n')
  f.git(['switch','feature']);assert.throws(()=>f.git(['merge','--no-commit','main']))
  writeFileSync(path.join(f.dir,'app.txt'),'manual conflicting resolution');f.git(['add','app.txt']);f.git(['commit','-qm','resolved conflict']);const resolved=f.git(['rev-parse','HEAD']).trim()
  assert.throws(()=>derivePaidContentProof(f.before,resolved,conflict,f.git),/provenance refused/)
+})
+
+function appendFixture(t,{repair=false,revert=false,reordered=false,omit=false,mode=false,oldLine=false}={}) {
+ const dir=mkdtempSync(path.join(tmpdir(),'review-budget-append-real-'));t.after(()=>rmSync(dir,{recursive:true,force:true}))
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']})
+ git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test'])
+ git(['config','core.fileMode','false'])
+ const file='scripts/manage-migration-author-lanes.test.mjs';mkdirSync(path.join(dir,'scripts'))
+ const base='// protected baseline\n',ours="test('author append',()=>{});\n",theirs="test('main append',()=>{});\n"
+ let modePending=false
+ const commit=()=>{git(['add','.']);if(modePending){git(['update-index','--chmod=+x',file]);modePending=false}git(['commit','-qm','fixture']);return git(['rev-parse','HEAD']).trim()}
+ writeFileSync(path.join(dir,file),base);writeFileSync(path.join(dir,'app.txt'),'base source');commit()
+ git(['switch','-qc','feature']);writeFileSync(path.join(dir,file),(oldLine?'// author old-line edit\n':base)+ours);writeFileSync(path.join(dir,'app.txt'),'implementation');const before=commit()
+ if(repair){writeFileSync(path.join(dir,'app.txt'),'repaired source');commit()}
+ if(revert){writeFileSync(path.join(dir,'app.txt'),'implementation');commit()}
+ git(['switch','main']);writeFileSync(path.join(dir,file),(oldLine?'// main old-line edit\n':base)+theirs);modePending=mode;const main=commit()
+ git(['switch','feature']);assert.throws(()=>git(['merge','--no-commit','main']))
+ writeFileSync(path.join(dir,file),base+(reordered?theirs+ours:omit?ours:ours+theirs));const after=commit()
+ return {git,before,after,main,file,dir}
+}
+test('canonical independent EOF test appends cannot reset two spent attempts',t=>{
+ const f=appendFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalAppends.length,1)
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),/third draw refused/)
+})
+test('canonical test reconciliation permits only a surviving conflict-free author source fix',t=>{
+ const f=appendFixture(t,{repair:true}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt');assert.equal(proof.canonicalAppends.length,2)
+})
+test('canonical appends plus net reverted author fix preserve count',t=>{
+ const f=appendFixture(t,{repair:true,revert:true});assert.equal(derivePaidContentProof(f.before,f.after,f.main,f.git).kind,'unchanged')
+})
+test('reordered, omitted, old-line and mode-changing test conflict resolutions refuse',t=>{
+ for(const option of ['reordered','omit','oldLine','mode']) {
+  const f=appendFixture(t,{repair:true,[option]:true})
+  assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/,option)
+ }
+})
+
+test('production public Git IO reconciles exact test appends with surviving source witness',t=>{
+ const f=appendFixture(t,{repair:true});f.git(['remote','add','origin',f.dir])
+ const moduleUrl=new URL('../../manage-migration-author-lanes.mjs',import.meta.url).href
+ const script=`import {githubIo} from ${JSON.stringify(moduleUrl)};console.log(JSON.stringify(githubIo.reviewContentComparison(${JSON.stringify(f.before)},${JSON.stringify(f.after)},4000,{base:${JSON.stringify(f.main)}})))`
+ const proof=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',script],{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}))
+ assert.equal(proof.budgetProof.kind,'substantive');assert.equal(proof.budgetProof.witness.path,'app.txt')
+ for(const r of proof.budgetProof.canonicalAppends){assert.equal(r.path,f.file);assert.match(r.base,/^[0-9a-f]{40}$/);assert.equal(r.parents.length,2);assert.equal(r.parentBlobs.length,3);assert.match(r.canonicalBlob,/^[0-9a-f]{40}$/)}
+})
+test('custom attributes and ambiguous marker bytes cannot reconcile a test conflict',t=>{
+ const f=appendFixture(t,{repair:true})
+ for(const attribute of ['merge=custom','filter=custom','working-tree-encoding=UTF-16']) {
+  writeFileSync(path.join(f.dir,'.gitattributes'),`${f.file} ${attribute}\n`)
+  assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/custom merge/)
+ }
+ rmSync(path.join(f.dir,'.gitattributes'))
+ const bad=args=>args[0]==='show'&&String(args[1]).endsWith(':'+f.file)?f.git(args)+'<<<<<<< forged marker\n':f.git(args)
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,bad),/blob bytes unreadable/)
+})
+
+test('octopus and wrong protected-main provenance cannot authorize append repair',t=>{
+ const f=appendFixture(t,{repair:true});const tree=f.git(['rev-parse',`${f.after}^{tree}`]).trim()
+ f.git(['switch','-qc','foreign',f.before]);writeFileSync(path.join(f.dir,'foreign.txt'),'foreign');f.git(['add','foreign.txt']);f.git(['commit','-qm','foreign']);const foreign=f.git(['rev-parse','HEAD']).trim()
+ const octopus=f.git(['commit-tree',tree,'-p',f.before,'-p',f.main,'-p',foreign,'-m','octopus']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,octopus,f.main,f.git),/ambiguous merge/)
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.before,f.git),/foreign merge/)
+})
+
+test('ordinary conflict-free test-only author fixes retain mandatory fresh review capability',t=>{
+ const f=realGitFixture(t);mkdirSync(path.join(f.dir,'scripts'));const file='scripts/manage-migration-author-lanes.test.mjs'
+ const after=f.commit(file,"test('new authored regression',()=>{});\n")
+ const proof=derivePaidContentProof(f.before,after,f.base,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,file);assert.equal(proof.canonicalAppends.length,0)
+})
+
+test('actual Git link metadata and renamed test conflict ancestry refuse reconciliation',t=>{
+ for(const kind of ['link','rename']) {
+  const f=appendFixture(t,{repair:true});f.git(['read-tree',f.main])
+  if(kind==='link') {
+   const target=path.join(f.dir,'target-bytes');writeFileSync(target,'app.txt');const blob=f.git(['hash-object','-w',target]).trim()
+   f.git(['update-index','--add','--cacheinfo',`120000,${blob},${f.file}`])
+  } else {
+   const blob=f.git(['rev-parse',`${f.main}:${f.file}`]).trim();f.git(['update-index','--force-remove',f.file]);f.git(['update-index','--add','--cacheinfo',`100644,${blob},scripts/renamed.test.mjs`])
+  }
+  const changedTree=f.git(['write-tree']).trim(),changedMain=f.git(['commit-tree',changedTree,'-p',f.main,'-m',kind]).trim()
+  const actualTree=f.git(['rev-parse',`${f.after}^{tree}`]).trim(),after=f.git(['commit-tree',actualTree,'-p',f.after,'-p',changedMain,'-m','unexplained resolution']).trim()
+  assert.throws(()=>derivePaidContentProof(f.before,after,changedMain,f.git),/provenance refused/,kind)
+ }
 })

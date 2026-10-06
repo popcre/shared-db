@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/lanes/review-circuit-breaker.mjs",
+  "sites": [
+    {
+      "source": "scripts/lib/lanes/review-circuit-breaker.mjs",
+      "site": "scripts/lib/lanes/review-circuit-breaker.mjs:45",
+      "semantic_key": "scripts/lib/lanes/review-circuit-breaker.mjs:c07f487bef49f6264f2846d25b763f32fb2f297a69703aaa938b86ba72a83d1e:context-3209e0da223e474dcc8fb605c42b7d97607101a0f902e4111547d6c6d1743903",
+      "legacy_semantic_key": "scripts/lib/lanes/review-circuit-breaker.mjs:c07f487bef49f6264f2846d25b763f32fb2f297a69703aaa938b86ba72a83d1e:1",
+      "line_sha256": "c07f487bef49f6264f2846d25b763f32fb2f297a69703aaa938b86ba72a83d1e",
+      "disposition": "excluded",
+      "reason": "Owned reviewer-budget Git provenance maintenance on work issue 3536: this guard refuses a missing canonical Git blob during immutable parent/source proof. It makes no claim about a database object or migration being absent and cannot clear a database alarm."
+    }
+  ]
+}

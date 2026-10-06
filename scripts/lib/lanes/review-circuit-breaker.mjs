@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { createHash } from 'node:crypto'
 // Owner: reviewer assignment lane. Immutable start records bound paid rounds.
 import { readStoredHashRegistry, normalizedStoredHashFile } from '../pr-content-equivalence.mjs'
 import { LaneError } from './claims.mjs'
@@ -32,33 +36,101 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   const ancestor = (a,b) => { try { run(['merge-base','--is-ancestor',a,b]); return true } catch (error) { if(error?.status===1)return false;throw error } }
   const registry=readStoredHashRegistry(protectedMain,{gitRunner:git})
   const stored=[...new Set(registry.map(entry=>entry.file))]
+  const canonicalAppends=[]
   const paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
-  const equal = (a,b) => run(['diff','--name-only',a,b,'--',...paths]) === '' && stored.every(file=>normalizedStoredHashFile(a,file,registry,{gitRunner:git})===normalizedStoredHashFile(b,file,registry,{gitRunner:git}))
+  const tree = value => typeof value==='string'?value:value.tree
+  const raw = args => String(git(args))
+  const entry = (commit,file) => {
+    const record=raw(['ls-tree','-z',tree(commit),'--',file]).split('\0').filter(Boolean)
+    if(record.length!==1)throw new LaneError('review budget canonical blob missing')
+    const match=/^(100644|100755) blob ([0-9a-f]{40})\t(.+)$/.exec(record[0])
+    if(!match || match[3]!==file)throw new LaneError('review budget canonical regular mode unreadable')
+    const text=raw(['show',`${tree(commit)}:${file}`])
+    if(Buffer.byteLength(text)>1048576 || createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex')!==match[2])throw new LaneError('review budget canonical blob bytes unreadable or oversized')
+    return {mode:match[1],blob:match[2],text}
+  }
+  const equal = (a,b) => {
+    const overrides=a?.overrides??new Map()
+    const selected=[...overrides.keys()]
+    if(run(['diff','--name-only',tree(a),tree(b),'--',...paths,...selected.map(p=>`:(top,literal,exclude)${p}`)])!=='')return false
+    if(!stored.every(file=>normalizedStoredHashFile(tree(a),file,registry,{gitRunner:git})===normalizedStoredHashFile(tree(b),file,registry,{gitRunner:git})))return false
+    return selected.every(file=>{const actual=entry(b,file),expected=overrides.get(file);return actual.mode===expected.mode && actual.text===expected.text})
+  }
+  const canonicalAppend = (a,b,base) => {
+    const file='scripts/manage-migration-author-lanes.test.mjs'
+    const blobs=[a,base,b].map(commit=>entry(commit,file))
+    if(new Set(blobs.map(x=>x.mode)).size!==1 || blobs.some(x=>/^(?:<{7}|\|{7}|={7}|>{7})/m.test(x.text)))throw new LaneError('review budget canonical append mode or marker ambiguity refused')
+    const dir=mkdtempSync(path.join(tmpdir(),'review-budget-append-'))
+    const labels=[`budget-ours-${a}`,`budget-base-${base}`,`budget-main-${b}`]
+    try {
+      const files=blobs.map((blob,i)=>{const f=path.join(dir,String(i));writeFileSync(f,blob.text);return f})
+      let merged
+      try { merged=raw(['merge-file','--diff3','-p','-L',labels[0],'-L',labels[1],'-L',labels[2],...files]);throw new LaneError('review budget canonical append requires exactly one conflict') }
+      catch(error) { if(error?.status!==1 || typeof error.stdout!=='string')throw error;merged=error.stdout }
+      if(Buffer.byteLength(merged)>3145728)throw new LaneError('review budget append output oversized')
+      const markers=[`<<<<<<< ${labels[0]}\n`,`||||||| ${labels[1]}\n`,'=======\n',`>>>>>>> ${labels[2]}\n`]
+      const positions=markers.map(marker=>{const index=merged.indexOf(marker);if(index<0 || merged.indexOf(marker,index+marker.length)!==-1)throw new LaneError('review budget append marker ambiguity');return index})
+      if(!positions.every((index,i)=>i===0 || index>positions[i-1]) || positions[3]+markers[3].length!==merged.length)throw new LaneError('review budget append must be one EOF conflict')
+      const ours=merged.slice(positions[0]+markers[0].length,positions[1])
+      const ancestorBytes=merged.slice(positions[1]+markers[1].length,positions[2])
+      const theirs=merged.slice(positions[2]+markers[2].length,positions[3])
+      if(ancestorBytes!=='' || ours.trim()==='' || theirs.trim()==='')throw new LaneError('review budget append cannot modify old lines or omit a parent')
+      const text=merged.slice(0,positions[0])+ours+theirs
+      canonicalAppends.push({base,parents:[a,b],path:file,mode:blobs[0].mode,parentBlobs:blobs.map(x=>x.blob),canonicalBlob:createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex')})
+      return new Map([[file,{mode:blobs[0].mode,text}]])
+    } finally { rmSync(dir,{recursive:true,force:true}) }
+  }
   const merge = (a,b) => {
     if (ancestor(b,a)) return run(['rev-parse',`${a}^{tree}`])
-    const tree = run(['merge-tree','--write-tree',a,b])
-    if (!sha.test(tree)) throw new LaneError('review budget automatic merge proof unreadable')
-    return tree
+    const base=run(['merge-base',a,b])
+    if(!sha.test(base))throw new LaneError('review budget merge base unreadable')
+    const changed=[...new Set([a,b].flatMap(tip=>raw(['diff','--name-only','-z',base,tip]).split('\0').filter(Boolean)))]
+    if(changed.length>=1000)throw new LaneError('review budget merge path bound refused')
+    for(const tip of [base,a,b,null]) {
+      const attributes=changed.length?raw(['check-attr',...(tip?[`--source=${tip}`]:[]),'-z','merge','filter','working-tree-encoding','--',...changed]).split('\0'):[]
+      for(let i=2;i<attributes.length;i+=3)if(attributes[i]!=='unspecified')throw new LaneError('review budget custom merge/filter/encoding attributes refused')
+      if(tip && raw(['diff','--name-status','-M',base,tip]).split('\n').some(line=>/^R[0-9]+\t/.test(line)))throw new LaneError('review budget renamed merge source refused')
+    }
+    let result
+    try { result=run(['merge-tree','--write-tree',a,b]) }
+    catch(error) {
+      if(error?.status!==1 || typeof error.stdout!=='string')throw error
+      const lines=error.stdout.split('\n'),resultTree=lines[0]
+      const stages=lines.slice(1).filter(line=>/^[0-9]{6} /.test(line))
+      if(!sha.test(resultTree) || stages.length!==3 || !stages.every((line,i)=>new RegExp(`^(100644|100755) [0-9a-f]{40} ${i+1}\\tscripts/manage-migration-author-lanes\\.test\\.mjs$`).test(line)))throw new LaneError('review budget conflict is outside the one canonical test append')
+      return {tree:resultTree,overrides:canonicalAppend(a,b,base)}
+    }
+    if (!sha.test(result)) throw new LaneError('review budget automatic merge proof unreadable')
+    return result
   }
   try {
     const incorporatedMain = run(['merge-base',after,protectedMain])
     if (!sha.test(incorporatedMain)) throw new LaneError('review budget protected main ancestry unreadable')
     const expected = merge(before,incorporatedMain)
-    if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged'}
-    const rows = run(['rev-list','--first-parent','--max-count=1000',after]).split('\n')
+    if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends}
+    const rows = run(['rev-list','--first-parent','--max-count=1001',after]).split('\n')
     const index = rows.indexOf(before)
-    if (rows.length >= 1000 || index < 0) throw new LaneError('review budget complete first-parent ancestry unavailable')
-    let authored = false
+    if (index < 0 || index >= 1000) throw new LaneError('review budget complete first-parent ancestry unavailable')
+    const authorCandidates=[]
+    let authored = false,witness=null
     for (const commit of rows.slice(0,index)) {
       const parents = run(['rev-list','--parents','-n','1',commit]).split(' ').slice(1)
       if (parents.length === 2) {
         if (!ancestor(parents[1],protectedMain) || !equal(merge(...parents),commit)) throw new LaneError('review budget noncanonical or foreign merge refused')
       } else if (parents.length === 1) {
-        if (!ancestor(commit,protectedMain) && !equal(parents[0],commit)) authored = true
+        if (!ancestor(commit,protectedMain)) {
+          authorCandidates.push({commit,parent:parents[0]})
+        }
       } else throw new LaneError('review budget ambiguous merge provenance refused')
     }
+    const witnessExcludes=canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]
+    const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
+    for(const {commit,parent} of authorCandidates) {
+      const changed=run(['diff','--name-only',parent,commit,'--',...paths]).split('\n')
+      for(const file of netPaths.filter(file=>changed.includes(file))) {const original=entry(commit,file),actual=entry(after,file);if(original.mode===actual.mode && original.blob===actual.blob){authored=true;witness={commit,path:file,mode:original.mode,blob:original.blob}}}
+    }
     if (!authored) throw new LaneError('review budget surviving author source edit unavailable')
-    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index}
+    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends}
   } catch (error) {
     throw new LaneError(`review budget Git provenance refused: ${String(error?.message??error).split('\n')[0]}`)
   }

@@ -7,8 +7,10 @@
   "contract_ref": "refs/db-contracts/3944/2",
   "contract_sha256": "b5ad742a146ce614e69fd617fe6a69e31e05d5cbce395d2d446a6954946244c7",
   "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
-  "head_sha": "25aa5bf7a8b6ec110b1e19e37f81cf844ee421d0",
+  "head_sha": "927df9cbb223a222cec25d61b196af80548dff24",
   "files_changed": [
+    ".agent/work/3944/2/completion.json",
+    ".agent/work/3944/2/contract.json",
     "docs/verification/throughput-dispositions/scripts~experiment_611_db_push_atomicity.sh.json",
     "scripts/atomic_migration_apply.py",
     "scripts/check-sql.sh",
@@ -22,7 +24,7 @@
     {
       "command": "node --test scripts/check-sql.test.mjs",
       "exit_code": 0,
-      "evidence": "64 passed, 0 failed"
+      "evidence": "66 passed, 0 failed"
     },
     {
       "command": "python3 -m unittest scripts/test_atomic_migration_apply.py",

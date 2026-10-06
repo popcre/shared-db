@@ -5,7 +5,7 @@
   "pr": 3958,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3944/1",
-  "contract_sha256": "d7e73a618fb6019b7c01a6e4ee51dfa63bf4720757742ac1b6536e94e9ebe921",
+  "contract_sha256": "f0494152add9f03df6d0ffa59d58a55f79c9c34bd7f30b793b1cf0e8af0d720b",
   "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
   "head_sha": "0269a131cfd80e680d5e6dac43c9080d6b39c545",
   "files_changed": [

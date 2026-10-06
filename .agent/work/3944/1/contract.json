@@ -15,14 +15,16 @@
     ".agent/work/3944/1/contract.json",
     "scripts/check-sql.sh",
     "scripts/check-sql.test.mjs",
-    "scripts/experiment_611_db_push_atomicity.sh"
+    "scripts/experiment_611_db_push_atomicity.sh",
+    "docs/verification/throughput-dispositions/scripts~experiment_611_db_push_atomicity.sh.json"
   ],
   "file_writes": [
     ".agent/work/3944/1/completion.json",
     ".agent/work/3944/1/contract.json",
     "scripts/check-sql.sh",
     "scripts/check-sql.test.mjs",
-    "scripts/experiment_611_db_push_atomicity.sh"
+    "scripts/experiment_611_db_push_atomicity.sh",
+    "docs/verification/throughput-dispositions/scripts~experiment_611_db_push_atomicity.sh.json"
   ],
   "db_reads": [],
   "db_writes": [],

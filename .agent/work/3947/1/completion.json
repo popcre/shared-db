@@ -7,7 +7,7 @@
     "20261006123803"
   ],
   "contract_ref": "refs/db-contracts/3947/1",
-  "contract_sha256": "eb77d007dbe4940f33ea8e9e8026e98713fd25ef780412b51dbcaf1d7969cc0c",
+  "contract_sha256": "e9e0e5f5c303de048312c6e7f6adad4b97e129a6eb540d52ae8d5d97925ccf83",
   "head_sha": "3858cae5adadd113746cfc244efec900492b0193",
   "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
   "files_changed": [

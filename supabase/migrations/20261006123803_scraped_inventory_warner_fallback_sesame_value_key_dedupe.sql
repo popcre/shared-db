@@ -33,6 +33,12 @@
 --      same label exists in the same namespace. The remaining source_id row
 --      keeps its existing source_id (namespace:source_id:...), so paging
 --      cursors and any future mapping decisions stay stable.
+--      Index assumption (review finding, 2026-10-06): the anti-join probes
+--      plm.wb_property(source_namespace, identity_method, label). No index
+--      currently carries that triple; at the documented cardinality (227 + 133
+--      rows) the outer arm seq-scans and the per-row probe is trivial. If the
+--      table grows, add a btree on (source_namespace, identity_method, label)
+--      before relying on this predicate at scale.
 --   2. Sesame: one row per value_key, preferring field_generation = 'current'.
 --      source_id stays 'label:' || value_label of the surviving row, so the
 --      curated proper-cased spelling is the inventory identity.
@@ -1581,6 +1587,20 @@ begin
   end if;
   if position($s$select distinct on (sb.value_label)$s$ in v_src) <> 0 then
     raise exception '#3947 self-check: Sesame still collapses on value_label';
+  end if;
+  -- Exact object checks: the columns this function now depends on must exist
+  -- with the right names (review finding 2026-10-06; create-or-replace defers
+  -- relation resolution to first call, so a missing column would migrate clean
+  -- and fail at call time).
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm' and table_name = 'wb_property'
+         and column_name in ('source_namespace', 'identity_method', 'label')) <> 3 then
+    raise exception '#3947 self-check: plm.wb_property is missing one of source_namespace, identity_method, label';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm' and table_name = 'sesame_brand'
+         and column_name in ('value_key', 'value_label', 'field_generation', 'capture_id')) <> 4 then
+    raise exception '#3947 self-check: plm.sesame_brand is missing one of value_key, value_label, field_generation, capture_id';
   end if;
   if not exists (select 1 from pg_proc p
                   where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure

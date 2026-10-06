@@ -96,7 +96,7 @@ begin
 
     select count(*) into v_sesame_count from jsonb_array_elements(v_rows) r
     where r ->> 'source_system' = 'sesame_thelettera_netx'
-      and lower(r ->> 'display_label') like '%zztest 3947 sesame%';
+      and r ->> 'display_label' = 'ZZTEST 3947 Sesame';
 
     exit when v_warner_fallback_count > 0 or v_warner_source_count > 0 or v_sesame_count > 0
            or (v_result ->> 'next_cursor') is null;

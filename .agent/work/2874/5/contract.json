@@ -8,13 +8,21 @@
     ".agent/work/2874/3/contract.json",
     ".agent/work/2874/3/completion.json",
     ".agent/work/2874/4/contract.json",
-    ".agent/work/2874/4/completion.json"
+    ".agent/work/2874/4/completion.json",
+    ".github/workflows/shared-db-2874-observation.yml",
+    "scripts/proofs/2874-catalog.sql",
+    "scripts/proofs/2874-contract.json",
+    "scripts/proofs/shared-db-2874-observation.mjs",
+    "scripts/proofs/shared-db-2874-observation.test.mjs",
+    ".agent/work/2874/5/contract.json",
+    ".agent/work/2874/5/completion.json"
   ],
   "assumptions": [
     "#2870 has authoritative live completion and its required columns exist in production",
     "The original claim was transferred by immutable guarded operator adoption; #3739 was terminally retired with every artifact preserved",
     "The future designflow_prod_backend_runtime is the only new trusted backend actor identity; other service identities and JWT/client paths cannot spoof backend context",
-    "Supabase ephemeral postgres is not superuser; actual-session tests require its existing supabase_admin connection before returning session identity to postgres. Refuse unavailable authority rather than skip tests."
+    "Supabase ephemeral postgres is not superuser; actual-session tests require its existing supabase_admin connection before returning session identity to postgres. Refuse unavailable authority rather than skip tests.",
+    "Application-owned generated types and durable live acceptance remain required on this same issue; the ancillary producer observes only pinned production catalog metadata and retains the unchanged #2870 implementation."
   ],
   "base_sha": "b8905b9a187133cb0e6ff1b13c62298920ed6ac3",
   "branch": "claude/dflow-prod-workflow-parity-2874",
@@ -59,8 +67,8 @@
   "dispatcher": "Codex chat 01a1126f-6efb-7a22-8034-4471909f2c86 on edge-dev3",
   "evidence_parent": {
     "work_issue": 2874,
-    "generation": 3,
-    "contract_sha256": "86a3d8fe8f93173e52b21edf18c629bf1d30298f97f4070e8cc047552a7f13ef"
+    "generation": 4,
+    "contract_sha256": "e47a5efd9517624598590e1ce440481eab5de92ea4eb46f5c144ea0b79bc86e8"
   },
   "file_writes": [
     "supabase/migrations/*_dflow_prod_backend_workflow_parity.sql",
@@ -71,9 +79,16 @@
     ".agent/work/2874/3/contract.json",
     ".agent/work/2874/3/completion.json",
     ".agent/work/2874/4/contract.json",
-    ".agent/work/2874/4/completion.json"
+    ".agent/work/2874/4/completion.json",
+    ".github/workflows/shared-db-2874-observation.yml",
+    "scripts/proofs/2874-catalog.sql",
+    "scripts/proofs/2874-contract.json",
+    "scripts/proofs/shared-db-2874-observation.mjs",
+    "scripts/proofs/shared-db-2874-observation.test.mjs",
+    ".agent/work/2874/5/contract.json",
+    ".agent/work/2874/5/completion.json"
   ],
-  "generation": 4,
+  "generation": 5,
   "goal": "Recover and deliver the closed dflow_prod backend workflow surface with verified backend runtime attribution, no application row copy, and governed production/live acceptance",
   "prohibited_actions": [
     "Do not grant any access to legacy schema dflow",
@@ -86,7 +101,8 @@
   "required_checks": [
     "bash scripts/check-sql.sh",
     "git diff --check",
-    "Database Contract Tests on isolated ephemeral database"
+    "Database Contract Tests on isolated ephemeral database",
+    "node --test scripts/proofs/shared-db-2870-observation.test.mjs scripts/proofs/shared-db-2874-observation.test.mjs"
   ],
   "route": "claim-first",
   "schema_version": 2,

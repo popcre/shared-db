@@ -6,8 +6,8 @@
   "migration_versions": [
     "20261006211240"
   ],
-  "contract_ref": "refs/db-contracts/2874/4",
-  "contract_sha256": "e47a5efd9517624598590e1ce440481eab5de92ea4eb46f5c144ea0b79bc86e8",
+  "contract_ref": "refs/db-contracts/2874/5",
+  "contract_sha256": "d8f7eab5c382902cd798721ad8407ab758fda2f9a9aacabd1c5f631b5e6f716c",
   "db_reads": [
     "table dflow_prod.users",
     "table dflow_prod.RFQItem",
@@ -61,16 +61,29 @@
       "command": "Database Contract Tests on isolated ephemeral database",
       "exit_code": 0,
       "evidence": "Workflow parity and cutover-column contracts passed on disposable network-none PostgreSQL 17 with synthetic auth helpers. Workflow parity also passed on the CI-pinned Supabase postgres 17.6.1.171 image with synthetic auth helpers, authenticating as its non-superuser postgres through TCP then reconnecting to its existing supabase_admin before restoring postgres session identity. Every actual session case passed. Readback proved zero synthetic users and zero fixture runtime roles remain. Complete repository suite remains enforced by PR CI."
+    },
+    {
+      "command": "node --test scripts/proofs/shared-db-2870-observation.test.mjs scripts/proofs/shared-db-2874-observation.test.mjs",
+      "exit_code": 0,
+      "evidence": "Existing bounded observation and the new exact catalog observer pass all positive and refusal cases locally. No existing producer bytes changed."
     }
   ],
   "assumptions_resolved": [
     "Guarded adoption and version supersession preserve original reservations; claim 3704 exact 28 objects.",
     "2870 live acceptance verified; future backend runtime trusted only after id/email/active-user checks.",
-    "Reproduced CI non-superuser limitation on the pinned Supabase image and proved its existing fixture superuser connection; no role capability changed and no test case skipped."
+    "Reproduced CI non-superuser limitation on the pinned Supabase image and proved its existing fixture superuser connection; no role capability changed and no test case skipped.",
+    "Metadata expected values derive from the migration in the CI-pinned isolated Supabase image; source contains no application rows or credential. Application artifacts remain pending and cannot be represented as delivered."
   ],
   "stop_conditions_hit": [],
-  "head_sha": "b4842912ec7d60fbc66af7bbfee8203407c80931",
+  "head_sha": "dd44b820130baa496eb02a53cdae4135c491e086",
   "files_changed": [
+    ".agent/work/2874/4/completion.json",
+    ".agent/work/2874/4/contract.json",
+    ".github/workflows/shared-db-2874-observation.yml",
+    "scripts/proofs/2874-catalog.sql",
+    "scripts/proofs/2874-contract.json",
+    "scripts/proofs/shared-db-2874-observation.mjs",
+    "scripts/proofs/shared-db-2874-observation.test.mjs",
     "supabase/migrations/20261006211240_dflow_prod_backend_workflow_parity.sql",
     "supabase/tests/dflow_prod_contract.sql",
     "supabase/tests/dflow_prod_workflow_parity_contracts.sql"

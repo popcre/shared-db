@@ -9,9 +9,7 @@
   "base_sha": "a0c7cdd5a77bcd7b79fd21a5ac4e51bef9900cb4",
   "head_sha": "44e872b0620dfb0f276cfabdf7d49bcf8504ed12",
   "files_changed": [
-    "scripts/test_production_business_risk_gate.py",
-    ".agent/work/3826/3/contract.json",
-    ".agent/work/3826/3/completion.json"
+    "scripts/test_production_business_risk_gate.py"
   ],
   "db_reads": [],
   "db_writes": [],

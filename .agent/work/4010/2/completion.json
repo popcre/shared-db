@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 4010,
+  "outcome": "ready-for-merge",
+  "pr": 4013,
+  "migration_versions": [
+    "20261006221513"
+  ],
+  "contract_ref": "refs/db-contracts/4010/2",
+  "contract_sha256": "84a0287d47246874b4752666cb67b6b9ccb0bc460821ec51c098e99146456eee",
+  "base_sha": "f4e7cd25705dcef16120eaf1bcf4a83bc9f1fd6a",
+  "head_sha": "5d968cc7fec5dc8251b27467236756f53777323e",
+  "files_changed": [
+    ".github/live-proofs/4010.sql",
+    "supabase/migrations/20261006221513_repoint_designflow_artist_parent_fks.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs --issue 4010",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "python3 /tmp/4010-sql-smoke.py",
+      "exit_code": 0,
+      "evidence": "Enforcement and rows/access preserved; each destination orphan and changed original action refuses atomically."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "28passed including allcommittedprobes singleSQLstatement and exact passed field."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh production originals match guards; three mapped destination orphan counts0. Tracking cluster and separate HTS connection intentionally preserved.",
+    "Manager safely superseded unapplied version20261006205745 with20261006221513 after another main migration advanced; old reservation remains immutable. All checks re-proved on refreshed main; SQL unchanged except version metadata."
+  ],
+  "stop_conditions_hit": []
+}

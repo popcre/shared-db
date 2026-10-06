@@ -4,9 +4,9 @@
   "outcome": "ready-for-merge",
   "pr": 3999,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3536/312",
-  "contract_sha256": "227c4acfebc09e3479866cf23ed77434f917d2e519496eab9b74716e56a64bad",
-  "head_sha": "86d99c0f61960a8a871733be3573a87ba0f4b0b9",
+  "contract_ref": "refs/db-contracts/3536/314",
+  "contract_sha256": "72da00ff07d925191e688c536be180ac7ea14016012c8faffa04b2c6f3dfdaef",
+  "head_sha": "7b3f17b4321611234b84a6f4b9b005fe69c71ec1",
   "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
   "files_changed": [
     "config/orchestrator-global-invalidators-v1.json",
@@ -28,7 +28,7 @@
     {
       "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
       "exit_code": 0,
-      "evidence": "Exact required invocation895 tests894PASS1existingplatformskip0FAIL; protected replacement retry, no ref writes, original failure-window readback, actual continuation bindings and cap negatives covered."
+      "evidence": "Exact required invocation903 tests902 PASS1 existing platform skip0 FAIL. Includes real Git public IO main-context/offset/reset, source-equivalent rewrite, custom/foreign/conflict refusal and bounded history proof."
     },
     {
       "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
@@ -47,7 +47,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Two total paid attempts apply per unchanged implementation and independent slot; substantive byte changes require fresh mandatory review. No issue/evidence/empty/main-only reset.",
+    "Two paid attempts per unchanged author-owned implementation and mandatory independent slot. Protected-main context/offset, evidence, empty, issue rebinding, net revert and source-equivalent rewrite never reset. Substantive reset requires complete clean protected-main merge provenance plus surviving author-owned single-parent source edit; unknown/conflict/custom/foreign/octopus/rewritten differing/missing/1000-boundary refuses capacity.",
     "Same-content repaired-cause reset remains refused without supported exact authority.",
     "Protected original receipt plus companion retains generated DeepSeek continuation.",
     "Provider pause uses original immutable failure timestamp and verifies actual supported protected store readback; stronger holds retained, expired historical replay does not create a fresh pause.",

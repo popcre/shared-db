@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generation": 312,
+  "generation": 314,
   "work_issue": 3536,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Bound paid reviewer rounds and prevent repeat new paid launches while preserving supported exact-source persistent continuation and monotonic cause-bound failure pauses. Include truthful source call-site inventory, imported-helper invalidator coverage and faithful scoped Git wire-fixture behavior. Classify new GitHub IO read hooks and the forbidden provider-pause mutation in the strict read-only hygiene fixture. Preserve actual public-module inventory and explicitly refuse provider-pause mutation from read-only hygiene; retain no-write exact immutable replacement pause repair.",
+  "goal": "Prevent main-context and source-equivalent Git refreshes from resetting paid review capacity. Preserve strict review equivalence separately; require complete bounded clean protected-main merge provenance and surviving author-owned source edits before any substantive reset.",
   "base_sha": "021378fd2707c2d7c278417f2bac8da65cc04e59",
   "dispatcher": "Codex coordinator authorized complete overall plan",
   "worker": "Codex reviewer breaker subagent",
@@ -32,7 +32,9 @@
     "scripts/queue-hygiene-report.mjs",
     "scripts/manage-migration-author-lanes-surface.test.mjs",
     ".agent/work/3536/312/contract.json",
-    ".agent/work/3536/312/completion.json"
+    ".agent/work/3536/312/completion.json",
+    ".agent/work/3536/314/contract.json",
+    ".agent/work/3536/314/completion.json"
   ],
   "file_writes": [
     "scripts/manage-migration-author-lanes.mjs",
@@ -56,7 +58,9 @@
     "scripts/queue-hygiene-report.mjs",
     "scripts/manage-migration-author-lanes-surface.test.mjs",
     ".agent/work/3536/312/contract.json",
-    ".agent/work/3536/312/completion.json"
+    ".agent/work/3536/312/completion.json",
+    ".agent/work/3536/314/contract.json",
+    ".agent/work/3536/314/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -74,16 +78,19 @@
   ],
   "assumptions": [
     "Existing immutable started markers and substantive diff proof are authoritative",
-    "Same-content repair reset remains refused until trusted cause-specific supported proof exists"
+    "Same-content repair reset remains refused until trusted cause-specific supported proof exists",
+    "Local Git merge-tree may create unreferenced cache objects; no refs or source files are mutated.",
+    "Only internally derived exact Git provenance can reset budget; request fields and doctor text cannot authorize reset."
   ],
   "stop_conditions": [
     "Stop on unreadable started evidence or content comparison",
     "Stop on third paid attempt for unchanged review content",
-    "Stop if supported persistent continuation cannot be preserved with trusted exact-source evidence"
+    "Stop if supported persistent continuation cannot be preserved with trusted exact-source evidence",
+    "Refuse capacity for conflicting/custom/foreign/octopus merges, rewritten differing source, missing history, or the 1000-row boundary."
   ],
   "evidence_parent": {
     "work_issue": 3536,
-    "generation": 311,
-    "contract_sha256": "55cc954d07588cfa455857f914d1464f3a71a92203ae5efaf389a513f819bdce"
+    "generation": 313,
+    "contract_sha256": "6be59cf9df06493700211c401fee8e3001ae3bf126f3488d2f577af2f8041c36"
   }
 }

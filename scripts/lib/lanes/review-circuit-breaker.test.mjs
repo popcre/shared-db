@@ -1,15 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { paidStart, assertPaidReviewCapacity, pauseActualReviewFailure } from './review-circuit-breaker.mjs'
+import { paidStart, assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof } from './review-circuit-breaker.mjs'
 const head='a'.repeat(40), next='b'.repeat(40), digest='c'.repeat(64)
 const request={issue:3536,pr:4000,headSha:head,slot:1}
 function row(seq=1,h=head,slot=1){return{ref:`refs/db-review-started/3536-4000-${h}-slot${slot}-seq${seq}`,sha:String(seq).padStart(40,'0')}}
 function message(seq=1,h=head,slot=1){return`db-coordination review-started issue=3536 pr=4000 head=${h} slot=${slot} sequence=${seq} reviewer=glm-5.3 at=2026-10-06T18:00:00.000Z`}
-function io(rows){return{listRefs:()=>rows,getCommit:sha=>({message:message(Number(sha))}),reviewContentComparison:()=>({before:digest,after:digest})}}
+function io(rows){return{listRefs:()=>rows,getCommit:sha=>({message:message(Number(sha))}),reviewContentComparison:()=>({before:digest,after:digest,budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'unchanged'}})}}
 test('zero and one paid attempts retain capacity',()=>{assert.equal(assertPaidReviewCapacity(request,io([])).remaining,2);assert.equal(assertPaidReviewCapacity(request,io([row()])).remaining,1)})
 test('third paid draw refuses unchanged exact head',()=>assert.throws(()=>assertPaidReviewCapacity(request,io([row(),row(2)])),/third draw refused/))
 test('evidence-only or empty-head refresh cannot reset cap',()=>assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},io([row(),row(2)])),/third draw refused/))
-test('substantive byte change starts another round',()=>{const x=io([row(),row(2)]);x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64)});assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2)})
+test('substantive byte change starts another round',()=>{const x=io([row(),row(2)]);x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64),budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'substantive',historyCount:1}});assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2)})
 test('unknown, malformed and failed comparison cannot reset',()=>{for(const proof of [null,{before:'unknown',after:digest}]){const x=io([row(),row(2)]);x.reviewContentComparison=()=>proof;assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/proof unreadable/)}const x=io([row()]);x.reviewContentComparison=()=>{throw Error('fetch failed')};assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/fetch failed/)})
 test('independent slots have separate paid caps',()=>{const x=io([row(1,head,2),row(2,head,2)]);x.getCommit=sha=>({message:message(Number(sha),head,2)});assert.equal(assertPaidReviewCapacity(request,x).remaining,2)})
 test('tampered scope, time or record refuses',()=>{for(const text of [message().replace('pr=4000','pr=4001'),message().replace('2026-10-06T18:00:00.000Z','unknown'),'PASS doctor repaired'])assert.throws(()=>paidStart(row(),{message:text}),/binding mismatch|unrecognized/)})
@@ -50,7 +50,7 @@ test('inline replacement pauses actual failed provider using immutable self fail
 
 test('all historical substantive comparisons share one operation base context',()=>{
  const x=io([row(),row(2)]);let shared,calls=0
- x.reviewContentComparison=(before,after,pr,context)=>{calls++;if(shared)assert.equal(context,shared);else shared=context;return{before:digest,after:'d'.repeat(64)}}
+ x.reviewContentComparison=(before,after,pr,context)=>{calls++;if(shared)assert.equal(context,shared);else shared=context;return{before:digest,after:'d'.repeat(64),budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'substantive',historyCount:1}}}
  assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2);assert.equal(calls,2)
 })
 
@@ -67,4 +67,81 @@ test('provider pause refuses unknown immutable timestamp and reports expired ori
 test('exact row ceiling and malformed PR cannot be accepted as complete paid history',()=>{
  assert.throws(()=>assertPaidReviewCapacity(request,io(Array.from({length:1000},()=>row()))),/may be truncated/)
  for(const pr of [NaN,'4000',0,-1])assert.throws(()=>assertPaidReviewCapacity({...request,pr},io([])),/exact positive PR/)
+})
+
+import {execFileSync} from 'node:child_process'
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import path from 'node:path'
+function realGitFixture(t) {
+ const dir=mkdtempSync(path.join(tmpdir(),'review-budget-git-'));t.after(()=>rmSync(dir,{recursive:true,force:true}))
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']})
+ git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test'])
+ const commit=(file,text)=>{writeFileSync(path.join(dir,file),text);git(['add',file]);git(['commit','-qm','fixture']);return git(['rev-parse','HEAD']).trim()}
+ const base=commit('app.txt','context\nseparator1\nseparator2\nseparator3\nauthor\nend\n');git(['switch','-qc','feature'])
+ const before=commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ return {git,commit,base,before,dir}
+}
+test('real Git main-context merge retains two spent attempts despite changed review context',t=>{
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ f.git(['switch','feature']);f.git(['merge','-qm','main refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
+ const proof=derivePaidContentProof(f.before,after,main,f.git)
+ assert.equal(proof.kind,'unchanged')
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),/third draw refused/)
+})
+test('real Git genuine author fix resets while net revert and empty commits retain budget',t=>{
+ const f=realGitFixture(t);const changed=f.commit('app.txt','context\nrepaired\nend\n')
+ assert.equal(derivePaidContentProof(f.before,changed,f.base,f.git).kind,'substantive')
+ const reverted=f.commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ assert.equal(derivePaidContentProof(f.before,reverted,f.base,f.git).kind,'unchanged')
+ f.git(['commit','--allow-empty','-qm','empty']);assert.equal(derivePaidContentProof(f.before,f.git(['rev-parse','HEAD']).trim(),f.base,f.git).kind,'unchanged')
+})
+test('real Git foreign feature merge and rewritten differing history refuse reset',t=>{
+ const f=realGitFixture(t);f.git(['switch','-qc','foreign',f.base]);f.commit('foreign.txt','foreign source')
+ f.git(['switch','feature']);f.git(['merge','-qm','foreign merge','foreign']);const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.base,f.git),/foreign merge/)
+ f.git(['switch','-qc','rewritten',f.base]);const rewritten=f.commit('app.txt','context\nother fix\nend\n')
+ assert.throws(()=>derivePaidContentProof(f.before,rewritten,f.base,f.git),/provenance refused/)
+})
+
+test('real Git evidence-only changes retain count and missing proof cannot reset',t=>{
+ const f=realGitFixture(t);const evidence=f.commit('evidence.json','evidence')
+ assert.equal(derivePaidContentProof(f.before,evidence,f.base,f.git,['evidence.json']).kind,'unchanged')
+ const x=io([row(),row(2)]);x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64),doctor:'PASS'})
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/provenance proof unreadable/)
+})
+test('complete bounded history refuses the 1000 boundary',t=>{
+ const f=realGitFixture(t);const changed=f.commit('app.txt','substantive')
+ const git=args=>args[0]==='rev-list'&&args.includes('--max-count=1000')?Array.from({length:1000},(_,i)=>i===999?f.before:changed).join('\n'):f.git(args)
+ assert.throws(()=>derivePaidContentProof(f.before,changed,f.base,git),/complete first-parent ancestry/)
+})
+
+test('production public Git IO derives budget proof from a real clean main-only merge',t=>{
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','new context\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ f.git(['switch','feature']);f.git(['merge','-qm','refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
+ f.git(['remote','add','origin',f.dir])
+ const moduleUrl=new URL('../../manage-migration-author-lanes.mjs',import.meta.url).href
+ const script=`import {githubIo} from ${JSON.stringify(moduleUrl)};const p=githubIo.reviewContentComparison(${JSON.stringify(f.before)},${JSON.stringify(after)},4000,{base:${JSON.stringify(main)}});console.log(JSON.stringify(p))`
+ const proof=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',script],{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}))
+ assert.equal(proof.budgetProof.kind,'unchanged');assert.equal(proof.budgetProof.before,f.before);assert.equal(proof.budgetProof.after,after)
+})
+
+test('real Git source-equivalent rewrite preserves count while a custom merge refuses',t=>{
+ const f=realGitFixture(t)
+ f.git(['switch','-qc','equivalent',f.base]);const equivalent=f.commit('app.txt','context\nseparator1\nseparator2\nseparator3\nfixed\nend\n')
+ assert.equal(derivePaidContentProof(f.before,equivalent,f.base,f.git).kind,'unchanged')
+ f.git(['switch','main']);const main=f.commit('main-only.txt','main offset')
+ f.git(['switch','feature']);f.git(['merge','--no-commit','main']);writeFileSync(path.join(f.dir,'custom.txt'),'custom merge source');f.git(['add','custom.txt']);f.git(['commit','-qm','custom merge'])
+ const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,main,f.git),/noncanonical/)
+})
+test('real Git offset-only main merge preserves count, but conflicting main ancestry refuses',t=>{
+ const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nseparator3\nauthor\nend\n')
+ f.git(['switch','feature']);f.git(['merge','-qm','offset refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
+ assert.equal(derivePaidContentProof(f.before,after,main,f.git).kind,'unchanged')
+ f.git(['switch','main']);const conflict=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nseparator3\nmain conflicting edit\nend\n')
+ f.git(['switch','feature']);assert.throws(()=>f.git(['merge','--no-commit','main']))
+ writeFileSync(path.join(f.dir,'app.txt'),'manual conflicting resolution');f.git(['add','app.txt']);f.git(['commit','-qm','resolved conflict']);const resolved=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,resolved,conflict,f.git),/provenance refused/)
 })

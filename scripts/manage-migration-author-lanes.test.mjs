@@ -11133,9 +11133,9 @@ test('assignment refuses third paid draw after evidence-only head change, but su
     const sha=io.makeOwnerCommit(`db-coordination review-started issue=1767 pr=1800 head=${priorHead} slot=1 sequence=${sequence} reviewer=glm-5.3 at=2026-10-06T18:00:00Z`)
     io.refs.set(reviewStartedMarkerRef({...request,headSha:priorHead,sequence}),sha)
   }
-  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'c'.repeat(64)})
+  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'c'.repeat(64),budgetProof:{schema:1,before:'b'.repeat(40),after:request.headSha,protectedMain:'f'.repeat(40),kind:'unchanged'}})
   assert.throws(()=>assignNextReviewer(request,io),/third draw refused/)
-  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'d'.repeat(64)})
+  io.reviewContentComparison=()=>({before:'c'.repeat(64),after:'d'.repeat(64),budgetProof:{schema:1,before:'b'.repeat(40),after:request.headSha,protectedMain:'f'.repeat(40),kind:'substantive',historyCount:1}})
   assert.ok(assignNextReviewer(request,io).reviewer)
 })
 

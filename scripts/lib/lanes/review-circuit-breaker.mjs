@@ -1,4 +1,5 @@
 // Owner: reviewer assignment lane. Immutable start records bound paid rounds.
+import { readStoredHashRegistry, normalizedStoredHashFile } from '../pr-content-equivalence.mjs'
 import { LaneError } from './claims.mjs'
 import { REVIEW_STARTED_REF_PREFIX, REVIEW_REF_ROW_LIMIT } from './constants.mjs'
 import { parseTerminalFailureEvidence } from './review-replacement.mjs'
@@ -22,6 +23,47 @@ export function paidStart(row, commit) {
   throw new LaneError('review circuit breaker: unrecognized or unreadable start evidence')
 }
 
+// Budget provenance is separate from strict review-diff equivalence. Git may
+// write unreferenced merge-tree cache objects, never refs or source files.
+export function derivePaidContentProof(before, after, protectedMain, git, excludePaths = []) {
+  const sha = /^[0-9a-f]{40}$/
+  if (![before,after,protectedMain].every(x=>sha.test(x))) throw new LaneError('review budget Git scope unreadable')
+  const run = args => String(git(args)).trim()
+  const ancestor = (a,b) => { try { run(['merge-base','--is-ancestor',a,b]); return true } catch (error) { if(error?.status===1)return false;throw error } }
+  const registry=readStoredHashRegistry(protectedMain,{gitRunner:git})
+  const stored=[...new Set(registry.map(entry=>entry.file))]
+  const paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
+  const equal = (a,b) => run(['diff','--name-only',a,b,'--',...paths]) === '' && stored.every(file=>normalizedStoredHashFile(a,file,registry,{gitRunner:git})===normalizedStoredHashFile(b,file,registry,{gitRunner:git}))
+  const merge = (a,b) => {
+    if (ancestor(b,a)) return run(['rev-parse',`${a}^{tree}`])
+    const tree = run(['merge-tree','--write-tree',a,b])
+    if (!sha.test(tree)) throw new LaneError('review budget automatic merge proof unreadable')
+    return tree
+  }
+  try {
+    const incorporatedMain = run(['merge-base',after,protectedMain])
+    if (!sha.test(incorporatedMain)) throw new LaneError('review budget protected main ancestry unreadable')
+    const expected = merge(before,incorporatedMain)
+    if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged'}
+    const rows = run(['rev-list','--first-parent','--max-count=1000',after]).split('\n')
+    const index = rows.indexOf(before)
+    if (rows.length >= 1000 || index < 0) throw new LaneError('review budget complete first-parent ancestry unavailable')
+    let authored = false
+    for (const commit of rows.slice(0,index)) {
+      const parents = run(['rev-list','--parents','-n','1',commit]).split(' ').slice(1)
+      if (parents.length === 2) {
+        if (!ancestor(parents[1],protectedMain) || !equal(merge(...parents),commit)) throw new LaneError('review budget noncanonical or foreign merge refused')
+      } else if (parents.length === 1) {
+        if (!ancestor(commit,protectedMain) && !equal(parents[0],commit)) authored = true
+      } else throw new LaneError('review budget ambiguous merge provenance refused')
+    }
+    if (!authored) throw new LaneError('review budget surviving author source edit unavailable')
+    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index}
+  } catch (error) {
+    throw new LaneError(`review budget Git provenance refused: ${String(error?.message??error).split('\n')[0]}`)
+  }
+}
+
 export function assertPaidReviewCapacity(request, io) {
   if(!Number.isInteger(request.pr)||request.pr<1||!Number.isInteger(request.slot)||request.slot<1)throw new LaneError('review circuit breaker: exact positive PR and slot required')
   const prefix=`${REVIEW_STARTED_REF_PREFIX}/`
@@ -37,7 +79,10 @@ export function assertPaidReviewCapacity(request, io) {
       if (typeof io.reviewContentComparison !== 'function') throw new LaneError('review circuit breaker: substantive content comparison unavailable')
       const comparison=io.reviewContentComparison(start.headSha,request.headSha,request.pr,comparisonContext)
       if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
-      same=comparison.before === comparison.after
+      const proof=comparison.budgetProof
+      if(!proof || proof.schema!==1 || proof.before!==start.headSha || proof.after!==request.headSha || !/^[0-9a-f]{40}$/.test(proof.protectedMain??'') || !['unchanged','substantive'].includes(proof.kind)) throw new LaneError('review circuit breaker: author-owned Git provenance proof unreadable')
+      if(proof.kind==='substantive' && (!Number.isInteger(proof.historyCount)||proof.historyCount<1||proof.historyCount>=1000)) throw new LaneError('review circuit breaker: complete substantive history proof unreadable')
+      same=proof.kind==='unchanged'
     }
     if(same) count++
   }

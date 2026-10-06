@@ -33,7 +33,7 @@ import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './hi
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
-import { assertPaidReviewCapacity, pauseActualReviewFailure } from './lib/lanes/review-circuit-breaker.mjs'
+import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof } from './lib/lanes/review-circuit-breaker.mjs'
 import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
 import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
@@ -741,7 +741,8 @@ export const githubIo = {
     if(!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: exact protected comparison base unreadable')
     execFileSync('git',['fetch','--no-tags','-q','origin',before,after,base],{stdio:['ignore','pipe','pipe']})
     const excludePaths=verifiedEvidencePaths(before,after)
-    return {before:prContentDigest(before,base,{excludePaths}),after:prContentDigest(after,base,{excludePaths})}
+    const budgetProof=derivePaidContentProof(before,after,base,args=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}),excludePaths)
+    return {before:prContentDigest(before,base,{excludePaths}),after:prContentDigest(after,base,{excludePaths}),budgetProof}
   },
   contentPreservingRefresh(approvedHead,head,pr=null,context=null,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})){
     const key=`${Number(pr)}:${String(head).toLowerCase()}`

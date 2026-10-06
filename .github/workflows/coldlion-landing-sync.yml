@@ -7,15 +7,15 @@
 #
 # Since issue #3179 the same run also refreshes coldlion.prepack_detail: it
 # re-harvests the prepackCode population from the tables landed above and re-asks
-# every code, so recipe edits and removals are observed. The initial bounded
-# backfill lives in coldlion-prepack-backfill.yml, manual dispatch only.
+# every code, so recipe edits and removals are observed. Bounded recovery is retained
+# in this workflow through the prepack-backfill operation, manual dispatch only.
 #
 # Since issue #3180 the same run also refreshes coldlion.prod_detail, AFTER the
 # history step of this same job, so the orders landed moments ago are immediately
 # eligible for /proddetails: it fetches every order with no SUCCEEDED run yet,
 # then re-reads recently-observed ones — the same trailing-window philosophy as
 # the history re-read above it. The initial bounded backfill lives in
-# coldlion-prod-detail-backfill.yml, manual dispatch only.
+# the prod-detail-backfill operation here, manual dispatch only.
 #
 # Since issue #3903 the job also refreshes the Item Master (plm.item) from the
 # ColdLion /items sweep through plm.import_item_master_data, in its OWN step before
@@ -54,6 +54,24 @@ on:
     - cron: '20 5 * * *'
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Daily refresh or bounded manual recovery"
+        type: choice
+        options: [refresh, prepack-backfill, prod-detail-backfill]
+        default: refresh
+      backfill_limit:
+        description: "Recovery key limit (prepack default 150; production detail default 1000)"
+        required: false
+      pause_ms:
+        description: "Prepack recovery request pause, minimum 250 milliseconds"
+        default: "3000"
+      from:
+        description: "Production detail recovery first-observed cutoff (YYYY-MM-DD)"
+        required: false
+      reconcile:
+        description: "Prepack read-only reconciliation"
+        type: boolean
+        default: false
       windows:
         description: 'How many recent 7-day windows to re-read'
         required: false
@@ -85,6 +103,7 @@ concurrency:
 
 jobs:
   sync:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'refresh'
     name: Sync Item Master, masters and recent history windows
     runs-on: blacksmith-2vcpu-ubuntu-2404
     # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
@@ -174,3 +193,98 @@ jobs:
           # (the vendor agreement) and bounds this step at ~33 minutes.
           PROD_DETAIL_ARGS+=(--pause-ms 1000)
           node tools/coldlion-landing/sync-prod-details.mjs "${PROD_DETAIL_ARGS[@]}"
+
+  prepack-backfill:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'prepack-backfill'
+    name: Backfill prepack detail codes
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-prepack.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Backfill
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.backfill_limit }}
+          PAUSE_MS: ${{ github.event.inputs.pause_ms }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          RECONCILE: ${{ github.event.inputs.reconcile }}
+        run: |
+          set -euo pipefail
+          ARGS=(--limit "${LIMIT:-150}" --pause-ms "${PAUSE_MS:-3000}")
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+          if [ "${RECONCILE:-false}" = "true" ]; then ARGS=(--reconcile); fi
+          node tools/coldlion-landing/sync-prepack-detail.mjs "${ARGS[@]}"
+
+  prod-detail-backfill:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'prod-detail-backfill'
+    name: Backfill production detail
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-prod-details.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Backfill
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          LIMIT: ${{ github.event.inputs.backfill_limit }}
+          FROM: ${{ github.event.inputs.from }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=(--mode backfill --limit "${LIMIT:-1000}")
+          if [ -n "${FROM:-}" ]; then
+            printf '%s' "$FROM" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
+              || { echo "::error::from must be YYYY-MM-DD."; exit 1; }
+            ARGS+=(--from "$FROM")
+          fi
+          if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+          node tools/coldlion-landing/sync-prod-details.mjs "${ARGS[@]}"

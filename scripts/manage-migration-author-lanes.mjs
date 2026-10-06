@@ -1780,7 +1780,8 @@ export function reviewLeaseStillHeld(request,io=githubIo){
   const busy=findBusyReviewers(reviewOperationIo(io),[],{keepUnreadableLeases:true})
   if(!busy)throw new LaneError('active reviewer leases are unreadable; review start refused')
   // Returns the exact held lease (with its draw sequence) or null.
-  const hit=[...(busy.byAssignment?.values()??[])].find(({lease})=>Number(lease.issue)===Number(request.issue)&&Number(lease.pr)===Number(request.pr)&&String(lease.headSha).toLowerCase()===String(request.headSha).toLowerCase()&&Number(lease.slot??1)===Number(request.slot??1)&&(!request.reviewer||lease.reviewer===request.reviewer)&&(request.sequence===undefined||Number(lease.sequence)===Number(request.sequence)))
+  const staleRefs=new Set((busy.stale??[]).map((row)=>row.ref))
+  const hit=[...(busy.byAssignment?.values()??[])].find(({lease,ref})=>!staleRefs.has(ref)&&Number(lease.issue)===Number(request.issue)&&Number(lease.pr)===Number(request.pr)&&String(lease.headSha).toLowerCase()===String(request.headSha).toLowerCase()&&Number(lease.slot??1)===Number(request.slot??1)&&(!request.reviewer||lease.reviewer===request.reviewer)&&(request.sequence===undefined||Number(lease.sequence)===Number(request.sequence)))
   return hit?{...hit.lease,slot:Number(hit.lease.slot??1)}:null
 }
 export function reviewerStartWatchLeases(io=githubIo,now=new Date(),minAgeHours=UNSTARTED_MIN_AGE_HOURS){return withReviewRequestBudget(()=>reviewerStartWatchLeasesOperation(reviewOperationIo(io),now,minAgeHours),REVIEW_CAPACITY_REQUEST_LIMIT)}
@@ -2302,7 +2303,9 @@ export function transferClaimAuthor(options,now=new Date(),io=githubIo){
     const claim=io.getIssue(request.claim),lease=parseAuthorLease(claim?.body??'',now)
     if(claim?.state!=='open'||workstreamKey(claim.title)!==`#${request.issue}`)throw new LaneError('claim is not open for the exact work issue')
     const adopted=allowAdopted&&lease.owner===request.newOwner&&lease.worktree===request.targetWorktree
-    if(lease.legacy||(!adopted&&(lease.owner!==request.oldOwner||lease.worktree!==request.oldWorktree||lease.capacityState!=='expired-unconfirmed'))||lease.branch!==request.branch)throw new LaneError('claim is not the exact expired old-author lease')
+    const quarantined=lease.capacityState==='relinquished'&&!lease.active&&!lease.relinquishmentMetadataLegacy
+    if(lease.legacy||(!adopted&&(lease.owner!==request.oldOwner||lease.worktree!==request.oldWorktree||(lease.capacityState!=='expired-unconfirmed'&&!quarantined)))||lease.branch!==request.branch)throw new LaneError('claim is not the exact expired old-author lease')
+    if(!adopted&&quarantined&&(lease.blockedOn!==proofOptions.blockedOn||lease.worktreeState!==request.oldWorktreeState||(lease.recoveryArtifact&&lease.recoveryArtifact!==request.recoveryArtifact)))throw new LaneError('quarantined claim does not match the exact abandonment blocker, worktree state or recovery artifact')
     assertClaimNotRetired(lease.version,'transferred',io)
     const issue=io.getIssue(request.issue)
     renewalIssueScope(issue,lease,[request.issue],{allowClaimSuperset:true})
@@ -2352,10 +2355,10 @@ export function transferClaimAuthor(options,now=new Date(),io=githubIo){
     }
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     beforeBody=fresh.claim.body
-    const newBody=replaceLeaseAuthor(fresh.claim.body,request.newOwner,request.targetWorktree,new Date(now.valueOf()+request.leaseHours*3600000))
+    const newBody=replaceLeaseAuthor(replaceCapacityState(fresh.claim.body,'active'),request.newOwner,request.targetWorktree,new Date(now.valueOf()+request.leaseHours*3600000))
     bodyChanged=true;io.updateIssue(request.claim,{body:newBody})
     const after=io.getIssue(request.claim),newLease=parseAuthorLease(after?.body??'',now)
-    if(after?.body!==newBody||newLease.owner!==request.newOwner||newLease.worktree!==request.targetWorktree||newLease.version!==fresh.lease.version||newLease.branch!==request.branch||JSON.stringify(newLease.objects)!==JSON.stringify(fresh.lease.objects))throw new LaneError('author transfer claim readback failed')
+    if(after?.body!==newBody||newLease.owner!==request.newOwner||newLease.worktree!==request.targetWorktree||newLease.version!==fresh.lease.version||newLease.branch!==request.branch||JSON.stringify(newLease.objects)!==JSON.stringify(fresh.lease.objects)||!newLease.active||!newLease.capacityActive||newLease.capacityState!=='active')throw new LaneError('author transfer claim readback failed')
     if(io.readRef(`refs/db-claims/${fresh.lease.version}`)!==fresh.reservationSha||!io.getCommit(fresh.reservationSha))throw new LaneError('permanent version reservation changed after adoption')
     requireOwnedRef(MUTEX_REF,ownerSha,io)
     return {claim:request.claim,version:fresh.lease.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:transferSha,idempotent:false}
@@ -2449,7 +2452,7 @@ export function releaseFailedReviewer(options,io=githubIo){
     if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer release refused before mutex acquisition')
     const state=preflightBusy.states?.get(`${request.issue}:${request.pr}`),issueRow=state?.issue??io.getIssue(request.issue),prRow=state?.pr??io.getPr(request.pr)
     const superseded=String(options.failureCode)===REVIEW_TARGET_SUPERSEDED
-    if(superseded){if(!reviewTargetSuperseded(prRow,request.headSha))throw new LaneError(`${REVIEW_TARGET_SUPERSEDED} requires proof the review target moved: PR #${request.pr} must be closed or its open head must differ from ${request.headSha}. The recorded head is still the open PR head, so this is not a superseded target.`)}
+    if(superseded){if(!reviewTargetSuperseded(prRow,request.headSha,request,io))throw new LaneError(`${REVIEW_TARGET_SUPERSEDED} requires proof the review target moved: PR #${request.pr} must be closed or its open head must differ from ${request.headSha}. The recorded head is still the open PR head, so this is not a superseded target.`)}
     else if(!reviewIssueEligible(issueRow,prRow,io)||!reviewTargetEligible(prRow,io)||prRow?.head?.sha!==request.headSha)throw new LaneError('reviewer release requires the exact eligible PR head')
     if(hasVerdictForHead(request.issue,request.pr,request.headSha,io,{slot:request.slot}))throw new LaneError('an existing verdict for the exact head forbids reviewer release. That verdict is the authorization of record; do not delete, forge, or replace it. If the reviewer that wrote it is only quarantined (not retired), clear the quarantine with ai-review-preflight clear (or requalify) so the existing exact-head verdict counts again.')
     const cached=activeLeaseRecordForAssignment(preflightBusy,{...original,slot:request.slot}),leaseRefForRelease=resolveAssignmentLeaseRef({...original,slot:request.slot},Boolean(io.requiresExactReviewHeadSha),io,preflightBusy),failedLeaseSha=cached?.sha??io.readRef(leaseRefForRelease),failedLease=failedLeaseSha?(cached?.sha===failedLeaseSha?cached.lease:parseReviewLease(io.getCommit(failedLeaseSha))):null
@@ -2478,7 +2481,7 @@ export function releaseFailedReviewer(options,io=githubIo){
     try{
       requireReviewWireCapacity(8);acquireReviewMutex(ownerSha,io);acquired=true;requireOwnedRef(MUTEX_REF,ownerSha,io)
       const freshStates=io.readReviewStates([original]),fresh=freshStates?.get(`${request.issue}:${request.pr}`)
-      if((superseded?!reviewTargetSuperseded(fresh?.pr,request.headSha):(!reviewIssueEligible(fresh?.issue,fresh?.pr,io)||!reviewTargetEligible(fresh?.pr,io)||fresh?.pr?.head?.sha!==request.headSha))||hasVerdictForHead(request.issue,request.pr,request.headSha,io,{fresh:true,slot:request.slot}))throw new LaneError('reviewer release issue, PR head, or verdict changed after mutex acquisition')
+      if((superseded?!reviewTargetSuperseded(fresh?.pr,request.headSha,request,io):(!reviewIssueEligible(fresh?.issue,fresh?.pr,io)||!reviewTargetEligible(fresh?.pr,io)||fresh?.pr?.head?.sha!==request.headSha))||hasVerdictForHead(request.issue,request.pr,request.headSha,io,{fresh:true,slot:request.slot}))throw new LaneError('reviewer release issue, PR head, or verdict changed after mutex acquisition')
       const locked=io.readReviewRefs([MUTEX_REF,failureRef,leaseRefForRelease])
       if(locked.get(MUTEX_REF)!==ownerSha||locked.get(failureRef)!==null||locked.get(leaseRefForRelease)!==failedLeaseSha)throw new LaneError('reviewer release ownership changed after preflight')
       io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},{ref:failureRef,expected:null,sha:failureSha},{ref:leaseRefForRelease,expected:failedLeaseSha,sha:null}])

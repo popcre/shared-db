@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3989,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/1",
+  "contract_sha256": "e9dc79052b6837bf34dff3d8636b71c634b416cdbbeb8e64e9ae16acd646e15a",
+  "head_sha": "1ae067d3fd9d2b57ee0df392b47ccea280e7a191",
+  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "files_changed": [
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-required-checks-preflight.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "59 passed, 0 failed, 0 skipped at implementation head 1ae067d3fd9d2b57ee0df392b47ccea280e7a191"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=91 derived_digest=6cd8ed349351"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 was published before the initial reporter; generation 2 was published before the second-review remediation and is the only pair in this PR net diff.",
+    "The reporter truth statement now has one hand-reviewed disposition with a substantive reason; the catalogue is delivered rather than silently retired.",
+    "The existing read-only drift workflow runs the reporter test beside its producer tests; no schedule, token, database query, or production action changed.",
+    "Issue #2508 remains an open non-orchestrator production drift alarm; no production apply or database write occurred.",
+    "The producer-guaranteed merged/applied count identity is now asserted; a truncated gap list exits UNKNOWN instead of printing a clean ledger. This followed the approved review\u2019s NEW-1 finding and has a CLI regression test.",
+    "Content-preserving refresh rebased the evidence pair on main 8b35d64e10ab351909aa434d1840acd6b5cb5e98; implementation head ff79cc48fc8fa79e12ae560631bc56cd79063e27 retains the byte-identical non-evidence PR diff reviewed at d03af918b6e59f2af37b59bc33718b71d0ccde7a.",
+    "Content-preserving refresh after PR #3521 merged; main ede14870e913eb11b103b268b3d9a5f39430fbeb, implementation head b6a419baa8d7af7f82f9b2e97d5912ef19bedf9e, reviewed non-evidence PR diff retained."
+  ],
+  "stop_conditions_hit": [],
+  "assumptions_verified": [
+    "Stage A changes no workflows or live required contexts; prospective contract was published after discarding uncommitted prototype and before implementation."
+  ]
+}

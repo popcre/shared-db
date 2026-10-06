@@ -7,8 +7,8 @@
     "repository": "popcre/shared-db",
     "branch": "main",
     "base_sha": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3",
-    "capturedIso": "2026-10-06T19:25:36.149Z",
-    "revision": "c5ba860454727a9b21fdfadb8ee5770098ab492c6596d524309c59ee2d11259c",
+    "capturedIso": "2026-10-06T20:16:37.891Z",
+    "revision": "b906c41173b3bee4c14bb54ff8d26183d80b68186031faae8f35229b28d1f9c2",
     "sources": {
       "classic": {
         "id": "BPR_kwDOTAehpM4E2ure",
@@ -20,15 +20,13 @@
           "Cross-PR object collision",
           "Destructive SQL outside migrations",
           "Migration guarded merge authorization",
-          "Merge queue gate",
           "Cancelled work guard",
           "Domain ownership",
           "Handoff contract",
           "Intake pointer guard",
           "Migration author lease",
           "Promotion contract tests (offline)",
-          "Tools offline tests",
-          "Queue-sensitive checks (aggregate)"
+          "Tools offline tests"
         ],
         "requiredStatusChecks": [
           {
@@ -57,12 +55,6 @@
           },
           {
             "context": "Migration guarded merge authorization",
-            "app": {
-              "databaseId": 15368
-            }
-          },
-          {
-            "context": "Merge queue gate",
             "app": {
               "databaseId": 15368
             }
@@ -108,12 +100,6 @@
             "app": {
               "databaseId": 15368
             }
-          },
-          {
-            "context": "Queue-sensitive checks (aggregate)",
-            "app": {
-              "databaseId": 15368
-            }
           }
         ]
       },
@@ -145,10 +131,6 @@
         "app_id": 15368
       },
       {
-        "context": "Merge queue gate",
-        "app_id": 15368
-      },
-      {
         "context": "Migration author lease",
         "app_id": 15368
       },
@@ -158,10 +140,6 @@
       },
       {
         "context": "Promotion contract tests (offline)",
-        "app_id": 15368
-      },
-      {
-        "context": "Queue-sensitive checks (aggregate)",
         "app_id": 15368
       },
       {
@@ -180,7 +158,7 @@
   },
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-10-06T19:25:36.149Z",
+  "capturedIso": "2026-10-06T20:16:37.891Z",
   "strict": false,
   "contexts": [
     "Cancelled work guard",
@@ -189,11 +167,9 @@
     "Domain ownership",
     "Handoff contract",
     "Intake pointer guard",
-    "Merge queue gate",
     "Migration author lease",
     "Migration guarded merge authorization",
     "Promotion contract tests (offline)",
-    "Queue-sensitive checks (aggregate)",
     "SQL migration guards",
     "Tools offline tests",
     "supabase/tests against an ephemeral database"
@@ -224,10 +200,6 @@
       "app_id": 15368
     },
     {
-      "context": "Merge queue gate",
-      "app_id": 15368
-    },
-    {
       "context": "Migration author lease",
       "app_id": 15368
     },
@@ -237,10 +209,6 @@
     },
     {
       "context": "Promotion contract tests (offline)",
-      "app_id": 15368
-    },
-    {
-      "context": "Queue-sensitive checks (aggregate)",
       "app_id": 15368
     },
     {

@@ -1,8 +1,8 @@
 {
-  "_why": "Actual pre-change classic required-status-checks readback for issue3987 Stage B initial review. No settings changed; exact prospective after12 is separate. Informational only, not merge authority.",
+  "_why": "Actual post-write classic required-status-checks readback after assigned-reviewed issue3987 Stage B retirement. Informational only, not merge authority.",
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-10-06T19:25:36.149Z",
+  "capturedIso": "2026-10-06T20:16:37.891Z",
   "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
   "strict": false,
   "contexts": [
@@ -12,11 +12,9 @@
     "Domain ownership",
     "Handoff contract",
     "Intake pointer guard",
-    "Merge queue gate",
     "Migration author lease",
     "Migration guarded merge authorization",
     "Promotion contract tests (offline)",
-    "Queue-sensitive checks (aggregate)",
     "SQL migration guards",
     "Tools offline tests",
     "supabase/tests against an ephemeral database"
@@ -47,10 +45,6 @@
       "app_id": 15368
     },
     {
-      "context": "Merge queue gate",
-      "app_id": 15368
-    },
-    {
       "context": "Migration author lease",
       "app_id": 15368
     },
@@ -60,10 +54,6 @@
     },
     {
       "context": "Promotion contract tests (offline)",
-      "app_id": 15368
-    },
-    {
-      "context": "Queue-sensitive checks (aggregate)",
       "app_id": 15368
     },
     {
@@ -79,5 +69,5 @@
       "app_id": 15368
     }
   ],
-  "contextCount": 14
+  "contextCount": 12
 }

@@ -70,7 +70,9 @@ test('the committed mirror equals the dated live readback artifact', () => {
   assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())
   assert.equal(READBACK.contextCount, READBACK.contexts.length)
   assert.equal(MIRROR.strict, READBACK.strict)
-  assert.ok(MIRROR.contexts.includes('Queue-sensitive checks (aggregate)'), 'the restored aggregate context left the mirror')
+  for (const context of QUEUE_ONLY_CONTEXTS) assert.ok(!MIRROR.contexts.includes(context), 'inactive queue-only context must be retired from the actual mirror')
+  assert.equal(READBACK.contextCount, 12)
+  assert.ok(READBACK.checks.every(check => check.app_id === 15368))
 })
 
 // #3562 review M-1: the required context "Destructive SQL outside migrations" must

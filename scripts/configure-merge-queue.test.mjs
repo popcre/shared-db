@@ -185,13 +185,13 @@ function fakeLive({ withRuleset = false } = {}) {
 test('CLI dry run writes nothing; apply posts the exact payload once', () => {
   const { read, treeReader, calls } = fakeLive()
   const logs = []
-  const code = main([], { GITHUB_REPOSITORY: 'acme/widgets' }, { read, treeReader, baselineId: 1, log: (line) => logs.push(line), readOrigin: () => null })
+  const code = main([], { GITHUB_REPOSITORY: 'acme/widgets' }, { read, treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: (line) => logs.push(line), readOrigin: () => null })
   assert.equal(code, 0)
   assert.ok(logs.join('\n').includes('DRY RUN'))
   assert.equal(calls.filter((c) => c.hasInput).length, 0)
 
   const applied = fakeLive()
-  const code2 = main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: applied.read, treeReader: applied.treeReader, baselineId: 1, log: () => {}, readOrigin: () => null })
+  const code2 = main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: applied.read, treeReader: applied.treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: () => {}, readOrigin: () => null })
   assert.equal(code2, 0)
   assert.equal(applied.bodies.length, 1)
   assert.deepEqual(JSON.parse(applied.bodies[0]), JSON.parse(JSON.stringify(desiredRuleset())))
@@ -207,7 +207,7 @@ test('CLI refuses before any write when a gate fails', () => {
     if (target.includes('/git/ref/db-coordination/merge')) return { ref: 'refs/db-coordination/merge' }
     return read(args, options)
   }
-  assert.throws(() => main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: gatedRead, treeReader, baselineId: 1, log: () => {}, readOrigin: () => null }), /mutation lane\(s\) held/)
+  assert.throws(() => main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: gatedRead, treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: () => {}, readOrigin: () => null }), /mutation lane\(s\) held/)
   assert.equal(calls.filter((c) => c.hasInput).length, 0)
 })
 

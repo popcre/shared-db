@@ -14,7 +14,11 @@ select (
      and pg_get_indexdef(idx.oid, 1, true) = 'source_name'
      and pg_get_indexdef(idx.oid, 2, true) = 'source_system'
      and pg_get_indexdef(idx.oid, 3, true) = 'status'
-     and pg_get_indexdef(idx.oid, 4, true) = 'started_at DESC')
+     and pg_get_indexdef(idx.oid, 4, true) = 'started_at'
+     and i.indoption[0] = 0
+     and i.indoption[1] = 0
+     and i.indoption[2] = 0
+     and i.indoption[3] = 3)
   and exists (
     select 1 from supabase_migrations.schema_migrations
     where version = '20261006170117'

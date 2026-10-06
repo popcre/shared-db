@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3989,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/1",
+  "contract_sha256": "e9dc79052b6837bf34dff3d8636b71c634b416cdbbeb8e64e9ae16acd646e15a",
+  "head_sha": "52ac73e963662aeae73d24b380002c647bc5fdfe",
+  "base_sha": "cb94f985581b00dfe62deaf414a483bbe0f5e6bf",
+  "files_changed": [
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-required-checks-preflight.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "61 passed, 0 failed, 0 skipped at implementation head 52ac73e963662aeae73d24b380002c647bc5fdfe"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=91 derived_digest=6cd8ed349351"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Stage A preserves all workflows, required contexts, database and settings.",
+    "Full all-attempt listing includes pending reroutes; exact-head and producer filtering precedes newest-attempt selection.",
+    "Prospective immutable contract was published before implementation after discarded prototype."
+  ],
+  "stop_conditions_hit": []
+}

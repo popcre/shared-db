@@ -1,0 +1,21 @@
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/grok-pr3938-r7-s1-grok-f1efd40f6f9c
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/grok-pr3949-dt-slot2-238fdb00965d
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-claude-gov-3943-3952-s2-7a13ddc8-45e922016310
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-claude-pr3938-r7-s2-muse-f1efd40f6f9c
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-claude-pr3949-dt-slot1-238fdb00965d
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-zcode-pool-muse-90aec8dda9ff23e2-df4bda663dc3
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-zcode-pool-muse-b0720012c9bc8980-9054062ec56e
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-zcode-pool-muse-daae54ce33081821-387c9f620aed
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/muse-zcode-pool-muse-e94734d640d9e2bd-fe1e2a5710c4
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/pool-muse-90aec8dda9ff23e2-16b8628d479b
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/pool-muse-b0720012c9bc8980-16b8628d479b
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/pool-muse-daae54ce33081821-6ce1508d0fe2
+ai-review-sandbox: deleted review snapshot /C/Users/ahazan/.local/state/ai-devops/review-sandboxes/pool-muse-e94734d640d9e2bd-6ce1508d0fe2
+reviewer event recording: sandbox evidence requirement is missing; cleanup refused
+ai-review-sandbox: sandbox evidence is not reconciled; retained for local recovery
+reviewer event recording: sandbox evidence requirement is missing; cleanup refused
+ai-review-sandbox: sandbox evidence is not reconciled; retained for local recovery
+reviewer event recording: sandbox evidence requirement is missing; cleanup refused
+ai-review-sandbox: sandbox evidence is not reconciled; retained for local recovery
+ai-review-sandbox: 16 orphan examination cap reached; remaining orphans wait for the next parent run
+C:/repos/shared-db/.ai/worktrees/coldlion-intake-rot/.ai/reviews/codex-plan-review-20261006T083137-145700-25809.md

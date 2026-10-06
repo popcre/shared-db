@@ -9,6 +9,8 @@
   "head_sha": "97bbb496544a99d072d025dab24a3446502bf0d9",
   "base_sha": "021378fd2707c2d7c278417f2bac8da65cc04e59",
   "files_changed": [
+    ".agent/work/3972/1/contract.json",
+    ".agent/work/3972/1/completion.json",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/claim-author-transfer.test.mjs"
   ],

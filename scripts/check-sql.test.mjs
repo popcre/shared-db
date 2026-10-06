@@ -1230,7 +1230,7 @@ test('pg_url_to_env: DATABASE_URL migration path uses PG* env, not argv', () => 
       CHECK_SQL_MIGRATION_DIR: toBashPath(migDir),
       CHECK_SQL_BASE_VERSIONS: toBashPath(baseFile),
       CHECK_SQL_MAIN_NEWEST: '20260101000000',
-      DATABASE_URL: 'postgresql://migrator:hunter2@disposable.example:6543/testdb',
+      DATABASE_URL: 'postgresql://migrator:hunter2@disposable-db.test:6543/testdb',
     }
     const result = spawnSync(bashCommand, ['scripts/check-sql.sh'], {
       cwd: repoRoot,
@@ -1249,7 +1249,7 @@ test('pg_url_to_env: DATABASE_URL migration path uses PG* env, not argv', () => 
       `connection URI must never appear in psql argv:\n${argvLine}`,
     )
     // PG* env carries the connection target.
-    assert.match(captured, /PGHOST=disposable\.example/)
+    assert.match(captured, /PGHOST=disposable-db\.test/)
     assert.match(captured, /PGPORT=6543/)
     assert.match(captured, /PGUSER=migrator/)
     assert.match(captured, /PGPASSWORD=hunter2/)

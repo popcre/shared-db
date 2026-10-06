@@ -377,17 +377,35 @@ check_ledger() {
   return 0
 }
 
-# Percent-decode a single URI component (user, password, dbname).
+# Percent-decode a single URI component (user, password, dbname) per RFC 3986:
+# '+' is literal in userinfo/path (only %XX sequences are decoded).
 _pct_decode() {
-  local s="${1//+/ }"
-  printf '%b' "${s//%/\\x}"
+  local s="$1"
+  # Decode %XX sequences only; fail-closed on malformed ones.
+  local out="" i=0 len=${#s}
+  while (( i < len )); do
+    local c="${s:i:1}"
+    if [[ "$c" == "%" ]]; then
+      local hex="${s:i+1:2}"
+      if [[ "$hex" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+        printf -v c "\\x$hex"
+        (( i += 2 ))
+      else
+        echo "ERROR: malformed percent-encoding in URI component" >&2
+        return 1
+      fi
+    fi
+    out+="$c"
+    (( i += 1 ))
+  done
+  printf '%s' "$out"
 }
 
 # Parse a PostgreSQL URI into PG* environment variables — the URI is NEVER
 # placed in process argv (2026-10-02 leak class; same PG* transport as
-# tools/runSql after PR #3938). Ambient PG* values are swept first so they
-# cannot override the declared target. PGSSLMODE is the one exception: a
-# stricter ambient value survives when the URI declares none (never the
+# tools/runSql after PR #3938). ALL ambient PG* values are swept first so
+# they cannot override the declared target. PGSSLMODE is the one exception:
+# a stricter ambient value survives when the URI declares none (never the
 # other way around — the sweep must not downgrade TLS). Fails closed on
 # shapes we cannot safely represent.
 pg_url_to_env() {
@@ -395,8 +413,16 @@ pg_url_to_env() {
   # Save ambient PGSSLMODE before the sweep (PR #3938 pattern: a stricter
   # operator-exported PGSSLMODE survives when the URL declares none).
   local ambient_sslmode="${PGSSLMODE:-}"
-  # Sweep ambient PG* — they must never override the declared target.
-  unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
+  # Sweep ALL ambient PG* — including PGHOSTADDR (host bypass), PGOPTIONS
+  # (server GUC injection), PGSERVICE/PGSERVICEFILE (alternate target),
+  # PGPASSFILE (alternate credential source). They must never override the
+  # declared target (muse review 2026-10-06, H2).
+  local _pg_var
+  for _pg_var in $(compgen -v PG); do
+    [[ "$_pg_var" == "PGSSLMODE" ]] && continue
+    unset "$_pg_var"
+  done
+  unset PGSSLMODE
   # Strip fragment (not representable in PG*).
   url="${url%%#*}"
   # Strip query string; recover sslmode if present.
@@ -412,11 +438,12 @@ pg_url_to_env() {
     echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|://[^@]*@|://[redacted]@|')" >&2
     return 1
   fi
-  local user="$(_pct_decode "${BASH_REMATCH[4]}")"
-  local pass="$(_pct_decode "${BASH_REMATCH[6]}")"
-  local host="${BASH_REMATCH[7]}"
-  local port="${BASH_REMATCH[9]}"
-  local dbname="$(_pct_decode "${BASH_REMATCH[11]}")"
+  local user pass host port dbname
+  user="$(_pct_decode "${BASH_REMATCH[4]}")" || return 1
+  pass="$(_pct_decode "${BASH_REMATCH[6]}")" || return 1
+  host="${BASH_REMATCH[7]}"
+  port="${BASH_REMATCH[9]}"
+  dbname="$(_pct_decode "${BASH_REMATCH[11]}")" || return 1
   # Strip IPv6 brackets for PGHOST (libpq wants bare form in PGHOST).
   host="${host#\[}"
   host="${host%\]}"
@@ -425,28 +452,44 @@ pg_url_to_env() {
   [[ -n "$user" ]] && PGUSER="$user"
   [[ -n "$pass" ]] && PGPASSWORD="$pass"
   [[ -n "$dbname" ]] && PGDATABASE="$dbname"
-  # Query string: recover sslmode; refuse params we cannot represent.
+  # Query string: recover sslmode; refuse params that redirect the target
+  # or change server semantics (muse review 2026-10-06, M4/M6).
   local url_declares_sslmode=0
   if [[ -n "$query" ]]; then
-    local IFS='&'
-    for kv in $query; do
+    local kv k v
+    local old_ifs="$IFS"
+    IFS='&'
+    # Use read -a to avoid globbing (muse review M5).
+    local -a _params
+    read -ra _params <<< "$query"
+    IFS="$old_ifs"
+    for kv in "${_params[@]}"; do
       [[ -z "$kv" ]] && continue
-      local k="${kv%%=*}"
-      k="$(_pct_decode "$k")"
-      if [[ "$k" == "sslmode" || "$k" == "ssl" ]]; then
-        url_declares_sslmode=1
-        local v="${kv#*=}"
-        v="$(_pct_decode "$v")"
-        PGSSLMODE="$v"
-      elif [[ "$k" == "hostaddr" || "$k" == "options" ]]; then
-        echo "ERROR: PostgreSQL URI parameter '$k' is refused (bypasses host validation or changes server semantics)" >&2
-        return 1
-      fi
-      # Other query params (application_name, connect_timeout, etc.) are
-      # accepted and ignored for this local-rehearsal parser — they do not
-      # redirect the target and psql reads them from PG* if needed.
+      k="$(_pct_decode "${kv%%=*}")" || return 1
+      v="$(_pct_decode "${kv#*=}")" || return 1
+      case "$k" in
+        sslmode)
+          url_declares_sslmode=1
+          PGSSLMODE="$v"
+          ;;
+        ssl)
+          # Legacy boolean alias (muse review M6): map true→require, refuse false.
+          url_declares_sslmode=1
+          if [[ "$v" == "true" || "$v" == "1" ]]; then
+            PGSSLMODE="require"
+          else
+            echo "ERROR: ssl=false/0 is rejected (would disable encryption)" >&2
+            return 1
+          fi
+          ;;
+        host|hostaddr|port|options|target_session_attrs|load_balance_hosts)
+          echo "ERROR: PostgreSQL URI query parameter '$k' can redirect the target or change server semantics; refusing it" >&2
+          return 1
+          ;;
+        # Other query params (application_name, connect_timeout, etc.) are
+        # accepted and ignored — they do not redirect the target.
+      esac
     done
-    unset IFS
   fi
   # TLS floor: URL-declared sslmode wins; otherwise ambient survives only if
   # stricter than 'require'; otherwise floor to 'require'.

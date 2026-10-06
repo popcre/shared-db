@@ -4,6 +4,7 @@ import {
   ConfigureQueueError,
   LANE_REFS,
   QUEUE_GATE_CONTEXT,
+  QUEUE_REQUIRED_CONTEXTS,
   MERGE_QUEUE_WORKFLOW,
   assertContextsAndWorkflow,
   assertLiveContextsCovered,
@@ -56,7 +57,7 @@ test('baseline ID is read from the Step 3 artifact shape', () => {
 })
 
 test('contexts and workflow gate: the additive context and the on-main workflow', () => {
-  const ok = { contexts: ['Tools offline tests', QUEUE_GATE_CONTEXT], workflows: [MERGE_QUEUE_WORKFLOW] }
+  const ok = { contexts: ['Tools offline tests', ...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })), workflows: [MERGE_QUEUE_WORKFLOW] }
   assert.equal(assertContextsAndWorkflow(ok), true)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, contexts: ['Tools offline tests'] }), /update-required-checks/)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, workflows: [] }), /not on main/)
@@ -112,14 +113,15 @@ test('activation plan: all gates pass, same-name ruleset is reused, duplicates r
     repo: 'acme/widgets',
     live: { id: 1, owner: { type: 'Organization' }, visibility: 'public' },
     baselineId: 1,
-    contexts: [QUEUE_GATE_CONTEXT],
+    contexts: [...QUEUE_REQUIRED_CONTEXTS],
+    checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })),
     workflows: [MERGE_QUEUE_WORKFLOW],
     heldLanes: [],
     mainTip: { tipSha: SHA_A, tipPaths: ['docs/x.md'], statuses: [] },
-    coveredContexts: [QUEUE_GATE_CONTEXT],
+    coveredContexts: [...QUEUE_REQUIRED_CONTEXTS],
   }
   assert.equal(planActivation({ ...base, rulesets: [] }).existing, null)
-  assert.throws(() => planActivation({ ...base, rulesets: [], contexts: [QUEUE_GATE_CONTEXT, 'Unmirrored check'] }), /without proven merge-group coverage: Unmirrored check/)
+  assert.throws(() => planActivation({ ...base, rulesets: [], contexts: [...QUEUE_REQUIRED_CONTEXTS, 'Unmirrored check'] }), /without proven merge-group coverage: Unmirrored check/)
   assert.throws(() => planActivation({ ...base, rulesets: [], coveredContexts: undefined }), /unreadable/)
   assert.equal(planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }] }).existing.id, 9)
   assert.throws(() => planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }, { id: 10, name: RULESET_NAME }] }), /multiple rulesets/)
@@ -166,7 +168,7 @@ function fakeLive({ withRuleset = false } = {}) {
     const target = args.at(-1)
     if (target.endsWith('includes_parents=false')) return withRuleset ? [{ id: 9, name: RULESET_NAME, enforcement: 'active' }] : []
     if (target === 'repos/acme/widgets') return { id: 1, owner: { type: 'Organization' }, visibility: 'public' }
-    if (target.endsWith('required_status_checks')) return { contexts: [QUEUE_GATE_CONTEXT] }
+    if (target.endsWith('required_status_checks')) return { contexts: [...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })) }
     if (target.includes('/git/ref/')) throw new Error('HTTP 404: Not Found')
     if (target.endsWith('/branches/main')) return { commit: { sha: SHA_B } }
     if (/commits\/[0-9a-f]{40}$/.test(target)) return { files: [{ filename: 'docs/x.md' }] }
@@ -204,4 +206,12 @@ test('CLI refuses before any write when a gate fails', () => {
   }
   assert.throws(() => main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: gatedRead, treeReader, baselineId: 1, log: () => {}, readOrigin: () => null }), /mutation lane\(s\) held/)
   assert.equal(calls.filter((c) => c.hasInput).length, 0)
+})
+
+test('activation refuses missing queue contexts and foreign or unbound producers', () => {
+  const ok = { contexts: [...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })), workflows: [MERGE_QUEUE_WORKFLOW] }
+  for (const missing of QUEUE_REQUIRED_CONTEXTS) assert.throws(() => assertContextsAndWorkflow({ ...ok, contexts: ok.contexts.filter(context => context !== missing) }), /restore both queue contexts/)
+  for (const app_id of [null, -1, 42]) for (const context of QUEUE_REQUIRED_CONTEXTS) assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: ok.checks.map(check => check.context === context ? { ...check, app_id } : check) }), /required-check binding/)
+  assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [] }), /required-check binding/)
+  assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [...ok.checks, ok.checks[0]] }), /required-check binding/)
 })

@@ -5,7 +5,7 @@
 // `merge_group` leaves every merge group pending forever — GitHub waits for a
 // context that never arrives. So the mapping below is the authority tying every
 // required context to the workflow and job that emits it, and proving that
-// emission happens for BOTH `pull_request` and `merge_group` events.
+// emission happens for `merge_group` and, for ordinary required guards, `pull_request`.
 //
 // The context list is derived from TWO sources and must cover both:
 //   1. the committed mirror docs/verification/main-required-status-checks.json
@@ -36,6 +36,7 @@ const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard'])
 // workflow triggers on merge_group. kind 'commit-status': a status is POSTed to
 // an explicit SHA — by the guarded merge lane on the reviewed PR head, and by
 // the queue gate on the synthetic group SHA.
+const QUEUE_ONLY_CONTEXTS = new Set(['Merge queue gate', 'Queue-sensitive checks (aggregate)'])
 const CONTEXT_MAP = {
   'Agent work contract': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Agent work contract' },
   'Cancelled work guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cancelled work guard' },
@@ -102,11 +103,11 @@ test('the emitter check matches exact job names, not substrings or comments', ()
   assert.equal(names.has('Tools offline tests'), true)
 })
 
-test('every check-run emitter triggers on pull_request AND merge_group checks_requested', () => {
+test('every check-run emitter retains its required event coverage and merge_group checks_requested', () => {
   for (const [context, spec] of Object.entries(CONTEXT_MAP)) {
     if (spec.kind !== 'check-run') continue
     const text = readWorkflow(spec.workflow)
-    assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
+    if (!QUEUE_ONLY_CONTEXTS.has(context)) assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
     assert.match(text, /^ {2}merge_group:$/m, `${spec.workflow} (${context}) does not trigger for merge_group`)
     assert.match(text, /^ {4}types: \[checks_requested\]$/m, `${spec.workflow} (${context}) does not pin merge_group checks_requested`)
     // Exact object: a job whose display name (literal, or the default branch of a
@@ -114,17 +115,17 @@ test('every check-run emitter triggers on pull_request AND merge_group checks_re
     assert.ok(emittedJobNames(text).has(spec.job), `${spec.workflow} does not emit a job named exactly "${spec.job}"`)
     // #3746: the JOB bearing the context must itself admit both events. A
     // file-level trigger is not enough once one file holds many gated jobs.
-    assert.deepEqual(requiredJobEventProblems(text, spec.job), [], `${spec.workflow} (${context})`)
+    assert.deepEqual(requiredJobEventProblems(text, spec.job, QUEUE_ONLY_CONTEXTS.has(context) ? ['merge_group'] : undefined), [], `${spec.workflow} (${context})`)
   }
 })
 
-function requiredJobEventProblems(text, name) {
+function requiredJobEventProblems(text, name, requiredEvents = ['pull_request', 'merge_group']) {
   const block = jobBlockByName(text, name)
   if (!block) return [`no job emits "${name}"`]
   const events = jobEvents(block)
   if (events === null) return []
   if (!Array.isArray(events)) return [`job "${name}" has an unrecognised job-level if: ${events}`]
-  return ['pull_request', 'merge_group'].filter((event) => !events.includes(event)).map((event) => `job "${name}" does not run on ${event}`)
+  return requiredEvents.filter((event) => !events.includes(event)).map((event) => `job "${name}" does not run on ${event}`)
 }
 
 test('the job-level event check fails when a required job drops merge_group or pull_request', () => {
@@ -146,7 +147,7 @@ test('pr-guards.yml uses default pull_request types: no ready_for_review (#3746 
   assert.match(onBlock, /^ {2}pull_request:\n {2}merge_group:$/m, 'pull_request must carry no types list')
   assert.ok(!/ready_for_review/.test(onBlock.replace(/^\s*#.*$/gm, '')), 'ready_for_review would start the required aggregate for lane checks it never starts')
   const aggregate = jobEvents(jobBlockByName(text, 'Queue-sensitive checks (aggregate)'))
-  assert.deepEqual(aggregate, ['pull_request', 'merge_group'])
+  assert.deepEqual(aggregate, ['merge_group'])
 })
 
 test('no required-context workflow is path-filtered (a filtered required check stays pending forever)', () => {
@@ -192,7 +193,8 @@ test('PR-payload steps defer or re-resolve on merge_group (the payload does not 
 
 test('the queue gate: one-PR identity, ancestry proof, authorization, preview hold, group-SHA status', () => {
   const text = readWorkflow('merge-queue-gate.yml')
-  assert.match(text, /^ {2}pull_request:$/m)
+  assert.doesNotMatch(text, /^ {2}pull_request:$/m)
+  assert.match(text, /^ {2}workflow_dispatch:$/m)
   assert.match(text, /^ {2}merge_group:$/m)
   assert.match(text, /name: Merge queue gate/)
   assert.match(text, /^ {2}statuses: write$/m)
@@ -472,4 +474,13 @@ test('Queue interlock job and the workflow level both grant exactly issues: read
   const block = /\n    permissions:\n((?:      [^\n]*\n)+)/.exec(job)
   assert.ok(block, 'authorize job has its own permissions block')
   assert.match(block[1], /^      issues: read\b/m)
+})
+
+test('queue-only checks preserve group capability without ordinary PR waiting', () => {
+  const aggregate = jobBlockByName(readWorkflow('pr-guards.yml'), 'Queue-sensitive checks (aggregate)')
+  assert.deepEqual(jobEvents(aggregate), ['merge_group'])
+  const queue = readWorkflow('merge-queue-gate.yml')
+  assert.doesNotMatch(queue, /^ {2}pull_request:$/m)
+  assert.match(queue, /^ {2}workflow_dispatch:$/m)
+  assert.match(queue, /^ {2}merge_group:\n {4}types: \[checks_requested\]$/m)
 })

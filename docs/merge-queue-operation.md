@@ -47,19 +47,20 @@ supply that exact reviewed head; the queue proves the head did not move.
 
 Activation must happen only after the implementation PR is merged and green on `main`:
 
-1. Add `Merge queue gate` to required contexts with the additive-only
-   `scripts/update-required-checks.mjs --add "Merge queue gate" --apply`. Preserve all existing
+1. Restore both `Merge queue gate` and `Queue-sensitive checks (aggregate)` with
+   `scripts/update-required-checks.mjs --add "Merge queue gate" --add "Queue-sensitive checks (aggregate)" --apply`.
+   Each must have exactly one GitHub Actions app `15368` binding. Preserve all existing
    contexts and `strict: false`; the tool reads back and rewrites
    `docs/verification/main-required-status-checks.json` — commit that mirror through the ordinary
    guarded path.
 2. Run `node scripts/configure-merge-queue.mjs`. Default is a read-only dry run that refuses unless
    the owner is an organization, the repository is public, the immutable repository ID matches the
    transfer baseline artifact, the queue workflow is on `main`, every required context including
-   `Merge queue gate` is live, no mutation lane is held, and a migration-bearing main tip already
+   both queue contexts are live and bound to app `15368`, no mutation lane is held, and a migration-bearing main tip already
    carries its exact-SHA rehearsal status. Save the dry-run JSON as evidence.
 3. Inspect the proposed payload independently, then re-run with `--apply`. The tool creates (or
    idempotently updates) exactly the ruleset `main merge queue` and verifies every read-back field.
-4. Read back the ruleset by ID and the branch protection: all prior contexts plus `Merge queue gate`
+4. Read back the ruleset by ID and the branch protection: all prior contexts plus both queue contexts
    remain required, `strict` remains false, administrator enforcement unchanged.
 5. Prove with one documents-only canary PR (Step 9): one synthetic merge group, all required contexts
    green on the group SHA, GitHub — not the guarded lane — performs the merge.
@@ -106,3 +107,16 @@ contexts, or the guarded lane:
 
 Rollback never reverses the `popcre` organization transfer; that is a separate owner decision with
 its own authorization (plan §13).
+
+## Inactive queue operation (issue #3987)
+
+While the native queue is inactive, the two queue-specific contexts can be retired
+from classic required checks after assigned review of the exact recoverable payload.
+Ordinary guarded merges retain replacement-run accounting in protected-main
+preflight before lock acquisition and again under the lock. The aggregate identity,
+registered assertion names, and replacement lanes remain unchanged. The aggregate
+runs for merge groups only; the queue gate retains merge-group and dispatch support.
+Activation refuses until both queue contexts are restored with their exact producer
+bindings and fresh committed coverage evidence. The prospective settings artifact
+is a proposal, not live readback; the committed mirror is refreshed only after the
+reviewed settings change and actual readback.

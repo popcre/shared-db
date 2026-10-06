@@ -724,12 +724,13 @@ jobs:
   # "Tools offline tests" and "Promotion contract tests (offline)" can be re-run on another free
   # GitHub-hosted lane (workflow_dispatch input `lane`) when the preferred runner never picks the job
   # up. A replacement run reports "<context> [lane <label>]", so this job is the one stable context:
-  # it passes only when every registered assertion has exactly one successful run for the PR head,
-  # and it refuses when an assertion is absent, duplicated or failed. Lanes are declared in
+  # it runs only for a synthetic queue-group head and passes when each assertion has one successful run;
+  # protected-main guarded merge preflight enforces the same accounting on ordinary PR heads.
+  # It refuses absent, duplicated or failed assertions. Lanes are declared in
   # scripts/orchestrator-flow/runner-lanes.json. Read-only: it only lists check runs.
   queue-sensitive-aggregate:
     name: Queue-sensitive checks (aggregate)
-    if: contains(fromJSON('["pull_request", "merge_group"]'), github.event_name)
+    if: contains(fromJSON('["merge_group"]'), github.event_name)
     permissions:
       contents: read
       checks: read

@@ -48,15 +48,13 @@ name: Merge Queue Gate
 # lets GitHub merge while the job still holds the lane through the mutation
 # (a required check-run still running would keep the group pending forever).
 #
-# On pull_request and workflow_dispatch `verify` proves its own contract tests
-# and nothing else, so the context can become required BEFORE the ruleset is
-# active and ordinary guarded merges stay viable the whole time.
+# On workflow_dispatch `verify` proves its own contract tests. Both queue
+# contexts must be restored to required checks before activating the ruleset.
 #
 # Concurrency: never cancel an in-progress merge-group run — GitHub re-requests
 # checks for the same group, and cancelling the older run could starve it.
 
 on:
-  pull_request:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:

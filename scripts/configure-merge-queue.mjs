@@ -28,6 +28,7 @@
 // read-back mismatch; 2 live state could not be read (never "nothing to do").
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { GITHUB_ACTIONS_APP_ID } from './check-required-checks-preflight.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity, RepositoryIdentityError } from './lib/repository-identity.mjs'
@@ -38,6 +39,7 @@ export class ConfigureQueueError extends Error {}
 export const DEFAULT_BASELINE = 'docs/verification/shared-db-popcre-transfer-preflight-20260918T090454Z.json'
 export const MERGE_QUEUE_WORKFLOW = 'merge-queue-gate.yml'
 export const QUEUE_GATE_CONTEXT = 'Merge queue gate'
+export const QUEUE_REQUIRED_CONTEXTS = Object.freeze([QUEUE_GATE_CONTEXT, 'Queue-sensitive checks (aggregate)'])
 // The exclusive stage leases from the transfer baseline (Step 1): a present ref
 // means a mutation lane is held and settings must not move underneath it.
 export const LANE_REFS = Object.freeze([
@@ -80,10 +82,14 @@ export function readBaselineId(text) {
   return id
 }
 
-export function assertContextsAndWorkflow({ contexts, workflows }) {
+export function assertContextsAndWorkflow({ contexts, checks, workflows }) {
   if (!Array.isArray(contexts) || contexts.length === 0) throw new ConfigureQueueError('required contexts are unreadable; refusing (an empty list is never "nothing required")')
-  if (!contexts.includes(QUEUE_GATE_CONTEXT)) {
-    throw new ConfigureQueueError(`required contexts do not include ${QUEUE_GATE_CONTEXT}; add it first with scripts/update-required-checks.mjs --add "${QUEUE_GATE_CONTEXT}" --apply`)
+  for (const context of QUEUE_REQUIRED_CONTEXTS) {
+    if (!contexts.includes(context)) throw new ConfigureQueueError(`required contexts do not include ${context}; restore both queue contexts with scripts/update-required-checks.mjs before activation`)
+    const bindings = Array.isArray(checks) ? checks.filter((check) => check.context === context) : []
+    if (bindings.length !== 1 || bindings[0].app_id !== GITHUB_ACTIONS_APP_ID) {
+      throw new ConfigureQueueError(`${context} must have exactly one GitHub Actions app ${GITHUB_ACTIONS_APP_ID} required-check binding before activation`)
+    }
   }
   if (!Array.isArray(workflows) || !workflows.includes(MERGE_QUEUE_WORKFLOW)) {
     throw new ConfigureQueueError(`${MERGE_QUEUE_WORKFLOW} is not on main; merge the Step 7 implementation first (never activate from a branch)`)
@@ -174,9 +180,9 @@ export function readMainTip(repo, { read = ghJson } = {}) {
 // Plan / apply / rollback
 // ---------------------------------------------------------------------------
 
-export function planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip, coveredContexts }) {
+export function planActivation({ repo, live, baselineId, rulesets, contexts, checks, workflows, heldLanes, mainTip, coveredContexts }) {
   assertRepositoryIdentity({ live, baselineId })
-  assertContextsAndWorkflow({ contexts, workflows })
+  assertContextsAndWorkflow({ contexts, checks, workflows })
   assertLiveContextsCovered({ contexts, coveredContexts })
   assertNoMutationLane(heldLanes)
   const tip = assertMainTipPreview(mainTip)
@@ -272,6 +278,7 @@ export function main(argv, env = process.env, deps = {}) {
   const baselineId = deps.baselineId ?? readBaselineId((deps.readFile ?? readFileSync)(baselinePath, 'utf8'))
   const protection = read(['api', `repos/${repo}/branches/main/protection/required_status_checks`])
   const contexts = protection?.contexts
+  const checks = protection?.checks
   // One recursive tree read per ref, never a Contents call per file (#2342).
   const treeReader = deps.treeReader ?? createTreeReader()
   let workflows
@@ -289,7 +296,7 @@ export function main(argv, env = process.env, deps = {}) {
   if (coveredContexts === undefined) {
     try { coveredContexts = JSON.parse((deps.readFile ?? readFileSync)(COVERED_CONTEXTS_PATH, 'utf8'))?.contexts } catch { coveredContexts = null }
   }
-  const plan = planActivation({ repo, live, baselineId, rulesets, contexts, workflows, heldLanes, mainTip, coveredContexts })
+  const plan = planActivation({ repo, live, baselineId, rulesets, contexts, checks, workflows, heldLanes, mainTip, coveredContexts })
   log(JSON.stringify({ mode: apply ? 'APPLY' : 'DRY RUN', repository: { id: live.id, ownerType: live.owner.type, visibility: live.visibility }, existingRulesetId: plan.existing?.id ?? null, mainTipHold: plan.mainTip, desired: plan.desired }, null, 2))
   if (!apply) {
     log('Dry run only. Nothing was written. Re-run with --apply to create the ruleset.')

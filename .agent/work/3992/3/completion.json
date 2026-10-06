@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3992,
+  "outcome": "ready-for-merge",
+  "pr": 3995,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3992/3",
+  "contract_sha256": "a91c64315e056919b1c62c38e489c8650928e1e400bdff7af17b126c1e53ce9f",
+  "base_sha": "021378fd2707c2d7c278417f2bac8da65cc04e59",
+  "head_sha": "b02d974057a21204769456378e10a0fccbb30c90",
+  "files_changed": [
+    "config/blocker-ledger/blk_05fd5a37fbe24bc4b777e15d7a18482f.json",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/review-merge-state.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/review-merge-state.test.mjs scripts/merged-pr-issue-binding.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs",
+      "exit_code": 0,
+      "evidence": "903 passed, 0 failed, 1 skipped; real projection regression failed before implementation"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "Actual valid merge timestamp requires merged=true in both projections",
+    "Exact pullRequest metadata selection and real batched snapshot assembly are covered",
+    "Verified merged issue binding and every production gate remain unchanged",
+    "Evidence head names implementation commit; only this contract and completion follow it per canonical scoped evidence procedure"
+  ],
+  "stop_conditions_hit": []
+}

@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url'
 import {
   baseCompareSpec,
   extractObjects,
+  extractOperations,
+  dispatchObjectKeys,
+  roleReadKeys,
   findCollisions,
   formatReport,
   normalizeSql,
@@ -457,4 +460,34 @@ test('#3183: comment stripping still removes real comments and keeps literals', 
   const { normalizeSql } = await import('./check-pr-object-collisions.mjs')
   assert.equal(normalizeSql("select 'a -- b' -- gone\n/* x */ , 'it''s';").trim(), "select 'a -- b' , 'it''s';")
   assert.equal(normalizeSql("do $$ begin -- don't\n perform 1; end $$;").includes("don't"), false)
+})
+
+
+test('role writes collide across CREATE ALTER DROP rename and membership in the real parser', () => {
+  const source = (label, sql) => ({label, files:[{path: `${label}.sql`, sql}]})
+  for (const sql of ['ALTER ROLE worker NOLOGIN;', 'DROP ROLE worker;', 'ALTER ROLE other RENAME TO worker;', 'GRANT worker TO recipient;', 'REVOKE worker FROM recipient;']) {
+    assert.equal(findCollisions([source('A', 'CREATE ROLE worker;'), source('B', sql)]).collisions.some((item) => item.object === 'role worker'), true, sql)
+  }
+  assert.deepEqual(dispatchObjectKeys('GRANT a TO b;'), ['role a', 'role b'])
+  assert.deepEqual(extractObjects('CREATE ROLE "Case";'), ['role "Case"'])
+  assert.ok(extractOperations('DROP ROLE worker;').some((op) => op.kind === 'role' && op.action === 'drop' && op.target === 'worker'))
+  assert.equal(findCollisions([source('A', 'CREATE ROLE "Case";'), source('B', 'CREATE ROLE case;')]).collisions.length, 0)
+})
+
+test('role ownership is a read dependency: reader pairs proceed and any competing role write blocks', () => {
+  const source = (label, sql) => ({label, files:[{path:`${label}.sql`, sql}]})
+  const first = source('A', 'ALTER FUNCTION core.first() OWNER TO "Shared Role";')
+  const second = source('B', 'ALTER FUNCTION core.second() OWNER TO "Shared Role";')
+  assert.deepEqual(roleReadKeys(first.files[0].sql), ['role "Shared Role"'])
+  assert.ok(!dispatchObjectKeys(first.files[0].sql).includes('role "Shared Role"'))
+  assert.equal(findCollisions([first, second]).collisions.length, 0)
+  const third = source('C', 'DROP ROLE "Shared Role";')
+  assert.equal(findCollisions([first, second, third], 'A').collisions[0].object, 'role "Shared Role"')
+  assert.equal(findCollisions([first, third], 'unrelated').collisions.length, 0)
+  assert.equal(findCollisions([first, third], 'unrelated').bystanderCollisions.length, 1)
+})
+
+test('real collision extraction refuses unresolved dynamic role statements', () => {
+  assert.throws(() => dispatchObjectKeys("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;"), /dynamic role/)
+  assert.throws(() => findCollisions([{label:'A',files:[{path:'A.sql',sql:"DO $$ BEGIN EXECUTE 'alter ' || 'role ' || name; END $$;"}]}]), /dynamic role/)
 })

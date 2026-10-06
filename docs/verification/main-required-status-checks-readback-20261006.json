@@ -1,0 +1,83 @@
+{
+  "_why": "Actual pre-change classic required-status-checks readback for issue3987 Stage B initial review. No settings changed; exact prospective after12 is separate. Informational only, not merge authority.",
+  "repo": "popcre/shared-db",
+  "branch": "main",
+  "capturedIso": "2026-10-06T19:18:56.572Z",
+  "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
+  "strict": false,
+  "contexts": [
+    "Cancelled work guard",
+    "Cross-PR object collision",
+    "Destructive SQL outside migrations",
+    "Domain ownership",
+    "Handoff contract",
+    "Intake pointer guard",
+    "Merge queue gate",
+    "Migration author lease",
+    "Migration guarded merge authorization",
+    "Promotion contract tests (offline)",
+    "Queue-sensitive checks (aggregate)",
+    "SQL migration guards",
+    "Tools offline tests",
+    "supabase/tests against an ephemeral database"
+  ],
+  "checks": [
+    {
+      "context": "Cancelled work guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Cross-PR object collision",
+      "app_id": 15368
+    },
+    {
+      "context": "Destructive SQL outside migrations",
+      "app_id": 15368
+    },
+    {
+      "context": "Domain ownership",
+      "app_id": 15368
+    },
+    {
+      "context": "Handoff contract",
+      "app_id": 15368
+    },
+    {
+      "context": "Intake pointer guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Merge queue gate",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration author lease",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration guarded merge authorization",
+      "app_id": 15368
+    },
+    {
+      "context": "Promotion contract tests (offline)",
+      "app_id": 15368
+    },
+    {
+      "context": "Queue-sensitive checks (aggregate)",
+      "app_id": 15368
+    },
+    {
+      "context": "SQL migration guards",
+      "app_id": 15368
+    },
+    {
+      "context": "supabase/tests against an ephemeral database",
+      "app_id": 15368
+    },
+    {
+      "context": "Tools offline tests",
+      "app_id": 15368
+    }
+  ],
+  "contextCount": 14
+}

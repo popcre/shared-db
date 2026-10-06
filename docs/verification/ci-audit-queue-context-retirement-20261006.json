@@ -211,8 +211,19 @@
   },
   "settings_apply": false,
   "observed_at": "2026-10-06T19:06:27.610509+00:00",
-  "evidence_kind": "prospective-settings-payload-not-readback",
+  "evidence_kind": "observed-before-and-prospective-after",
   "stage_a_merge": "eff52bee544e442b8b835ae45bd10807d9058750",
   "queue_rulesets": [],
-  "effective_branch_rules": []
+  "effective_branch_rules": [],
+  "observed_fields": [
+    "before",
+    "queue_rulesets",
+    "effective_branch_rules"
+  ],
+  "prospective_fields": [
+    "after",
+    "recovery"
+  ],
+  "payload_shape_note": "before is a full live GET document; after and recovery are exact narrow PATCH request bodies using checks only to retain app producer bindings, as applyUnion emits. Neither request body is an actual post-write readback.",
+  "mirror_baseline_note": "The previous committed16-context mirror was stale after earlier Agent work contract and Orchestrator marker guard retirement; refreshed actual14 before any settings change. Actual12 mirror is deferred until the reviewed write/readback."
 }

@@ -24,7 +24,7 @@ const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-requir
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
 // scripts/update-required-checks.mjs from the live read-back; it now equals the
-// dated readback artifact below (16 contexts, strict false), so nothing is pending.
+// dated readback artifact below (14 pre-change contexts, strict false), so nothing is pending.
 const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the orchestrator marker guard was retired with the role (#3874);
@@ -65,7 +65,7 @@ test('every mirrored or known-live required context has a mapped emitter', () =>
 
 // Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
 // branch protection. The mirror must carry exactly its contexts and strictness.
-const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20261006.json', import.meta.url), 'utf8'))
 
 test('the committed mirror equals the dated live readback artifact', () => {
   assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())

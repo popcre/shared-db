@@ -47,12 +47,17 @@ supply that exact reviewed head; the queue proves the head did not move.
 
 Activation must happen only after the implementation PR is merged and green on `main`:
 
-1. Restore both `Merge queue gate` and `Queue-sensitive checks (aggregate)` with
-   `scripts/update-required-checks.mjs --add "Merge queue gate" --add "Queue-sensitive checks (aggregate)" --apply`.
-   Each must have exactly one GitHub Actions app `15368` binding. Preserve all existing
-   contexts and `strict: false`; the tool reads back and rewrites
-   `docs/verification/main-required-status-checks.json` — commit that mirror through the ordinary
-   guarded path.
+1. Restore both `Merge queue gate` and `Queue-sensitive checks (aggregate)` with exactly
+   one GitHub Actions app `15368` binding each. Preserve every current requirement and producer
+   binding plus `strict: false`. The plain `--add` CLI creates unrestricted new contexts and
+   is insufficient for this activation. Use the existing `readLive`, `planUnion`, and
+   `applyUnion` helpers from `scripts/update-required-checks.mjs`: form the additive plan from
+   fresh live settings, set only the two restored queue entries' `app_id` to `15368`, and
+   review that exact `strict`/`checks` payload before its narrow required-checks PATCH.
+   The retirement artifact's bound14 `recovery` payload is valid only when fresh live settings
+   match its12-context `after` snapshot; otherwise form a new producer-preserving additive plan.
+   Verify exact live readback with `verifyReadback`, then refresh the informational mirror using
+   `scripts/update-required-checks.mjs --refresh-mirror` and commit it through the guarded path.
 2. Run `node scripts/configure-merge-queue.mjs`. Default is a read-only dry run that refuses unless
    the owner is an organization, the repository is public, the immutable repository ID matches the
    transfer baseline artifact, the queue workflow is on `main`, every required context including
@@ -120,3 +125,12 @@ Activation refuses until both queue contexts are restored with their exact produ
 bindings and fresh committed coverage evidence. The prospective settings artifact
 is a proposal, not live readback; the committed mirror is refreshed only after the
 reviewed settings change and actual readback.
+
+Stage A source and negative proof are in `scripts/check-required-checks-preflight.mjs`
+and its test file: "protected merge preflight preserves exact-once runner lane accounting
+after aggregate retirement", "a required registered lane cannot remove the other assertion
+from merge accounting", and "all-attempt listing includes queued replacements and
+newest-name normalization preserves rerun semantics". Trusted-policy invocation before
+and under the merge lock is retained in `guarded-migration-merge.yml`. Positive live
+execution on protected commit2d1d103dc96caf9f78b421c78a25a85ed7aa456a is recorded at
+https://github.com/popcre/shared-db/issues/3987#issuecomment-6023586049.

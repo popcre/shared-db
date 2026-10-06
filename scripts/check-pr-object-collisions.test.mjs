@@ -498,6 +498,16 @@ test('membership grantor reads block competing role writes while separate grant 
   assert.deepEqual(roleReadKeys(`DO $$ BEGIN EXECUTE '${first.files[0].sql}'; END $$;`), ['role "Grantor Role"'])
 })
 
+test('integrated role parser refuses unsupported full names and preserves quoted command words', () => {
+  for (const sql of ['GRANT a TO bé;', 'ALTER GROUP a ADD USER bé;', 'CREATE SCHEMA s AUTHORIZATION bé;']) {
+    assert.throws(() => dispatchObjectKeys(sql), /exact supported identifier/)
+    assert.throws(() => roleReadKeys(sql), /exact supported identifier/)
+  }
+  assert.deepEqual(dispatchObjectKeys('CREATE ROLE "ALTER ROLE ALL";'), ['role "ALTER ROLE ALL"'])
+  const sources = ['CREATE ROLE "ALTER ROLE ALL";', 'DROP ROLE "ALTER ROLE ALL";'].map((sql, i) => ({ label: String(i), files: [{ path: `${i}.sql`, sql }] }))
+  assert.equal(findCollisions(sources).collisions[0].object, 'role "ALTER ROLE ALL"')
+})
+
 test('real collision extraction refuses unresolved dynamic role statements', () => {
   assert.throws(() => dispatchObjectKeys("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;"), /dynamic role/)
   assert.throws(() => findCollisions([{label:'A',files:[{path:'A.sql',sql:"DO $$ BEGIN EXECUTE 'alter ' || 'role ' || name; END $$;"}]}]), /dynamic role/)

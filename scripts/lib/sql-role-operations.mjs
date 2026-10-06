@@ -53,6 +53,10 @@ export class RoleClaimError extends Error {}
 // matches PostgreSQL: `CREATE ROLE schema.name` is invalid, but a quoted role
 // may legally contain a dot (`CREATE ROLE "my.role"` names one role).
 const IDENT = String.raw`(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*)`
+// Capture the entire token before validating it: matching an ASCII prefix of
+// an unsupported Unicode or qualified name would reserve a different role.
+const RAW_IDENT = String.raw`(?:"(?:[^"]|"")*"|[^\s;,()]+)`
+const ROLE_LIST = String.raw`${RAW_IDENT}(?:\s*,\s*${RAW_IDENT})*`
 const ROLE_COMMAND = String.raw`(?:role|user(?!\s+mapping\b)|group)`
 // Schema-qualified object name (for ownership dependencies, which ARE qualified).
 const QUALIFIED = String.raw`(?:${IDENT}\s*\.\s*)?${IDENT}`
@@ -74,13 +78,10 @@ const NON_ROLE_KEYWORDS = new Set([
 // by the literal ownership extractor and the dynamic ownership detector so the
 // two can never disagree on what counts as an ownership statement.
 const OWNER_OBJECT_KINDS = String.raw`foreign\s+table|materialized\s+view|table|view|sequence|function|procedure|schema|type|domain|index|database|tablespace|event\s+trigger`
-const OWNER_TARGET = String.raw`(?:${IDENT}|current_user|current_role|session_user)`
-const POSSIBLE_OWNER_TARGET = String.raw`(?:${OWNER_TARGET}|%[A-Za-z][A-Za-z0-9$]*)`
+const POSSIBLE_OWNER_TARGET = RAW_IDENT
 
-// Pseudo-role grantees that are valid membership counterparts in PostgreSQL
-// (`GRANT worker TO PUBLIC`, `GRANT worker TO CURRENT_USER`) but are not exact
-// role identities themselves. A membership statement that pairs a named role
-// with one of these must still account for the named role — never drop it.
+// Implicit actor and PUBLIC spellings cannot establish an exact named role.
+// Refuse membership that uses them rather than reserve only the named side.
 const PSEUDO_ROLE_GRANTEES = new Set(['public', 'current_user', 'current_role', 'session_user'])
 
 // Glue words of the GRANT/REVOKE membership grammar: never role names, used to
@@ -145,7 +146,7 @@ export function canonicalRoleName(raw) {
   if (!m) return null
   if (m[1] !== undefined) {
     const value = m[1].replace(/""/g, '"')
-    if (!value || Buffer.byteLength(value, 'utf8') > 63) return null
+    if (!value || value.includes('\0') || Buffer.byteLength(value, 'utf8') > 63) return null
     return /^[a-z_][a-z0-9_$]*$/.test(value) ? value : `"${value.replace(/"/g, '""')}"`
   }
   if (Buffer.byteLength(m[2], 'utf8') > 63) return null
@@ -190,11 +191,12 @@ export function normalizeRoleClaim(object) {
  * a consumer can still detect a role DROP that would break a dependent object.
  */
 function pushOwnership(deps, kind, nameRaw, ownerRaw) {
-  // CURRENT_USER / SESSION_USER / CURRENT_ROLE / USER name no fixed role, so
-  // they create no role dependency to track.
+  // Implicit actors name no fixed role, so they must refuse rather than lose
+  // the ownership dependency. Quoted spellings are exact named roles.
   if (!String(ownerRaw).trim().startsWith('"') && PSEUDO_ROLE_GRANTEES.has(String(ownerRaw).trim().toLowerCase())) throw new RoleExtractionError('ownership role is implicit and has no provable exact identity')
+  const role = canonicalSqlRoleOrThrow(ownerRaw)
   if (!isNamedOwnerToken(ownerRaw)) return
-  deps.push({ action: 'owner_dependency', role: canonicalRoleName(ownerRaw), ownerKind: kind, ownerTarget: nameRaw })
+  deps.push({ action: 'owner_dependency', role, ownerKind: kind, ownerTarget: nameRaw })
 }
 
 // ---------------------------------------------------------------------------
@@ -410,10 +412,9 @@ function looksLikeRoleStatement(content) {
 /**
  * Whether a hidden string reads as an ownership change (`ALTER … OWNER TO
  * <role>`, `CREATE SCHEMA … AUTHORIZATION <role>`, `CREATE DATABASE … OWNER
- * <role>`) naming an exact role. Uses the same object kinds as the literal
- * ownership extractor and only fires when the owner position holds a real
- * role token, so `OWNER TO CURRENT_USER` stays what the literal path says it
- * is: no named dependency.
+ * <role>`). Uses the same object kinds as the literal ownership extractor.
+ * Exact, implicit and unsupported owner tokens all reach the same validation;
+ * unsupported text must not disappear merely because it is inside a string.
  */
 function looksLikeOwnershipChange(content) {
   return content.split(';').some((seg) => {
@@ -426,7 +427,9 @@ function looksLikeOwnershipChange(content) {
       new RegExp(`^create\\s+database\\b[\\s\\S]*?\\bowner\\s*(?:=\\s*)?(${POSSIBLE_OWNER_TARGET})`, 'i').exec(s)
     // A format placeholder can become any role at execution time. It is not
     // an exact dependency, but it is a reason to refuse instead of clearing.
-    return !!m && (m[1].startsWith('%') || isNamedOwnerToken(m[1]) || PSEUDO_ROLE_GRANTEES.has(m[1].toLowerCase()))
+    // Even unsupported tokens must reach validation. Otherwise a Unicode or
+    // qualified owner hidden in executed SQL could disappear before refusal.
+    return !!m
   })
 }
 
@@ -535,9 +538,6 @@ function extractRoleOperationsUnchecked(sql) {
   // ALTER ROLE ALL names every role at once: there is no exact global target
   // to account, so every exported extractor refuses it (fail closed). A quoted
   // `"all"` is one exact role and is unaffected.
-  if (/\balter\s+(?:role|user|group)\s+all\b/i.test(text)) {
-    throw new RoleExtractionError('ALTER ROLE/USER/GROUP ALL has no exact role target and must be refused')
-  }
   const operations = []
   const ownershipDependencies = []
   const seen = new Set()
@@ -563,16 +563,21 @@ function extractRoleOperationsUnchecked(sql) {
     while ((m = re.exec(text)) !== null) { if (!quotedPositions.has(m.index)) fn(m) }
   }
 
+  run(/\balter\s+(?:role|user|group)\s+all\b/gi, () => {
+    throw new RoleExtractionError('ALTER ROLE/USER/GROUP ALL has no exact role target and must be refused')
+  })
+
   // Reject unsupported role token spellings rather than accepting an ASCII
   // prefix, including schema qualification, Unicode escape identifiers and
   // names PostgreSQL would truncate to its 63-byte identifier limit.
-  const rawTarget = String.raw`("(?:[^"]|"")*"|[^\s;,()]+)`
+  const rawTarget = String.raw`(${RAW_IDENT})`
   run(new RegExp(String.raw`\b(?:create|alter|drop)\s+${ROLE_COMMAND}\s+(?:if\s+(?:not\s+)?exists\s+)?${rawTarget}`, 'gi'), (m) => {
     const raw = m[1].toLowerCase()
     if (!m[1].startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw)) throw new RoleExtractionError('role mutation names an implicit or reserved role, not an exact identity')
     if (raw !== 'all') canonicalSqlRoleOrThrow(m[1])
   })
   run(new RegExp(String.raw`\bowner\s+to\s+${rawTarget}`, 'gi'), (m) => {
+    if (!m[1].startsWith('"') && PSEUDO_ROLE_GRANTEES.has(m[1].toLowerCase())) throw new RoleExtractionError('ownership role is implicit and has no provable exact identity')
     canonicalSqlRoleOrThrow(m[1])
   })
 
@@ -612,8 +617,9 @@ function extractRoleOperationsUnchecked(sql) {
     }
   })
 
-  run(new RegExp(String.raw`\balter\s+group\s+(${IDENT})\s+(?:add|drop)\s+user\s+(${IDENT}(?:\s*,\s*${IDENT})*)`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\balter\s+group\s+(${IDENT})\s+(?:add|drop)\s+user\s+(${ROLE_LIST})`, 'gi'), (m) => {
     const group = canonicalRoleName(m[1])
+    if (splitRoleList(m[2]).some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('group membership names an implicit role')
     const members = roleNamesFrom(m[2])
     if (group && members.length) add({ action: 'group_membership', kind: 'role', target: group, members })
   })
@@ -626,11 +632,12 @@ function extractRoleOperationsUnchecked(sql) {
   run(new RegExp(String.raw`\bcreate\s+${ROLE_COMMAND}\s+(${IDENT})([^;]*)`, 'gi'), (m) => {
     const grantee = canonicalRoleName(m[1])
     if (!grantee) return
-    const optRe = new RegExp(String.raw`(?:\bin\s+(?:role|group)|\brole|\badmin|\buser(?!\s+mapping\b))\s+(${IDENT}(?:\s*,\s*${IDENT})*)`, 'gi')
+    const optRe = new RegExp(String.raw`(?:\bin\s+(?:role|group)|\brole|\badmin|\buser(?!\s+mapping\b))\s+(${ROLE_LIST})`, 'gi')
     let om
     while ((om = optRe.exec(m[2])) !== null) {
       const prefix = m[2].slice(0, om.index).replace(/""/g, '')
       if ((prefix.match(/"/g) ?? []).length % 2) continue
+      if (splitRoleList(om[1]).some((raw) => !raw.startsWith('"') && PSEUDO_ROLE_GRANTEES.has(raw.toLowerCase()))) throw new RoleExtractionError('CREATE ROLE membership names an implicit role')
       const members = roleNamesFrom(om[1])
       if (members.length) add({ action: 'grant_membership', kind: 'role', target: [...members, grantee].sort().join(' '), members, grantees: [grantee] })
     }
@@ -650,12 +657,12 @@ function extractRoleOperationsUnchecked(sql) {
   }
 
   // Membership GRANT a, b TO c, d  (no `on`, so never a privilege grant).
-  run(new RegExp(String.raw`\bgrant\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+to\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+with\s+(?:admin|inherit|set)\s+(?:option|true|false)(?:\s*,\s*(?:admin|inherit|set)\s+(?:option|true|false))*)?(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\bgrant\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${ROLE_LIST})\s+to\s+(${ROLE_LIST})(?:\s+with\s+(?:admin|inherit|set)\s+(?:option|true|false)(?:\s*,\s*(?:admin|inherit|set)\s+(?:option|true|false))*)?(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
     addMembership('grant_membership', m[1], m[2], m[3])
   })
 
   // Membership REVOKE a FROM c.
-  run(new RegExp(String.raw`\brevoke\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${IDENT}(?:\s*,\s*${IDENT})*)\s+from\s+(${IDENT}(?:\s*,\s*${IDENT})*)(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\brevoke\s+(?:(?:admin|inherit|set)\s+option\s+for\s+)?(${ROLE_LIST})\s+from\s+(${ROLE_LIST})(?:\s+granted\s+by\s+${rawTarget})?`, 'gi'), (m) => {
     addMembership('revoke_membership', m[1], m[2], m[3])
   })
 
@@ -667,16 +674,23 @@ function extractRoleOperationsUnchecked(sql) {
   })
 
   // CREATE SCHEMA … AUTHORIZATION <role> and CREATE DATABASE … OWNER <role>.
-  run(new RegExp(String.raw`\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?(${IDENT})(?:\s+authorization\s+(${IDENT}|current_user|session_user))?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?(${IDENT})(?:\s+authorization\s+${rawTarget})?`, 'gi'), (m) => {
     if (m[2]) pushOwnership(ownershipDependencies, 'schema', m[1], m[2])
   })
   // PostgreSQL also permits CREATE SCHEMA AUTHORIZATION r with no schema name:
   // the schema is named after r. This is still a dependency, never a role write.
-  run(new RegExp(String.raw`\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?authorization\s+(${IDENT}|current_user|session_user)`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?authorization\s+${rawTarget}`, 'gi'), (m) => {
     pushOwnership(ownershipDependencies, 'schema', m[1], m[1])
   })
-  run(new RegExp(String.raw`\bcreate\s+database\s+(${IDENT})(?:\s+(?:with\s+)?owner\s*(?:=\s*)?(${IDENT}|current_user|session_user))?`, 'gi'), (m) => {
+  run(new RegExp(String.raw`\bcreate\s+database\s+(${IDENT})(?:\s+(?:with\s+)?owner\s*(?:=\s*)?${rawTarget})?`, 'gi'), (m) => {
     if (m[2]) pushOwnership(ownershipDependencies, 'database', m[1], m[2])
+  })
+
+  // A supported OWNER TO role must not disappear because the preceding object
+  // name or signature is outside the ownership extractor's exact grammar.
+  run(new RegExp(String.raw`\bowner\s+to\s+${rawTarget}`, 'gi'), (m) => {
+    const role = canonicalSqlRoleOrThrow(m[1])
+    if (isNamedOwnerToken(m[1]) && !ownershipDependencies.some((dep) => dep.role === role)) throw new RoleExtractionError('ownership object cannot be accounted exactly; refusing to omit its role dependency')
   })
 
   const dynamicRefusals = findDynamicRoleMutations(sql)

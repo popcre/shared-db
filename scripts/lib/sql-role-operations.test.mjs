@@ -35,6 +35,43 @@ test('implicit or unsupported membership grantors refuse partial role accounting
   assert.equal(extractRoleOperations('GRANT a TO b GRANTED BY "current_user";').operations[0].grantor, 'current_user')
 })
 
+test('unsupported full role names never become ASCII prefixes in membership or authorization', () => {
+  for (const role of ['bé', 'β', 'core.worker', 'U&"worker"', 'x'.repeat(64)]) {
+    for (const statement of [`GRANT a TO ${role};`, `GRANT ${role} TO a;`, `REVOKE a FROM b, ${role};`, `CREATE ROLE a IN ROLE ${role};`, `CREATE ROLE a ADMIN ${role};`, `ALTER GROUP a ADD USER ${role};`, `CREATE SCHEMA s AUTHORIZATION ${role};`, `CREATE SCHEMA AUTHORIZATION ${role};`, `CREATE DATABASE d OWNER ${role};`]) {
+      for (const sql of [statement, `DO $$ BEGIN EXECUTE '${statement}'; END $$;`]) {
+        assert.throws(() => extractRoleOperations(sql), RoleExtractionError, sql)
+        assert.throws(() => roleCollisionKeys(sql), RoleExtractionError, sql)
+        assert.throws(() => roleOwnershipDependencies(sql), RoleExtractionError, sql)
+      }
+    }
+  }
+  assert.equal(canonicalRoleName('"a\0b"'), null)
+  assert.throws(() => validateRoleClaimTarget('"a\0b"'), RoleClaimError)
+})
+
+test('implicit roles in CREATE ROLE options and legacy group membership refuse', () => {
+  for (const actor of ['CURRENT_USER', 'CURRENT_ROLE', 'SESSION_USER', 'PUBLIC']) {
+    for (const sql of [`CREATE ROLE worker IN ROLE ${actor};`, `CREATE ROLE worker ADMIN ${actor};`, `ALTER GROUP worker ADD USER ${actor};`]) assert.throws(() => extractRoleOperations(sql), RoleExtractionError, sql)
+  }
+})
+
+test('unaccountable ownership object names cannot hide an exact role dependency', () => {
+  for (const statement of ['ALTER TABLE core.β OWNER TO worker;', 'ALTER FUNCTION core.β() OWNER TO worker;', 'ALTER TABLE core.β OWNER TO CURRENT_USER;']) {
+    for (const sql of [statement, `DO $$ BEGIN EXECUTE '${statement}'; END $$;`]) {
+      assert.throws(() => roleOwnershipDependencies(sql), RoleExtractionError)
+      assert.throws(() => roleCollisionKeys(sql), RoleExtractionError)
+    }
+  }
+})
+
+test('quoted role text containing ALTER ROLE ALL does not trigger a global mutation refusal', () => {
+  for (const statement of ['CREATE ROLE "ALTER ROLE ALL";', 'ALTER ROLE "ALTER ROLE ALL" NOLOGIN;', 'DROP ROLE "ALTER ROLE ALL";']) {
+    assert.deepEqual(roleCollisionKeys(statement), ['role "ALTER ROLE ALL"'])
+    assert.deepEqual(roleCollisionKeys(`DO $$ BEGIN EXECUTE '${statement}'; END $$;`), ['role "ALTER ROLE ALL"'])
+  }
+  assert.throws(() => roleCollisionKeys('ALTER ROLE ALL SET search_path = public;'), RoleExtractionError)
+})
+
 // ---------------------------------------------------------------------------
 // Exact global role identity — quoted case preserved, unquoted folded,
 // schema-qualified refused. Roles are cluster-global: one name, no schema.

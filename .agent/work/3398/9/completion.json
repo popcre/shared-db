@@ -1,12 +1,6 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "work_issue": 3398,
-  "generation": 9,
-  "evidence_parent": {
-    "work_issue": 3398,
-    "generation": 8,
-    "contract_sha256": "fca347a79dca3cdf98271c585d02c615b8ba9b343ab4a1cd81e1495c0417e404"
-  },
   "outcome": "ready-for-merge",
   "pr": 3997,
   "migration_versions": [],

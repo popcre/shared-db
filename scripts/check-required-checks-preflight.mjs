@@ -98,7 +98,12 @@ export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sh
   // different app or head's lane result as evidence for this reviewed head.
   const registry = loadRegistry()
   if (registry.queue_sensitive_jobs.some((job) => required.some((item) => item.context === job.context))) {
-    const accounting = aggregateVerdict(registry, checkRuns.filter((run) => run?.head_sha === sha && run.app?.id === GITHUB_ACTIONS_APP_ID))
+    // filter=all includes queued reroutes; choose the newest attempt per name
+    // only after exact-head and producer partitioning, as the old aggregate did.
+    const laneStates = observedStates({ checkRuns, appId: GITHUB_ACTIONS_APP_ID, sha })
+    const accounting = aggregateVerdict(registry, [...laneStates].map(([name, state]) => ({
+      name, status: state === 'pending' ? 'in_progress' : 'completed', conclusion: state,
+    })))
     if (accounting.verdict !== 'pass') {
       const absent = accounting.unreported ?? []
       const failed = (accounting.refusals ?? []).filter((reason) => !absent.includes(reason))
@@ -167,10 +172,17 @@ export function gatherPreflightInput(env = process.env, deps = {}) {
   }
   const before = authorityRead()
   const combined = read(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/status?per_page=100`])
-  const runs = read(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/check-runs?per_page=100`])
+  const runs = read(['api', '--paginate', '--slurp', `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=all`])
   const statuses = collectPages(combined, 'statuses'), checkRuns = collectPages(runs, 'check_runs')
   requireWholePage('commit statuses', reportedTotal(combined), statuses)
   requireWholePage('check runs', reportedTotal(runs), checkRuns)
+  const checkPages = Array.isArray(runs) ? runs : [runs]
+  const count = reportedTotal(runs), runIds = new Set()
+  if (checkRuns.length !== count || checkPages.some((page) => page.total_count !== count)) throw new PreflightError('check-run listing changed during pagination; refusing an unstable read')
+  for (const run of checkRuns) {
+    if (!Number.isSafeInteger(run?.id) || run.id <= 0 || typeof run.name !== 'string' || !run.name || runIds.has(run.id)) throw new PreflightError('check-run listing has an invalid or repeated run identity; refusing an unstable read')
+    runIds.add(run.id)
+  }
   const authority = authorityRead()
   if (before.revision !== authority.revision || before.base_sha !== authority.base_sha) throw new PreflightError('effective settings or protected branch changed during the read; authorization must be recomputed')
   return { authority, statuses, checkRuns, sha }

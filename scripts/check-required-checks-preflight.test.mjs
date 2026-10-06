@@ -71,7 +71,7 @@ function liveRead({ mutateAfter = false, deny = false, truncate = false } = {}) 
       return { data: { repository: { databaseId: 1, nameWithOwner: 'popcre/shared-db', ref: { name: 'main', target: { oid: sha }, branchProtectionRule: { id: 'BPR_1', requiresStatusChecks: true, requiresStrictStatusChecks: false, requiredStatusCheckContexts: ['required'], requiredStatusChecks: [{ context: 'required', app: { databaseId: 15368 } }] } } } } }
     }
     if (args.some((arg) => arg.includes('/rules/branches/'))) return [mutateAfter && reads > 1 ? [{ type: 'required_status_checks', ruleset_id: 2, ruleset_source: 'popcre', ruleset_source_type: 'Organization', parameters: { required_status_checks: [{ context: 'new', integration_id: 7 }] } }] : []]
-    if (args.some((arg) => arg.includes('/check-runs'))) return [{ total_count: truncate ? 2 : 1, check_runs: [ok()] }]
+    if (args.some((arg) => arg.includes('/check-runs'))) return [{ total_count: truncate ? 2 : 1, check_runs: [ok('required', { id: 1 })] }]
     return [{ total_count: 0, statuses: [] }]
   }
 }
@@ -197,7 +197,7 @@ test('protected merge preflight preserves exact-once runner lane accounting afte
   // A late default and its replacement both green must still refuse.
   assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`)]), /runner lane accounting refused:.*duplicate assertion/)
   assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { conclusion: 'failure' })]), /runner lane accounting refused:.*failed assertion/)
-  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { status: 'queued' })]), /runner lane accounting refused:.*queued/)
+  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { status: 'queued' })]), /runner lane accounting refused:.*still running/)
   assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane windows-latest]`)]), /unregistered lane/)
   for (const conclusion of ['neutral', 'skipped', 'cancelled']) {
     // An ignored duplicate cannot masquerade as a second successful assertion.
@@ -225,4 +225,40 @@ test('lane accounting pending/absent results use the existing bounded waiter; fa
   assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)', { status: 'queued' })]), true)
   assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)', { conclusion: 'failure' })]), false)
   assert.equal(attempt([ok('Tools offline tests'), ok('Promotion contract tests (offline)'), ok('Tools offline tests [lane ubuntu-24.04]')]), false)
+})
+
+
+test('all-attempt listing includes queued replacements and newest-name normalization preserves rerun semantics', () => {
+  const T = 'Tools offline tests', P = 'Promotion contract tests (offline)'
+  const source = liveRead()
+  const rows = [ok(T, { id: 1 }), ok(P, { id: 2 }), ok(`${T} [lane ubuntu-24.04]`, { id: 3, status: 'queued' })]
+  const json = (args) => {
+    if (args.some((arg) => arg.includes('/check-runs'))) {
+      assert.ok(args.some((arg) => arg.includes('&filter=all')), 'queued replacements must remain visible')
+      return [{ total_count: 3, check_runs: rows.slice(0, 2) }, { total_count: 3, check_runs: rows.slice(2) }]
+    }
+    const payload = source(args)
+    if (args.includes('graphql')) {
+      const rule = payload.data.repository.ref.branchProtectionRule
+      rule.requiredStatusCheckContexts = [T, P]
+      rule.requiredStatusChecks = [T, P].map((context) => ({ context, app: { databaseId: GITHUB_ACTIONS_APP_ID } }))
+    }
+    return payload
+  }
+  const input = gatherPreflightInput({ REQUESTED_SHA: sha }, { repo: 'popcre/shared-db', json })
+  assert.throws(() => evaluatePreflight(input), /runner lane accounting refused:.*still running/)
+  const required = makeAuthority({ checks: [T, P, SELF_CONTEXT].map((context) => ({ context, app_id: GITHUB_ACTIONS_APP_ID })) })
+  assert.equal(evaluatePreflight({ authority: required, sha, checkRuns: [ok(T, { id: 1, conclusion: 'failure' }), ok(T, { id: 4 }), ok(P, { id: 2 })] }).required, 2)
+  assert.throws(() => evaluatePreflight({ authority: required, sha, checkRuns: [ok(T, { id: 1 }), ok(T, { id: 4, status: 'queued' }), ok(P, { id: 2 })] }), /still running/)
+})
+
+test('all-attempt pagination refuses changing totals, repeated ids and missing identities', () => {
+  for (const pages of [
+    [{ total_count: 1, check_runs: [ok('required', { id: 1 })] }, { total_count: 2, check_runs: [] }],
+    [{ total_count: 2, check_runs: [ok('required', { id: 1 }), ok('required', { id: 1 })] }],
+    [{ total_count: 1, check_runs: [ok()] }],
+  ]) {
+    const source = liveRead()
+    assert.throws(() => gatherPreflightInput({ REQUESTED_SHA: sha }, { repo: 'popcre/shared-db', json: (args) => args.some((arg) => arg.includes('/check-runs')) ? pages : source(args) }), /unstable read/)
+  }
 })

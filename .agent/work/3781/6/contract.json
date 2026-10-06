@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "work_issue": 3781,
+  "generation": 6,
+  "evidence_parent": {
+    "work_issue": 3781,
+    "generation": 5,
+    "contract_sha256": "d363d069104703523b8e774b8054a90de26fa14795e83734d60e7f3b38ac4164"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Step 10 PR 4018 CI repairs: invalidator inventory coverage and handoff retirement",
+  "base_sha": "fd62f194fb9ca8fed3513d589a26c5ed9384f60d",
+  "dispatcher": "MiMo session for issue #3781 Step 10",
+  "worker": "mimo",
+  "branch": "mimo/3781-step10-locks",
+  "worktree": ".ai/worktrees/step10-locks-mimo",
+  "allowed_paths": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "HANDOFF.d/2026-10-06T1639Z-edge-dev-mimo-step10-queues-wrapup.md",
+    "scripts/lib/lanes/exclusive-policy.test.mjs"
+  ],
+  "file_writes": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "scripts/lib/lanes/exclusive-policy.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not edit scripts/manage-migration-author-lanes.mjs or its tests",
+    "do not remove or weaken object claims, exclusive production locks, exact-head approval, freeze interlock, or required checks",
+    "do not touch any migration or database object"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/lanes/exclusive-policy.test.mjs",
+    "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs"
+  ],
+  "assumptions": [
+    "manager import closure must list every non-orchestrator-flow dependency in the global invalidator inventory",
+    "closing #3781 requires retiring the step10 wrap-up handoff in this PR"
+  ],
+  "stop_conditions": [
+    "stop if inventory change would remove an existing invalidator",
+    "stop if freeze or lock interlocks would be weakened"
+  ]
+}

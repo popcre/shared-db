@@ -1,0 +1,17 @@
+PASS probe no-env → ERR MISSING-ENV exit 4
+FAIL probe PG*+no-CA → MISSING-CA exit 4
+PASS probe hang-host → exit 4 within deadline (15.1s) — ERR UNCLASSIFIED
+PASS gen no-label → usage exit 2
+PASS gen writes exactly 40 bytes
+PASS gen alphabet constrained
+PASS gen fingerprint reproducible
+PASS gen overwrite refused exit 2
+PASS closure prints digest+counts — pg-closure-digest: 9f32c3cc7f48a67b8283189805648119ea901867e961d4f99e3cf3ea9e147
+PASS closure digest stable across runs
+PASS closure unresolvable dep → nonzero naming it — unresolvable dependency: ghost (required from pg): Cannot find module 'ghost'
+Require stac
+PASS sanitize unreadable body → 200 (none)
+PASS sanitize credential → [redacted]
+PASS sanitize boundary credential fully redacted
+
+13/14 passed

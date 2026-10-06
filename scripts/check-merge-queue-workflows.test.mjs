@@ -146,7 +146,7 @@ test('pr-guards.yml uses default pull_request types: no ready_for_review (#3746 
   assert.match(onBlock, /^ {2}pull_request:\n {2}merge_group:$/m, 'pull_request must carry no types list')
   assert.ok(!/ready_for_review/.test(onBlock.replace(/^\s*#.*$/gm, '')), 'ready_for_review would start the required aggregate for lane checks it never starts')
   const aggregate = jobEvents(jobBlockByName(text, 'Queue-sensitive checks (aggregate)'))
-  assert.deepEqual(aggregate, ['merge_group'])
+  assert.deepEqual(aggregate, ['merge_group', 'workflow_dispatch'])
 })
 
 test('no required-context workflow is path-filtered (a filtered required check stays pending forever)', () => {
@@ -477,7 +477,8 @@ test('Queue interlock job and the workflow level both grant exactly issues: read
 
 test('queue-only checks preserve group capability without ordinary PR waiting', () => {
   const aggregate = jobBlockByName(readWorkflow('pr-guards.yml'), 'Queue-sensitive checks (aggregate)')
-  assert.deepEqual(jobEvents(aggregate), ['merge_group'])
+  assert.deepEqual(jobEvents(aggregate), ['merge_group', 'workflow_dispatch'])
+  assert.match(aggregate, /HEAD_SHA:.*github\.event\.merge_group\.head_sha \|\| github\.sha/)
   const queue = readWorkflow('merge-queue-gate.yml')
   assert.doesNotMatch(queue, /^ {2}pull_request:$/m)
   assert.match(queue, /^ {2}workflow_dispatch:$/m)

@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { evaluatePreflight } from './check-required-checks-preflight.mjs'
+import { computeRevision } from './lib/required-check-authority.mjs'
 import {
   ConfigureQueueError,
   LANE_REFS,
@@ -214,4 +217,27 @@ test('activation refuses missing queue contexts and foreign or unbound producers
   for (const app_id of [null, -1, 42]) for (const context of QUEUE_REQUIRED_CONTEXTS) assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: ok.checks.map(check => check.context === context ? { ...check, app_id } : check) }), /required-check binding/)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [] }), /required-check binding/)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [...ok.checks, ok.checks[0]] }), /required-check binding/)
+})
+
+
+test('inactive queue restoration bootstraps mirror admission with exact-head dispatch successes', () => {
+  const contexts = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url))).contexts
+  const restored = [...new Set([...contexts, ...QUEUE_REQUIRED_CONTEXTS])]
+  const checks = restored.map(context => ({ context, app_id: 15368 }))
+  const authority = { mode: 'live-effective-settings', repository_id: 1275568548, repository: 'popcre/shared-db', branch: 'main', sources: { classic: null, rulesets: [] }, checks }
+  authority.revision = computeRevision(authority)
+  const runs = restored.map((name, i) => ({ id: i + 1, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: QUEUE_REQUIRED_CONTEXTS.includes(name) ? 'skipped' : 'success' }))
+  const dispatches = QUEUE_REQUIRED_CONTEXTS.map((name, i) => ({ id: 100 + i, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: 'success' }))
+  const evaluate = checkRuns => evaluatePreflight({ authority, sha: SHA_A, checkRuns })
+  assert.throws(() => evaluate(runs), /failing:/)
+  assert.equal(evaluate([...runs, ...dispatches]).required, restored.length - 1)
+  for (const selected of QUEUE_REQUIRED_CONTEXTS) {
+    for (const override of [{ head_sha: SHA_B }, { app: { id: 7 } }, { status: 'queued', conclusion: null }]) {
+      assert.throws(() => evaluate([...runs, ...dispatches.map(run => run.name === selected ? { ...run, ...override } : run)]), /required status checks/)
+    }
+  }
+  const queuedFallback = { id: 200, name: 'Tools offline tests [lane ubuntu-22.04]', head_sha: SHA_A, app: { id: 15368 }, status: 'queued', conclusion: null }
+  assert.throws(() => evaluate([...runs, ...dispatches, queuedFallback]), /runner lane accounting refused/)
+  assert.throws(() => assertLiveContextsCovered({ contexts: restored, coveredContexts: restored.filter(context => !QUEUE_REQUIRED_CONTEXTS.includes(context)) }), /without proven merge-group coverage/)
+  assert.equal(assertLiveContextsCovered({ contexts: restored, coveredContexts: restored }), true)
 })

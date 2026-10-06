@@ -57,7 +57,17 @@ Activation must happen only after the implementation PR is merged and green on `
    The retirement artifact's bound14 `recovery` payload is valid only when fresh live settings
    match its12-context `after` snapshot; otherwise form a new producer-preserving additive plan.
    Verify exact live readback with `verifyReadback`, then refresh the informational mirror using
-   `scripts/update-required-checks.mjs --refresh-mirror` and commit it through the guarded path.
+   `scripts/update-required-checks.mjs --refresh-mirror` and create its guarded pull request.
+   Keep the native queue inactive until that mirror is merged. On the frozen, independently
+   reviewed mirror PR branch, dispatch both `merge-queue-gate.yml` and `pr-guards.yml`.
+   Verify each run's `head_sha` equals the exact reviewed PR head and its successful named
+   check is produced by GitHub Actions app `15368`. The aggregate dispatch uses `github.sha`
+   and waits for the existing Tools/Promotion lane assertions on that same head; ordinary
+   PR events do not start aggregate work. A skipped aggregate does not satisfy the protected
+   preflight. Wrong-head, foreign-app, pending, failed, or absent results refuse admission.
+   Run the existing guarded merge with all14 actual requirements satisfied; protected-main
+   lane accounting remains mandatory before and under the merge lock. Only after the
+   actual14 mirror is on main can activation pass its live-context coverage gate.
 2. Run `node scripts/configure-merge-queue.mjs`. Default is a read-only dry run that refuses unless
    the owner is an organization, the repository is public, the immutable repository ID matches the
    transfer baseline artifact, the queue workflow is on `main`, every required context including
@@ -107,7 +117,8 @@ contexts, or the guarded lane:
    ruleset and verifies it is gone.
 3. The guarded merge lane's `--queue-mode` read then reports `inactive` and direct guarded merges
    resume unchanged. The `merge_group` trigger support and the additive `Merge queue gate` context
-   stay in place (its `pull_request` form keeps ordinary merges green); remove the context later
+   stay in place. Direct-mode PRs use the two-dispatch exact-head bootstrap above when these
+   queue contexts remain required; remove the contexts later
    only through a reviewed settings change if it ever obstructs direct mode.
 
 Rollback never reverses the `popcre` organization transfer; that is a separate owner decision with

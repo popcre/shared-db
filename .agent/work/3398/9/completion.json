@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "work_issue": 3398,
+  "generation": 9,
+  "evidence_parent": {
+    "work_issue": 3398,
+    "generation": 8,
+    "contract_sha256": "fca347a79dca3cdf98271c585d02c615b8ba9b343ab4a1cd81e1495c0417e404"
+  },
+  "outcome": "ready-for-merge",
+  "pr": 3997,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3398/9",
+  "contract_sha256": "a8c91864ede192476aa5d310c95f0ee9de620f5abc6de28a869a06e1d13e6264",
+  "base_sha": "021378fd2707c2d7c278417f2bac8da65cc04e59",
+  "head_sha": "7c82e2261fd867d0587060c12162438b1cd7ca17",
+  "files_changed": [
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/check-dispatch-collision.mjs",
+    "scripts/check-dispatch-collision.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/lib/lanes/claims.mjs",
+    "scripts/lib/lanes/preview-admission.mjs",
+    "scripts/lib/sql-role-operations.mjs",
+    "scripts/lib/sql-role-operations.test.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/orchestrator-flow/admission.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/sql-role-operations.test.mjs scripts/check-pr-object-collisions.test.mjs scripts/check-dispatch-collision.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "1019 tests pass, zero failures; additional legacy relation tests passed for 1030 total"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=325 sources=91 derived_digest=6cd8ed349351"
+    },
+    {
+      "command": "node scripts/check-cancelled-work.mjs",
+      "exit_code": 0,
+      "evidence": "no cancelled instruction reintroduced, 2 rows checked"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace defects"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; no added migrations"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "370 governed source files conform"
+    }
+  ],
+  "assumptions_resolved": [
+    "Open PR file inventory confirms integration paths have no active competing writes",
+    "Every checked-in migration remains accountable with the role helper",
+    "Supported claim parser and structural admission cover exact global roles and read dependencies"
+  ],
+  "stop_conditions_hit": []
+}

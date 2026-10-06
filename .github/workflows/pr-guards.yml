@@ -5,15 +5,12 @@
 # spending shared runner capacity and GITHUB_TOKEN budget. The guards below
 # were separate files with identical shape; they are now jobs here.
 #
-# REQUIRED CONTEXTS ARE UNCHANGED. A job inside a workflow reports its plain
-# job `name:` as its check-run context, so every required context emitted
-# here ("Agent work contract", "Cancelled work guard", "Domain ownership",
-# "Handoff contract", "Intake pointer guard", "Destructive SQL outside
-# migrations", "Cross-PR object collision", "Orchestrator marker guard",
-# "Queue-sensitive checks (aggregate)") is byte-identical to before. Jobs are
-# moved in directly, never called through `workflow_call`, because a reusable
-# workflow call prefixes the context ("caller / callee") and would break every
-# required check.
+# STABLE CONTEXT NAMES. Jobs report plain `name:` check-run contexts. Current
+# required guards here are Cancelled work guard, Domain ownership, Handoff
+# contract, Intake pointer guard, Destructive SQL outside migrations, and
+# Cross-PR object collision. Agent work contract is advisory; the queue aggregate
+# is retained for merge-group and explicit restoration dispatch. Jobs moved
+# directly rather than through workflow_call, which would prefix their names.
 #
 # PER-JOB EVENTS. The workflow triggers on the union of the moved workflows'
 # events; each job's `if:` keeps exactly the events its old workflow ran on,
@@ -41,8 +38,8 @@ name: PR Guards
 on:
   # Default pull_request types (opened, synchronize, reopened) on purpose. The
   # old pr-object-collision.yml also ran on ready_for_review, but a shared
-  # trigger cannot be per-job, and ready_for_review would start the required
-  # Queue-sensitive aggregate for lane checks that event never starts.
+  # trigger cannot be per-job. This shared workflow keeps the standard
+  # pull-request events; the queue aggregate has its own group/dispatch gate.
   # A draft PR's collision verdict comes from its latest push instead.
   pull_request:
   merge_group:

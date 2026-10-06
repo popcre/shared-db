@@ -59,9 +59,13 @@ Activation must happen only after the implementation PR is merged and green on `
    Verify exact live readback with `verifyReadback`, then refresh the informational mirror using
    `scripts/update-required-checks.mjs --refresh-mirror` and create its guarded pull request.
    Keep the native queue inactive until that mirror is merged. On the frozen, independently
-   reviewed mirror PR branch, dispatch both `merge-queue-gate.yml` and `pr-guards.yml`.
+   reviewed mirror PR branch, dispatch both `merge-queue-gate.yml` and `pr-guards.yml`,
+   supplying the exact mirror PR number as `agent_contract_pr_number` for PR Guards.
    Verify each run's `head_sha` equals the exact reviewed PR head and its successful named
-   check is produced by GitHub Actions app `15368`. The aggregate dispatch uses `github.sha`
+   check is produced by GitHub Actions app `15368`. After both dispatches, require actual
+   SUCCESS for ALL14 newest exact-head app-bound required contexts, including every
+   dispatch sibling guard, not merely the two queue checks. Any sibling failure refuses
+   guarded admission; never reuse an older green run or accept skipped. The aggregate dispatch uses `github.sha`
    and waits for the existing Tools/Promotion lane assertions on that same head; ordinary
    PR events do not start aggregate work. A skipped aggregate does not satisfy the protected
    preflight. Wrong-head, foreign-app, pending, failed, or absent results refuse admission.

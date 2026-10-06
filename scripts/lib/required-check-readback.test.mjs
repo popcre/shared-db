@@ -22,8 +22,9 @@ test('reconciles the checked-in live main authority record with all required che
     branch: () => ({ name: 'main', protected: true, commit: { sha: authority.base_sha }, protection: { enabled: true, required_status_checks: recorded } }),
     branchRules: () => [authority.sources.rulesets],
   })
-  assert.equal(result.length, 16)
-  assert.ok(result.includes('Merge queue gate'))
+  assert.equal(result.length, 12)
+  assert.ok(!result.includes('Merge queue gate'))
+  assert.ok(!result.includes('Queue-sensitive checks (aggregate)'))
 })
 
 test('accepts active merge queue and reconciles required checks from active rulesets', () => {

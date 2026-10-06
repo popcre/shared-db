@@ -236,6 +236,10 @@ test('inactive queue restoration bootstraps mirror admission with exact-head dis
       assert.throws(() => evaluate([...runs, ...dispatches.map(run => run.name === selected ? { ...run, ...override } : run)]), /required status checks/)
     }
   }
+  for (const name of restored.filter(context => !QUEUE_REQUIRED_CONTEXTS.includes(context) && context !== 'Migration guarded merge authorization')) {
+    const siblingFailure = { id: 300, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: 'failure' }
+    assert.throws(() => evaluate([...runs, ...dispatches, siblingFailure]), /required status checks/)
+  }
   const queuedFallback = { id: 200, name: 'Tools offline tests [lane ubuntu-22.04]', head_sha: SHA_A, app: { id: 15368 }, status: 'queued', conclusion: null }
   assert.throws(() => evaluate([...runs, ...dispatches, queuedFallback]), /runner lane accounting refused/)
   assert.throws(() => assertLiveContextsCovered({ contexts: restored, coveredContexts: restored.filter(context => !QUEUE_REQUIRED_CONTEXTS.includes(context)) }), /without proven merge-group coverage/)

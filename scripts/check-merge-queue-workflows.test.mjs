@@ -24,7 +24,7 @@ const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-requir
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
 // scripts/update-required-checks.mjs from the live read-back; it now equals the
-// dated readback artifact below (14 pre-change contexts, strict false), so nothing is pending.
+// dated readback artifact below (12 post-write contexts, strict false), so nothing is pending.
 const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the orchestrator marker guard was retired with the role (#3874);

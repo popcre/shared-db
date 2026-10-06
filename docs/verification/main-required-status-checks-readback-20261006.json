@@ -2,7 +2,7 @@
   "_why": "Actual pre-change classic required-status-checks readback for issue3987 Stage B initial review. No settings changed; exact prospective after12 is separate. Informational only, not merge authority.",
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-10-06T19:18:56.572Z",
+  "capturedIso": "2026-10-06T19:25:36.149Z",
   "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
   "strict": false,
   "contexts": [

@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
 import { readEffectiveRequiredChecks, computeRevision, probeAuthorityReadPermissions } from './lib/required-check-authority.mjs'
+import { aggregateVerdict, loadRegistry } from './orchestrator-flow/runner-lanes.mjs'
 import { MERGE_SELF_CONTEXT as SELF_CONTEXT } from './lib/merge-self-context.mjs'
 export { SELF_CONTEXT }
 export class PreflightError extends Error {}
@@ -90,6 +91,15 @@ export function evaluatePreflight({ authority, statuses = [], checkRuns = [], sh
     if (pending.length) parts.push(`still running: ${pending.join(', ')}`)
     if (missing.length) parts.push(`never reported: ${missing.join(', ')}`)
     throw new PreflightError(`required status checks are not satisfied on the reviewed head — ${parts.join('; ')}. No retry can clear this, so the merge lane was not taken.`)
+  }
+  // The old runner aggregate was a separate waiting job. Keep the same exact-once
+  // proof in this protected-main preflight, both before and under the merge lock.
+  // Preserve the registry identity for dispatch/reroute consumers; never accept a
+  // different app or head's lane result as evidence for this reviewed head.
+  const registry = loadRegistry()
+  if (registry.queue_sensitive_jobs.some((job) => required.some((item) => item.context === job.context))) {
+    const accounting = aggregateVerdict(registry, checkRuns.filter((run) => run?.head_sha === sha && run.app?.id === GITHUB_ACTIONS_APP_ID))
+    if (accounting.verdict !== 'pass') throw new PreflightError(`runner lane accounting refused: ${[...(accounting.refusals ?? []), ...(accounting.pending ?? [])].join('; ')}`)
   }
   const requiredNames = new Set(authority.checks.map((item) => item.context))
   const advisory = [...observedStates({ statuses, checkRuns, sha })].filter(([name, state]) => !requiredNames.has(name) && name !== SELF_CHECK_RUN && !REPORTED_SUCCESS.has(state))

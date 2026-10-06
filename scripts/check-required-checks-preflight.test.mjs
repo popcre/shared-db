@@ -188,3 +188,28 @@ test('app-bound requirement: known-wrong-app status is excluded entirely', () =>
   // But a status with NO app field (REST reality) that is red must still surface.
   assert.throws(() => evaluate({ statuses: [{ context: 'required', state: 'failure', id: 1 }] }), /failing/)
 })
+
+test('protected merge preflight preserves exact-once runner lane accounting after aggregate retirement', () => {
+  const T = 'Tools offline tests', P = 'Promotion contract tests (offline)'
+  const laneAuthority = makeAuthority({ checks: [T, P, SELF_CONTEXT].map((context) => ({ context, app_id: GITHUB_ACTIONS_APP_ID })) })
+  const run = (checkRuns) => evaluatePreflight({ authority: laneAuthority, sha, checkRuns })
+  assert.equal(run([ok(T), ok(P)]).required, 2)
+  // A late default and its replacement both green must still refuse.
+  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`)]), /runner lane accounting refused:.*duplicate assertion/)
+  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { conclusion: 'failure' })]), /runner lane accounting refused:.*failed assertion/)
+  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { status: 'queued' })]), /runner lane accounting refused:.*queued/)
+  assert.throws(() => run([ok(T), ok(P), ok(`${T} [lane windows-latest]`)]), /unregistered lane/)
+  for (const conclusion of ['neutral', 'skipped', 'cancelled']) {
+    // An ignored duplicate cannot masquerade as a second successful assertion.
+    assert.equal(run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { conclusion })]).required, 2)
+  }
+  // Neither unrelated head nor foreign app can create or hide a counted result.
+  assert.equal(run([ok(T), ok(P), ok(`${T} [lane ubuntu-24.04]`, { head_sha: 'b'.repeat(40) }), ok(`${T} [lane ubuntu-24.04]`, { app: { id: 7 } })]).required, 2)
+  assert.throws(() => run([ok(T), ok(P, { head_sha: 'b'.repeat(40) })]), /never reported/)
+  assert.throws(() => run([ok(T), ok(P, { app: { id: 7 } })]), /never reported/)
+})
+
+test('a required registered lane cannot remove the other assertion from merge accounting', () => {
+  const laneAuthority = makeAuthority({ checks: [{ context: 'Tools offline tests', app_id: GITHUB_ACTIONS_APP_ID }, { context: SELF_CONTEXT, app_id: GITHUB_ACTIONS_APP_ID }] })
+  assert.throws(() => evaluatePreflight({ authority: laneAuthority, sha, checkRuns: [ok('Tools offline tests')] }), /runner lane accounting refused:.*no run reported/)
+})

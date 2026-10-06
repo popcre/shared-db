@@ -16,9 +16,17 @@
 --   Sesame (plm.sesame_brand, latest capture): 28 value_keys, 21 of them carry
 --   both a legacy (lowercase free-text 'Brand') and a current (proper-cased
 --   'Brand NEW') row. Per-file links exist only for current.
---   Mapping decisions: plm.source_resolution has ZERO rows keyed on
---   'label:<lowercase>' or any sesame source_system, so hiding the legacy twin
---   orphans no decision.
+--   Mapping decisions (both sides, re-verified 2026-10-06 after review):
+--   plm.source_resolution has ZERO rows for any sesame source_system or keyed
+--   on 'label:<lowercase>', and ZERO rows for any warner source_system or
+--   keyed on 'fallback:%' / '%natural_key_fallback%'. Hiding the Warner
+--   fallback twin and the Sesame legacy twin orphans no decision. The Warner
+--   hide predicate is namespace-agnostic (any namespace whose fallback label
+--   has a source_id twin); the quoted evidence is for warner_art_assets.
+--   Display-level generation join: plm.sesame_brand's landing contract says
+--   generations are never joined in the landing schema (20260819212002). This
+--   change joins them only at inventory display level by value_key, per the
+--   owner ruling in this issue; source rows stay separate in the landing table.
 --
 -- Changes (property arm only; character and style_guide arms unchanged):
 --   1. Warner: hide a natural_key_fallback row when a source_id row with the

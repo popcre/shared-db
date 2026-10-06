@@ -1,0 +1,8 @@
+*.mjs text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Published work evidence is immutable; changing its bytes would invalidate its record.
+.agent/work/** -text

@@ -121,7 +121,6 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
-          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
           LIMIT: ${{ github.event.inputs.limit }}
         run: |
           set -euo pipefail

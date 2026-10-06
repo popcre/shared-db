@@ -1068,20 +1068,87 @@ _WORKFLOW_CUSTODY_REWRITES = (
     # The freshness rule is the freshness script's own business.
     (re.compile(r"(scripts/check-main-tip-freshness\.mjs) --production\b"), r"\1"),
 )
+# Concurrency queue NAMES do not change which statements run. A PR head and its
+# merge commit routinely differ only in a queue rename (e.g. a main-side rename
+# between cut and merge), so queue-name literals inside a concurrency `group:`
+# line are redacted — each replaced by its ORDINAL position, so an in-place
+# rename normalises to equality while a drop or an insertion does not
+# (#3940, #3941). A literal counts as a queue name ONLY in a POSITIVE queue
+# position, identified by construction: the first argument of `format(...)`, or
+# a direct operand of `&&` / `||`. Everything else — comparison operands in any
+# spelling (`==`, `!=`, reversed, inside `contains()`, indexed properties),
+# function arguments, plain scalars, escaped-apostrophe segments — is compared
+# VERBATIM, so changing any of them refuses (#3943 follow-up: the negative
+# operand-skip design admitted an unbounded family of sibling spellings; a
+# positive position list admits none). Assumptions that fail CLOSED when
+# violated: the group is a single-line `group: …` form (a folded `>-` or
+# sequence form is compared verbatim, so a rename refuses rather than passes);
+# queue literals are single-quoted (double-quoted spellings are verbatim, so
+# their renames refuse). Applied only to `group:` lines inside the
+# concurrency: block, so a `group:` key in a run: | block or nested mapping is
+# never touched (#3941).
 _WORKFLOW_CUSTODY_DROPPED_LINES = frozenset((
     # The production job's exact-tip equality, replaced by the freshness rule.
     'test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"',
 ))
 
 
+def _redact_concurrency_queue_literals(line: str) -> str:
+    # Scans TRUE single-quoted literals (paired quotes, left to right). A
+    # skipped literal resumes the scan AFTER its closing quote, so no match can
+    # anchor mid-expression. A literal is redacted ONLY when its preceding
+    # text (right-trimmed) ends in `format(` (word-anchored), `&&`, or `||` —
+    # the positive queue positions — AND the literal is non-empty. The redaction
+    # token PRESERVES the literal's {N} placeholder skeleton: the placeholder
+    # is the queue's granularity key (per-ref vs per-target), so dropping or
+    # adding one must refuse, not normalise. Empty literals are verbatim: an
+    # emptied queue operand merges queues, and verbatim comparison refuses it.
+    import re as _re
+    out = []
+    ordinal = 0
+    i = 0
+    while i < len(line):
+        if line[i] != "'":
+            out.append(line[i])
+            i += 1
+            continue
+        end = line.find("'", i + 1)
+        if end == -1:
+            out.append(line[i:])
+            break
+        prefix = line[:i].rstrip()
+        format_anchored = (
+            prefix.endswith("format(")
+            and (len(prefix) == 7 or not _re.match(r"\w", prefix[-8]))
+        )
+        literal = line[i:end + 1]
+        is_positive = format_anchored or prefix.endswith("&&") or prefix.endswith("||")
+        if is_positive and len(literal) > 2:
+            ordinal += 1
+            skeleton = "".join(sorted(set(_re.findall(r"\{\d+\}", literal))))
+            out.append(f"'<queue-name:{ordinal}{skeleton}>'")
+        else:
+            out.append(literal)  # not a non-empty positive queue position: verbatim
+        i = end + 1
+    return "".join(out)
+
+
 def _workflow_custody_normal_form(text: str) -> list[str]:
     lines = []
+    in_concurrency = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or line in _WORKFLOW_CUSTODY_DROPPED_LINES:
             continue
+        # Track YAML structure from indentation to bind the concurrency-group
+        # rewrite to the concurrency: block only (issue #3941).
+        indent = len(raw) - len(raw.lstrip())
+        if indent == 0:
+            in_concurrency = (line == "concurrency:")
         for pattern, replacement in _WORKFLOW_CUSTODY_REWRITES:
             line = pattern.sub(replacement, line)
+        if in_concurrency and indent > 0 and line.startswith("group:"):
+            line = _redact_concurrency_queue_literals(line)
         lines.append(line)
     return lines
 

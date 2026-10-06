@@ -244,6 +244,126 @@ begin
 end
 $backend_contracts$;
 
+-- Actual session identities, not SET ROLE: the trusted boundary uses session_user.
+-- Fixtures and temporary function grants roll back with this contract transaction.
+do $runtime_fixtures$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_backend_runtime') then
+    create role designflow_prod_backend_runtime nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_tracking_runtime') then
+    create role designflow_prod_tracking_runtime nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_item_master_runtime') then
+    create role designflow_prod_item_master_runtime nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_data_sync_runtime') then
+    create role designflow_prod_data_sync_runtime nologin;
+  end if;
+end
+$runtime_fixtures$;
+
+grant usage on schema dflow_prod to designflow_prod_backend_runtime,
+  designflow_prod_tracking_runtime, designflow_prod_item_master_runtime,
+  designflow_prod_data_sync_runtime;
+grant execute on function dflow_prod.set_item_user_assignment(integer,text,integer,boolean,jsonb)
+  to designflow_prod_backend_runtime, designflow_prod_tracking_runtime,
+     designflow_prod_item_master_runtime, designflow_prod_data_sync_runtime;
+
+do $runtime_context$
+declare
+  v_item integer;
+begin
+  insert into dflow_prod."RFQItem"("rfqItem_step")
+    select "RFQStep_id" from dflow_prod."RFQStep" where "RFQStep_title" = 'issue-2874-start'
+    returning "rfqItem_id" into v_item;
+  perform set_config('test.issue2874.runtime_item', v_item::text, true);
+  perform set_config('test.issue2874.recipient', (select id::text from dflow_prod.users where email = 'issue-2874-sourcing@example.test'), true);
+  perform set_config('request.designflow.actor_id', (select id::text from dflow_prod.users where email = 'issue-2874-sales@example.test'), true);
+  perform set_config('request.designflow.actor_email', 'issue-2874-sales@example.test', true);
+  perform set_config('request.jwt.claims', '', true);
+end
+$runtime_context$;
+
+set session authorization designflow_prod_backend_runtime;
+do $actual_backend_session$
+declare
+  v_assignment bigint;
+  v_refused boolean := false;
+begin
+  if session_user <> 'designflow_prod_backend_runtime' then
+    raise exception 'contract did not establish the actual backend session identity';
+  end if;
+  v_assignment := dflow_prod.set_item_user_assignment(
+    current_setting('test.issue2874.runtime_item')::integer, 'quality',
+    current_setting('test.issue2874.recipient')::integer, true);
+  if v_assignment is null then raise exception 'backend runtime could not create an assignment'; end if;
+  perform set_config('test.issue2874.runtime_assignment', v_assignment::text, true);
+  -- A PostgREST/client token cannot acquire the trusted database-actor route.
+  perform set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+  begin
+    perform dflow_prod.set_item_user_assignment(current_setting('test.issue2874.runtime_item')::integer,
+      'quality', current_setting('test.issue2874.recipient')::integer, true);
+  exception when insufficient_privilege then v_refused := true;
+  end;
+  if not v_refused then raise exception 'JWT context acquired trusted backend attribution'; end if;
+  perform set_config('request.jwt.claims', '', true);
+end
+$actual_backend_session$;
+reset session authorization;
+
+do $runtime_attribution$
+begin
+  if (select assigned_by_user_id from dflow_prod.item_user_assignment
+       where id = current_setting('test.issue2874.runtime_assignment')::bigint)
+       is distinct from current_setting('request.designflow.actor_id')::integer then
+    raise exception 'backend runtime assignment lost its validated actor attribution';
+  end if;
+end
+$runtime_attribution$;
+
+set session authorization designflow_prod_tracking_runtime;
+do $other_service_refusal$
+declare v_refused boolean := false;
+begin
+  begin
+    perform dflow_prod.set_item_user_assignment(current_setting('test.issue2874.runtime_item')::integer,
+      'quality', current_setting('test.issue2874.recipient')::integer, true);
+  exception when insufficient_privilege then v_refused := true;
+  end;
+  if not v_refused then raise exception 'non-backend service spoofed trusted backend attribution'; end if;
+end
+$other_service_refusal$;
+reset session authorization;
+
+set session authorization designflow_prod_item_master_runtime;
+do $other_service_refusal$
+declare v_refused boolean := false;
+begin
+  begin
+    perform dflow_prod.set_item_user_assignment(current_setting('test.issue2874.runtime_item')::integer,
+      'quality', current_setting('test.issue2874.recipient')::integer, true);
+  exception when insufficient_privilege then v_refused := true;
+  end;
+  if not v_refused then raise exception 'non-backend service spoofed trusted backend attribution'; end if;
+end
+$other_service_refusal$;
+reset session authorization;
+
+set session authorization designflow_prod_data_sync_runtime;
+do $other_service_refusal$
+declare v_refused boolean := false;
+begin
+  begin
+    perform dflow_prod.set_item_user_assignment(current_setting('test.issue2874.runtime_item')::integer,
+      'quality', current_setting('test.issue2874.recipient')::integer, true);
+  exception when insufficient_privilege then v_refused := true;
+  end;
+  if not v_refused then raise exception 'non-backend service spoofed trusted backend attribution'; end if;
+end
+$other_service_refusal$;
+reset session authorization;
+
 -- dflow_prod stays closed: no browser role reaches any new object.
 set local role authenticated;
 do $authenticated_refusal$

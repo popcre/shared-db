@@ -182,7 +182,7 @@ declare
   v_count integer;
 begin
   if v_backend_id_text is not null or v_backend_email is not null then
-    if session_user::text not in ('postgres', 'designflow')
+    if session_user::text not in ('postgres', 'designflow', 'designflow_prod_backend_runtime')
        or auth.role() is not null then
       raise exception 'backend actor context requires the DesignFlow backend database role'
         using errcode = '42501';
@@ -613,6 +613,6 @@ comment on column dflow_prod.item_workflow_action.actor_identity_source is
 comment on view dflow_prod.item_workflow_handoff is
   'One row per originating handoff action with the return that closed it; is_open drives the open/closed handoff rule.';
 comment on function dflow_prod.current_designflow_user_id() is
-  'Resolves a Supabase JWT actor, or a transaction-local DesignFlow JWT actor supplied only by direct backend roles postgres/designflow, against dflow_prod.users.';
+  'Resolves a Supabase JWT actor, or a transaction-local DesignFlow JWT actor supplied only by direct backend roles postgres/designflow/designflow_prod_backend_runtime, against dflow_prod.users.';
 comment on function dflow_prod.record_item_workflow_action(integer,integer,text,uuid,text,text,boolean,text,text,text,jsonb) is
   'Records one immutable RFQ workflow action in dflow_prod: stale-step rejection, latest-open-handoff return binding, recipient-required rollback.';

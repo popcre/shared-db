@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "work_issue": 4010,
+  "outcome": "ready-for-merge",
+  "pr": 4013,
+  "migration_versions": [
+    "20261006205745"
+  ],
+  "contract_ref": "refs/db-contracts/4010/1",
+  "contract_sha256": "6e2e21658e9a6431172f9a0afaf8fdd1564e3ba71acd79d8d29fdeabd7daf5d0",
+  "base_sha": "b8905b9a187133cb0e6ff1b13c62298920ed6ac3",
+  "head_sha": "661c4e4fb2d6a37dac0268299b8e632aa50c4c46",
+  "files_changed": [
+    ".github/live-proofs/4010.sql",
+    "supabase/migrations/20261006205745_repoint_designflow_artist_parent_fks.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs --issue 4010",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Passed"
+    },
+    {
+      "command": "python3 /tmp/4010-sql-smoke.py",
+      "exit_code": 0,
+      "evidence": "Enforcement and rows/access preserved; each destination orphan and changed original action refuses atomically."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh production originals match guards; three mapped destination orphan counts0. Tracking cluster and separate HTS connection intentionally preserved."
+  ],
+  "stop_conditions_hit": []
+}

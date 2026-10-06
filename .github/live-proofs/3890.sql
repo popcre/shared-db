@@ -8,4 +8,4 @@ SELECT (
   AND (SELECT count(*) FROM pg_attribute
     WHERE attrelid = to_regclass('dflow.properties_and_characters')
       AND attnum > 0 AND NOT attisdropped) = 8
-) AS passed;
+) as passed;

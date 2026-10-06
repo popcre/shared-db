@@ -647,7 +647,7 @@ jobs:
       # this one job precisely so they cannot drift apart. This step adds no new
       # required status context -- the job name is unchanged.
       - name: Unit-test the dispatch-time collision checker (shares the parser)
-        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
+        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/route-lane-manager-patch.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
 
       # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
       # from the per-repository Actions installation limit. Writes keep github.token.

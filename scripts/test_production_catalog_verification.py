@@ -3451,5 +3451,93 @@ class CatalogBehaviorSqlMutationCoverageTests(unittest.TestCase):
             build_behavior_sql([check])
 
 
+class HtsProductPhraseContractTests(unittest.TestCase):
+    """Issue #2986: the phrase migration's own post-apply evidence."""
+
+    VERSION = "20260928182014"
+
+    def migration(self):
+        return next((REPO / "supabase" / "migrations").glob(f"{self.VERSION}_*.sql"))
+
+    def test_phrase_contract_is_registered_and_schema_conditioned(self):
+        sql = CATALOG_CONTRACTS["hts_product_phrase_columns_v1"]
+        self.assertIn("table_schema = 'plm'", sql)
+        # The dflow_prod half is owed only where the schema exists, mirroring the
+        # sandbox conditioning lane; the plm half is owed everywhere.
+        self.assertIn("not exists (select 1 from pg_namespace where nspname = 'dflow_prod')", sql)
+        self.assertIn("table_schema = 'dflow_prod'", sql)
+        self.assertEqual(sql.count("'hts_product_phrase_at'"), 4)
+        self.assertEqual(sql.count("'RFQItem'"), 6)
+        self.assertIn("is_nullable = 'YES'", sql)
+        self.assertIn("column_default is null", sql)
+        self.assertNotRegex(sql.lower(), r";.*(insert|update|delete|drop table|create table|alter table)")
+
+    def test_phrase_sidecar_binds_the_contract_to_the_real_file(self):
+        checks = load_behavior_sidecars(REPO, {self.VERSION: self.migration()}, [self.VERSION])
+        self.assertEqual([check["id"] for check in checks], ["hts_product_phrase_columns_contract"])
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(checks[0]["contract"], "hts_product_phrase_columns_v1")
+        self.assertEqual(checks[0]["expected_count"], 1)
+        sql = build_behavior_sql(checks)
+        self.assertIn("hts_product_phrase_columns_contract", sql)
+        self.assertIn("hts_product_phrase_columns_v1", CATALOG_CONTRACTS)
+
+    def test_phrase_migration_derives_no_lexer_target_so_the_sidecar_is_the_only_evidence(self):
+        # The quoted mixed-case identifiers are invisible to the statement lexer,
+        # so without the sidecar a phrase-only allowlist verifies NOTHING and
+        # enforcing mode refuses. This pin keeps that reason honest.
+        self.assertTrue(derive_targets({self.VERSION: self.migration()}, [self.VERSION]).is_empty())
+
+
+
+class LegacyPropertiesSchemaMoveContractTests(unittest.TestCase):
+    VERSION = "20261006203846"
+
+    def checks(self):
+        migrations = {p.name[:14]: p for p in (REPO / "supabase" / "migrations").glob("*.sql")}
+        return migrations, load_behavior_sidecars(REPO, migrations, [self.VERSION])
+
+    def test_real_schema_move_keeps_every_existing_check_and_adds_exact_contract(self):
+        migrations, checks = self.checks()
+        self.assertEqual(len(checks), 12)
+        named = [c for c in checks if c["kind"] == "catalog_contract"]
+        self.assertEqual(len(named), 1)
+        self.assertEqual(named[0]["contract"], "designflow_legacy_properties_dflow_shape_v1")
+        self.assertEqual(named[0]["expected_count"], 1)
+        self.assertTrue(derive_targets(migrations, [self.VERSION]).is_empty())
+        expression = CATALOG_CONTRACTS[named[0]["contract"]]
+        for text in ["relkind='r'", "dflow.properties_and_characters", "character varying(255)", "character varying(50)", "character varying(100)", "timestamp with time zone", "c.contype='p'", "c.conkey=array[a.attnum]"]:
+            self.assertIn(text, expression)
+
+    def test_contract_column_names_match_the_applied_migration(self):
+        import re
+        migrations, checks = self.checks()
+        expression = CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"]
+        actual = re.findall(r"\('([^']+)'\s*,\s*'[^']+'\s*,\s*(?:true|false)\)", expression)
+        expected = ["id", "name", "type", "licensor_id", "source_licensed_property_id", "source_character_id", "created_at", "updated_at"]
+        self.assertEqual(actual, expected)
+        migration = migrations[self.VERSION].read_text()
+        for name in expected:
+            self.assertIn(name, migration)
+        absence = [c for c in checks if c["kind"] == "catalog_absence"]
+        self.assertEqual(len(absence), 1)
+        self.assertIn("core", json.dumps(absence))
+
+    def test_full_enforcing_entrypoint_accepts_only_all_matching_checks(self):
+        from production_catalog_verification import verify
+        _, checks = self.checks()
+        for missing, wrong, expected in [(False, False, 0), (True, False, 1), (False, True, 1)]:
+            rows = [{"id": c["id"], "actual_count": c["expected_count"], "expected_count": c["expected_count"]} for c in checks]
+            if missing:
+                rows.pop()
+            if wrong:
+                rows[-1]["actual_count"] = 0
+            with tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query", return_value=[{"report": {"behavior_checks": rows}}]), mock.patch("sys.stdout", new=io.StringIO()):
+                result = verify(REPO, self.VERSION, Path(tmp), "synthetic-project", "synthetic-token", True)
+                self.assertEqual(result, expected)
+                payload = json.loads((Path(tmp) / "production-catalog-verification.json").read_text())
+                self.assertEqual(len(payload["behavior_checks"]), 12)
+                self.assertEqual(payload["errors"], [])
+
 if __name__ == "__main__":
     unittest.main()

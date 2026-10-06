@@ -255,6 +255,14 @@ jobs:
           set -euo pipefail
           node --test scripts/mcp-supabase-launch.test.mjs
 
+      - name: Run the #3428 sandbox migration binding test
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the source-PR
+        # and dry-run-evidence bindings of the DesignFlow sandbox route.
+        run: |
+          set -euo pipefail
+          node --test scripts/sandbox-migration-binding.test.mjs
+
       - name: Run the #3458 CONCURRENTLY index-guard test
         if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly: scripts/*.test.mjs has no glob. Guards the
@@ -343,6 +351,9 @@ jobs:
           node --test scripts/check-skill-drift.test.mjs
           node scripts/check-skill-drift.mjs --require-skills
 
+      - name: Exact global SQL role accounting
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/lib/sql-role-operations.test.mjs
       - name: Verify ColdLion replay proof guards (#3302)
         if: steps.route.outputs.pure_prose != 'true'
         run: node --test scripts/issue-2863-live-proof.test.mjs

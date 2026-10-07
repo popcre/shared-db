@@ -56,7 +56,7 @@
       "evidence": "PG17 validates allthree desired parents/enforcement, row and reader access preservation; each missing parent and wrong original action refuses atomically."
     },
     {
-      "command": "node scripts/agent-work-contract-git-evidence.mjs --contract-file .agent/work/4010/6/contract.json --report-file .agent/work/4010/6/completion.json --pr-base-sha 5df3dc4798d8aedbbf72ea2faead8a5f4ac134be --pr-head-sha HEAD",
+      "command": "node scripts/agent-work-contract-git-evidence.mjs --contract-file .agent/work/4010/6/contract.json --report-file .agent/work/4010/6/completion.json --pr-base-sha 5df3dc4798d8aedbbf72ea2faead8a5f4ac134be --pr-head-sha \"$(git rev-parse HEAD)\"",
       "exit_code": 0,
       "evidence": "Actual gate is run after this pair-only tail is committed and must pass before push; intermediate historical evidence is absent at implementation anchor and preserved in history."
     }

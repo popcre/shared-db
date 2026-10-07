@@ -59,6 +59,11 @@
       "command": "node scripts/agent-work-contract-git-evidence.mjs --contract-file .agent/work/4010/6/contract.json --report-file .agent/work/4010/6/completion.json --pr-base-sha 5df3dc4798d8aedbbf72ea2faead8a5f4ac134be --pr-head-sha \"$(git rev-parse HEAD)\"",
       "exit_code": 0,
       "evidence": "Actual gate is run after this pair-only tail is committed and must pass before push; intermediate historical evidence is absent at implementation anchor and preserved in history."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "73 tests pass; actual immutable contract and Git evidence gate also pass against this source pair and clean implementation anchor."
     }
   ],
   "assumptions_resolved": [

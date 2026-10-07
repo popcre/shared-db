@@ -4,7 +4,7 @@
 
 | Step | Status | Evidence / gate |
 |---|---|---|
-| Independent design approval | IN PROGRESS | Corrected repository-maintenance route supports allocation; supplemental findings addressed, assigned final review required |
+| Independent design approval | APPROVED DESIGN | Allocator sequence 5638 Gemini APPROVE at 610e80cd; report §9 retains durable exact-source verdict |
 | 1. Freshness, authority and inventory | OPEN | §9.1 below |
 | 2. Immutable snapshot and strict delta validator | OPEN | §9.2 and §10 named tests |
 | 3. Admission, queue and freeze generation fencing | OPEN | §9.3 |
@@ -12,7 +12,7 @@
 | 5. Adversarial/concurrency verification | OPEN | §9.5 |
 | 6. Reviewed rollout, measured acceptance and rollback | OPEN | §9.6; live proof remains on #4039 |
 
-**Fresh-session starting point:** establish a supported allocator-assigned plan review and retain exact artifact/verdict; address objections. Do not start implementation without later authorization. This session was authorized only to investigate. Successor registration: [handoff](HANDOFF.d/2026-10-07T1545Z-edge-dev3-codex-narrow-promotion-freezes.md).
+**Fresh-session starting point:** verify retained design verdict and live publication state. Do not start implementation without later authorization. This session was authorized only to investigate. Successor registration: [handoff](HANDOFF.d/2026-10-07T1545Z-edge-dev3-codex-narrow-promotion-freezes.md).
 
 ## 1. Ultimate goal
 
@@ -71,7 +71,7 @@ Generic migration tail admission is deferred, not approved by implication. A fut
 
 **Implementation choices with explicit criteria:** reuse the current trusted classifier and global-invalidator inventory; one shared strict comparison module must serve every caller. Extend existing `scripts/target-queue-identity.mjs` freshness/manifest primitives (lines 247–357) and `scripts/lib/lanes/exclusive-policy.mjs`; **do not create `scripts/lib/promotion-snapshot.mjs` or another snapshot subsystem**. Step 10 #3781 already owns this integration. Reconcile its live scope/owner and reuse accepted wiring once available; do not implement its shared-file scope a second time. Its October 6, 2026, 8:39:11 PM EDT comment proves policy-level merge only, not live queue acceptance or production acquisition integration. Reuse existing evidence schema/transport helpers. A versioned snapshot record must be immutable and supported by exact-ref ownership; choose the existing coordination namespace or a new documented one only if no existing compatible record exists. Register every new ref in snapshot/transfer/configuration inventories and recovery readers.
 
-**Unsettled and implementation-blocking:** design approval, complete consumed-prose denylist, live revocation semantics, activation barrier over preauthorized groups, shared-preview baseline freshness. Resolve by source evidence, named negative tests and assigned review, never a business question for Albert.
+**Unsettled and implementation-blocking:** complete consumed-prose denylist, live revocation semantics, activation barrier over preauthorized groups, shared-preview baseline freshness. Resolve by source evidence, named negative tests and assigned review, never a business question for Albert.
 
 ## 9. Sequenced executable phases
 
@@ -167,16 +167,16 @@ Report limitations honestly: docs-only validation is not independent design revi
 
 Installed `ai-task-gates`, `ai-gh`, Node and Python3 were available; GitHub authenticated read and issue creation worked. `python` was absent; use supported `python3`, do not replace OS binaries. No database credentials were needed or read. If future authorized acceptance requires credentials, load existing secrets skill and supported provider procedure; vault `vibe_coding`, locate documented item title from current runbook, never embed values or invent titles.
 
-Private raw captures from investigation are under `/tmp/narrow-freeze-evidence/`; ephemeral only, not future-session authority. Durable baseline, observed run IDs/status provenance and sanitized summaries are in the report. Re-fetch current owners/refs rather than relying on those captures. No reviewer artifacts exist for this proposal yet.
+Private raw captures from investigation are under `/tmp/narrow-freeze-evidence/`; ephemeral only, not future-session authority. Durable baseline, observed run IDs/status provenance and sanitized summaries are in the report. Re-fetch current owners/refs rather than relying on those captures. The exact-source independent verdict and durable provenance are retained in report §9.
 
 ## 13. Definition of done, risks and open ownership
 
 Investigation done requires report, sequenced proposal, durable publication and allocator-assigned independent design verdict or an explicit capability blocker; an unreviewed report cannot satisfy the requested approved recommendation. Implementation done requires separately authorized scope, exact-head assigned review, tests/CI, normal commit/push/PR/merge, activated-code identity, real prose-during-review canary, complete production/application acceptance and measured cleanup. Update this STATUS as each phase changes; mark code-landed/live-unaccepted distinctly and keep same-issue checklist unticked. Retire linked handoff only when its work is truly complete.
 
-Risks: wrongly inert classification, stale live safety policy, existing group crossing activation, same-PR cleanup replacement, ledger drift and shared-preview contamination. Each risk has a named negative test and rollout refusal. Until these and assigned review pass, default remains conservative global freeze. No human decision is needed. Codex investigation workstream owns reviewer-capability resolution/publication; future authorized implementation workstream owns all open phase gates and must register itself on #4039 before work.
+Risks: wrongly inert classification, stale live safety policy, existing group crossing activation, same-PR cleanup replacement, ledger drift and shared-preview contamination. Each risk has a named negative test and rollout refusal. Until these and assigned review pass, default remains conservative global freeze. No human decision is needed. Codex investigation workstream owns publication; future authorized implementation workstream owns all open phase gates and must register itself on #4039 before work.
 
 ## Self-audit
 
-1. Can a newcomer execute without chat? **Yes for the authorized next step and, after approval/authorization, the scoped implementation.** §§1–5 define purpose, system, scope and exact source; §§9–12 specify ordered changes, verification, access and traps. The supported maintenance assignment route has been verified; the exact final review remains a stop condition, not guessed provider authority.
+1. Can a newcomer execute without chat? **Yes for the authorized next step and, after approval/authorization, the scoped implementation.** §§1–5 define purpose, system, scope and exact source; §§9–12 specify ordered changes, verification, access and traps. The supported maintenance assignment route has been verified; design review is complete; implementation exact-head review remains a separate stop condition.
 2. Does it preserve background/rejections? **Yes:** §§3,6–8 and linked report preserve exact-main contradictions, claim limitations, historical timings, rejected table-only approach and same-PR cleanup race; §§10–13 retain uncertainty and rollback.
-3. Is the ultimate goal decisive? **Yes:** §1 states business outcome and goal-wins instruction; locked §§4,8 forbid SQL expansion and weaker acceptance even if faster. All 13 required sections, named adversarial tests, status/evidence, scope, definitions, secrets boundary and bidirectional handoff are present. Supplemental REJECT findings on d853e087 were addressed by existing primitive/ownership reuse, full recovery callers, pre-review candidate lifecycle literal operating-router registration and train/candidate exclusion; a new allocator-assigned verdict is still required. No implementation or independent approval is claimed.
+3. Is the ultimate goal decisive? **Yes:** §1 states business outcome and goal-wins instruction; locked §§4,8 forbid SQL expansion and weaker acceptance even if faster. All 13 required sections, named adversarial tests, status/evidence, scope, definitions, secrets boundary and bidirectional handoff are present. Supplemental REJECT findings on d853e087 were addressed by existing primitive/ownership reuse, full recovery callers, pre-review candidate lifecycle literal operating-router registration and train/candidate exclusion; allocator sequence 5638 approved the corrected design at 610e80cd. No implementation approval is claimed.

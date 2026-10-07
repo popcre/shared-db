@@ -2189,7 +2189,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
 
 test('replacement retry releases its lease after an exact-head verdict',()=>{
   const io=failedReviewIo(),first=replaceFailedReviewer(replacementRequest,io),ref=reviewActiveRef(first.reviewer)
-  giveVerdict(io,{issue:failedReview.issue,pr:failedReview.pr,headSha:failedReview.headSha})
+  giveVerdict(io,{issue:failedReview.issue,pr:failedReview.pr,headSha:failedReview.headSha,replacementSequence:first.replacementSequence})
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),first)
   assert.equal(io.refs.has(ref),false)
   assert.equal(assignNextReviewer(failedReview,io).reviewer,first.reviewer)
@@ -3289,6 +3289,13 @@ test('#3947 a verdict on a return-superseded assignment must not deadlock the re
   assert.notEqual(redrawn.reviewer,geminiLike.reviewer)
   assert.ok(io.refs.has(redrawn.assignmentRef),'the redraw must record a live assignment')
   assert.equal(io.refs.get(redrawn.assignmentRef),redrawn.replacementSha)
+  // SECOND LAYER (lease liveness): the redrawn assignment's lease must not be
+  // marked stale by the predecessor's verdict. That is what produced
+  // "no held reviewer lease matches this review" and blocked the governed
+  // review the merge gate demands. `findBusyReviewers` only holds a reviewer
+  // when its own assignment is still unjudged.
+  assert.ok(findBusyReviewers(io).has(redrawn.reviewer),'the redrawn lease must stay live; a superseded predecessor verdict is not this assignment judgment')
+  assert.ok(!findBusyReviewers(io).stale.some((row)=>row.assignment.reviewer===redrawn.reviewer))
   // The superseded predecessor's verdict survives byte-for-byte; nothing is
   // deleted or forged to unstick the slot.
   assert.ok(io.refs.has(`refs/db-review-verdict-replacements/${request.issue}-${request.pr}-${request.headSha}-${second.sequence}`))
@@ -6183,7 +6190,7 @@ test('a replacement lease STATES its slot even for slot 1, so its own verdict st
   assert.match(io.getCommit(leaseSha).message,/ slot=1 /,'a slot-1 replacement message must state its slot')
   assert.equal(parseReviewLease(io.getCommit(leaseSha)).slot,1)
   assert.ok(findBusyReviewers(io).has(replacement.reviewer))
-  giveVerdict(io,{issue:request.issue,pr:request.pr,headSha:request.headSha,slot:1})
+  giveVerdict(io,{issue:request.issue,pr:request.pr,headSha:request.headSha,slot:1,replacementSequence:replacement.replacementSequence})
   assert.ok(!findBusyReviewers(io).has(replacement.reviewer),"its own slot's verdict must still free it")
 })
 

@@ -179,10 +179,23 @@ export function hasVerdictForHead(issue,pr,headSha,io,options={}){
   // verdict change", not "did some sibling slot finish" -- must pass its own
   // slot so a sibling slot's unrelated, already-existing verdict cannot be
   // mistaken for this slot's own state changing.
+  //
+  // #3947. `options.replacementSequence` further narrows the match to ONE
+  // assignment's own verdict ref. Omitted, the coarse head/slot answer is
+  // unchanged. `null` matches only an original assignment's verdict; a number
+  // matches only that replacement's. A verdict on a superseded predecessor must
+  // never be read as "this assignment already judged" -- that is what marked a
+  // freshly drawn replacement's lease stale and blocked the governed review the
+  // merge gate demands.
   const slot=options.slot==null?null:Number(options.slot)
+  const rsFilter=options.replacementSequence===undefined?undefined:options.replacementSequence===null?null:Number(options.replacementSequence)
   return listDurableVerdictRefs(io,options).some((row)=>{
     const named=parseVerdictRef(row.ref)
-    return Boolean(named)&&named.issue===Number(issue)&&named.pr===Number(pr)&&named.headSha===head&&(slot===null||named.slot===slot)
+    if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.headSha!==head)return false
+    if(slot!==null&&named.slot!==slot)return false
+    if(rsFilter===undefined)return true
+    if(rsFilter===null)return named.replacementSequence===null
+    return named.replacementSequence===rsFilter
   })
 }
 
@@ -418,9 +431,19 @@ export function assertExactDurableReviewApproval(issue,pr,headSha,io){
 // that genuinely does not state a slot stays BUSY: a sibling verdict must never
 // reclaim an ambiguous live lease. Slot 0 cannot be written and matches no
 // verdict, so it is the fail-closed liveness sentinel.
+//
+// #3947. A lease belongs to ONE assignment's verdict ref, too. An original
+// assignment owns the untailed verdict ref; a replacement owns the ref tailed
+// with the failed-sequence it replaces (`replacementSequence`, which
+// `parseReviewLease` reads out of the message's `failed-sequence=` token).
+// Passing that identity through is what stops a verdict left on a superseded
+// predecessor from being read as "this assignment already judged" -- the reading
+// that marked a freshly drawn replacement's lease stale and refused the governed
+// review the merge gate demands.
 export function leaseVerdictOptions(record,extra={}){
   const slot=record?.slot
-  return {...extra,slot:slot==null?0:Number(slot)}
+  const replacementSequence=record?.replacementSequence??record?.failedSequence
+  return {...extra,slot:slot==null?0:Number(slot),replacementSequence:replacementSequence==null?null:Number(replacementSequence)}
 }
 
 export function assertReviewLeaseStillStale(row,states,io){

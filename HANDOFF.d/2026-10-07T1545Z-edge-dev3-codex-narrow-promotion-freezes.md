@@ -20,11 +20,11 @@ Albert's task: "perform this task: /tmp/investigate-narrow-promotion-freezes.md"
 
 Existing source and live GitHub records inspected; 74 existing classifier/exclusive-policy tests passed. Proposed minimum: ordinary inert prose may advance a fixed approved snapshot during review; all source merges remain paused during exclusive production ownership. Generic disjoint SQL admission is not proved or approved. Current production-inert freshness allowance is contradicted by other literal equality gates. Same-PR cleanup needs generation/ref fencing.
 
-No safeguards changed, no SQL written, no freeze/mutex released, no production launched. No allocator-assigned independent design verdict exists. Publication/merge status must be checked live on the investigation PR; never assume a local document is delivered.
+No safeguards changed, no SQL written, no freeze/mutex released, no production launched. No allocator-assigned independent design verdict exists. Supplemental Codex plan-review returned REJECT on d853e087 (181 seconds); revised report/plan address all four findings but are not yet approved. Reuse existing target-queue manifest primitives under Step 10 #3781 ownership, include recovery caller equality, create candidate before risk review and final attestation after approval, and retain the literal router link. Target-qualified workflow groups already exist; old global-group comments are historical. Publication/merge status must be checked live on the investigation PR; never assume a local document is delivered.
 
 ## Exact blockers and next action
 
-Task-gate review refusal for prose: `"review" is not a gate for a "prose" change in popcre/shared-db`. Supported plan-review bootstrap does not allocate repository rotation reviewer. Database reviewer draw rejects documents-only PRs; real registered delivery preflight is mandatory for CLI assignment. Obtain a supported allocator-approved design-only review route; do not invent a migration/code edit, forge evidence, pick a provider out of rotation or change reviewer tooling under this investigation.
+The original prose declaration escalated to reviewer-safety for the plan; corrected declaration now permits review/ship actions with required safety gates. The initial publication command erroneously continued after the declaration refusal; no merge/production action followed. Original task-gate review refusal for prose: `"review" is not a gate for a "prose" change in popcre/shared-db`. Supported plan-review bootstrap does not allocate repository rotation reviewer. Database reviewer draw rejects documents-only PRs; real registered delivery preflight is mandatory for CLI assignment. Obtain a supported allocator-approved design-only review route; do not invent a migration/code edit, forge evidence, pick a provider out of rotation or change reviewer tooling under this investigation.
 
 At 11:37 AM EDT freeze SHA 828a0fd49ed27738b4db24238937e97fd6349fc3 remained owned by chat 01a1126f-6efb-7a22-8034-4471909f2c86 for #2875/#3708, acquired 10:07:39 AM EDT, expires 12:07:39 PM EDT. Author mutex SHA fdb146da76cecf84f2c2a82d0e588bc9f1008304 was a reviewer-assignment lock for #4037/#4033; recovery-active names same SHA. Actual chat/activity unknown. Re-read live refs: TTL is not abandonment; do not adopt or release either record. These independently block normal document authorization.
 
@@ -38,7 +38,7 @@ Not started and not authorized by investigation. Plan §§9–13 define fresh au
 
 ## Access and validation
 
-ai-gh/task gates/Node/Python3 available; no credentials required. Ephemeral raw captures /tmp/narrow-freeze-evidence are not successor authority. Re-run repository freshwater/in-flight and relevant gates; current source/live records outrank this handoff. Existing SQL guard/document classifier checks must be verified before publication. Times EDT/EST; sign GitHub posts with actual chat id and host.
+ai-gh/task gates/Node/Python3 available; no credentials required. Ephemeral raw captures /tmp/narrow-freeze-evidence are not successor authority. Re-run repository freshness/in-flight and relevant gates; current source/live records outrank this handoff. Existing SQL guard/document classifier checks must be verified before publication. Times EDT/EST; sign GitHub posts with actual chat id and host.
 
 ## Completion and retirement
 

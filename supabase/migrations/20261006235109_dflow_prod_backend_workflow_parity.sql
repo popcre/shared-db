@@ -597,7 +597,9 @@ where a.routing_context ->> 'to_function_key' is not null
 
 revoke all on dflow_prod.item_user_assignment, dflow_prod.item_workflow_action,
   dflow_prod.item_workflow_handoff from public, anon, authenticated, service_role;
-revoke all on sequence dflow_prod.item_user_assignment_id_seq, dflow_prod.item_workflow_action_id_seq
+revoke all on sequence dflow_prod.item_user_assignment_id_seq
+  from public, anon, authenticated, service_role;
+revoke all on sequence dflow_prod.item_workflow_action_id_seq
   from public, anon, authenticated, service_role;
 revoke all on function dflow_prod.current_designflow_user_id() from public, anon, authenticated, service_role;
 revoke all on function dflow_prod.reject_item_assignment_history_rewrite() from public, anon, authenticated, service_role;

@@ -405,7 +405,11 @@ class GuardTests(unittest.TestCase):
 
         def executable(version: str) -> str:
             (path,) = migrations.glob(f"{version}_*.sql")
-            return "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.lstrip().startswith("--"))
+            lines = path.read_text(encoding="utf-8").splitlines()
+            start = next(i for i, line in enumerate(lines) if line.strip() and not line.lstrip().startswith("--"))
+            # Everything after the leading comment header, byte for byte
+            # (comments and blank lines included), must match.
+            return "\n".join(lines[start:])
 
         body = executable("20261007232257")
         self.assertEqual(body, executable("20261007190954"))
@@ -413,6 +417,7 @@ class GuardTests(unittest.TestCase):
         lowered = " ".join(body.lower().split()).replace("( ", "(").replace(" )", ")")
         self.assertIn("create or replace function api.db_data_admin_scraped_source_inventory(p_entity_kind text, p_search text default null, p_cursor text default null, p_page_size integer default null)", lowered)
         self.assertIn("returns jsonb", lowered)
+        self.assertIn("language plpgsql stable security definer", lowered)
         self.assertIn("security definer", lowered)
         self.assertIn("set search_path to 'app', 'public'", lowered)
 

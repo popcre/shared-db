@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "generation": 324,
+  "work_issue": 3536,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Preserve original13 nonself and legitimate self14 proof for queue retirement3998 before every guarded merge attempt, with strict protected-run app binding and unchanged live12 policy.",
+  "base_sha": "d2c3af86286e2ea1693ed7885b63f4d7e488c302",
+  "dispatcher": "Codex root coordinating full-plan user authorization",
+  "worker": "codex",
+  "branch": "codex/3536-guarded-original14-20261007",
+  "worktree": "/tmp/shared-db-3536-guarded-original14-20261007",
+  "file_writes": [
+    ".github/workflows/guarded-migration-merge.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database or settings write",
+    "Do not bypass completion validators or exact review",
+    "Do not modify frozen queue own implementation or relabel it to reset paid starts"
+  ],
+  "required_checks": [
+    "node --test scripts/check-required-checks-preflight.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "bash scripts/check-sql.sh",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Root approves narrow3998 issue3987 gen5 supplemental13 before/underlock then legitimate14/all14 immediately before every mutation. Owner is Codex publication_audit under parent3536; necessary existing guarded workflow capability repair; closedtarget refuses and retires specialroute without newgeneralharness.",
+    "Exact retained manifest source head469baf272c874f1e6864b08bf615d5f1a66ca19a SHA256afa8b10bd21fea9f5f50d3c8b2214966f37f4e6fadd6a65cd4beac1225269687 agrees original signed4034 sequence; constants additive, never settings authority or PR-controlled input.",
+    "Root approved necessary existing truthful semantic inventory fifth path before its edit. Original323 implementation ancestor889d2473 is retained; original323 start0 and queue gen5 all historical starts unchanged; no reset/refund."
+  ],
+  "stop_conditions": [
+    "Stop if canonical exact head/base/open validation weakened",
+    "Stop on source conflict or review refusal"
+  ],
+  "evidence_parent": {
+    "work_issue": 3536,
+    "generation": 323,
+    "contract_sha256": "40f19e06663c2ee95489b254bc6089468971e664d2649994b4f1be2c4d282b08"
+  },
+  "allowed_paths": [
+    ".github/workflows/guarded-migration-merge.yml",
+    "scripts/check-required-checks-preflight.mjs",
+    "scripts/check-required-checks-preflight.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json"
+  ]
+}

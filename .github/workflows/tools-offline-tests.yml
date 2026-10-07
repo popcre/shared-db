@@ -62,11 +62,21 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  # Runner router (edge-dev3-linux self-hosted when online and idle, else the
+  # hosted label below). A failed router never skips a check: callers run on
+  # !cancelled() and keep the literal hosted fallback. See runner-route.yml.
+  route:
+    uses: ./.github/workflows/runner-route.yml
+    with:
+      fallback: ubuntu-latest
+
   verify:
+    needs: route
+    if: ${{ !cancelled() }}
     # The default name stays the stable required context; a lane run reports a distinct name
     # that the "Queue-sensitive checks (aggregate)" job counts exactly once.
     name: ${{ inputs.lane && format('Tools offline tests [lane {0}]', inputs.lane) || 'Tools offline tests' }}
-    runs-on: ${{ inputs.lane || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.lane || fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -271,6 +281,12 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/test_3458_index_guard.test.mjs
+
+      - name: Run the self-hosted runner router tests
+        # Named explicitly: scripts/*.test.mjs has no glob. Proves every state
+        # other than a fresh online+idle heartbeat on a same-repo event falls
+        # back to the hosted label (no merge depends on edge-dev3-linux).
+        run: node --test scripts/ci/runner-route.test.mjs
 
       - name: Refuse to run with any production authorization present
         run: |

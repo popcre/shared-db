@@ -1,0 +1,46 @@
+# Reusable router: picks the self-hosted edge-dev3-linux runner
+# ([self-hosted, Linux, X64, shared-db-linux]) when its heartbeat proves it is
+# online and idle, otherwise the caller's existing hosted label. Fork pull
+# requests never route to self-hosted. Logic and tests: scripts/ci/runner-route.mjs.
+#
+# Callers MUST keep a literal fallback in their runs-on expression and run with
+# `if: ${{ !cancelled() && ... }}`, so a failed or skipped router can never skip
+# a required check: it only sends the job to the hosted label.
+name: Runner route
+
+on:
+  workflow_call:
+    inputs:
+      fallback:
+        description: The job's existing hosted runner label
+        required: true
+        type: string
+    outputs:
+      runs_on:
+        description: JSON runs-on value (string label or label array)
+        value: ${{ jobs.pick.outputs.runs_on }}
+
+permissions:
+  contents: read
+
+jobs:
+  pick:
+    name: Pick runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      runs_on: ${{ steps.route.outputs.runs_on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci/runner-route.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - id: route
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+          HEARTBEAT: ${{ vars.SHARED_DB_LINUX_RUNNER_HEARTBEAT }}
+          FALLBACK_LABEL: ${{ inputs.fallback }}
+        run: node scripts/ci/runner-route.mjs

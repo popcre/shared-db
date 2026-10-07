@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3536/319",
   "contract_sha256": "2811340f53e2897efe58b679f694851776f59189070f283b139a22c755379d91",
-  "head_sha": "91265a4ecf8a9550b7bdd51055db41b689b76fc4",
+  "head_sha": "2f9855edd78f7c1b8ca62802e42a0f21a0095138",
   "base_sha": "0f0768f775bf7d5bf5159d8469adcb5566048551",
   "files_changed": [
     "config/orchestrator-global-invalidators-v1.json",
@@ -28,27 +28,32 @@
     {
       "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
       "exit_code": 0,
-      "evidence": "Actual exact command on source91265a4ecf8a9550b7bdd51055db41b689b76fc4 / protectedmain0f0768f775bf7d5bf5159d8469adcb5566048551: 920 tests,919 PASS,0 FAIL,1 existing platform skip; private /tmp/3999-gen319-core.txt. Actual necessary bound GLM quota classification repair; original immutable starts and failure timestamps preserved, no quota retry or manufactured reset."
+      "evidence": "Actual exact command on authored source 2f9855edd78f7c1b8ca62802e42a0f21a0095138 / protected base 0f0768f775bf7d5bf5159d8469adcb5566048551: 932 tests,931 PASS,0 FAIL,1 existing platform skip; private /tmp/3999-gen319-final-core.txt. Original starts and observed quota timestamp retained. No provider retry or budget waiver."
     },
     {
       "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "Actual exact command on source91265a4ecf8a9550b7bdd51055db41b689b76fc4 / protectedmain0f0768f775bf7d5bf5159d8469adcb5566048551: 26 tests,26 PASS,0 FAIL,0 existing platform skip; private /tmp/3999-gen319-wire.txt. Actual necessary bound GLM quota classification repair; original immutable starts and failure timestamps preserved, no quota retry or manufactured reset."
+      "evidence": "Actual exact command on authored source 2f9855edd78f7c1b8ca62802e42a0f21a0095138 / protected base 0f0768f775bf7d5bf5159d8469adcb5566048551: 26 tests,26 PASS,0 FAIL; private /tmp/3999-gen319-final-wire-corrected.txt. Original starts and observed quota timestamp retained. No provider retry or budget waiver."
     },
     {
       "command": "node --test scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "Actual exact command on source91265a4ecf8a9550b7bdd51055db41b689b76fc4 / protectedmain0f0768f775bf7d5bf5159d8469adcb5566048551: 16 tests,16 PASS,0 FAIL,0 existing platform skip; private /tmp/3999-gen319-hygiene.txt. Actual necessary bound GLM quota classification repair; original immutable starts and failure timestamps preserved, no quota retry or manufactured reset."
+      "evidence": "Actual exact command on authored source 2f9855edd78f7c1b8ca62802e42a0f21a0095138 / protected base 0f0768f775bf7d5bf5159d8469adcb5566048551: 16 tests,16 PASS,0 FAIL; private /tmp/3999-gen319-final-hygiene.txt. Original starts and observed quota timestamp retained. No provider retry or budget waiver."
     },
     {
       "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
       "exit_code": 0,
-      "evidence": "Actual exact command on source91265a4ecf8a9550b7bdd51055db41b689b76fc4 / protectedmain0f0768f775bf7d5bf5159d8469adcb5566048551: 3 tests,3 PASS,0 FAIL,0 existing platform skip; private /tmp/3999-gen319-surface.txt. Actual necessary bound GLM quota classification repair; original immutable starts and failure timestamps preserved, no quota retry or manufactured reset."
+      "evidence": "Actual exact command on authored source 2f9855edd78f7c1b8ca62802e42a0f21a0095138 / protected base 0f0768f775bf7d5bf5159d8469adcb5566048551: 3 tests,3 PASS,0 FAIL; private /tmp/3999-gen319-final-surface.txt. Original starts and observed quota timestamp retained. No provider retry or budget waiver."
     },
     {
       "command": "node --test scripts/lib/pr-content-equivalence.test.mjs",
       "exit_code": 0,
-      "evidence": "Actual exact command on source91265a4ecf8a9550b7bdd51055db41b689b76fc4 / protectedmain0f0768f775bf7d5bf5159d8469adcb5566048551: 21 tests,21 PASS,0 FAIL,0 existing platform skip; private /tmp/3999-gen319-equivalence.txt. Actual necessary bound GLM quota classification repair; original immutable starts and failure timestamps preserved, no quota retry or manufactured reset."
+      "evidence": "Actual exact command on authored source 2f9855edd78f7c1b8ca62802e42a0f21a0095138 / protected base 0f0768f775bf7d5bf5159d8469adcb5566048551: 21 tests,21 PASS,0 FAIL; private /tmp/3999-gen319-final-equivalence.txt. Original starts and observed quota timestamp retained. No provider retry or budget waiver."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual command:77 PASS,0 FAIL; /tmp/3999-gen319-final-cli.txt. Normal public completion CLI retained."
     }
   ],
   "assumptions_resolved": [
@@ -57,7 +62,8 @@
     "Protected original receipt plus companion retains generated DeepSeek continuation.",
     "Provider pause uses original immutable failure timestamp and verifies actual supported protected store readback; stronger holds retained, expired historical replay does not create a fresh pause.",
     "No DB writes or new authority namespace; no API ceiling increase.",
-    "Actual5569 quota diagnostic is accepted only for the bound ai-glm wrapper and anchored published terminal line; quoted, unbound, different-wrapper, malformed and subtoken diagnostics refuse. Fixed safe insufficient_quota lifecycle retains original failure observation; no provider reset text disclosed and no verdict fabricated."
+    "Actual5569 quota diagnostic is accepted only for the bound ai-glm wrapper and anchored published terminal line; quoted, unbound, different-wrapper, malformed and subtoken diagnostics refuse. Fixed safe insufficient_quota lifecycle retains original failure observation; no provider reset text disclosed and no verdict fabricated.",
+    "Budget-only intermediate normalization authenticates only complete same-PR/same-issue completed pairs explaining actual merge differences, recursively bound to the protected-start canonical baseline. Historical contract-only generation315 is resolved only through the existing canonical Git contract ref with exact hash/schema/identity, never as a completion or authored witness. Unique ref reads are cached within the real context and charged before ls-remote/fetch under the unchanged25-wire ceiling. Missing/foreign/hash/mode/custom merge and main/evidence-only/net-revert cases refuse; review equivalence remains strict."
   ],
   "stop_conditions_hit": []
 }

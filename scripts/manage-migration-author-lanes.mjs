@@ -2473,7 +2473,9 @@ export function reissueMergedStrandedClaim(options,now=new Date(),io=githubIo){
 export function releaseFailedReviewer(options,io=githubIo){
   return withReviewRequestBudget(()=>{
     io=reviewOperationIo(io)
-    const request=validateTerminalReviewerFailure(options,'reviewer release'),failureRef=reviewerFailureRef(request)
+    const request=validateTerminalReviewerFailure(options,'reviewer release')
+    request.headSha=String(request.headSha).toLowerCase()
+    const failureRef=reviewerFailureRef(request)
     const original=resolveFailedReviewRecord(request,io),priorFailureSha=io.readRef(failureRef)
     if(priorFailureSha){
       const priorCommit=io.getCommit(priorFailureSha),prior=parseTerminalFailureEvidence(priorCommit)

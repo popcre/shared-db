@@ -6,11 +6,11 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3536/321",
   "contract_sha256": "4521440e3f8819c9db9b5e4dee732f79877a635672876a36b52a6f7dd5b9b833",
-  "head_sha": "787c5f217c84af6058b15831c089e3f83e162be6",
+  "head_sha": "92dfab46fe07f39ef420e62f036dd71ea70e825d",
   "base_sha": "0f0768f775bf7d5bf5159d8469adcb5566048551",
   "files_changed": [
-    ".agent/work/3536/319/completion.json",
-    ".agent/work/3536/319/contract.json",
+    ".agent/work/3536/321/completion.json",
+    ".agent/work/3536/321/contract.json",
     "config/orchestrator-global-invalidators-v1.json",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~review-circuit-breaker.mjs.json",
     "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",
@@ -73,7 +73,8 @@
     "Actual5569 quota diagnostic is accepted only for the bound ai-glm wrapper and anchored published terminal line; quoted, unbound, different-wrapper, malformed and subtoken diagnostics refuse. Fixed safe insufficient_quota lifecycle retains original failure observation; no provider reset text disclosed and no verdict fabricated.",
     "Budget-only intermediate normalization authenticates only complete same-PR/same-issue completed pairs explaining actual merge differences, recursively bound to the protected-start canonical baseline. Historical contract-only generation315 is resolved only through the existing canonical Git contract ref with exact hash/schema/identity, never as a completion or authored witness. Unique ref reads are cached within the real context and charged before ls-remote/fetch under the unchanged25-wire ceiling. Missing/foreign/hash/mode/custom merge and main/evidence-only/net-revert cases refuse; review equivalence remains strict.",
     "Budget baseline/current authenticate only actual fully canonical endpoint records; removed intermediate pair317 retains all required historicalvariants and canonicalwitnesses. Unneeded incomplete32a2 endpoint record remains immutable history, is neither current authority nor normalized path nor repair witness. Actual repaired-tail regression and invalidremoved-pair negative pass.",
-    "Actual current SQL guard37623638021 importclosure failure repaired by adding exactlyfourexisting reachable modules to PREVIEW_PRODUCER_PATHS. Wholeclosureassertion and productionpolicy remain enforcing; no productionDB action or unpinnedexclusion. Security incident separately holds paid/credential operations."
+    "Actual current SQL guard37623638021 importclosure failure repaired by adding exactlyfourexisting reachable modules to PREVIEW_PRODUCER_PATHS. Wholeclosureassertion and productionpolicy remain enforcing; no productionDB action or unpinnedexclusion. Security incident separately holds paid/credential operations.",
+    "Only successor321 checked-in pair is current; predecessor319 bytes and every diagnostic remain immutable Git/ref history. Metadata retirement supplies no source witness or capacity reset."
   ],
   "stop_conditions_hit": []
 }

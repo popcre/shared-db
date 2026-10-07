@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 4028,
+  "outcome": "ready-for-merge",
+  "contract_ref": "refs/db-contracts/4028/2",
+  "contract_sha256": "d42166127fa85611855f990aaa68765544b03780c71201e2a536abb35974f0e3",
+  "base_sha": "9ee3981f6c80aacdf176ee4ca18262b6d6807a3d",
+  "head_sha": "d2d9a8c49042b83113e2731680f918c632929171",
+  "files_changed": [
+    ".github/workflows/production-catalog-verification-recovery.yml",
+    "scripts/production_catalog_recovery_evidence.py",
+    "scripts/test_production_catalog_recovery_evidence.py",
+    "scripts/lib/production-catalog-recovery.mjs",
+    "scripts/lib/production-catalog-recovery.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/outcome-lifecycle.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts/test_production_catalog_recovery_evidence.py",
+      "exit_code": 0,
+      "evidence": "5 Python adversarial test methods passed; actual original failed-after-apply and successful read-only catalog evidence produced strict local binding. Full1435 Python tests passed22skips."
+    },
+    {
+      "command": "node --test scripts/lib/production-catalog-recovery.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "107 focused Node tests passed; valid exact recovery accepts, 25 invalid job/run/target/digest/SQL/ledger/catalog mutations refuse, and optional outcome fields require complete pinning."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "771 lane tests passed. Existing success-only path unchanged."
+    }
+  ],
+  "assumptions_resolved": [
+    "Actual supported read-only recovery37573657457 succeeded, proving exact user catalog after original bounded apply37567955052. Local evidence test passes but is not durable recovery authorization. Reviewed workflow must emit fresh immutable binding after merge; no production apply is retried.",
+    "Original failed run stays failed; separate exact artifact group permits strict original-apply plus successful read-only verification acceptance only. No data, schema, permissions, promotion or infrastructure writes."
+  ],
+  "stop_conditions_hit": [],
+  "pr": 4029,
+  "migration_versions": []
+}

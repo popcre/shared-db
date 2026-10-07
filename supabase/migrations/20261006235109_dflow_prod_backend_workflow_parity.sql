@@ -597,6 +597,8 @@ where a.routing_context ->> 'to_function_key' is not null
 
 revoke all on dflow_prod.item_user_assignment, dflow_prod.item_workflow_action,
   dflow_prod.item_workflow_handoff from public, anon, authenticated, service_role;
+revoke all on sequence dflow_prod.item_user_assignment_id_seq, dflow_prod.item_workflow_action_id_seq
+  from public, anon, authenticated, service_role;
 revoke all on function dflow_prod.current_designflow_user_id() from public, anon, authenticated, service_role;
 revoke all on function dflow_prod.reject_item_assignment_history_rewrite() from public, anon, authenticated, service_role;
 revoke all on function dflow_prod.reject_item_workflow_action_rewrite() from public, anon, authenticated, service_role;
@@ -624,7 +626,7 @@ comment on function dflow_prod.record_item_workflow_action(integer,integer,text,
 -- This is the exact catalog contract, including every FK, index, trigger,
 -- function signature/body/owner/configuration and client access boundary.
 do $reissue_exact_catalog$
-declare v_catalog jsonb;
+declare v_catalog jsonb; v_dependencies jsonb; v_identities jsonb; v_auth jsonb;
 begin
 -- Fixed metadata-only observation for the backend workflow surface.
 WITH rels AS (
@@ -648,7 +650,7 @@ SELECT jsonb_build_object(
  'relation_count',(SELECT count(*) FROM rels),
  'client_access_closed',
    NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role') AND has_schema_privilege(rolname,'dflow_prod','USAGE'))
-   AND NOT EXISTS (SELECT 1 FROM rels r JOIN pg_class c ON c.oid=r.oid CROSS JOIN LATERAL aclexplode(c.relacl) acl WHERE acl.grantee=0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')))
+   AND NOT EXISTS (SELECT 1 FROM rels r JOIN pg_class c ON c.oid=r.oid CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE acl.grantee=0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')))
    AND NOT EXISTS (SELECT 1 FROM funcs p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl WHERE acl.grantee=0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role'))),
  'functions',(SELECT jsonb_agg(jsonb_build_object(
   'name',p.proname,'identity_arguments',pg_get_function_identity_arguments(p.oid),
@@ -663,5 +665,62 @@ SELECT jsonb_build_object(
   if v_catalog is distinct from '{"functions":[{"name":"current_designflow_user_id","owner":"postgres","volatility":"s","return_type":"integer","configuration":["search_path=pg_catalog, dflow_prod, auth"],"default_count":0,"source_sha256":"4186a2c9f2d3d15d97a1fb96145ca333870c43988cbd833b38744f4975ccf936","argument_names":[],"argument_types":[],"security_definer":true,"identity_arguments":""},{"name":"record_item_workflow_action","owner":"postgres","volatility":"v","return_type":"bigint","configuration":["search_path=pg_catalog, dflow_prod, auth"],"default_count":7,"source_sha256":"72cebdd3737b54b0809fa31273ed2e6f5f35f1ee0681c922b51641a36acda75d","argument_names":["p_rfq_item_id","p_new_step_id","p_action_key","p_correlation_key","p_from_function_key","p_to_function_key","p_return_to_original_handoff","p_notification_type","p_notification_title","p_notification_message","p_routing_context"],"argument_types":["integer","integer","text","uuid","text","text","boolean","text","text","text","jsonb"],"security_definer":true,"identity_arguments":"p_rfq_item_id integer, p_new_step_id integer, p_action_key text, p_correlation_key uuid, p_from_function_key text, p_to_function_key text, p_return_to_original_handoff boolean, p_notification_type text, p_notification_title text, p_notification_message text, p_routing_context jsonb"},{"name":"reject_item_assignment_history_rewrite","owner":"postgres","volatility":"v","return_type":"trigger","configuration":["search_path=pg_catalog, dflow_prod"],"default_count":0,"source_sha256":"0dc5007ad4850b0e69f81b6b436a59d921e4592a66857dddf719baca47148012","argument_names":[],"argument_types":[],"security_definer":false,"identity_arguments":""},{"name":"reject_item_workflow_action_rewrite","owner":"postgres","volatility":"v","return_type":"trigger","configuration":["search_path=pg_catalog, dflow_prod"],"default_count":0,"source_sha256":"c1618fcdf51e28706a2a88bb75c087255cc527f3f1f588d96f1800d3fd9d5a01","argument_names":[],"argument_types":[],"security_definer":false,"identity_arguments":""},{"name":"set_item_user_assignment","owner":"postgres","volatility":"v","return_type":"bigint","configuration":["search_path=pg_catalog, dflow_prod, auth"],"default_count":1,"source_sha256":"c60d7cf3dd96999e17031c172066fce04bc59c4d172e562676c97b05de05d0f1","argument_names":["p_rfq_item_id","p_function_key","p_user_id","p_active","p_assignment_context"],"argument_types":["integer","text","integer","boolean","jsonb"],"security_definer":true,"identity_arguments":"p_rfq_item_id integer, p_function_key text, p_user_id integer, p_active boolean, p_assignment_context jsonb"}],"relation_count":4,"structure_sha256":"a4ff412de69582b5611d5f459b994cba33b73e4f57c6ceb165eaf0b9f8e89452","client_access_closed":true}'::jsonb then
     raise exception 'issue-2874 reissue refused: existing or resulting catalog differs from the exact canonical contract';
   end if;
+
+  select jsonb_agg(jsonb_build_array(c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,pg_get_expr(d.adbin,d.adrelid)) order by c.relname,a.attname)
+  into v_dependencies
+  from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
+  left join pg_attrdef d on d.adrelid=c.oid and d.adnum=a.attnum
+  where n.nspname='dflow_prod' and a.attnum>0 and not a.attisdropped and
+    ((c.relname='users' and a.attname in ('id','email','status'))
+     or (c.relname='RFQItem' and a.attname in ('rfqItem_id','rfqItem_step','rfqItem_date_modified'))
+     or (c.relname='RFQStep' and a.attname='RFQStep_id'));
+  if v_dependencies is distinct from '[
+    ["RFQItem","rfqItem_date_modified","timestamp without time zone",false,"",null],
+    ["RFQItem","rfqItem_id","integer",true,"d",null],
+    ["RFQItem","rfqItem_step","integer",false,"",null],
+    ["RFQStep","RFQStep_id","integer",true,"a",null],
+    ["users","email","character varying(255)",false,"",null],
+    ["users","id","integer",true,"a",null],
+    ["users","status","character varying(255)",false,"",null]]'::jsonb then
+    raise exception 'issue-2874 reissue refused: existing or resulting catalog differs from the exact canonical contract';
+  end if;
+
+  select jsonb_agg(jsonb_build_array(t.relname,a.attname,a.attidentity,
+    pg_get_serial_sequence(format('%I.%I',n.nspname,t.relname),a.attname),
+    format_type(q.seqtypid,null),q.seqincrement,q.seqmin,q.seqmax,q.seqstart,q.seqcache,q.seqcycle,
+    pg_get_userbyid(counter.relowner)) order by t.relname)
+  into v_identities
+  from pg_class t join pg_namespace n on n.oid=t.relnamespace
+  join pg_attribute a on a.attrelid=t.oid and a.attname='id' and a.attnum>0 and not a.attisdropped
+  join pg_depend ownership on ownership.refclassid='pg_class'::regclass and ownership.refobjid=t.oid
+    and ownership.refobjsubid=a.attnum and ownership.classid='pg_class'::regclass and ownership.deptype='i'
+  join pg_class counter on counter.oid=ownership.objid and counter.relkind='S'
+  join pg_sequence q on q.seqrelid=counter.oid
+  where n.nspname='dflow_prod' and t.relname in ('item_user_assignment','item_workflow_action');
+  if v_identities is distinct from '[
+    ["item_user_assignment","id","a","dflow_prod.item_user_assignment_id_seq","bigint",1,1,9223372036854775807,1,1,false,"postgres"],
+    ["item_workflow_action","id","a","dflow_prod.item_workflow_action_id_seq","bigint",1,1,9223372036854775807,1,1,false,"postgres"]]'::jsonb
+    or exists (
+      select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      cross join lateral aclexplode(coalesce(c.relacl,acldefault('s',c.relowner))) acl
+      where n.nspname='dflow_prod' and c.relname in ('item_user_assignment_id_seq','item_workflow_action_id_seq')
+        and (acl.grantee=0 or acl.grantee in (select oid from pg_roles where rolname in ('anon','authenticated','service_role')))
+    ) or exists (
+      select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace cross join pg_roles r
+      where n.nspname='dflow_prod' and c.relname in ('item_user_assignment_id_seq','item_workflow_action_id_seq')
+        and r.rolname in ('anon','authenticated','service_role')
+        and has_sequence_privilege(r.oid,c.oid,'USAGE,SELECT,UPDATE')
+    ) then
+    raise exception 'issue-2874 reissue refused: existing or resulting catalog differs from the exact canonical contract';
+  end if;
+
+  select jsonb_agg(jsonb_build_array(p.proname,pg_get_function_identity_arguments(p.oid),
+    format_type(p.prorettype,null),p.provolatile,p.prosecdef) order by p.proname)
+  into v_auth from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='auth' and p.proname in ('jwt','role','uid');
+  if v_auth is distinct from '[["jwt","","jsonb","s",false],["role","","text","s",false],["uid","","uuid","s",false]]'::jsonb then
+    raise exception 'issue-2874 reissue refused: existing or resulting catalog differs from the exact canonical contract';
+  end if;
+
 end
 $reissue_exact_catalog$;

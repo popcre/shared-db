@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3999,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/326",
+  "contract_sha256": "94c601e86603bf182832cff47ea7ea5b95352c181d2685c7747c3b350e426a5f",
+  "head_sha": "633851bc182a8a5ce4574fa451b51bb18a1fe5c9",
+  "base_sha": "e3387dde7ca784742e12a44f29a3435e0a3ad62d",
+  "files_changed": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-circuit-breaker.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
+    "scripts/test-fixtures/github-wire-fake.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9. : 1.970924\n  type: 'test'\n  ...\n# Subtest: GLM quota classification refuses quoted, embedded, malformed and unsupported diagnostics\nok 945 - GLM quota classification refuses quoted, embedded, malformed and unsupported diagnostics\n  ---\n  duration_ms: 0.124423\n  type: 'test'\n  ...\n# Subtest: GLM diagnostic cannot attribute quota to another or unbound wrapper\nok 946 - GLM diagnostic cannot attribute quota to another or unbound wrapper\n  ---\n  duration_ms: 0.097422\n  type: 'test'\n  ...\n1..946\n# tests 946\n# suites 0\n# pass 945\n# fail 0\n# cancelled 0\n# skipped 1\n# todo 0\n# duration_ms 13918.848167\n Private evidence /tmp/3536-3999-generation326-check-0.txt"
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9. very\nok 24 - current_repository_catalogues_follow_current_discovery\n  ---\n  duration_ms: 348.079404\n  type: 'test'\n  ...\n# Subtest: reviewed_catalogues_may_evolve_without_rewriting_history\nok 25 - reviewed_catalogues_may_evolve_without_rewriting_history\n  ---\n  duration_ms: 0.744517\n  type: 'test'\n  ...\n# Subtest: independent_source_dispositions_merge_without_global_edit\nok 26 - independent_source_dispositions_merge_without_global_edit\n  ---\n  duration_ms: 37.030959\n  type: 'test'\n  ...\n1..26\n# tests 26\n# suites 0\n# pass 26\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1630.683615\n Private evidence /tmp/3536-3999-generation326-check-1.txt"
+    },
+    {
+      "command": "node --test scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9.  ...\n# Subtest: CLI accepts a proven explicit stage while legacy dependencies still await closure\nok 15 - CLI accepts a proven explicit stage while legacy dependencies still await closure\n  ---\n  duration_ms: 8.203794\n  type: 'test'\n  ...\n# Subtest: accepted maintenance is reported awaiting closure only after actual PR linkage verification\nok 16 - accepted maintenance is reported awaiting closure only after actual PR linkage verification\n  ---\n  duration_ms: 1.138624\n  type: 'test'\n  ...\n1..16\n# tests 16\n# suites 0\n# pass 16\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 168.140081\n Private evidence /tmp/3536-3999-generation326-check-2.txt"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9.  type: 'test'\n  ...\n# Subtest: every public module binding is re-exported by the entrypoint as the identical object\nok 2 - every public module binding is re-exported by the entrypoint as the identical object\n  ---\n  duration_ms: 1.490618\n  type: 'test'\n  ...\n# Subtest: the CLI entrypoint path is unchanged and still runs main only when invoked directly\nok 3 - the CLI entrypoint path is unchanged and still runs main only when invoked directly\n  ---\n  duration_ms: 1.000337\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 119.071016\n Private evidence /tmp/3536-3999-generation326-check-3.txt"
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_*.py",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9. ted object name(s) absent from the sandbox catalog.\nSCHEMA CONDITIONING OK: absent ['dflow_prod']; wrapped 1 statement(s) in the bounded checkout only; conditioned manifest entries re-pinned, prepare's other pins preserved.\nSCHEMA CONDITIONING OK: every conditioned schema is present on xupnyeifmpsacrqahwwm; no bytes changed.\nLEDGER OK: 1 allowlisted version(s) recorded; nothing else changed.\nACCEPTANCE PROBE QUALIFIED; production acceptance remains separate\nACCEPTANCE PROBE QUALIFIED; production acceptance remains separate\nLIVE PROOF PASSED: #2478; read-only production transaction rolled back\n Private evidence /tmp/3536-3999-generation326-check-4.txt"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_production_business_risk_gate.ProductionBusinessRiskGateTests.test_preview_producer_paths_cover_the_whole_executed_closure",
+      "exit_code": 0,
+      "evidence": "Actual exact declared command on final owned production source bytes before source commit 633851bc182a8a5ce4574fa451b51bb18a1fe5c9. .\n----------------------------------------------------------------------\nRan 1 test in 0.035s\n\nOK\n Private evidence /tmp/3536-3999-generation326-check-5.txt"
+    }
+  ],
+  "assumptions_resolved": [
+    "Two paid attempts per unchanged author-owned implementation and mandatory independent slot. Main context/offset/evidence/empty/issue/net-revert/source-equivalent changes never reset. Substantive reset needs bounded exact ancestry and surviving author source bytes; one owned EOF test-append conflict is explained only by exact immutable canonical parent concatenation, never by itself a repair witness. Unknown conflicts, reorder/omission/old-line/link/mode/driver/filter/encoding/foreign/octopus/missing/1000-relevant-commit boundary refuse capacity. Mode-only changes and empty additions never reset capacity; surviving blob-byte edits or nonempty authored addition/deletion required.",
+    "Same-content repaired-cause reset remains refused without supported exact authority.",
+    "Protected original receipt plus companion retains generated DeepSeek continuation.",
+    "Provider pause uses original immutable failure timestamp and verifies actual supported protected store readback; stronger holds retained, expired historical replay does not create a fresh pause.",
+    "No DB writes or new authority namespace; no API ceiling increase.",
+    "Actual5569 quota diagnostic is accepted only for the bound ai-glm wrapper and anchored published terminal line; quoted, unbound, different-wrapper, malformed and subtoken diagnostics refuse. Fixed safe insufficient_quota lifecycle retains original failure observation; no provider reset text disclosed and no verdict fabricated.",
+    "Budget-only intermediate normalization authenticates only complete same-PR/same-issue completed pairs explaining actual merge differences, recursively bound to the protected-start canonical baseline. Historical contract-only generation315 is resolved only through the existing canonical Git contract ref with exact hash/schema/identity, never as a completion or authored witness. Unique ref reads are cached within the real context and charged before ls-remote/fetch under the unchanged25-wire ceiling. Missing/foreign/hash/mode/custom merge and main/evidence-only/net-revert cases refuse; review equivalence remains strict.",
+    "Budget baseline/current authenticate only actual fully canonical endpoint records; removed intermediate pair317 retains all required historicalvariants and canonicalwitnesses. Unneeded incomplete32a2 endpoint record remains immutable history, is neither current authority nor normalized path nor repair witness. Actual repaired-tail regression and invalidremoved-pair negative pass.",
+    "Actual current SQL guard37623638021 importclosure failure repaired by adding exactlyfourexisting reachable modules to PREVIEW_PRODUCER_PATHS. Wholeclosureassertion and productionpolicy remain enforcing; no productionDB action or unpinnedexclusion. Security incident separately holds paid/credential operations.",
+    "Only successor326 checked-in pair is current; predecessors322/321/319 bytes and every diagnostic remain immutable Git/ref history. Metadata retirement supplies no source witness or capacity reset.",
+    "Exact additive producer pin/comment overlap is canonically derived only from three100644 immutable stages with entire ancestor reconstruction and actual protected parent bytes. Pin overlap never witnesses authored capacity; every other conflict refuses.",
+    "Symmetric protected-upstream projection retains original genuine34999 runtime+32regression WHOLE blobs; exact redundant same-module import consolidation9609 is ineligible. Actual all six immutable starts retained; no integration-only reset/refund. Draft original5602 witness34999 independently matched before paid generation."
+  ],
+  "stop_conditions_hit": [],
+  "assumptions": [
+    "One canonical generation326 pair follows actual implementation; immutable published322 and all earlier starts/contracts remain in Git/ref history. Exact source review and current protected merged evaluator live proof remain mandatory before original acceptance."
+  ]
+}

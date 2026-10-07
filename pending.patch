@@ -1,0 +1,12 @@
+diff --git a/supabase/migrations/20260928182014_hts_product_phrase_columns.sql b/supabase/migrations/20260928182014_hts_product_phrase_columns.sql
+index 76ddc9da..9fcd3942 100644
+--- a/supabase/migrations/20260928182014_hts_product_phrase_columns.sql
++++ b/supabase/migrations/20260928182014_hts_product_phrase_columns.sql
+@@ -4,7 +4,6 @@
+ -- The application (popcre/designflow-backend#107) fills these values.
+ -- One column per statement so the production business-risk gate classifies
+ -- each as a catalog-only nullable add.
+--- derived-from: none
+ 
+ alter table plm."itemHeader" add column if not exists hts_product_phrase text;
+ alter table plm."itemHeader" add column if not exists hts_product_phrase_source text;

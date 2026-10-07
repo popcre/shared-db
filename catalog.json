@@ -1,0 +1,107 @@
+{
+  "project_ref": "qsllyeztdwjgirsysgai",
+  "captured_at": "2026-10-07T21:42:19.103318+00:00",
+  "catalog": {
+    "columns": [
+      {
+        "name": "hts_product_phrase",
+        "type": "text",
+        "table": "RFQItem",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_at",
+        "type": "timestamp with time zone",
+        "table": "RFQItem",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_source",
+        "type": "text",
+        "table": "RFQItem",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase",
+        "type": "text",
+        "table": "itemHeader",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_at",
+        "type": "timestamp with time zone",
+        "table": "itemHeader",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_source",
+        "type": "text",
+        "table": "itemHeader",
+        "schema": "dflow_prod",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase",
+        "type": "text",
+        "table": "RFQItem",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_at",
+        "type": "timestamp with time zone",
+        "table": "RFQItem",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_source",
+        "type": "text",
+        "table": "RFQItem",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase",
+        "type": "text",
+        "table": "itemHeader",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_at",
+        "type": "timestamp with time zone",
+        "table": "itemHeader",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "hts_product_phrase_source",
+        "type": "text",
+        "table": "itemHeader",
+        "schema": "plm",
+        "default": null,
+        "nullable": "YES"
+      }
+    ],
+    "version": "20260928182014",
+    "installed": true
+  },
+  "provenance": "Saved read-only provider response; capture timestamp is file capture time, not provider observed_at. Execution must independently obtain observed_at."
+}

@@ -51,6 +51,21 @@ check_eol_combined_table_references() {
   node - "$diff_file" <<'NODE'
 const fs = require('node:fs')
 const diff = fs.readFileSync(process.argv[2], 'utf8')
+// #3907: these exact new assets only inspect catalog metadata for the
+// already-reviewed legacy dflow catalog. This is a byte-bound addition,
+// never an exemption for arbitrary proofs, runtime references, or later edits.
+const proofHashes = {
+  'scripts/proofs/3882-contract.json': '22ee55499288d95abf3b1e01314232f514a1011725085cdfe6a053f5b1c01419',
+  'scripts/proofs/3882-production.sql': '59b2c915cf2a8d0e9d0687c8a988accc03fc9b2a9b20dd579a055db86f4c2dbd',
+  'scripts/proofs/3882-sandbox.sql': 'e76702725e5c283b0da7f95cd4da96b8b7df764db756f68d385bf6775788c90d',
+}
+const exactProofAdditions = new Set()
+for (const block of diff.split(/(?=^diff --git )/m)) {
+  const filename = block.match(/^diff --git a\/.+ b\/(.+)$/m)?.[1]
+  if (!proofHashes[filename] || !/^new file mode /m.test(block)) continue
+  const content = block.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n') + '\n'
+  if (require('node:crypto').createHash('sha256').update(content).digest('hex') === proofHashes[filename]) exactProofAdditions.add(filename)
+}
 const allowed = new Set([
   'supabase/migrations/20260827222039_eol_core_properties_and_characters.sql',
   'supabase/migrations/20260829004145_separate_property_and_character.sql',
@@ -58,21 +73,29 @@ const allowed = new Set([
 // #3890 removes the misplaced sandbox relation; it introduces no runtime
 // dependency. Accept only the exact reviewed transition bytes, plus its
 // exact non-runtime contract/catalog evidence. No other path is exempted.
-const sandboxTransition = 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'
+const sandboxTransitions = new Map([
+  ['supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql', '08fdfbfd6a5a10ace41265d87d06df9fb13d0f2ddb20fbfd0e1a5fb55e714584'],
+  ['supabase/migrations/20261007000937_reissue_designflow_legacy_namespace_transition.sql', 'bf59f9fd5b81458ae61d0214799ec1809e3d1220e7b2cdc4e2c0fd967f827a8d'],
+])
 const sandboxEvidence = new Set([
   '.agent/work/3890/1/contract.json', '.agent/work/3890/2/contract.json',
   '.agent/work/3890/4/contract.json', '.agent/work/3890/4/completion.json',
+  '.agent/work/3890/6/contract.json', '.agent/work/3890/6/completion.json',
+  '.agent/work/3890/9/contract.json', '.agent/work/3890/9/completion.json',
   '.github/live-proofs/3890.sql',
   'scripts/production-verification-sidecars/20261006203846.json',
+  'scripts/production-verification-sidecars/20261007000937.json',
 ])
-const transitionChunk = diff.split(/(?=^diff --git )/m).find(chunk => chunk.startsWith(`diff --git a/${sandboxTransition} b/${sandboxTransition}\n`))
-if (transitionChunk) {
-  const completeAddition = /^--- \/dev\/null$/m.test(transitionChunk)
-  const bytes = transitionChunk.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n') + '\n'
-  const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex')
-  if (completeAddition && hash === '08fdfbfd6a5a10ace41265d87d06df9fb13d0f2ddb20fbfd0e1a5fb55e714584') {
-    allowed.add(sandboxTransition)
-    for (const file of sandboxEvidence) allowed.add(file)
+for (const [sandboxTransition, transitionHash] of sandboxTransitions) {
+  const transitionChunk = diff.split(/(?=^diff --git )/m).find(chunk => chunk.startsWith(`diff --git a/${sandboxTransition} b/${sandboxTransition}\n`))
+  if (transitionChunk) {
+    const completeAddition = /^new file mode 100644$/m.test(transitionChunk) && /^--- \/dev\/null$/m.test(transitionChunk)
+    const bytes = transitionChunk.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n') + '\n'
+    const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex')
+    if (completeAddition && hash === transitionHash) {
+      allowed.add(sandboxTransition)
+      for (const file of sandboxEvidence) allowed.add(file)
+    }
   }
 }
 const deltas = new Map()
@@ -105,7 +128,7 @@ for (const line of diff.split(/\r?\n/)) {
     maintenance.set(current, { declared: new Set(), completed: new Set(), active: null, tag: null })
     continue
   }
-  if (allowed.has(current) || current === 'scripts/check-sql.sh') continue
+  if (allowed.has(current) || exactProofAdditions.has(current) || current === 'scripts/check-sql.sh') continue
   if (current.endsWith('.md')) continue
   if (current.startsWith('supabase/tests/') || /\.test\.[cm]?js$/.test(current)) continue
   if (line.startsWith('+') && !line.startsWith('+++')) {

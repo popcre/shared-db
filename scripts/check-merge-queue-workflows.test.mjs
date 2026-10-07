@@ -22,10 +22,11 @@ import { emittedJobNames, jobBlockByName, jobBlocks, jobEvents, stepBlock } from
 
 const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
-function guardedCollisionWire(pr, { fetchFails = false } = {}) {
+function guardedCollisionWire(pr, { fetchFails = false, actualChecker = false, bindHead = true, duplicate = false } = {}) {
   const workflow = readWorkflow('guarded-migration-merge.yml')
-  const block = /          collision_pr="\$\(node[\s\S]*?          GITHUB_SHA="\$REQUESTED_SHA" node scripts\/check-pr-object-collisions\.mjs/.exec(workflow)?.[0]
+  let block = /          collision_pr="\$\(node[\s\S]*?          GITHUB_SHA="\$REQUESTED_SHA" node scripts\/check-pr-object-collisions\.mjs/.exec(workflow)?.[0]
   assert.ok(block, 'the actual guarded identity read and collision command must exist')
+  if (!bindHead) block = block.replace('GITHUB_SHA="$REQUESTED_SHA" node scripts/check-pr-object-collisions.mjs', 'node scripts/check-pr-object-collisions.mjs')
   const script = `set -euo pipefail
 node() {
   if [ "$1" = "$GITHUB_WORKSPACE/scripts/gh-read.mjs" ]; then
@@ -33,6 +34,26 @@ node() {
     [ "$FETCH_FAILS" = 0 ] || return 1
     printf '%s' "$FIXTURE_JSON"
   elif [ "$1" = scripts/check-pr-object-collisions.mjs ]; then
+    if [ "$ACTUAL_CHECKER" = 1 ]; then
+      command node --input-type=module -e '
+        const { gatherSources, findCollisions } = await import(process.env.CHECKER_URL);
+        const pr = JSON.parse(process.env.FIXTURE_JSON);
+        const calls = [];
+        const sources = gatherSources(process.env, {
+          readPull: () => { calls.push("trusted-GET"); return pr; },
+          load: () => { calls.push("current-and-competing"); return {
+            current: { files: [{ filename: "supabase/migrations/current.sql" }] },
+            others: [{ number: 8, listed: { draft: false, title: "competing", headSha: "c".repeat(40) }, files: [{ filename: "supabase/migrations/other.sql" }] }],
+          }; },
+          readSql: (repo, path) => path.endsWith("current.sql") ? "create table api.wire_current(id int);" : "create table api." + (process.env.DUPLICATE === "1" ? "wire_current" : "wire_other") + "(id int);",
+          baseSource: () => { calls.push("merged-main"); return { label: "main merged source", files: [{ path: "supabase/migrations/main.sql", sql: "create table api.wire_main(id int);" }] }; },
+        });
+        const collisions = findCollisions(sources).collisions;
+        console.log("actual-source-count=" + sources.length + " calls=" + calls.join(",") + " collisions=" + collisions.length);
+        if (collisions.length) process.exitCode = 1;
+      '
+      return
+    fi
     printf 'collision-head=%s\\n' "$GITHUB_SHA"
   else
     command node "$@"
@@ -45,6 +66,8 @@ printf 'workflow-head=%s\\n' "$GITHUB_SHA"
     encoding: 'utf8', timeout: 10000,
     env: { ...process.env, PR_NUMBER: '7', REQUESTED_SHA: 'a'.repeat(40), GITHUB_SHA: 'b'.repeat(40),
       GITHUB_REPOSITORY: 'popcre/shared-db', GITHUB_WORKSPACE: '/synthetic',
+      GITHUB_EVENT_NAME: 'workflow_dispatch', CHECKER_URL: new URL('./check-pr-object-collisions.mjs', import.meta.url).href,
+      ACTUAL_CHECKER: actualChecker ? '1' : '0', DUPLICATE: duplicate ? '1' : '0',
       FIXTURE_JSON: JSON.stringify(pr), FETCH_FAILS: fetchFails ? '1' : '0' },
   })
 }
@@ -87,6 +110,45 @@ test('actual protected guarded collision wire refuses an unreadable PR before ch
   assert.equal(result.status, 1)
   assert.doesNotMatch(result.stdout, /collision-head=/)
 })
+
+const actualGuardedPull = () => ({ ...guardedCollisionPull(), merged: false, base: { ...guardedCollisionPull().base, sha: 'b'.repeat(40) } })
+
+test('combined protected workflow and real dispatch checker reject the old main-head collision invocation', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true, bindHead: false })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not open at the exact canonical workflow head/)
+  assert.doesNotMatch(result.stdout, /actual-source-count=/)
+})
+
+test('combined protected workflow and real dispatch checker scan current, competing, and merged-main sources', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /actual-source-count=3 calls=trusted-GET,current-and-competing,merged-main collisions=0/)
+  assert.match(result.stdout, new RegExp(`workflow-head=${'b'.repeat(40)}`))
+})
+
+test('combined protected workflow and real dispatch checker refuse a real duplicate object collision', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true, duplicate: true })
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /actual-source-count=3 .*collisions=1/)
+  assert.doesNotMatch(result.stdout, /workflow-head=/)
+})
+
+for (const [label, mutate] of [
+  ['closed', pr => { pr.state = 'closed' }],
+  ['moved', pr => { pr.head.sha = 'c'.repeat(40) }],
+  ['non-main', pr => { pr.base.ref = 'develop' }],
+  ['already merged', pr => { pr.merged = true }],
+  ['unknown base SHA', pr => { delete pr.base.sha }],
+]) {
+  test(`combined protected workflow and real dispatch checker refuse ${label} identity before scanning`, () => {
+    const pr = actualGuardedPull(); mutate(pr)
+    const result = guardedCollisionWire(pr, { actualChecker: true })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /(?:not the exact open canonical pull request|not open at the exact canonical workflow head)/)
+    assert.doesNotMatch(result.stdout, /actual-source-count=/)
+  })
+}
 const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8'))
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by

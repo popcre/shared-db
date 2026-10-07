@@ -9,6 +9,7 @@
 -- a NEW reserved version under the #3911 precedent.
 --
 -- reserved-version: 20261007232257 (claim #3955, reissued)
+-- derived-from: 20261002193034
 --
 -- Original header of 20261007190954 follows.
 --
@@ -31,7 +32,7 @@
 -- pinned search_path, licensing-gate-first ordering) and every grant.
 --
 -- reserved-version (original): 20261007190954 (claim #3955)
--- derived-from: 20261002193034
+-- (original header) body derivation: 20261002193034
 -- (api.db_data_admin_scraped_source_inventory body.)
 --
 -- Owner request (Albert Hazan, chat 2026-10-05): "fix the duplicates on the

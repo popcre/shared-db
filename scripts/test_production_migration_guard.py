@@ -400,6 +400,22 @@ class GuardTests(unittest.TestCase):
         for applied in (set(), {"20261007190954"}):
             self.assertEqual(classify_pending_version("20261007190954", applied, REPO)["kind"], "retired")
 
+    def test_scraped_dedupe_forward_replacements_share_executable_body(self) -> None:
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(version: str) -> str:
+            (path,) = migrations.glob(f"{version}_*.sql")
+            return "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.lstrip().startswith("--"))
+
+        body = executable("20261007232257")
+        self.assertEqual(body, executable("20261007190954"))
+        self.assertEqual(body, executable("20261007020907"))
+        lowered = " ".join(body.lower().split()).replace("( ", "(").replace(" )", ")")
+        self.assertIn("create or replace function api.db_data_admin_scraped_source_inventory(p_entity_kind text, p_search text default null, p_cursor text default null, p_page_size integer default null)", lowered)
+        self.assertIn("returns jsonb", lowered)
+        self.assertIn("security definer", lowered)
+        self.assertIn("set search_path to 'app', 'public'", lowered)
+
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
             with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20260906222338"):

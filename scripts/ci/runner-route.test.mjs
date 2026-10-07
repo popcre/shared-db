@@ -29,6 +29,6 @@ test('every other state falls back to the hosted label', () => {
   for (const c of cases) assert.equal(decideRunner({ ...base, ...c }).runsOn, base.fallback, JSON.stringify(c))
 })
 
-test('a missing fallback is an error, not a silent self-hosted route', () => {
+test('an absent fallback is an error, not a silent self-hosted route', () => {
   assert.throws(() => decideRunner({ ...base, fallback: '', heartbeat: hb('online', 'idle') }))
 })

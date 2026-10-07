@@ -4,7 +4,7 @@
 // Owner request (Albert, 2026-10-07): "point the checks at it. and set it up as
 // a runner for shared-db as well". Routed jobs run on the self-hosted runner
 // labelled shared-db-linux ONLY when it is proven online and idle right now;
-// every other outcome -- fork pull request, missing or stale heartbeat, busy or
+// every other outcome -- fork pull request, absent or stale heartbeat, busy or
 // offline runner, malformed input, or this script failing -- returns the job's
 // existing hosted label, so no merge ever depends on one machine.
 //

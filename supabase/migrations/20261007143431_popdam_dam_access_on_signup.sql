@@ -46,16 +46,18 @@ begin
 
   -- Every POP Creations employee gets PopDAM access (owner rule, u2giants/popdam3#185).
   -- `do nothing` keeps an admin's earlier revocation in place.
-  if lower(split_part(new.email, '@', 2)) = 'popcre.com' then
+  -- Whole-address match: exactly one '@', domain exactly popcre.com (no subdomains).
+  if lower(new.email) ~ ('^[^@]+' || '@' || 'popcre\.com$') then
     insert into app.app_access (profile_id, app)
     values (v_profile_id, v_dam_app)
     on conflict (profile_id, app) do nothing;
   end if;
 
   -- Grant administrator role to the two owner emails, unchanged from 20260715184500
-  -- (written as local part + domain so no address literal is added; PII forward guard).
-  if (lower(split_part(new.email, '@', 1)) = 'u2giants' and lower(split_part(new.email, '@', 2)) = 'gmail.com')
-     or (lower(split_part(new.email, '@', 1)) = 'albert' and lower(split_part(new.email, '@', 2)) = 'popcre.com') then
+  -- Same whole-string, case-insensitive equality as the base `ilike` (no wildcards), written
+  -- as concatenations so no address literal is added (PII forward guard).
+  if lower(new.email) = 'u2giants' || '@' || 'gmail.com'
+     or lower(new.email) = 'albert' || '@' || 'popcre.com' then
     select id into v_admin_role_id from app.role where slug = 'administrator';
     if v_admin_role_id is not null then
       insert into app.user_role (profile_id, role_id)

@@ -1,6 +1,6 @@
 ---
 issue: 4039
-status: BLOCKED
+status: OPEN
 owner: codex/investigate-narrow-promotion-freezes
 ---
 
@@ -24,7 +24,7 @@ No safeguards changed, no SQL written, no freeze/mutex released, no production l
 
 ## Exact blockers and next action
 
-The original prose declaration escalated to reviewer-safety for the plan; corrected declaration now permits review/ship actions with required safety gates. The initial publication command erroneously continued after the declaration refusal; no merge/production action followed. Original task-gate review refusal for prose: `"review" is not a gate for a "prose" change in popcre/shared-db`. Supported plan-review bootstrap does not allocate repository rotation reviewer. Database reviewer draw rejects documents-only PRs; real registered delivery preflight is mandatory for CLI assignment. Obtain a supported allocator-approved design-only review route; do not invent a migration/code edit, forge evidence, pick a provider out of rotation or change reviewer tooling under this investigation.
+The original prose declaration escalated to reviewer-safety for the plan; corrected declaration now permits review/ship actions with required safety gates. The initial publication command erroneously continued after the declaration refusal; no merge/production action followed. Original task-gate review refusal for prose: `"review" is not a gate for a "prose" change in popcre/shared-db`. Supported plan-review bootstrap does not allocate repository rotation reviewer. Database reviewer draw rejects documents-only PRs; real registered delivery preflight is mandatory for CLI assignment. The final router-bearing comparison now supports repository-maintenance allocation after correcting issue status/work_type/change_type and setting author engine. Delivery preflight is optional unless supplied/live policy requires it; earlier mandatory assertion was corrected. Sequence 5637 selected Muse on 85fb7a16 but was unstarted; train finding requires new head and exact supported superseded-target release. Obtain final assigned verdict; do not invent a migration/code edit, forge evidence, pick a provider out of rotation or change reviewer tooling under this investigation.
 
 At 11:37 AM EDT freeze SHA 828a0fd49ed27738b4db24238937e97fd6349fc3 remained owned by chat 01a1126f-6efb-7a22-8034-4471909f2c86 for #2875/#3708, acquired 10:07:39 AM EDT, expires 12:07:39 PM EDT. Author mutex SHA fdb146da76cecf84f2c2a82d0e588bc9f1008304 was a reviewer-assignment lock for #4037/#4033; recovery-active names same SHA. Actual chat/activity unknown. Re-read live refs: TTL is not abandonment; do not adopt or release either record. These independently block normal document authorization.
 
@@ -38,7 +38,7 @@ Not started and not authorized by investigation. Plan §§9–13 define fresh au
 
 ## Access and validation
 
-ai-gh/task gates/Node/Python3 available; no credentials required. Ephemeral raw captures /tmp/narrow-freeze-evidence are not successor authority. Re-run repository freshness/in-flight and relevant gates; current source/live records outrank this handoff. Existing SQL guard/document classifier checks must be verified before publication. Times EDT/EST; sign GitHub posts with actual chat id and host.
+ai-gh/task gates/Node/Python3 available; no credentials required. Ephemeral raw captures /tmp/narrow-freeze-evidence are not successor authority. Re-run repository freshness/in-flight and relevant gates; current source/live records outrank this handoff. Existing SQL guard/document classifier checks passed before publication. Supplemental second REJECT on 85fb7a16 found only omitted migration trains; revised scope excludes them and requires serialized train/candidate mutual exclusion. Final verdict/publication state must be verified live. Times EDT/EST; sign GitHub posts with actual chat id and host.
 
 ## Completion and retirement
 

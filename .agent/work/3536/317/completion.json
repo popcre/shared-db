@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 3999,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/317",
+  "contract_sha256": "68a7fa3879e275b0b83704e995f4b8117da92db45c0b60ffd908ec81a8da53dd",
+  "head_sha": "cc72e0ab198eabb968f4ca1bdea49468f3e522e9",
+  "base_sha": "0f0768f775bf7d5bf5159d8469adcb5566048551",
+  "files_changed": [
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-circuit-breaker.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs",
+    "scripts/test-fixtures/github-wire-fake.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact command on refreshed implementationcc72e0ab/protectedmain0f0768f7: 917 tests, 916 PASS, 0 FAIL, 1 existing platform skip(s); private evidence /tmp/3999-resume-cli-integrated-core.txt. Main-only integration is not authored repair or paid-budget reset."
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact command on refreshed implementationcc72e0ab/protectedmain0f0768f7: 26 tests, 26 PASS, 0 FAIL, 0 existing platform skip(s); private evidence /tmp/3999-resume-cli-integrated-wire.txt. Main-only integration is not authored repair or paid-budget reset."
+    },
+    {
+      "command": "node --test scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact command on refreshed implementationcc72e0ab/protectedmain0f0768f7: 16 tests, 16 PASS, 0 FAIL, 0 existing platform skip(s); private evidence /tmp/3999-resume-cli-integrated-hygiene.txt. Main-only integration is not authored repair or paid-budget reset."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact command on refreshed implementationcc72e0ab/protectedmain0f0768f7: 3 tests, 3 PASS, 0 FAIL, 0 existing platform skip(s); private evidence /tmp/3999-resume-cli-integrated-surface.txt. Main-only integration is not authored repair or paid-budget reset."
+    },
+    {
+      "command": "node --test scripts/lib/pr-content-equivalence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual exact command on refreshed implementationcc72e0ab/protectedmain0f0768f7: 21 tests, 21 PASS, 0 FAIL, 0 existing platform skip(s); private evidence /tmp/3999-resume-cli-integrated-equivalence.txt. Main-only integration is not authored repair or paid-budget reset."
+    }
+  ],
+  "assumptions_resolved": [
+    "Two paid attempts per unchanged author-owned implementation and mandatory independent slot. Main context/offset/evidence/empty/issue/net-revert/source-equivalent changes never reset. Substantive reset needs bounded exact ancestry and surviving author source bytes; one owned EOF test-append conflict is explained only by exact immutable canonical parent concatenation, never by itself a repair witness. Unknown conflicts, reorder/omission/old-line/link/mode/driver/filter/encoding/foreign/octopus/missing/1000-relevant-commit boundary refuse capacity. Mode-only changes and empty additions never reset capacity; surviving blob-byte edits or nonempty authored addition/deletion required.",
+    "Same-content repaired-cause reset remains refused without supported exact authority.",
+    "Protected original receipt plus companion retains generated DeepSeek continuation.",
+    "Provider pause uses original immutable failure timestamp and verifies actual supported protected store readback; stronger holds retained, expired historical replay does not create a fresh pause.",
+    "No DB writes or new authority namespace; no API ceiling increase."
+  ],
+  "stop_conditions_hit": []
+}

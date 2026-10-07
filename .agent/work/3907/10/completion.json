@@ -30,7 +30,7 @@
     {
       "command": "python3 -m unittest discover -s scripts -p test_production_migration_guard.py",
       "exit_code": 0,
-      "evidence": "Included in the fresh full Python run: 1421 tests, 19 existing environment skips; all exercised checks passed."
+      "evidence": "Dedicated fresh guard run: 297 passed, no failures. Full combined Python suite also passed."
     },
     {
       "command": "node --test scripts/check-sql.test.mjs scripts/proofs/shared-db-3882-observation.test.mjs",

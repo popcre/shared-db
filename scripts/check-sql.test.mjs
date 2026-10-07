@@ -1336,3 +1336,61 @@ test('pg_url_to_env: percent-encoded password is decoded', () => {
     },
   )
 })
+
+// #3907 exact byte-bound catalog proof additions retain the runtime EOL guard.
+test('3882 catalog evidence allowance accepts only exact new proof bytes', () => {
+  const assets = ['scripts/proofs/3882-contract.json','scripts/proofs/3882-production.sql','scripts/proofs/3882-sandbox.sql']
+  const blocks = assets.map(file => addedFileDiffText(file, readFileSync(path.join(repoRoot,file),'utf8').trimEnd().split('\n')).replace('\n--- /dev/null', '\nnew file mode 100644\n--- /dev/null'))
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const run = chunks => runGuards(dir,{mainNewest:'20260801100000',env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+    assert.equal(run(blocks).status,0)
+    for (let i=0;i<blocks.length;i++) {
+      const changed = [...blocks];changed[i] += '+select * from core.properties_and_characters;\n'
+      assert.notEqual(run(changed).status,0,'altered proof bytes must refuse')
+      const existing = [...blocks];existing[i]=existing[i].replace('new file mode 100644\n','')
+      assert.notEqual(run(existing).status,0,'later edits must refuse')
+    }
+    assert.notEqual(run([...blocks,addedFileDiffText('apps/example/query.ts',['select * from core.properties_and_characters;'])]).status,0)
+  })
+})
+
+// The removal-only sandbox correction must never become a filename-only bypass.
+test('3890 exact removal transition permits its evidence but rejects changed bytes and unrelated dependencies', () => {
+  const file = 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'
+  const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const transition = addedFileDiffText(file, lines).replace("\n--- /dev/null", "\nnew file mode 100644\n--- /dev/null")
+    const evidence = addedFileDiffText('.agent/work/3890/4/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const valid = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff([transition,evidence]))}})
+    assert.equal(valid.status, 0, valid.stderr)
+    for (const chunks of [
+      [addedFileDiffText(file, [...lines, 'select * from core.properties_and_characters;']), evidence],
+      [transition, addedFileDiffText('apps/example/query.sql', ['select * from core.properties_and_characters;'])],
+      [evidence],
+    ]) {
+      const refused = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+      assert.notEqual(refused.status, 0)
+    }
+  })
+})
+
+// Forward reissue retains the exact-byte and complete-addition boundary.
+test('3890 forward transition admits exact new bytes only, preserving retired-reference refusal', () => {
+  const file = 'supabase/migrations/20261007000937_reissue_designflow_legacy_namespace_transition.sql'
+  const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
+  const original = readFileSync(path.join(repoRoot, 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'), 'utf8')
+  assert.equal(lines.slice(2).join('\n') + '\n', original, 'executable transition must remain unchanged')
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const transition = addedFileDiffText(file, lines).replace("\n--- /dev/null", "\nnew file mode 100644\n--- /dev/null")
+    const evidence = addedFileDiffText('.agent/work/3890/6/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const run = chunks => runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+    assert.equal(run([transition,evidence]).status, 0)
+    for (const chunks of [
+      [addedFileDiffText(file, [...lines, 'select * from core.properties_and_characters;']),evidence],
+      [transition.replace('new file mode 100644\n',''),evidence],
+      [transition.replace('--- /dev/null','--- a/'+file),evidence],
+      [transition,addedFileDiffText('apps/example/query.sql',['select * from core.properties_and_characters;'])],
+      [evidence],
+    ]) assert.notEqual(run(chunks).status, 0)
+  })
+})

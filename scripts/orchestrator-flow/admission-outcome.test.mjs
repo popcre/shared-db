@@ -4,7 +4,7 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
 import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
-import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
+import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES, parseOutcomeEvidence } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
@@ -770,6 +770,15 @@ function completionFixture({through='production_applied',generated='not-applicab
   return {io,comments}
 }
 
+test('catalog recovery evidence is optional but must be completely pinned',()=>{
+  const {io}=completionFixture(),original=parseOutcomeEvidence(io.readOutcomeEvidence())
+  const recovery={production_recovery_evidence:'https://github.com/popcre/shared-db/actions/runs/101',production_recovery_commit_sha:'c'.repeat(40),production_recovery_artifact_id:124,production_recovery_artifact_digest:`sha256:${'d'.repeat(64)}`}
+  const body=x=>['```db-outcome-evidence',JSON.stringify(x),'```'].join('\n')
+  assert.equal(parseOutcomeEvidence(body({...original,...recovery})).production_recovery_artifact_id,124)
+  for(const key of Object.keys(recovery)){const x={...original,...recovery};delete x[key];assert.throws(()=>parseOutcomeEvidence(body(x)),/completely pin/)}
+  for(const [key,value] of Object.entries({production_recovery_evidence:'unbound',production_recovery_commit_sha:'invented',production_recovery_artifact_id:0,production_recovery_artifact_digest:'unknown'}))assert.throws(()=>parseOutcomeEvidence(body({...original,...recovery,[key]:value})),/completely pin/)
+})
+
 test('completion re-derives merge, application, generated types, and live assertion before one authoritative completion', () => {
   const {io,comments}=completionFixture({generated:'required'})
   const result=completeOutcome({issue:41,evidenceRef:'https://github.com/u2giants/shared-db/issues/41#issuecomment-9',actor:'test',timestamp:'2026-09-11T02:00:00Z'},io)
@@ -1034,4 +1043,14 @@ test('a repaired timestamp incident does not block later ordinary race repair (#
     assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'explicit tampered publication',evidenceUrls:[record.evidence_url]},io),/configured timestamp incident/)
     assert.equal(comments.length,before)
   }
+})
+
+
+test('structural admission accounts for exact roles and ownership dependencies', () => {
+  const file = (content) => [{filename:'supabase/migrations/20261006190000_role.sql',status:'added',content}]
+  const actual = inspectPrStructuralChange(file('CREATE ROLE "Worker"; ALTER FUNCTION core.f() OWNER TO "Worker";'))
+  assert.ok(actual.objects.includes('role "Worker"'))
+  assert.deepEqual(actual.reads,['role "Worker"'])
+  assert.deepEqual(inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE 'CREATE ROLE worker'; END $$;")).objects,['role worker'])
+  assert.throws(() => inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;")), /dynamic role/)
 })

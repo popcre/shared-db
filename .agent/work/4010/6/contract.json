@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "work_issue": 4010,
-  "generation": 5,
+  "generation": 6,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Complete the unchanged three guarded artist-parent repairs under refreshed unapplied reserved20261007002731. Retain previous reservations and reviewed SQL semantics. Align actual artist proof and parent acceptance SQL/hash with user forward20261007002113 and artist20261007002731. Sync current upstream before final source review, keep exactly one active evidence pair, guarded merge first, then first merged-main preview apply and automatic production. No row, access, or manual production change.",
-  "base_sha": "93b58ea6f6afa4b50c40e5f89629cf659ec66357",
+  "goal": "Complete the unchanged three guarded artist-parent repairs under refreshed unapplied reserved20261007002731. Retain previous reservations and reviewed SQL semantics. Align actual artist proof and parent acceptance SQL/hash with user forward20261007002113 and artist20261007002731. Sync current upstream before final source review, keep exactly one active evidence pair, guarded merge first, then first merged-main preview apply and automatic production. No row, access, or manual production change. Retain independently approved current-main2874 retirement and3781policy; existing finalparent SQL/hash is identical to user release so serial integration preserves it without another producer-pin edit. Exactlyone active evidencepair.",
+  "base_sha": "5df3dc4798d8aedbbf72ea2faead8a5f4ac134be",
   "dispatcher": "Albert chat instruction: complete shared-db #3882 through to production, without the earlier one-child stop; existing exact-object claim acquired.",
   "worker": "Codex chat 01a1126e-c598-7d60-8cf4-e14427127e20 on edge-dev3",
   "branch": "codex/4010-artists",
@@ -13,22 +13,26 @@
   "allowed_paths": [
     "supabase/migrations/20261007002731_repoint_designflow_artist_parent_fks.sql",
     ".github/live-proofs/4010.sql",
-    ".agent/work/4010/5/contract.json",
-    ".agent/work/4010/5/completion.json",
+    ".agent/work/4010/6/contract.json",
+    ".agent/work/4010/6/completion.json",
     "scripts/proofs/3882-production.sql",
     "scripts/check-sql.sh",
     ".agent/work/4010/4/contract.json",
-    ".agent/work/4010/4/completion.json"
+    ".agent/work/4010/4/completion.json",
+    ".agent/work/4010/5/contract.json",
+    ".agent/work/4010/5/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261007002731_repoint_designflow_artist_parent_fks.sql",
     ".github/live-proofs/4010.sql",
-    ".agent/work/4010/5/contract.json",
-    ".agent/work/4010/5/completion.json",
+    ".agent/work/4010/6/contract.json",
+    ".agent/work/4010/6/completion.json",
     "scripts/proofs/3882-production.sql",
     "scripts/check-sql.sh",
     ".agent/work/4010/4/contract.json",
-    ".agent/work/4010/4/completion.json"
+    ".agent/work/4010/4/completion.json",
+    ".agent/work/4010/5/contract.json",
+    ".agent/work/4010/5/completion.json"
   ],
   "db_reads": [
     "table core.merchGroup",
@@ -58,7 +62,7 @@
   ],
   "evidence_parent": {
     "work_issue": 4010,
-    "generation": 4,
-    "contract_sha256": "eef4261ffc8cd7936f2498ddaef7fb91584c713d442a58947e22396e03c1b536"
+    "generation": 5,
+    "contract_sha256": "d587d67f113693fa92e56805e13b1bcafc7741cca0953abb1a9e72c88f3b7f31"
   }
 }

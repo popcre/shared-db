@@ -31,6 +31,26 @@
       "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/queue-hygiene-report.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/lib/pr-content-equivalence.test.mjs",
       "exit_code": 0,
       "evidence": "Actual source5f9c7fec61139d7eb7893e6630c770037d9b6edb:1076tests,1075PASS,0FAIL,1existing platformskip; /tmp/3999-gen319-endpoint-final-full.txt. Includes49 actualGit/publicbudget and77 publicCLI tests; unchanged25wire ceiling."
+    },
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual required exact command on same source5f9c7fec:933 tests,932PASS/1existing skip,0FAIL; /tmp/3999-gen319-endpoint-core.txt."
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual required exact command on same source5f9c7fec:26PASS,0FAIL; /tmp/3999-gen319-endpoint-wire.txt."
+    },
+    {
+      "command": "node --test scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual required exact command on same source5f9c7fec:16PASS,0FAIL; /tmp/3999-gen319-endpoint-hygiene.txt."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actual required exact command on same source5f9c7fec:3PASS,0FAIL; /tmp/3999-gen319-endpoint-surface.txt."
     }
   ],
   "assumptions_resolved": [

@@ -58,6 +58,14 @@
 --      (source_system = 'disney_dcpvault'); all 30 have DCP resolution
 --      history in plm.dcp_opa_property_resolution and 24 have approved
 --      members. Hide only the Lucasfilm display copy of those 30.
+--      Decision-reachability constraint (review finding 2026-10-06): all 30
+--      shared production ids are dcpvault:-prefixed, and the Disney arm's
+--      resolution join reaches a hidden Lucasfilm copy only via
+--      source_property_id like 'dcpvault:%'. The hide predicate is exact
+--      source_id equality (prefix-agnostic); a hypothetical non-prefixed
+--      shared id would therefore hide a row whose resolution join needs the
+--      prefix branch. Production evidence shows no such row. Do not extend
+--      the hide to non-prefixed ids without also widening that join.
 --      Index assumption (review finding, 2026-10-06): the Disney-twin probe
 --      reads plm.dcp_property(source_system, source_id). At the documented
 --      cardinality (70 Lucasfilm rows, 30 shared ids) the outer arm scans

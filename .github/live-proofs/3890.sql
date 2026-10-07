@@ -2,7 +2,7 @@
 -- Sandbox proof is separately recorded from the sandbox-only bounded workflow.
 SELECT (
   EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations
-    WHERE version = '20261006203846')
+    WHERE version = '20261007000937')
   AND to_regclass('dflow.properties_and_characters') IS NOT NULL
   AND to_regclass('core.properties_and_characters') IS NULL
   AND (SELECT count(*) FROM pg_attribute

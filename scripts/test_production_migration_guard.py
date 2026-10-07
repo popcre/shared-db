@@ -207,6 +207,18 @@ def _run_block_commands(step: str) -> list[str]:
     return commands
 
 
+class RemainingUsersStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_refuses_even_if_recorded_remotely(self):
+        for remote in (set(), {"20261006221530"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006221530", remote)
+        self.assertIn("20261007002113", production_migration_guard.RETIRED_VERSION_REASONS["20261006221530"])
+
+    def test_forward_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261007002113"), ["20261007002113"])
+
+
+
 class GuardTests(unittest.TestCase):
     def test_preview_only_historical_restoration_is_never_production_allowlisted(self):
         self.assertEqual(
@@ -274,6 +286,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261006203846",
+                "20261006211240",
                 "20261002204050",
                 "20260911212849",
                 "20260917112129",
@@ -303,6 +317,7 @@ class GuardTests(unittest.TestCase):
                 "20260915015414",
                 "20260928003740",
                 "20260929040458",
+                "20261006221530",
             },
         )
 
@@ -358,6 +373,14 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(parse_allowlist("20261002222102"), ["20261002222102"])
         for applied in (set(), {"20261002204050"}):
             self.assertEqual(classify_pending_version("20261002204050", applied, REPO)["kind"], "retired")
+
+    def test_workflow_parity_refused_original_is_retired(self) -> None:
+        for allowlist in ("20261006211240", "20261006211240,20261006235109"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261006211240"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261006235109"), ["20261006235109"])
+        for applied in (set(), {"20261006211240"}):
+            self.assertEqual(classify_pending_version("20261006211240", applied, REPO)["kind"], "retired")
 
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
@@ -4383,6 +4406,18 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
                 text,
                 f"{name} tells an operator to open the record without its fence",
             )
+
+
+
+class DesignFlowNamespaceStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_is_blocked_even_when_remote_records_it(self):
+        for remote in (set(), {"20261006203846"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006203846", remote)
+        self.assertIn("20261007000937", production_migration_guard.RETIRED_VERSION_REASONS["20261006203846"])
+
+    def test_forward_version_remains_eligible_without_stranded_dependency(self):
+        self.assertEqual(parse_allowlist("20261007000937"), ["20261007000937"])
 
 
 if __name__ == "__main__":

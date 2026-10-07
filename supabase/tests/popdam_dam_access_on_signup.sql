@@ -9,12 +9,30 @@ declare
   v_out uuid := gen_random_uuid();
   v_multi uuid := gen_random_uuid();
   v_fake_owner uuid := gen_random_uuid();
+  v_upper uuid := gen_random_uuid();
+  v_owner uuid := gen_random_uuid();
 begin
   insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
   values (v_emp, 'zz-signup-test-' || v_emp || '@' || 'popcre.com', '{}', '{"provider":"azure"}'),
          (v_out, 'zz-signup-test-' || v_out || '@example.com', '{}', '{"provider":"azure"}'),
          (v_multi, 'zz-signup-test-' || v_multi || '@' || 'popcre.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
-         (v_fake_owner, 'u2giants' || '@' || 'gmail.com' || '@' || 'example.com', '{}', '{"provider":"azure"}');
+         (v_fake_owner, 'u2giants' || '@' || 'gmail.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
+         (v_upper, 'ZZ-Signup-Test-' || v_upper || '@' || 'PopCre.COM', '{}', '{"provider":"azure"}');
+  -- The real owner address (rolled back), only when no such user exists in this database.
+  if not exists (select 1 from auth.users where lower(email) = 'albert' || '@' || 'popcre.com') then
+    insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
+    values (v_owner, 'Albert' || '@' || 'PopCre.com', '{}', '{"provider":"azure"}');
+    if exists (select 1 from app.role where slug = 'administrator')
+       and not exists (select 1 from app.user_role ur join app.profile p on p.id = ur.profile_id
+                       join app.role r on r.id = ur.role_id
+                       where p.auth_user_id = v_owner and r.slug = 'administrator') then
+      raise exception 'owner address no longer receives administrator';
+    end if;
+  end if;
+  if not exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
+                 where p.auth_user_id = v_upper and a.app = 'dam') then
+    raise exception 'mixed-case popcre.com address did not get dam access';
+  end if;
 
   if not exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
                  where p.auth_user_id = v_emp and a.app = 'dam') then

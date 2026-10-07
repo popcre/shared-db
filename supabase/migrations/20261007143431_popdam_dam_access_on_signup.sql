@@ -12,6 +12,30 @@
 -- No backfill: existing employees were provisioned on 2026-10-07 (see the issue).
 -- =====================================================================================
 
+-- Preflight: refuse to apply unless the objects the body relies on are exactly as expected
+-- (plpgsql references are only resolved at first signup, so assert them now).
+do $$
+begin
+  if not exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid
+                 join pg_namespace n on n.oid = t.typnamespace
+                 where n.nspname = 'app' and t.typname = 'app_name' and e.enumlabel = 'dam') then
+    raise exception 'preflight: app.app_name has no dam label';
+  end if;
+  if not exists (select 1 from pg_trigger tg
+                 where tg.tgrelid = 'auth.users'::regclass and tg.tgname = 'on_auth_user_created'
+                   and tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal) then
+    raise exception 'preflight: trigger on_auth_user_created on auth.users does not call app.handle_new_auth_user()';
+  end if;
+  if not exists (select 1 from pg_index i
+                 where i.indrelid = 'app.app_access'::regclass and i.indisunique
+                   and (select array_agg(a.attname::text order by k.ord)
+                        from unnest(i.indkey) with ordinality k(attnum, ord)
+                        join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum)
+                       = array['profile_id', 'app']) then
+    raise exception 'preflight: app.app_access has no unique (profile_id, app) for on conflict';
+  end if;
+end $$;
+
 create or replace function app.handle_new_auth_user()
 returns trigger
 language plpgsql

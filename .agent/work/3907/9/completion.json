@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "work_issue": 3907,
+  "outcome": "ready-for-merge",
+  "pr": 4025,
+  "migration_versions": [
+    "20261007002113"
+  ],
+  "contract_ref": "refs/db-contracts/3907/9",
+  "contract_sha256": "fb7f1c0375c267b01f02376820fa39a92741a8fe47eafc35e39a650c26debdfc",
+  "base_sha": "5df3dc4798d8aedbbf72ea2faead8a5f4ac134be",
+  "head_sha": "9912ce465e8cc6ab9c97b9c1c8ff6f3f26886763",
+  "files_changed": [
+    ".github/live-proofs/3907.sql",
+    "scripts/check-sql.sh",
+    "scripts/production_migration_guard.py",
+    "scripts/proofs/3882-production.sql",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20261007002113_reissue_remaining_designflow_user_fks.sql"
+  ],
+  "db_reads": [
+    "table dflow.users"
+  ],
+  "db_writes": [
+    "table app.\"RolePermissions\"",
+    "table plm.art_piece_attachment"
+  ],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "Current retirement policy tests pass, including original refusal with or without ledger and forward eligibility."
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs scripts/proofs/shared-db-3882-observation.test.mjs",
+      "exit_code": 0,
+      "evidence": "72pass; exact producer, pin and catalog boundaries retained."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Committed SQL static checks pass."
+    },
+    {
+      "command": "PostgreSQL17 exact constraint semantics, orphan/wrong-parent refusal and replay-noop and mixed already-correct state.",
+      "exit_code": 0,
+      "evidence": "Original/mixed states converge; already-correct constraint OIDs, rows and reader access preserved. Every missingparent and wrongaction refuses before any change."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_*.py",
+      "exit_code": 0,
+      "evidence": "Full current-main CI glob1417pass with19existing environment-dependent skips."
+    }
+  ],
+  "assumptions_resolved": [
+    "Same-object claim4004 forwardreissue retired original221530, preserving SQL/previewledger. Current-main5df3 and its approved2874 retirement/policy retained. Exact intended constraints preserved without DROP/ADD on replay. Merge first; no premerge preview.",
+    "All parent assertions unchanged apart from exact future reserved artist ledger pin02731; SQL digest2445311d matches Backend and artist source. Artist remains unpassed until its actual apply."
+  ],
+  "stop_conditions_hit": []
+}

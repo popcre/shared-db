@@ -381,13 +381,16 @@ const OUT_OF_CREDIT_PROVIDER_NAMES=Object.freeze({grok:'xAI (Grok)',muse:'Meta (
 // Raw provider billing text, from a wrapper that predates the contract above. It is
 // recognized but NEVER echoed: only the fixed sentence below crosses into the refusal.
 const RAW_BILLING_EXHAUSTION=/used all available credits|monthly spending limit|insufficient balance|arrearage|prepayment credits are depleted/i
-export function outOfCreditReason(stderr){
+export function outOfCreditReason(stderr,wrapper){
   const lines=String(stderr??'').split(/\r?\n/)
   const machine=lines.map((line)=>OUT_OF_CREDIT_MACHINE_LINE.exec(line)).find(Boolean)
   if(machine){
     const human=lines.find((line)=>OUT_OF_CREDIT_HUMAN_LINE.test(line))
     return `insufficient_quota: ${human??`OUT OF CREDIT: the ${OUT_OF_CREDIT_PROVIDER_NAMES[machine[1]]} reviewer account has run out of credits or hit its spending limit`}`
   }
+  // Only the wrapper's anchored terminal diagnostic, never a quoted token or
+  // provider body, identifies this GLM cause. Keep raw provider/reset text private.
+  if(wrapperBaseName(wrapper??'')==='ai-glm'&&lines.some(line=>/^ai-glm: error: GLM provider returned an error and ended the turn \(provider-quota-exhausted\): [\x20-\x7e]{1,600}$/.test(line)))return 'insufficient_quota: the GLM provider reported exhausted quota and ended the turn'
   if(RAW_BILLING_EXHAUSTION.test(String(stderr??'')))return 'insufficient_quota: the provider reported that its account is out of credit or over its spending limit'
   return null
 }
@@ -398,10 +401,10 @@ export function outOfCreditReason(stderr){
 // Albert which account needs credit. It must match OUT_OF_CREDIT_HUMAN_LINE exactly --
 // one whole line, printable ASCII only, 10-300 characters -- so no control character,
 // multi-line payload, or unbounded provider text can ride along with it.
-export function wrapperFailureReason(run){
+export function wrapperFailureReason(run,wrapper){
   const stderr=String(run.stderr??'')
   const reasons=[]
-  const outOfCredit=outOfCreditReason(stderr)
+  const outOfCredit=outOfCreditReason(stderr,wrapper)
   if(outOfCredit)reasons.push(outOfCredit)
   const hasReason=(reason)=>new RegExp(`(?:^|[^A-Za-z0-9_-])${reason}(?=$|[^A-Za-z0-9_-])`,'i').test(stderr)
   if(run.error)reasons.push('the wrapper process could not complete')
@@ -569,7 +572,7 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   if(run.error||run.status!==0||!verdict){
     // Issue #2492: a refusal that says only "no verdict" costs a fresh hand
     // investigation every time. Name the budget the reviewer was actually given.
-    const reason=wrapperFailureReason(run)
+    const reason=wrapperFailureReason(run,options.wrapper)
     let logNote=''
     if(typeof deps.writeFailureLog==='function'){
       try{

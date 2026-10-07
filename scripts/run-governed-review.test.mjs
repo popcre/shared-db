@@ -1354,3 +1354,25 @@ test('Gemini and Qwen start bindings use the actual session before governed flag
   assert.equal(launched[1],'--governed-verdict');assert.ok(launched.includes('bound-session'))
  }
 })
+
+const ACTUAL_GLM_QUOTA_DIAGNOSTIC='ai-glm: error: GLM provider returned an error and ended the turn (provider-quota-exhausted): Provider request failed with HTTP 429: {"error":{"code":"1310","message":"Weekly/Monthly Limit Exhausted. Your limit will reset at 2026-10-09 04:35:21"}}'
+test('actual GLM quota terminal produces cause-bound non-verdict and retains original observation',()=>{
+  const at='2026-10-07T11:58:22.775Z',events=[]
+  assert.throws(()=>runGovernedReview(options,{now:()=>at,preflight:()=>{},appendLifecycle:e=>events.push(e),resolve:x=>x,spawn:()=>({status:1,stderr:ACTUAL_GLM_QUOTA_DIAGNOSTIC,stdout:''}),record:()=>assert.fail('quota cannot authorize a verdict')}),error=>{
+    assert.ok(error instanceof GovernedReviewRerouteError)
+    assert.equal(error.startDecision.reason,'insufficient_quota')
+    assert.ok(!error.message.includes('1310'))
+    assert.ok(!error.message.includes('2026-10-09'))
+    return true
+  })
+  assert.equal(events.at(-1).reason,'insufficient_quota')
+  assert.equal(events.at(-1).at,at)
+})
+test('GLM quota classification refuses quoted, embedded, malformed and unsupported diagnostics',()=>{
+  for(const stderr of ['provider-quota-exhausted',`> ${ACTUAL_GLM_QUOTA_DIAGNOSTIC}`,`prefix${ACTUAL_GLM_QUOTA_DIAGNOSTIC}`,ACTUAL_GLM_QUOTA_DIAGNOSTIC.replace('provider-quota-exhausted','not-provider-quota-exhausted'),ACTUAL_GLM_QUOTA_DIAGNOSTIC.replace('ai-glm:','ai-other:'),ACTUAL_GLM_QUOTA_DIAGNOSTIC+'\u001b',ACTUAL_GLM_QUOTA_DIAGNOSTIC.replace(': Provider',':\nProvider')])assert.equal(wrapperFailureReason({stderr},'ai-glm'),'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session',stderr)
+})
+
+test('GLM diagnostic cannot attribute quota to another or unbound wrapper',()=>{
+  for(const wrapper of ['ai-stepfun','ai-muse',undefined])assert.equal(wrapperFailureReason({stderr:ACTUAL_GLM_QUOTA_DIAGNOSTIC},wrapper),'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session')
+  assert.match(wrapperFailureReason({stderr:ACTUAL_GLM_QUOTA_DIAGNOSTIC},'ai-glm'),/^insufficient_quota:/)
+})

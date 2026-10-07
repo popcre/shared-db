@@ -14,11 +14,9 @@
 # claim_only is set: a dispatch is claim-only exactly when it asks to be, and a
 # dry run writes nothing anywhere (not even the writer's rehearsal path).
 #
-# THE SCHEDULE STAYS DISABLED until Phase F's sample-week live proof passes
-# (plan B0): the first enablement is a bounded event, never an unbounded mass
-# write. When enabling, replace the trigger block with the hourly cron and keep
-# dispatch. Until then this workflow runs by manual dispatch only, and the
-# first production dispatches carry --limit.
+# Phase F's sample-week live proof (2026-09-08..14) PASSED on 2026-10-06
+# (docs/verification/coldlion-order-intake-20260914/README.md). The hourly
+# schedule is enabled per plan B0. Dispatch remains for bounded/manual runs.
 #
 # This workflow WRITES to the shared database. Two rules follow from that:
 #   1. It is never triggered by a pull request or a push. Schedule and manual
@@ -26,14 +24,22 @@
 #   2. The offline intake tests run first, in the same job, immediately before
 #      the write. If they are red nothing is fetched and nothing is written.
 #
-# on:
-#   schedule:
-#     - cron: '0 * * * *'   # hourly working assumption (§8 open); no cadence
-#                            # faster than 3x the measured full-scan duration.
+# Failure alerting (plan §8 sibling recorder): a failed run writes a failed
+# coldlion.sync_run row and pg_notify('coldlion_sync_alert', …). That path is
+# shipped with the intake tools and pinned by tools/coldlion-order-intake-*.test.mjs.
+#
+# Kill switch / rollback: disable this workflow (or comment out the schedule:).
+# Staging tables are additive; canonical rows from the writer are ordinary
+# plm rows correctable through existing paths (plan §13). The first scheduled
+# runs use the workflow's own --limit default only on dispatch, never on
+# schedule.
 
 name: ColdLion Order Intake
 
 on:
+  schedule:
+    - cron: '0 * * * *'   # hourly working assumption (§8 open); no cadence
+                           # faster than 3x the measured full-scan duration.
   workflow_dispatch:
     inputs:
       limit:
@@ -102,6 +108,13 @@ jobs:
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
           COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          # Schedule has no inputs. Do NOT inject a --limit on schedule:
+          # the budget is total staged, oldest-first (trailing weeks before
+          # the forward track), so a fixed ceiling would consume the budget
+          # on already-staged history and starve NEW forward-track orders.
+          # Bootstrap dispatches already ran with --limit 5 (B0); F1 passed.
+          # The 60-minute job timeout and the window grid bound the scan.
+          # Dispatch may still pass an explicit limit (or empty = unbounded).
           LIMIT: ${{ github.event.inputs.limit }}
           CLAIM_ONLY: ${{ github.event.inputs.claim_only }}
         run: |
@@ -121,6 +134,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          # Schedule has no inputs. Do NOT inject a --limit on schedule:
+          # the budget is total staged, oldest-first (trailing weeks before
+          # the forward track), so a fixed ceiling would consume the budget
+          # on already-staged history and starve NEW forward-track orders.
+          # Bootstrap dispatches already ran with --limit 5 (B0); F1 passed.
+          # The 60-minute job timeout and the window grid bound the scan.
+          # Dispatch may still pass an explicit limit (or empty = unbounded).
           LIMIT: ${{ github.event.inputs.limit }}
         run: |
           set -euo pipefail

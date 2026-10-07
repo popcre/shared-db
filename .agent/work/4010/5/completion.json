@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "work_issue": 4010,
+  "outcome": "ready-for-merge",
+  "pr": 4013,
+  "migration_versions": [
+    "20261007002731"
+  ],
+  "contract_ref": "refs/db-contracts/4010/5",
+  "contract_sha256": "d587d67f113693fa92e56805e13b1bcafc7741cca0953abb1a9e72c88f3b7f31",
+  "base_sha": "93b58ea6f6afa4b50c40e5f89629cf659ec66357",
+  "head_sha": "f839119ea3ba5c26f0ed6ce4c8938ec24297bc50",
+  "files_changed": [
+    ".github/live-proofs/4010.sql",
+    "scripts/check-sql.sh",
+    "scripts/proofs/3882-production.sql",
+    "supabase/migrations/20261007002731_repoint_designflow_artist_parent_fks.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Committed new migration passes static checks and exact proof asset guard."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs --issue 4010",
+      "exit_code": 0,
+      "evidence": "Default Backend app-return contract resolves."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "No opaque or unregistered behavioral sidecar dependency."
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "Combined SQL and parent observation72 tests pass."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_*.py",
+      "exit_code": 0,
+      "evidence": "1414tests pass,19 existing environment-dependent skips."
+    },
+    {
+      "command": "python3 /tmp/4010-final-sql-smoke.py",
+      "exit_code": 0,
+      "evidence": "PG17 validates allthree desired parents/enforcement, row and reader access preservation; each missing parent and wrong original action refuses atomically."
+    }
+  ],
+  "assumptions_resolved": [
+    "Unapplied version supersession preserves all historical reservations and SQL semantics. Parent SQL and Backend pinned SQL agree2445311d068db94270d5eed44fff46cdbb176a46bd1cd986446c711913954f17 for user002113/artist002731. No premerge preview apply."
+  ],
+  "stop_conditions_hit": []
+}

@@ -53,6 +53,16 @@
       "command": "python3 /tmp/3890-forward-sql-smoke.py",
       "exit_code": 0,
       "evidence": "PG17 exact table identity, two rows, index, incoming FK, sequence and reader access retained; replay no-op; ambiguous/missing/wrong shape refuses."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Registered replacement unique identifiers, exact migration hash and all12 typed conditions validated."
+    },
+    {
+      "command": "Isolated PostgreSQL17 move-preservation, replay-noop, ambiguous/wrong-shape refusal, and all12 read-only checks.",
+      "exit_code": 0,
+      "evidence": "Move/replay preservation fixture passes; SELECT-only role all12 checks pass and missing/wrong/composite primary keys refuse."
     }
   ],
   "assumptions_resolved": [

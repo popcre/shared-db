@@ -7,7 +7,7 @@
     "20261006223501"
   ],
   "contract_ref": "refs/db-contracts/3947/2",
-  "contract_sha256": "1fb1d2f0a2a5d15a1acdd30f356b67af02cb978f4b630e2d3ab1a703fe53f55f",
+  "contract_sha256": "0eab6a77d3c94a5fead6b34539e01373dd77e89f7e74e78db4388a98079254df",
   "head_sha": "64896ace266574482b26f3aa90b91090c6938acd",
   "base_sha": "b8905b9a187133cb0e6ff1b13c62298920ed6ac3",
   "files_changed": [
@@ -15,8 +15,7 @@
     "HANDOFF.d/2026-10-06T2130Z-edge-dev-mimo-3947-scraped-dedupe-obligations.md",
     "supabase/migrations/20261006223501_scraped_inventory_warner_fallback_sesame_value_key_dedupe.sql",
     "supabase/tests/db_data_admin_scraped_source_inventory.sql",
-    "supabase/tests/scraped_inventory_warner_sesame_dedupe.sql",
-    "supabase/tests/wildbrain_submissions_classic_option.sql"
+    "supabase/tests/scraped_inventory_warner_sesame_dedupe.sql"
   ],
   "db_reads": [
     "table plm.wb_property",

@@ -274,11 +274,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
-<<<<<<< HEAD
                 "20261006221530",
-=======
                 "20261006211240",
->>>>>>> origin/main
                 "20261002204050",
                 "20260911212849",
                 "20260917112129",

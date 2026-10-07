@@ -330,3 +330,77 @@ for(const failure of ['missing','hash','identity'])test(`immutable missing315 ${
  const read=ref=>{assert.equal(ref,'refs/db-contracts/3536/315');if(failure==='missing')throw Error('missing canonical contract ref');return {...f.published,...(failure==='hash'?{goal:'tampered contract'}:{work_issue:3537})}}
  assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git,paths,3999,read),/missing canonical|hash|identity|crosses issues/)
 })
+
+const producerPinFile='scripts/production_business_risk_gate.py'
+const producerPinAnchor='    "scripts/manage-migration-author-lanes.mjs",\n'
+const producerPinNames=['agent-work-contract-git-evidence.mjs','agent-work-contract.mjs','refresh-code-pr-branch.mjs','run-governed-review.mjs']
+const producerPinComments=['    # Existing modules newly reachable through exact budget/contract imports.\n','    # Existing normal canonical validators now used by authenticated nonclosing routing.\n']
+function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=false}={}){
+ const f=realGitFixture(t);mkdirSync(path.join(f.dir,'scripts'),{recursive:true})
+ const baseText='PREVIEW_PRODUCER_PATHS = (\n'+producerPinAnchor+'    "scripts/unchanged.py",\n)\n'
+ const block=i=>producerPinComments[i]+producerPinNames.map(name=>`    "scripts/${name}",\n`).join('')
+ f.git(['switch','main']);const base=f.commit(producerPinFile,baseText)
+ f.git(['switch','-qc','pins',base]);let ours=baseText.replace(producerPinAnchor,producerPinAnchor+block(0));if(alter)ours=alter(ours)
+ let before=f.commit(producerPinFile,ours)
+ if(mode){chmodSync(path.join(f.dir,producerPinFile),0o755);f.git(['add',producerPinFile]);f.git(['commit','-qm','different mode']);before=f.git(['rev-parse','HEAD']).trim()}
+ if(extraConflict)before=f.commit('app.txt','feature overlapping source\n')
+ if(repair)f.commit('app.txt','original genuine runtime repair\n')
+ f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');const main=f.commit(producerPinFile,baseText.replace(producerPinAnchor,producerPinAnchor+block(1)))
+ f.git(['switch','pins']);try{f.git(['merge','--no-ff','-m','exact pin overlap','main'])}catch(error){if(error.status!==1)throw error;writeFileSync(path.join(f.dir,producerPinFile),readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(/<<<<<<< HEAD[\s\S]*?>>>>>>> main\n/,block(1)));f.git(['checkout','--theirs','--',producerPinFile]);f.git(['add',producerPinFile]);if(extraConflict){f.git(['checkout','--theirs','--','app.txt']);f.git(['add','app.txt'])}f.git(['commit','-qm','exact protected pin resolution'])}
+ return {...f,base,before,main,after:f.git(['rev-parse','HEAD']).trim()}
+}
+test('exact producer closure pin comments retain two spent starts and never witness an authored round',t=>{
+ const f=producerPinFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalPinOverlaps.length,1)
+ assert.equal(proof.canonicalPinOverlaps[0].canonicalBlob,f.git(['rev-parse',`${f.main}:${producerPinFile}`]).trim())
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),/third draw refused/)
+})
+test('exact producer closure overlap preserves a separate genuine surviving runtime repair witness',t=>{
+ const f=producerPinFixture(t,{repair:true}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt');assert.ok(proof.canonicalPinOverlaps.length>=1)
+})
+test('producer closure overlap refuses changed keys, order, duplicate pins and all unrelated source bytes',t=>{
+ const cases=[s=>s.replace('agent-work-contract.mjs','unreviewed.mjs'),s=>s.replace('    "scripts/agent-work-contract.mjs",\n',''),s=>s.replace('    "scripts/agent-work-contract.mjs",\n','    "scripts/agent-work-contract.mjs",\n    "scripts/agent-work-contract.mjs",\n'),s=>s.replace('agent-work-contract-git-evidence.mjs','temporary.mjs').replace('agent-work-contract.mjs','agent-work-contract-git-evidence.mjs').replace('temporary.mjs','agent-work-contract.mjs'),s=>s+'# unrelated comment\n',s=>s+'unsafe_action()\n',s=>s.replace('Existing modules newly reachable through exact budget/contract imports.','Unknown inventory claim.')]
+ for(const alter of cases){const f=producerPinFixture(t,{alter});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)}
+})
+function symmetricImportFixture(t,{repair=true,bad=null,protectedImport=null,noRegression=false}={}){
+ const f=realGitFixture(t);mkdirSync(path.join(f.dir,'scripts'),{recursive:true})
+ const standalone="import { readPublishedContractFromGit } from './agent-work-contract-git-evidence.mjs'\n"
+ const combined="import { verifyGitEvidence, gitIo, readPublishedContractFromGit } from './agent-work-contract-git-evidence.mjs'\n"
+ const padding=Array.from({length:20},(_,i)=>`// separator ${i}\n`).join('')
+ const manager='// beginning\n'+padding+'export const repair = false\n'
+ const tests='// beginning\n'+padding+'// existing regression\n'
+ const inventory='PREVIEW_PRODUCER_PATHS = (\n'+producerPinAnchor+'    "scripts/unchanged.py",\n)\n'
+ f.git(['switch','main']);f.commit('scripts/manage-migration-author-lanes.mjs',manager);f.commit('scripts/manage-migration-author-lanes.test.mjs',tests);const base=f.commit(producerPinFile,inventory)
+ f.git(['switch','-qc','symmetry',base]);f.commit('scripts/manage-migration-author-lanes.mjs',manager+standalone)
+ const pins=producerPinNames.map(name=>`    "scripts/${name}",\n`).join('');const before=f.commit(producerPinFile,inventory.replace(producerPinAnchor,producerPinAnchor+producerPinComments[0]+pins))
+ let authored=null
+ if(repair){writeFileSync(path.join(f.dir,'scripts/manage-migration-author-lanes.mjs'),(manager+standalone).replace('repair = false','repair = true'));writeFileSync(path.join(f.dir,'scripts/manage-migration-author-lanes.test.mjs'),tests+(noRegression?'':'// original genuine regression\n'));f.git(['add','scripts/manage-migration-author-lanes.mjs','scripts/manage-migration-author-lanes.test.mjs']);f.git(['commit','-qm','genuine original runtime and regression repair']);authored=f.git(['rev-parse','HEAD']).trim()}
+ f.git(['switch','main']);f.commit('scripts/manage-migration-author-lanes.mjs',(protectedImport?protectedImport(combined):combined)+manager);f.commit('scripts/manage-migration-author-lanes.test.mjs','// new upstream regression\n'+tests);const main=f.commit(producerPinFile,inventory.replace(producerPinAnchor,producerPinAnchor+producerPinComments[1]+pins))
+ f.git(['switch','symmetry']);try{f.git(['merge','--no-ff','-m','protected main','main'])}catch(error){if(error.status!==1)throw error;f.git(['checkout','--theirs','--',producerPinFile]);f.git(['add',producerPinFile]);f.git(['commit','-qm','protected canonical pins'])}
+ const merged=readFileSync(path.join(f.dir,'scripts/manage-migration-author-lanes.mjs'),'utf8');let normalized=merged.replace(standalone,'');if(bad)normalized=bad(normalized)
+ f.commit('scripts/manage-migration-author-lanes.mjs',normalized)
+ return {...f,base,before,main,authored,after:f.git(['rev-parse','HEAD']).trim()}
+}
+test('symmetric protected binding projection proves original runtime author and full regression blob, not integration',t=>{
+ const f=symmetricImportFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'scripts/manage-migration-author-lanes.mjs')
+ assert.ok(proof.witness.symmetricProjection);assert.equal(proof.witness.symmetricProjection.actualTestBlob,f.git(['rev-parse',`${f.after}:scripts/manage-migration-author-lanes.test.mjs`]).trim())
+ assert.equal(proof.witness.commit,f.authored);assert.notEqual(proof.witness.commit,f.after)
+})
+test('duplicate imported binding consolidation with no real source repair cannot renew two exhausted starts',t=>{
+ const f=symmetricImportFixture(t,{repair:false})
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/surviving author source edit unavailable/)
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:derivePaidContentProof(f.before,f.after,f.main,f.git)})}),/surviving author source edit unavailable/)
+})
+
+test('producer pin normalization refuses executable modes and every additional source conflict',t=>{
+ for(const options of [{mode:true},{extraConflict:true}]){const f=producerPinFixture(t,options);assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)}
+})
+
+test('symmetric binding witness refuses unknown modules, symbols, duplicate bindings and missing regression',t=>{
+ const variants=[{protectedImport:s=>s.replace('agent-work-contract-git-evidence.mjs','unknown-module.mjs')},{protectedImport:s=>s.replace('verifyGitEvidence','unknownSymbol')},{protectedImport:s=>s+s},{noRegression:true}]
+ for(const options of variants){const f=symmetricImportFixture(t,options);assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)}
+})

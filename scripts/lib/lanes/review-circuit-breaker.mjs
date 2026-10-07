@@ -156,6 +156,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   const registry=readStoredHashRegistry(protectedMain,{gitRunner:git})
   const stored=[...new Set(registry.map(entry=>entry.file))]
   const canonicalAppends=[]
+  const canonicalPinOverlaps=[]
   let paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
   const tree = value => typeof value==='string'?value:value.tree
   const raw = args => String(git(args))
@@ -200,6 +201,32 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
       return new Map([[file,{mode:blobs[0].mode,text}]])
     } finally { rmSync(dir,{recursive:true,force:true}) }
   }
+  // The only non-test conflict accepted is an identical additive closure inventory.
+  // Exact byte reconstruction is stricter than AST equivalence: only these known
+  // ASCII comment lines may differ, so executable Python bytes are identical.
+  const canonicalPinOverlap = (a,b,base) => {
+    const file='scripts/production_business_risk_gate.py'
+    const rows=[base,a,b].map(commit=>entry(commit,file))
+    if(rows.some(row=>row.mode!=='100644'))throw new LaneError('review budget producer pin overlap requires exact regular mode')
+    const anchor='    "scripts/manage-migration-author-lanes.mjs",\n'
+    const pins=['agent-work-contract-git-evidence.mjs','agent-work-contract.mjs','refresh-code-pr-branch.mjs','run-governed-review.mjs'].map(name=>`    "scripts/${name}",\n`).join('')
+    const comments=['    # Existing modules newly reachable through exact budget/contract imports.\n','    # Existing normal canonical validators now used by authenticated nonclosing routing.\n']
+    if(rows.some(row=>row.text.includes('\0') || row.text.split('PREVIEW_PRODUCER_PATHS = (').length!==2 || row.text.split('PREVIEW_PRODUCER_PATHS = (\n')[1]?.split('\n)')[0]?.split(anchor).length!==2))throw new LaneError('review budget producer pin anchor is ambiguous')
+    const ancestorInventory=rows[0].text.split('PREVIEW_PRODUCER_PATHS = (\n')[1].split('\n)')[0]
+    if(pins.trim().split('\n').some(line=>ancestorInventory.includes(line.trim())))throw new LaneError('review budget producer pin ancestor already contains a reconciled key')
+    const stripped=rows.slice(1).map(row=>{
+      const blocks=comments.map(comment=>anchor+comment+pins).filter(block=>row.text.includes(block))
+      if(blocks.length!==1 || row.text.split(blocks[0]).length!==2)throw new LaneError('review budget producer pin block differs')
+      return row.text.replace(blocks[0],anchor)
+    })
+    if(stripped.some(text=>text!==rows[0].text))throw new LaneError('review budget producer pin overlap changes other source bytes')
+    const protectedRow=entry(protectedMain,file)
+    const candidates=[a,b].map((commit,index)=>({commit,row:rows[index+1]})).filter(({commit,row})=>ancestor(commit,protectedMain)&&row.blob===protectedRow.blob)
+    if(candidates.length!==1)throw new LaneError('review budget producer pin protected parent is ambiguous')
+    const canonical=candidates[0].row
+    canonicalPinOverlaps.push({base,parents:[a,b],path:file,mode:'100644',parentBlobs:rows.map(row=>row.blob),protectedParent:candidates[0].commit,canonicalBlob:canonical.blob})
+    return new Map([[file,{mode:canonical.mode,text:canonical.text}]])
+  }
   const automaticMerge = (a,b) => {
     if (ancestor(b,a)) return run(['rev-parse',`${a}^{tree}`])
     const base=run(['merge-base',a,b])
@@ -217,8 +244,10 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
       if(error?.status!==1 || typeof error.stdout!=='string')throw error
       const lines=error.stdout.split('\n'),resultTree=lines[0]
       const stages=lines.slice(1).filter(line=>/^[0-9]{6} /.test(line))
-      if(!sha.test(resultTree) || stages.length!==3 || !stages.every((line,i)=>new RegExp(`^(100644|100755) [0-9a-f]{40} ${i+1}\\tscripts/manage-migration-author-lanes\\.test\\.mjs$`).test(line)))throw new LaneError('review budget conflict is outside the one canonical test append')
-      return {tree:resultTree,overrides:canonicalAppend(a,b,base)}
+      if(!sha.test(resultTree) || stages.length!==3)throw new LaneError('review budget conflict is outside the one canonical test append')
+      if(stages.every((line,i)=>new RegExp(`^(100644|100755) [0-9a-f]{40} ${i+1}\\tscripts/manage-migration-author-lanes\\.test\\.mjs$`).test(line)))return {tree:resultTree,overrides:canonicalAppend(a,b,base)}
+      if(stages.every((line,i)=>new RegExp(`^100644 [0-9a-f]{40} ${i+1}\\tscripts/production_business_risk_gate\\.py$`).test(line)))return {tree:resultTree,overrides:canonicalPinOverlap(a,b,base)}
+      throw new LaneError('review budget conflict is outside the one canonical test append')
     }
     if (!sha.test(result)) throw new LaneError('review budget automatic merge proof unreadable')
     return result
@@ -229,7 +258,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     const incorporatedMain = run(['merge-base',after,protectedMain])
     if (!sha.test(incorporatedMain)) throw new LaneError('review budget protected main ancestry unreadable')
     const expected = merge(before,incorporatedMain)
-    if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends}
+    if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends,canonicalPinOverlaps}
     const rows = run(['rev-list','--first-parent','--max-count=1001',after]).split('\n')
     const index = rows.indexOf(before)
     if(index<0 || index>=1000)throw new LaneError('review budget complete first-parent ancestry unavailable')
@@ -244,7 +273,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if(intermediate.length)paths=[...paths,...intermediate.map(p=>`:(top,literal,exclude)${p}`)]
     // Recompute with the exact authenticated historical pair paths. They can
     // explain evidence retirement but can never serve as an author witness.
-    if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends}
+    if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends,canonicalPinOverlaps}
 
     if (index < 0 || index >= 1000) throw new LaneError('review budget complete first-parent ancestry unavailable')
     const authorCandidates=[]
@@ -259,20 +288,55 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
         }
       } else throw new LaneError('review budget ambiguous merge provenance refused')
     }
-    const witnessExcludes=canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]
+    const witnessExcludes=[...(canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]),...(canonicalPinOverlaps.length?[':(top,literal,exclude)scripts/production_business_risk_gate.py']:[])]
     const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
     if(netPaths.some(file=>file.startsWith('.agent/')))throw new LaneError('review budget unverified evidence cannot witness authored repair')
+    const managerFile='scripts/manage-migration-author-lanes.mjs'
+    const managerTestFile='scripts/manage-migration-author-lanes.test.mjs'
+    const standaloneImport="import { readPublishedContractFromGit } from './agent-work-contract-git-evidence.mjs'\n"
+    const combinedImport="import { verifyGitEvidence, gitIo, readPublishedContractFromGit } from './agent-work-contract-git-evidence.mjs'\n"
+    const count=(text,line)=>text.split(line).length-1
+    const protectedManager=entry(incorporatedMain,managerFile,true)
+    const protectedBinding=protectedManager?.mode==='100644' && count(protectedManager.text,combinedImport)===1 && count(protectedManager.text,standaloneImport)===0
+    const projectedEntry=(commit,file)=>{
+      const projected=merge(commit,incorporatedMain),override=projected?.overrides?.get(file)
+      if(!override)return entry(projected,file,true)
+      return {...override,blob:createHash('sha1').update(`blob ${Buffer.byteLength(override.text)}\0`).update(override.text).digest('hex')}
+    }
+    const symmetricManagerWitness=(commit,parent,actual)=>{
+      if(!protectedBinding || actual?.mode!=='100644' || count(actual.text,combinedImport)!==1 || count(actual.text,standaloneImport)!==0)return null
+      const originals=[entry(parent,managerFile,true),entry(commit,managerFile,true)]
+      if(originals.some(row=>row?.mode!=='100644'||count(row.text,standaloneImport)!==1||count(row.text,combinedImport)!==0))return null
+      const projected=[parent,commit].map(value=>projectedEntry(value,managerFile))
+      if(projected.some(row=>row?.mode!=='100644'||count(row.text,standaloneImport)!==1||count(row.text,combinedImport)!==1))return null
+      const normalized=projected.map(row=>row.text.replace(standaloneImport,''))
+      if(normalized[1]!==actual.text || normalized[0]===normalized[1] || !normalized[1].length)return null
+      const tests=[parent,commit].map(value=>projectedEntry(value,managerTestFile)),actualTest=entry(after,managerTestFile,true)
+      if(tests.some(row=>row?.mode!=='100644') || actualTest?.mode!=='100644' || tests[1].text!==actualTest.text || tests[0].text===tests[1].text)return null
+      return {commit,path:managerFile,mode:actual.mode,blob:actual.blob,baselineBlob:entry(expected,managerFile).blob,
+        symmetricProjection:{parent,incorporatedMain,originalBlobs:originals.map(row=>row.blob),projectedBlobs:projected.map(row=>row.blob),parentNormalizedBlob:createHash('sha1').update(`blob ${Buffer.byteLength(normalized[0])}\0`).update(normalized[0]).digest('hex'),testBlobs:tests.map(row=>row.blob),actualTestBlob:actualTest.blob}}
+    }
     for(const {commit,parent} of authorCandidates) {
       const changed=run(['diff','--name-only',parent,commit,'--',...paths]).split('\n')
       for(const file of netPaths.filter(file=>changed.includes(file))) {
         const original=entry(commit,file,true),actual=entry(after,file,true),baseline=entry(expected,file,true)
+        if(file===managerFile){
+          const previous=entry(parent,file,true)
+          // Removing the duplicate imported binding never supplies authored capacity.
+          if(previous?.mode==='100644' && original?.mode==='100644' && count(previous.text,standaloneImport)===1 && previous.text.replace(standaloneImport,'')===original.text){
+            if(!protectedBinding || count(previous.text,combinedImport)!==1)throw new LaneError('review budget imported binding consolidation proof unavailable')
+            continue
+          }
+          const projectedWitness=symmetricManagerWitness(commit,parent,actual)
+          if(projectedWitness){authored=true;witness=projectedWitness;continue}
+        }
         const survives=original===null?actual===null:actual!==null && original.mode===actual.mode && original.blob===actual.blob
         const byteDelta=actual===null?baseline!==null && Buffer.byteLength(baseline.text)>0:baseline===null?Buffer.byteLength(actual.text)>0:baseline.blob!==actual.blob
         if(survives && byteDelta){authored=true;witness={commit,path:file,mode:original?.mode??'absent',blob:original?.blob??'absent',baselineBlob:baseline?.blob??'absent'}}
       }
     }
     if (!authored) throw new LaneError('review budget surviving author source edit unavailable')
-    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends}
+    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends,canonicalPinOverlaps}
   } catch (error) {
     throw new LaneError(`review budget Git provenance refused: ${String(error?.message??error).split('\n')[0]}`)
   }

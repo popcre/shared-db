@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createStageEvidenceVerifier } from './lib/work-stage-evidence.mjs'
+import { matchesCatalogRecovery } from './lib/production-catalog-recovery.mjs'
 import { resolveEvidencePair, isEvidencePath } from './lib/agent-evidence-paths.mjs'
 
 import { execFileSync } from 'node:child_process'
@@ -896,6 +897,24 @@ export const githubIo = {
     const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.production_evidence??''))
     if(!match||!isThisRepositoryOrHistorical(match[1],REPO))return false
     const run=ghJson(['api',`repos/${REPO}/actions/runs/${match[2]}`])
+    if(evidence.production_recovery_evidence){
+      const recoveryMatch=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(evidence.production_recovery_evidence)
+      if(!recoveryMatch||!isThisRepositoryOrHistorical(recoveryMatch[1],REPO))return false
+      const recoveryRun=ghJson(['api',`repos/${REPO}/actions/runs/${recoveryMatch[2]}`])
+      for(const [base,head] of [[evidence.merge_sha,evidence.production_commit_sha],[evidence.production_commit_sha,evidence.production_recovery_commit_sha]]){
+        const ancestry=ghJson(['api',`repos/${REPO}/compare/${base}...${head}`]);if(!['identical','ahead'].includes(ancestry?.status)||Number(ancestry?.behind_by)!==0)return false
+      }
+      if(!this.mergeCommitInMain(evidence.production_recovery_commit_sha))return false
+      const artifact=(ghJson(['api',`repos/${REPO}/actions/runs/${match[2]}/artifacts`])?.artifacts??[]).find(row=>Number(row.id)===evidence.production_artifact_id)
+      if(artifact?.expired!==false||artifact.name!==`production-migration-apply-${evidence.production_commit_sha}`||artifact.digest!==evidence.production_artifact_digest)return false
+      const original=this.readArtifactFiles(REPO,artifact.id,['production-apply.txt','production-ledger-before.txt','production-ledger-after.txt','migration-content-manifest.json'])
+      if(!original.get('production-apply.txt')?.trim())return false
+      const recoveryArtifact=(ghJson(['api',`repos/${REPO}/actions/runs/${recoveryMatch[2]}/artifacts`])?.artifacts??[]).find(row=>Number(row.id)===evidence.production_recovery_artifact_id)
+      if(!recoveryArtifact)return false
+      const recovered=this.readArtifactFiles(REPO,recoveryArtifact.id,['production-catalog-recovery-binding.json','production-catalog-verification.json','production-ledger-recovery.txt'])
+      const versions=this.getPrFiles(Number(evidence.merge_pr)).map(file=>/^supabase\/migrations\/(\d{14})_[^/]+\.sql$/.exec(String(file?.filename??''))?.[1]).filter(Boolean)
+      try{return matchesCatalogRecovery({evidence,applyRun:run,recoveryRun,recoveryArtifact,binding:JSON.parse(recovered.get('production-catalog-recovery-binding.json')),catalog:JSON.parse(recovered.get('production-catalog-verification.json')),versions,manifest:JSON.parse(original.get('migration-content-manifest.json')),jobs:ghJson(['api',`repos/${REPO}/actions/runs/${match[2]}/jobs?per_page=100`]),ledgerBefore:original.get('production-ledger-before.txt'),ledgerAfter:original.get('production-ledger-after.txt'),ledgerLive:recovered.get('production-ledger-recovery.txt')})}catch{return false}
+    }
     if(run?.conclusion!=='success'||run?.event!=='workflow_dispatch'||run?.path!=='.github/workflows/shared-supabase-migrations.yml'||String(run?.head_sha??'').toLowerCase()!==String(evidence.production_commit_sha).toLowerCase())return false
     const ancestry=ghJson(['api',`repos/${REPO}/compare/${evidence.merge_sha}...${evidence.production_commit_sha}`])
     if(!['identical','ahead'].includes(ancestry?.status)||Number(ancestry?.behind_by)!==0)return false

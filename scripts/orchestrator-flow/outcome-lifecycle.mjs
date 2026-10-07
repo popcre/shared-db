@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { verifyProductionEvidence } from '../lib/production-catalog-recovery.mjs'
 import { readFileSync } from 'node:fs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { currentRepository, isTrustedOperatorComment } from '../lib/repository-identity.mjs'
@@ -362,7 +363,7 @@ export function verifyOutcomeAcceptance({ issue, evidenceRef }, io) {
   const pr = io.getPr(evidence.merge_pr)
   if (!pr?.merged_at || !sameSha(evidence.merge_sha, pr.merge_commit_sha ?? '')) throw new OutcomeError('merge evidence does not match GitHub')
   if (!io.mergeCommitInMain(evidence.merge_sha)) throw new OutcomeError('merge commit is not in current shared-db main history')
-  if (!io.verifyProductionApply(evidence)) throw new OutcomeError('production application could not be re-derived from exact run and artifact evidence')
+  if (!verifyProductionEvidence(evidence, io)) throw new OutcomeError('production application could not be re-derived from exact run and artifact evidence')
   if (!io.applicationCommitInDefaultBranch(evidence.application_repository, evidence.application_commit_sha)) {
     throw new OutcomeError('application commit is not in the application default branch history')
   }

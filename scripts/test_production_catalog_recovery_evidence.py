@@ -31,7 +31,7 @@ class RecoveryEvidenceTests(unittest.TestCase):
         (self.evidence / "migration-content-manifest.json").write_text(json.dumps({VERSION: self.digest}))
         self.live = self.root / "live.txt"
         self.live.write_text((self.evidence / "production-ledger-after.txt").read_text())
-        self.catalog = {"enforcing": True, "errors": [], "allowlist": [VERSION], "behavior_checks": [{"id": "exact", "kind": "catalog_contract", "migration_version": VERSION, "migration_sha256": self.digest, "expected_count": 1}], "behavior_results": {"behavior_checks": [{"id": "exact", "actual_count": 1, "expected_count": 1}]}}
+        self.catalog = {"enforcing": True, "errors": [], "allowlist": [VERSION], "behavior_checks": [{"id": "exact", "kind": "catalog_contract", "contract": "exact_contract", "migration_version": VERSION, "migration_sha256": self.digest, "expected_count": 1}], "behavior_results": {"behavior_checks": [{"id": "exact", "actual_count": 1, "expected_count": 1}]}}
         self.inputs = {"allowlist": [VERSION], "main_sha": "b" * 40, "apply_main_sha": "a" * 40, "apply_run_id": 1, "apply_artifact_id": 2, "apply_artifact_digest": "sha256:" + "c" * 64}
 
     def build(self, catalog=None, job_rows=None):

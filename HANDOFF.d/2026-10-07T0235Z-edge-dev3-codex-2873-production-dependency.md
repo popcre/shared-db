@@ -55,9 +55,21 @@ Current source quorum is complete: Gemini replacement5488 slot2 APPROVE `d29bbaf
 
 Disposable rollback proofs: `/tmp/2873-prospective-explicit-service-contract.sql`, `...contract-transaction.sql`, `...contract-result.log`, and `/tmp/2873-prospective-tracking-movement-contract.sql/.log`. Actual movement/conservation/idempotency/negative balance/history refusals passed. Four NOLOGIN groups plus four passwordless LOGIN roles, connection limits20/10/10/10, INHERIT and no superuser/createrole/bypassrls. No roles or grants from #2873 were created in production. Credential/cutover #770 stays separate.
 
+
+Exact role names are `designflow_prod_backend_{grants,runtime}`, `designflow_prod_item_master_{grants,runtime}`, `designflow_prod_tracking_{grants,runtime}` and `designflow_prod_data_sync_{grants,runtime}`. Grant groups are NOLOGIN/NOINHERIT; runtime roles LOGIN/INHERIT. Re-derive all rights from the original committed **20260928183329** source at5f2ce plus current application/schema, retaining the two documented fixes. The six Tracking callable signatures from the private snapshot are:
+
+- `pack_sample_reservation(uuid,integer,bigint,text,text,text,text,text,text,text,text)`
+- `post_sample_approval_event(integer,text,text,boolean,text,text,text,text,integer,text,text,text)`
+- `post_sample_movement(integer,integer,text,text,text,text,text,text,text,text,text,integer,bigint,integer,text,text,bigint,text,text)`
+- `post_sample_piece_split(integer,jsonb,text,text,text,text,text,text,text)`
+- `post_sample_remote_request_event(uuid,text,text,text,text,text,text,jsonb)`
+- `reserve_sample_remote_request_item(uuid,text,text,text,text)`
+
+Together with the two backend signatures and `claim_sample_shipment_notice(bigint)` these make nine. They all belong to `dflow_prod`; never use this dated snapshot as a replacement for fresh exact-signature verification.
+
 ### Worktrees deliberately retained
 
-All listed source trees were clean when verified at10:35–10:36 PM EDT. They remain resumable; no cleanup or broad reaper was run.
+The listed source trees were clean when inspected during handoff preparation; the delivery tree holds only this owned prose commit. They remain resumable; no cleanup or broad reaper was run.
 
 - `/home/ahazan/.codex/worktrees/2874-risk-recovery/shared-db`: source1d, merged source/risk evidence, retained because application acceptance is incomplete.
 - `/home/ahazan/.codex/worktrees/2874-merged-risk/shared-db`: source1d, protected native review receipts. No paid review remains running.

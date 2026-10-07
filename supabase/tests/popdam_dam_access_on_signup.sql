@@ -1,19 +1,20 @@
 begin;
 
--- u2giants/popdam3#185: a new @popcre.com sign-in gets app_access 'dam'; an outside
--- email gets only 'crm'. Runs the real trigger on auth.users, rolled back.
+-- u2giants/popdam3#185: a new popcre.com-domain sign-in gets app_access 'dam'; an outside
+-- email gets only 'crm'. Runs the real triggers on auth.users, rolled back. Provider azure
+-- (company SSO, the real employee path) passes the invitation gate in public.handle_new_user().
 do $$
 declare
   v_emp uuid := gen_random_uuid();
   v_out uuid := gen_random_uuid();
 begin
   insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
-  values (v_emp, 'zz-signup-test-' || v_emp || '@popcre.com', '{}', '{}'),
-         (v_out, 'zz-signup-test-' || v_out || '@example.com', '{}', '{}');
+  values (v_emp, 'zz-signup-test-' || v_emp || '@' || 'popcre.com', '{}', '{"provider":"azure"}'),
+         (v_out, 'zz-signup-test-' || v_out || '@example.com', '{}', '{"provider":"azure"}');
 
   if not exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
                  where p.auth_user_id = v_emp and a.app = 'dam') then
-    raise exception 'new @popcre.com user did not get dam access';
+    raise exception 'new popcre.com user did not get dam access';
   end if;
   if exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
              where p.auth_user_id = v_out and a.app = 'dam') then

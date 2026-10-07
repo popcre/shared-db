@@ -18,16 +18,21 @@ begin
          (v_multi, 'zz-signup-test-' || v_multi || '@' || 'popcre.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
          (v_fake_owner, 'u2giants' || '@' || 'gmail.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
          (v_upper, 'ZZ-Signup-Test-' || v_upper || '@' || 'PopCre.COM', '{}', '{"provider":"azure"}');
-  -- The real owner address (rolled back), only when no such user exists in this database.
+  -- The real owner address: inserted (rolled back) when absent; when it already exists, the
+  -- existing owner is checked instead, so this assertion never skips silently.
   if not exists (select 1 from auth.users where lower(email) = 'albert' || '@' || 'popcre.com') then
     insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
     values (v_owner, 'Albert' || '@' || 'PopCre.com', '{}', '{"provider":"azure"}');
-    if exists (select 1 from app.role where slug = 'administrator')
-       and not exists (select 1 from app.user_role ur join app.profile p on p.id = ur.profile_id
-                       join app.role r on r.id = ur.role_id
-                       where p.auth_user_id = v_owner and r.slug = 'administrator') then
-      raise exception 'owner address no longer receives administrator';
-    end if;
+  else
+    select id into v_owner from auth.users where lower(email) = 'albert' || '@' || 'popcre.com' limit 1;
+  end if;
+  if not exists (select 1 from app.role where slug = 'administrator') then
+    raise exception 'administrator role missing; owner grant cannot be verified';
+  end if;
+  if not exists (select 1 from app.user_role ur join app.profile p on p.id = ur.profile_id
+                 join app.role r on r.id = ur.role_id
+                 where p.auth_user_id = v_owner and r.slug = 'administrator') then
+    raise exception 'owner address no longer receives administrator';
   end if;
   if not exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
                  where p.auth_user_id = v_upper and a.app = 'dam') then

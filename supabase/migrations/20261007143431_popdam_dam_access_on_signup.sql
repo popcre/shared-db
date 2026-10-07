@@ -12,28 +12,72 @@
 -- No backfill: existing employees were provisioned on 2026-10-07 (see the issue).
 -- =====================================================================================
 
--- Preflight: refuse to apply unless the objects the body relies on are exactly as expected
--- (plpgsql references are only resolved at first signup, so assert them now).
+-- Preflight: refuse to apply unless every object the body relies on is as expected
+-- (plpgsql references are only resolved at first signup, and this hook runs AFTER INSERT on
+-- auth.users, so a broken reference would abort signups; assert them now).
 do $$
+declare
+  r record;
 begin
+  -- Enum label used by the new grant.
   if not exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid
                  join pg_namespace n on n.oid = t.typnamespace
                  where n.nspname = 'app' and t.typname = 'app_name' and e.enumlabel = 'dam') then
     raise exception 'preflight: app.app_name has no dam label';
   end if;
+  -- citext type used by the profile email cast.
+  if to_regtype('extensions.citext') is null then
+    raise exception 'preflight: extensions.citext is missing';
+  end if;
+  -- The only entry point: enabled (origin/always), row-level, INSERT trigger on auth.users.
   if not exists (select 1 from pg_trigger tg
                  where tg.tgrelid = 'auth.users'::regclass and tg.tgname = 'on_auth_user_created'
-                   and tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal) then
-    raise exception 'preflight: trigger on_auth_user_created on auth.users does not call app.handle_new_auth_user()';
+                   and tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal
+                   and tg.tgenabled in ('O', 'A')
+                   and (tg.tgtype & 1) = 1      -- FOR EACH ROW
+                   and (tg.tgtype & 4) = 4) then -- INSERT
+    raise exception 'preflight: on_auth_user_created is not an enabled row INSERT trigger on auth.users calling app.handle_new_auth_user()';
   end if;
-  if not exists (select 1 from pg_index i
-                 where i.indrelid = 'app.app_access'::regclass and i.indisunique
-                   and (select array_agg(a.attname::text order by k.ord)
-                        from unnest(i.indkey) with ordinality k(attnum, ord)
-                        join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum)
-                       = array['profile_id', 'app']) then
-    raise exception 'preflight: app.app_access has no unique (profile_id, app) for on conflict';
+  if exists (select 1 from pg_trigger tg
+             where tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal
+               and tg.tgname <> 'on_auth_user_created') then
+    raise exception 'preflight: app.handle_new_auth_user() has an unexpected extra trigger';
   end if;
+  -- Columns the body reads or writes.
+  for r in select * from (values
+      ('auth.users', array['id', 'email', 'raw_user_meta_data', 'raw_app_meta_data']),
+      ('app.profile', array['id', 'auth_user_id', 'email', 'display_name', 'provider', 'status']),
+      ('app.app_access', array['profile_id', 'app']),
+      ('app.user_role', array['profile_id', 'role_id']),
+      ('app.role', array['id', 'slug'])) v(rel, cols)
+  loop
+    if to_regclass(r.rel) is null or exists (
+         select 1 from unnest(r.cols) c(name)
+         where not exists (select 1 from pg_attribute a
+                           where a.attrelid = to_regclass(r.rel) and a.attname = c.name
+                             and a.attnum > 0 and not a.attisdropped)) then
+      raise exception 'preflight: % is missing or lacks one of columns %', r.rel, r.cols;
+    end if;
+  end loop;
+  -- Arbiter indexes for each ON CONFLICT: valid, immediate, non-partial unique index whose key
+  -- columns (INCLUDE columns excluded) are exactly the conflict target.
+  for r in select * from (values
+      ('app.profile', array['auth_user_id']),
+      ('app.app_access', array['profile_id', 'app']),
+      ('app.user_role', array['profile_id', 'role_id'])) v(rel, cols)
+  loop
+    if not exists (select 1 from pg_index i
+                   where i.indrelid = to_regclass(r.rel) and i.indisunique and i.indisvalid
+                     and i.indimmediate and i.indpred is null and i.indexprs is null
+                     and (select array_agg(a.attname::text order by k.ord)
+                          from unnest(i.indkey) with ordinality k(attnum, ord)
+                          join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+                          where k.ord <= i.indnkeyatts)
+                         operator(pg_catalog.@>) r.cols
+                     and i.indnkeyatts = cardinality(r.cols)) then
+      raise exception 'preflight: % has no usable unique index on % for on conflict', r.rel, r.cols;
+    end if;
+  end loop;
 end $$;
 
 create or replace function app.handle_new_auth_user()
@@ -71,7 +115,7 @@ begin
   -- Every POP Creations employee gets PopDAM access (owner rule, u2giants/popdam3#185).
   -- `do nothing` keeps an admin's earlier revocation in place.
   -- Whole-address match: exactly one '@', domain exactly popcre.com (no subdomains).
-  if lower(new.email) ~ ('^[^@]+' || '@' || 'popcre\.com$') then
+  if lower(new.email) ~ ('^[^@]+' || '@' || 'popcre[.]com$') then
     insert into app.app_access (profile_id, app)
     values (v_profile_id, v_dam_app)
     on conflict (profile_id, app) do nothing;

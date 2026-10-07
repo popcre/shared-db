@@ -11,8 +11,6 @@
   "base_sha": "93b58ea6f6afa4b50c40e5f89629cf659ec66357",
   "head_sha": "4c6b86c19ee1dbea34d03f88e040a514aedf71eb",
   "files_changed": [
-    ".agent/work/3890/6/completion.json",
-    ".agent/work/3890/6/contract.json",
     ".github/live-proofs/3890.sql",
     "config/production-verification-sidecar-registry.json",
     "scripts/check-sql.sh",

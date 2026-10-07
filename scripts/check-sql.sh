@@ -81,7 +81,7 @@ const sandboxEvidence = new Set([
   '.agent/work/3890/1/contract.json', '.agent/work/3890/2/contract.json',
   '.agent/work/3890/4/contract.json', '.agent/work/3890/4/completion.json',
   '.agent/work/3890/6/contract.json', '.agent/work/3890/6/completion.json',
-  '.agent/work/3890/8/contract.json', '.agent/work/3890/8/completion.json',
+  '.agent/work/3890/9/contract.json', '.agent/work/3890/9/completion.json',
   '.github/live-proofs/3890.sql',
   'scripts/production-verification-sidecars/20261006203846.json',
   'scripts/production-verification-sidecars/20261007000937.json',

@@ -70,7 +70,7 @@ test('exact row ceiling and malformed PR cannot be accepted as complete paid his
 })
 
 import {execFileSync} from 'node:child_process'
-import {mkdtempSync,writeFileSync,rmSync,mkdirSync,chmodSync} from 'node:fs'
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,mkdirSync,chmodSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 function realGitFixture(t) {
@@ -274,6 +274,21 @@ function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=f
  const after=writePair(last,sha())
  return {...f,before,after,main,published,proof:()=>derivePaidContentProof(before,after,main,f.git,verifiedEvidencePaths(before,after,{gitRunner:f.git}),3999)}
 }
+test('actual repaired endpoint ignores preserved incomplete tail without authenticating removed bad pairs',t=>{
+ const f=generationsFixture(t),dir=path.join(f.dir,'.agent/work/3536/319')
+ const report=JSON.parse(readFileSync(path.join(dir,'completion.json'),'utf8'))
+ const implementation=f.commit('app.txt','main context\nseparator1\nseparator2\nactual later authored repair\nend\n')
+ report.head_sha=implementation
+ writeFileSync(path.join(dir,'completion.json'),JSON.stringify(report));f.git(['add','.agent/work/3536/319/completion.json']);f.git(['commit','-qm','preserve incomplete completion-only tail'])
+ const incomplete=f.git(['rev-parse','HEAD']).trim()
+ writeFileSync(path.join(dir,'contract.json'),JSON.stringify(JSON.parse(readFileSync(path.join(dir,'contract.json'),'utf8')),null,4))
+ report.files_changed=f.git(['diff','--name-only',f.base,implementation]).trim().split('\n').sort()
+ writeFileSync(path.join(dir,'completion.json'),JSON.stringify(report,null,2));f.git(['add','.agent/work/3536/319']);f.git(['commit','-qm','exact canonical repaired endpoint tail'])
+ const after=f.git(['rev-parse','HEAD']).trim()
+ assert.equal(f.git(['diff','--name-only',implementation,incomplete]).trim(),'.agent/work/3536/319/completion.json')
+ assert.equal(derivePaidContentProof(f.before,after,f.main,f.git,verifiedEvidencePaths(f.before,after,{gitRunner:f.git}),3999).kind,'substantive')
+ assert.throws(()=>generationsFixture(t,{bad:'hash'}).proof(),/hash|completion/,'invalid removed317 remains refused')
+})
 test('actual Git312 to317 to319 authentic intermediate pair permits surviving source repair',t=>{
  const f=generationsFixture(t),proof=f.proof();assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt')
  const starts=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))

@@ -99,6 +99,13 @@ function verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract
       variants.set(record.key,variant);groups.set(generation,variants)
     }
   }
+  // Actual endpoints, not superseded incomplete local report variants, bind
+  // the start/current authority. Removed intermediate pairs keep every variant.
+  for(const record of [baseline,endpoint]){
+    const generation=record.contract.generation??1
+    if(neededFiles.some(file=>record.paths.includes(file)))continue
+    groups.set(generation,new Map([[record.key,{record,witnesses:[generation===baselineGeneration?before:after]}]]))
+  }
   const validating=new Set(),validated=new Map()
   const validate=generation=>{
     if(validated.has(generation))return validated.get(generation)

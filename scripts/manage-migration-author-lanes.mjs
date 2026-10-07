@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import {hostname} from 'node:os'
+import {parseStrictJson} from './proofs/shared-db-2870-observation.mjs'
+import {recoveryCodeUnchangedAt} from './lib/claim-recovery-dependencies.mjs'
 import {recoverCompletedForeignClaim,recoveryDigest,RECOVERY_CODE_PATHS} from './lib/lanes/completed-claim-recovery.mjs'
 import { createStageEvidenceVerifier } from './lib/work-stage-evidence.mjs'
 import { resolveEvidencePair, isEvidencePath } from './lib/agent-evidence-paths.mjs'
@@ -4702,7 +4704,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     }
     if(o.recoverCompletedClaim){
       if(!o.reportFile)throw new LaneError('--recover-completed-claim requires --report-file <reviewed manifest>')
-      const manifest=JSON.parse(readFileSync(o.reportFile,'utf8'))
+      const manifest=parseStrictJson(readFileSync(o.reportFile,'utf8'))
       if(manifest.claim!==o.recoverCompletedClaim)throw new LaneError('recovery command claim differs from manifest')
       const result=withAuthorMutex('claim-release',io,o,(ownerSha)=>recoverCompletedForeignClaim(manifest,{now,reviewIssue:o.recoveryReviewIssue,reviewPr:o.recoveryReviewPr,reviewHeadSha:o.recoveryReviewHead},{...io,
         repository:REPO,
@@ -4710,7 +4712,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         clock:()=>new Date(),
         machineName:()=>hostname(),
         recoveryCodeUnchanged(toolSha,mainSha){
-          try{execFileSync('git',['diff','--quiet',toolSha,mainSha,'--',...RECOVERY_CODE_PATHS]);execFileSync('git',['diff','--quiet',mainSha,'--',...RECOVERY_CODE_PATHS]);return true}catch{return false}
+          return recoveryCodeUnchangedAt({toolSha,mainSha,extraPaths:RECOVERY_CODE_PATHS,readOnlyGit:args=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})})
         },
         sessionAuthority:()=>io.orchestratorFlowAdapter().resolveMarker(),
         recoverySnapshot(sha){
@@ -4732,11 +4734,10 @@ export function main(argv, now = new Date(), io = githubIo) {
           const pr=io.getPr(reviewPr)
           if(pr.head?.sha!==reviewHeadSha)return false
           assertDurableReviewApproval(reviewIssue,reviewPr,reviewHeadSha,io)
-          const record=ghJson(['api',`repos/${REPO}/contents/config/completed-claim-recovery/${manifest.claim}.json?ref=${reviewHeadSha}`])
-          if(record?.encoding!=='base64'||!record.content)return false
-          return recoveryDigest(JSON.stringify(JSON.parse(Buffer.from(record.content,'base64').toString('utf8'))))===recoveryDigest(JSON.stringify(manifest))
+          const record=io.getFileAt(`config/completed-claim-recovery/${manifest.claim}.json`,reviewHeadSha)
+          return recoveryDigest(JSON.stringify(parseStrictJson(record)))===recoveryDigest(JSON.stringify(manifest))
         },
-        freshRecoveryCatalog(){return JSON.parse(execFileSync(process.execPath,['scripts/proofs/completed-claim-recovery-catalog.mjs'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}))},
+        freshRecoveryCatalog(){return JSON.parse(execFileSync(process.execPath,['scripts/query-completed-claim-catalog.mjs'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}))},
         readRecoveryReceipt(sha){const message=io.getCommit(sha)?.message??'';const prefix='db-coordination completed-foreign-claim-release ';if(!message.startsWith(prefix))throw new LaneError('invalid recovery receipt');return JSON.parse(message.slice(prefix.length))},
       }))
       console.log(JSON.stringify(result,null,2));return 0

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {queryFreshRecoveryCatalog} from './proofs/completed-claim-recovery-catalog.mjs';
+import {queryFreshRecoveryCatalog} from './query-completed-claim-catalog.mjs';
 import {RECOVERY_SQL,expectedRecoveryCatalog} from './lib/lanes/completed-claim-recovery.mjs';
 import {QUERY_URL} from './proofs/shared-db-2870-observation.mjs';
 const rows=[{catalog:expectedRecoveryCatalog,observed_at:'2026-10-07T22:00:00Z'}];

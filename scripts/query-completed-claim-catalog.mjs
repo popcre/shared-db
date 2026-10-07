@@ -2,8 +2,8 @@
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {QUERY_URL,readBounded,parseStrictJson} from './shared-db-2870-observation.mjs';
-import {RECOVERY_PROJECT,RECOVERY_SQL,expectedRecoveryCatalog} from '../lib/lanes/completed-claim-recovery.mjs';
+import {QUERY_URL,readBounded,parseStrictJson} from './proofs/shared-db-2870-observation.mjs';
+import {RECOVERY_PROJECT,RECOVERY_SQL,expectedRecoveryCatalog} from './lib/lanes/completed-claim-recovery.mjs';
 export async function queryFreshRecoveryCatalog(token,{fetchImpl=fetch,timeoutMs=15000}={}){
  const refuse=()=>{throw new Error('COMPLETED_CLAIM_CATALOG_REFUSED')};
  if(typeof token!=='string'||!token.trim()||/[\r\n]/.test(token))refuse();

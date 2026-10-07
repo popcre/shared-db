@@ -14,7 +14,7 @@ The manifest fields are `schema_version` (1), `claim`, `work_issue` (3400), `old
 
 ## Administrative main freshness
 
-This action changes claim ownership records, not the database. Main may advance after the manifest review only if fresh main descends from the manifest main, merged source and reviewed tool commit, and the registered recovery implementation and critical parser/target/authority/review dependencies remain byte-identical to that reviewed merged tool. Runtime also refuses locally modified recovery code. This rule requires no global promotion freeze. It does not change migration merge, preview or production main-freshness rules. Any main movement during the final mutex-protected closure snapshot refuses and requires fresh revalidation.
+This action changes claim ownership records, not the database. Main may advance after the manifest review only if fresh main descends from the manifest main, merged source and reviewed tool commit, and the registered recovery implementation and bounded transitive static parser/target/authority/review dependency closure and explicitly seeded carry-forward policy registry remain byte-identical to that reviewed merged tool. Runtime also refuses locally modified recovery code. This rule requires no global promotion freeze. It does not change migration merge, preview or production main-freshness rules. Any main movement during the final mutex-protected closure snapshot refuses and requires fresh revalidation.
 
 ## Action and recovery
 

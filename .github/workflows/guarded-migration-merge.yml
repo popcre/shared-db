@@ -214,7 +214,24 @@ jobs:
           test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
           git fetch origin main
           node scripts/check-main-tip-freshness.mjs --contains
-          node scripts/check-pr-object-collisions.mjs
+          # Dispatch runs protected main, but collision checking reads the frozen PR.
+          # Re-read its full identity before binding only that command's head.
+          collision_pr="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          printf '%s' "$collision_pr" | node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const pr = JSON.parse(readFileSync(0, "utf8"));
+            const expected = process.env;
+            if (!/^[1-9][0-9]*$/.test(expected.PR_NUMBER ?? "") ||
+                !/^[0-9a-f]{40}$/.test(expected.REQUESTED_SHA ?? "") ||
+                pr.number !== Number(expected.PR_NUMBER) || pr.state !== "open" ||
+                pr.head?.sha !== expected.REQUESTED_SHA ||
+                pr.head?.repo?.full_name !== expected.GITHUB_REPOSITORY ||
+                pr.base?.repo?.full_name !== expected.GITHUB_REPOSITORY ||
+                pr.base?.ref !== "main") {
+              throw new Error("guarded collision target is not the exact open canonical pull request on main");
+            }
+          '
+          GITHUB_SHA="$REQUESTED_SHA" node scripts/check-pr-object-collisions.mjs
           node scripts/check-migration-pr-lease.mjs
           node scripts/check-live-proof-probe.mjs
           # Re-proven under the lock: a reviewer can withdraw, or a refusal can

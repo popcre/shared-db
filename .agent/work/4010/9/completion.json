@@ -49,10 +49,10 @@
     }
   ],
   "assumptions_resolved": [
-    "Actual merged users807e9c4 inherited unchanged common proof SQL/hash2445311d068db94270d5eed44fff46cdbb176a46bd1cd986446c711913954f17 and namespace/user permanent retirements. Only two runtime files differ. Old ownG6 evidence removed before clean implementation anchor; historical immutable contracts and reservations preserved.",
-    "Artistforward002731 has never been preview applied. Fresh read-only production preconditions confirm exactoriginals, zero destination/reverseorphans, parent uniqueness/type equality. Normal guarded merge first and first merged-main preview qualify automatic production; no manual writes.",
-    "Source artist migration bytes unchanged. Exact enforcing artist catalog contract sidecar is bound to version20261007002731 immutable SHA, declared once in producer registry; repair4027 is integrated currentmain9ee3981. User recovery must succeed before merge. No original reservations/history/evidence or application proof assertions changed.",
-    "Supported version supersession46af83311ba614dfc4192bfb5a1aa87bcba3eb53 preserves old02731 permanent reservation and records new043037. Parent SQL/assertions retain exact meaning and bind new required ledger version; only whole-file digest updated59b2c915cf2a8d0e9d0687c8a988accc03fc9b2a9b20dd579a055db86f4c2dbd. All inherited main evidence unchanged."
+    "Manager supersession46af83311ba614dfc4192bfb5a1aa87bcba3eb53 preserved old02731 permanent reservation and records new043037. Pure migration version substitution was independently byte-compared; all three FK semantics, original guarded definitions, zero-orphan checks, atomic timeouts and no-DML/no-access-change scope are unchanged.",
+    "Integrated exact main9ee3981 includes approved verifier repair4027. Exact enforcing artist FK sidecar043037 is immutable-SQL-hash-bound and registered exactly once; old unapplied02731 sidecar and SQL are absent from final source.",
+    "Parent SQL/assertions retain exact meaning and bind new required artist043037 ledger version plus unchanged user002113. Only the whole-file digest updates to59b2c915cf2a8d0e9d0687c8a988accc03fc9b2a9b20dd579a055db86f4c2dbd. All inherited main evidence and producer safeguards are preserved.",
+    "User3907 successful production recovery is required before artist merge. Fresh two source reviews bind this entire six-runtime-file release, then fresh current-main risk assessment, first merged-main preview apply and automatic production verification. No manual production change or row copy/cutover is authorized."
   ],
   "stop_conditions_hit": []
 }

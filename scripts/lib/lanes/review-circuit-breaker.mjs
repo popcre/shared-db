@@ -4,6 +4,8 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 // Owner: reviewer assignment lane. Immutable start records bound paid rounds.
 import { readStoredHashRegistry, normalizedStoredHashFile } from '../pr-content-equivalence.mjs'
+import { contractHash, validateContract, validateCompletionReport, reconcileReportWithContract } from '../../agent-work-contract.mjs'
+import { validateCompletionRecord } from '../work-dependencies.mjs'
 import { LaneError } from './claims.mjs'
 import { REVIEW_STARTED_REF_PREFIX, REVIEW_REF_ROW_LIMIT } from './constants.mjs'
 import { parseTerminalFailureEvidence } from './review-replacement.mjs'
@@ -27,9 +29,119 @@ export function paidStart(row, commit) {
   throw new LaneError('review circuit breaker: unrecognized or unreadable start evidence')
 }
 
+
+// Budget-only historical normalization. Strict review equivalence is unchanged.
+function verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract,neededFiles) {
+  const run=args=>String(git(args)).trim(),raw=args=>String(git(args))
+  const ancestor=(a,b)=>{try{run(['merge-base','--is-ancestor',a,b]);return true}catch(e){if(e.status===1)return false;throw e}}
+  const pairPaths=(issue,generation)=>['contract','completion'].map(kind=>`.agent/work/${issue}/${generation}/${kind}.json`)
+  const cache=new Map()
+  const read=(commit,issue,generation)=>{
+    const key=`${commit}:${issue}:${generation}`;if(cache.has(key))return cache.get(key)
+    const paths=pairPaths(issue,generation),records=[]
+    for(const file of paths){
+      const entry=raw(['ls-tree','-z',commit,'--',file]).split('\0').filter(Boolean)
+      if(entry.length===0){cache.set(key,null);return null}
+      if(entry.length!==1 || !/^100644 blob [0-9a-f]{40}\t/.test(entry[0]))throw new LaneError('review budget historical evidence regular mode refused')
+      const bytes=raw(['show',`${commit}:${file}`]);if(Buffer.byteLength(bytes)>1048576)throw new LaneError('review budget historical evidence oversized')
+      records.push(JSON.parse(bytes))
+    }
+    const [contract,report]=records,value={contract,report,paths,key:records.map(x=>JSON.stringify(x)).join('\0')};cache.set(key,value);return value
+  }
+  const canonicalTail=(record,commit)=>{
+    const h=record.report.head_sha;if(!/^[0-9a-f]{40}$/.test(h??'') || !ancestor(h,commit))return false
+    const tail=run(['rev-list','--first-parent','--max-count=1001',`${h}..${commit}`]).split('\n').filter(Boolean)
+    if(!tail.length || tail.length>=1000)return false
+    const touched=new Set()
+    for(const c of tail){
+      const parents=run(['rev-list','--parents','-n','1',c]).split(' ').slice(1);if(parents.length!==1)return false
+      const lines=raw(['diff','--name-status','--no-renames',parents[0],c]).split('\n').filter(Boolean)
+      for(const line of lines){const [status,file]=line.split('\t');if(!['A','M'].includes(status)||!record.paths.includes(file))return false;touched.add(file)}
+    }
+    return touched.size===2
+  }
+  const findEndpoint=tip=>{
+  const listed=run(['ls-tree','-r','--name-only',tip,'--','.agent/work']).split('\n').filter(Boolean)
+  if(listed.length>=1000)throw new LaneError('review budget historical evidence listing incomplete')
+  const endpoints=[]
+  for(const file of listed){const m=/^\.agent\/work\/(\d+)\/(\d+)\/completion\.json$/.exec(file);if(!m)continue
+    const record=read(tip,Number(m[1]),Number(m[2]));if(record && record.report.pr===expectedPr && canonicalTail(record,tip))endpoints.push(record)
+  }
+  if(!endpoints.length)return null
+  if(endpoints.length!==1)throw new LaneError('review budget ambiguous endpoint evidence')
+  return endpoints[0]
+  }
+  const endpoint=findEndpoint(after);if(!endpoint)return []
+  const baseline=findEndpoint(before);if(!baseline)throw new LaneError('review budget historical evidence trusted start pair unavailable')
+  const baselineGeneration=baseline.contract.generation??1
+  const requiredPairs=new Set([baselineGeneration,endpoint.contract.generation??1])
+  for(const file of neededFiles){const m=/^\.agent\/work\/(\d+)\/(\d+)\/(contract|completion)\.json$/.exec(file);if(!m || Number(m[1])!==endpoint.contract.work_issue)throw new LaneError('review budget foreign or unknown merge evidence refused');requiredPairs.add(Number(m[2]))}
+  const issue=endpoint.contract.work_issue,pr=endpoint.report.pr
+  if(baseline.contract.work_issue!==issue || baseline.report.pr!==pr)throw new LaneError('review budget historical evidence start scope mismatch')
+  const boundary=rows.indexOf(before);if(boundary<0 || boundary>=1000)throw new LaneError('review budget historical evidence complete start ancestry unavailable')
+  if(!Number.isInteger(pr)||pr<1 || !Number.isInteger(issue)||issue<1)throw new LaneError('review budget historical evidence scope unreadable')
+
+  const groups=new Map(),contracts=new Map(),foreignPairs=new Set()
+  for(const commit of rows.slice(0,boundary+1)){
+    const files=run(['ls-tree','-r','--name-only',commit,'--',`.agent/work/${issue}`]).split('\n').filter(Boolean)
+    if(files.length>=1000)throw new LaneError('review budget historical evidence paths incomplete')
+    for(const file of files){const m=/^\.agent\/work\/(\d+)\/(\d+)\/contract\.json$/.exec(file);if(!m)continue
+      const generation=Number(m[2]),entry=raw(['ls-tree','-z',commit,'--',file]);if(!/^100644 blob [0-9a-f]{40}\t/.test(entry))throw new LaneError('review budget historical contract regular mode refused')
+      const bytes=raw(['show',`${commit}:${file}`]);if(Buffer.byteLength(bytes)>1048576)throw new LaneError('review budget historical contract oversized')
+      const c=JSON.parse(bytes);validateContract(c);if(c.work_issue!==issue || (c.generation??1)!==generation)throw new LaneError('review budget historical contract identity refused')
+      const variants=contracts.get(generation)??new Map();variants.set(contractHash(c),c);contracts.set(generation,variants)
+    }
+    for(const file of files){const m=/^\.agent\/work\/(\d+)\/(\d+)\/completion\.json$/.exec(file);if(!m)continue
+      const generation=Number(m[2]),record=read(commit,issue,generation);if(!record)continue
+      if(record.report.pr!==pr){foreignPairs.add(generation);continue}
+      const variants=groups.get(generation)??new Map(),variant=variants.get(record.key)??{record,witnesses:[]}
+      if(canonicalTail(record,commit))variant.witnesses.push(commit)
+      variants.set(record.key,variant);groups.set(generation,variants)
+    }
+  }
+  const validating=new Set(),validated=new Map()
+  const validate=generation=>{
+    if(validated.has(generation))return validated.get(generation)
+    if(validating.has(generation))throw new LaneError('review budget historical evidence cyclic lineage')
+    validating.add(generation)
+    if(foreignPairs.has(generation))throw new LaneError('review budget foreign intermediate evidence pair refused')
+    const variants=groups.get(generation)
+    if(!requiredPairs.has(generation)){
+      let candidates=contracts.get(generation)
+      if(!candidates?.size){
+        if(typeof readContract!=='function')throw new LaneError(`review budget historical evidence missing predecessor generation ${generation}`)
+        const c=readContract(`refs/db-contracts/${issue}/${generation}`);validateContract(c)
+        if(c.work_issue!==issue || (c.generation??1)!==generation)throw new LaneError('review budget immutable predecessor identity refused')
+        candidates=new Map([[contractHash(c),c]])
+      }
+      if(candidates.size!==1)throw new LaneError(`review budget historical evidence ambiguous predecessor generation ${generation}`)
+      const [hash,c]=[...candidates][0],parent=c.evidence_parent
+      if(generation<baselineGeneration || !parent || parent.generation<baselineGeneration || parent.work_issue!==issue || validate(parent.generation)!==parent.contract_sha256)throw new LaneError('review budget historical contract-only predecessor hash refused')
+      validating.delete(generation);validated.set(generation,hash);return hash
+    }
+    if(!variants?.size)throw new LaneError('review budget required historical pair unavailable')
+    let hash
+    for(const {record,witnesses} of variants.values()){
+      const {contract,report}=record;validateContract(contract);validateCompletionReport(report,{validateCompletionRecord})
+      if(!witnesses.length || contract.work_issue!==issue || (contract.generation??1)!==generation || report.work_issue!==issue || report.pr!==pr || report.contract_ref!==`refs/db-contracts/${issue}/${generation}` || !ancestor(contract.base_sha,report.head_sha) || !/^[0-9a-f]{40}$/.test(report.base_sha??contract.base_sha) || !ancestor(report.base_sha??contract.base_sha,report.head_sha))throw new LaneError('review budget historical evidence identity/ancestor/tail refused')
+      const actualFiles=run(['diff','--name-only',report.base_sha??contract.base_sha,report.head_sha]).split('\n').filter(Boolean).sort()
+      if(JSON.stringify(actualFiles)!==JSON.stringify([...report.files_changed].sort()))throw new LaneError('review budget historical evidence implementation file proof refused')
+      if(!Array.isArray(report.files_changed)||!Array.isArray(report.checks)||!Array.isArray(report.db_reads)||!Array.isArray(report.db_writes)||!Array.isArray(report.stop_conditions_hit)||!reconcileReportWithContract(report,contract).satisfied)throw new LaneError('review budget historical evidence completion/hash refused')
+      const actual=contractHash(contract);if(hash && hash!==actual)throw new LaneError('review budget historical evidence mutated generation');hash=actual
+      if(generation===baselineGeneration){if(actual!==contractHash(baseline.contract))throw new LaneError('review budget historical evidence trusted start hash mismatch')}
+      else {const parent=contract.evidence_parent;if(!parent || parent.generation<baselineGeneration || parent.work_issue!==issue || validate(parent.generation)!==parent.contract_sha256)throw new LaneError('review budget historical evidence predecessor hash refused')}
+    }
+    validating.delete(generation);validated.set(generation,hash);return hash
+  }
+  validate(endpoint.contract.generation??1)
+  // Only the actual endpoint predecessor chain belongs to this workstream.
+  for(const generation of requiredPairs)validate(generation)
+  return [...requiredPairs].flatMap(generation=>pairPaths(issue,generation))
+}
+
 // Budget provenance is separate from strict review-diff equivalence. Git may
 // write unreferenced merge-tree cache objects, never refs or source files.
-export function derivePaidContentProof(before, after, protectedMain, git, excludePaths = []) {
+export function derivePaidContentProof(before, after, protectedMain, git, excludePaths = [], expectedPr = null, readContract = null) {
   const sha = /^[0-9a-f]{40}$/
   if (![before,after,protectedMain].every(x=>sha.test(x))) throw new LaneError('review budget Git scope unreadable')
   const run = args => String(git(args)).trim()
@@ -37,7 +149,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   const registry=readStoredHashRegistry(protectedMain,{gitRunner:git})
   const stored=[...new Set(registry.map(entry=>entry.file))]
   const canonicalAppends=[]
-  const paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
+  let paths = [':(top)**', ...[...excludePaths,...stored].map(p=>`:(top,literal,exclude)${p}`)]
   const tree = value => typeof value==='string'?value:value.tree
   const raw = args => String(git(args))
   const entry = (commit,file,allowAbsent=false) => {
@@ -81,7 +193,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
       return new Map([[file,{mode:blobs[0].mode,text}]])
     } finally { rmSync(dir,{recursive:true,force:true}) }
   }
-  const merge = (a,b) => {
+  const automaticMerge = (a,b) => {
     if (ancestor(b,a)) return run(['rev-parse',`${a}^{tree}`])
     const base=run(['merge-base',a,b])
     if(!sha.test(base))throw new LaneError('review budget merge base unreadable')
@@ -104,6 +216,8 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if (!sha.test(result)) throw new LaneError('review budget automatic merge proof unreadable')
     return result
   }
+  const mergeCache=new Map()
+  const merge=(a,b)=>{const key=`${a}:${b}`;if(!mergeCache.has(key))mergeCache.set(key,automaticMerge(a,b));return mergeCache.get(key)}
   try {
     const incorporatedMain = run(['merge-base',after,protectedMain])
     if (!sha.test(incorporatedMain)) throw new LaneError('review budget protected main ancestry unreadable')
@@ -111,6 +225,20 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if (equal(expected,after)) return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends}
     const rows = run(['rev-list','--first-parent','--max-count=1001',after]).split('\n')
     const index = rows.indexOf(before)
+    if(index<0 || index>=1000)throw new LaneError('review budget complete first-parent ancestry unavailable')
+    const neededFiles=new Set()
+    for(const commit of rows.slice(0,index)){
+      const parents=run(['rev-list','--parents','-n','1',commit]).split(' ').slice(1)
+      if(parents.length===2){const candidate=merge(...parents)
+        for(const file of run(['diff','--name-only',tree(candidate),commit,'--',...paths]).split('\n').filter(Boolean))if(file.startsWith('.agent/'))neededFiles.add(file)
+      }
+    }
+    const intermediate = neededFiles.size?verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract,[...neededFiles]):[]
+    if(intermediate.length)paths=[...paths,...intermediate.map(p=>`:(top,literal,exclude)${p}`)]
+    // Recompute with the exact authenticated historical pair paths. They can
+    // explain evidence retirement but can never serve as an author witness.
+    if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends}
+
     if (index < 0 || index >= 1000) throw new LaneError('review budget complete first-parent ancestry unavailable')
     const authorCandidates=[]
     let authored = false,witness=null
@@ -126,6 +254,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     }
     const witnessExcludes=canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]
     const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
+    if(netPaths.some(file=>file.startsWith('.agent/')))throw new LaneError('review budget unverified evidence cannot witness authored repair')
     for(const {commit,parent} of authorCandidates) {
       const changed=run(['diff','--name-only',parent,commit,'--',...paths]).split('\n')
       for(const file of netPaths.filter(file=>changed.includes(file))) {

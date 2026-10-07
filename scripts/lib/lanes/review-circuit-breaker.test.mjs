@@ -70,7 +70,7 @@ test('exact row ceiling and malformed PR cannot be accepted as complete paid his
 })
 
 import {execFileSync} from 'node:child_process'
-import {mkdtempSync,writeFileSync,rmSync,mkdirSync} from 'node:fs'
+import {mkdtempSync,writeFileSync,rmSync,mkdirSync,chmodSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 function realGitFixture(t) {
@@ -244,4 +244,74 @@ test('actual surviving nonempty authored deletion remains eligible for fresh man
 test('zero-byte added file supplies no surviving source byte witness',t=>{
  const f=realGitFixture(t);const after=f.commit('empty.txt','')
  assert.throws(()=>derivePaidContentProof(f.before,after,f.base,f.git),/surviving author source edit unavailable/)
+})
+
+import {contractHash} from '../../agent-work-contract.mjs'
+import {verifiedEvidencePaths} from '../pr-content-equivalence.mjs'
+function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=false}={}){
+ const f=realGitFixture(t),sha=()=>f.git(['rev-parse','HEAD']).trim()
+ const contract=(generation,parent)=>({schema_version:2,generation,work_issue:3536,work_type:'repo-maintenance',route:'repo-maintenance',goal:'Fixture source proof',base_sha:f.base,dispatcher:'fixture',worker:'fixture',branch:'feature',worktree:f.dir,allowed_paths:['app.txt','.agent/work/3536/**'],file_writes:['app.txt','.agent/work/3536/**'],db_reads:[],db_writes:[],prohibited_actions:[],required_checks:['fixture'],assumptions:[],stop_conditions:['Stop on unknown'],evidence_parent:parent})
+ const root=contract(312,{work_issue:3536,generation:311,contract_sha256:'a'.repeat(64)})
+ const writePair=(c,implementation)=>{
+  const dir=path.join(f.dir,`.agent/work/3536/${c.generation}`);mkdirSync(dir,{recursive:true})
+  const report={schema_version:1,work_issue:3536,outcome:'ready-for-merge',pr:3999,migration_versions:[],contract_ref:`refs/db-contracts/3536/${c.generation}`,contract_sha256:contractHash(c),head_sha:implementation,base_sha:f.base,files_changed:['app.txt'],db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Controlled fixture'}],assumptions_resolved:[],stop_conditions_hit:[]}
+  if(c.generation===317){if(bad==='hash')report.contract_sha256='b'.repeat(64);if(bad==='pr')report.pr=4000;if(bad==='issue')report.work_issue=3537}
+  writeFileSync(path.join(dir,'contract.json'),JSON.stringify(c));writeFileSync(path.join(dir,'completion.json'),JSON.stringify(report))
+  f.git(['add',`.agent/work/3536/${c.generation}`]);if(c.generation===317 && bad==='mode'){chmodSync(path.join(dir,'completion.json'),0o755);f.git(['add',`.agent/work/3536/317/completion.json`])};f.git(['commit','-qm','fixture exact pair']);return sha()
+ }
+ const before=writePair(root,sha())
+ const published=contract(315,{work_issue:3536,generation:312,contract_sha256:contractHash(root)})
+ const middle=contract(317,{work_issue:3536,generation:publishedOnly?315:312,contract_sha256:contractHash(publishedOnly?published:root)})
+ f.git(['rm','-r','.agent/work/3536/312']);f.git(['commit','-qm','retire baseline metadata']);writePair(middle,sha())
+ f.git(['switch','main']);const main=f.commit('app.txt','main context\nseparator1\nseparator2\nauthor\nend\n')
+ f.git(['switch','feature']);f.git(['merge','--no-commit','main']);f.git(['rm','-r','.agent/work/3536/317'])
+ if(bad==='custom'){writeFileSync(path.join(f.dir,'app.txt'),'custom conflict content\n');f.git(['add','app.txt'])}
+ f.git(['commit','-qm','main refresh and retire exact intermediate metadata'])
+ const expected='main context\nseparator1\nseparator2\nfixed\nend\n'
+ if(repair)f.commit('app.txt','main context\nseparator1\nseparator2\ngenuine safety repair\nend\n')
+ if(revert)f.commit('app.txt',expected)
+ const last=contract(319,{work_issue:3536,generation:317,contract_sha256:contractHash(middle)})
+ const after=writePair(last,sha())
+ return {...f,before,after,main,published,proof:()=>derivePaidContentProof(before,after,main,f.git,verifiedEvidencePaths(before,after,{gitRunner:f.git}),3999)}
+}
+test('actual Git312 to317 to319 authentic intermediate pair permits surviving source repair',t=>{
+ const f=generationsFixture(t),proof=f.proof();assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt')
+ const starts=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.deepEqual(assertPaidReviewCapacity({...request,pr:3999,headSha:f.after},{readPaidReviewStarts:()=>starts.map(x=>({...x,ref:x.ref.replace('-4000-','-3999-'),commit:{message:x.commit.message.replace('pr=4000','pr=3999')}})),reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),{paidAttempts:0,remaining:2})
+})
+for(const [name,input] of [['evidence/main only',{repair:false}],['net reverted repair',{repair:true,revert:true}]])test(`actual Git historical pairs never reset ${name}`,t=>{assert.equal(generationsFixture(t,input).proof().kind,'unchanged')})
+for(const bad of ['hash','pr','issue','mode','custom'])test(`actual Git historical ${bad} forgery refuses fresh capacity`,t=>{assert.throws(()=>generationsFixture(t,{bad}).proof(),/historical|foreign|noncanonical|unverified|scope|ancestor|tail|hash|identity/)} )
+
+import childProcess from 'node:child_process'
+import {syncBuiltinESMExports} from 'node:module'
+import {githubIo,withReviewRequestBudget} from '../../manage-migration-author-lanes.mjs'
+test('public Git budget authority reader is counted, cached, and cannot exceed its ceiling',t=>{
+ const f=generationsFixture(t,{publishedOnly:true}),original=childProcess.execFileSync,oldCwd=process.cwd(),calls=[]
+ const ref='refs/db-contracts/3536/315',message='fixture immutable contract\n\n'+JSON.stringify(f.published)
+ childProcess.execFileSync=(command,args,opts)=>{
+  if(command==='git' && args[0]==='fetch'){
+   if(args.includes(ref)){calls.push('fetch');return ''}
+   if(args.includes(f.before) && args.includes(f.after) && args.includes(f.main))return ''
+   assert.fail('unexpected remote fetch')
+  }
+  if(command==='git' && args[0]==='ls-remote'){assert.equal(args.at(-1),ref);calls.push('ls-remote');return 'f'.repeat(40)+'\t'+ref+'\n'}
+  if(command==='git' && args[0]==='show' && args.at(-1)==='FETCH_HEAD')return message
+  return original(command,args,opts)
+ }
+ syncBuiltinESMExports();process.chdir(f.dir)
+ try{
+  assert.throws(()=>withReviewRequestBudget(()=>githubIo.reviewContentComparison(f.before,f.after,3999,{base:f.main}),1,'fixture-bound-reader'),/exhausted its derived 1-request budget before request 2/)
+  assert.deepEqual(calls,['ls-remote'],'ref fetch refuses before exceeding ceiling')
+  calls.length=0
+  withReviewRequestBudget(budget=>{
+   const context={base:f.main},first=githubIo.reviewContentComparison(f.before,f.after,3999,context),second=githubIo.reviewContentComparison(f.before,f.after,3999,context)
+   assert.equal(first.budgetProof.kind,'substantive');assert.deepEqual(second.budgetProof,first.budgetProof)
+   assert.equal(budget.count,2);assert.deepEqual(calls,['ls-remote','fetch'],'same immutable missing315 fetched once per comparison context')
+  },25)
+ }finally{process.chdir(oldCwd);childProcess.execFileSync=original;syncBuiltinESMExports()}
+})
+for(const failure of ['missing','hash','identity'])test(`immutable missing315 ${failure} refuses author budget`,t=>{
+ const f=generationsFixture(t,{publishedOnly:true}),paths=verifiedEvidencePaths(f.before,f.after,{gitRunner:f.git})
+ const read=ref=>{assert.equal(ref,'refs/db-contracts/3536/315');if(failure==='missing')throw Error('missing canonical contract ref');return {...f.published,...(failure==='hash'?{goal:'tampered contract'}:{work_issue:3537})}}
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git,paths,3999,read),/missing canonical|hash|identity|crosses issues/)
 })

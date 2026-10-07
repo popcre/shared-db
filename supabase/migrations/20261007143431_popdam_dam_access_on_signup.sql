@@ -29,36 +29,43 @@ begin
   if to_regtype('extensions.citext') is null then
     raise exception 'preflight: extensions.citext is missing';
   end if;
-  -- The only entry point: enabled (origin/always), row-level, INSERT trigger on auth.users.
+  -- The only entry point: enabled (origin/always), AFTER, row-level, INSERT trigger on auth.users.
   if not exists (select 1 from pg_trigger tg
                  where tg.tgrelid = 'auth.users'::regclass and tg.tgname = 'on_auth_user_created'
                    and tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal
                    and tg.tgenabled in ('O', 'A')
                    and (tg.tgtype & 1) = 1      -- FOR EACH ROW
+                   and (tg.tgtype & 66) = 0     -- AFTER (not BEFORE, not INSTEAD OF)
                    and (tg.tgtype & 4) = 4) then -- INSERT
-    raise exception 'preflight: on_auth_user_created is not an enabled row INSERT trigger on auth.users calling app.handle_new_auth_user()';
+    raise exception 'preflight: on_auth_user_created is not an enabled AFTER row INSERT trigger on auth.users calling app.handle_new_auth_user()';
   end if;
   if exists (select 1 from pg_trigger tg
              where tg.tgfoid = 'app.handle_new_auth_user()'::regprocedure and not tg.tgisinternal
                and tg.tgname <> 'on_auth_user_created') then
     raise exception 'preflight: app.handle_new_auth_user() has an unexpected extra trigger';
   end if;
-  -- Columns the body reads or writes.
+  -- Columns the body reads or writes, with their types.
   for r in select * from (values
-      ('auth.users', array['id', 'email', 'raw_user_meta_data', 'raw_app_meta_data']),
-      ('app.profile', array['id', 'auth_user_id', 'email', 'display_name', 'provider', 'status']),
-      ('app.app_access', array['profile_id', 'app']),
-      ('app.user_role', array['profile_id', 'role_id']),
-      ('app.role', array['id', 'slug'])) v(rel, cols)
+      ('auth.users', 'id', 'uuid'), ('auth.users', 'email', 'character varying'),
+      ('auth.users', 'raw_user_meta_data', 'jsonb'), ('auth.users', 'raw_app_meta_data', 'jsonb'),
+      ('app.profile', 'id', 'uuid'), ('app.profile', 'auth_user_id', 'uuid'),
+      ('app.profile', 'email', 'extensions.citext'), ('app.profile', 'display_name', 'text'),
+      ('app.profile', 'provider', 'text'), ('app.profile', 'status', 'app.entity_status'),
+      ('app.app_access', 'profile_id', 'uuid'), ('app.app_access', 'app', 'app.app_name'),
+      ('app.user_role', 'profile_id', 'uuid'), ('app.user_role', 'role_id', 'uuid'),
+      ('app.role', 'id', 'uuid'), ('app.role', 'slug', 'app.app_role')) v(rel, col, typ)
   loop
-    if to_regclass(r.rel) is null or exists (
-         select 1 from unnest(r.cols) c(name)
-         where not exists (select 1 from pg_attribute a
-                           where a.attrelid = to_regclass(r.rel) and a.attname = c.name
-                             and a.attnum > 0 and not a.attisdropped)) then
-      raise exception 'preflight: % is missing or lacks one of columns %', r.rel, r.cols;
+    if to_regclass(r.rel) is null or to_regtype(r.typ) is null or not exists (
+         select 1 from pg_attribute a
+         where a.attrelid = to_regclass(r.rel) and a.attname = r.col
+           and a.attnum > 0 and not a.attisdropped and a.atttypid = to_regtype(r.typ)) then
+      raise exception 'preflight: %.% is missing or is not of type %', r.rel, r.col, r.typ;
     end if;
   end loop;
+  if not exists (select 1 from pg_enum e where e.enumtypid = 'app.entity_status'::regtype
+                 and e.enumlabel = 'active') then
+    raise exception 'preflight: app.entity_status has no active label';
+  end if;
   -- Arbiter indexes for each ON CONFLICT: valid, immediate, non-partial unique index whose key
   -- columns (INCLUDE columns excluded) are exactly the conflict target.
   for r in select * from (values

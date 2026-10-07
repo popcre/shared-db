@@ -11,13 +11,15 @@ declare
   v_fake_owner uuid := gen_random_uuid();
   v_upper uuid := gen_random_uuid();
   v_owner uuid := gen_random_uuid();
+  v_null uuid := gen_random_uuid();
 begin
   insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
   values (v_emp, 'zz-signup-test-' || v_emp || '@' || 'popcre.com', '{}', '{"provider":"azure"}'),
          (v_out, 'zz-signup-test-' || v_out || '@example.com', '{}', '{"provider":"azure"}'),
          (v_multi, 'zz-signup-test-' || v_multi || '@' || 'popcre.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
          (v_fake_owner, 'u2giants' || '@' || 'gmail.com' || '@' || 'example.com', '{}', '{"provider":"azure"}'),
-         (v_upper, 'ZZ-Signup-Test-' || v_upper || '@' || 'PopCre.COM', '{}', '{"provider":"azure"}');
+         (v_upper, 'ZZ-Signup-Test-' || v_upper || '@' || 'PopCre.COM', '{}', '{"provider":"azure"}'),
+         (v_null, null, '{}', '{"provider":"azure"}');
   -- The real owner address: inserted (rolled back) when absent; when it already exists, the
   -- existing owner is checked instead, so this assertion never skips silently.
   if not exists (select 1 from auth.users where lower(email) = 'albert' || '@' || 'popcre.com') then
@@ -59,6 +61,10 @@ begin
              join app.role r on r.id = ur.role_id
              where p.auth_user_id = v_fake_owner and r.slug = 'administrator') then
     raise exception 'owner-prefixed multi-at address was granted administrator';
+  end if;
+  if exists (select 1 from app.app_access a join app.profile p on p.id = a.profile_id
+             where p.auth_user_id = v_null and a.app = 'dam') then
+    raise exception 'null-email user was granted dam access';
   end if;
 end $$;
 

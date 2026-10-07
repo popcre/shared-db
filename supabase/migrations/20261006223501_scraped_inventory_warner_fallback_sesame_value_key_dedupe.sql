@@ -61,8 +61,8 @@
 --      Index assumption (review finding, 2026-10-06): the Disney-twin probe
 --      reads plm.dcp_property(source_system, source_id). At the documented
 --      cardinality (70 Lucasfilm rows, 30 shared ids) the outer arm scans
---      anyway and the per-row probe is trivial. If the table grows, confirm a
---      btree on (source_system, source_id) serves the anti-join.
+--      anyway and the per-row probe is trivial. The existing
+--      dcp_property_unique UNIQUE (source_system, source_id) serves it.
 --
 -- Revert: fix forward. Restore the arms from 20261002193034's body.
 

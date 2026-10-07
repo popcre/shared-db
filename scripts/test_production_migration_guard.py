@@ -274,6 +274,7 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261006221530",
                 "20261002204050",
                 "20260911212849",
                 "20260917112129",
@@ -4383,6 +4384,17 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
                 text,
                 f"{name} tells an operator to open the record without its fence",
             )
+
+
+class RemainingUsersStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_refuses_even_if_recorded_remotely(self):
+        for remote in (set(), {"20261006221530"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006221530", remote)
+        self.assertIn("20261007002113", production_migration_guard.RETIRED_VERSION_REASONS["20261006221530"])
+
+    def test_forward_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261007002113"), ["20261007002113"])
 
 
 if __name__ == "__main__":

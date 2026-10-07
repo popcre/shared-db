@@ -66,7 +66,7 @@ select 'assertion'::text kind, 3887 work_issue, null::text table_name, null::tex
 ) as passed) probe
 union all
 select 'assertion'::text kind, 3907 work_issue, null::text table_name, null::text schema_name, null::jsonb columns, passed from (SELECT (
-  EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261006221530')
+  EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261007002113')
   AND (SELECT count(*) FROM (VALUES
     ('app."RolePermissions"', 'RolePermissions_UserId_fkey', 'UserId'),
     ('plm.art_piece_attachment', 'art_piece_attachment_created_by_fkey', 'created_by'),

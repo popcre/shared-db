@@ -48,6 +48,11 @@ class RecoveryEvidenceTests(unittest.TestCase):
         rows = jobs(); rows["jobs"][0]["conclusion"] = "skipped"
         with self.assertRaises(ValueError): validate_jobs(rows)
 
+    def test_abnormal_extra_step_refused(self):
+        for conclusion in ("cancelled", "timed_out", "neutral", None):
+            rows = jobs(); rows["jobs"][-1]["steps"].append({"name": "unexpected", "conclusion": conclusion})
+            with self.subTest(conclusion=conclusion), self.assertRaises(ValueError): validate_jobs(rows)
+
     def test_extra_or_removed_ledger_and_missing_live_version_refused(self):
         for path, text in ((self.evidence / "production-ledger-after.txt", " | " + VERSION + " |\n"), (self.evidence / "production-ledger-after.txt", self.live.read_text() + " | 20261007003000 |\n"), (self.live, " | 20260101000000 |\n")):
             old = path.read_text(); path.write_text(text)

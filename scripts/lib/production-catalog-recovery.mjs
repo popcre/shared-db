@@ -10,7 +10,8 @@ export function matchesCatalogRecovery({evidence,applyRun,recoveryRun,recoveryAr
   const failed=(jobs?.jobs??[]).filter(j=>j.conclusion==='failure')
   if(failed.length!==1||failed[0].name!=='Production apply (automatic evidence gates)'||(jobs?.jobs??[]).some(j=>!['success','skipped','failure'].includes(j.conclusion)))return false
   const steps=failed[0].steps??[]
-  for(const name of ['SQL migration guards','Production apply review (immutable evidence + hard guards)'])if((jobs.jobs??[]).filter(j=>j.name===name&&j.conclusion==='success').length!==1)return false
+  if(steps.some(s=>!['success','skipped','failure'].includes(s.conclusion)))return false
+  for(const name of ['SQL migration guards','Production apply review (immutable evidence + hard guards)'])if((jobs?.jobs??[]).filter(j=>j.name===name&&j.conclusion==='success').length!==1)return false
   if(!same(steps.filter(s=>s.conclusion==='failure').map(s=>s.name),['Post-apply catalog verification']))return false
   for(const name of ['Build bounded checkout','Fresh dry-run, then apply','Capture production migration record (after)','Save apply evidence','Release the exclusive production lane with ownership proof'])if(steps.filter(s=>s.name===name&&s.conclusion==='success').length!==1)return false
   const wanted=[...versions].sort()

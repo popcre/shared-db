@@ -24,6 +24,8 @@ def validate_jobs(jobs):
         if len([j for j in rows if j.get("name") == name and j.get("conclusion") == "success"]) != 1:
             raise ValueError("original prerequisite job did not succeed")
     steps = failed[0].get("steps", [])
+    if any(s.get("conclusion") not in ("success", "skipped", "failure") for s in steps):
+        raise ValueError("original apply contains an incomplete or abnormal step")
     failures = [s.get("name") for s in steps if s.get("conclusion") == "failure"]
     if failures != ["Post-apply catalog verification"]:
         raise ValueError("original failure is not exclusively catalog verification")

@@ -34,7 +34,7 @@ IN: evidence-first measurement and binding audit; a separate cleanup-fencing pro
 
 OUT: all new SQL/schema or data writes; generic disjoint-migration admission; snapshot promotion of migration trains; releasing existing locks; changing reviewer membership/approval semantics; reducing required checks; changing branch protection; new manual production lane; reopening retired orchestrator instructions; changing consumer deployment/acceptance rules; a new scheduling service. Do not fabricate a migration to get a reviewer.
 
-Retain broad blocking during actual production ownership. This intentionally small first delivery offers meaningful review-period relief without a semantic SQL dependency engine.
+Retain broad blocking during actual production ownership. The conditional first delivery may offer review-period relief without a semantic SQL dependency engine; meaningful benefit is unproved until the measurement gate passes.
 
 ## 5. Current code and delivery state
 

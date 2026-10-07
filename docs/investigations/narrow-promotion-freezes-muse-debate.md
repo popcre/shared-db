@@ -26,3 +26,7 @@ Muse approved the revised evidence-first gated plan in round 3, with no remainin
 ## Open gates and ownership
 
 Future implementing workstream on #4039 owns binding matrix, measurements, completeness adapter and cost/benefit record; existing coordination-IO ownership and Step 10 scope must be reconciled first. Allocator-assigned reviewer owns technical gate concurrence and actual exact-head implementation review. Future workstream owns offline/load/race testing, guarded rollout and real application acceptance. No implementation was requested in this debate.
+
+## Written-document validation
+
+[Round 4](narrow-promotion-freezes-muse-round-4.md) checked actual revised head c7afa6b44509c384fead274f1768bbb9c17d843a and APPROVED the prose gated proposal, identifying non-blocking stale report lifecycle wording and an unmeasured-benefit adjective. Owning workstream corrected them: report no longer mandates new descriptor/attestation objects, alternatives are conditional, race-table snapshot wording means existing immutable attempt identity, and benefit is explicitly unproved. No design expansion or implementation authority was added. Exact original verdict stays bound to its reviewed source; follow-up source must be checked in the same named conversation.

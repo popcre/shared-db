@@ -83,7 +83,7 @@ Do not reuse the path-only Markdown freshness predicate as the new admission cla
 
 The proposed work is a narrow freeze-admission extension **after reconciling and consuming that existing implementation**, not a new Step 10 implementation. Future work must inspect the live owner/PR scope and stop shared-file edits until supported ownership release. #4039 tracks this investigation and any expressly authorized new freeze-specific follow-through; existing Step 10 acceptance stays on #3781.
 
-Snapshot lifecycle must have two stages: immutable candidate descriptor before risk review (exact S/V/source/runtime/baseline plus exact freeze generation), then an immutable approved qualification attestation referencing that descriptor after review/preview evidence is complete. Candidate grants only strictly proven inert prose admission; it never dispatches or writes production. Missing final approval or cancelled/superseded review refuses production. Waiting to create the first descriptor until risk approval would defeat review-period relief.
+Conditional identity lifecycle: if the binding/benefit gates in companion §§9.0–9.2 pass, retain exact S/V/source/runtime/baseline and attempt identity before risk review through existing context/records. Candidate identity permits only proven inert-prose admission, never production. Production requires the complete existing approved preview/risk/dispatch evidence join, with live cancellation/supersession checks. No separate candidate ref or approved-attestation object is mandated. If existing bindings are incomplete, stop and revise/re-review the design. Creating the first identity only after risk approval cannot relieve review-period blocking.
 
 ## 3. Claims, dependencies and blind spots
 
@@ -101,9 +101,9 @@ Conclusion: scoped claims alone are insufficient. A future SQL extension needs c
 
 | Alternative | Required changes | Residual pause | Decision |
 |---|---|---|---|
-| Release freeze unchanged | None | Exact-main refusals and independent production interlock remain | Reject: makes reviewed delivery stale rather than safe |
+| Remove/shorten early freeze, equality guards unchanged | Separately reviewed admission change; bounded retry/defer strategy | Exact-main refusals and late production interlock remain | Evaluate safety/liveness and repeated-review cost; never current default or permission to release another owner |
 | Table/schema-only scoped freeze | Object-filter merge check | Writes serialized | Reject: dependency/order/control-code coverage inadequate |
-| Snapshot + ordinary-prose exception | One versioned snapshot authority, shared delta validator in preview/qualification/lock, final queue admission, owned cleanup fencing | All executable/migration merges during review; all merges during production lane | Recommend as bounded first proposal, subject to assigned design review and tests |
+| Fixed promotion identity + ordinary-prose exception | Conditional reuse of existing context/freeze record, one strict module, complete caller/queue/train conversion and separately fenced cleanup | All executable/migration merges during review; all merges during production lane | Consider only after measurement/binding gate; no mandatory new snapshot subsystem |
 | Snapshot + proven disjoint additive SQL | Full read/write/global dependency closure, order barrier, reconciled live ledger, isolated baseline rehearsal, queue recomputation | Global control/security changes and unknown SQL; exclusive database writes | Defer: cannot prove safe with current extraction |
 | Snapshot permitting all source-only SQL merges | Keep SQL execution pinned; prove tail not applied and reserve ordered future promotions | Policy/producer changes; writes | Plausible architecture, but not the requested conflict protection without explicit applied-state/dependency proof; reject automatic activation |
 | Short staged global freezes | Review immutable candidate before freeze, then revalidate actual snapshot, issue, ledger, artifacts and risk inputs under freeze | Short final barrier plus production lock | Worth measuring; evidence-equivalent review must be proven, otherwise requires re-review and removes no delay |
@@ -112,6 +112,8 @@ Conclusion: scoped claims alone are insufficient. A future SQL extension needs c
 The shortest defensible window is event-defined, not a fixed minute target: final synchronized transition into the production lane through successful/failed apply verification and owned release. Stage one retains broad blocking for executable/migration changes before that window; prose can proceed through qualified snapshot checks. Removing the production-wide source pause itself is a later design, not part of the recommended first change.
 
 ## 5. Deterministic races and recovery
+
+Here "snapshot/generation" means retained immutable promotion/attempt identity using existing records; it does not mandate a new authority ref. Storage and admission remain conditional on the plan gates.
 
 | Scenario | Required proposed behavior/test |
 |---|---|

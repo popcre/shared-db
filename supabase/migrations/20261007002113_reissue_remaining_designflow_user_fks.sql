@@ -43,21 +43,27 @@ BEGIN
   IF EXISTS (SELECT 1 FROM plm.art_piece_attachment child WHERE child.updated_by IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dflow.users parent WHERE parent.id = child.updated_by)) THEN
     RAISE EXCEPTION 'User relationship has missing mapped parents: plm.art_piece_attachment.updated_by';
   END IF;
-  FOR expected IN SELECT * FROM (VALUES
-    ('app."RolePermissions"', 'RolePermissions_UserId_fkey', 'UserId'),
-    ('plm.art_piece_attachment', 'art_piece_attachment_created_by_fkey', 'created_by'),
-    ('plm.art_piece_attachment', 'art_piece_attachment_updated_by_fkey', 'updated_by')
-  ) AS v(child_table, constraint_name, child_column)
-  LOOP
-    IF EXISTS (SELECT 1 FROM pg_constraint c
-      WHERE c.conrelid = to_regclass(expected.child_table)
-        AND c.conname = expected.constraint_name
-        AND c.confrelid = to_regclass('app.users')) THEN
-      EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', expected.child_table, expected.constraint_name);
-      EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES dflow.users(id)',
-        expected.child_table, expected.constraint_name, expected.child_column);
-    END IF;
-  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'app."RolePermissions"'::regclass AND c.conname = 'RolePermissions_UserId_fkey'
+      AND c.confrelid = 'app.users'::regclass) THEN
+    ALTER TABLE app."RolePermissions" DROP CONSTRAINT "RolePermissions_UserId_fkey";
+    ALTER TABLE app."RolePermissions" ADD CONSTRAINT "RolePermissions_UserId_fkey"
+      FOREIGN KEY ("UserId") REFERENCES dflow.users(id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'plm.art_piece_attachment'::regclass AND c.conname = 'art_piece_attachment_created_by_fkey'
+      AND c.confrelid = 'app.users'::regclass) THEN
+    ALTER TABLE plm.art_piece_attachment DROP CONSTRAINT "art_piece_attachment_created_by_fkey";
+    ALTER TABLE plm.art_piece_attachment ADD CONSTRAINT "art_piece_attachment_created_by_fkey"
+      FOREIGN KEY (created_by) REFERENCES dflow.users(id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'plm.art_piece_attachment'::regclass AND c.conname = 'art_piece_attachment_updated_by_fkey'
+      AND c.confrelid = 'app.users'::regclass) THEN
+    ALTER TABLE plm.art_piece_attachment DROP CONSTRAINT "art_piece_attachment_updated_by_fkey";
+    ALTER TABLE plm.art_piece_attachment ADD CONSTRAINT "art_piece_attachment_updated_by_fkey"
+      FOREIGN KEY (updated_by) REFERENCES dflow.users(id);
+  END IF;
 END
 $guard$;
 COMMIT;

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "work_issue": 4010,
+  "outcome": "ready-for-merge",
+  "pr": 4013,
+  "migration_versions": [
+    "20261007043037"
+  ],
+  "contract_ref": "refs/db-contracts/4010/9",
+  "contract_sha256": "0c2e19c0c9766817949fbfa4a7970e3edbd76a2c3890694ac932b370055430c3",
+  "base_sha": "9ee3981f6c80aacdf176ee4ca18262b6d6807a3d",
+  "head_sha": "f0e2e6b44cddc3f746d03c20dca8bd462e55d90e",
+  "files_changed": [
+    ".github/live-proofs/4010.sql",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/check-sql.sh",
+    "scripts/production-verification-sidecars/20261007043037.json",
+    "scripts/proofs/3882-production.sql",
+    "supabase/migrations/20261007043037_repoint_designflow_artist_parent_fks.sql"
+  ],
+  "db_reads": [
+    "table core.merchGroup",
+    "table core.artist_types",
+    "table plm.divisionCode"
+  ],
+  "db_writes": [
+    "table dflow.artists"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Actually executed integrated semantic source: static SQL, declared exact sidecars, full1430 Python22existing/opt-in skips;69SQL and86focused Node tests. Owned isolated PG17 enforces mapped parents and reader/row preservation, refuses each absent parent and wrong original action atomically; exact artist FK catalog rejects original parents and passes after immutable SQL. Pure manager version substitution independently byte-compared."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs --issue 4010",
+      "exit_code": 0,
+      "evidence": "Actually executed integrated semantic source: static SQL, declared exact sidecars, full1430 Python22existing/opt-in skips;69SQL and86focused Node tests. Owned isolated PG17 enforces mapped parents and reader/row preservation, refuses each absent parent and wrong original action atomically; exact artist FK catalog rejects original parents and passes after immutable SQL. Pure manager version substitution independently byte-compared."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Actually executed integrated semantic source: static SQL, declared exact sidecars, full1430 Python22existing/opt-in skips;69SQL and86focused Node tests. Owned isolated PG17 enforces mapped parents and reader/row preservation, refuses each absent parent and wrong original action atomically; exact artist FK catalog rejects original parents and passes after immutable SQL. Pure manager version substitution independently byte-compared."
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "Actually executed integrated semantic source: static SQL, declared exact sidecars, full1430 Python22existing/opt-in skips;69SQL and86focused Node tests. Owned isolated PG17 enforces mapped parents and reader/row preservation, refuses each absent parent and wrong original action atomically; exact artist FK catalog rejects original parents and passes after immutable SQL. Pure manager version substitution independently byte-compared."
+    }
+  ],
+  "assumptions_resolved": [
+    "Actual merged users807e9c4 inherited unchanged common proof SQL/hash2445311d068db94270d5eed44fff46cdbb176a46bd1cd986446c711913954f17 and namespace/user permanent retirements. Only two runtime files differ. Old ownG6 evidence removed before clean implementation anchor; historical immutable contracts and reservations preserved.",
+    "Artistforward002731 has never been preview applied. Fresh read-only production preconditions confirm exactoriginals, zero destination/reverseorphans, parent uniqueness/type equality. Normal guarded merge first and first merged-main preview qualify automatic production; no manual writes.",
+    "Source artist migration bytes unchanged. Exact enforcing artist catalog contract sidecar is bound to version20261007002731 immutable SHA, declared once in producer registry; repair4027 is integrated currentmain9ee3981. User recovery must succeed before merge. No original reservations/history/evidence or application proof assertions changed.",
+    "Supported version supersession46af83311ba614dfc4192bfb5a1aa87bcba3eb53 preserves old02731 permanent reservation and records new043037. Parent SQL/assertions retain exact meaning and bind new required ledger version; only whole-file digest updated59b2c915cf2a8d0e9d0687c8a988accc03fc9b2a9b20dd579a055db86f4c2dbd. All inherited main evidence unchanged."
+  ],
+  "stop_conditions_hit": []
+}

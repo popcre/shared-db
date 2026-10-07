@@ -585,3 +585,21 @@ test('manual replay runs base-owned evaluators against exact head evidence', asy
     assert.match(job,/--config-file trusted-policy\/config\/agent-work-contract-activation\.json/)
   } finally {rmSync(cwd,{recursive:true,force:true})}
 })
+
+test('retained14 runs before every mutation without widening authority secret environments',()=>{
+  const workflow=readWorkflow('guarded-migration-merge.yml')
+  const guarded=stepBlock(workflow,'Re-prove the head and merge while the lock is held')
+  assert.match(guarded,/AUTHORITY_FILE_IDENTITY:/)
+  assert.doesNotMatch(guarded,/secrets\.SYNC_TOKEN|AUTHORITY_TOKEN:/)
+  assert.match(workflow,/--capture-authority-file/)
+  assert.match(workflow,/Remove this run's protected authority scratch file[\s\S]*if: always\(\)[\s\S]*--cleanup-authority-file/)
+  const lines=guarded.split('\n')
+  const calls=lines.map((line,i)=>({line,i})).filter(({line})=>/^\s*(?:if )?gh pr merge /.test(line))
+  assert.equal(calls.length,3)
+  for(const {i}of calls)assert.equal(lines[i-1].trim(),'prove_retained_all14')
+  assert.match(guarded,/\[ "\$PR_NUMBER" = 3998 \] \|\| return 0/)
+  assert.match(guarded,/QUEUE_RETIREMENT_PHASE=14 PREFLIGHT_WAIT_SECONDS=0/)
+  assert.match(guarded,/git\/ref\/db-coordination\/merge/)
+  assert.match(guarded,/matching-refs\/db-coordination\/promotion-freeze/)
+  assert.equal((workflow.match(/export QUEUE_RETIREMENT_PHASE=13/g)??[]).length,2)
+})

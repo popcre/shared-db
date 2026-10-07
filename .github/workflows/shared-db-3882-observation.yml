@@ -19,6 +19,10 @@ on:
       - '.github/workflows/shared-db-3882-observation.yml'
       - 'scripts/proofs/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
 permissions:
   contents: read
 

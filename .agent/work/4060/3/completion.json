@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 4060,
+  "outcome": "ready-for-merge",
+  "pr": 4075,
+  "migration_versions": [
+    "20261008003525"
+  ],
+  "contract_ref": "refs/db-contracts/4060/3",
+  "contract_sha256": "0fefde5a43c786930ddde880d4672c3d85e263c68bdf55069d53894307aa28a7",
+  "db_reads": [],
+  "db_writes": [
+    "index dflow.users_email_lower_uidx",
+    "table dflow.users"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; 1 added migration, no prohibited verification read."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_*.py",
+      "exit_code": 0,
+      "evidence": "OK (skipped=22), including both retired-version set tests listing 20261007232712."
+    },
+    {
+      "command": "Database Contract Tests on isolated ephemeral database",
+      "exit_code": 0,
+      "evidence": "Required CI check on this PR; locally supabase/tests/dflow_users_email_ci_unique_contracts.sql passed on Postgres 16."
+    },
+    {
+      "command": "Old migration then new migration replay on isolated PostgreSQL is a no-op on the second",
+      "exit_code": 0,
+      "evidence": "Postgres 16: 20261007232712 created the index; 20261008003525 skipped it; after drop, 20261008003525 alone created it and the contract test passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Retired 20261007232712 is hard-blocked and listed in RETIRED_VERSION_REASONS; only 20261008003525 may reach production.",
+    "Preview no-op relies on IF NOT EXISTS against the index preview already holds."
+  ],
+  "stop_conditions_hit": [],
+  "head_sha": "ecfeb7860f6b2b3acc179c7e11f1d7dc4a6881b9",
+  "base_sha": "c493cfdd005a2668f1409a1bdb0b8f888a09855f",
+  "files_changed": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20261008003525_dflow_users_email_ci_unique_reissue.sql"
+  ]
+}

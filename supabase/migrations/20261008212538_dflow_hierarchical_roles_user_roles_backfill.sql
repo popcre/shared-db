@@ -101,6 +101,52 @@ begin
   if unknown_levels is not null then
     raise exception 'ABORT: unknown users.level values (normalize or map these first): %', unknown_levels;
   end if;
+
+  -- Exact shape assertions (mandatory review item). Abort if any dependency
+  -- has a different shape than this migration assumes. Inferred shape is not
+  -- proof — a pre-existing wrong-typed column must fail loudly, not silently.
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'Roles'
+      and column_name = 'Id' and data_type = 'integer'
+  ) then
+    raise exception 'ABORT: dflow."Roles"."Id" is not integer';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'Roles'
+      and column_name = 'Name' and is_nullable = 'NO'
+  ) then
+    raise exception 'ABORT: dflow."Roles"."Name" is not NOT NULL';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'RolePermissions'
+      and column_name = 'UserId' and is_nullable = 'YES'
+  ) then
+    raise exception 'ABORT: dflow."RolePermissions"."UserId" is not nullable (per-user override path broken)';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'RolePermissions'
+      and column_name = 'ElementId' and is_nullable = 'NO'
+  ) then
+    raise exception 'ABORT: dflow."RolePermissions"."ElementId" is not NOT NULL';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'RolePermissions'
+      and column_name = 'Access' and is_nullable = 'NO'
+  ) then
+    raise exception 'ABORT: dflow."RolePermissions"."Access" is not NOT NULL';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'dflow' and table_name = 'users'
+      and column_name = 'level' and is_nullable = 'YES'
+  ) then
+    raise exception 'ABORT: dflow.users.level is not nullable';
+  end if;
 end
 $$;
 
@@ -450,6 +496,20 @@ begin
 
   if incomplete_grants is not null then
     raise exception 'ABORT: backfill grant count mismatch (users with wrong leaf grant count): %', incomplete_grants;
+  end if;
+
+  -- Assert the user_roles PK shape (the backfill's ON CONFLICT depends on it).
+  if not exists (
+    select 1 from information_schema.table_constraints tc
+    join information_schema.key_column_usage kcu
+      on tc.constraint_name = kcu.constraint_name
+     and tc.table_schema = kcu.table_schema
+    where tc.table_schema = 'dflow' and tc.table_name = 'user_roles'
+      and tc.constraint_type = 'PRIMARY KEY'
+    group by tc.constraint_name
+    having array_agg(kcu.column_name order by kcu.ordinal_position) = array['user_id', 'role_id']
+  ) then
+    raise exception 'ABORT: dflow.user_roles PK is not (user_id, role_id)';
   end if;
 end
 $$;

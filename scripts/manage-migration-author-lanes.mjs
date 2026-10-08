@@ -704,7 +704,8 @@ export const githubIo = {
     const byName=new Map(checks.map((row)=>[row.name,String(row.state).toUpperCase()]))
     const failed=pendingRequiredContexts(protectedContexts,byName)
     if(failed.length)throw new LaneError(`required full CI is not successful on the current head: ${failed.join(', ')}`)
-    assertDurableReviewApproval(issue,pr,head,this)
+    // #3806: the post-merge rehearsal route judges a merged PR whose verdict may be archived.
+    assertDurableReviewApproval(issue,pr,head,this,{includeArchived:true})
     const states=dependencies.length?this.dependencyStates(dependencies):{},closure=classifyDependencies(issue,dependencies,states)
     if(!closure.satisfied)throw new LaneError(`migration dependency closure is incomplete: ${closure.blocked.map((row)=>`#${row.number}`).join(', ')}`)
     return {full_ci_success:true,review_approved:true,dependency_closure_complete:true}
@@ -4798,7 +4799,9 @@ export function main(argv, now = new Date(), io = githubIo) {
             if(!resolved)throw new LaneError(`preservation artifact ${preservation} cannot be dereferenced`)
             const verdicts=assertDurableReviewApproval(claimWorkIssue(claim),o.pr,record.head_sha,io,{includeArchived:true})
             const approve=(verdicts??[]).find((row)=>row.verdict==='APPROVE')
-            const approveSha=approve?String(io.readRef(approve.ref)??'').toLowerCase():''
+            // #3806: the validated verdict object itself, never a re-read of its live name,
+            // which an archived verdict no longer has.
+            const approveSha=approve?String(approve.sha??'').toLowerCase():''
             if(!/^[0-9a-f]{40}$/.test(approveSha))throw new LaneError(`no dereferenceable durable APPROVE verdict for pull request #${o.pr} at ${record.head_sha}`)
             record.preservation=preservation
             record.review_approval=`artifact:${approveSha}`

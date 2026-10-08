@@ -312,9 +312,10 @@ export function withArchivedVerdictMirror(io){
     const live=io.listRefs(prefix)
     const mirror=archivedVerdictMirrorPrefix(prefix)
     if(!mirror)return live
+    if(!Array.isArray(live))throw new LaneError(`verdict listing ${prefix} is unreadable; refusing an incomplete reviewer audit`)
     const archived=io.listRefs(mirror)
     if(!Array.isArray(archived))throw new LaneError(`archived verdict mirror ${mirror} is unreadable; refusing an incomplete reviewer audit`)
-    try{return mergeArchivedVerdictRows(live??[],archived)}catch(error){throw new LaneError(error.message)}
+    try{return mergeArchivedVerdictRows(live,archived)}catch(error){throw new LaneError(error.message)}
   }
   return view
 }

@@ -9446,6 +9446,8 @@ test('#3806 archived verdicts stay visible to closed-PR approval readers under t
   assert.equal(view.listRefs('refs/db-review-verdicts/1-2-').length,2,'one object live and archived is one record')
   base.listRefs=((read)=>(prefix)=>prefix.includes('archived')?null:read(prefix))(base.listRefs)
   assert.throws(()=>withArchivedVerdictMirror(base).listRefs('refs/db-review-verdicts/1-2-'),/archived verdict mirror .* is unreadable/)
+  const liveNull=withArchivedVerdictMirror({listRefs:(prefix)=>prefix.includes('archived')?[]:null})
+  assert.throws(()=>liveNull.listRefs('refs/db-review-verdicts/1-2-'),/verdict listing .* is unreadable/,'an unreadable live listing is never masked by a readable archive')
 })
 
 test('#3806 scheduled verdict archive acts only above its threshold and refuses a bad threshold',()=>{

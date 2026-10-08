@@ -23,15 +23,22 @@
 --      runs of '-' to one. Hide a Lucasfilm row when (a) a Disney dcp_property
 --      row has an equal collapsed source_id (the Disney row survives, extending
 --      #3947's exact-match rule), or (b) another Lucasfilm row has an equal
---      collapsed source_id and sorts first under collate "C" (the '---'
---      spelling, which is the one the DCP Vault and Disney use, survives).
+--      collapsed source_id and sorts first under collate "C" ('-' sorts
+--      before letters, so the most-hyphenated spelling survives; e.g. of
+--      '---title-a' and '---title--a' the latter survives; in production
+--      every 3-spelling group also has a Disney twin, which survives instead).
 --      Every spelling has its own approved DCP resolution with one member and
 --      every survivor has an approved resolution; no resolution, member,
 --      capture or source row is changed, so every decision stays stored and the
 --      title stays reachable through its survivor.
 --
--- Cardinality: 70 Lucasfilm rows; the collapse comparisons run over that
--- table and plm.dcp_property (bounded, inside the existing materialized arms).
+-- Cardinality and indexes: no index serves the hyphen-collapse comparisons
+-- (regexp_replace on both sides is not sargable); they scan
+-- plm.lucasfilm_dcp_property (70 rows) and the disney_dcpvault rows of
+-- plm.dcp_property per Lucasfilm row, which is bounded at the documented size.
+-- If either table grows by orders of magnitude, add an expression index on
+-- regexp_replace(source_id, '-+', '-', 'g'). The Warner twin probe is served by
+-- uq_wb_property_source (source_namespace, source_id).
 -- Revert: fix forward, restoring 20261008005647's body.
 
 create or replace function api.db_data_admin_scraped_source_inventory(
@@ -1639,8 +1646,8 @@ begin
   -- and fail at call time).
   if (select count(*) from information_schema.columns
        where table_schema = 'plm' and table_name = 'wb_property'
-         and column_name in ('source_namespace', 'identity_method', 'label')) <> 3 then
-    raise exception '#3947 self-check: plm.wb_property is missing one of source_namespace, identity_method, label';
+         and column_name in ('source_namespace', 'identity_method', 'label', 'source_id')) <> 4 then
+    raise exception '#4081 self-check: plm.wb_property is missing one of source_namespace, identity_method, label, source_id';
   end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'plm' and table_name = 'sesame_brand'

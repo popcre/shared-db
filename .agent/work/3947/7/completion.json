@@ -4,17 +4,17 @@
   "outcome": "ready-for-merge",
   "pr": 4074,
   "migration_versions": [
-    "20261008003511"
+    "20261008005647"
   ],
-  "contract_ref": "refs/db-contracts/3947/6",
-  "contract_sha256": "bb44311db6c5084c70833b8575bfa0de6cfdd23ca259bd95122c8d75ec2a6f42",
-  "head_sha": "9b2f093e12b65bc777f09ca59013648bb736c30d",
-  "base_sha": "c493cfdd005a2668f1409a1bdb0b8f888a09855f",
+  "contract_ref": "refs/db-contracts/3947/7",
+  "contract_sha256": "df63e49c9cc7e21e35e43ec673b415b1f1be1f7d9c3d53c7c22d027d0749e2bc",
+  "head_sha": "72a2f647f6b96bf8761652cb136858b645c5287d",
+  "base_sha": "886566602d1e71254bf408d2b2845b3f615fb0f0",
   "files_changed": [
     "scripts/production_migration_guard.py",
     "scripts/test_post_batch_app_verification.py",
     "scripts/test_production_migration_guard.py",
-    "supabase/migrations/20261008003511_scraped_inventory_warner_fallback_sesame_value_key_dedupe_forward_3.sql"
+    "supabase/migrations/20261008005647_scraped_inventory_warner_fallback_sesame_value_key_dedupe_forward_3.sql"
   ],
   "db_reads": [
     "table plm.wb_property",
@@ -32,12 +32,12 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static checks passed at 9b2f093e12b65bc777f09ca59013648bb736c30d on edge-dev3 (no migration sorts before origin/main newest 20261008001142; EOL reference guard passed)."
+      "evidence": "Static checks passed at 72a2f647f6b96bf8761652cb136858b645c5287d on edge-dev3 (no migration sorts before origin/main newest 20261008001142; EOL reference guard passed)."
     },
     {
       "command": "python3 -m unittest scripts.test_production_migration_guard scripts.test_post_batch_app_verification scripts.test_migration_derivation",
       "exit_code": 0,
-      "evidence": "Ran 487 tests OK at 9b2f093e12b65bc777f09ca59013648bb736c30d. Includes test_scraped_dedupe_second_forward_replacement_is_retired and the byte-identity test across 20261008003511, 20261008001142, 20261007190954 and 20261007020907."
+      "evidence": "Ran 487 tests OK at 72a2f647f6b96bf8761652cb136858b645c5287d. Includes test_scraped_dedupe_second_forward_replacement_is_retired and the byte-identity test across 20261008005647, 20261008001142, 20261007190954 and 20261007020907."
     },
     {
       "command": "database-contract-tests scraped_inventory_warner_sesame_dedupe.sql (CI ephemeral database)",
@@ -51,7 +51,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Claim #3955 reissued through immutable retirement 4961d63a426d2c4ecdaae75a95b1e3e3469cc403 to version 20261008003511 on branch claude/3947-fwd3.",
+    "Claim #3955 reissued through immutable retirement 4961d63a426d2c4ecdaae75a95b1e3e3469cc403 to version 20261008005647 on branch claude/3947-fwd3.",
     "Executable body identity is enforced by test, not asserted in prose.",
     "derived-from: 20261002193034 validated by test_migration_derivation."
   ],

@@ -1,0 +1,106 @@
+name: Shared DB 4060 Rollback Observation
+
+# Owned by proof maintenance; retire after #4060 accepted evidence is archived.
+# Fixed duplicate-only probe. Does not relax or reuse any read-only runner.
+on:
+  workflow_dispatch:
+    inputs:
+      application_commit_sha:
+        description: Exact reviewed DesignFlow backend develop commit
+        type: string
+        required: true
+      producer_pr:
+        description: Merged maintenance PR that added this exact producer
+        type: string
+        required: true
+  pull_request:
+    paths:
+      - '.github/workflows/shared-db-4060-observation.yml'
+      - 'scripts/proofs/shared-db-4060-observation.py'
+      - 'scripts/proofs/test_shared_db_4060_observation.py'
+      - 'scripts/proofs/4060-*'
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: read
+jobs:
+  tests:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: proof_admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U proof_admin"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]==3.2.13'
+      - run: python -m unittest discover -s scripts/proofs -p test_shared_db_4060_observation.py
+        env:
+          PROOF4060_TEST_PORT: '5432'
+  observe:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'popcre/shared-db'
+    needs: tests
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact current main and both governed approvals before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCER_PR: ${{ inputs.producer_pr }}
+          APPLICATION_COMMIT_SHA: ${{ inputs.application_commit_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(node scripts/gh-read.mjs api repos/popcre/shared-db/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
+          [[ "$PRODUCER_PR" =~ ^[1-9][0-9]*$ ]]
+          [[ "$APPLICATION_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          node scripts/gh-read.mjs --out "$RUNNER_TEMP/producer-pr.json" api "repos/popcre/shared-db/pulls/$PRODUCER_PR"
+          python - <<'PY'
+          import json, os, subprocess
+          p=json.load(open(os.environ['RUNNER_TEMP']+'/producer-pr.json'))
+          assert p['merged'] is True and p['base']['ref']=='main' and p['base']['repo']['full_name']=='popcre/shared-db'
+          subprocess.run(['git','merge-base','--is-ancestor',p['merge_commit_sha'],os.environ['GITHUB_SHA']],check=True)
+          allowed=['.github/workflows/shared-db-4060-observation.yml','scripts/proofs/shared-db-4060-observation.py','scripts/proofs/4060-catalog.sql','scripts/proofs/4060-contract.json']
+          for path in allowed:
+              assert subprocess.check_output(['git','show',p['merge_commit_sha']+':'+path])==open(path,'rb').read()
+          open(os.environ['RUNNER_TEMP']+'/producer-head','w').write(p['head']['sha'])
+          PY
+          PR_NUMBER="$PRODUCER_PR" REQUESTED_SHA="$(cat "$RUNNER_TEMP/producer-head")" node scripts/check-exact-head-approval.mjs
+          SOURCE_PR="$(python -c 'import json;print(json.load(open("scripts/proofs/4060-contract.json"))["source_pr"])')"
+          SOURCE_HEAD="$(python -c 'import json;print(json.load(open("scripts/proofs/4060-contract.json"))["source_head"])')"
+          VERSION="$(python -c 'import json;print(json.load(open("scripts/proofs/4060-contract.json"))["migration_version"])')"
+          node scripts/prove-production-risk-acceptance.mjs --issue 4060 --pr "$SOURCE_PR" --head-sha "$SOURCE_HEAD" --main-sha "$GITHUB_SHA" --allowlist "$VERSION" --risks expected_downtime,material_access_change,permanent_data_rewrite_or_loss
+          # Backend acceptance authenticates its own develop run and exact application SHA.
+      - name: Install fixed PostgreSQL client
+        run: python -m pip install 'psycopg[binary]==3.2.13'
+      - name: Prove duplicate rejection in a forced rollback transaction
+        env:
+          APPLICATION_COMMIT_SHA: ${{ inputs.application_commit_sha }}
+          SUPABASE_DB_PASSWORD_PRODUCTION: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
+        run: python scripts/proofs/shared-db-4060-observation.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shared-db-4060-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-db-4060-observation/observation.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 90

@@ -9,8 +9,6 @@
   "head_sha": "8e0fdc081bb30c4648a7f148e4982271898fa6d0",
   "base_sha": "a11ae1ab0319c3bd77566322d5992b5c4b1db7a9",
   "files_changed": [
-    ".agent/work/3536/326/completion.json",
-    ".agent/work/3536/326/contract.json",
     "config/orchestrator-global-invalidators-v1.json",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~review-circuit-breaker.mjs.json",
     "docs/verification/throughput-dispositions/scripts~run-governed-review.mjs.json",

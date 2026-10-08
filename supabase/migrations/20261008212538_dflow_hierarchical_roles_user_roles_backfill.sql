@@ -114,32 +114,18 @@ alter table dflow."Roles"
   add column if not exists parent_id integer,
   add column if not exists is_active boolean not null default true;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'dflow."Roles"'::regclass
-      and conname = 'roles_parent_id_fkey'
-  ) then
-    alter table dflow."Roles"
-      add constraint roles_parent_id_fkey
-      foreign key (parent_id)
-      references dflow."Roles"("Id")
-      on update cascade
-      on delete set null;
-  end if;
+alter table dflow."Roles" drop constraint if exists roles_parent_id_fkey;
+alter table dflow."Roles"
+  add constraint roles_parent_id_fkey
+  foreign key (parent_id)
+  references dflow."Roles"("Id")
+  on update cascade
+  on delete set null;
 
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'dflow."Roles"'::regclass
-      and conname = 'roles_kind_check'
-  ) then
-    alter table dflow."Roles"
-      add constraint roles_kind_check
-      check (kind in ('super', 'category', 'leaf'));
-  end if;
-end
-$$;
+alter table dflow."Roles" drop constraint if exists roles_kind_check;
+alter table dflow."Roles"
+  add constraint roles_kind_check
+  check (kind in ('super', 'category', 'leaf'));
 
 create unique index if not exists roles_name_uidx
   on dflow."Roles" ("Name");

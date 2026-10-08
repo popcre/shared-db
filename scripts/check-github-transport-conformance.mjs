@@ -71,9 +71,11 @@ export function isTestFile(relPath) {
 const NODE_GH_SPAWN =
   /\b(?:execFileSync|execFile|spawnSync|spawn)\s*\(\s*(['"`])gh\1/
 
-// A shell string handed to execSync/exec that starts a `gh` command.
+// A shell string handed to execSync/exec or the repository's former sh helper
+// that starts a `gh` command. The reaper once used sh(`gh ...`), which the
+// original rule missed even though it performed the same direct read.
 const NODE_GH_SHELL =
-  /\b(?:execSync|exec)\s*\(\s*[`'"][^`'"]*\bgh\s+(?:api|issue|pr|run|release|repo|search|api)\b/
+  /\b(?:execSync|exec|sh)\s*\(\s*[`'"][^`'"]*\bgh\s+(?:api|issue|pr|run|release|repo|search)\b/
 
 // `gh api` inside a workflow `run:` block. Matched at a word boundary so
 // `# gh api` in a comment is still matched (a commented example that gets
@@ -126,7 +128,7 @@ export function isWorkflowWrite(line) {
 /**
  * Heredoc BODIES are data, not commands.
  *
- * orchestrator-marker-guard.yml writes an alarm issue whose body tells a human
+ * The (now retired, #3874) orchestrator-marker-guard.yml wrote an alarm issue whose body tells a human
  * "check by hand: gh api …". That text is never executed. Flagging it would
  * force a maintainer either to mangle a genuinely useful instruction or to
  * switch the guard off, and a guard that cries wolf on prose is a guard people

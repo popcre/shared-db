@@ -64,18 +64,21 @@ rules below are the operative summary.
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
-    Grok 4.6, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
-    Gemini 3.8 Flash High, and DeepSeek V4.1 Flash, minus the live orchestrator's own engine — exactly
-    `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`. Gemini
+    Grok 4.6, GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
+    Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and StepFun Step 5 (Linux machines only), minus the authoring engine (automation still keys this on the marker; see #3874) — exactly
+    `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`.
+    **Preference (owner, 2026-09-27, non-orchestrator issue #3592):** the allocator rotates
+    among eligible non-Grok reviewers first; Grok stays active and is drawn only when that
+    preferred pool cannot take the exact review (also for slot 2 and replacements). Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
     was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
     is paused again as of 2026-09-22 (see below). Qwen 3.8 Max was unquarantined on 2026-09-07 by owner
     instruction (ai-devops PR #316, merge `795902d8`) and is drawable again.
-    **GLM 5.3 is paused as of 2026-09-18** (owner instruction, chat directive —
-    weekly account-usage rotation, no provider fault; Kimi verified healthy the
-    same day) and is not drawable until it is removed from `RETIRED_REVIEWERS`;
-    restoring it is a one-line deletion. The 2026-09-17 ruling that GLM never
-    reviews GLM-orchestrated work still binds when it returns.
+    **GLM 5.3 is back in the rotation as of 2026-09-30** (owner instruction,
+    chat: "add GLM back into the reviewer rotation"; deleted from
+    `RETIRED_REVIEWERS` in its historical slot). It was paused 2026-09-18 for
+    weekly account-usage rotation with no provider fault. The 2026-09-17 ruling
+    that GLM never reviews GLM-orchestrated work still binds.
     **Kimi K3 is paused as of 2026-09-22** (owner instruction, issue #3423): its
     account has been out of credit since 2026-09-17, so every draw on it failed and
     left the PR waiting for a replacement. Restore it with a one-line deletion from
@@ -87,6 +90,12 @@ rules below are the operative summary.
     repository through read-only tools (ai-devops PR #730) and passed a live
     qualification and a live governed review. The text-only `deepseek-chat` row,
     RETIRED on 2026-09-01 (issue #2078), stays retired.
+    **StepFun Step 5 (`stepfun-step-5-preview`) is drawable as of 2026-09-25 on
+    Ubuntu/Linux only** (owner instruction): `ai-stepfun review` runs StepCode with
+    read-only tools inside bubblewrap over the sealed evidence packet (ai-devops PR
+    #849). StepCode has no Windows build and the sandbox is Linux-only, so on any
+    other OS `ai-review-preflight usable` reports it `unsupported-platform` and
+    the allocator skips it there like any other unusable provider.
     **Codex GPT-5.6 Sol is NOT in the rotation:** the owner retired it
     permanently on 2026-09-06 (issue #2485) once the other providers were
     working, so it sits in `RETIRED_REVIEWERS` and is not drawable. Its

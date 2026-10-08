@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { evaluateCloseoutReadiness, main } from './check-closeout-readiness.mjs'
+import { jobBlockByName } from './lib/workflow-jobs.mjs'
 
 const SHA = 'a'.repeat(40)
 const payload = (rows) => JSON.stringify(rows)
@@ -65,17 +66,23 @@ test('the contract workflow takes the classification only from protected base po
 })
 
 test('every documents-only decision that can waive a safeguard uses protected policy', () => {
-  const agent = readFileSync(fileURLToPath(new URL('../.github/workflows/agent-work-contract.yml', import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
+  const agent = jobBlockByName(readFileSync(fileURLToPath(new URL('../.github/workflows/pr-guards.yml', import.meta.url)), 'utf8').replace(/\r\n/g, '\n'), 'Agent work contract')
+  assert.ok(agent, 'no job emits Agent work contract')
   const merge = readFileSync(fileURLToPath(new URL('../.github/workflows/guarded-migration-merge.yml', import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
   assert.match(agent, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| steps\.queue\.outputs\.pr_base_sha \}\}/)
   // The exemption is decided on merge_group too, after the queued PR is resolved.
-  assert.match(agent, /id: documents_only\n        if: github\.event_name == 'pull_request' \|\| github\.event_name == 'merge_group'/)
+  assert.match(agent, /id: documents_only\n        if: github\.event_name == 'merge_group' \|\| github\.event_name == 'workflow_dispatch'/)
   assert.ok(agent.indexOf('id: queue') < agent.indexOf('id: documents_only'))
   assert.match(agent, /node trusted-policy\/scripts\/check-documents-only-pull-request\.mjs/)
   assert.match(agent, /steps\.documents_only\.outputs\.value/)
   assert.match(merge, /ref: main\n          path: trusted-policy/)
   // Both the first pass and the lock-held re-proof run protected main's copy.
-  assert.equal(merge.match(/trusted-policy\/scripts\/check-exact-head-approval\.mjs/g).length, 2)
+  assert.equal(merge.match(/trusted-policy\/scripts\/check-exact-head-approval\.mjs/g).length, 3)
+  const retryProof=merge.indexOf('prove_retained_all14()')
+  const finalApproval=merge.indexOf('trusted-policy/scripts/check-exact-head-approval.mjs',retryProof)
+  assert.ok(finalApproval>retryProof)
+  assert.ok(finalApproval<merge.indexOf('gh pr merge',retryProof))
+  assert.match(merge,/for attempt in 1 2 3 4 5; do\n\s+prove_retained_all14/)
   assert.doesNotMatch(merge, /^\s*node scripts\/check-exact-head-approval\.mjs/m)
 })
 

@@ -1,0 +1,347 @@
+name: DesignFlow Sandbox Migrations
+
+# ============================================================================
+# ISSUE #3428. A separate, fail-closed migration route for the DesignFlow
+# non-production SANDBOX Supabase project (xupnyeifmpsacrqahwwm), so structural
+# work such as #2204 can be rehearsed there without treating shared preview or
+# shared production as that sandbox.
+#
+# This workflow NEVER targets shared production or shared preview, and it does
+# not change shared-supabase-migrations.yml in any way. It reuses the existing
+# guarded components unchanged:
+#   - production_migration_guard.py preflight / prepare / assert-bounded /
+#     verify-dry-run (the bounded checkout that makes include-all safe),
+#   - check-exact-head-approval.mjs and merge-queue-contract.mjs (the source
+#     PR's durable independent exact-head verdict and guarded merge),
+#   - production_catalog_verification.py (read-only post-apply catalog proof).
+# Sandbox-only gates live in scripts/sandbox_migration_preflight.py: target
+# identity, the sandbox version blocklist, the same-name collision preflight,
+# the absent-schema statement conditioning (issue #2986; bounded checkout only),
+# and the exact ledger delta. scripts/test_sandbox_migration_preflight.py
+# (WorkflowInvariantTests) pins every invariant below; GitHub reads go through
+# scripts/sandbox-migration-binding.mjs.
+#
+# Only workflow_dispatch. No pull_request / merge_group trigger, so this file
+# emits no required status context and cannot hold up any merge.
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run first; apply needs a successful dry-run run of this workflow for the same commit and allowlist"
+        type: choice
+        required: true
+        default: dry-run
+        options: [dry-run, apply]
+      commit_sha:
+        description: "Exact current origin/main commit SHA"
+        type: string
+        required: true
+      allowlist:
+        description: "Comma-separated exact migration versions, ascending"
+        type: string
+        required: true
+      source_pr:
+        description: "Merged pull request that authored every allowlisted migration"
+        type: string
+        required: true
+      confirmation:
+        description: "Type DRY-RUN <sha> or APPLY <sha>"
+        type: string
+        required: true
+      dry_run_run_id:
+        description: "Apply only: run ID of the successful sandbox dry-run for this commit and allowlist"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+  actions: read
+
+# THE SERIAL TARGET LOCK. One global group for every run of this workflow and
+# of sandbox-ledger-orphan-reconciliation.yml, the two routes in this
+# repository that can write to the sandbox (this one applies migrations; that
+# one performs metadata-only ledger reconciliation), so at most one sandbox
+# run ever holds the target. Queued runs wait; nothing is cancelled mid-apply.
+# It is deliberately NOT the preview or production group: those lanes neither
+# guard nor are blocked by the sandbox.
+concurrency:
+  group: designflow-sandbox-migrations
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    name: DesignFlow sandbox bounded migration
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 60
+    # The sandbox database password is an ENVIRONMENT secret, visible only to
+    # jobs bound to this environment.
+    environment: designflow-sandbox
+    env:
+      SANDBOX_PROJECT_REF: xupnyeifmpsacrqahwwm
+      PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+      MODE: ${{ inputs.mode }}
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      SANDBOX_ALLOWLIST: ${{ inputs.allowlist }}
+      SOURCE_PR: ${{ inputs.source_pr }}
+    steps:
+      # FIRST, before any checkout or credential: the typed inputs.
+      - name: Refuse malformed inputs before anything else
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DRY_RUN_RUN_ID: ${{ inputs.dry_run_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$SANDBOX_PROJECT_REF" = "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE" ]; then
+            echo "REFUSED: the sandbox job is pointed at PRODUCTION." >&2; exit 2
+          fi
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo "REFUSED: repository variable PREVIEW_PROJECT_REF is unset, so the sandbox cannot be proven distinct from preview." >&2; exit 2
+          fi
+          if [ "$SANDBOX_PROJECT_REF" = "$PREVIEW_PROJECT_REF" ]; then
+            echo "REFUSED: the sandbox job is pointed at the shared PREVIEW branch." >&2; exit 2
+          fi
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "REFUSED: commit_sha must be a full 40-character SHA." >&2; exit 2
+          fi
+          if ! [[ "$SOURCE_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "REFUSED: source_pr must be one pull request number." >&2; exit 2
+          fi
+          if [ -z "${SANDBOX_ALLOWLIST// /}" ]; then
+            echo "REFUSED: allowlist is empty. This route applies ONLY the versions you name." >&2; exit 2
+          fi
+          case "$MODE" in
+            dry-run) EXPECTED="DRY-RUN $COMMIT_SHA" ;;
+            apply)
+              EXPECTED="APPLY $COMMIT_SHA"
+              if ! [[ "$DRY_RUN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+                echo "REFUSED: apply needs dry_run_run_id naming the successful sandbox dry-run." >&2; exit 2
+              fi ;;
+            *) echo "REFUSED: unknown mode $MODE" >&2; exit 2 ;;
+          esac
+          if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+            echo "REFUSED: confirmation must be exactly '$EXPECTED'." >&2; exit 2
+          fi
+      - name: Refuse a missing sandbox credential before it is used
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "REFUSED: environment secret SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX is not provisioned for environment designflow-sandbox." >&2; exit 2
+          fi
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "REFUSED: SUPABASE_ACCESS_TOKEN is not available." >&2; exit 2
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact main commit
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$COMMIT_SHA" ] || [ "$(git rev-parse origin/main)" != "$COMMIT_SHA" ]; then
+            echo "REFUSED: commit_sha is not the current origin/main tip." >&2; exit 2
+          fi
+      - name: Sandbox allowlist gate
+        run: python scripts/sandbox_migration_preflight.py allowlist --repo "$GITHUB_WORKSPACE" --allowlist "$SANDBOX_ALLOWLIST"
+      - name: Bind the source PR (merged, authored every version, independently approved)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SOURCE_HEAD="$(node scripts/sandbox-migration-binding.mjs --source-pr "$SOURCE_PR" --commit-sha "$COMMIT_SHA" --allowlist "$SANDBOX_ALLOWLIST")"
+          GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
+          if [ "$GUARDED_STATE" != success ]; then
+            echo "REFUSED: source PR head ${SOURCE_HEAD} has no successful guarded-merge authorization (state: ${GUARDED_STATE:-none})." >&2; exit 2
+          fi
+          PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
+      - name: Verify the target identity
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python scripts/sandbox_migration_preflight.py identity --project-ref "$SANDBOX_PROJECT_REF"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.105.0
+      - name: Capture sandbox migration record (before)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+        run: |
+          set -euo pipefail
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$SANDBOX_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          if [ "$(cat supabase/.temp/project-ref)" != "$SANDBOX_PROJECT_REF" ]; then
+            echo "REFUSED: the CLI linked a project other than the sandbox." >&2; exit 2
+          fi
+          supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-before.txt"
+      - name: Ledger preflight (shared hard guard, judged against the sandbox ledger)
+        run: |
+          python scripts/production_migration_guard.py preflight \
+            --repo "$GITHUB_WORKSPACE" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --ledger-name sandbox
+      - name: Catalog collision preflight (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python scripts/sandbox_migration_preflight.py collisions \
+            --repo "$GITHUB_WORKSPACE" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --project-ref "$SANDBOX_PROJECT_REF"
+      - name: Build bounded checkout
+        run: |
+          python scripts/production_migration_guard.py prepare \
+            --repo "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/bounded-sandbox" \
+            --commit-sha "$COMMIT_SHA" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --ledger-name sandbox
+      - name: Condition absent-schema statements (bounded checkout only, both modes)
+        # Issue #2986. The sandbox does not carry every schema production has
+        # (dflow_prod is absent until the structural route creates it), so an
+        # allowlisted statement targeting an absent schema would fail 42P01
+        # mid-batch. This step wraps exactly those statements, in the bounded
+        # checkout ONLY, in a live schema-existence guard -- identically in
+        # dry-run and apply mode, so the green dry-run proves the exact bytes
+        # apply will run. The repository migration files are never modified,
+        # and the preview/production lanes never call this code. Statements
+        # this lane cannot condition are refused by name; none is ever
+        # silently skipped.
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python scripts/sandbox_migration_preflight.py condition \
+            --repo "$RUNNER_TEMP/bounded-sandbox" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --project-ref "$SANDBOX_PROJECT_REF" \
+            --evidence-out "$RUNNER_TEMP/sandbox-schema-conditioning.json"
+      - name: Apply only on the exact successful dry-run evidence
+        if: inputs.mode == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN_RUN_ID: ${{ inputs.dry_run_run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/sandbox-migration-binding.mjs --dry-run-run "$DRY_RUN_RUN_ID" --commit-sha "$COMMIT_SHA"
+          gh run download "$DRY_RUN_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "sandbox-migration-dry-run-${COMMIT_SHA}" -D "$RUNNER_TEMP/prior-dry-run"
+          if [ "$(cat "$RUNNER_TEMP/prior-dry-run/sandbox-allowlist.txt")" != "$SANDBOX_ALLOWLIST" ]; then
+            echo "REFUSED: the dry-run evidence was for a different allowlist." >&2; exit 2
+          fi
+          # Issue #2986: the conditioning decisions depend on the LIVE schema
+          # state, so the apply is bound to the dry run's conditioning evidence
+          # by digest, not just by commit and allowlist. If the schema state
+          # moved between the two runs, the bytes apply would run are not the
+          # bytes the dry run proved; dispatch a fresh dry run at that point.
+          if [ ! -f "$RUNNER_TEMP/prior-dry-run/sandbox-schema-conditioning.json" ] || [ ! -f "$RUNNER_TEMP/sandbox-schema-conditioning.json" ]; then
+            echo "REFUSED: the dry-run/apply schema-conditioning evidence pair is incomplete; dispatch a fresh dry-run." >&2; exit 2
+          fi
+          PRIOR_DIGEST="$(python -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$RUNNER_TEMP/prior-dry-run/sandbox-schema-conditioning.json")"
+          THIS_DIGEST="$(python -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$RUNNER_TEMP/sandbox-schema-conditioning.json")"
+          if [ "$PRIOR_DIGEST" != "$THIS_DIGEST" ]; then
+            echo "REFUSED: the sandbox schema state (or the migrations) changed between the proven dry-run and this apply; dispatch a fresh dry-run." >&2; exit 2
+          fi
+      - name: Bounded dry-run, then apply in apply mode
+        id: apply
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+        run: |
+          cd "$RUNNER_TEMP/bounded-sandbox"
+          supabase link --project-ref "$SANDBOX_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          set -euo pipefail
+          printf '%s' "$SANDBOX_ALLOWLIST" > "$RUNNER_TEMP/sandbox-allowlist.txt"
+          if [ "$(cat supabase/.temp/project-ref)" != "$SANDBOX_PROJECT_REF" ]; then
+            echo "REFUSED: the bounded checkout is linked to a project other than the sandbox." >&2; exit 2
+          fi
+          # The atomic psql apply path supports only preview and production.
+          ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
+            --migrations-dir "$RUNNER_TEMP/bounded-sandbox/supabase/migrations" \
+            --classify-allowlist "$SANDBOX_ALLOWLIST")"
+          if [ -n "$ATOMIC_VERSION" ]; then
+            echo "REFUSED: $ATOMIC_VERSION needs the atomic apply path, which this sandbox route does not support." >&2; exit 2
+          fi
+          # Re-prove the bound AT THE POINT OF USE, last before the push.
+          python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
+            --dir "$RUNNER_TEMP/bounded-sandbox" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+          supabase db push --include-all --dry-run 2>&1 | tee "$RUNNER_TEMP/sandbox-dry-run.txt"
+          python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" verify-dry-run \
+            --dry-run-output "$RUNNER_TEMP/sandbox-dry-run.txt" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+          if [ "$MODE" = apply ]; then
+            python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
+              --dir "$RUNNER_TEMP/bounded-sandbox" \
+              --allowlist "$SANDBOX_ALLOWLIST" \
+              --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+            # Main must still be exactly the dispatched commit at the moment of the write.
+            git -C "$GITHUB_WORKSPACE" fetch -q origin main
+            if [ "$(git -C "$GITHUB_WORKSPACE" rev-parse origin/main)" != "$COMMIT_SHA" ]; then
+              echo "REFUSED: origin/main moved after dispatch; nothing was applied. Dispatch again at the new tip." >&2; exit 2
+            fi
+            # THE WRITE. Sandbox only.
+            supabase db push --include-all 2>&1 | tee "$RUNNER_TEMP/sandbox-apply.txt"
+          fi
+      - name: Capture sandbox migration record (after)
+        if: always() && inputs.mode == 'apply'
+        env:
+          # `migration list` reads the Management API and needs the access
+          # token; without it the after-ledger is an error page, verify-ledger
+          # sees no versions, and every successful apply ends the job red
+          # (live proof: apply run 37102659147 applied 20260928182014 and the
+          # catalog contract passed, but this step had no token).
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/bounded-sandbox"
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-after.txt"
+      - name: Post-apply ledger proof
+        if: always() && inputs.mode == 'apply'
+        run: |
+          python scripts/sandbox_migration_preflight.py verify-ledger \
+            --before "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --after "$RUNNER_TEMP/sandbox-ledger-after.txt" \
+            --allowlist "$SANDBOX_ALLOWLIST"
+      - name: Post-apply catalog verification (read-only)
+        if: always() && inputs.mode == 'apply'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          VERIFY_MODE: ${{ steps.apply.outcome == 'success' && 'enforce' || 'record' }}
+        run: |
+          set -o pipefail
+          python scripts/production_catalog_verification.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --allowlist "$SANDBOX_ALLOWLIST" \
+            --output-dir "$RUNNER_TEMP/catalog-verification" \
+            --project-ref "$SANDBOX_PROJECT_REF" \
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --mode "$VERIFY_MODE" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Save sandbox evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-migration-${{ inputs.mode }}-${{ inputs.commit_sha }}
+          path: |
+            ${{ runner.temp }}/sandbox-allowlist.txt
+            ${{ runner.temp }}/sandbox-ledger-before.txt
+            ${{ runner.temp }}/sandbox-ledger-after.txt
+            ${{ runner.temp }}/sandbox-dry-run.txt
+            ${{ runner.temp }}/sandbox-apply.txt
+            ${{ runner.temp }}/sandbox-schema-conditioning.json
+            ${{ runner.temp }}/catalog-verification/
+            ${{ runner.temp }}/bounded-sandbox/supabase/migration-content-manifest.json
+          retention-days: 90

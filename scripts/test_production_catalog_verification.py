@@ -2169,7 +2169,7 @@ class SupersededContractBatchTests(unittest.TestCase):
                 by_id[early]["superseded_objects"],
                 [
                     "routine:public.search_dam_documents("
-                    "text,jsonb,integer,integer,text[],extensions.vector,real)"
+                    "text,jsonb,integer,integer,text[],extensions.vector,real,real)"
                 ],
             )
         self.assertNotIn("superseded_by", by_id[self.FORWARD_8])
@@ -2308,7 +2308,7 @@ class SupersededContractBatchTests(unittest.TestCase):
             ),
             {
                 "routine:public.search_dam_documents("
-                "text,jsonb,integer,integer,text[],extensions.vector,real)",
+                "text,jsonb,integer,integer,text[],extensions.vector,real,real)",
             },
         )
         # Overload precision: a different argument signature is a different
@@ -2470,7 +2470,7 @@ class CatalogAbsenceCheckTests(unittest.TestCase):
             ("20260101000002", "do $ begin perform 1; end $;\n", [{
                 "id": "helper_is_gone", "kind": "catalog_absence",
                 "object": "public.search_dam_documents(text,jsonb,integer,integer,"
-                          "text[],extensions.vector,real)",
+                          "text[],extensions.vector,real,real)",
                 "expected_count": 1,
             }]),
         ]
@@ -2484,7 +2484,7 @@ class CatalogAbsenceCheckTests(unittest.TestCase):
         self.assertNotIn("helper_is_present", sql)
         self.assertIn("helper_is_gone", sql)
         self.assertIn("to_regprocedure('public.search_dam_documents(text,jsonb,"
-                      "integer,integer,text[],extensions.vector,real)') is null", sql)
+                      "integer,integer,text[],extensions.vector,real,real)') is null", sql)
 
 
 class NetAclTests(unittest.TestCase):
@@ -3449,6 +3449,122 @@ class CatalogBehaviorSqlMutationCoverageTests(unittest.TestCase):
         check["superseded_by"] = "20260102000000"
         with self.assertRaisesRegex(GuardError, "every check is superseded"):
             build_behavior_sql([check])
+
+
+class HtsProductPhraseContractTests(unittest.TestCase):
+    """Issue #2986: the phrase migration's own post-apply evidence."""
+
+    VERSION = "20260928182014"
+
+    def migration(self):
+        return next((REPO / "supabase" / "migrations").glob(f"{self.VERSION}_*.sql"))
+
+    def test_phrase_contract_is_registered_and_schema_conditioned(self):
+        sql = CATALOG_CONTRACTS["hts_product_phrase_columns_v1"]
+        self.assertIn("table_schema = 'plm'", sql)
+        # The dflow_prod half is owed only where the schema exists, mirroring the
+        # sandbox conditioning lane; the plm half is owed everywhere.
+        self.assertIn("not exists (select 1 from pg_namespace where nspname = 'dflow_prod')", sql)
+        self.assertIn("table_schema = 'dflow_prod'", sql)
+        self.assertEqual(sql.count("'hts_product_phrase_at'"), 4)
+        self.assertEqual(sql.count("'RFQItem'"), 6)
+        self.assertIn("is_nullable = 'YES'", sql)
+        self.assertIn("column_default is null", sql)
+        self.assertNotRegex(sql.lower(), r";.*(insert|update|delete|drop table|create table|alter table)")
+
+    def test_phrase_sidecar_binds_the_contract_to_the_real_file(self):
+        checks = load_behavior_sidecars(REPO, {self.VERSION: self.migration()}, [self.VERSION])
+        self.assertEqual([check["id"] for check in checks], ["hts_product_phrase_columns_contract"])
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(checks[0]["contract"], "hts_product_phrase_columns_v1")
+        self.assertEqual(checks[0]["expected_count"], 1)
+        sql = build_behavior_sql(checks)
+        self.assertIn("hts_product_phrase_columns_contract", sql)
+        self.assertIn("hts_product_phrase_columns_v1", CATALOG_CONTRACTS)
+
+    def test_phrase_migration_derives_no_lexer_target_so_the_sidecar_is_the_only_evidence(self):
+        # The quoted mixed-case identifiers are invisible to the statement lexer,
+        # so without the sidecar a phrase-only allowlist verifies NOTHING and
+        # enforcing mode refuses. This pin keeps that reason honest.
+        self.assertTrue(derive_targets({self.VERSION: self.migration()}, [self.VERSION]).is_empty())
+
+
+
+class LegacyPropertiesSchemaMoveContractTests(unittest.TestCase):
+    VERSION = "20261006203846"
+
+    def checks(self):
+        migrations = {p.name[:14]: p for p in (REPO / "supabase" / "migrations").glob("*.sql")}
+        return migrations, load_behavior_sidecars(REPO, migrations, [self.VERSION])
+
+    def test_real_schema_move_keeps_every_existing_check_and_adds_exact_contract(self):
+        migrations, checks = self.checks()
+        self.assertEqual(len(checks), 12)
+        named = [c for c in checks if c["kind"] == "catalog_contract"]
+        self.assertEqual({c["contract"] for c in named}, {"designflow_legacy_properties_dflow_shape_v1", "designflow_legacy_properties_id_primary_key_v1"})
+        self.assertTrue(all(c["expected_count"] == 1 for c in named))
+        self.assertTrue(derive_targets(migrations, [self.VERSION]).is_empty())
+        expression = CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"]
+        for text in ["relkind='r'", "dflow.properties_and_characters", "character varying(255)", "character varying(50)", "character varying(100)", "timestamp with time zone", "c.contype='p'", "c.conkey=array[a.attnum]"]:
+            self.assertIn(text, expression)
+
+    def test_contract_column_names_match_the_applied_migration(self):
+        import re
+        migrations, checks = self.checks()
+        expression = CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"]
+        actual = re.findall(r"\('([^']+)'\s*,\s*'[^']+'\s*,\s*(?:true|false)\)", expression)
+        expected = ["id", "name", "type", "licensor_id", "source_licensed_property_id", "source_character_id", "created_at", "updated_at"]
+        self.assertEqual(actual, expected)
+        migration = migrations[self.VERSION].read_text()
+        for name in expected:
+            self.assertIn(name, migration)
+        absence = [c for c in checks if c["kind"] == "catalog_absence"]
+        self.assertEqual(len(absence), 1)
+        self.assertIn("core", json.dumps(absence))
+
+    def test_primary_key_check_preserves_its_identity_and_proves_validated_id_key(self):
+        _, checks = self.checks()
+        pk = next(c for c in checks if c["id"] == "legacy_properties_primary_key")
+        self.assertEqual(pk["kind"], "catalog_contract")
+        expression = CATALOG_CONTRACTS[pk["contract"]]
+        for clause in ["pg_constraint", "pg_attribute", "a.attname='id'", "c.contype='p'", "c.convalidated", "c.conkey=array[a.attnum]"]:
+            self.assertIn(clause, expression)
+        self.assertNotIn("information_schema", expression)
+
+    def test_full_enforcing_entrypoint_accepts_only_all_matching_checks(self):
+        from production_catalog_verification import verify
+        migrations, _ = self.checks()
+        eligible_version = "20261007000937"
+        checks = load_behavior_sidecars(REPO, migrations, [eligible_version])
+        for index, mode, expected in [(-1, "pass", 0)] + [(i, mode, 1) for i in range(len(checks)) for mode in ("missing", "wrong")]:
+            rows = [{"id": c["id"], "actual_count": c["expected_count"], "expected_count": c["expected_count"]} for c in checks]
+            if mode == "missing":
+                rows.pop(index)
+            if mode == "wrong":
+                rows[index]["actual_count"] = 0
+            with tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query", return_value=[{"report": {"behavior_checks": rows}}]), mock.patch("sys.stdout", new=io.StringIO()):
+                result = verify(REPO, eligible_version, Path(tmp), "synthetic-project", "synthetic-token", True)
+                self.assertEqual(result, expected)
+                payload = json.loads((Path(tmp) / "production-catalog-verification.json").read_text())
+                self.assertEqual(len(payload["behavior_checks"]), 12)
+                self.assertEqual(payload["errors"], [])
+
+    def test_retired_original_refuses_before_any_catalog_query(self):
+        from production_catalog_verification import verify
+        from production_migration_guard import GuardError
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query") as query:
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                verify(REPO, self.VERSION, Path(tmp), "synthetic-project", "synthetic-token", True)
+            query.assert_not_called()
+
+    def test_forward_preserves_all_original_conditions_and_unique_check_ids(self):
+        migrations, original = self.checks()
+        forward = load_behavior_sidecars(REPO, migrations, ["20261007000937"])
+        self.assertEqual(len(forward), 12)
+        self.assertEqual({c["id"] for c in original} & {c["id"] for c in forward}, set())
+        def conditions(checks):
+            return [{k: v for k, v in c.items() if k not in ("id", "migration_version", "version", "migration_sha256")} for c in checks]
+        self.assertEqual(conditions(original), conditions(forward))
 
 
 if __name__ == "__main__":

@@ -60,6 +60,22 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
+    env:
+      NODE_OPTIONS: ''
+      NODE_PATH: ''
+      BASH_ENV: ''
+      ENV: ''
+      LD_PRELOAD: ''
+      LD_LIBRARY_PATH: ''
+      PYTHONPATH: ''
+      PYTHONHOME: ''
+      PYTHONNOUSERSITE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONSAFEPATH: '1'
+      GIT_CONFIG_GLOBAL: /dev/null
+      GIT_CONFIG_NOSYSTEM: '1'
+      GIT_CONFIG_COUNT: '0'
+      GIT_EXTERNAL_DIFF: ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,7 +87,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Capture trusted executable path before pull-request code runs
+      - name: Capture trusted executable path; pull-request code is never executed
         id: trusted_tools
         run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
       - name: Check out protected main policy separately from the pull request
@@ -79,7 +95,24 @@ jobs:
         with:
           ref: main
           path: trusted-policy
-          fetch-depth: 1
+          # Full history (#3669): the merge-lane acquisition asks
+          # classifyBranchFreshness for the merge base of the head and the main
+          # tip. A depth-1 checkout has no merge base, so "main moved
+          # independently" (#2758) was always refused.
+          fetch-depth: 0
+      - name: Bind protected executable source and PR data before credentials
+        id: executable_source
+        working-directory: trusted-policy
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          trusted_sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$trusted_sha" = "$(git rev-parse origin/main)"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/lib/agent-evidence-paths.mjs" \
+            --data-root "$GITHUB_WORKSPACE" --head-sha '${{ inputs.head_sha }}' \
+            --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha "$trusted_sha"
+          echo "sha=$trusted_sha" >> "$GITHUB_OUTPUT"
       - name: Pre-flight the required status checks before taking the merge lane
         id: trusted_preflight
         working-directory: trusted-policy
@@ -87,6 +120,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
+          PR_NUMBER: ${{ inputs.pull_request }}
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
           TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
           NODE_OPTIONS: ''
@@ -107,12 +141,29 @@ jobs:
             exit 1
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "$PR_NUMBER" = 3998 ]; then export QUEUE_RETIREMENT_PHASE=13; fi
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
+      # from the per-repository Actions installation limit. Writes keep github.token.
+      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Refuse out-of-boundary self-service changes before taking the merge lane
         working-directory: trusted-policy
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-self-service-additive-lane.mjs --pr "${{ inputs.pull_request }}"
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+        run: node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-self-service-additive-lane.mjs" --pr "${{ inputs.pull_request }}"
       # The protected-main preflight above fetches and proves current main before
       # any pull-request script runs. Quota exhaustion waits outside the lock.
       - name: Check the GitHub API quota before taking the merge lane
@@ -124,24 +175,31 @@ jobs:
           # authority reads (GraphQL + REST) on top of the status/check reads;
           # the absolute quota cost is not yet metered per merge.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
-        run: node scripts/check-actions-quota.mjs
+        run: node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-actions-quota.mjs"
       - name: Acquire the exclusive merge lane
         id: merge_lock
         working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
-          node scripts/manage-migration-author-lanes.mjs --acquire-merge \
+          # The freshness re-check below runs git merge-base / merge-tree on the
+          # head and the live main tip: both commits must exist locally (#3669).
+          # Fetching objects only; nothing from the head is checked out or run.
+          git fetch --no-tags --quiet origin main "$HEAD_SHA"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/manage-migration-author-lanes.mjs" --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
             --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
       - name: Re-read required-check authority under the merge lock from protected main
+        id: trusted_underlock_preflight
         working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
           AUTHORITY_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
+          PR_NUMBER: ${{ inputs.pull_request }}
           PREFLIGHT_WAIT_SECONDS: '0'
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
           TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
@@ -162,41 +220,69 @@ jobs:
             echo 'Protected-main checkout is dirty under the merge lock' >&2
             exit 1
           fi
+          if [ "$PR_NUMBER" = 3998 ]; then export QUEUE_RETIREMENT_PHASE=13; fi
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+          if [ "$PR_NUMBER" = 3998 ]; then
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs" --capture-authority-file
+          fi
       - name: Require current main and rerun every applicable coordination guard
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ inputs.pull_request }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
+          export PATH='${{ steps.trusted_tools.outputs.path }}'
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/lib/agent-evidence-paths.mjs" --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha '${{ steps.executable_source.outputs.sha }}'
           git fetch origin main
-          node scripts/check-main-tip-freshness.mjs --contains
-          bash scripts/check-sql.sh
-          node scripts/check-production-verification-sidecars.mjs --base origin/main
-          node scripts/check-migration-pr-lease.mjs
-          node scripts/check-live-proof-probe.mjs
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
+          bash "$GITHUB_WORKSPACE/trusted-policy/scripts/check-sql.sh" --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-sha '${{ steps.executable_source.outputs.sha }}'
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-production-verification-sidecars.mjs" --base origin/main --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-sha '${{ steps.executable_source.outputs.sha }}'
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
       - name: Re-prove the head and merge while the lock is held
         id: guarded_merge
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHORITY_FILE_IDENTITY: ${{ steps.trusted_underlock_preflight.outputs.authority_file_identity }}
           # The merge lane is held: never sit on it waiting for a quota reset.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
           PR_NUMBER: ${{ inputs.pull_request }}
           REQUESTED_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
-          test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+          export PATH='${{ steps.trusted_tools.outputs.path }}'
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/lib/agent-evidence-paths.mjs" --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha '${{ steps.executable_source.outputs.sha }}'
+          test "$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
           git fetch origin main
-          node scripts/check-main-tip-freshness.mjs --contains
-          node scripts/check-pr-object-collisions.mjs
-          node scripts/check-migration-pr-lease.mjs
-          node scripts/check-live-proof-probe.mjs
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
+          # Dispatch runs protected main, but collision checking reads the frozen PR.
+          # Re-read its full identity before binding only that command's head.
+          collision_pr="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          printf '%s' "$collision_pr" | node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const pr = JSON.parse(readFileSync(0, "utf8"));
+            const expected = process.env;
+            if (!/^[1-9][0-9]*$/.test(expected.PR_NUMBER ?? "") ||
+                !/^[0-9a-f]{40}$/.test(expected.REQUESTED_SHA ?? "") ||
+                pr.number !== Number(expected.PR_NUMBER) || pr.state !== "open" ||
+                pr.head?.sha !== expected.REQUESTED_SHA ||
+                pr.head?.repo?.full_name !== expected.GITHUB_REPOSITORY ||
+                pr.base?.repo?.full_name !== expected.GITHUB_REPOSITORY ||
+                pr.base?.ref !== "main") {
+              throw new Error("guarded collision target is not the exact open canonical pull request on main");
+            }
+          '
+          GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
           # Re-proven under the lock: a reviewer can withdraw, or a refusal can
           # land, between the first pass and the merge itself. Protected main's
           # copy, never the pull request's own, on BOTH passes.
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated'
+          umask 077
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated' > "$RUNNER_TEMP/self-authorization-receipt.json"
           # The status write above and the mergeability GitHub evaluates below are
           # EVENTUALLY CONSISTENT. Posting the status and merging back-to-back asked
           # GitHub to honour an approval it had not recorded yet, so every attempt was
@@ -216,7 +302,7 @@ jobs:
           # which is indistinguishable from "not green yet", so a broken token spent a
           # full minute of the exclusive lock looking like eventual consistency (#1201).
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            observed="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
+            observed="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/merge-queue-contract.mjs" --authorization-state --head-sha "$REQUESTED_SHA")"
             [ "$observed" = 'success' ] && break
             echo "authorization not visible yet (attempt $attempt, observed='${observed:-none}'); waiting"
             sleep 6
@@ -235,9 +321,28 @@ jobs:
           #              only a refusal that NAMES the merge queue switches the
           #              attempt to queue admission, once. Any other refusal
           #              behaves exactly as before.
-          queue_mode="$(node scripts/merge-queue-contract.mjs --queue-mode)" || queue_mode="unknown"
+          # Only3998 retains the original14 proof after reviewed12 policy retirement.
+          # Each mutation gets fresh proof, including propagation retries/fallback.
+          prove_retained_all14() {
+            [ "$PR_NUMBER" = 3998 ] || return 0
+            test "$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/git/ref/db-coordination/merge" --jq .object.sha)" = '${{ steps.merge_lock.outputs.owner_sha }}'
+            test "$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/git/matching-refs/db-coordination/promotion-freeze" --jq length)" = 0
+            git fetch origin main
+            test "$(git -C "$GITHUB_WORKSPACE/trusted-policy" rev-parse HEAD)" = "$(git rev-parse origin/main)"
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
+            GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+            QUEUE_RETIREMENT_PHASE=14 PREFLIGHT_WAIT_SECONDS=0 \
+              TRUSTED_POLICY_SHA='${{ steps.trusted_preflight.outputs.sha }}' \
+              SELF_AUTHORIZATION_RECEIPT="$RUNNER_TEMP/self-authorization-receipt.json" \
+              node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
+          }
+          queue_mode="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/merge-queue-contract.mjs" --queue-mode)" || queue_mode="unknown"
           echo "merge queue mode: $queue_mode"
           if [ "$queue_mode" = 'active' ]; then
+            prove_retained_all14
             gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
             echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
             exit 0
@@ -247,6 +352,7 @@ jobs:
           # the repository-wide merge lock for two more minutes before failing (#1201).
           merged=0
           for attempt in 1 2 3 4 5; do
+            prove_retained_all14
             if gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}" 2>"$RUNNER_TEMP/merge-error.txt"; then
               merged=1; break
             fi
@@ -258,6 +364,7 @@ jobs:
               # admission — still exact-head pinned, still without the
               # administrator bypass.
               echo "GitHub requires the merge queue; switching this admission to queue mode"
+              prove_retained_all14
               gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
               echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
               exit 0
@@ -267,9 +374,9 @@ jobs:
               break
             fi
             echo "guarded merge attempt $attempt hit the known authorization propagation delay; re-proving the head and retrying"
-            test "$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
+            test "$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
             git fetch origin main
-            node scripts/check-main-tip-freshness.mjs --contains
+            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
             sleep 10
           done
           test "$merged" = '1'
@@ -282,6 +389,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: Remove this run's protected authority scratch file
+        if: always()
+        env:
+          AUTHORITY_FILE_IDENTITY: ${{ steps.trusted_underlock_preflight.outputs.authority_file_identity }}
+        run: node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs" --cleanup-authority-file
       - name: Revoke authorization if the guarded merge did not complete
         id: revoke_authorization
         if: failure() && steps.merge_lock.outputs.owner_sha != ''
@@ -307,4 +419,4 @@ jobs:
           export PATH="$TRUSTED_PATH"
           test "$(git rev-parse HEAD)" = "$TRUSTED_MAIN_SHA"
           test -z "$(git status --porcelain)"
-          node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/manage-migration-author-lanes.mjs" --release-merge --owner-sha "$OWNER_SHA"

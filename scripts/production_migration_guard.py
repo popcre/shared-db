@@ -67,7 +67,7 @@ MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
 HARD_BLOCKED = {
     # #4060: merged PR4063 carries no PR-owned evidence pair, so its production
     # risk review cannot bind. Preview applied it. Claim4062 was reissued; only
-    # forward replacement 20261008011444 may apply.
+    # forward replacement 20261008160444 may apply.
     "20261007232712",
     # #3890: preserve applied historical ledgers; only the governed forward release may promote.
     "20261006203846",

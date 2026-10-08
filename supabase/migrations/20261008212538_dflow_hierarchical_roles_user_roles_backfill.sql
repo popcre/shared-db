@@ -294,6 +294,7 @@ declare
   bad_membership text;
   missing_tree text;
   incomplete_grants text;
+  unmapped_copy text;
 begin
   select count(*) into expected_admin
   from dflow.users
@@ -354,7 +355,7 @@ begin
     raise exception 'ABORT: tree rows incomplete or mis-typed: %', bad_tree;
   end if;
 
-  select string_agg(u.email, ', ' order by u.email)
+  select string_agg(coalesce(u.email, u.id::text || ' (no email)'), ', ' order by u.email)
     into bad_membership
   from dflow.user_roles ur
   join dflow."Roles" r on r."Id" = ur.role_id
@@ -365,12 +366,38 @@ begin
     raise exception 'ABORT: membership on a category (people hold leaves only): %', bad_membership;
   end if;
 
-  -- H2: assert every user received the expected leaf grants for their level.
-  -- A silent inner-join drop in the backfill would leave users under-granted.
+  -- F2: assert the RolePermissions copy did not silently drop any source
+  -- role-level row. Every role-level row's permission must be reachable from
+  -- the user_roles tree (leaf or parent category) after the copy.
+  -- The unmapped CASE branch (role names outside the five known ones) would
+  -- silently drop such rows — catch that here.
+  select string_agg(source."Name" || '→' || coalesce(target."Name", '<UNMAPPED>'), ', ' order by source."Name")
+    into unmapped_copy
+  from dflow."RolePermissions" p
+  join dflow."Roles" source on source."Id" = p."RoleId"
+  left join dflow."Roles" target
+    on target."Name" = case source."Name"
+         when 'designer'         then 'design'
+         when 'vendor'           then 'vendors'
+         when 'sourcing_manager' then 'sourcing'
+         when 'production'       then 'production'
+         when 'sales'            then 'sales'
+       end
+  where p."UserId" is null
+    and target."Name" is distinct from source."Name"
+    and target."Id" is null;
+
+  if unmapped_copy is not null then
+    raise exception 'ABORT: role-level RolePermissions on unmapped source roles (would be silently dropped): %', unmapped_copy;
+  end if;
+
+  -- H2 / F1: assert every user received the expected leaf grants for their level.
+  -- NULL-safe: coalesce email so a NULL email cannot defeat string_agg.
   select string_agg(detail, '; ' order by detail)
     into incomplete_grants
   from (
-    select u.email || ' (level=' || coalesce(u.level,'<NULL>') || ', expected=' || m.expected_count
+    select coalesce(u.email, u.id::text || ' (no email)')
+           || ' (level=' || coalesce(u.level,'<NULL>') || ', expected=' || m.expected_count
            || ', actual=' || coalesce(g.actual_count, 0) || ')' as detail
     from dflow.users u
     join (

@@ -38,7 +38,11 @@
 -- plm.dcp_property per Lucasfilm row, which is bounded at the documented size.
 -- If either table grows by orders of magnitude, add an expression index on
 -- regexp_replace(source_id, '-+', '-', 'g'). The Warner twin probe is served by
--- uq_wb_property_source (source_namespace, source_id).
+-- uq_wb_property_source (source_namespace, source_id). Carried from #3947:
+-- the retained Warner fallback label-twin probe reads
+-- plm.wb_property(source_namespace, identity_method, label), which no index
+-- carries; at 392 rows the per-row probe is trivial. If the table grows, add a
+-- btree on (source_namespace, identity_method, label).
 -- Revert: fix forward, restoring 20261008005647's body.
 
 create or replace function api.db_data_admin_scraped_source_inventory(
@@ -1646,8 +1650,14 @@ begin
   -- and fail at call time).
   if (select count(*) from information_schema.columns
        where table_schema = 'plm' and table_name = 'wb_property'
-         and column_name in ('source_namespace', 'identity_method', 'label', 'source_id')) <> 4 then
-    raise exception '#4081 self-check: plm.wb_property is missing one of source_namespace, identity_method, label, source_id';
+         and column_name in ('source_namespace', 'identity_method', 'label', 'source_id', 'fallback_key')) <> 5 then
+    raise exception '#4081 self-check: plm.wb_property is missing one of source_namespace, identity_method, label, source_id, fallback_key';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm'
+         and table_name in ('wb_character_normalized', 'wb_style_guide_normalized')
+         and column_name in ('source_namespace', 'source_id', 'fallback_key')) <> 6 then
+    raise exception '#4081 self-check: plm.wb_character_normalized or plm.wb_style_guide_normalized is missing source_namespace, source_id or fallback_key';
   end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'plm' and table_name = 'sesame_brand'

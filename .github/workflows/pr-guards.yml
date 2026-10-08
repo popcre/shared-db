@@ -68,6 +68,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  # Runner router (edge-dev3-linux self-hosted when online and idle, else the
+  # hosted label below). A failed router never skips a check: callers run on
+  # !cancelled() and keep the literal hosted fallback. See runner-route.yml.
+  route:
+    uses: ./.github/workflows/runner-route.yml
+    with:
+      fallback: blacksmith-2vcpu-ubuntu-2404
+
 
   # ---- moved from .github/workflows/agent-work-contract.yml (#3746) ----
   # Guard: does an agent's completion report actually satisfy the contract it was
@@ -88,11 +96,12 @@ jobs:
     name: Agent work contract
     # #3536: retain manual replay and queue admission; ordinary PRs already
     # receive independent guarded review and the offline proof suite.
-    if: contains(fromJSON('["merge_group", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["merge_group", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
       pull-requests: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -327,10 +336,11 @@ jobs:
   # Branch protection is not editable from a workflow or by an agent session.
   cancelled-work-guard:
     name: Cancelled work guard
-    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -364,10 +374,11 @@ jobs:
   # The guard stays here because it scans this repository's own docs for the hostname.
   domain-ownership:
     name: Domain ownership
-    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -407,12 +418,13 @@ jobs:
   # fetch-depth: 0 is required — the job diffs against the merge base.
   handoff-contract:
     name: Handoff contract
-    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
       issues: read
       pull-requests: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -494,10 +506,11 @@ jobs:
   # step 8's own PR is blocked by the gate step 8 introduces.
   intake-pointer-guard:
     name: Intake pointer guard
-    if: contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -818,10 +831,11 @@ jobs:
   # a service account the allowlist does not know. Deliberate, visible, and reviewable.
   pii-forward-guard:
     name: Email-address forward guard (partial PII coverage)
-    if: contains(fromJSON('["pull_request", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -1035,10 +1049,11 @@ jobs:
   # editable from a workflow or an agent session.
   public-data-venue-guard:
     name: Public data venue guard
-    if: contains(fromJSON('["pull_request", "push", "workflow_dispatch"]'), github.event_name)
+    needs: route
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "push", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

@@ -2189,7 +2189,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
 
 test('replacement retry releases its lease after an exact-head verdict',()=>{
   const io=failedReviewIo(),first=replaceFailedReviewer(replacementRequest,io),ref=reviewActiveRef(first.reviewer)
-  giveVerdict(io,{issue:failedReview.issue,pr:failedReview.pr,headSha:failedReview.headSha})
+  giveVerdict(io,{issue:failedReview.issue,pr:failedReview.pr,headSha:failedReview.headSha,replacementSequence:first.replacementSequence})
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),first)
   assert.equal(io.refs.has(ref),false)
   assert.equal(assignNextReviewer(failedReview,io).reviewer,first.reviewer)
@@ -3252,6 +3252,55 @@ test('reviewer replacement rejects a substantive exact-head verdict',()=>{
   assert.throws(()=>replaceFailedReviewer(replacementRequest,stateIo),/existing verdict/)
 })
 
+test('#3947 a verdict on a return-superseded assignment must not deadlock the redraw the merge gate demands',()=>{
+  // Live shape (PR #3957 / issue #3947, head f8b8b321, slot 6): the original
+  // slot holder was replaced twice; the second replacement (muse) then recorded
+  // a durable APPROVE; a third replacement (gemini) had ALREADY been drawn to
+  // supersede muse before that verdict landed, and gemini was later returned
+  // (terminal-unavailable). The merge gate needs a live assignment whose cursor
+  // sequence is strictly newer than the return, and it names
+  // --replace-failed-reviewer with the returned replacement's failed-sequence
+  // as the way to draw it. That command refused because muse's verdict sat on
+  // the predecessor -- the very record the return had already superseded -- so
+  // no supported command could ever unstick the slot. The verdict is history
+  // (never deleted or forged); it must not forbid the redraw.
+  const io=withAtomicRefs(reviewIo()),request={issue:3947,pr:3957,headSha:'f8b8b32139380911c315001238e63a149af5fda9'}
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:request.headSha,ref:'codex/x'}})
+  const fail={failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+  const original=assignNextReviewer(request,io)
+  const second=replaceFailedReviewer({...request,failedSequence:original.sequence,...fail},io)
+  const museLike=replaceFailedReviewer({...request,failedSequence:second.sequence,...fail},io)
+  // The race: gemini is drawn to supersede muse BEFORE muse's verdict lands.
+  const geminiLike=replaceFailedReviewer({...request,failedSequence:museLike.sequence,...fail},io)
+  giveVerdict(io,{issue:request.issue,pr:request.pr,headSha:request.headSha,replacementSequence:second.sequence})
+  const excluded=excludeReviewerForPr({issue:request.issue,pr:request.pr,reviewer:geminiLike.reviewer,reason:'terminal-unavailable',evidenceSha:geminiLike.replacementSha},io)
+  assert.equal(excluded.returned.length,1)
+  const returned=parseReviewReturn(io.getCommit(excluded.returned[0].sha))
+  assert.equal(returned.sequence,geminiLike.sequence)
+  assert.equal(returned.replacementSequence,museLike.sequence)
+  // The deadlock half that is NOT fixed on purpose: assign still answers from
+  // the superseded replacement, so it cannot satisfy the gate either.
+  assert.equal(assignNextReviewer(request,io).sequence,museLike.sequence)
+  assert.equal(headVerdictBlocksReplacement(request.issue,request.pr,request.headSha,io,{slot:1}),false,
+    'a verdict whose owning assignment a later return superseded is history, not the authorization of record')
+  const redrawn=replaceFailedReviewer({...request,failedSequence:museLike.sequence,...fail},io)
+  assert.ok(redrawn.sequence>geminiLike.sequence,'the redraw must spend a sequence strictly newer than the return')
+  assert.notEqual(redrawn.reviewer,museLike.reviewer)
+  assert.notEqual(redrawn.reviewer,geminiLike.reviewer)
+  assert.ok(io.refs.has(redrawn.assignmentRef),'the redraw must record a live assignment')
+  assert.equal(io.refs.get(redrawn.assignmentRef),redrawn.replacementSha)
+  // SECOND LAYER (lease liveness): the redrawn assignment's lease must not be
+  // marked stale by the predecessor's verdict. That is what produced
+  // "no held reviewer lease matches this review" and blocked the governed
+  // review the merge gate demands. `findBusyReviewers` only holds a reviewer
+  // when its own assignment is still unjudged.
+  assert.ok(findBusyReviewers(io).has(redrawn.reviewer),'the redrawn lease must stay live; a superseded predecessor verdict is not this assignment judgment')
+  assert.ok(!findBusyReviewers(io).stale.some((row)=>row.assignment.reviewer===redrawn.reviewer))
+  // The superseded predecessor's verdict survives byte-for-byte; nothing is
+  // deleted or forged to unstick the slot.
+  assert.ok(io.refs.has(`refs/db-review-verdict-replacements/${request.issue}-${request.pr}-${request.headSha}-${second.sequence}`))
+})
+
 test('reviewer replacement retry rejects mismatched failure sequence and missing evidence',()=>{
   const io=failedReviewIo(), done=replaceFailedReviewer(replacementRequest,io)
   assert.throws(()=>replaceFailedReviewer({...replacementRequest,failedSequence:99},io),/does not match/)
@@ -3547,7 +3596,7 @@ test('database-only workflow acquisitions supply admission while guarded merge r
     const source=readFileSync(fileURLToPath(new URL(`../.github/workflows/${file}`,import.meta.url)),'utf8')
     const lines=source.split(/\r?\n/)
     for(let index=0;index<lines.length;index++){
-      if(!/manage-migration-author-lanes\.mjs --acquire-/.test(lines[index]))continue
+      if(!/manage-migration-author-lanes\.mjs["']?\s+--acquire-/.test(lines[index]))continue
       let command=lines[index].trim()
       while(command.endsWith('\\'))command+=`\n${lines[++index].trim()}`
       commands.push(`${file}: ${command}`)
@@ -6141,7 +6190,7 @@ test('a replacement lease STATES its slot even for slot 1, so its own verdict st
   assert.match(io.getCommit(leaseSha).message,/ slot=1 /,'a slot-1 replacement message must state its slot')
   assert.equal(parseReviewLease(io.getCommit(leaseSha)).slot,1)
   assert.ok(findBusyReviewers(io).has(replacement.reviewer))
-  giveVerdict(io,{issue:request.issue,pr:request.pr,headSha:request.headSha,slot:1})
+  giveVerdict(io,{issue:request.issue,pr:request.pr,headSha:request.headSha,slot:1,replacementSequence:replacement.replacementSequence})
   assert.ok(!findBusyReviewers(io).has(replacement.reviewer),"its own slot's verdict must still free it")
 })
 
@@ -6741,6 +6790,54 @@ test('the GitHub-backed CLI terminalizes the exact no-write historical recovery 
   const ref=`refs/db-preview-ready-outcomes/${fixture.record.ready_id}`,outcome=fixture.refs.get(ref)
   assert.equal(outcome.digest,'dispatched');assert.equal(outcome.record.outcome,'dispatched');assert.deepEqual(outcome.record.proof,{positive:true,mode:'apply',run_id:fixture.runId,artifact_id:fixture.artifactId,artifact_digest:fixture.artifactDigest,manifest_digest:fixture.record.manifest_digest,ledger_rows:626})
   assert.equal(JSON.parse(printed[0]).ref,ref)
+})
+
+test('historical recovery accepts its exact preview artifact alongside automatic review evidence',()=>{
+  const fixture=historicalTerminalIo(),preview=fixture.evidence.artifacts.artifacts[0]
+  fixture.evidence.artifacts.artifacts.push({
+    id:preview.id+1,name:'automatic-production-apply-review-evidence',
+    digest:`sha256:${'a'.repeat(64)}`,expired:false,
+    workflow_run:{id:Number(fixture.runId),head_sha:fixture.record.route_context},
+  })
+  fixture.evidence.artifacts.total_count=2
+  const log=console.log;console.log=()=>{}
+  try{assert.equal(main(historicalTerminalArgs(fixture),NOW,fixture.io),0)}finally{console.log=log}
+  const outcome=fixture.refs.get(`refs/db-preview-ready-outcomes/${fixture.record.ready_id}`)
+  assert.equal(outcome.record.proof.artifact_id,fixture.artifactId)
+  assert.equal(outcome.record.proof.artifact_digest,fixture.artifactDigest)
+})
+
+test('historical recovery refuses unknown, duplicate, expired, or cross-run extra artifacts',()=>{
+  const mutations=[
+    (extra)=>{extra.name='unexpected-artifact'},
+    (extra,preview)=>{extra.name=preview.name},
+    (extra)=>{extra.expired=true},
+    (extra)=>{extra.workflow_run.id++},
+    (extra)=>{extra.workflow_run.head_sha='f'.repeat(40)},
+    (extra)=>{extra.digest='not-a-digest'},
+    (extra,preview)=>{extra.id=preview.id},
+    (extra)=>{delete extra.id},
+  ]
+  const error=console.error;console.error=()=>{}
+  try{for(const mutate of mutations){
+    const fixture=historicalTerminalIo(),preview=fixture.evidence.artifacts.artifacts[0]
+    const extra={id:preview.id+1,name:'automatic-production-apply-review-evidence',digest:`sha256:${'a'.repeat(64)}`,expired:false,workflow_run:{id:Number(fixture.runId),head_sha:fixture.record.route_context}}
+    mutate(extra,preview)
+    fixture.evidence.artifacts.artifacts.push(extra)
+    fixture.evidence.artifacts.total_count=2
+    assert.equal(main(historicalTerminalArgs(fixture),NOW,fixture.io),2)
+    assert.equal(fixture.refs.has(`refs/db-preview-ready-outcomes/${fixture.record.ready_id}`),false)
+  }}finally{console.error=error}
+  for(const broken of ['missing-page','third-artifact']){
+    const fixture=historicalTerminalIo(),preview=fixture.evidence.artifacts.artifacts[0]
+    fixture.evidence.artifacts.artifacts.push({id:preview.id+1,name:'automatic-production-apply-review-evidence',digest:`sha256:${'a'.repeat(64)}`,expired:false,workflow_run:{id:Number(fixture.runId),head_sha:fixture.record.route_context}})
+    fixture.evidence.artifacts.total_count=2
+    if(broken==='missing-page')fixture.evidence.artifacts.total_count=3
+    else fixture.evidence.artifacts.artifacts.push({id:preview.id+2,name:'unexpected-artifact',expired:false,workflow_run:{id:Number(fixture.runId),head_sha:fixture.record.route_context}})
+    const error=console.error;console.error=()=>{}
+    try{assert.equal(main(historicalTerminalArgs(fixture),NOW,fixture.io),2)}finally{console.error=error}
+    assert.equal(fixture.refs.has(`refs/db-preview-ready-outcomes/${fixture.record.ready_id}`),false)
+  }
 })
 
 test('historical recovery terminalization fails closed on every mismatched live proof',()=>{
@@ -11140,4 +11237,65 @@ test('preview admission refuses an unclaimed role owner dependency and accepts a
   fixture.io.openClaims = () => claims
   const candidate = deriveLivePreviewCandidate(1769,fixture.io)
   assert.equal(candidate.pr,1809)
+})
+
+// #4048: use actual Git commits, a local immutable contract remote and all normal
+// validators. Refs and a mocked successful proof alone must not grant authority.
+import {verifyNonclosingMaintenanceBinding} from './manage-migration-author-lanes.mjs'
+import {contractHash as bindingContractHash} from './agent-work-contract.mjs'
+import {readPublishedContractFromGit as bindingPublishedContract} from './agent-work-contract-git-evidence.mjs'
+function nonclosingGitFixture(){
+  const dir=mkdtempSync(path.join(tmpdir(),'nonclosing-binding-')),remote=path.join(dir,'remote.git')
+  const git=(...args)=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()
+  const put=(name,text)=>{const file=path.join(dir,name);mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,text)}
+  git('init','-b','main');git('config','user.name','Controlled fixture');git('config','user.email','fixture@example.invalid')
+  put('app.txt','before\n');git('add','app.txt');git('commit','-m','base');const base=git('rev-parse','HEAD')
+  execFileSync('git',['init','--bare',remote],{stdio:'ignore'});git('remote','add','origin',remote);git('checkout','-b','feature')
+  const contract={schema_version:2,generation:1,work_issue:41,work_type:'repo-maintenance',route:'repo-maintenance',goal:'Controlled nonclosing canonical proof',base_sha:base,dispatcher:'fixture',worker:'fixture',branch:'feature',worktree:dir,allowed_paths:['app.txt'],file_writes:['app.txt'],db_reads:[],db_writes:[],prohibited_actions:[],required_checks:['fixture'],assumptions:[],stop_conditions:['Stop on unknown'],evidence_parent:null}
+  const ref='refs/db-contracts/41/1',publication=git('commit-tree',`${base}^{tree}`,'-p',base,'-m',`Work contract published\n\n${JSON.stringify(contract)}`)
+  git('update-ref',ref,publication);git('push','origin',ref)
+  put('app.txt','genuine source\n');git('add','app.txt');git('commit','-m','source');const implementation=git('rev-parse','HEAD')
+  const report={schema_version:1,work_issue:41,outcome:'ready-for-merge',pr:7,migration_versions:[],contract_ref:ref,contract_sha256:bindingContractHash(contract),head_sha:implementation,base_sha:base,files_changed:['app.txt'],db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Actual controlled fixture source operation'}],assumptions_resolved:[],stop_conditions_hit:[]}
+  put('.agent/work/41/1/contract.json',JSON.stringify(contract));put('.agent/work/41/1/completion.json',JSON.stringify(report));git('add','.agent');git('commit','-m','own canonical pair');const head=git('rev-parse','HEAD')
+  git('push','origin',`${base}:refs/heads/main`,`${head}:refs/heads/feature`)
+  const live={number:7,state:'open',user:{login:'u2giants'},author_association:OPERATOR_ASSOCIATION,body:'Refs #41\n\nPosted by Codex chat fixture on fixture',head:{sha:head,ref:'feature',repo:{full_name:THIS_REPO}},base:{sha:base,ref:'main',repo:{full_name:THIS_REPO}}}
+  const work={number:41,state:'open',body:'```db-work-scope\nstatus: ready\nwork_type: repo-maintenance\nroute: repo-maintenance\nchange_type: reviewer-tooling\npriority: 100\nreads: []\nwrites: []\n```'}
+  const files=[{filename:'app.txt',status:'modified'},{filename:'.agent/work/41/1/contract.json',status:'added'},{filename:'.agent/work/41/1/completion.json',status:'added'}]
+  const proofGit={isAncestor:(a,b)=>{try{git('merge-base','--is-ancestor',a,b);return true}catch{return false}},mergeBase:(a,b)=>git('merge-base',a,b),changedFiles:(a,b)=>git('diff','--name-only',a,b).split('\n').filter(Boolean),readPublishedContract:ref=>bindingPublishedContract(ref,(command,args,options)=>execFileSync(command,args,{...options,cwd:dir}))}
+  const io={getPr:()=>live,mainSha:()=>base,getPrFiles:()=>files,closingIssuesForPr:()=>[],getFileAt:(name,sha)=>git('show',`${sha}:${name}`),getIssue:()=>work,prepareNonclosingEvidenceGit:(a,b)=>git('fetch','--quiet','origin',a,b)}
+  io.verifyNonclosingMaintenanceBinding=request=>verifyNonclosingMaintenanceBinding(request,io,proofGit)
+  return {dir,git,put,contract,report,live,work,files,io,proofGit,head,base,close:()=>rmSync(dir,{recursive:true,force:true})}
+}
+test('nonclosing maintenance binding proves canonical live direct and snapshot routes through real Git',()=>{
+  const f=nonclosingGitFixture()
+  try{
+    assert.equal(derivePrOperationRoute(7,f.io,{headSha:f.head,issue:41}).route,'repo-maintenance')
+    assert.equal(derivePrOperationRoute(7,f.io,{headSha:f.head,issue:41,snapshot:{pr:{state:'open',head:{sha:f.head}},files:f.files,linkedIssues:[]}}).issue,41)
+  }finally{f.close()}
+})
+test('nonclosing maintenance binding refuses metadata and canonical mismatches without body-only authority',()=>{
+  const f=nonclosingGitFixture(),check=()=>derivePrOperationRoute(7,f.io,{headSha:f.head,issue:41})
+  try{
+    for(const body of ['Refs #41','Refs #41\nRefs #41\nPosted by Codex chat fixture on fixture','Refs #42\nPosted by Codex chat fixture on fixture']){const old=f.live.body;f.live.body=body;assert.throws(check,/refused/);f.live.body=old}
+    for(const [target,key,value] of [[f.live.user,'login','untrusted'],[f.live.head,'ref','other'],[f.live.head.repo,'full_name','other/repo'],[f.live.base,'ref','develop'],[f.live.base,'sha','a'.repeat(40)]]){const old=target[key];target[key]=value;assert.throws(check,/refused/);target[key]=old}
+    const original=f.io.getFileAt
+    for(const change of [r=>r.pr=8,r=>r.work_issue=42,r=>r.head_sha='a'.repeat(40),r=>r.base_sha='a'.repeat(40),r=>r.contract_ref='refs/db-contracts/41/2',r=>r.contract_sha256='a'.repeat(64),r=>r.checks=[],r=>r.stop_conditions_hit=['unknown']]){
+      f.io.getFileAt=(name,sha)=>{const text=original(name,sha);if(!name.endsWith('/completion.json'))return text;const r=JSON.parse(text);change(r);return JSON.stringify(r)}
+      assert.throws(check,/refused/);f.io.getFileAt=original
+    }
+    f.io.getFileAt=(name,sha)=>{const text=original(name,sha);if(!name.endsWith('/contract.json'))return text;const c=JSON.parse(text);c.goal='forged';return JSON.stringify(c)};assert.throws(check,/refused/);f.io.getFileAt=original
+    const published=f.proofGit.readPublishedContract;f.proofGit.readPublishedContract=()=>{throw new Error('unknown published ref')};assert.throws(check,/refused/);f.proofGit.readPublishedContract=published
+    const prepare=f.io.prepareNonclosingEvidenceGit;delete f.io.prepareNonclosingEvidenceGit;assert.throws(check,/reader unavailable/);f.io.prepareNonclosingEvidenceGit=prepare
+    f.work.state='closed';assert.throws(check,/not deterministic ready/);f.work.state='open'
+    const body=f.work.body;f.work.body=body.replace('status: ready','status: blocked');assert.throws(check,/not deterministic ready/);f.work.body=body
+    f.work.number=42;assert.throws(check,/refused/);f.work.number=41
+    const saved=f.files.splice(1,1);assert.throws(check,/refused/);f.files.splice(1,0,...saved)
+    f.files.push({filename:'.agent/work/42/1/contract.json',status:'added'},{filename:'.agent/work/42/1/completion.json',status:'added'});assert.throws(check,/refused/)
+  }finally{f.close()}
+})
+test('nonclosing maintenance fallback never changes structural, unknown or multiple-closing routing',()=>{
+  const head='a'.repeat(40),base={getPr:()=>({state:'open',head:{sha:head}}),closingIssuesForPr:()=>[],verifyNonclosingMaintenanceBinding:()=>{throw new Error('must never call nonclosing proof')}}
+  for(const file of [{filename:'supabase/migrations/20260101000000_x.sql',status:'added'},{filename:'docs/new.md',status:'renamed',previous_filename:'docs/old.md'},{filename:'app.txt',status:'changed'},{filename:'app.txt',status:'copied'}])assert.throws(()=>derivePrOperationRoute(7,{...base,getPrFiles:()=>[file]},{headSha:head}),/must close exactly one/)
+  assert.throws(()=>derivePrOperationRoute(7,{...base,getPrFiles:()=>[{filename:'app.txt',status:'modified'}],closingIssuesForPr:()=>[{number:41},{number:42}]},{headSha:head}),/must close exactly one/)
+  assert.equal(derivePrOperationRoute(7,{...base,getPrFiles:()=>[{filename:'supabase/migrations/20260101000000_x.sql',status:'added'}],closingIssuesForPr:()=>[{number:41}]},{headSha:head,issue:41}).route,'structural')
 })

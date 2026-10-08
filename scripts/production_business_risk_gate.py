@@ -608,11 +608,22 @@ PREVIEW_PRODUCER_PATHS = (
     # Runs FIRST in the preview job, to acquire the lane, before any evidence
     # byte exists. Unpinned, it was a complete forgery path.
     "scripts/manage-migration-author-lanes.mjs",
+    # Existing normal canonical validators now used by authenticated nonclosing routing.
+    "scripts/agent-work-contract-git-evidence.mjs",
+    "scripts/agent-work-contract.mjs",
+    # Existing explicit PR-data boundary now executes transitively from protected source.
+    "scripts/lib/agent-evidence-paths.mjs",
+    "scripts/refresh-code-pr-branch.mjs",
+    "scripts/run-governed-review.mjs",
     # The manager's cohesive modules, split out of it without behavior change.
     # They are statically imported and run inside the same process, so each is
     # pinned exactly like the manager itself.
     "scripts/lib/lanes/admission.mjs",
     "scripts/lib/lanes/claim-maintenance.mjs",
+    "scripts/lib/lanes/completed-claim-recovery.mjs",
+    "scripts/lib/claim-recovery-dependencies.mjs",
+    "scripts/query-completed-claim-catalog.mjs",
+    "scripts/proofs/shared-db-2870-observation.mjs",
     "scripts/lib/lanes/claim-versions.mjs",
     "scripts/lib/lanes/claims.mjs",
     "scripts/lib/lanes/cli-train.mjs",
@@ -747,6 +758,14 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
         "any preview write. Treating a developer's local CLI state as repository "
         "source would make the production-risk test depend on which commands had "
         "previously run on that machine without protecting committed evidence."
+    ),
+    "config/completed-claim-recovery": (
+        "Never read by the preview job. Read only by the administrative "
+        "--recover-completed-claim command of the claim lane manager, which "
+        "fetches the manifest at its allocator-reviewed pull request head and "
+        "re-proves every value before releasing a completed foreign claim. It "
+        "changes claim ownership records, never database bytes, so pinning it "
+        "as a preview producer input would protect nothing the preview applies."
     ),
     "config/blocker-ledger": (
         "Never read by the preview job. Read only by the offline throughput "
@@ -1038,6 +1057,10 @@ PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/lib/lanes/admission.mjs",
     "scripts/lib/lanes/claim-maintenance.mjs",
+    "scripts/lib/lanes/completed-claim-recovery.mjs",
+    "scripts/lib/claim-recovery-dependencies.mjs",
+    "scripts/query-completed-claim-catalog.mjs",
+    "scripts/proofs/shared-db-2870-observation.mjs",
     "scripts/lib/lanes/claim-versions.mjs",
     "scripts/lib/lanes/claims.mjs",
     "scripts/lib/lanes/cli-train.mjs",

@@ -291,6 +291,14 @@ export const REVIEWERS = Object.freeze([
 // retirement: restoring Kimi is a one-line deletion from this list once the
 // account has credit AND `AI_KIMI_CALLER=claude ai-kimi doctor` passes. Its
 // REVIEWERS row stays so every durable verdict it recorded still authorizes.
+//
+// PAUSED 2026-10-07 then RESTORED 2026-10-08 (owner instruction, chat: "put
+// Grok back in the rotation"): 'grok-4.6' was briefly listed here (PR #4051)
+// and is deleted again. Re-entry proof, 2026-10-08 on edge-dev3: `ai-grok-review
+// doctor --live` returned `live probe : OK` on the subscription login (no paid
+// API key), and a live review session ended with a well-formed `VERDICT:
+// APPROVE <head>` line. Its REVIEWERS row never moved, so no in-flight sequence
+// is reassigned; Grok is again the cost fallback (#3592) behind the others.
 export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contributor', 'deepseek-chat', 'codex-gpt-5.6-sol', 'kimi-k3'])
 
 // Not retired -- quarantined pending a passing live qualification. Kept separate

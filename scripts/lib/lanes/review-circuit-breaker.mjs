@@ -214,16 +214,22 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if(rows.some(row=>row.text.includes('\0') || row.text.split('PREVIEW_PRODUCER_PATHS = (').length!==2 || row.text.split('PREVIEW_PRODUCER_PATHS = (\n')[1]?.split('\n)')[0]?.split(anchor).length!==2))throw new LaneError('review budget producer pin anchor is ambiguous')
     const ancestorInventory=rows[0].text.split('PREVIEW_PRODUCER_PATHS = (\n')[1].split('\n)')[0]
     if(pins.trim().split('\n').some(line=>ancestorInventory.includes(line.trim())))throw new LaneError('review budget producer pin ancestor already contains a reconciled key')
-    const stripped=rows.slice(1).map(row=>{
+    const blockOf=row=>{
       const blocks=comments.map(comment=>anchor+comment+pins).filter(block=>row.text.includes(block))
       if(blocks.length!==1 || row.text.split(blocks[0]).length!==2)throw new LaneError('review budget producer pin block differs')
-      return row.text.replace(blocks[0],anchor)
-    })
-    if(stripped.some(text=>text!==rows[0].text))throw new LaneError('review budget producer pin overlap changes other source bytes')
-    const protectedRow=entry(protectedMain,file)
-    const candidates=[a,b].map((commit,index)=>({commit,row:rows[index+1]})).filter(({commit,row})=>ancestor(commit,protectedMain)&&row.blob===protectedRow.blob)
+      return blocks[0]
+    }
+    // The protected parent is identified by ancestry alone: exactly one merge parent
+    // must already be in protected main. Its bytes are protected content, so they may
+    // carry later protected edits beyond the pin block (main keeps evolving this file).
+    // The unprotected (author) parent may differ from the merge base ONLY by the exact
+    // pin block, so the canonical merge result is the protected parent's bytes.
+    const sides=[a,b].map((commit,index)=>({commit,row:rows[index+1],protected:ancestor(commit,protectedMain)}))
+    const candidates=sides.filter(side=>side.protected)
     if(candidates.length!==1)throw new LaneError('review budget producer pin protected parent is ambiguous')
-    const canonical=candidates[0].row
+    const author=sides.find(side=>!side.protected),canonical=candidates[0].row
+    blockOf(canonical)
+    if(author.row.text.replace(blockOf(author.row),anchor)!==rows[0].text)throw new LaneError('review budget producer pin overlap changes other source bytes')
     canonicalPinOverlaps.push({base,parents:[a,b],path:file,mode:'100644',parentBlobs:rows.map(row=>row.blob),protectedParent:candidates[0].commit,canonicalBlob:canonical.blob})
     return new Map([[file,{mode:canonical.mode,text:canonical.text}]])
   }

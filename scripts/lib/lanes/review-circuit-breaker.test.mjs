@@ -335,7 +335,7 @@ const producerPinFile='scripts/production_business_risk_gate.py'
 const producerPinAnchor='    "scripts/manage-migration-author-lanes.mjs",\n'
 const producerPinNames=['agent-work-contract-git-evidence.mjs','agent-work-contract.mjs','refresh-code-pr-branch.mjs','run-governed-review.mjs']
 const producerPinComments=['    # Existing modules newly reachable through exact budget/contract imports.\n','    # Existing normal canonical validators now used by authenticated nonclosing routing.\n']
-function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=false}={}){
+function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=false,mainEvolve=false,laterMain=false}={}){
  const f=realGitFixture(t);mkdirSync(path.join(f.dir,'scripts'),{recursive:true})
  const baseText='PREVIEW_PRODUCER_PATHS = (\n'+producerPinAnchor+'    "scripts/unchanged.py",\n)\n'
  const block=i=>producerPinComments[i]+producerPinNames.map(name=>`    "scripts/${name}",\n`).join('')
@@ -345,9 +345,11 @@ function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=
  if(mode){f.git(['add',producerPinFile]);f.git(['update-index','--chmod=+x',producerPinFile]);chmodSync(path.join(f.dir,producerPinFile),0o755);f.git(['commit','-qm','different mode']);before=f.git(['rev-parse','HEAD']).trim()}
  if(extraConflict)before=f.commit('app.txt','feature overlapping source\n')
  if(repair)f.commit('app.txt','original genuine runtime repair\n')
- f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');const main=f.commit(producerPinFile,baseText.replace(producerPinAnchor,producerPinAnchor+block(1)))
+ f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');let main=f.commit(producerPinFile,baseText.replace(producerPinAnchor,producerPinAnchor+block(1)));if(mainEvolve)main=f.commit(producerPinFile,readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(producerPinAnchor,'    "scripts/protected-later.py",\n'+producerPinAnchor))
  f.git(['switch','pins']);try{f.git(['merge','--no-ff','-m','exact pin overlap','main'])}catch(error){if(error.status!==1)throw error;writeFileSync(path.join(f.dir,producerPinFile),readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(/<<<<<<< HEAD[\s\S]*?>>>>>>> main\n/,block(1)));f.git(['checkout','--theirs','--',producerPinFile]);f.git(['add',producerPinFile]);if(extraConflict){f.git(['checkout','--theirs','--','app.txt']);f.git(['add','app.txt'])}f.git(['commit','-qm','exact protected pin resolution'])}
- return {...f,base,before,main,after:f.git(['rev-parse','HEAD']).trim()}
+ const after=f.git(['rev-parse','HEAD']).trim()
+ if(laterMain){f.git(['switch','main']);main=f.commit(producerPinFile,readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(')\n','    "scripts/protected-after-merge.py",\n)\n'));f.git(['switch','pins'])}
+ return {...f,base,before,main,after}
 }
 test('exact producer closure pin comments retain two spent starts and never witness an authored round',t=>{
  const f=producerPinFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
@@ -403,4 +405,24 @@ test('producer pin normalization refuses executable modes and every additional s
 test('symmetric binding witness refuses unknown modules, symbols, duplicate bindings and missing regression',t=>{
  const variants=[{protectedImport:s=>s.replace('agent-work-contract-git-evidence.mjs','unknown-module.mjs')},{protectedImport:s=>s.replace('verifyGitEvidence','unknownSymbol')},{protectedImport:s=>s+s},{noRegression:true}]
  for(const options of variants){const f=symmetricImportFixture(t,options);assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)}
+})
+
+test('producer pin overlap accepts protected main that also evolved the gate before and after the merge',t=>{
+ for(const options of [{mainEvolve:true},{laterMain:true},{mainEvolve:true,laterMain:true}]){
+  const f=producerPinFixture(t,options),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+  assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalPinOverlaps.length,1)
+  assert.notEqual(proof.canonicalPinOverlaps[0].protectedParent,f.before,'the author side is never the protected parent')
+ }
+})
+test('producer pin overlap still refuses author-side extra bytes when protected main evolved',t=>{
+ const f=producerPinFixture(t,{mainEvolve:true,alter:s=>s.replace('    "scripts/unchanged.py",\n','    "scripts/unchanged.py",\n    "scripts/smuggled.py",\n')})
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+})
+test('producer pin overlap refuses an ambiguous protected parent when both or neither parent is protected',t=>{
+ const f=producerPinFixture(t)
+ // Both: protected main has absorbed the author side too.
+ f.git(['switch','-qc','both',f.main]);f.git(['merge','-q','--no-ff','-s','ours','-m','absorb author side',f.before]);const both=f.git(['rev-parse','HEAD']).trim();f.git(['switch','pins'])
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,both,f.git),/protected parent is ambiguous/)
+ // Neither: protected main predates both pin commits.
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.base,f.git),/provenance refused/)
 })

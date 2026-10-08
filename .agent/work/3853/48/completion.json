@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 3853,
+  "outcome": "ready-for-merge",
+  "pr": 0,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3853/48",
+  "contract_sha256": "14d9d6cb207459f4ae9909fd242425da598ec55d152bb5351648eab9dd49f3a0",
+  "head_sha": "1f31e3ea3666c1ae88ceba332aa8801a488fefb8",
+  "base_sha": "9ad8ff1de7b9299bb5b6d16f939a300b0283e51e",
+  "files_changed": [
+    "tools/coldlion-landing/lib/order-intake-stage.mjs",
+    "tools/coldlion-order-intake-stage.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-order-intake-*.test.mjs",
+      "exit_code": 0,
+      "evidence": "68/68 pass at the implementation head. Empty-window placeholder now emits typed nulls; numeric component selects are cast."
+    }
+  ],
+  "assumptions_resolved": [
+    "Scheduled run 37748611709 failed on line_price text vs numeric from untyped VALUES nulls."
+  ],
+  "stop_conditions_hit": []
+}

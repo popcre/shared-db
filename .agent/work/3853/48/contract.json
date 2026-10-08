@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "work_issue": 3853,
+  "generation": 48,
+  "evidence_parent": {
+    "work_issue": 3853,
+    "generation": 47,
+    "contract_sha256": "7a0accac3b8959f9cfd1bd5d8c7527b9ab29acf8e6a1196179726f655504507b"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Fix coldlion order-intake stage SQL so component numeric columns never land as text. The first scheduled run after cron enablement failed: column line_price is of type numeric but expression is of type text (empty-window placeholder row emits untyped nulls; VALUES columns then resolve to text). Type the placeholder nulls and cast numeric component selects.",
+  "base_sha": "9ad8ff1de7b9299bb5b6d16f939a300b0283e51e",
+  "dispatcher": "MiMo chat unknown on edge-dev (issue #3853 cron live-proof fix)",
+  "worker": "MiMo chat unknown on edge-dev",
+  "branch": "coldlion-lineprice-3853",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/coldlion-lineprice-3853",
+  "allowed_paths": [
+    "tools/coldlion-landing/lib/order-intake-stage.mjs",
+    "tools/coldlion-order-intake-stage.test.mjs",
+    ".agent/work/3853/48/contract.json",
+    ".agent/work/3853/48/completion.json"
+  ],
+  "file_writes": [
+    "tools/coldlion-landing/lib/order-intake-stage.mjs",
+    "tools/coldlion-order-intake-stage.test.mjs",
+    ".agent/work/3853/48/contract.json",
+    ".agent/work/3853/48/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No migration and no database structure change",
+    "Never add pull_request or push triggers",
+    "Never rotate or edit credentials"
+  ],
+  "required_checks": [
+    "node --test tools/coldlion-order-intake-*.test.mjs"
+  ],
+  "assumptions": [
+    "Failing run 37748611709 is the first schedule after PR #4019 merge; error is line_price text vs numeric",
+    "Empty component VALUES placeholder currently emits bare null which types as text"
+  ],
+  "stop_conditions": [
+    "stop if the fix would require a migration",
+    "stop if tests cannot pin the typed-null placeholder"
+  ]
+}

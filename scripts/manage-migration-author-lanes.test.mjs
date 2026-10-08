@@ -22,6 +22,7 @@ import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
+import { DELIVERY_CHECKS, runDeliveryPreflight } from './orchestrator-flow/delivery-preflight.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -3740,6 +3741,28 @@ test('repository-maintenance reviewer keeps natural exact-head review without DD
   assert.ok(result.reviewer);assert.equal(mutexCreates(),1);assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
+function withRegisteredPreflight({issue,pr,head,workType='structure'},run){
+  const dir=mkdtempSync(path.join(tmpdir(),'registered-review-preflight-')),registry=path.join(dir,'registry')
+  mkdirSync(registry)
+  const registrations=new Map(),checks=Object.fromEntries(DELIVERY_CHECKS.map((name)=>[name,{status:'PASS',evidence_id:`${name}:${issue}:${pr}:${head}` }]))
+  for(const kind of ['sidecars','producers']){
+    const registration={evidence_id:checks[kind].evidence_id,kind,issue,pr,head_sha:head,producer_id:`${kind}-producer`,artifact_digest:'d'.repeat(64)}
+    registrations.set(registration.evidence_id,registration)
+    Object.assign(checks[kind],{producer_id:registration.producer_id,artifact_digest:registration.artifact_digest,registry_digest:sha256(canonicalJson(registration))})
+    writeFileSync(path.join(registry,`registration-${sha256(registration.evidence_id)}.json`),JSON.stringify(registration))
+  }
+  const record=runDeliveryPreflight({issue,pr,head_sha:head,checks},{readEvidenceRegistration:(id)=>registrations.get(id)})
+  const repositoryMaintenance=workType==='repo-maintenance'
+  const identity={policy_version:1,migrations:repositoryMaintenance?[]:[{version:'20260901000000',path:'supabase/migrations/20260901000000_test.sql',sha256:'d'.repeat(64)}],focused_files:repositoryMaintenance?[{path:'scripts/tool.mjs',sha256:'d'.repeat(64)}]:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:repositoryMaintenance?sha256('[]'):'d'.repeat(64)}
+  if(repositoryMaintenance)identity.work_type='repo-maintenance'
+  const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue,pr,claim:repositoryMaintenance?null:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null,delivery_preflight:{preflight_id:record.preflight_id,input_digest:record.input_digest}}}
+  const recordFile=path.join(dir,'record.json'),bundleFile=path.join(dir,'bundle.json'),changedFile=path.join(dir,'changed.json')
+  writeFileSync(recordFile,JSON.stringify(record));writeFileSync(bundleFile,JSON.stringify(bundle));writeFileSync(changedFile,JSON.stringify([]))
+  const prior=process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT;process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=registry
+  try{return run(['--delivery-preflight-record',recordFile,'--evidence-bundle',bundleFile,'--changed-files-file',changedFile])}
+  finally{if(prior===undefined)delete process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT;else process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=prior;rmSync(dir,{recursive:true,force:true})}
+}
+
 test('manager assignment and replacement preserve repository-maintenance review without admission writes',()=>{
   const {io,headSha}=admittedReviewIo();const comments=[]
   io.getIssue=()=>({number:41,state:'open',title:'tooling repair',createdAt:'2026-09-11T17:00:00Z',body:['```db-work-scope','status: ready','work_type: repo-maintenance','route: repo-maintenance','service_class: maintenance','change_type: reviewer-tooling','priority: 5','depends_on:','objects:','```'].join('\n')})
@@ -3748,8 +3771,10 @@ test('manager assignment and replacement preserve repository-maintenance review 
   const oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
   try{
     const reviewerAllowlist='glm-5.3,gemini-3.8-flash-high'
-    assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
-    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact','--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
+    withRegisteredPreflight({issue:41,pr:7,head:headSha,workType:'repo-maintenance'},(args)=>{
+      assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--reviewer-allowlist',reviewerAllowlist,...args],NOW,io),0)
+      assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact','--reviewer-allowlist',reviewerAllowlist,...args],NOW,io),0)
+    })
   }finally{console.log=oldLog;console.error=oldError}
   const assignmentSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX))?.[1]
   const replacementSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX))?.[1]
@@ -3768,11 +3793,11 @@ test('structural reviewer cannot omit admission through the shared reviewer path
 test('manager structural assignment and replacement still require the linked admission',()=>{
   let fixture=admittedReviewIo(),messages=[];const oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=(value)=>messages.push(String(value))
   try{
-    assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',fixture.headSha],NOW,fixture.io),2)
+    assert.equal(withRegisteredPreflight({issue:41,pr:7,head:fixture.headSha},(args)=>main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',fixture.headSha,...args],NOW,fixture.io)),2)
     fixture=admittedReviewIo();fixture.io.enforceAdmission=false
     const first=assignNextReviewer({issue:41,pr:7,headSha:fixture.headSha},fixture.io)
     fixture.io.enforceAdmission=true
-    assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',fixture.headSha,'--failed-sequence',String(first.sequence),'--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact'],NOW,fixture.io),2)
+    assert.equal(withRegisteredPreflight({issue:41,pr:7,head:fixture.headSha},(args)=>main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',fixture.headSha,'--failed-sequence',String(first.sequence),'--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact',...args],NOW,fixture.io)),2)
   }finally{console.log=oldLog;console.error=oldError}
   assert.equal(messages.filter((value)=>value.includes('requires --admit-issue 41')).length,2,messages.join(' | '))
 })
@@ -4069,7 +4094,7 @@ function assignReviewerRun(files){
   const errors=[],original=console.error
   console.error=(message)=>errors.push(String(message))
   let code
-  try{code=main(['--assign-reviewer','--issue','2102','--pr','2112','--head-sha','d'.repeat(40)],NOW,io)}
+  try{code=withRegisteredPreflight({issue:2102,pr:2112,head:'d'.repeat(40)},(args)=>main(['--assign-reviewer','--issue','2102','--pr','2112','--head-sha','d'.repeat(40),...args],NOW,io))}
   finally{console.error=original}
   return {code,stderr:errors.join('\n')}
 }
@@ -7254,7 +7279,7 @@ test('--replace-failed-reviewer honours --review-slot on the command line (issue
   const slotTwo=assignNextReviewer({...request,slot:2},io)
   const argv=['--replace-failed-reviewer','--issue',String(request.issue),'--pr',String(request.pr),'--head-sha',request.headSha,'--review-slot','2','--failed-sequence',String(slotTwo.sequence),'--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact']
   const printed=[];const log=console.log;console.log=(line)=>printed.push(line)
-  try{assert.equal(main(argv,NOW,io),0)}finally{console.log=log}
+  try{assert.equal(withRegisteredPreflight({issue:request.issue,pr:request.pr,head:request.headSha},(args)=>main([...argv,...args],NOW,io)),0)}finally{console.log=log}
   const result=JSON.parse(printed.join('\n'))
   assert.equal(result.slot,2)
   assert.notEqual(result.reviewer,slotTwo.reviewer)
@@ -9358,16 +9383,26 @@ test('re-claim of an already dispatched work issue treats dispatch as satisfied'
 test('DELIVERY PREFLIGHT (#2728): --assign-reviewer with a blocked preflight record refuses before any GitHub access', () => {
   const dir=mkdtempSync(path.join(tmpdir(),'lane-preflight-'))
   try {
-    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:'0'.repeat(64)}
-    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
-    const recordFile=path.join(dir,'record.json'),bundleFile=path.join(dir,'bundle.json')
+    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[{path:'scripts/tool.mjs',sha256:'d'.repeat(64)}],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:sha256('[]'),work_type:'repo-maintenance'}
+    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:null,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
+    const recordFile=path.join(dir,'record.json'),bundleFile=path.join(dir,'bundle.json'),changedFile=path.join(dir,'changed.json')
+    writeFileSync(changedFile,JSON.stringify([]))
     writeFileSync(recordFile,JSON.stringify({schema_version:1,status:'BLOCKED',preflight_id:'c'.repeat(64),input_digest:'c'.repeat(64),input:{}}));writeFileSync(bundleFile,JSON.stringify(bundle))
     const touched=[],io=new Proxy({},{get(_,key){touched.push(String(key));throw new Error(`io.${String(key)} touched`)}})
     const errors=[],original=console.error;console.error=(line)=>errors.push(String(line))
-    let code;try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--delivery-preflight-record',recordFile,'--evidence-bundle',bundleFile],NOW,io)}finally{console.error=original}
+    let code;try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--delivery-preflight-record',recordFile,'--evidence-bundle',bundleFile,'--changed-files-file',changedFile],NOW,io)}finally{console.error=original}
     assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/REFUSED: delivery preflight is BLOCKED/)
     errors.length=0;console.error=(line)=>errors.push(String(line))
     try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--evidence-bundle',bundleFile],NOW,io)}finally{console.error=original}
+    assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs both/)
+    errors.length=0;console.error=(line)=>errors.push(String(line))
+    try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head,'--delivery-preflight-record',recordFile,'--evidence-bundle',bundleFile],NOW,io)}finally{console.error=original}
+    assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs --changed-files-file/)
+    errors.length=0;console.error=(line)=>errors.push(String(line))
+    try{code=main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',head],NOW,io)}finally{console.error=original}
+    assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs both/)
+    errors.length=0;console.error=(line)=>errors.push(String(line))
+    try{code=main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',head,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact'],NOW,io)}finally{console.error=original}
     assert.equal(code,2);assert.deepEqual(touched,[]);assert.match(errors.join('\n'),/needs both/)
   } finally { rmSync(dir,{recursive:true,force:true}) }
 })
@@ -9376,8 +9411,8 @@ test('DELIVERY PREFLIGHT (#2728): --delivery-preflight runs and registers a pref
   const dir=mkdtempSync(path.join(tmpdir(),'lane-delivery-preflight-'))
   const priorRoot=process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT
   try {
-    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:'0'.repeat(64)}
-    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:1,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
+    const head='a'.repeat(40),identity={policy_version:1,migrations:[],focused_files:[{path:'scripts/tool.mjs',sha256:'d'.repeat(64)}],verification_files:[],claims:{writes:[],reads:[]},global_invalidators:[],migration_order_digest:sha256('[]'),work_type:'repo-maintenance'}
+    const bundle={schema_version:1,bundle_id:sha256(canonicalJson(identity)),identity,metadata:{issue:41,pr:7,claim:null,base_main_sha:'b'.repeat(40),integration_sha:head,review:null,ci:null}}
     const names=['route','work_contract','object_collision','dependencies','sidecars','producers','migration_order','reviewer_capacity','runner_capacity']
     const checks=Object.fromEntries(names.map((name)=>[name,{status:'PASS',evidence_id:`${name}-evidence`}]))
     const registry=path.join(dir,'registry');mkdirSync(registry)
@@ -9386,14 +9421,14 @@ test('DELIVERY PREFLIGHT (#2728): --delivery-preflight runs and registers a pref
       Object.assign(checks[kind],{producer_id:registration.producer_id,artifact_digest:registration.artifact_digest,registry_digest:sha256(canonicalJson(registration))})
       writeFileSync(path.join(registry,`registration-${createHash('sha256').update(registration.evidence_id).digest('hex')}.json`),JSON.stringify(registration))
     }
-    const inputFile=path.join(dir,'input.json'),bundleFile=path.join(dir,'bundle.json')
-    writeFileSync(inputFile,JSON.stringify({issue:41,pr:7,head_sha:head,checks}));writeFileSync(bundleFile,JSON.stringify(bundle))
+    const inputFile=path.join(dir,'input.json'),bundleFile=path.join(dir,'bundle.json'),changedFile=path.join(dir,'changed.json')
+    writeFileSync(inputFile,JSON.stringify({issue:41,pr:7,head_sha:head,checks}));writeFileSync(bundleFile,JSON.stringify(bundle));writeFileSync(changedFile,JSON.stringify([]))
     process.env.DELIVERY_EVIDENCE_REGISTRY_ROOT=registry
     const touched=[],io=new Proxy({},{get(_,key){touched.push(String(key));throw new Error(`io.${String(key)} touched`)}})
     const out=[],errors=[],log=console.log,err=console.error;console.log=(line)=>out.push(String(line));console.error=(line)=>errors.push(String(line))
     let code,refused,missing
     try{
-      code=main(['--delivery-preflight','--evidence-bundle',bundleFile,'--preflight-input',inputFile],NOW,io)
+      code=main(['--delivery-preflight','--evidence-bundle',bundleFile,'--preflight-input',inputFile,'--changed-files-file',changedFile],NOW,io)
       refused=main(['--delivery-preflight','--evidence-bundle',bundleFile],NOW,io)
       missing=main(['--delivery-preflight','--preflight-input',inputFile],NOW,io)
     }finally{console.log=log;console.error=err}
@@ -10132,7 +10167,7 @@ function readinessRun(pr){
   const errors=[],original=console.error
   console.error=(message)=>errors.push(String(message))
   let code
-  try{code=main(['--assign-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40)],NOW,io)}
+  try{code=withRegisteredPreflight({issue:2998,pr:2112,head:'d'.repeat(40)},(args)=>main(['--assign-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),...args],NOW,io))}
   finally{console.error=original}
   return {code,stderr:errors.join('\n'),drew}
 }
@@ -10178,7 +10213,7 @@ test('#3338 review: a replacement draw asserts the same readiness as a first dra
   const errors=[],original=console.error
   console.error=(message)=>errors.push(String(message))
   let code
-  try{code=main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--reviewer','muse-spark-1.3-contributor','--reason','x'],NOW,io)}
+  try{code=withRegisteredPreflight({issue:2998,pr:2112,head:'d'.repeat(40)},(args)=>main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--reviewer','muse-spark-1.3-contributor','--reason','x',...args],NOW,io))}
   finally{console.error=original}
   assert.equal(code,2)
   assert.match(errors.join('\n'),/still a DRAFT/)
@@ -10217,7 +10252,7 @@ test('#3338 review: a replacement draw refuses a documents-only pull request (#2
   const errors=[],original=console.error
   console.error=(message)=>errors.push(String(message))
   let code
-  try{code=main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--review-slot','1','--failed-sequence','1','--failure-code','turn_limit_cancelled','--confirm-no-verdict','--confirm-no-artifact'],NOW,io)}
+  try{code=withRegisteredPreflight({issue:2998,pr:2112,head:'d'.repeat(40)},(args)=>main(['--replace-failed-reviewer','--issue','2998','--pr','2112','--head-sha','d'.repeat(40),'--review-slot','1','--failed-sequence','1','--failure-code','turn_limit_cancelled','--confirm-no-verdict','--confirm-no-artifact',...args],NOW,io))}
   finally{console.error=original}
   assert.equal(code,2)
   assert.match(errors.join('\n'),/documents-only change/)
@@ -10762,7 +10797,7 @@ function handoffRun(argv, io) {
   const errors = [], original = console.error
   console.error = (message) => errors.push(String(message))
   let code
-  try { code = main(argv, NOW, io) } finally { console.error = original }
+  try { code = withRegisteredPreflight({ issue: 2998, pr: 2112, head: 'd'.repeat(40) }, (preflightArgs) => main([...argv, ...preflightArgs], NOW, io)) } finally { console.error = original }
   return { code, stderr: errors.join('\n') }
 }
 

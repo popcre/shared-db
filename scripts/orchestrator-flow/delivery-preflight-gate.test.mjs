@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertDeliveryPreflightBeforeReview, assertRoutineRebuild, changedMigrations, planDeliveryPreflight, runDeliveryPreflightGate, runRoutineRebuildCheck } from './delivery-preflight-gate.mjs'
+import { assertDeliveryPreflightBeforeReview, assertRoutineRebuild, changedMigrations, defaultPythonExecutable, planDeliveryPreflight, runDeliveryPreflightGate, runRoutineRebuildCheck } from './delivery-preflight-gate.mjs'
 
 const HEAD_A = 'a'.repeat(40), HEAD_B = 'c'.repeat(40)
 const checksFor = (head, status = 'PASS') => {
@@ -29,9 +29,15 @@ function adaptersFor(head, status = 'PASS', calls = []) {
   }
   return adapters
 }
-const identity = { policy_version: 1, migrations: [], focused_files: [], verification_files: [], claims: { writes: ['public.thing'], reads: [] }, global_invalidators: [{ path: 'config/orchestrator-global-invalidators-v1.json', sha256: 'd'.repeat(64) }], migration_order_digest: '0'.repeat(64) }
+const identity = { policy_version: 1, migrations: [{version:'20260901000000',path:'supabase/migrations/20260901000000_test.sql',sha256:'d'.repeat(64)}], focused_files: [], verification_files: [], claims: { writes: ['public.thing'], reads: [] }, global_invalidators: [{ path: 'config/orchestrator-global-invalidators-v1.json', sha256: 'd'.repeat(64) }], migration_order_digest: '0'.repeat(64) }
 const bundleAt = (head, id = identity) => ({ schema_version: 1, bundle_id: sha256(canonicalJson(id)), identity: id, metadata: { issue: 2728, pr: 2800, claim: 1, base_main_sha: 'e'.repeat(40), integration_sha: head, review: null, ci: null } })
 const facts = (head) => ({ integration_sha: head, evidence_integration_sha: head, history_available: true, full_ci_success: true, merge_base_is_current_main: true, intervening_changes: [{ id: 'docs-move', writes: [], reads: [] }] })
+
+test('#3624 Python selector uses python3 on Linux and preserves Windows and configured behavior',()=>{
+  assert.equal(defaultPythonExecutable('linux',''),'python3')
+  assert.equal(defaultPythonExecutable('win32',''),'python')
+  assert.equal(defaultPythonExecutable('linux','/opt/project/python'),'/opt/project/python')
+})
 
 function priorRun() {
   const calls = []

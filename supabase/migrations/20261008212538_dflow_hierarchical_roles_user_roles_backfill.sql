@@ -256,9 +256,10 @@ on conflict (user_id, role_id) do nothing;
 --
 -- Idempotency guard: ON CONFLICT cannot fire here because every inserted row has
 -- UserId = NULL and the unique arbiter treats NULLs as distinct. Use NOT EXISTS
--- so a retry or re-run is a clean no-op instead of inserting duplicates.
+-- with Access comparison so a retry is a clean no-op and conflicting Access
+-- values are detected rather than silently first-wins.
 insert into dflow."RolePermissions" ("RoleId", "UserId", "ElementId", "Access")
-select target."Id", p."UserId", p."ElementId", p."Access"
+select distinct on (target."Id", p."ElementId") target."Id", p."UserId", p."ElementId", p."Access"
 from dflow."RolePermissions" p
 join dflow."Roles" source on source."Id" = p."RoleId"
 join dflow."Roles" target
@@ -276,6 +277,7 @@ where p."UserId" is null
     where x."RoleId" = target."Id"
       and x."UserId" is null
       and x."ElementId" = p."ElementId"
+      and x."Access" = p."Access"
   );
 
 -- production → production and sales → sales are name-identical: the existing
@@ -331,28 +333,54 @@ begin
     raise exception 'ABORT: tree rows absent: %', missing_tree;
   end if;
 
-  select string_agg(name, ', ' order by name)
+  -- H3: verify admin and category rows have correct kind and no parent.
+  select string_agg(name || ' (kind=' || coalesce(kind,'<NULL>') || ')', ', ' order by name)
     into bad_tree
   from (
-    select r."Name" as name
+    select r."Name" as name, r.kind
     from dflow."Roles" r
-    where r."Name" in (
-      'admin', 'design', 'production', 'sales', 'vendors',
-      'creative designer', 'technical designer', 'project manager',
-      'sourcing', 'production coordinator', 'QC',
-      'salesperson', 'sales assistant',
-      'factory', 'trading co.'
-    )
+    where r."Name" in ('admin', 'design', 'production', 'sales', 'vendors')
       and not (
         (r."Name" = 'admin' and r.kind = 'super' and r.parent_id is null)
         or (r."Name" in ('design', 'production', 'sales', 'vendors')
             and r.kind = 'category' and r.parent_id is null)
-        or (r.kind = 'leaf' and r.parent_id is not null)
       )
-  ) incomplete;
+  ) wrong_kind;
 
   if bad_tree is not null then
-    raise exception 'ABORT: tree rows incomplete or mis-typed: %', bad_tree;
+    raise exception 'ABORT: admin/category rows mis-typed or parented: %', bad_tree;
+  end if;
+
+  -- H3: verify each leaf is parented to its correct category (not merely
+  -- "has some parent"). The category→leaf inheritance the superset guarantee
+  -- rests on requires exact parent identity.
+  select string_agg(name || '→' || coalesce(parent_name, '<ORPHAN>'), ', ' order by name)
+    into bad_tree
+  from (
+    select r."Name" as name, pr."Name" as parent_name
+    from dflow."Roles" r
+    left join dflow."Roles" pr on pr."Id" = r.parent_id
+    where r.kind = 'leaf'
+      and r."Name" in (
+        'creative designer', 'technical designer', 'project manager',
+        'sourcing', 'production coordinator', 'QC',
+        'salesperson', 'sales assistant',
+        'factory', 'trading co.'
+      )
+      and not (
+        (r."Name" in ('creative designer', 'technical designer', 'project manager')
+         and pr."Name" = 'design')
+        or (r."Name" in ('sourcing', 'production coordinator', 'QC')
+            and pr."Name" = 'production')
+        or (r."Name" in ('salesperson', 'sales assistant')
+            and pr."Name" = 'sales')
+        or (r."Name" in ('factory', 'trading co.')
+            and pr."Name" = 'vendors')
+      )
+  ) wrong_parent;
+
+  if bad_tree is not null then
+    raise exception 'ABORT: leaf rows parented to wrong category: %', bad_tree;
   end if;
 
   select string_agg(coalesce(u.email, u.id::text || ' (no email)'), ', ' order by u.email)
@@ -366,11 +394,10 @@ begin
     raise exception 'ABORT: membership on a category (people hold leaves only): %', bad_membership;
   end if;
 
-  -- F2: assert the RolePermissions copy did not silently drop any source
-  -- role-level row. Every role-level row's permission must be reachable from
-  -- the user_roles tree (leaf or parent category) after the copy.
-  -- The unmapped CASE branch (role names outside the five known ones) would
-  -- silently drop such rows — catch that here.
+  -- F2 / M3: assert the RolePermissions copy did not silently drop any source
+  -- role-level row. Only flag rows whose source name IS one of the five known
+  -- legacy names that should map to a different target — rows already sitting
+  -- on their end-state target (not in the CASE) are correct and must not abort.
   select string_agg(source."Name" || '→' || coalesce(target."Name", '<UNMAPPED>'), ', ' order by source."Name")
     into unmapped_copy
   from dflow."RolePermissions" p
@@ -384,6 +411,7 @@ begin
          when 'sales'            then 'sales'
        end
   where p."UserId" is null
+    and source."Name" in ('designer', 'vendor', 'sourcing_manager', 'production', 'sales')
     and target."Name" is distinct from source."Name"
     and target."Id" is null;
 
@@ -417,11 +445,11 @@ begin
       where r.kind = 'leaf' or r."Name" = 'admin'
       group by ur.user_id
     ) g on g.user_id = u.id
-    where coalesce(g.actual_count, 0) < m.expected_count
+    where coalesce(g.actual_count, 0) <> m.expected_count
   ) under_granted;
 
   if incomplete_grants is not null then
-    raise exception 'ABORT: backfill incomplete (users lacking expected leaf grants): %', incomplete_grants;
+    raise exception 'ABORT: backfill grant count mismatch (users with wrong leaf grant count): %', incomplete_grants;
   end if;
 end
 $$;

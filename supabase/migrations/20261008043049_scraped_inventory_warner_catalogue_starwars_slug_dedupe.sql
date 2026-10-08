@@ -1,7 +1,7 @@
 -- #4081: Scraped Properties follow-up to #3947 (owner request, Albert Hazan,
 -- chat 2026-10-07: "yes,have a subagent clean those up too").
 --
--- reserved-version: 20261008035132 (claim #4082)
+-- reserved-version: 20261008043049 (claim #4082)
 -- derived-from: 20261008005647
 --
 -- Two remaining repeat kinds, display-level only (same pattern as #3947):

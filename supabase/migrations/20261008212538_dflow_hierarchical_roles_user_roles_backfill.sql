@@ -74,6 +74,8 @@ do $$
 declare
   orphan_ids text;
   unknown_levels text;
+  bad_shape text;
+  dup_names text;
 begin
   select string_agg(p."Id"::text, ', ' order by p."Id")
     into orphan_ids
@@ -102,50 +104,54 @@ begin
     raise exception 'ABORT: unknown users.level values (normalize or map these first): %', unknown_levels;
   end if;
 
-  -- Exact shape assertions (mandatory review item). Abort if any dependency
-  -- has a different shape than this migration assumes. Inferred shape is not
-  -- proof — a pre-existing wrong-typed column must fail loudly, not silently.
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'Roles'
-      and column_name = 'Id' and data_type = 'integer'
-  ) then
-    raise exception 'ABORT: dflow."Roles"."Id" is not integer';
+  -- Exact object checks (mandatory review item 3). Every dependency column's
+  -- full shape — data_type AND nullability — is asserted, not merely existence.
+  -- A pre-existing wrong-typed or wrong-nullable column must fail loudly.
+  select string_agg(detail, '; ' order by detail)
+    into bad_shape
+  from (
+    select e.table_schema || '.' || e.table_name || '.' || e.column_name
+           || ' expected ' || e.data_type || '/' || e.is_nullable
+           || ', found '
+           || coalesce(c.data_type || '/' || c.is_nullable, 'MISSING') as detail
+    from (values
+      ('dflow', 'Roles',           'Id',        'integer',            'NO'),
+      ('dflow', 'Roles',           'Name',      'character varying',  'NO'),
+      ('dflow', 'RolePermissions', 'Id',        'integer',            'NO'),
+      ('dflow', 'RolePermissions', 'RoleId',    'integer',            'NO'),
+      ('dflow', 'RolePermissions', 'UserId',    'integer',            'YES'),
+      ('dflow', 'RolePermissions', 'ElementId', 'integer',            'NO'),
+      ('dflow', 'RolePermissions', 'Access',    'boolean',            'NO'),
+      ('dflow', 'users',           'id',        'integer',            'NO'),
+      ('dflow', 'users',           'email',     'character varying',  'YES'),
+      ('dflow', 'users',           'level',     'character varying',  'YES')
+    ) as e(table_schema, table_name, column_name, data_type, is_nullable)
+    left join information_schema.columns c
+      on c.table_schema = e.table_schema
+     and c.table_name = e.table_name
+     and c.column_name = e.column_name
+    where c.column_name is null
+       or c.data_type is distinct from e.data_type
+       or c.is_nullable is distinct from e.is_nullable
+  ) mismatches;
+
+  if bad_shape is not null then
+    raise exception 'ABORT: dependency column shape mismatch: %', bad_shape;
   end if;
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'Roles'
-      and column_name = 'Name' and is_nullable = 'NO'
-  ) then
-    raise exception 'ABORT: dflow."Roles"."Name" is not NOT NULL';
-  end if;
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'RolePermissions'
-      and column_name = 'UserId' and is_nullable = 'YES'
-  ) then
-    raise exception 'ABORT: dflow."RolePermissions"."UserId" is not nullable (per-user override path broken)';
-  end if;
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'RolePermissions'
-      and column_name = 'ElementId' and is_nullable = 'NO'
-  ) then
-    raise exception 'ABORT: dflow."RolePermissions"."ElementId" is not NOT NULL';
-  end if;
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'RolePermissions'
-      and column_name = 'Access' and is_nullable = 'NO'
-  ) then
-    raise exception 'ABORT: dflow."RolePermissions"."Access" is not NOT NULL';
-  end if;
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'dflow' and table_name = 'users'
-      and column_name = 'level' and is_nullable = 'YES'
-  ) then
-    raise exception 'ABORT: dflow.users.level is not nullable';
+
+  -- F5: duplicate "Name" values make the forward UNIQUE index fail opaquely.
+  -- Fail loud with the duplicate names listed before any DDL runs.
+  select string_agg(name || ' (x' || cnt::text || ')', ', ' order by name)
+    into dup_names
+  from (
+    select "Name" as name, count(*) as cnt
+    from dflow."Roles"
+    group by "Name"
+    having count(*) > 1
+  ) dups;
+
+  if dup_names is not null then
+    raise exception 'ABORT: duplicate dflow."Roles"."Name" values (roles_name_uidx cannot be created): %', dup_names;
   end if;
 end
 $$;
@@ -175,6 +181,33 @@ alter table dflow."Roles"
 
 create unique index if not exists roles_name_uidx
   on dflow."Roles" ("Name");
+
+-- F2: ON CONFLICT ("Name") needs a real UNIQUE arbiter. `create unique index
+-- if not exists` silently keeps a pre-existing same-named but non-unique or
+-- wrong-column index; verify the arbiter actually exists before any ON CONFLICT
+-- ("Name") fires.
+do $$
+begin
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'dflow' and tablename = 'Roles'
+      and indexname = 'roles_name_uidx'
+      and indexdef ilike '%unique%'
+      and indexdef like '%("Name")%'
+  ) and not exists (
+    select 1
+    from information_schema.table_constraints tc
+    join information_schema.key_column_usage kcu
+      on tc.constraint_name = kcu.constraint_name
+     and tc.constraint_schema = kcu.constraint_schema
+    where tc.table_schema = 'dflow' and tc.table_name = 'Roles'
+      and tc.constraint_type in ('UNIQUE', 'PRIMARY KEY')
+      and kcu.column_name = 'Name'
+  ) then
+    raise exception 'ABORT: no UNIQUE arbiter on dflow."Roles"("Name"); ON CONFLICT ("Name") cannot resolve';
+  end if;
+end
+$$;
 
 comment on column dflow."Roles".kind is
   'Hierarchy node kind: super (admin, outside categories), category, or leaf. People hold leaves only.';
@@ -268,6 +301,55 @@ comment on column dflow.user_roles.granted_by is
 create index if not exists user_roles_role_id_idx
   on dflow.user_roles (role_id);
 
+-- F3: if dflow.user_roles pre-existed, `create table if not exists` keeps its
+-- columns. Assert every column's exact shape before the backfill depends on it.
+-- F2: ON CONFLICT (user_id, role_id) needs the composite PK as arbiter; assert
+-- it here, BEFORE the insert that uses it (not only in post-checks).
+do $$
+declare
+  bad_shape text;
+begin
+  select string_agg(detail, '; ' order by detail)
+    into bad_shape
+  from (
+    select e.column_name
+           || ' expected ' || e.data_type || '/' || e.is_nullable
+           || ', found '
+           || coalesce(c.data_type || '/' || c.is_nullable, 'MISSING') as detail
+    from (values
+      ('user_id',    'integer',   'NO'),
+      ('role_id',    'integer',   'NO'),
+      ('granted_by', 'integer',   'YES'),
+      ('granted_at', 'timestamp with time zone', 'NO')
+    ) as e(column_name, data_type, is_nullable)
+    left join information_schema.columns c
+      on c.table_schema = 'dflow'
+     and c.table_name = 'user_roles'
+     and c.column_name = e.column_name
+    where c.column_name is null
+       or c.data_type is distinct from e.data_type
+       or c.is_nullable is distinct from e.is_nullable
+  ) mismatches;
+
+  if bad_shape is not null then
+    raise exception 'ABORT: dflow.user_roles column shape mismatch: %', bad_shape;
+  end if;
+
+  if not exists (
+    select 1 from information_schema.table_constraints tc
+    join information_schema.key_column_usage kcu
+      on tc.constraint_name = kcu.constraint_name
+     and tc.table_schema = kcu.table_schema
+    where tc.table_schema = 'dflow' and tc.table_name = 'user_roles'
+      and tc.constraint_type = 'PRIMARY KEY'
+    group by tc.constraint_name
+    having array_agg(kcu.column_name order by kcu.ordinal_position) = array['user_id', 'role_id']
+  ) then
+    raise exception 'ABORT: dflow.user_roles PK is not (user_id, role_id); ON CONFLICT (user_id, role_id) cannot resolve';
+  end if;
+end
+$$;
+
 -- ------------------------------------------------------------------------------
 -- 5. Backfill from users.level (case-normalized; values themselves untouched)
 -- ------------------------------------------------------------------------------
@@ -302,10 +384,71 @@ on conflict (user_id, role_id) do nothing;
 --
 -- Idempotency guard: ON CONFLICT cannot fire here because every inserted row has
 -- UserId = NULL and the unique arbiter treats NULLs as distinct. Use NOT EXISTS
--- with Access comparison so a retry is a clean no-op and conflicting Access
--- values are detected rather than silently first-wins.
+-- with Access comparison so a retry is a clean no-op.
+
+-- F6: two role-level rows on the same (source role, ElementId) with different
+-- Access are legal under the NULL-distinct unique arbiters. Any copy would be
+-- an arbitrary pick. Abort rather than silently drop one.
+do $$
+declare
+  conflicting_source text;
+  conflicting_target text;
+begin
+  select string_agg(detail, '; ' order by detail)
+    into conflicting_source
+  from (
+    select source."Name" || ' ElementId=' || p."ElementId"::text
+           || ' Access values: ' || string_agg(p."Access"::text, ',' order by p."Access") as detail
+    from dflow."RolePermissions" p
+    join dflow."Roles" source on source."Id" = p."RoleId"
+    where p."UserId" is null
+    group by source."Name", p."ElementId"
+    having count(distinct p."Access") > 1
+  ) dup;
+
+  if conflicting_source is not null then
+    raise exception 'ABORT: role-level RolePermissions with conflicting Access on same (role, ElementId) — copy would be an arbitrary pick: %', conflicting_source;
+  end if;
+
+  -- F6: an existing target row with the same ElementId but different Access
+  -- would silently swallow the source row via the NOT EXISTS guard. Abort
+  -- rather than drop.
+  select string_agg(detail, '; ' order by detail)
+    into conflicting_target
+  from (
+    select source."Name" || '→' || target."Name"
+           || ' ElementId=' || p."ElementId"::text
+           || ' source.Access=' || p."Access"::text
+           || ' target.Access=' || x."Access"::text as detail
+    from dflow."RolePermissions" p
+    join dflow."Roles" source on source."Id" = p."RoleId"
+    join dflow."Roles" target
+      on target."Name" = case source."Name"
+           when 'designer'         then 'design'
+           when 'vendor'           then 'vendors'
+           when 'sourcing_manager' then 'sourcing'
+           when 'production'       then 'production'
+           when 'sales'            then 'sales'
+         end
+    join dflow."RolePermissions" x
+      on x."RoleId" = target."Id"
+     and x."UserId" is null
+     and x."ElementId" = p."ElementId"
+     and x."Access" is distinct from p."Access"
+    where p."UserId" is null
+      and target."Name" is distinct from source."Name"
+  ) clash;
+
+  if conflicting_target is not null then
+    raise exception 'ABORT: target RolePermissions row with conflicting Access — source row would be silently dropped: %', conflicting_target;
+  end if;
+end
+$$;
+
+-- `select distinct` deduplicates exact-duplicate source rows; the pre-check
+-- above aborts on conflicting Access, so no arbitrary pick can occur.
 insert into dflow."RolePermissions" ("RoleId", "UserId", "ElementId", "Access")
-select distinct on (target."Id", p."ElementId") target."Id", p."UserId", p."ElementId", p."Access"
+select distinct target."Id", p."UserId", p."ElementId", p."Access"
 from dflow."RolePermissions" p
 join dflow."Roles" source on source."Id" = p."RoleId"
 join dflow."Roles" target
@@ -336,30 +479,51 @@ where p."UserId" is null
 
 do $$
 declare
-  expected_admin int;
-  actual_admin int;
   bad_tree text;
   bad_membership text;
   missing_tree text;
-  incomplete_grants text;
-  unmapped_copy text;
+  wrong_grants text;
+  bad_admin text;
+  unreachable_copy text;
+  unreachable_perms text;
 begin
-  select count(*) into expected_admin
-  from dflow.users
-  where lower(trim(level)) = 'admin';
+  -- F8 / identity-based admin check: the exact user IDs with level='admin' must
+  -- be the exact user IDs holding the admin super-role (set equality, not counts).
+  -- A missed admin plus an unexpected admin grant must both be caught.
+  select string_agg(detail, '; ' order by detail)
+    into bad_admin
+  from (
+    select coalesce(u.email, u.id::text || ' (no email)')
+           || ' (level=' || coalesce(u.level, '<NULL>')
+           || ', expected admin grant, MISSING)' as detail
+    from dflow.users u
+    where lower(trim(u.level)) = 'admin'
+      and not exists (
+        select 1 from dflow.user_roles ur
+        join dflow."Roles" r on r."Id" = ur.role_id
+        where ur.user_id = u.id and r."Name" = 'admin' and r.kind = 'super'
+      )
+    union all
+    select coalesce(u.email, g.user_id::text || ' (no email)')
+           || ' (level=' || coalesce(u.level, '<NULL>')
+           || ', UNEXPECTED admin grant)' as detail
+    from (
+      select ur.user_id
+      from dflow.user_roles ur
+      join dflow."Roles" r on r."Id" = ur.role_id
+      where r."Name" = 'admin' and r.kind = 'super'
+    ) g
+    left join dflow.users u on u.id = g.user_id
+    where u.id is null
+       or lower(trim(u.level)) is distinct from 'admin'
+  ) admin_mismatch;
 
-  select count(*) into actual_admin
-  from dflow.user_roles ur
-  join dflow."Roles" r on r."Id" = ur.role_id
-  where r."Name" = 'admin' and r.kind = 'super';
-
-  if expected_admin <> actual_admin then
-    raise exception 'ABORT: admin backfill count mismatch: users.level=admin %, user_roles admin grants %',
-      expected_admin, actual_admin;
+  if bad_admin is not null then
+    raise exception 'ABORT: admin grant identity mismatch (not the same users): %', bad_admin;
   end if;
 
-  -- H2: assert all 15 tree names are present (absent rows are invisible to the
-  -- mis-typing check below, which only inspects rows that exist).
+  -- H2: assert all 15 tree names plus the 2 retained legacy leaves are present
+  -- (absent rows are invisible to the mis-typing check below).
   select string_agg(name, ', ' order by name)
     into missing_tree
   from (
@@ -368,7 +532,8 @@ begin
       'creative designer', 'technical designer', 'project manager',
       'sourcing', 'production coordinator', 'QC',
       'salesperson', 'sales assistant',
-      'factory', 'trading co.'
+      'factory', 'trading co.',
+      'designer', 'sourcing_manager'
     ]) as name
   ) expected
   where not exists (
@@ -397,9 +562,10 @@ begin
     raise exception 'ABORT: admin/category rows mis-typed or parented: %', bad_tree;
   end if;
 
-  -- H3: verify each leaf is parented to its correct category (not merely
-  -- "has some parent"). The category→leaf inheritance the superset guarantee
-  -- rests on requires exact parent identity.
+  -- H3 / F9: verify each leaf is parented to its correct category (not merely
+  -- "has some parent"), including the two retained legacy leaves. The
+  -- category→leaf inheritance the superset guarantee rests on requires exact
+  -- parent identity.
   select string_agg(name || '→' || coalesce(parent_name, '<ORPHAN>'), ', ' order by name)
     into bad_tree
   from (
@@ -411,12 +577,13 @@ begin
         'creative designer', 'technical designer', 'project manager',
         'sourcing', 'production coordinator', 'QC',
         'salesperson', 'sales assistant',
-        'factory', 'trading co.'
+        'factory', 'trading co.',
+        'designer', 'sourcing_manager'
       )
       and not (
-        (r."Name" in ('creative designer', 'technical designer', 'project manager')
+        (r."Name" in ('creative designer', 'technical designer', 'project manager', 'designer')
          and pr."Name" = 'design')
-        or (r."Name" in ('sourcing', 'production coordinator', 'QC')
+        or (r."Name" in ('sourcing', 'production coordinator', 'QC', 'sourcing_manager')
             and pr."Name" = 'production')
         or (r."Name" in ('salesperson', 'sales assistant')
             and pr."Name" = 'sales')
@@ -440,76 +607,150 @@ begin
     raise exception 'ABORT: membership on a category (people hold leaves only): %', bad_membership;
   end if;
 
-  -- F2 / M3: assert the RolePermissions copy did not silently drop any source
-  -- role-level row. Only flag rows whose source name IS one of the five known
-  -- legacy names that should map to a different target — rows already sitting
-  -- on their end-state target (not in the CASE) are correct and must not abort.
-  select string_agg(source."Name" || '→' || coalesce(target."Name", '<UNMAPPED>'), ', ' order by source."Name")
-    into unmapped_copy
-  from dflow."RolePermissions" p
-  join dflow."Roles" source on source."Id" = p."RoleId"
-  left join dflow."Roles" target
-    on target."Name" = case source."Name"
-         when 'designer'         then 'design'
-         when 'vendor'           then 'vendors'
-         when 'sourcing_manager' then 'sourcing'
-         when 'production'       then 'production'
-         when 'sales'            then 'sales'
-       end
-  where p."UserId" is null
-    and source."Name" in ('designer', 'vendor', 'sourcing_manager', 'production', 'sales')
-    and target."Name" is distinct from source."Name"
-    and target."Id" is null;
+  -- F8 / identity-based leaf grant check: each user must hold exactly the
+  -- expected role names for their level (set equality in both directions,
+  -- not counts). A user holding the right number of wrong leaves must fail;
+  -- a pre-existing extra user_roles row must fail.
+  select string_agg(detail, '; ' order by detail)
+    into wrong_grants
+  from (
+    -- expected but missing
+    select coalesce(u.email, u.id::text || ' (no email)')
+           || ' (level=' || coalesce(u.level, '<NULL>')
+           || ', missing ' || e.leaf_name || ')' as detail
+    from dflow.users u
+    join (values
+      ('admin',            'admin'),
+      ('designer',         'creative designer'),
+      ('designer',         'technical designer'),
+      ('designer',         'project manager'),
+      ('production',       'production coordinator'),
+      ('production',       'QC'),
+      ('sales',            'salesperson'),
+      ('sales',            'sales assistant'),
+      ('sourcing_manager', 'sourcing'),
+      ('vendor',           'factory')
+    ) as e(old_level, leaf_name) on e.old_level = lower(trim(u.level))
+    where not exists (
+      select 1 from dflow.user_roles ur
+      join dflow."Roles" r on r."Id" = ur.role_id
+      where ur.user_id = u.id and r."Name" = e.leaf_name
+    )
+    union all
+    -- unexpected extra grants
+    select coalesce(u.email, u.id::text || ' (no email)')
+           || ' (level=' || coalesce(u.level, '<NULL>')
+           || ', unexpected ' || r."Name" || ')' as detail
+    from dflow.user_roles ur
+    join dflow."Roles" r on r."Id" = ur.role_id
+    join dflow.users u on u.id = ur.user_id
+    where (r.kind = 'leaf' or r."Name" = 'admin')
+      and not exists (
+        select 1 from (values
+          ('admin',            'admin'),
+          ('designer',         'creative designer'),
+          ('designer',         'technical designer'),
+          ('designer',         'project manager'),
+          ('production',       'production coordinator'),
+          ('production',       'QC'),
+          ('sales',            'salesperson'),
+          ('sales',            'sales assistant'),
+          ('sourcing_manager', 'sourcing'),
+          ('vendor',           'factory')
+        ) as e(old_level, leaf_name)
+        where e.old_level = lower(trim(u.level))
+          and e.leaf_name = r."Name"
+      )
+  ) wrong_grant_rows;
 
-  if unmapped_copy is not null then
-    raise exception 'ABORT: role-level RolePermissions on unmapped source roles (would be silently dropped): %', unmapped_copy;
+  if wrong_grants is not null then
+    raise exception 'ABORT: backfill grant identity mismatch (wrong leaf set for level): %', wrong_grants;
   end if;
 
-  -- H2 / F1: assert every user received the expected leaf grants for their level.
-  -- NULL-safe: coalesce email so a NULL email cannot defeat string_agg.
+  -- F7 / positive reachability of the RolePermissions copy: every role-level
+  -- row's content must be present on its end-state target after the copy.
+  -- Sources in the five-branch map must have a matching row on the mapped
+  -- target; sources outside the map must sit on a known end-state role name.
   select string_agg(detail, '; ' order by detail)
-    into incomplete_grants
+    into unreachable_copy
+  from (
+    select p."Id"::text || ' (' || source."Name"
+           || '→' || coalesce(m.target_name, '(self)')
+           || ' ElementId=' || p."ElementId"::text
+           || ' Access=' || p."Access"::text || ')' as detail
+    from dflow."RolePermissions" p
+    join dflow."Roles" source on source."Id" = p."RoleId"
+    left join (values
+      ('designer',         'design'),
+      ('vendor',           'vendors'),
+      ('sourcing_manager', 'sourcing'),
+      ('production',       'production'),
+      ('sales',            'sales')
+    ) as m(source_name, target_name) on m.source_name = source."Name"
+    where p."UserId" is null
+      and (
+        case
+          when m.target_name is not null and m.target_name is distinct from source."Name"
+            then not exists (
+              select 1 from dflow."RolePermissions" x
+              join dflow."Roles" t on t."Id" = x."RoleId"
+              where t."Name" = m.target_name
+                and x."UserId" is null
+                and x."ElementId" = p."ElementId"
+                and x."Access" = p."Access"
+            )
+          when m.target_name is not null
+            then false  -- name-identical: already on its own target
+          else source."Name" not in (
+            'admin', 'design', 'production', 'sales', 'vendors',
+            'creative designer', 'technical designer', 'project manager',
+            'sourcing', 'production coordinator', 'QC',
+            'salesperson', 'sales assistant',
+            'factory', 'trading co.',
+            'designer', 'sourcing_manager'
+          )
+        end
+      )
+  ) unreachable;
+
+  if unreachable_copy is not null then
+    raise exception 'ABORT: role-level RolePermissions not reachable on end-state target after copy: %', unreachable_copy;
+  end if;
+
+  -- F7 / positive reachability at the user level: every role-level permission a
+  -- user could reach through their old level role must remain reachable via
+  -- their new leaves, those leaves' parent categories, or the admin super-role.
+  select string_agg(detail, '; ' order by detail)
+    into unreachable_perms
   from (
     select coalesce(u.email, u.id::text || ' (no email)')
-           || ' (level=' || coalesce(u.level,'<NULL>') || ', expected=' || m.expected_count
-           || ', actual=' || coalesce(g.actual_count, 0) || ')' as detail
+           || ' (level=' || coalesce(u.level, '<NULL>')
+           || ', ElementId=' || p."ElementId"::text
+           || ' Access=' || p."Access"::text || ')' as detail
     from dflow.users u
-    join (
-      values
-        ('admin',            1),
-        ('designer',         3),
-        ('production',       2),
-        ('sales',            2),
-        ('sourcing_manager', 1),
-        ('vendor',           1)
-    ) as m(old_level, expected_count)
-      on m.old_level = lower(trim(u.level))
-    left join (
-      select ur.user_id, count(*) as actual_count
+    join dflow."RolePermissions" p on p."UserId" is null
+    join dflow."Roles" old_r on old_r."Id" = p."RoleId"
+      and old_r."Name" = lower(trim(u.level))
+    where not exists (
+      select 1
       from dflow.user_roles ur
       join dflow."Roles" r on r."Id" = ur.role_id
-      where r.kind = 'leaf' or r."Name" = 'admin'
-      group by ur.user_id
-    ) g on g.user_id = u.id
-    where coalesce(g.actual_count, 0) <> m.expected_count
-  ) under_granted;
+      where ur.user_id = u.id
+        and (
+          (r."Name" = 'admin' and r.kind = 'super')
+          or exists (
+            select 1 from dflow."RolePermissions" x
+            where x."UserId" is null
+              and x."RoleId" in (r."Id", r.parent_id)
+              and x."ElementId" = p."ElementId"
+              and x."Access" = p."Access"
+          )
+        )
+    )
+  ) lost;
 
-  if incomplete_grants is not null then
-    raise exception 'ABORT: backfill grant count mismatch (users with wrong leaf grant count): %', incomplete_grants;
-  end if;
-
-  -- Assert the user_roles PK shape (the backfill's ON CONFLICT depends on it).
-  if not exists (
-    select 1 from information_schema.table_constraints tc
-    join information_schema.key_column_usage kcu
-      on tc.constraint_name = kcu.constraint_name
-     and tc.table_schema = kcu.table_schema
-    where tc.table_schema = 'dflow' and tc.table_name = 'user_roles'
-      and tc.constraint_type = 'PRIMARY KEY'
-    group by tc.constraint_name
-    having array_agg(kcu.column_name order by kcu.ordinal_position) = array['user_id', 'role_id']
-  ) then
-    raise exception 'ABORT: dflow.user_roles PK is not (user_id, role_id)';
+  if unreachable_perms is not null then
+    raise exception 'ABORT: user lost reachable role-level permissions (superset violated): %', unreachable_perms;
   end if;
 end
 $$;

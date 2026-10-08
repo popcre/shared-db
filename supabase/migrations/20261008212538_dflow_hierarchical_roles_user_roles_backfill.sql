@@ -219,6 +219,9 @@ comment on table dflow.user_roles is
 comment on column dflow.user_roles.granted_by is
   'User id of the grantor. NULL for the additive migration backfill.';
 
+create index if not exists user_roles_role_id_idx
+  on dflow.user_roles (role_id);
+
 -- ------------------------------------------------------------------------------
 -- 5. Backfill from users.level (case-normalized; values themselves untouched)
 -- ------------------------------------------------------------------------------

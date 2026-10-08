@@ -50,3 +50,31 @@ test('complete profile fits the original 8192-byte artifact bound and the query 
  const sql=sqlBytes.toString();assert.match(sql,/WITH expected/);assert.doesNotMatch(sql,/^\s*(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|GRANT|REVOKE)\b/im);
  assert.equal(expected.catalog.role_count,8);assert.equal(expected.catalog.matrix_entries,427);
 });
+
+// #2873: Supabase's non-superuser postgres receives PostgreSQL 16+'s implicit creator
+// membership in every role it creates. Both the migration post-check and the observer
+// may exempt exactly that grant; each condition is load-bearing and pinned here.
+test('implicit creator membership exemption is exact in migration and observer',async()=>{
+ const migration=await readFile(new URL('../../supabase/migrations/20261008025618_dflow_prod_service_identities_forward_2.sql',import.meta.url),'utf8');
+ const observer=await readFile(new URL('./2873-catalog.sql',import.meta.url),'utf8');
+ const norm=t=>t.toLowerCase().replace(/\s+/g,' ');
+ const m=norm(migration),o=norm(observer);
+ // The whole exemption clause, verbatim, exactly once in each surface: dropping or
+ // weakening any condition changes the clause and fails here.
+ const clause="not (m.member='postgres'::regrole and m.admin_option and not m.inherit_option and not m.set_option and exists (select 1 from pg_roles g where g.oid=m.grantor and g.rolsuper)";
+ const count=(t)=>t.split(clause).length-1;
+ assert.equal(count(m),1,'migration exemption clause');
+ assert.equal(count(o.replace(/exists\(/g,'exists (')),1,'observer exemption clause');
+ assert.equal((m.match(/'postgres'::regrole/g)||[]).length,1);
+ assert.equal((o.match(/'postgres'::regrole/g)||[]).length,1);
+ assert.ok(o.includes("when 'v' then 'view'"),'observer must distinguish views from tables');
+});
+
+// #2873: every role inherits TRUNCATE on pg_net's net tables from Supabase's PUBLIC grant
+// (owner-accepted 2026-09-23). Only that inherited PUBLIC grant on schema net is exempt.
+test('global_no_truncate exempts only PUBLIC-inherited TRUNCATE in schema net',async()=>{
+ const o=(await readFile(new URL('./2873-catalog.sql',import.meta.url),'utf8')).replace(/\s+/g,' ');
+ const clause="AND NOT (n.nspname='net' AND EXISTS(SELECT 1 FROM aclexplode(c.relacl) pa WHERE pa.grantee=0 AND pa.privilege_type='TRUNCATE') AND NOT EXISTS(SELECT 1 FROM aclexplode(c.relacl) da WHERE da.grantee IN(SELECT oid FROM roles)))";
+ assert.equal(o.split(clause).length-1,1);
+ assert.equal((o.match(/nspname='net'/g)||[]).length,1);
+});

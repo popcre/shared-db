@@ -97,18 +97,15 @@ export const ROUTES_BY_WORK_TYPE = Object.freeze({
 export const NON_STRUCTURAL_EXITS = Object.freeze({
   'application-data': 'reject',
   'source-data': 'reject',
-  // FORK, not REJECT, and DELIBERATELY UNCHANGED by issue #1366. Curated Master
-  // Data is governed INSIDE this repo by 6.4: it binds the AI session doing the
-  // typing and never leaves for an application repo. It exits by fork because it
-  // must not be worked in the orchestrator's own context - not because it belongs
-  // to somebody else. A curated fork that ships supabase/migrations/* must still
-  // claim a lane before authoring: version reservation and object collision locks
-  // are safety controls. Curated work that ships no migration does not use a lane.
-  //
-  // The 2026-08-21 ruling was about repository-maintenance work. It did NOT
-  // change how curated Master Data is routed. Do not move this to another exit
-  // without a separate explicit owner ruling.
-  'curated-master-data': 'fork',
+  // DATA-SESSION (owner ruling 2026-09-25, Albert Hazan). Curated Master Data
+  // loads no longer need the orchestrator. A dedicated curated-data session
+  // owns the work end to end under 6.4: the matched-row abstention rule and the
+  // curation protections still bind the session doing the typing. What left is
+  // only the orchestrator in the middle. A curated session that ships
+  // supabase/migrations/* must still claim a lane before authoring: version
+  // reservation and object collision locks are safety controls. Curated work
+  // that ships no migration does not use a lane.
+  'curated-master-data': 'data-session',
   // REPO-SESSION, not FORK. These are owned by a separately started repository
   // session. The orchestrator records them so an audit can see them, and then
   // takes no action at all: it does not work them and it does not dispatch them.
@@ -123,7 +120,7 @@ export const NON_STRUCTURAL_EXITS = Object.freeze({
 
 // Exits that mean "this is not the orchestrator's work AND the orchestrator has
 // nothing to do about it" - visible to an audit, never a worklist.
-export const OUTSIDE_ORCHESTRATOR_EXITS = Object.freeze(['repo-session'])
+export const OUTSIDE_ORCHESTRATOR_EXITS = Object.freeze(['repo-session', 'data-session'])
 
 // A REJECT exit must MOVE the task, never merely decline it. `return_to` is the
 // forwarding address: the repository whose session owns the work. Rejecting

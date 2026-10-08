@@ -4618,11 +4618,12 @@ export function main(argv, now = new Date(), io = githubIo) {
           for (const item of actionable) console.error(describe(item))
         }
         if (outside.length) {
-          // OWNER RULING 2026-08-21 (issue #1366): the orchestrator handles
-          // structure and schema only. These rows are listed so an audit can see
-          // them and so nothing accumulates unseen - NOT so the orchestrator can
-          // pick them up. There is no orchestrator action for any of them.
-          console.error('OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION: listed for audit visibility only (owner ruling 2026-08-21, issue #1366). The orchestrator does structure/schema only. Do NOT work these and do NOT dispatch them; a separately started session owns them.')
+          // OWNER RULING 2026-08-21 (issue #1366) and 2026-09-25: the
+          // orchestrator handles structure and schema only. These rows are
+          // listed so an audit can see them and so nothing accumulates unseen -
+          // NOT so the orchestrator can pick them up. There is no orchestrator
+          // action for any of them.
+          console.error('OUTSIDE ORCHESTRATOR — OWNED BY A DEDICATED SESSION: listed for audit visibility only (owner rulings 2026-08-21 and 2026-09-25). The orchestrator does structure/schema only. Do NOT work these and do NOT dispatch them; a separately started session owns them.')
           for (const item of outside) console.error(describe(item))
         }
         const unaddressed = result.notOrchestratorWork.filter((item)=>item.needsReturnAddress)

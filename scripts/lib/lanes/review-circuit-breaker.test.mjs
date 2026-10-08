@@ -70,13 +70,13 @@ test('exact row ceiling and malformed PR cannot be accepted as complete paid his
 })
 
 import {execFileSync} from 'node:child_process'
-import {mkdtempSync,writeFileSync,readFileSync,rmSync,mkdirSync} from 'node:fs'
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,mkdirSync,chmodSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 function realGitFixture(t) {
  const dir=mkdtempSync(path.join(tmpdir(),'review-budget-git-'));t.after(()=>rmSync(dir,{recursive:true,force:true}))
  const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']})
- git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test']);git(['config','core.autocrlf','false']);git(['config','core.eol','lf'])
+ git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test']);git(['config','core.fileMode','false']);git(['config','core.autocrlf','false']);git(['config','core.eol','lf'])
  const commit=(file,text)=>{writeFileSync(path.join(dir,file),text);git(['add',file]);git(['commit','-qm','fixture']);return git(['rev-parse','HEAD']).trim()}
  const base=commit('app.txt','context\nseparator1\nseparator2\nauthor\nend\n');git(['switch','-qc','feature'])
  const before=commit('app.txt','context\nseparator1\nseparator2\nfixed\nend\n')
@@ -257,7 +257,7 @@ function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=f
   const report={schema_version:1,work_issue:3536,outcome:'ready-for-merge',pr:3999,migration_versions:[],contract_ref:`refs/db-contracts/3536/${c.generation}`,contract_sha256:contractHash(c),head_sha:implementation,base_sha:f.base,files_changed:['app.txt'],db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Controlled fixture'}],assumptions_resolved:[],stop_conditions_hit:[]}
   if(c.generation===317){if(bad==='hash')report.contract_sha256='b'.repeat(64);if(bad==='pr')report.pr=4000;if(bad==='issue')report.work_issue=3537}
   writeFileSync(path.join(dir,'contract.json'),JSON.stringify(c));writeFileSync(path.join(dir,'completion.json'),JSON.stringify(report))
-  f.git(['add',`.agent/work/3536/${c.generation}`]);if(c.generation===317 && bad==='mode'){f.git(['update-index','--chmod=+x','.agent/work/3536/317/completion.json'])};f.git(['commit','-qm','fixture exact pair']);return sha()
+  f.git(['add',`.agent/work/3536/${c.generation}`]);if(c.generation===317 && bad==='mode'){f.git(['update-index','--chmod=+x','.agent/work/3536/317/completion.json']);chmodSync(path.join(dir,'completion.json'),0o755)};f.git(['commit','-qm','fixture exact pair']);return sha()
  }
  const before=writePair(root,sha())
  const published=contract(315,{work_issue:3536,generation:312,contract_sha256:contractHash(root)})
@@ -342,7 +342,7 @@ function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=
  f.git(['switch','main']);const base=f.commit(producerPinFile,baseText)
  f.git(['switch','-qc','pins',base]);let ours=baseText.replace(producerPinAnchor,producerPinAnchor+block(0));if(alter)ours=alter(ours)
  let before=f.commit(producerPinFile,ours)
- if(mode){f.git(['add',producerPinFile]);f.git(['update-index','--chmod=+x',producerPinFile]);f.git(['commit','-qm','different mode']);before=f.git(['rev-parse','HEAD']).trim()}
+ if(mode){f.git(['add',producerPinFile]);f.git(['update-index','--chmod=+x',producerPinFile]);chmodSync(path.join(f.dir,producerPinFile),0o755);f.git(['commit','-qm','different mode']);before=f.git(['rev-parse','HEAD']).trim()}
  if(extraConflict)before=f.commit('app.txt','feature overlapping source\n')
  if(repair)f.commit('app.txt','original genuine runtime repair\n')
  f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');const main=f.commit(producerPinFile,baseText.replace(producerPinAnchor,producerPinAnchor+block(1)))

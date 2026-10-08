@@ -39,10 +39,11 @@ shares the Supabase database**: PM/PIM `poppim-web`, CRM `popcrm-web`, DAM
 touching code or the database. It exists to stop separate
 AI sessions from breaking each other through the one database they all depend on.
 
-> **The structural lane takes ONLY database-SHAPE changes (§0.0-C) and curated Master
-> Data loads. Nothing else ever uses it** — not proofs, monitoring, reports,
+> **The structural lane takes ONLY database-SHAPE changes (§0.0-C). Nothing else ever uses it** — not proofs, monitoring, reports,
 > tooling, scripts, docs, or repository maintenance, however small. The session
 > that owns that outcome does it. When in doubt, it is not structural-lane work.
+> Curated Master Data loads go to a dedicated data session (owner ruling 2026-09-25);
+> one that ships `supabase/migrations/*` still claims a lane before authoring.
 >
 > **Started in `shared-db`? There is no orchestrator (owner ruling 2026-10-02, AGENTS.md
 > §0.0-D).** Structural work is claim-first: claim the exact objects on the existing issue

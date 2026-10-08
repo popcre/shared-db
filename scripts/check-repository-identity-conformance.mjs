@@ -58,7 +58,7 @@ export const ALLOWLIST = {
   'scripts/check-pr-object-collisions.test.mjs': [2, FIXTURE],
   'scripts/lib/review-verdict-artifact.test.mjs': [2, FIXTURE],
   'scripts/lib/work-dependencies.test.mjs': [2, FIXTURE],
-  'scripts/manage-migration-author-lanes.test.mjs': [11, FIXTURE],
+  'scripts/manage-migration-author-lanes.test.mjs': [14, 'test fixtures: historical-slug evidence, verifyLiveAssertion URL literals, and application-owned proof route; literal evidence/URL data, not a repository the code talks to'],
   'scripts/migration-retirement-tombstones.test.mjs': [3, 'test fixtures: the retirement evidence URL, the --evidence argv URL, and the #3675 verdict findings_ref URL; literal evidence/URL data, not a repository the code talks to'],
   'scripts/orchestrator-flow/admission-outcome.test.mjs': [19, FIXTURE],
   'scripts/orchestrator-flow/qualify-change.test.mjs': [1, FIXTURE],

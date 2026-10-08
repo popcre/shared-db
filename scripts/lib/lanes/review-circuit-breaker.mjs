@@ -228,7 +228,11 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     const candidates=sides.filter(side=>side.protected)
     if(candidates.length!==1)throw new LaneError('review budget producer pin protected parent is ambiguous')
     const author=sides.find(side=>!side.protected),canonical=candidates[0].row
-    blockOf(canonical)
+    // Protected main may reorder or interleave its own lines around the pins; it must
+    // still carry every author pin exactly once in the inventory, or the protected
+    // bytes would silently drop the author side of the merge.
+    const protectedInventory=canonical.text.split('PREVIEW_PRODUCER_PATHS = (\n')[1].split('\n)')[0]+'\n'
+    if(pins.split('\n').filter(Boolean).some(line=>protectedInventory.split(`${line}\n`).length!==2))throw new LaneError('review budget producer pin block differs')
     if(author.row.text.replace(blockOf(author.row),anchor)!==rows[0].text)throw new LaneError('review budget producer pin overlap changes other source bytes')
     canonicalPinOverlaps.push({base,parents:[a,b],path:file,mode:'100644',parentBlobs:rows.map(row=>row.blob),protectedParent:candidates[0].commit,canonicalBlob:canonical.blob})
     return new Map([[file,{mode:canonical.mode,text:canonical.text}]])

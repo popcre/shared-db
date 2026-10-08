@@ -335,7 +335,7 @@ const producerPinFile='scripts/production_business_risk_gate.py'
 const producerPinAnchor='    "scripts/manage-migration-author-lanes.mjs",\n'
 const producerPinNames=['agent-work-contract-git-evidence.mjs','agent-work-contract.mjs','refresh-code-pr-branch.mjs','run-governed-review.mjs']
 const producerPinComments=['    # Existing modules newly reachable through exact budget/contract imports.\n','    # Existing normal canonical validators now used by authenticated nonclosing routing.\n']
-function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=false,mainEvolve=false,laterMain=false}={}){
+function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=false,mainEvolve=false,laterMain=false,mainAlter=null}={}){
  const f=realGitFixture(t);mkdirSync(path.join(f.dir,'scripts'),{recursive:true})
  const baseText='PREVIEW_PRODUCER_PATHS = (\n'+producerPinAnchor+'    "scripts/unchanged.py",\n)\n'
  const block=i=>producerPinComments[i]+producerPinNames.map(name=>`    "scripts/${name}",\n`).join('')
@@ -345,7 +345,7 @@ function producerPinFixture(t,{repair=false,alter=null,mode=false,extraConflict=
  if(mode){f.git(['add',producerPinFile]);f.git(['update-index','--chmod=+x',producerPinFile]);chmodSync(path.join(f.dir,producerPinFile),0o755);f.git(['commit','-qm','different mode']);before=f.git(['rev-parse','HEAD']).trim()}
  if(extraConflict)before=f.commit('app.txt','feature overlapping source\n')
  if(repair)f.commit('app.txt','original genuine runtime repair\n')
- f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');let main=f.commit(producerPinFile,baseText.replace(producerPinAnchor,producerPinAnchor+block(1)));if(mainEvolve)main=f.commit(producerPinFile,readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(producerPinAnchor,'    "scripts/protected-later.py",\n'+producerPinAnchor))
+ f.git(['switch','main']);if(extraConflict)f.commit('app.txt','protected overlapping source\n');let mainText=baseText.replace(producerPinAnchor,producerPinAnchor+block(1));if(mainAlter)mainText=mainAlter(mainText);let main=f.commit(producerPinFile,mainText);if(mainEvolve)main=f.commit(producerPinFile,readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(producerPinAnchor,'    "scripts/protected-later.py",\n'+producerPinAnchor))
  f.git(['switch','pins']);try{f.git(['merge','--no-ff','-m','exact pin overlap','main'])}catch(error){if(error.status!==1)throw error;writeFileSync(path.join(f.dir,producerPinFile),readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(/<<<<<<< HEAD[\s\S]*?>>>>>>> main\n/,block(1)));f.git(['checkout','--theirs','--',producerPinFile]);f.git(['add',producerPinFile]);if(extraConflict){f.git(['checkout','--theirs','--','app.txt']);f.git(['add','app.txt'])}f.git(['commit','-qm','exact protected pin resolution'])}
  const after=f.git(['rev-parse','HEAD']).trim()
  if(laterMain){f.git(['switch','main']);main=f.commit(producerPinFile,readFileSync(path.join(f.dir,producerPinFile),'utf8').replace(')\n','    "scripts/protected-after-merge.py",\n)\n'));f.git(['switch','pins'])}
@@ -425,4 +425,12 @@ test('producer pin overlap refuses an ambiguous protected parent when both or ne
  assert.throws(()=>derivePaidContentProof(f.before,f.after,both,f.git),/protected parent is ambiguous/)
  // Neither: protected main predates both pin commits.
  assert.throws(()=>derivePaidContentProof(f.before,f.after,f.base,f.git),/provenance refused/)
+})
+
+test('producer pin overlap accepts protected lines interleaved inside the pin block but refuses a protected side missing an author pin',t=>{
+ const inside=producerPinFixture(t,{mainAlter:s=>s.replace('    "scripts/agent-work-contract.mjs",\n','    "scripts/agent-work-contract.mjs",\n    # protected interleave\n    "scripts/lib/protected-inside.mjs",\n')})
+ assert.equal(derivePaidContentProof(inside.before,inside.after,inside.main,inside.git).kind,'unchanged')
+ for(const mainAlter of [s=>s.replace('    "scripts/run-governed-review.mjs",\n',''),s=>s.replace('    "scripts/run-governed-review.mjs",\n','    "scripts/run-governed-review.mjs",\n    "scripts/run-governed-review.mjs",\n')]){
+  const f=producerPinFixture(t,{mainAlter});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+ }
 })

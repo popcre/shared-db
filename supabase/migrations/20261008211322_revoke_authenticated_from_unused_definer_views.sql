@@ -2,7 +2,7 @@
 -- derived-from: none
 -- Remove only authenticated SELECT. No definitions, ownership, other grants,
 -- policies, or service-role capabilities change. Broader issue findings stay open.
--- Fresh 2026-09-20 source search found no application callers; production 24h
+-- Historical 2026-09-20 source search found no application callers; production 24h
 -- edge logs had zero mentions for these six (845279 entries; positive controls).
 -- Authenticated access is deliberately denied even for application administrators.
 

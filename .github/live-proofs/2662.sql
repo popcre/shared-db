@@ -1,3 +1,4 @@
+-- Accepted migration version 20261008211322; issue #2662, claim #3294.
 -- Bounded six-view outcome only; does not close all issue #2662 findings.
 SELECT count(*) = 6
    AND bool_and(c.relkind = 'v'

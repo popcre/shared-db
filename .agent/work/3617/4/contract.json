@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "work_issue": 3617,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Add bounded, credential-free per-operation GitHub request-cost accounting in scripts/lib/github-transport.mjs runGitHubCommand, patterned on withReviewRequestBudget. The counter increments per gh call (including retries and rate-limit probes) and fails closed when a budget is exceeded. Marker, admission, claim, review, preview and lock checks are unchanged. Exactly four focused tests prove exact accounting on success, retry, refused admission and stale mutex.",
+  "base_sha": "fdb81f025a5087973b417c6d82e5c5fc4732a70a",
+  "dispatcher": "MiMo chat ses-ffe5eecd82dedffe7RhHlWNjmi on edge-dev",
+  "worker": "MiMo chat ses-ffe5eecd82dedffe7RhHlWNjmi on edge-dev",
+  "branch": "fix/3617-request-cost",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/3666-clear-mimo",
+  "allowed_paths": [
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3617/4/contract.json",
+    ".agent/work/3617/4/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3617/4/contract.json",
+    ".agent/work/3617/4/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change database structure or data",
+    "Do not change marker, admission, claim, review, preview or exclusive-lock checks",
+    "Do not touch issue #3505, issue #3552, or db-claim leases",
+    "Do not merge the pull request"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/reviewer-wire-budget.test.mjs",
+    "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+    "node --test scripts/lib/github-transport.test.mjs"
+  ],
+  "assumptions": [
+    "The live measured preparation that identifies its own API cost and the background-call cost separately remains for a later step; this contract covers only the accounting counter and its four focused tests.",
+    "No extra GitHub request is issued to measure cost; the counter rides the existing transport.",
+    "Landing the counter in the shared transport (scripts/lib/github-transport.mjs) rather than the lanes entrypoint keeps this change clear of other open protected-source pull requests while covering every gh call including retries."
+  ],
+  "stop_conditions": [
+    "Stop if any required check fails for a reason unrelated to request-cost accounting",
+    "Stop if the change would need to touch a file outside allowed_paths"
+  ],
+  "evidence_parent": {
+    "work_issue": 3617,
+    "generation": 1,
+    "contract_sha256": "3dc3f991831cbeeb7647d46d698641a9c34f670c0d5f2697ec045c7e698e6d30"
+  }
+}

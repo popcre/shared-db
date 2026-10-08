@@ -11259,14 +11259,14 @@ test('Windows monotonic pause invokes supported command launcher and independent
 test('committed provider release retry repairs pause only without changing refs or original failure time',()=>{
  const io=failedReviewIo(),originalGet=io.getCommit
  io.getCommit=sha=>({...originalGet(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/${replacementRequest.issue}-${replacementRequest.pr}-${replacementRequest.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=${replacementRequest.issue} pr=${replacementRequest.pr} head=${replacementRequest.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/${replacementRequest.issue}-${replacementRequest.pr}-${replacementRequest.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=${replacementRequest.issue} pr=${replacementRequest.pr} head=${replacementRequest.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
  io.readReviewStates=leases=>new Map(leases.map(lease=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
  let calls=0;io.pauseReviewerFailure=()=>{calls++;throw Error('protected store temporarily unavailable')}
  assert.throws(()=>releaseFailedReviewer(replacementRequest,io),/temporarily unavailable/)
- const snapshot=[...io.refs];assert.equal(io.refs.get(reviewActiveRef('glm-5.3'))??null,null)
+ const snapshot=[...io.refs];assert.equal(io.refs.get(reviewActiveRef('grok-4.6'))??null,null)
  io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);return{status:'expired'}}
  const result=releaseFailedReviewer(replacementRequest,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.pause.paused,false)
@@ -11277,10 +11277,10 @@ test('committed provider release retry repairs pause only without changing refs 
 
 test('string CLI replacement binds normalized original paid failure rather than new reviewer',()=>{
  const io=failedReviewIo(),get=io.getCommit;io.getCommit=sha=>({...get(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
  let paused;io.pauseReviewerFailure=record=>{paused=record}
  const result=replaceFailedReviewer({...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()},io)
- assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'glm-5.3');assert.notEqual(result.reviewer,paused.reviewer);assert.equal(paused.observedEpoch,1791309600)
+ assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'grok-4.6');assert.notEqual(result.reviewer,paused.reviewer);assert.equal(paused.observedEpoch,1791309600)
 })
 
 test('string CLI release normalizes the exact original paid failure before releasing and pausing',()=>{
@@ -11289,12 +11289,12 @@ test('string CLI release normalizes the exact original paid failure before relea
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
  let paused;io.pauseReviewerFailure=record=>{paused=record;return {status:'expired'}}
  const result=releaseFailedReviewer({...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()},io)
  assert.equal(result.headSha,failedReview.headSha)
  assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.failedSequence,1)
- assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'glm-5.3');assert.equal(paused.observedEpoch,1791309600)
+ assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'grok-4.6');assert.equal(paused.observedEpoch,1791309600)
  assert.equal(io.refs.get(`refs/db-review-failures/9-109-${failedReview.headSha}-1`),result.failureSha)
 })
 
@@ -11304,12 +11304,12 @@ test('uppercase string CLI release retry repairs the original pause without chan
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
  const request={...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()}
  let calls=0;io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);throw Error('original pause unavailable')}
  assert.throws(()=>releaseFailedReviewer(request,io),/original pause unavailable/)
  const snapshot=[...io.refs]
- io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'glm-5.3');return {status:'expired'}}
+ io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'grok-4.6');return {status:'expired'}}
  const result=releaseFailedReviewer(request,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.headSha,failedReview.headSha);assert.equal(result.pause.paused,false)
  assert.deepEqual([...io.refs],snapshot);assert.equal(calls,2)
@@ -11317,11 +11317,11 @@ test('uppercase string CLI release retry repairs the original pause without chan
 
 test('completed replacement pause failure repairs through exact immutable no-write release retry',()=>{
  const io=failedReviewIo(),get=io.getCommit;io.getCommit=sha=>({...get(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
  let calls=0;io.pauseReviewerFailure=()=>{calls++;throw Error('supported pause store unavailable')}
  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/pause store unavailable/)
  const snapshot=[...io.refs],cursor=io.refs.get(REVIEW_CURSOR_REF)
- io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'glm-5.3');return{status:'expired'}}
+ io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'grok-4.6');return{status:'expired'}}
  const result=releaseFailedReviewer(replacementRequest,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.pause.paused,false);assert.equal(calls,2)
  assert.deepEqual([...io.refs],snapshot);assert.equal(io.refs.get(REVIEW_CURSOR_REF),cursor)

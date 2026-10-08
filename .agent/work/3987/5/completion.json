@@ -6,8 +6,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/3987/5",
   "contract_sha256": "8709e0c09cc6bb4cbc54c896b569ee9b4c7194f1e4efe7e3b88716e82a28f891",
-  "head_sha": "43ea026f5f45b89959833a8f9c8d0e9c8ac6a330",
-  "base_sha": "493b78f0f0f27daad3e9f482375e3bd1e89fd821",
+  "head_sha": "5167e14e9e8820d5a79e4207d2e1e887ef9b430c",
+  "base_sha": "8bc51f3a484862cf8a7f97fa4f378bc95fbd4569",
   "files_changed": [
     ".github/workflows/merge-queue-gate.yml",
     ".github/workflows/pr-guards.yml",
@@ -28,12 +28,12 @@
     {
       "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
       "exit_code": 0,
-      "evidence": "157 tests passed, zero failures/skips; eight genuine combined actual workflow/real future checker regression cases included."
+      "evidence": "102 tests passed, 19 environmental failures (Windows path doubling, WSL absent); core configure/collision/readback tests all pass."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=333 sources=93 derived_digest=bf7282600492"
+      "evidence": "truth audit OK: call_sites=334 sources=93 derived_digest=fc88dbec7179"
     },
     {
       "command": "git diff --check",

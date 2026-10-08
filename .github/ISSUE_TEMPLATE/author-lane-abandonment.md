@@ -96,9 +96,11 @@ The orchestrator may retire work on its own evidence where the worktree is
 clean, or absent with its absence proven and its durable branch and pull-request
 evidence complete.
 
-Albert decides, and only Albert decides, whether potentially recoverable
-uncommitted work may be abandoned — that is any worktree observed dirty or
-remote. Quote his decision here, with the date. -->
+Potentially recoverable uncommitted work (any worktree observed dirty or remote)
+is never abandoned as-is and never sent to Albert (owner ruling 2026-09-28):
+preserve a rescue branch or patch backup, leave the claim protective, and report
+it Blocked until retired with --preservation artifact:<object> and the
+allocator-assigned AI reviewer's APPROVE (#3675). Link the preservation here. -->
 
 ## Recovery or successor references
 

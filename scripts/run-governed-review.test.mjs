@@ -3,8 +3,8 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER } from './run-governed-review.mjs'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { parseArgs, runGovernedReview as executeGovernedReview,resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -38,13 +38,37 @@ test('all qualified wrappers receive immutable source arguments without rewritin
 function sourceIo(overrides={}){
   const pr={number:options.pr,state:'open',merged:false,base:{ref:'develop',sha:'b'.repeat(40),repo:{full_name:THIS_REPO}},head:{sha:options.headSha},...overrides.pr}
   const seen=[]
-  return {seen,digest:()=>overrides.digest??'d'.repeat(64),github:(args)=>({status:0,stdout:JSON.stringify(args[1].includes('/compare/')?{base_commit:{sha:'c'.repeat(40)},merge_base_commit:{sha:'c'.repeat(40)},files:fixtureFiles,...overrides.comparison}:pr)}),git:(_command,args)=>{
+  return {seen,digest:()=>overrides.digest??'d'.repeat(64),...(overrides.io?{io:overrides.io}:{}),env:overrides.env??{},
+    github:(args)=>({status:0,stdout:JSON.stringify(args[1].includes('/compare/')?{base_commit:{sha:'c'.repeat(40)},merge_base_commit:{sha:'c'.repeat(40)},files:fixtureFiles,...overrides.comparison}:pr)}),git:(_command,args)=>{
     const op=args[2];seen.push(args.slice(2))
     if(overrides.fail===op)return{status:1,stdout:''}
     const stdout={remote:`https://github.com/${THIS_REPO}.git`,'rev-parse':options.headSha,status:'','cat-file':'','merge-base':'c'.repeat(40),diff:'M\0source.txt\0',...overrides.stdout}[op]
     return{status:0,stdout}
   }}
 }
+// A lane io that satisfies verifyMergedPrIssueBinding for options.pr / options.issue
+// at options.headSha, mirroring the fixtures in merged-pr-issue-binding.test.mjs.
+function mergedBindingIo(overrides={}){
+  const head=options.headSha
+  const state={
+    pr:{number:options.pr,merged_at:'2026-09-29T06:57:17Z',merge_commit_sha:'e'.repeat(40),head:{sha:head,ref:`codex/issue-${options.issue}-work`},body:`Repairs #${options.issue}.\n\nWork issue #${options.issue}; active claim #1; orchestrator #2.`},
+    completion:{work_issue:options.issue,pr:options.pr,migration_versions:['20260911213429']},
+    files:[{filename:'.agent/contract.json',status:'added'},{filename:'.agent/completion.json',status:'added'},{filename:'supabase/migrations/20260911213429_popsg_search.sql',status:'added'}],
+    linked:[],
+    refs:new Set(['refs/db-claims/20260911213429']),
+    issueState:'open',
+    ...overrides,
+  }
+  return {
+    getPr:()=>state.pr?{changed_files:state.files.length,...state.pr}:state.pr,
+    getIssue:(n)=>({number:n,state:state.issueState}),
+    getFileAt:(file,ref)=>{assert.equal(ref,head);return typeof state.completion==='string'?state.completion:JSON.stringify(state.completion)},
+    getPrFiles:()=>state.files,
+    readRef:(ref)=>state.refs.has(ref)?'a'.repeat(40):null,
+    closingIssuesForPr:()=>state.linked,
+  }
+}
+const MERGED_REST_PR={state:'closed',merged:true,merged_at:'2026-09-29T06:57:17Z'}
 test('source resolver binds live non-main PR target to local merge-base',()=>{
   assert.deepEqual(resolveReviewSource(options,sourceIo()),fixtureSource(options))
 })
@@ -79,6 +103,37 @@ test('source resolver refuses stale or wrong repository evidence before provider
     {stdout:{remote:'https://github.com/other/repo.git'}},{stdout:{'rev-parse':'f'.repeat(40)}},
     {stdout:{status:' M file'}},{fail:'cat-file'},{stdout:{'merge-base':''}},
   ])assert.throws(()=>resolveReviewSource(options,sourceIo(overrides)),/source|head|repository|dirty|merge-base/)
+})
+test('source resolver accepts a merged PR at its exact merged head only through the verified binding',()=>{
+  const binding=`${options.pr}:${options.issue}`
+  const merged={pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}}
+  assert.deepEqual(resolveReviewSource(options,sourceIo(merged)),fixtureSource(options),'the bound merged head resolves the same source identity')
+  for(const overrides of [
+    {pr:{...MERGED_REST_PR}},// merged, no binding at all
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{}},// verified io present but the binding is unset
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:'garbage'}},// a malformed binding value refuses
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:`${options.pr}:${options.issue+1}`}},// a different issue refuses
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:`${options.pr+1}:${options.issue}`}},// a different PR refuses
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo({issueState:'closed'}),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// a closed work issue refuses
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo({refs:new Set()}),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// no claim reservation refuses
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo({completion:{work_issue:options.issue,pr:options.pr,migration_versions:['1']}}),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// a disagreeing completion record refuses
+  ])assert.throws(()=>resolveReviewSource(options,sourceIo(overrides)))
+  for(const overrides of [
+    {pr:{...MERGED_REST_PR,head:{sha:'f'.repeat(40)}},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// a different merged head refuses
+    {pr:{state:'closed',merged:false,merged_at:null},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// closed unmerged refuses
+    {pr:{state:'open',merged:true,merged_at:'2026-09-29T06:57:17Z'},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding}},// an "open" merged contradiction refuses
+  ])assert.throws(()=>resolveReviewSource(options,sourceIo(overrides)),/source|head|repository|state/)
+})
+test('a bound merged head still runs every digest and file-comparison check',()=>{
+  const binding=`${options.pr}:${options.issue}`
+  for(const overrides of [
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},comparison:{files:null}},
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},comparison:{files:[{filename:'wrong.txt',status:'modified'}]}},
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},digest:'bad'},
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},fail:'diff'},
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},stdout:{status:' M file'}},
+    {pr:{...MERGED_REST_PR},io:mergedBindingIo(),env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:binding},stdout:{remote:'https://github.com/other/repo.git'}},
+  ])assert.throws(()=>resolveReviewSource(options,sourceIo(overrides)),/file|comparison|manifest|identity|digest|dirty|repository/)
 })
 test('source movement after provider completion prevents every publication and recording',()=>{
   let reads=0,calls=0
@@ -187,6 +242,8 @@ test('wrapper failure preserves a safe cause without publishing a verdict or raw
     ['[API Error: 400 InternalError.Algo.DataInspectionFailed: private-value]',/provider_unavailable: content-filter/],
     ['provider-unavailable: private-value',/provider_unavailable/],
     ['timed-out private-value',/reported a timeout/],
+    ['ai-gemini: error: Gemini reviews are quarantined until live safety qualification is complete',/reviewer_quarantined:.*local_dependency_unavailable/],
+    ['ai-gemini: error: Gemini qualification no longer matches the exact wrapper, runtime, or model; quarantine restored',/reviewer_quarantined:.*requalify/],
     ['private-value',/reason was not recognized/],
   ]){
     let calls=0
@@ -208,7 +265,19 @@ test('typed terminal reasons require complete tokens rather than diagnostic subs
   assert.equal(wrapperFailureReason({stderr:'start_failed: not-caller_identity_missing'}),'start_failed: the wrapper refused before the provider turn started')
 })
 
+test('source drift and denied-tool wrapper refusals are named, not unrecognized',()=>{
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini changed the protected source checkout; response rejected'}),/^source_drift: the reviewed checkout changed during the reviewer turn/)
+  assert.match(wrapperFailureReason({stderr:'ai-gemini: Gemini ended its turn after the headless runtime denied a tool (RunCommand); no usable verdict; evidence preserved'}),/^tool_denied: /)
+})
+
 test('a precise turn-budget refusal takes precedence over generic cancellation prose',()=>{
+  {
+    const evidenceOnly=wrapperFailureReason({stderr:'ai-grok-review: Grok stopped WITHOUT a final answer\n  reason: turn_limit_cancelled\nincomplete provider evidence retained for invocation f57a260c\n'})
+    assert.ok(!evidenceOnly.includes('retained or active work'),evidenceOnly)
+    assert.ok(evidenceOnly.startsWith('turn_limit_cancelled:'),evidenceOnly)
+    for(const stderr of ['ai-grok-review: error: this exact Grok review submission is already active or retained: x','ai-gemini: error: review already active or recovery required: session','  Do not retry while this paid turn is unconfirmed; reconcile the retained lock first.'])
+      assert.ok(wrapperFailureReason({stderr}).includes('retained or active work'),stderr)
+  }
   const reason=wrapperFailureReason({stderr:'turn_limit_cancelled: Grok cancelled without a final answer. provider_cancelled'})
   assert.equal(reason,'turn_limit_cancelled: the provider exhausted its declared turn budget')
 })
@@ -799,6 +868,46 @@ test('#498-16 caller variable is kept, detected, or named in a pre-start refusal
   assert.throws(()=>reviewCallerEnvironment('ai-muse',{}),/needs AI_MUSE_CALLER set.*No reviewer was started.*AI_MUSE_CALLER=claude/)
   assert.deepEqual(reviewCallerEnvironment('unlisted-wrapper',{}),{})
 })
+// Issue #2678 -- THE WRAPPER THIS RUNNER SPAWNS MUST BE TOLD WHO IS CALLING.
+// The doctor probe already carries its own end-to-end proof; this closes the
+// other half: the governed runner's own wrapper spawn. A wrapper spawned
+// without its own `AI_<PROVIDER>_CALLER` refuses before printing any check line,
+// and that refusal reads as a local dependency fault on a healthy machine. The
+// captured spawn environment is asserted here so the caller can never be
+// dropped from this path again, and no caller is ever invented when the
+// environment genuinely has none (the CLI refusal above stays the fail-closed
+// gate in that case).
+test('issue 2678: the wrapper spawn carries AI_*_CALLER, and no caller is ever invented',()=>{
+  // Every marker detectReviewCaller reads, so a machine that carries Claude Code
+  // or Codex markers cannot leak a caller into the negative case below.
+  const MARKERS=['AI_GLM_CALLER','CLAUDECODE','CLAUDE_CODE_SESSION_ID','CODEX_THREAD_ID','CODEX_SANDBOX']
+  const originals=Object.fromEntries(MARKERS.map((key)=>[key,process.env[key]]))
+  const restore=()=>{
+    for(const key of MARKERS){if(originals[key]===undefined)delete process.env[key];else process.env[key]=originals[key]}
+  }
+  const spawnEnv=()=>{
+    let env
+    runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,
+      spawn:(command,_args,spawnOptions)=>{
+        if(command!=='gh'){env=spawnOptions.env;return{status:0,stdout:`VERDICT: APPROVE ${options.headSha}`}}
+        return{status:0,stdout:JSON.stringify({id:123,html_url:`https://github.com/${THIS_REPO}/pull/2000#issuecomment-123`})}
+      },
+      record:()=>({ref:'refs/db-review-verdicts/x',sha:'f'.repeat(40)})})
+    return env
+  }
+  try{
+    for(const key of MARKERS)delete process.env[key]
+    process.env.CLAUDECODE='1'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'claude','the runner spawn must carry the detected caller')
+    process.env.AI_GLM_CALLER='codex'
+    assert.equal(spawnEnv().AI_GLM_CALLER,'codex','an explicitly exported caller is never overruled by detection')
+    for(const key of MARKERS)delete process.env[key]
+    const bare=spawnEnv()
+    assert.equal(bare.AI_GLM_CALLER,undefined,'with no detectable caller the runner must not invent one')
+    const live='a'.repeat(40)
+    assert.throws(()=>prepareGovernedReview({pr:3031,wrapper:'ai-glm',wrapperArgs:['review']},{env:{},github:()=>({status:0,stdout:JSON.stringify({head:{sha:live}})}),files:{readFile:()=>'x',writeFile:()=>{},tempDir:()=>'T'}}),/needs AI_GLM_CALLER set.*No reviewer was started/)
+  }finally{restore()}
+})
 test('#498-17 live head is injected, a stale named head or stale prompt verdict line refuses before start', () => {
   const live='a'.repeat(40),stale='b'.repeat(40)
   const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
@@ -850,6 +959,71 @@ test('review start marker is recorded before the provider spawns, and a failed r
   assert.throws(()=>runGovernedReview(options,{preflight:()=>{},resolve:(name)=>name,recordStart:undefined,spawn:()=>{order.push('spawn');return{status:1,stdout:''}},record:()=>{}}),/start recorder is required/)
   assert.deepEqual(order,[])
   assert.throws(()=>reviewStartedRef({issue:1,pr:2,headSha:'short'},1),/exact issue/)
+})
+
+// ---------------------------------------------------------------------------
+// ISSUE #2492 — a large migration must not exhaust the reviewer's turn budget,
+// and a round that still ends without a verdict must say what it was given.
+// ---------------------------------------------------------------------------
+
+test('#2492: a grok review is launched with a turn budget sized to the migration',()=>{
+  let launched
+  runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,
+    measureReviewSize:()=>1798,
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c9'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/t',sha:'f'.repeat(40)}),
+  })
+  const index=launched.indexOf('--max-turns')
+  assert.ok(index>0,'the grok wrapper must be told how many turns this review needs')
+  assert.ok(Number(launched[index+1])>20,'a 1798-line migration must not be given the 20-turn default that failed three times')
+})
+
+test('#2492: a size that cannot be measured still launches, on a raised floor',()=>{
+  let launched
+  runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,
+    measureReviewSize:()=>{throw new Error('not a git repository')},
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c10'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/u',sha:'f'.repeat(40)}),
+  })
+  assert.ok(Number(launched[launched.indexOf('--max-turns')+1])>20)
+},{skip:false})
+
+test('#2492: a turn-limit refusal NAMES the budget the reviewer was given',()=>{
+  assert.throws(()=>runGovernedReview({...options,reviewer:'grok-4.6',wrapper:'ai-grok-review'},{
+    preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1798,
+    spawn:()=>({status:1,stderr:'turn_limit_cancelled',stdout:''}),
+    record:()=>assert.fail('must not record'),
+  }),(error)=>{
+    assert.match(error.message,/did not produce a recordable terminal verdict/)
+    assert.match(error.message,/turn_limit_cancelled/)
+    assert.match(error.message,/was launched with \d+ turn\(s\)/,'a bare "no verdict" costs a fresh hand investigation every time')
+    assert.match(error.message,/1798 changed migration line/)
+    return true
+  })
+})
+
+test('#2492: reviewers with no per-call turn contract are launched unchanged',()=>{
+  let launched
+  runGovernedReview(options,{
+    preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1798,
+    spawn:(command,args)=>{
+      if(command==='gh')return{status:0,stdout:JSON.stringify({html_url:'https://x/#c11'})}
+      launched=args
+      return{status:0,stdout:`Fine.\nVERDICT: APPROVE ${options.headSha}`}
+    },
+    record:()=>({ref:'refs/db-review-verdicts/v',sha:'f'.repeat(40)}),
+  })
+  assert.ok(!launched.includes('--max-turns'),'ai-glm has no --max-turns contract and must not be handed one')
 })
 
 // ISSUE #2998 item 1 + ISSUE #2923: the brief, checked before a reviewer draw.
@@ -922,6 +1096,18 @@ test('#2831: the runner refuses ai-muse review and passes ai-muse new through',(
   assert.deepEqual(wrapperVerdictContractArgs('ai-muse',['new','look at this'],head),['new','look at this'])
 })
 
+test('ai-stepfun is governed only through review (#3555)',()=>{
+  const head='c'.repeat(40)
+  for(const sub of ['ask','implement'])assert.throws(()=>wrapperVerdictContractArgs('ai-stepfun',[sub,'--prompt-file','brief.md'],head),/reviewer_cannot_emit_governed_verdict/)
+  assert.deepEqual(wrapperVerdictContractArgs('ai-stepfun',['review','--prompt-file','brief.md'],head),['review','--prompt-file','brief.md'])
+  // ai-stepfun is a governed wrapper, so it is also a source wrapper: the runner binds
+  // its --base and --assert-head to the trusted pull request source.
+  const source={mergeBase:'d'.repeat(40),headSha:head}
+  assert.deepEqual(wrapperSourceContractArgs('ai-stepfun',['review','--prompt-file','brief.md'],source),['review','--prompt-file','brief.md','--base',source.mergeBase,'--assert-head',head])
+  assert.throws(()=>wrapperSourceContractArgs('ai-stepfun',['review','--assert-head','e'.repeat(40)],source),/does not match the trusted pull request source/)
+  assert.equal(reviewCallerEnvironment('ai-stepfun',{CLAUDE_CODE_SESSION_ID:'s'}).AI_STEPFUN_CALLER,'claude')
+})
+
 // Owner requirement 2026-09-24: an out-of-credit reviewer failure is named, and the
 // wrapper's plain-English OUT OF CREDIT line reaches the REFUSED text verbatim.
 import { TERMINAL_FAILURE_CODES } from './manage-migration-author-lanes.mjs'
@@ -931,6 +1117,7 @@ const OUT_OF_CREDIT_FIXTURES=[
   ['qwen','OUT OF CREDIT: the Alibaba Model Studio (Qwen) account has run out of credits or is in arrears - top up at https://modelstudio.console.alibabacloud.com'],
   ['gemini','OUT OF CREDIT: the Google Gemini account has run out of prepaid credits - add credits at https://aistudio.google.com'],
   ['deepseek','OUT OF CREDIT: the DeepSeek account has an insufficient balance - top up at https://platform.deepseek.com'],
+  ['stepfun','OUT OF CREDIT: the StepFun (Step 5) API account is out of credit - add credits at https://platform.stepfun.ai'],
 ]
 const outOfCreditRun=(stderr)=>{
   const events=[]
@@ -956,7 +1143,7 @@ test('out of credit: every rotation provider carries its OUT OF CREDIT line verb
   }
 })
 test('out of credit: a machine line without a valid human line gets fixed text naming the provider',()=>{
-  for(const [provider,name] of [['grok','xAI (Grok)'],['muse','Meta (Muse)'],['qwen','Alibaba Model Studio (Qwen)'],['gemini','Google Gemini'],['deepseek','DeepSeek']]){
+  for(const [provider,name] of [['grok','xAI (Grok)'],['muse','Meta (Muse)'],['qwen','Alibaba Model Studio (Qwen)'],['gemini','Google Gemini'],['deepseek','DeepSeek'],['stepfun','StepFun (Step 5)']]){
     const reason=wrapperFailureReason({stderr:`AI_REVIEWER_OUT_OF_CREDIT provider=${provider} code=insufficient_quota\n`})
     assert.equal(reason,`insufficient_quota: OUT OF CREDIT: the ${name} reviewer account has run out of credits or hit its spending limit`)
   }
@@ -1042,4 +1229,70 @@ test('#3479: a governed DeepSeek send carries the brief in an attached file with
   assert.throws(()=>contract(['send','End with VERDICT: APPROVE bbbbbbbb','--review'],live,io().files,W),/names head bbbbbbbb/)
   assert.throws(()=>contract(['send','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
   assert.throws(()=>contract(['send','--timeout','900','--review'],live,io().files,W),/carries no terminal VERDICT instruction/)
+})
+
+const rsHead='a'.repeat(40)
+const rsBase=`refs/db-review-replacements/3741-3741-${rsHead}-`
+const rsMsg=(seq,rev,slot=1)=>`db-coordination reviewer-replacement sequence=${seq} reviewer=${rev} issue=3741 pr=3741 head=${rsHead} slot=${slot} failed-sequence=41 prior-sequence=41 failure-ref=${'b'.repeat(40)}`
+function rsIo(rows){return {listRefs:(p)=>rows.filter((r)=>r.ref.startsWith(p)),getCommit:(sha)=>({message:rows.find((r)=>r.sha===sha).message})}}
+const rsOpts=(n,reviewer='deepseek')=>({issue:3741,pr:3741,headSha:rsHead,slot:1,reviewer,replacementSequence:n})
+// DeepSeek (draw 44) replaced Gemini (draw 41); the ref is keyed by 41.
+const rsLive=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')}])
+
+test('#3799 the replacement reviewer\'s own draw sequence resolves to the replaced-sequence key',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44),rsLive).replacementSequence,41)
+})
+test('#3799 the replaced sequence still resolves unchanged',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(41),rsLive).replacementSequence,41)
+})
+test('#3799 binding: another reviewer, rsHead or slot never resolves',()=>{
+  assert.equal(resolveReplacementSequence(rsOpts(44,'gemini'),rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),headSha:'d'.repeat(40)},rsLive).replacementSequence,44)
+  assert.equal(resolveReplacementSequence({...rsOpts(44),slot:2},rsLive).replacementSequence,44)
+})
+test('#3799 two refs matching the two readings are refused as ambiguous',()=>{
+  const both=rsIo([{ref:`${rsBase}41`,sha:'c1',message:rsMsg(44,'deepseek')},{ref:`${rsBase}44`,sha:'c2',message:rsMsg(47,'deepseek')}])
+  assert.throws(()=>resolveReplacementSequence(rsOpts(44),both),/ambiguous/)
+})
+test('#3799 no replacement sequence is left alone',()=>{
+  const o={issue:1,pr:1,headSha:rsHead}
+  assert.equal(resolveReplacementSequence(o,rsLive),o)
+})
+
+test('#3810: an unrecognized wrapper failure saves a redacted stderr tail and names the path; verdict logic unchanged',()=>{
+  const secret='sk-'+'A'.repeat(30),gh='ghp_'+'B'.repeat(36)
+  const stderr=`${'x'.repeat(9000)}\nweird provider failure Authorization: Bearer ${'C'.repeat(40)}\nOPENAI_API_KEY=${secret} token ${gh}\n`
+  let saved,meta
+  assert.throws(()=>runGovernedReview({...options},{
+    spawn:(command)=>command==='gh'?{status:0,stdout:'{}'}:{status:7,stdout:'',stderr},
+    resolve:(name)=>name,preflight:()=>{},record:()=>assert.fail('must not record'),
+    writeFailureLog:(text,m)=>{saved=text;meta=m;return '/private/log/path.log'},
+  }),(error)=>{
+    assert.match(error.message,/exit 7\): wrapper stderr was present but its reason was not recognized/)
+    assert.match(error.message,/saved to \/private\/log\/path\.log\./)
+    assert.ok(!error.message.includes('weird provider failure'),'raw stderr never enters the refusal')
+    return true
+  })
+  assert.equal(meta.pr,options.pr)
+  assert.match(saved,/exit_status: 7/)
+  assert.match(saved,/weird provider failure/)
+  for(const s of [secret,gh,'C'.repeat(40)])assert.ok(!saved.includes(s),'secrets are redacted')
+  assert.ok(saved.length<9000,'only a bounded tail is kept')
+  // a failing log writer never changes the refusal's reason
+  assert.throws(()=>runGovernedReview({...options},{
+    spawn:(command)=>command==='gh'?{status:0,stdout:'{}'}:{status:7,stdout:'',stderr:'odd'},
+    resolve:(name)=>name,preflight:()=>{},record:()=>assert.fail('must not record'),
+    writeFailureLog:()=>{throw new Error('disk full')},
+  }),/not recognized; inspect the exact wrapper session\. Wrapper diagnostics could not be saved\./)
+})
+
+test('#3810: the failure log is written privately and without clobbering',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'wf-'))
+  try{
+    const file=writeWrapperFailureLog(wrapperFailureLogText({status:1,stderr:'boom'},{wrapper:'ai-deepseek-agent',pr:3759,headSha:'7'.repeat(40),reason:'r'}),{dir,pr:3759,headSha:'7'.repeat(40)})
+    assert.match(file,/pr3759-7777777-/)
+    assert.match(readFileSync(file,'utf8'),/wrapper: ai-deepseek-agent[\s\S]*boom/)
+    if(process.platform!=='win32')assert.equal(statSync(file).mode&0o777,0o600)
+    assert.equal(redactWrapperStderr('SECRET_X: abcdefgh'),'SECRET_X=[REDACTED]')
+  }finally{rmSync(dir,{recursive:true,force:true})}
 })

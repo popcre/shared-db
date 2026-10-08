@@ -1,5 +1,16 @@
 # AGENTS.md — §0.0-C admission test, §11b to §11d (orchestrator role, routing contract, admission)
 
+> **Historical / reference only.** The orchestrator role was retired by owner ruling
+> (Albert Hazan, 2026-10-02: "there is no longer an orchestrator"; AGENTS.md §0.0-D).
+> Structural work is claim-first. Still binding below: only the §0.0-C *test* (does it change
+> the database's SHAPE?) and the safety rules (exact-object claims, version reservation,
+> independent review, guarded merge, serial production lane). **Historical and NOT to be
+> followed:** §0.0-C's accept-and-dispatch and dispatch-waiting text, and ALL of §11b, §11c
+> and §11d (the role, marker routing, `check-orchestrator-marker.mjs --resolve`, starting as
+> or handing over to an orchestrator, queueing to wait for one). New structural issues use
+> `route: claim-first`; `route: shared-db-orchestrator` is accepted only as a legacy alias and
+> names no session (#3874).
+
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
 ## 0.0-C The orchestrator admission test — what it may keep in its own context
@@ -56,8 +67,9 @@ instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
   end to end. The orchestrator lists such issues in `--queue-audit` under
   `OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION` purely so nothing accumulates unseen, and then
   takes no action on them.
-- **RETURN-TO-OWNER** — `security-settings`. It needs authority the orchestrator does not have.
-  Put it to Albert; do not dispatch it to any session.
+- **`security-settings`** exits to `repo-session` (#3675, owner ruling 2026-09-28: never ask a
+  human to approve): a separately started AI session obtains the needed access itself. It is
+  never put to Albert, and the orchestrator does not do it.
 
 ### Every dispatch carries the waiting instruction (issue #2998 item 4, added 2026-09-20)
 

@@ -207,6 +207,18 @@ def _run_block_commands(step: str) -> list[str]:
     return commands
 
 
+class RemainingUsersStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_refuses_even_if_recorded_remotely(self):
+        for remote in (set(), {"20261006221530"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006221530", remote)
+        self.assertIn("20261007002113", production_migration_guard.RETIRED_VERSION_REASONS["20261006221530"])
+
+    def test_forward_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261007002113"), ["20261007002113"])
+
+
+
 class GuardTests(unittest.TestCase):
     def test_preview_only_historical_restoration_is_never_production_allowlisted(self):
         self.assertEqual(
@@ -274,6 +286,15 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261007232712",
+                "20261006203846",
+                "20261006211240",
+                "20261002204050",
+                "20261007020907",
+                "20261007190954",
+                "20261008001142",
+                "20261008014009",
+                "20261008022846",
                 "20260911212849",
                 "20260917112129",
                 "20260906222338",
@@ -300,6 +321,9 @@ class GuardTests(unittest.TestCase):
                 "20260903200951",
                 "20260908195056",
                 "20260915015414",
+                "20260928003740",
+                "20260929040458",
+                "20261006221530",
             },
         )
 
@@ -348,6 +372,76 @@ class GuardTests(unittest.TestCase):
         ).read_bytes().replace(b"\r\n", b"\n")
         self.assertEqual(original.split(b"\n", 1)[1], reissue.split(b"\n", 1)[1])
 
+    def test_rich_extraction_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261002204050", "20261002204050,20261002222102"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261002204050"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261002222102"), ["20261002222102"])
+        for applied in (set(), {"20261002204050"}):
+            self.assertEqual(classify_pending_version("20261002204050", applied, REPO)["kind"], "retired")
+
+    def test_workflow_parity_refused_original_is_retired(self) -> None:
+        for allowlist in ("20261006211240", "20261006211240,20261006235109"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261006211240"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261006235109"), ["20261006235109"])
+        for applied in (set(), {"20261006211240"}):
+            self.assertEqual(classify_pending_version("20261006211240", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261007020907", "20261007020907,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261007020907"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008005647"), ["20261008005647"])
+        for applied in (set(), {"20261007020907"}):
+            self.assertEqual(classify_pending_version("20261007020907", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_first_forward_replacement_is_retired(self) -> None:
+        for allowlist in ("20261007190954", "20261007190954,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261007190954"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008005647"), ["20261008005647"])
+        for applied in (set(), {"20261007190954"}):
+            self.assertEqual(classify_pending_version("20261007190954", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_second_forward_replacement_is_retired(self) -> None:
+        for allowlist in ("20261008001142", "20261008001142,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261008001142"):
+                parse_allowlist(allowlist)
+        for applied in (set(), {"20261008001142"}):
+            self.assertEqual(classify_pending_version("20261008001142", applied, REPO)["kind"], "retired")
+
+    def test_service_identities_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261008014009", "20261008014009,20261008025618", "20261008022846"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "2026100801400|20261008022846"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008025618"), ["20261008025618"])
+        for version in ("20261008014009", "20261008022846"):
+            for applied in (set(), {version}):
+                self.assertEqual(classify_pending_version(version, applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_forward_replacements_share_executable_body(self) -> None:
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(version: str) -> str:
+            (path,) = migrations.glob(f"{version}_*.sql")
+            lines = path.read_text(encoding="utf-8").splitlines()
+            start = next(i for i, line in enumerate(lines) if line.strip() and not line.lstrip().startswith("--"))
+            # Everything after the leading comment header, byte for byte
+            # (comments and blank lines included), must match.
+            return "\n".join(lines[start:])
+
+        body = executable("20261008005647")
+        self.assertEqual(body, executable("20261008001142"))
+        self.assertEqual(body, executable("20261007190954"))
+        self.assertEqual(body, executable("20261007020907"))
+        lowered = " ".join(body.lower().split()).replace("( ", "(").replace(" )", ")")
+        self.assertIn("create or replace function api.db_data_admin_scraped_source_inventory(p_entity_kind text, p_search text default null, p_cursor text default null, p_page_size integer default null)", lowered)
+        self.assertIn("returns jsonb", lowered)
+        self.assertIn("language plpgsql stable security definer", lowered)
+        self.assertIn("security definer", lowered)
+        self.assertIn("set search_path to 'app', 'public'", lowered)
+
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
             with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20260906222338"):
@@ -377,6 +471,81 @@ class GuardTests(unittest.TestCase):
             / "20260905024139_reissue_coldlion_division_reference_table.sql"
         ).read_bytes()
         self.assertEqual(original, reissue)
+
+    def test_issue_3458_reissue_has_identical_executable_sql(self) -> None:
+        """20260929040458 retires 20260928003740 only because it runs the SAME SQL.
+
+        The reissue adds header comments only, so compare every non-comment
+        line. A later edit to either file must fail here.
+        """
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260928003740_popsg_refresh_steps_under_ceiling.sql"),
+            executable("20260929040458_popsg_refresh_steps_reissue.sql"),
+        )
+
+    def test_issue_3458_original_is_blocked_but_reissue_is_allowed(self) -> None:
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740")
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740,20260929040458")
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
+        for applied in (set(), {"20260928003740"}):
+            with self.subTest(applied=applied):
+                result = classify_pending_version("20260928003740", applied, REPO)
+                self.assertEqual(result["kind"], "retired")
+                self.assertIn("20260929040458", result["reason"])
+        self.assertNotEqual(
+            classify_pending_version("20260930185929", set(), REPO)["kind"], "retired"
+        )
+
+    def test_issue_3458_reissue_declares_only_the_production_base(self) -> None:
+        """The comment-blind SQL identity test cannot see `-- derived-from:`.
+
+        The reissue must derive from 20260917005221 (live in production) and
+        never from the retired 20260928003740, which production will never hold.
+        """
+        from migration_derivation import declared_bases
+
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260929040458_popsg_refresh_steps_reissue.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260929040458", path=path), frozenset({"20260917005221"})
+        )
+
+    def test_issue_3458_second_reissue_has_identical_executable_sql(self) -> None:
+        """20260930185929 retires 20260929040458 only because it runs the SAME SQL."""
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260929040458_popsg_refresh_steps_reissue.sql"),
+            executable("20260930185929_popsg_refresh_steps_reissue2.sql"),
+        )
+
+    def test_issue_3458_second_reissue_blocks_original_and_keeps_base(self) -> None:
+        from migration_derivation import declared_bases
+
+        with self.assertRaisesRegex(GuardError, "20260929040458"):
+            parse_allowlist("20260929040458")
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260930185929_popsg_refresh_steps_reissue2.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260930185929", path=path), frozenset({"20260917005221"})
+        )
 
     def test_stranded_bulk_operation_history_original_is_blocked_but_reissue_is_allowed(
         self,
@@ -2252,7 +2421,15 @@ class ApplyLaneTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", header)
         self.assertIn("issues: read", header)
         self.assertIn("github.event_name == 'pull_request'", header)
-        self.assertIn("|| 'shared-supabase-migrations'", header)
+        self.assertIn("github.event_name == 'merge_group'", header)
+        # Step 10 (#3781): dispatch queues are target-qualified from a CLOSED
+        # two-branch map so preview and production no longer share one
+        # workflow-wide queue, and unknown/empty target collapses to preview
+        # instead of minting a new queue via API/CLI dispatch.
+        self.assertIn("inputs.target == 'production' && 'shared-supabase-migrations-production'", header)
+        self.assertIn("|| 'shared-supabase-migrations-preview'", header)
+        self.assertNotIn("format('shared-supabase-migrations-{0}', inputs.target)", header)
+        self.assertNotIn("|| 'shared-supabase-migrations'", header)
         self.assertIn("cancel-in-progress: false", header)
 
     def test_derivation_override_is_recorded_and_rechecked_at_every_production_choke_point(self) -> None:
@@ -4156,7 +4333,12 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
             lowered = text.lower()
             for state in ("clean", "absent", "dirty", "remote"):
                 self.assertIn(state, lowered, f"{name} lost worktree state {state}")
-            self.assertIn("albert", lowered, f"{name} lost who decides")
+            # #3675 (owner ruling 2026-09-28: never ask a human to approve):
+            # the dirty/remote side is decided by the allocator-assigned AI
+            # reviewer's APPROVE on a preserved copy, never by a human.
+            self.assertIn("approve", lowered, f"{name} lost who decides")
+            self.assertIn("preserv", lowered, f"{name} lost the preservation requirement")
+            self.assertNotIn("albert alone decides", lowered, f"{name} still routes the decision to a human")
             # The boundary is only a boundary if the venue says which side the
             # orchestrator may act on alone and which side it may not.
             self.assertRegex(
@@ -4284,6 +4466,18 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
                 text,
                 f"{name} tells an operator to open the record without its fence",
             )
+
+
+
+class DesignFlowNamespaceStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_is_blocked_even_when_remote_records_it(self):
+        for remote in (set(), {"20261006203846"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006203846", remote)
+        self.assertIn("20261007000937", production_migration_guard.RETIRED_VERSION_REASONS["20261006203846"])
+
+    def test_forward_version_remains_eligible_without_stranded_dependency(self):
+        self.assertEqual(parse_allowlist("20261007000937"), ["20261007000937"])
 
 
 if __name__ == "__main__":

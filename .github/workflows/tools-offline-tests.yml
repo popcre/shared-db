@@ -62,11 +62,21 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  # Runner router (edge-dev3-linux self-hosted when online and idle, else the
+  # hosted label below). A failed router never skips a check: callers run on
+  # !cancelled() and keep the literal hosted fallback. See runner-route.yml.
+  route:
+    uses: ./.github/workflows/runner-route.yml
+    with:
+      fallback: ubuntu-latest
+
   verify:
+    needs: route
+    if: ${{ !cancelled() }}
     # The default name stays the stable required context; a lane run reports a distinct name
     # that the "Queue-sensitive checks (aggregate)" job counts exactly once.
     name: ${{ inputs.lane && format('Tools offline tests [lane {0}]', inputs.lane) || 'Tools offline tests' }}
-    runs-on: ${{ inputs.lane || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.lane || fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -246,6 +256,38 @@ jobs:
           done
           node --test scripts/merge-queue-contract.test.mjs scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs
 
+      - name: Run the Supabase MCP launcher tests (#3659)
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the
+        # production-bound .mcp.json (--read-only, pinned version, no secret).
+        # node --test exits non-zero if the file is absent.
+        run: |
+          set -euo pipefail
+          node --test scripts/mcp-supabase-launch.test.mjs
+
+      - name: Run the #3428 sandbox migration binding test
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the source-PR
+        # and dry-run-evidence bindings of the DesignFlow sandbox route.
+        run: |
+          set -euo pipefail
+          node --test scripts/sandbox-migration-binding.test.mjs
+
+      - name: Run the #3458 CONCURRENTLY index-guard test
+        if: steps.route.outputs.pure_prose != 'true'
+        # Named explicitly: scripts/*.test.mjs has no glob. Guards the
+        # style_guide matview unique-index assertion that failed preview apply
+        # 36414234942 on a false exact-name requirement (#3458).
+        run: |
+          set -euo pipefail
+          node --test scripts/test_3458_index_guard.test.mjs
+
+      - name: Run the self-hosted runner router tests
+        # Named explicitly: scripts/*.test.mjs has no glob. Proves every state
+        # other than a fresh online+idle heartbeat on a same-repo event falls
+        # back to the hosted label (no merge depends on edge-dev3-linux).
+        run: node --test scripts/ci/runner-route.test.mjs
+
       - name: Refuse to run with any production authorization present
         run: |
           set -euo pipefail
@@ -325,6 +367,9 @@ jobs:
           node --test scripts/check-skill-drift.test.mjs
           node scripts/check-skill-drift.mjs --require-skills
 
+      - name: Exact global SQL role accounting
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/lib/sql-role-operations.test.mjs
       - name: Verify ColdLion replay proof guards (#3302)
         if: steps.route.outputs.pure_prose != 'true'
         run: node --test scripts/issue-2863-live-proof.test.mjs

@@ -4,7 +4,7 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
 import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
-import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES } from './outcome-lifecycle.mjs'
+import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES, parseOutcomeEvidence } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
@@ -770,12 +770,60 @@ function completionFixture({through='production_applied',generated='not-applicab
   return {io,comments}
 }
 
+test('catalog recovery evidence is optional but must be completely pinned',()=>{
+  const {io}=completionFixture(),original=parseOutcomeEvidence(io.readOutcomeEvidence())
+  const recovery={production_recovery_evidence:'https://github.com/popcre/shared-db/actions/runs/101',production_recovery_commit_sha:'c'.repeat(40),production_recovery_artifact_id:124,production_recovery_artifact_digest:`sha256:${'d'.repeat(64)}`}
+  const body=x=>['```db-outcome-evidence',JSON.stringify(x),'```'].join('\n')
+  assert.equal(parseOutcomeEvidence(body({...original,...recovery})).production_recovery_artifact_id,124)
+  for(const key of Object.keys(recovery)){const x={...original,...recovery};delete x[key];assert.throws(()=>parseOutcomeEvidence(body(x)),/completely pin/)}
+  for(const [key,value] of Object.entries({production_recovery_evidence:'unbound',production_recovery_commit_sha:'invented',production_recovery_artifact_id:0,production_recovery_artifact_digest:'unknown'}))assert.throws(()=>parseOutcomeEvidence(body({...original,...recovery,[key]:value})),/completely pin/)
+})
+
 test('completion re-derives merge, application, generated types, and live assertion before one authoritative completion', () => {
   const {io,comments}=completionFixture({generated:'required'})
   const result=completeOutcome({issue:41,evidenceRef:'https://github.com/u2giants/shared-db/issues/41#issuecomment-9',actor:'test',timestamp:'2026-09-11T02:00:00Z'},io)
   assert.equal(result.completed,true)
   assert.equal(outcomeHistory(comments).state,'live_verified')
   assert.equal(findCompletionRecord(comments).outcome,'live_verified')
+})
+
+test('the completion CLI retains every proof check through a verified merged-PR binding',()=>{
+  const previous=process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING
+  process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING='7:41'
+  const head='c'.repeat(40),version='20260911120000'
+  try{
+    for(const failedProof of [null,'verifyProductionApply','verifyLiveAssertion']){
+      const {io,comments}=completionFixture()
+      const getPr=io.getPr
+      Object.assign(io,{
+        getPr:()=>({...getPr(),number:7,changed_files:3,head:{sha:head,ref:'codex/issue-41-outcome'},body:'Work issue #41'}),
+        closingIssuesForPr:()=>[],
+        getPrFiles:()=>['.agent/contract.json','.agent/completion.json','supabase/migrations/20260911120000_example.sql'].map(filename=>({filename,status:'added'})),
+        getFileAt:()=>JSON.stringify({work_issue:41,pr:7,migration_versions:[version]}),
+      })
+      const checks=[]
+      for(const name of ['prStructuralObjects','mergeCommitInMain','verifyProductionApply','applicationCommitInDefaultBranch','verifyLiveAssertion']){
+        const check=io[name]
+        io[name]=(...args)=>{checks.push(name);return name===failedProof?false:check(...args)}
+      }
+      const mutex=serializedIo(io),readRef=mutex.readRef
+      mutex.readRef=ref=>ref===`refs/db-claims/${version}`?'d'.repeat(40):readRef(ref)
+      const errors=[],oldError=console.error,oldLog=console.log
+      console.error=line=>errors.push(String(line));console.log=()=>{}
+      let result
+      try{result=managerMain(['--complete-outcome','41','--owner','test','--evidence',`https://github.com/${THIS_REPO}/issues/41#issuecomment-9`],new Date('2026-09-11T02:00:00Z'),mutex)}finally{console.error=oldError;console.log=oldLog}
+      assert.equal(result,failedProof?2:0,errors.join('\n'))
+      assert.equal(io.getIssue().state,failedProof?'open':'closed')
+      assert.equal(outcomeHistory(comments).state,failedProof?'production_applied':'live_verified')
+      assert.ok(checks.includes('verifyProductionApply'))
+      if(failedProof!=='verifyProductionApply')assert.ok(checks.includes('verifyLiveAssertion'))
+      if(!failedProof)assert.deepEqual(checks,['prStructuralObjects','mergeCommitInMain','verifyProductionApply','applicationCommitInDefaultBranch','verifyLiveAssertion'])
+      else assert.equal(findCompletionRecord(comments),null)
+    }
+  }finally{
+    if(previous===undefined)delete process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING
+    else process.env.SHARED_DB_MERGED_PR_ISSUE_BINDING=previous
+  }
 })
 
 test('completion resumes after the live event when a later write lost its response',()=>{
@@ -995,4 +1043,14 @@ test('a repaired timestamp incident does not block later ordinary race repair (#
     assert.throws(()=>repairOutcomeHistory({issue:2611,actor:'recovery',reason:'explicit tampered publication',evidenceUrls:[record.evidence_url]},io),/configured timestamp incident/)
     assert.equal(comments.length,before)
   }
+})
+
+
+test('structural admission accounts for exact roles and ownership dependencies', () => {
+  const file = (content) => [{filename:'supabase/migrations/20261006190000_role.sql',status:'added',content}]
+  const actual = inspectPrStructuralChange(file('CREATE ROLE "Worker"; ALTER FUNCTION core.f() OWNER TO "Worker";'))
+  assert.ok(actual.objects.includes('role "Worker"'))
+  assert.deepEqual(actual.reads,['role "Worker"'])
+  assert.deepEqual(inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE 'CREATE ROLE worker'; END $$;")).objects,['role worker'])
+  assert.throws(() => inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;")), /dynamic role/)
 })

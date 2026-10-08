@@ -101,7 +101,8 @@ export function sqlText(value) {
 // (or boolean/date/timestamp) column is entirely null fails the INSERT against
 // the real typed column — observed live on scheduled run 37748611709
 // ("column \"line_price\" is of type numeric but expression is of type text").
-// Every null is therefore emitted with its target type.
+// These emitters therefore type their nulls. sqlText keeps a bare null: text is
+// the VALUES default and matches every text column it feeds.
 
 export function sqlNumber(value) {
   if (value === null || value === undefined) return "null::numeric";

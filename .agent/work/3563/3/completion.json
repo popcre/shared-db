@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 3563,
+  "outcome": "ready-for-merge",
+  "pr": 3627,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3563/3",
+  "contract_sha256": "fa16968a5da73648919a1529459943d9ec82724654eee21bf565db33921a3d4c",
+  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "head_sha": "553248fa933e199818b340119ea62149187b0a4f",
+  "files_changed": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/lib/lanes/queue-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "777 pass, 0 fail on implementation 553248fa933e199818b340119ea62149187b0a4f"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 2 (PR #3627 original branch) remains the immutable predecessor; this generation-3 reaplication targets current main after the scripts/lib/lanes split.",
+    "Curated Master Data work exits by data-session while section 6.4 safeguards remain unchanged.",
+    "On current main security-settings exits by repo-session (#3675), so OUTSIDE_ORCHESTRATOR_EXITS gains data-session only."
+  ],
+  "stop_conditions_hit": []
+}

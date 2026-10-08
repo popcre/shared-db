@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "work_issue": 3563,
+  "generation": 3,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Route curated Master Data loads to a dedicated data session outside the orchestrator (owner ruling 2026-09-25, Albert Hazan), reapplied onto current main after the manage-migration-author-lanes split into scripts/lib/lanes/*. Section 6.4 curation protections and migration-author lane requirements remain in place. No migration or database object is changed.",
+  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "dispatcher": "MiMo takeover of orphaned PR #3627 (issue #3563); generation 2 published by Codex remains the predecessor",
+  "worker": "MiMo chat ses_ffe5eecd82dedffe7RhHlWNjmi on edge-dev",
+  "branch": "codex/3563-curated-data-recovery",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/3627-prep-mimo",
+  "allowed_paths": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/lib/lanes/queue-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/3/contract.json",
+    ".agent/work/3563/3/completion.json"
+  ],
+  "file_writes": [
+    "AGENTS.md",
+    "docs/agents/active-contracts-and-plans.md",
+    "docs/agents/orchestrator.md",
+    "docs/agents/owner-rulings.md",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/agents/standing-facts.md",
+    "scripts/lib/lanes/queue-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3563/3/contract.json",
+    ".agent/work/3563/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not touch any migration or database object.",
+    "Do not weaken section 6.4 curation protections, including matched-row abstention and binding the session doing the typing.",
+    "Do not route curated Master Data to an application repository.",
+    "Do not change structural routing or the self-service additive lane boundary.",
+    "Do not weaken locks, freeze, exact-head approval, or required checks."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "assumptions": [
+    "Owner ruling 2026-09-25 (Albert Hazan, as recorded in issue #3563): curated Master Data loads do not need an orchestrator.",
+    "Generation 2 (PR #3627) is the immutable predecessor; its branch is superseded by this reaplication onto current main after the scripts/lib/lanes split.",
+    "On current main, security-settings exits by repo-session (issue #3675), so OUTSIDE_ORCHESTRATOR_EXITS gains data-session only and never return-to-owner."
+  ],
+  "stop_conditions": [
+    "Stop on any gate refusal rather than weakening the gate.",
+    "Stop if the change needs a file outside allowed_paths.",
+    "Stop if section 6.4 curation protections would be weakened."
+  ],
+  "evidence_parent": {
+    "work_issue": 3563,
+    "generation": 2,
+    "contract_sha256": "51b947f6a9754f3843f4c97dd064751bef4f73ade4d1e814a5a9a77b9f3026c5"
+  }
+}

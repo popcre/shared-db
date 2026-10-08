@@ -5,7 +5,7 @@ const d=JSON.parse(fs.readFileSync('decisions.json'));const sha=fs.readFileSync(
 const EVIDENCE='popcre/shared-db#1941: returned licensing review workbook (Creative-to-Submissions property mapping 3.xlsx), 2026-10-08';
 const BY='licensing review, shared-db#1941';
 const EXPECT_BEFORE=+process.env.EXPECT_BEFORE, EXPECT_DECISIONS=+process.env.EXPECT_DECISIONS, EXPECT_MEMBERS=+process.env.EXPECT_MEMBERS;
-if(!(EXPECT_BEFORE&&EXPECT_DECISIONS&&EXPECT_MEMBERS))throw new Error('EXPECT_* required');
+if(!(EXPECT_BEFORE&&EXPECT_DECISIONS)||!Number.isInteger(EXPECT_MEMBERS))throw new Error('EXPECT_* required');
 const wbSha=require('crypto').createHash('sha256').update(fs.readFileSync(process.env.WORKBOOK)).digest('hex');
 if(wbSha!==sha)throw new Error('workbook digest mismatch');
 (async()=>{const c=new Client({host:'aws-1-us-east-1.pooler.supabase.com',port:6543,user:'postgres.qsllyeztdwjgirsysgai',database:'postgres',password:process.env.PW,ssl:{rejectUnauthorized:false}});

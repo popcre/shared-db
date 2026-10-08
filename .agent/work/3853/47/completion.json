@@ -4,8 +4,8 @@
   "outcome": "ready-for-merge",
   "pr": 4019,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/3853/46",
-  "contract_sha256": "b52d0de9004265836c18eced1a5672381f01869b21a6d6fba567be255677a57f",
+  "contract_ref": "refs/db-contracts/3853/47",
+  "contract_sha256": "7a0accac3b8959f9cfd1bd5d8c7527b9ab29acf8e6a1196179726f655504507b",
   "head_sha": "f353ecfac69512372803c6f633e092d1b603e231",
   "base_sha": "d241515e9454b663d8f2d49258820e089f15863a",
   "files_changed": [
@@ -22,14 +22,12 @@
     {
       "command": "node --test tools/coldlion-order-intake-*.test.mjs",
       "exit_code": 0,
-      "evidence": "68/68 pass. Operational residuals (hourly scan duration, LIKE-prefix EXPLAIN) are owned by the D1 follow-up that ticks STATUS D after two green scheduled runs — they cannot be measured before the cron runs. Git evidence validates. Trigger surface schedule+dispatch only."
+      "evidence": "68/68 pass. New exact-head review round. Operational residuals owned by the D1 follow-up. Git evidence validates."
     }
   ],
   "assumptions_resolved": [
-    "DeepSeek REVISE answered: scan-duration and EXPLAIN residuals are D1-follow-up work, not defects in this change (the cron cannot have run yet).",
-    "EVIDENCE CONVENTION: completion.head_sha is the implementation commit; this pair follows it (#2708).",
-    "F1 PASSED via PR #4017; plan B0 allows cron enablement after F1.",
-    "Closes #3853 with the AGENTS.md live-proof checklist for the two-green-run D1 gate."
+    "New review round after DeepSeek REVISE on pre-merge-unmeasurable residuals.",
+    "F1 PASSED; plan B0 allows cron enablement; closes #3853 with the live-proof checklist."
   ],
   "stop_conditions_hit": []
 }

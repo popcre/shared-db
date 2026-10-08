@@ -23,8 +23,8 @@ STATEMENT_MS = 8000
 LOCK_MS = 1000
 EXPECTED_COLUMNS = set("id name email level notes passw expire status adddate auditlog lastname phonenum subscription subleveladmin notificationsms notificationemail _airbyte_emitted_at _airbyte_users_hashid profile_photo graph_photo graph_photo_synced_at office_location preferred_language app_profile_id".split())
 SNAPSHOT = """SELECT count(*), md5(coalesce(string_agg(md5(row_to_json(u)::text), '' ORDER BY id), ''))
- FROM dflow.users u"""
-SEQUENCE = "SELECT last_value, is_called FROM dflow.users_id_seq"
+ FROM ONLY dflow.users u"""
+SEQUENCE = "SELECT last_value, is_called FROM ONLY dflow.users_id_seq"
 
 
 class Refusal(Exception):
@@ -40,12 +40,12 @@ def digest(data):
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-DUPLICATES = "SELECT count(*) FROM (SELECT lower(btrim(email)) FROM dflow.users WHERE nullif(btrim(email), '') IS NOT NULL GROUP BY lower(btrim(email)) HAVING count(*) > 1) duplicates"
-LEDGER = "SELECT count(*) = 1 FROM supabase_migrations.schema_migrations WHERE version = '20261008160444'"
+DUPLICATES = "SELECT count(*) FROM (SELECT lower(btrim(email)) FROM ONLY dflow.users WHERE nullif(btrim(email), '') IS NOT NULL GROUP BY lower(btrim(email)) HAVING count(*) > 1) duplicates"
+LEDGER = "SELECT count(*) = 1 FROM ONLY supabase_migrations.schema_migrations WHERE version = '20261008160444'"
 INDEX_DEFINITION = "CREATE UNIQUE INDEX users_email_lower_uidx ON dflow.users USING btree (lower(btrim((email)::text))) WHERE (NULLIF(btrim((email)::text), ''::text) IS NOT NULL)"
 
 def validate_catalog(c):
-    require(isinstance(c, dict) and c.get("table_kind") == "r" and c.get("table_am") == "heap" and c.get("ledger_heap") is True and isinstance(c.get("table_oid"), int))
+    require(isinstance(c, dict) and c.get("table_kind") == "r" and c.get("table_am") == "heap" and c.get("ledger_heap") is True and c.get("inheritance_edges") == 0 and isinstance(c.get("table_oid"), int))
     i = c.get("index")
     require(isinstance(i, dict) and all(i.get(k) is True for k in ["unique", "valid", "ready"]))
     require(i.get("table_oid") == c["table_oid"] and i.get("method") == "btree" and i.get("builtin_method") is True and i.get("keys") == 1 and i.get("attributes") == 1)
@@ -113,8 +113,8 @@ def prove(connection, sql_module):
             require(cursor.fetchone() == ("postgres", "postgres", "postgres", "off", "8s", "1s"))
             cursor.execute("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user")
             require(cursor.fetchone() == (True, False))
-            cursor.execute("LOCK TABLE dflow.users IN SHARE MODE")
-            cursor.execute("LOCK TABLE supabase_migrations.schema_migrations IN ACCESS SHARE MODE")
+            cursor.execute("LOCK TABLE ONLY dflow.users IN SHARE MODE")
+            cursor.execute("LOCK TABLE ONLY supabase_migrations.schema_migrations IN ACCESS SHARE MODE")
             cursor.execute((HERE / "4060-catalog.sql").read_text(), prepare=True)
             metadata = cursor.fetchone()
             require(metadata and len(metadata) == 1 and cursor.fetchone() is None)
@@ -125,7 +125,7 @@ def prove(connection, sql_module):
             require(cursor.fetchone() == (0,))
             before = snapshot(cursor)
             sequence_before = sequence_state(cursor)
-            cursor.execute("SELECT id, email FROM dflow.users WHERE nullif(btrim(email), '') IS NOT NULL AND btrim(email) ~ '[A-Za-z]' ORDER BY id LIMIT 1")
+            cursor.execute("SELECT id, email FROM ONLY dflow.users WHERE nullif(btrim(email), '') IS NOT NULL AND btrim(email) ~ '[A-Za-z]' ORDER BY id LIMIT 1")
             candidate = cursor.fetchone()
             require(candidate and isinstance(candidate[1], str))
             # Use the server's own upper/btrim rules, not Python Unicode rules.
@@ -133,7 +133,7 @@ def prove(connection, sql_module):
             variant = " " + cursor.fetchone()[0] + " "
             cursor.execute("SELECT lower(btrim(%s::text)) = lower(btrim(%s::text)) AND %s::text <> %s::text", (variant, candidate[1], variant, candidate[1]))
             require(cursor.fetchone() == (True,))
-            cursor.execute("SELECT NOT EXISTS(SELECT 1 FROM dflow.users WHERE id = -406001)")
+            cursor.execute("SELECT NOT EXISTS(SELECT 1 FROM ONLY dflow.users WHERE id = -406001)")
             require(cursor.fetchone() == (True,))
             names = [a["name"] for a in columns]
             values = [{"id": -406001, "name": "issue-4060-rollback-proof", "email": variant}.get(n) for n in names]

@@ -2,6 +2,7 @@
 SELECT json_build_object(
   'table_kind', c.relkind,
   'table_oid', c.oid::bigint,
+  'inheritance_edges', (SELECT count(*) FROM pg_inherits WHERE inhrelid IN (c.oid,to_regclass('supabase_migrations.schema_migrations')) OR inhparent IN (c.oid,to_regclass('supabase_migrations.schema_migrations'))),
   'table_am', (SELECT amname FROM pg_am WHERE oid = c.relam AND amhandler='pg_catalog.heap_tableam_handler'::regproc),
   'index', (SELECT json_build_object('unique', i.indisunique, 'valid', i.indisvalid,
     'ready', i.indisready, 'table_oid', i.indrelid::bigint, 'method', am.amname, 'builtin_method', am.amhandler='pg_catalog.bthandler'::regproc,

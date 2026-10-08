@@ -12,7 +12,7 @@ spec.loader.exec_module(p)
 
 
 def catalog():
-    return {"table_kind": "r", "table_am": "heap", "ledger_heap": True, "table_oid": 100, "profile_oid": 101,
+    return {"table_kind": "r", "table_am": "heap", "ledger_heap": True, "inheritance_edges": 0, "table_oid": 100, "profile_oid": 101,
             "index": {"unique": True, "valid": True, "ready": True, "table_oid": 100,
                       "method": "btree", "builtin_method": True, "keys": 1, "attributes": 1,
                       "definition": p.INDEX_DEFINITION, "opclass_exact": True, "collation_exact": True,
@@ -127,13 +127,13 @@ class ProofTests(unittest.TestCase):
         insert = next((q, v) for q, v in c.calls if q.startswith("INSERT"))
         self.assertIn("OVERRIDING SYSTEM VALUE", insert[0])
         self.assertIn(-406001, insert[1])
-        self.assertLess(statements.index("LOCK TABLE dflow.users IN SHARE MODE"), statements.index(insert[0]))
+        self.assertLess(statements.index("LOCK TABLE ONLY dflow.users IN SHARE MODE"), statements.index(insert[0]))
         self.assertNotIn("@", str(result))
 
     def test_every_unsafe_catalog_refuses_before_insert(self):
         changes = [lambda m: m.update(table_kind="f"), lambda m: m.update(rules=1),
                    lambda m: m.update(checks=1), lambda m: m.update(unsafe_indexes=1),
-                   lambda m: m.update(table_am="custom"), lambda m: m.update(ledger_heap=False),
+                   lambda m: m.update(inheritance_edges=1), lambda m: m.update(table_am="custom"), lambda m: m.update(ledger_heap=False),
                    lambda m: m["index"].update(unique=False), lambda m: m["index"].update(valid=False),
                    lambda m: m["index"].update(ready=False), lambda m: m["index"].update(table_oid=99),
                    lambda m: m["index"].update(expression="lower(email)"), lambda m: m["index"].update(predicate="true"),
@@ -169,6 +169,16 @@ class ProofTests(unittest.TestCase):
             self.assertEqual(c.inserts, 0)
             queries = [q for q, _ in c.calls]
             self.assertLess(next(i for i, q in enumerate(queries) if q.startswith("-- Fixed #4060")), queries.index(p.LEDGER))
+
+    def test_all_target_locks_and_row_reads_are_only_parent(self):
+        c = Connection(); p.prove(c, sql)
+        for query, _ in c.calls:
+            for target in ["dflow.users", "supabase_migrations.schema_migrations"]:
+                if query.startswith("LOCK TABLE") and target in query:
+                    self.assertIn("LOCK TABLE ONLY " + target, query)
+                if "FROM " + target in query:
+                    self.fail("inherited row scan")
+        self.assertIn("FROM ONLY dflow.users", p.SNAPSHOT)
 
     def test_wrong_failure_or_success_never_produces_proof(self):
         for code, name in [("23505", "users_pkey"), ("23503", "users_email_lower_uidx"), (None, None)]:
@@ -262,6 +272,17 @@ class PostgreSQLTests(unittest.TestCase):
             finally:
                 with self.connect("proof_admin") as connection, connection.cursor() as cursor:
                     cursor.execute("DROP INDEX dflow.users_email_lower_uidx; CREATE UNIQUE INDEX users_email_lower_uidx ON dflow.users(lower(btrim(email))) WHERE nullif(btrim(email), '') IS NOT NULL")
+
+    def test_real_inheritance_edges_refuse_before_row_scans(self):
+        for parent in ["dflow.users", "supabase_migrations.schema_migrations"]:
+            with self.connect("proof_admin") as connection, connection.cursor() as cursor:
+                cursor.execute("CREATE TABLE dflow.probe_child() INHERITS (" + parent + ")")
+            try:
+                with self.connect("postgres") as connection:
+                    with self.assertRaises(p.Refusal): p.prove(connection, self.sql)
+            finally:
+                with self.connect("proof_admin") as connection, connection.cursor() as cursor:
+                    cursor.execute("DROP TABLE dflow.probe_child")
 
     def test_external_before_trigger_refuses_without_executing(self):
         with self.connect("proof_admin") as connection, connection.cursor() as cursor:

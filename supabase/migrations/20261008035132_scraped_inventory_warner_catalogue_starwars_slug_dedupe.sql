@@ -549,23 +549,29 @@ begin
       -- label exists in the same namespace. The fallback rows' only file links
       -- point at the 'STAR LABS' placeholder and none share a file with their
       -- source_id twin, so the fallback is a duplicate vocabulary entry.
-      where (p.identity_method <> 'natural_key_fallback'
-         or not exists (
-           select 1 from plm.wb_property t
-           where t.source_namespace = p.source_namespace
-             and t.identity_method = 'source_id'
-             and t.label = p.label
-         ))
-      -- #4081: hide the product-catalogue copy of a title whose art-assets
-      -- source_id row exists; the art-assets (Creative) row survives.
+      -- #4081: the AND below binds tighter than the OR, so this reads
+      -- (source_id row AND not a catalogue twin) OR (fallback-twin rule). The
+      -- second disjunct never admits a source_id row: such a row is always its
+      -- own same-namespace, same-label source_id match (label is NOT NULL;
+      -- table check). So a source_id row is
+      -- visible exactly when it is not a catalogue twin, and a fallback row
+      -- keeps the #3947 rule unchanged.
+      where p.identity_method <> 'natural_key_fallback'
+        -- #4081: hide the product-catalogue copy of a title whose art-assets
+        -- source_id row exists; the art-assets (Creative) row survives.
         and not (p.source_namespace = 'warner_product_catalogue'
-          and p.identity_method = 'source_id'
           and exists (
             select 1 from plm.wb_property a
             where a.source_namespace = 'warner_art_assets'
               and a.identity_method = 'source_id'
               and a.source_id = p.source_id
           ))
+         or not exists (
+           select 1 from plm.wb_property t
+           where t.source_namespace = p.source_namespace
+             and t.identity_method = 'source_id'
+             and t.label = p.label
+         )
 
       union all
       select 'nbcuniversal',

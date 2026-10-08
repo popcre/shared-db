@@ -1,15 +1,15 @@
 {
   "schema_version": 2,
   "work_issue": 3853,
-  "generation": 45,
+  "generation": 46,
   "evidence_parent": {
     "work_issue": 3853,
-    "generation": 44,
-    "contract_sha256": "5772fcf05197a91ab5dedea804ef27bb70f4d959c6792a6a0f9d4a670f72931a"
+    "generation": 45,
+    "contract_sha256": "8b956f9e5320f7d06e5655fa0748c0ec7449eb0ea07be134884052f1b8ef8b49"
   },
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
-  "goal": "Generation 45 restates the evidence convention DeepSeek's REVISE asked to see made explicit, with the same implementation as generation 44 (hourly ColdLion cron after F1; trigger surface schedule+dispatch only; schedule free of --limit; handoffs retired; alerting and kill-switch documented in the workflow header; stale comments fixed). EVIDENCE CONVENTION (scripts/agent-work-contract-git-evidence.mjs): completion.head_sha is the IMPLEMENTATION commit (the sole commit that writes the named file_writes), and exactly this generation's two evidence files follow that commit as the pull request's tail (#2708). The pull request's GitHub head is therefore the evidence commit itself; that is required, not a mismatch. Git evidence validates at the live PR head. Closes #3853 with the AGENTS.md live-proof checklist on the issue for the D1 gate (two consecutive green scheduled runs after merge); plan STATUS row D is ticked by a follow-up after those runs. Generations 1-44 stay published and immutable.",
+  "goal": "Generation 46 carries generation 45's implementation unchanged and answers DeepSeek's REVISE by binding the remaining operational residuals to the D1 follow-up that ticks STATUS row D after two consecutive green scheduled runs. RESIDUALS OWNED BY THAT FOLLOW-UP (not defects in this change): (1) measured full-scan duration and per-run staged/written volume at hourly cadence — the D1 gate exists to observe exactly this; (2) an EXPLAIN for the inherited LIKE-prefix novelty probe on production_order_source_ref_unique (Phase D follow-up already named in the staging module). Implementation: hourly ColdLion cron after F1; trigger surface schedule+dispatch only; schedule free of --limit; both #3853 handoffs retired; alerting and kill-switch documented; stale comments fixed. Evidence convention unchanged: completion.head_sha is the implementation commit; this pair follows it (#2708); git evidence validates. Closes #3853 with the AGENTS.md live-proof checklist on the issue. Generations 1-45 stay published and immutable.",
   "base_sha": "d241515e9454b663d8f2d49258820e089f15863a",
   "dispatcher": "MiMo chat ses_ffe5eec58ec33ffein1XsJ0A3W on edge-dev (coordinator for issue #3853)",
   "worker": "MiMo chat ses_ffe5eec58ec33ffein1XsJ0A3W on edge-dev",
@@ -22,12 +22,12 @@
     "tools/coldlion-landing/order-intake-write.mjs",
     "HANDOFF.d/2026-10-02T2140Z-edge-dev-zcode-coldlion-intake-rotation-pending.md",
     "HANDOFF.d/2026-10-06T2035Z-edge-dev-zcode-coldlion-intake-f1-sheet-side.md",
-    ".agent/work/3853/45/contract.json",
-    ".agent/work/3853/45/completion.json"
+    ".agent/work/3853/46/contract.json",
+    ".agent/work/3853/46/completion.json"
   ],
   "file_writes": [
-    ".agent/work/3853/45/contract.json",
-    ".agent/work/3853/45/completion.json"
+    ".agent/work/3853/46/contract.json",
+    ".agent/work/3853/46/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -42,9 +42,9 @@
     "node --test tools/coldlion-order-intake-*.test.mjs"
   ],
   "assumptions": [
-    "DeepSeek REVISE at generation 44's head is answered by stating the head_sha/PR-head convention the git-evidence tool enforces; the implementation bytes are unchanged",
+    "DeepSeek REVISE at generation 45 is answered by binding the scan-duration and EXPLAIN residuals to the D1 follow-up; they cannot be measured before the cron runs",
     "The live-proof checklist on #3853 is the durable tracker for the two-green-run D1 gate (AGENTS.md live-proof rule)",
-    "Base is GitHub main d241515e9454b663d8f2d49258820e089f15863a (the branch merge-base after main advanced; regeneration required by #2845)"
+    "Base is GitHub main d241515e9454b663d8f2d49258820e089f15863a"
   ],
   "stop_conditions": [
     "Stop and report if the offline intake tests fail at the implementation head",

@@ -4,15 +4,15 @@
   "outcome": "ready-for-merge",
   "pr": 4083,
   "migration_versions": [
-    "20261008035132"
+    "20261008043049"
   ],
-  "contract_ref": "refs/db-contracts/4081/1",
+  "contract_ref": "refs/db-contracts/4081/2",
   "contract_sha256": "7cecbdf527cd25d7ddf0f3c1fe852bf728d7331771cfee46fd7e59857fff3f28",
   "head_sha": "924dea7de07c513e18df5e11e8fb66a2d8aa7247",
-  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "base_sha": "766768289ba92156d287ea988c4c9486a40eb358",
   "files_changed": [
-    ".agent/work/4081/1/contract.json",
-    "supabase/migrations/20261008035132_scraped_inventory_warner_catalogue_starwars_slug_dedupe.sql",
+    ".agent/work/4081/2/contract.json",
+    "supabase/migrations/20261008043049_scraped_inventory_warner_catalogue_starwars_slug_dedupe.sql",
     "supabase/tests/scraped_inventory_warner_catalogue_starwars_slug_dedupe.sql"
   ],
   "db_reads": [

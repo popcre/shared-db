@@ -1644,6 +1644,22 @@ begin
      or position($k$where a.source_namespace = 'warner_art_assets'$k$ in v_src) = 0 then
     raise exception '#4081 self-check: Warner catalogue-twin hide predicate is missing';
   end if;
+  -- #4081 exact-object identity: the relations this body reads by these
+  -- columns are base tables and the compared columns are text, so a same-named
+  -- view or a retyped column fails here rather than at call time.
+  if (select count(*) from information_schema.tables
+       where table_schema = 'plm' and table_type = 'BASE TABLE'
+         and table_name in ('wb_property', 'lucasfilm_dcp_property', 'dcp_property')) <> 3 then
+    raise exception '#4081 self-check: plm.wb_property, plm.lucasfilm_dcp_property or plm.dcp_property is not a base table';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'plm' and data_type = 'text'
+         and ((table_name = 'wb_property'
+               and column_name in ('source_namespace', 'identity_method', 'label', 'source_id', 'fallback_key'))
+           or (table_name in ('lucasfilm_dcp_property', 'dcp_property')
+               and column_name in ('source_system', 'source_id')))) <> 9 then
+    raise exception '#4081 self-check: a compared column of plm.wb_property, plm.lucasfilm_dcp_property or plm.dcp_property is missing or not text';
+  end if;
   -- Exact object checks: the columns this function now depends on must exist
   -- with the right names (review finding 2026-10-06; create-or-replace defers
   -- relation resolution to first call, so a missing column would migrate clean
@@ -1679,7 +1695,12 @@ begin
                     and p.prosecdef and p.provolatile = 's'
                     and p.proconfig = array['search_path=app, public'])
      or not has_function_privilege('authenticated', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute')
-     or has_function_privilege('anon', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute') then
+     or has_function_privilege('anon', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute')
+     -- #4081: the revoke from public and service_role is asserted too.
+     or has_function_privilege('service_role', 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)', 'execute')
+     or exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                where p.oid = 'api.db_data_admin_scraped_source_inventory(text,text,text,integer)'::regprocedure
+                  and a.grantee = 0 and a.privilege_type = 'EXECUTE') then
     raise exception '#3947 self-check: inventory function security, volatility, search_path or grants differ';
   end if;
 end $$;

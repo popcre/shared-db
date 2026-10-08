@@ -57,7 +57,8 @@ begin
     ('warner_product_catalogue', 'source_id', 'zztest-4081-catonly', null,
      'ZZTEST 4081 Warner Catalogue Only', v_capture_id, 0, 'https://example.invalid', '{}'::jsonb, 'zztest-4081-h3');
 
-  -- Star Wars: three Lucasfilm spellings of one slug (no Disney twin), one
+  -- Star Wars: three Lucasfilm spellings of one slug (no Disney twin; under
+  -- collate "C" '-' sorts before letters, so '---title--a' is first), one
   -- Lucasfilm spelling variant of a Disney identity, and one unique slug.
   insert into plm.dcp_property (source_system, source_id, display_name)
   values ('disney_dcpvault', 'dcpvault:zztest-4081---disney-a', 'ZZTEST 4081 Disney');
@@ -87,11 +88,11 @@ begin
 
     select count(*) into v_n from jsonb_array_elements(v_rows) r
     where r ->> 'source_table' = 'plm.lucasfilm_dcp_property'
-      and r ->> 'source_id' = 'dcpvault:zztest-4081---title-a';
+      and r ->> 'source_id' = 'dcpvault:zztest-4081---title--a';
     v_luc_first := v_luc_first + v_n;
     select count(*) into v_n from jsonb_array_elements(v_rows) r
     where r ->> 'source_table' = 'plm.lucasfilm_dcp_property'
-      and r ->> 'source_id' in ('dcpvault:zztest-4081-title-a', 'dcpvault:zztest-4081---title--a');
+      and r ->> 'source_id' in ('dcpvault:zztest-4081-title-a', 'dcpvault:zztest-4081---title-a');
     v_luc_other := v_luc_other + v_n;
     select count(*) into v_n from jsonb_array_elements(v_rows) r
     where r ->> 'source_table' = 'plm.lucasfilm_dcp_property'

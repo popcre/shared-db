@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 4105,
+  "outcome": "ready-for-merge",
+  "pr": 4108,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4105/3",
+  "contract_sha256": "7d6966ea4ee70870f0162a1378791d009497cc7bbcdc7988594f6cdb99005810",
+  "head_sha": "fc22cc8d407bb0529d1858e7e98aed86e35d031f",
+  "base_sha": "b147dd17091020cdfadf455b2a9ddc418c621088",
+  "files_changed": [
+    ".github/workflows/shared-db-4060-observation.yml",
+    "scripts/proofs/shared-db-4060-observation.py",
+    "scripts/proofs/test_shared_db_4060_observation.py",
+    "scripts/proofs/4060-contract.json",
+    "scripts/proofs/4060-catalog.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts/proofs -p test_shared_db_4060_observation.py",
+      "exit_code": 0,
+      "evidence": "Eleven tests pass including owned real PostgreSQL16 users/ledger inheritance refusal, exactduplicate/trigger/opclass/options safety; backend67pass. No production execution."
+    },
+    {
+      "command": "PostgreSQL16 owned ephemeral integration test",
+      "exit_code": 0,
+      "evidence": "Eleven tests pass including owned real PostgreSQL16 users/ledger inheritance refusal, exactduplicate/trigger/opclass/options safety; backend67pass. No production execution."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors after currentmain merge."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective generation2 published before approved correction round; immutable generation1 and reviewREVISE preserved. Removed only own unmergedgen1 evidence additions to leave one current keyedpair.",
+    "Findings1,2,7 corrected plus builtinheap/indexmethod and metadata-before-row-scan safety. Findings4/5 assessments;6duplicate2;9readonlycapability remains unchanged.",
+    "Finding8 selfhead request rejected: implementationhead is real ancestor; subsequent evidence-only tail is required. No fabricated selfSHA.",
+    "Historical4075 productionREVISE preserved; canonicalsource rebind remains required before runtime. No credentials/production/reviewer allocation/merge.",
+    "Backend170 remains draft; refreshedprivate allowed-branch replaypatch+pins tested67pass, no remote backend sourcepush.",
+    "Prior shipgate refusal/incorrect chainedpush86036977 recorded generation1; current protectedclass gate passed before mutation.",
+    "Prospective generation3 before inheritance edits; old immutablegenerations preserved. No pg_inherits edges may involve users orledger; every row SELECT andlock uses ONLY.",
+    "Root authorized ordinary merge of currentmainb147; foreign3175files preserved exactly; report.base_sha is measured mergebase while immutablecontractbase4cbdd remains ancestor.",
+    "Gen2 source CI completed checks all successful before edits; ephemeral DB still running, no actual code failure was concealed."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "work_issue": 3624,
+  "outcome": "ready-for-merge",
+  "pr": 3626,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3624/5",
+  "contract_sha256": "8efb4449bc2a947f36830cef87a993ee7a5082e6ddec8de64df182117d4196cb",
+  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "head_sha": "315f3fc5df3c333196695a67550842b3c387c675",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/reviewer-delivery-preflight.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.mjs",
+    "scripts/orchestrator-flow/delivery-preflight-gate.test.mjs",
+    "scripts/orchestrator-flow/delivery-preflight.test.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.mjs",
+    "scripts/orchestrator-flow/evidence-bundle.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "777 tests passed, 0 failed at implementation head 315f3fc5df3c333196695a67550842b3c387c675"
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/delivery-preflight-gate.test.mjs scripts/orchestrator-flow/delivery-preflight.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "44 tests passed, 0 failed at implementation head 315f3fc5df3c333196695a67550842b3c387c675"
+    }
+  ],
+  "assumptions_resolved": [
+    "Reviewer wire-budget tests provide locally registered exact-head preflight evidence for initial and replacement draws.",
+    "All budget cases pass without raising the 10-request limit.",
+    "#2998 CLI readiness tests supply registered preflight fixtures via withRegisteredPreflight so pre-draw guards are reached."
+  ],
+  "stop_conditions_hit": []
+}

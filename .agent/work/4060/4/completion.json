@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 4060,
+  "outcome": "ready-for-merge",
+  "pr": 4075,
+  "migration_versions": [
+    "20261008011444"
+  ],
+  "contract_ref": "refs/db-contracts/4060/4",
+  "contract_sha256": "01e7f945d158648aba02c152333c25671c7d87acec3e53f85848cfd6c495f489",
+  "db_reads": [],
+  "db_writes": [
+    "index dflow.users_email_lower_uidx",
+    "table dflow.users"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at the implementation head after the main refresh; no backdated version (20261008011444 > 20261008004417)."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_*.py",
+      "exit_code": 0,
+      "evidence": "Retired-version set tests OK with 20261007232712; full suite OK (skipped=22) on generation 3 with identical python changes."
+    },
+    {
+      "command": "Database Contract Tests on isolated ephemeral database",
+      "exit_code": 0,
+      "evidence": "Required CI check on this PR; locally supabase/tests/dflow_users_email_ci_unique_contracts.sql passed on Postgres 16."
+    },
+    {
+      "command": "Old migration then new migration replay on isolated PostgreSQL is a no-op on the second",
+      "exit_code": 0,
+      "evidence": "Postgres 16: 20261007232712 created the index; the reissue (same bytes, now 20261008011444) skipped it; after drop, the reissue alone created it and the contract test passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Retired 20261007232712 is hard-blocked and listed in RETIRED_VERSION_REASONS; only 20261008011444 may reach production.",
+    "Preview no-op relies on IF NOT EXISTS against the index preview already holds."
+  ],
+  "stop_conditions_hit": [],
+  "head_sha": "0c14a6620db44ee0dd1f9e26c804f5846c268e0a",
+  "base_sha": "5c4a6645c52aaaab6d834efe17a610a33779a24b",
+  "files_changed": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20261008011444_dflow_users_email_ci_unique_reissue.sql"
+  ]
+}

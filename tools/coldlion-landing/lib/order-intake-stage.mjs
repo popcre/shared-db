@@ -81,6 +81,19 @@ export const INTAKE_COMPONENT_SPEC = [
 ];
 
 const T = { text: sqlText, num: sqlNumber, int: sqlNumber, big: sqlNumber, date: sqlDate, bool: sqlBool, ts: sqlTimestamp, uuid: sqlUuid };
+// Typed NULL for the empty-window placeholder row. Bare `null` in a VALUES list
+// resolves to text and then fails numeric component columns (line_price etc.)
+// on insert — the first scheduled run after cron enablement hit exactly that.
+const SQL_NULL = {
+  text: "null::text",
+  num: "null::numeric",
+  int: "null::integer",
+  big: "null::bigint",
+  date: "null::date",
+  bool: "null::boolean",
+  ts: "null::timestamptz",
+  uuid: "null::uuid",
+};
 
 function rowValues(spec, row) {
   // values.mjs sqlRow expects [column, emitterFunction, rowKey] triples; the
@@ -230,9 +243,11 @@ export function buildIntakeStageSql({
     // An empty window still needs a syntactically valid VALUES row: the alias list
     // below names 4 join keys + every component column, so the placeholder row
     // must carry exactly as many NULLs (it joins to nothing and inserts nothing).
-    : `(null::bigint, null::integer, null::text, null::text, ${INTAKE_COMPONENT_SPEC.map(() => "null").join(", ")})`;
+    : `(null::bigint, null::integer, null::text, null::text, ${INTAKE_COMPONENT_SPEC.map(([, emit]) => SQL_NULL[emit] ?? "null::text").join(", ")})`;
 
-  const componentSelect = INTAKE_COMPONENT_SPEC.map(([column]) => `v.${column}`).join(", ");
+  const componentSelect = INTAKE_COMPONENT_SPEC.map(([column, emit]) =>
+    emit === "num" || emit === "int" || emit === "big" ? `v.${column}::numeric` : `v.${column}`,
+  ).join(", ");
 
   return `begin;
 

@@ -253,6 +253,10 @@ on conflict (user_id, role_id) do nothing;
 -- Role-level rows only (`UserId IS NULL`). Per-user rows (Sample QC model) stay
 -- on their existing row and keep working through the UserId override path —
 -- copying those onto a category would hand the flag to everyone in the category.
+--
+-- Idempotency guard: ON CONFLICT cannot fire here because every inserted row has
+-- UserId = NULL and the unique arbiter treats NULLs as distinct. Use NOT EXISTS
+-- so a retry or re-run is a clean no-op instead of inserting duplicates.
 insert into dflow."RolePermissions" ("RoleId", "UserId", "ElementId", "Access")
 select target."Id", p."UserId", p."ElementId", p."Access"
 from dflow."RolePermissions" p
@@ -267,7 +271,12 @@ join dflow."Roles" target
      end
 where p."UserId" is null
   and target."Name" is distinct from source."Name"
-on conflict ("RoleId", "UserId", "ElementId") do nothing;
+  and not exists (
+    select 1 from dflow."RolePermissions" x
+    where x."RoleId" = target."Id"
+      and x."UserId" is null
+      and x."ElementId" = p."ElementId"
+  );
 
 -- production → production and sales → sales are name-identical: the existing
 -- role-level rows already sit on the category row after the kind update above.
@@ -283,6 +292,8 @@ declare
   actual_admin int;
   bad_tree text;
   bad_membership text;
+  missing_tree text;
+  incomplete_grants text;
 begin
   select count(*) into expected_admin
   from dflow.users
@@ -296,6 +307,27 @@ begin
   if expected_admin <> actual_admin then
     raise exception 'ABORT: admin backfill count mismatch: users.level=admin %, user_roles admin grants %',
       expected_admin, actual_admin;
+  end if;
+
+  -- H2: assert all 15 tree names are present (absent rows are invisible to the
+  -- mis-typing check below, which only inspects rows that exist).
+  select string_agg(name, ', ' order by name)
+    into missing_tree
+  from (
+    select unnest(array[
+      'admin', 'design', 'production', 'sales', 'vendors',
+      'creative designer', 'technical designer', 'project manager',
+      'sourcing', 'production coordinator', 'QC',
+      'salesperson', 'sales assistant',
+      'factory', 'trading co.'
+    ]) as name
+  ) expected
+  where not exists (
+    select 1 from dflow."Roles" r where r."Name" = expected.name
+  );
+
+  if missing_tree is not null then
+    raise exception 'ABORT: tree rows absent: %', missing_tree;
   end if;
 
   select string_agg(name, ', ' order by name)
@@ -331,6 +363,38 @@ begin
 
   if bad_membership is not null then
     raise exception 'ABORT: membership on a category (people hold leaves only): %', bad_membership;
+  end if;
+
+  -- H2: assert every user received the expected leaf grants for their level.
+  -- A silent inner-join drop in the backfill would leave users under-granted.
+  select string_agg(detail, '; ' order by detail)
+    into incomplete_grants
+  from (
+    select u.email || ' (level=' || coalesce(u.level,'<NULL>') || ', expected=' || m.expected_count
+           || ', actual=' || coalesce(g.actual_count, 0) || ')' as detail
+    from dflow.users u
+    join (
+      values
+        ('admin',            1),
+        ('designer',         3),
+        ('production',       2),
+        ('sales',            2),
+        ('sourcing_manager', 1),
+        ('vendor',           1)
+    ) as m(old_level, expected_count)
+      on m.old_level = lower(trim(u.level))
+    left join (
+      select ur.user_id, count(*) as actual_count
+      from dflow.user_roles ur
+      join dflow."Roles" r on r."Id" = ur.role_id
+      where r.kind = 'leaf' or r."Name" = 'admin'
+      group by ur.user_id
+    ) g on g.user_id = u.id
+    where coalesce(g.actual_count, 0) < m.expected_count
+  ) under_granted;
+
+  if incomplete_grants is not null then
+    raise exception 'ABORT: backfill incomplete (users lacking expected leaf grants): %', incomplete_grants;
   end if;
 end
 $$;

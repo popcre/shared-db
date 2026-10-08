@@ -89,7 +89,7 @@ jobs:
           SOURCE_HEAD="$(python -c 'import json;print(json.load(open("scripts/proofs/4060-contract.json"))["source_head"])')"
           VERSION="$(python -c 'import json;print(json.load(open("scripts/proofs/4060-contract.json"))["migration_version"])')"
           node scripts/prove-production-risk-acceptance.mjs --issue 4060 --pr "$SOURCE_PR" --head-sha "$SOURCE_HEAD" --main-sha "$GITHUB_SHA" --allowlist "$VERSION" --risks expected_downtime,material_access_change,permanent_data_rewrite_or_loss
-          test "$(node scripts/gh-read.mjs api repos/popcre/designflow-backend/git/ref/heads/develop --jq .object.sha)" = "$APPLICATION_COMMIT_SHA"
+          # Backend acceptance authenticates its own develop run and exact application SHA.
       - name: Install fixed PostgreSQL client
         run: python -m pip install 'psycopg[binary]==3.2.13'
       - name: Prove duplicate rejection in a forced rollback transaction

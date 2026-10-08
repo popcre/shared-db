@@ -12,9 +12,12 @@ spec.loader.exec_module(p)
 
 
 def catalog():
-    return {"table_kind": "r", "table_oid": 100, "profile_oid": 101,
+    return {"table_kind": "r", "table_am": "heap", "ledger_heap": True, "table_oid": 100, "profile_oid": 101,
             "index": {"unique": True, "valid": True, "ready": True, "table_oid": 100,
-                      "method": "btree", "keys": 1, "attributes": 1,
+                      "method": "btree", "builtin_method": True, "keys": 1, "attributes": 1,
+                      "definition": p.INDEX_DEFINITION, "opclass_exact": True, "collation_exact": True,
+                      "options": [0], "storage_options": None, "immediate": True, "primary": False,
+                      "exclusion": False, "nulls_not_distinct": False,
                       "expression": "lower(btrim((email)::text))",
                       "predicate": "(NULLIF(btrim((email)::text), ''::text) IS NOT NULL)"},
             "columns": [{"name": n, "type": "integer" if n == "id" else "uuid" if n == "app_profile_id" else "character varying(255)",
@@ -58,6 +61,10 @@ class Cursor:
             self.rows = [(True, False)]
         elif q.startswith("-- Fixed #4060"):
             self.rows = [(self.c.metadata,)]
+        elif q == p.LEDGER:
+            self.rows = [(self.c.metadata.get("ledger_present", True),)]
+        elif q == p.DUPLICATES:
+            self.rows = [(self.c.metadata.get("duplicate_groups", 0),)]
         elif q == p.SNAPSHOT:
             self.rows = [self.c.snapshot]
         elif q == p.SEQUENCE:
@@ -126,7 +133,7 @@ class ProofTests(unittest.TestCase):
     def test_every_unsafe_catalog_refuses_before_insert(self):
         changes = [lambda m: m.update(table_kind="f"), lambda m: m.update(rules=1),
                    lambda m: m.update(checks=1), lambda m: m.update(unsafe_indexes=1),
-                   lambda m: m.update(ledger_present=False), lambda m: m.update(duplicate_groups=1),
+                   lambda m: m.update(table_am="custom"), lambda m: m.update(ledger_heap=False),
                    lambda m: m["index"].update(unique=False), lambda m: m["index"].update(valid=False),
                    lambda m: m["index"].update(ready=False), lambda m: m["index"].update(table_oid=99),
                    lambda m: m["index"].update(expression="lower(email)"), lambda m: m["index"].update(predicate="true"),
@@ -139,6 +146,11 @@ class ProofTests(unittest.TestCase):
                    lambda m: m["insert_triggers"][0].update(function="external_effect"),
                    lambda m: m["insert_triggers"][0].update(referenced_table=99),
                    lambda m: m["insert_triggers"][0].update(key_columns=["email"])]
+        for key, value in [("builtin_method", False), ("method", "hash"), ("keys", 2), ("attributes", 2), ("opclass_exact", False),
+                           ("collation_exact", False), ("options", [1]), ("storage_options", ["fillfactor=80"]),
+                           ("definition", "wrong"), ("immediate", False), ("primary", True),
+                           ("exclusion", True), ("nulls_not_distinct", True)]:
+            changes.append(lambda m, key=key, value=value: m["index"].update({key: value}))
         for change in changes:
             with self.subTest(change=changes.index(change)):
                 c = Connection()
@@ -146,7 +158,17 @@ class ProofTests(unittest.TestCase):
                 with self.assertRaises(p.Refusal):
                     p.prove(c, sql)
                 self.assertEqual(c.inserts, 0)
+                self.assertNotIn(p.DUPLICATES, [q for q, _ in c.calls])
+                self.assertNotIn(p.SNAPSHOT, [q for q, _ in c.calls])
                 self.assertEqual(c.rollbacks, 1)
+
+    def test_value_checks_run_only_after_catalog_and_refuse_bad_ledger_duplicates(self):
+        for key, value in [("ledger_present", False), ("duplicate_groups", 1)]:
+            c = Connection(); c.metadata[key] = value
+            with self.assertRaises(p.Refusal): p.prove(c, sql)
+            self.assertEqual(c.inserts, 0)
+            queries = [q for q, _ in c.calls]
+            self.assertLess(next(i for i, q in enumerate(queries) if q.startswith("-- Fixed #4060")), queries.index(p.LEDGER))
 
     def test_wrong_failure_or_success_never_produces_proof(self):
         for code, name in [("23505", "users_pkey"), ("23503", "users_email_lower_uidx"), (None, None)]:
@@ -227,6 +249,19 @@ class PostgreSQLTests(unittest.TestCase):
             self.assertTrue(result["duplicate_rejected"])
             self.assertTrue(result["users_unchanged"])
             self.assertTrue(result["sequence_unchanged"])
+
+    def test_real_alternate_opclass_and_storage_options_refuse(self):
+        for option in ["text_pattern_ops", "WITH (fillfactor=80)"]:
+            with self.connect("proof_admin") as connection, connection.cursor() as cursor:
+                cursor.execute("DROP INDEX dflow.users_email_lower_uidx")
+                definition = "CREATE UNIQUE INDEX users_email_lower_uidx ON dflow.users(lower(btrim(email)) " + (option if option == "text_pattern_ops" else "") + ") " + (option if option != "text_pattern_ops" else "") + " WHERE nullif(btrim(email), '') IS NOT NULL"
+                cursor.execute(definition)
+            try:
+                with self.connect("postgres") as connection:
+                    with self.assertRaises(p.Refusal): p.prove(connection, self.sql)
+            finally:
+                with self.connect("proof_admin") as connection, connection.cursor() as cursor:
+                    cursor.execute("DROP INDEX dflow.users_email_lower_uidx; CREATE UNIQUE INDEX users_email_lower_uidx ON dflow.users(lower(btrim(email))) WHERE nullif(btrim(email), '') IS NOT NULL")
 
     def test_external_before_trigger_refuses_without_executing(self):
         with self.connect("proof_admin") as connection, connection.cursor() as cursor:

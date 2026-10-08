@@ -2,11 +2,18 @@
 SELECT json_build_object(
   'table_kind', c.relkind,
   'table_oid', c.oid::bigint,
+  'table_am', (SELECT amname FROM pg_am WHERE oid = c.relam AND amhandler='pg_catalog.heap_tableam_handler'::regproc),
   'index', (SELECT json_build_object('unique', i.indisunique, 'valid', i.indisvalid,
-    'ready', i.indisready, 'table_oid', i.indrelid::bigint, 'method', am.amname,
+    'ready', i.indisready, 'table_oid', i.indrelid::bigint, 'method', am.amname, 'builtin_method', am.amhandler='pg_catalog.bthandler'::regproc,
     'keys', i.indnkeyatts, 'attributes', i.indnatts,
     'expression', pg_get_expr(i.indexprs, i.indrelid),
-    'predicate', pg_get_expr(i.indpred, i.indrelid))
+    'predicate', pg_get_expr(i.indpred, i.indrelid),
+    'definition', pg_get_indexdef(i.indexrelid),
+    'opclass_exact', i.indclass[0] = (SELECT oc.oid FROM pg_opclass oc JOIN pg_namespace ns ON ns.oid=oc.opcnamespace WHERE ns.nspname='pg_catalog' AND oc.opcname='text_ops' AND oc.opcmethod=am.oid AND oc.opcdefault),
+    'collation_exact', i.indcollation[0] = (SELECT a.attcollation FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='email') AND i.indcollation[0] = (SELECT co.oid FROM pg_collation co JOIN pg_namespace ns ON ns.oid=co.collnamespace WHERE ns.nspname='pg_catalog' AND co.collname='default' AND co.collisdeterministic),
+    'options', i.indoption::smallint[], 'storage_options', ic.reloptions,
+    'immediate', i.indimmediate, 'primary', i.indisprimary,
+    'exclusion', i.indisexclusion, 'nulls_not_distinct', i.indnullsnotdistinct)
     FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
     JOIN pg_am am ON am.oid = ic.relam
     WHERE i.indexrelid = to_regclass('dflow.users_email_lower_uidx')),
@@ -33,16 +40,12 @@ SELECT json_build_object(
   'unsafe_indexes', (SELECT count(*) FROM pg_index other JOIN pg_class ic ON ic.oid = other.indexrelid
     JOIN pg_am am ON am.oid = ic.relam
     WHERE other.indrelid = c.oid AND (
-      am.amname <> 'btree' OR other.indisexclusion OR
+      am.amname <> 'btree' OR am.amhandler <> 'pg_catalog.bthandler'::regproc OR other.indisexclusion OR
       (other.indexrelid <> to_regclass('dflow.users_email_lower_uidx')
         AND (other.indexprs IS NOT NULL OR other.indpred IS NOT NULL)) OR
       EXISTS(SELECT 1 FROM unnest(other.indclass::oid[]) op(oid)
         JOIN pg_opclass oc ON oc.oid = op.oid JOIN pg_namespace ns ON ns.oid = oc.opcnamespace
-        WHERE ns.nspname <> 'pg_catalog'))),
+        WHERE ns.nspname <> 'pg_catalog' OR NOT oc.opcdefault OR oc.opcmethod <> am.oid OR oc.opcname NOT IN ('int4_ops','text_ops','timestamptz_ops','uuid_ops')))),
   'rules', (SELECT count(*) FROM pg_rewrite WHERE ev_class = c.oid),
-  'ledger_present', (SELECT count(*) = 1 FROM supabase_migrations.schema_migrations
-    WHERE version = '20261008160444'),
-  'duplicate_groups', (SELECT count(*) FROM (SELECT lower(btrim(email))
-    FROM dflow.users WHERE nullif(btrim(email), '') IS NOT NULL
-    GROUP BY lower(btrim(email)) HAVING count(*) > 1) duplicates)
+  'ledger_heap', (SELECT l.relkind='r' AND la.amname='heap' AND la.amhandler='pg_catalog.heap_tableam_handler'::regproc FROM pg_class l JOIN pg_am la ON la.oid=l.relam WHERE l.oid=to_regclass('supabase_migrations.schema_migrations'))
 ) FROM pg_class c WHERE c.oid = to_regclass('dflow.users');

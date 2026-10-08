@@ -40,14 +40,22 @@ def digest(data):
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+DUPLICATES = "SELECT count(*) FROM (SELECT lower(btrim(email)) FROM dflow.users WHERE nullif(btrim(email), '') IS NOT NULL GROUP BY lower(btrim(email)) HAVING count(*) > 1) duplicates"
+LEDGER = "SELECT count(*) = 1 FROM supabase_migrations.schema_migrations WHERE version = '20261008160444'"
+INDEX_DEFINITION = "CREATE UNIQUE INDEX users_email_lower_uidx ON dflow.users USING btree (lower(btrim((email)::text))) WHERE (NULLIF(btrim((email)::text), ''::text) IS NOT NULL)"
+
 def validate_catalog(c):
-    require(isinstance(c, dict) and c.get("table_kind") == "r" and isinstance(c.get("table_oid"), int))
+    require(isinstance(c, dict) and c.get("table_kind") == "r" and c.get("table_am") == "heap" and c.get("ledger_heap") is True and isinstance(c.get("table_oid"), int))
     i = c.get("index")
     require(isinstance(i, dict) and all(i.get(k) is True for k in ["unique", "valid", "ready"]))
-    require(i.get("table_oid") == c["table_oid"] and i.get("method") == "btree" and i.get("keys") == 1 and i.get("attributes") == 1)
+    require(i.get("table_oid") == c["table_oid"] and i.get("method") == "btree" and i.get("builtin_method") is True and i.get("keys") == 1 and i.get("attributes") == 1)
     # format_type adds text casts to varchar expression and predicate.
     require(i.get("expression") == "lower(btrim((email)::text))")
     require(i.get("predicate") == "(NULLIF(btrim((email)::text), ''::text) IS NOT NULL)")
+    require(i.get("definition") == INDEX_DEFINITION and i.get("opclass_exact") is True and i.get("collation_exact") is True
+            and i.get("options") == [0] and i.get("storage_options") is None
+            and i.get("immediate") is True and i.get("primary") is False
+            and i.get("exclusion") is False and i.get("nulls_not_distinct") is False)
     columns = c.get("columns")
     require(isinstance(columns, list) and len(columns) == len(EXPECTED_COLUMNS)
             and {a.get("name") for a in columns} == EXPECTED_COLUMNS)
@@ -70,8 +78,7 @@ def validate_catalog(c):
                 and t.get("constraint_type") == "f" and t.get("constraint_table") == c["table_oid"]
                 and isinstance(c.get("profile_oid"), int) and t.get("referenced_table") == c["profile_oid"]
                 and t.get("key_columns") == ["app_profile_id"])
-    require(c.get("rules") == 0 and c.get("checks") == 0 and c.get("unsafe_indexes") == 0
-            and c.get("ledger_present") is True and c.get("duplicate_groups") == 0)
+    require(c.get("rules") == 0 and c.get("checks") == 0 and c.get("unsafe_indexes") == 0)
     return columns
 
 
@@ -107,10 +114,15 @@ def prove(connection, sql_module):
             cursor.execute("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user")
             require(cursor.fetchone() == (True, False))
             cursor.execute("LOCK TABLE dflow.users IN SHARE MODE")
+            cursor.execute("LOCK TABLE supabase_migrations.schema_migrations IN ACCESS SHARE MODE")
             cursor.execute((HERE / "4060-catalog.sql").read_text(), prepare=True)
             metadata = cursor.fetchone()
             require(metadata and len(metadata) == 1 and cursor.fetchone() is None)
             columns = validate_catalog(metadata[0])
+            cursor.execute(LEDGER)
+            require(cursor.fetchone() == (True,))
+            cursor.execute(DUPLICATES)
+            require(cursor.fetchone() == (0,))
             before = snapshot(cursor)
             sequence_before = sequence_state(cursor)
             cursor.execute("SELECT id, email FROM dflow.users WHERE nullif(btrim(email), '') IS NOT NULL AND btrim(email) ~ '[A-Za-z]' ORDER BY id LIMIT 1")

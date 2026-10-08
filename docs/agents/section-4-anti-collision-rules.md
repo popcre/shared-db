@@ -1267,3 +1267,29 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
      may exist in this repository, separately from whether the change is correct.
      Evidence capture does not authorize public storage of licensed, private, or
      sensitive source material.
+
+### Expired merged-source operator adoption (#3618)
+
+`--transfer-expired-merged-claim-author` is the narrow successor to the existing
+open-PR author transfer when the source PR has already merged. It accepts the
+same exact issue, claim, source PR/head, old/new owner, branch, old/target
+worktree, abandonment audit, current-chat authorization quote and preservation
+inputs. Only an **expired-unconfirmed** author lease qualifies; active leases
+and relinquished leases are refused. Expiry alone never establishes abandonment.
+The independent abandonment audit and recorded preservation remain required.
+
+The source must be merged at an exact immutable commit contained in current
+main. Migration versions and structural objects are parsed from the exact
+source head even though it is absent from the open-PR roster. The successor
+must be clean on the original source branch and exact head. Conflicting claims
+or open PRs, missing permanent reservation, mismatched audit, dirty/remote work
+without immutable rescue, and any held preview/merge/production stage refuse.
+
+A create-only merged-operator-adoption record binds the source merge commit
+alongside the existing full transfer identity, before changing only author,
+worktree and lease. Exact readback and rollback remain mandatory. The old
+version, source, review records (including substantive refusals), and object
+protection stay intact. The legitimate successor may then use the existing
+merged-stranded reissue operation to reserve a fresh version and branch and
+obtain fresh independent reviews. Adoption itself authorizes no reissue,
+preview, production write, issue closure or claim release.

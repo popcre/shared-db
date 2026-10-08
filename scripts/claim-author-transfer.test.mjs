@@ -3,7 +3,7 @@ import test from 'node:test'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { claimBody, formatRetirementRecord, main, parseAuthorLease, rebindClaimWorktree, renewExpiredClaim, resetRetirementSnapshot, resumeAuthorLease, transferClaimAuthor } from './manage-migration-author-lanes.mjs'
+import { claimBody, formatRetirementRecord, main, parseAuthorLease, rebindClaimWorktree, renewExpiredClaim, resetRetirementSnapshot, resumeAuthorLease, transferClaimAuthor, transferExpiredMergedClaimAuthor } from './manage-migration-author-lanes.mjs'
 
 const NOW=new Date('2026-09-28T12:00:00Z')
 const HEAD='a'.repeat(40),VERSION='20260923181754',RESERVATION='d'.repeat(40)
@@ -265,5 +265,73 @@ test('CLI transfer route parses the exact guarded inputs',()=>{
       '--worktree-state','remote','--authorization-chat-id','root','--authorization-quote-file',quoteFile,'--recovery-artifact',ARTIFACT,'--lease-hours','12']
     assert.equal(main(argv,NOW,io),0)
     assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
+  }finally{console.log=log;rmSync(dir,{recursive:true,force:true})}
+})
+
+const MERGE='b'.repeat(40),MAIN='c'.repeat(40)
+function mergedFixture(overrides={}){
+  return fixture({getPr:()=>({state:'closed',merged:true,merge_commit_sha:MERGE,head:{sha:HEAD,ref:args.branch}}),
+    mainSha:()=>MAIN,compareCommits:()=>({status:'ahead',behind_by:0}),
+    prStructuralObjects:(pr,head)=>{assert.equal(pr,3391);assert.equal(head,HEAD);return ['table plm.art_piece_attachment']},
+    prSources:()=>[],...overrides})
+}
+test('expired merged adoption preserves exact source and immutable record and replays',()=>{
+  const io=mergedFixture(),before=parseAuthorLease(io.issues.get(3378).body,NOW)
+  assert.throws(()=>transferClaimAuthor(args,NOW,io),/open PR/)
+  const result=transferExpiredMergedClaimAuthor(args,NOW,io),after=parseAuthorLease(io.issues.get(3378).body,NOW)
+  assert.equal(after.owner,args.newOwner);assert.equal(after.version,before.version);assert.deepEqual(after.objects,before.objects)
+  const record=JSON.parse(io.commits.get(result.sha).message.split('claim-author-operator-adoption ')[1])
+  assert.equal(record.kind,'merged-operator-adoption');assert.equal(record.source_merge_sha,MERGE);assert.equal(record.head_sha,HEAD)
+  assert.equal(transferExpiredMergedClaimAuthor(args,NOW,io).idempotent,true)
+})
+test('merged adoption refuses active and relinquished leases even with exact source',()=>{
+  for(const mutate of [body=>body.replace('2026-09-26T00:00:00.000Z','2026-09-29T00:00:00.000Z'),
+    body=>claimBody({version:VERSION,objects:['table plm.art_piece_attachment'],owner:args.oldOwner,branch:args.branch,worktree:args.worktree,expiresAt:new Date('2026-09-26T00:00:00Z'),capacityState:'relinquished',blockedOn:'issue:#900',worktreeState:'remote',recoveryArtifact:ARTIFACT})]){
+    const io=mergedFixture();io.issues.get(3378).body=mutate(io.issues.get(3378).body);const before=io.issues.get(3378).body
+    assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),/expired/);assert.equal(io.issues.get(3378).body,before)
+  }
+})
+test('merged adoption refuses wrong source, missing ancestry, uncovered objects, stages and stale audit',()=>{
+  for(const [override,pattern] of [
+    [{getPr:()=>({state:'open',head:{sha:HEAD,ref:args.branch}})},/exact merged/],
+    [{getPr:()=>({state:'closed',merged:true,merge_commit_sha:MERGE,head:{sha:'e'.repeat(40),ref:args.branch}})},/head or branch/],
+    [{compareCommits:()=>({status:'diverged',behind_by:1})},/not contained/],
+    [{mainSha:()=>null},/current main/],
+    [{prStructuralObjects:()=>['table plm.unclaimed']},/outside the claim/],
+    [{prStructuralObjects:()=>[]},/missing or ambiguous/],
+  ]){const io=mergedFixture(override),before=io.issues.get(3378).body;assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),pattern);assert.equal(io.issues.get(3378).body,before)}
+  const io=mergedFixture();io.issues.get(900).body=io.issues.get(900).body.replace(HEAD,'e'.repeat(40));assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),/now at/)
+})
+test('merged adoption readback failure rolls claim back and retries immutable record',()=>{
+  const io=mergedFixture(),before=io.issues.get(3378).body,update=io.updateIssue;let writes=0
+  io.updateIssue=(n,change)=>{update(n,change);if(++writes===1)throw new Error('interrupted merged write')}
+  assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),/interrupted merged write/);assert.equal(io.issues.get(3378).body,before)
+  const ref=[...io.refs.keys()].find(k=>k.includes('db-claim-author-transfers/')),sha=io.refs.get(ref)
+  io.updateIssue=update;assert.equal(transferExpiredMergedClaimAuthor(args,NOW,io).sha,sha)
+})
+
+test('merged adoption keeps reservations, rescue, collisions and every stage guarded',()=>{
+  const cases=[
+    [io=>io.refs.delete('refs/db-claims/'+VERSION),/permanent version reservation/],
+    [io=>{io.verifyArtifact=()=>null},/cannot be dereferenced/],
+    [io=>{io.localClean=()=>false},/successor worktree/],
+    [io=>{io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:false})})},/session authority/],
+    [io=>{io.openClaims=()=>[io.getIssue(3378),{number:9,body:claimBody({version:'20260923181755',objects:['table plm.art_piece_attachment'],owner:'other',branch:'other',worktree:'/tmp/other',expiresAt:new Date('2026-09-30T00:00:00Z')})}]},/object collision/],
+    ...['preview','merge','production'].map(stage=>[io=>io.refs.set('refs/db-coordination/'+stage,'other'),/stage is held/]),
+  ]
+  for(const [change,pattern]of cases){const io=mergedFixture();change(io);const before=io.issues.get(3378).body;assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),pattern);assert.equal(io.issues.get(3378).body,before)}
+})
+test('merged adoption never accepts a rewritten merge identity on an immutable retry',()=>{
+  const io=mergedFixture();const result=transferExpiredMergedClaimAuthor(args,NOW,io)
+  const commit=io.commits.get(result.sha),prefix='db-coordination claim-author-operator-adoption ',record=JSON.parse(commit.message.slice(prefix.length));record.source_merge_sha='e'.repeat(40);commit.message=prefix+JSON.stringify(record)
+  assert.throws(()=>transferExpiredMergedClaimAuthor(args,NOW,io),/differs from exact request/)
+})
+
+test('merged CLI operation is explicit and keeps ordinary transfer separate',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'merged-author-cli-')),quoteFile=join(dir,'quote.txt');writeFileSync(quoteFile,QUOTE)
+  const io=mergedFixture(),log=console.log;console.log=()=>{}
+  try{
+    const argv=['--transfer-expired-merged-claim-author','--issue','2110','--claim-number','3378','--pr','3391','--head-sha',HEAD,'--old-owner',args.oldOwner,'--new-owner',args.newOwner,'--branch',args.branch,'--worktree',args.worktree,'--target-worktree',args.targetWorktree,'--abandonment-issue','900','--worktree-state','remote','--authorization-chat-id','root','--authorization-quote-file',quoteFile,'--recovery-artifact',ARTIFACT,'--lease-hours','12']
+    assert.equal(main(argv,NOW,io),0);assert.equal(parseAuthorLease(io.issues.get(3378).body,NOW).owner,args.newOwner)
   }finally{console.log=log;rmSync(dir,{recursive:true,force:true})}
 })

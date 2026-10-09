@@ -78,7 +78,6 @@ begin
     ('coldlion.prod_history_line',   'customer_code',     'text'),
     ('coldlion.prod_history_line',   'company_code',      'text'),
     ('coldlion.prod_history_line',   'prod_order_no',     'bigint'),
-    ('coldlion.prod_history_line',   'sales_order_no',    'bigint'),
     ('coldlion.prod_history_line',   'prod_reference_no', 'text'),
     ('coldlion.prod_history_line',   'fetched_at',        'timestamp with time zone'),
     ('coldlion.prod_history_line',   'cust_po_number',    'text'),
@@ -156,8 +155,10 @@ h as (
     case when btrim(poh."prodOrderNo") ~ '^[0-9]{1,18}$'
          then btrim(poh."prodOrderNo")::bigint end              as prod_order_no_num,
     coalesce(poh."createdTime",
-             case when poh."prodOrderDate" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-                  then ((left(poh."prodOrderDate", 10)::date + 1)::timestamp at time zone 'UTC') end)
+             -- Guarded parse (as in 20261002224215): an invalid prodOrderDate never raises.
+             case when btrim(poh."prodOrderDate") ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                   and pg_input_is_valid(left(btrim(poh."prodOrderDate"), 10), 'date')
+                  then ((left(btrim(poh."prodOrderDate"), 10)::date + 1)::timestamp at time zone 'UTC') end)
                                                                 as po_created_at
   from plm."ProdOrderHeader" poh
 ),

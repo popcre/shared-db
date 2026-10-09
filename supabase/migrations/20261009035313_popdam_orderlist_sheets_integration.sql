@@ -12,22 +12,34 @@ returns boolean language sql immutable parallel safe as $$
     else null end;
 $$;
 
+create or replace function dam.orderlist_parse_number(p_value text)
+returns numeric language plpgsql immutable parallel safe set search_path=pg_catalog,pg_temp as $$
+declare v numeric;
+begin
+  if nullif(btrim(p_value),'') is null then return null; end if;
+  v:=p_value::numeric;
+  if v::text in ('NaN','Infinity','-Infinity') then return null; end if;
+  return v;
+exception when invalid_text_representation or numeric_value_out_of_range then return null;
+end;
+$$;
+
 create or replace function dam.orderlist_license_status(p_row jsonb, p_discontinued boolean)
 returns text language sql immutable parallel safe as $$
   select case when p_discontinued is true then 'Discontinue'
-    when nullif(btrim(coalesce(p_row->>'production_approval', p_row->>'AC')), '') is not null then 'Production Approved'
-    when nullif(btrim(coalesce(p_row->>'pre_production_approval', p_row->>'AB')), '') is not null then 'Pre-Pro Approved'
-    when nullif(btrim(coalesce(p_row->>'pre_production_approved_comment', p_row->>'AA')), '') is not null then 'Pre Production approved w/comment'
-    when nullif(btrim(coalesce(p_row->>'pre_production_resubmitted', p_row->>'Z')), '') is not null then 'Pre-Pro Resubmitted'
-    when nullif(btrim(coalesce(p_row->>'pre_production_resubmit', p_row->>'Y')), '') is not null then 'Pre-Pro Resubmit'
-    when nullif(btrim(coalesce(p_row->>'pre_production_sent', p_row->>'X')), '') is not null then 'Sample Submitted'
-    when nullif(btrim(coalesce(p_row->>'sample_photos_received', p_row->>'W')), '') is not null then 'Sample Received'
-    when nullif(btrim(coalesce(p_row->>'request_pre_production_sample', p_row->>'T')), '') is not null then 'Requested Sample'
-    when nullif(btrim(coalesce(p_row->>'concept_approved_with_comments', p_row->>'S')), '') is not null then 'Concept Approved with Comments'
-    when nullif(btrim(coalesce(p_row->>'concept_approval', p_row->>'R')), '') is not null then 'Concept Approved'
-    when nullif(btrim(coalesce(p_row->>'concept_resubmitted', p_row->>'Q')), '') is not null then 'Concept Resubmitted'
-    when nullif(btrim(coalesce(p_row->>'concept_resubmit', p_row->>'P')), '') is not null then 'Concept Resubmit'
-    when nullif(btrim(coalesce(p_row->>'concept_sent', p_row->>'O')), '') is not null then 'Concept Requested'
+    when nullif(btrim(case when p_row ? 'production_approval' then p_row->>'production_approval' else p_row->>'AC' end), '') is not null then 'Production Approved'
+    when nullif(btrim(case when p_row ? 'pre_production_approval' then p_row->>'pre_production_approval' else p_row->>'AB' end), '') is not null then 'Pre-Pro Approved'
+    when nullif(btrim(case when p_row ? 'pre_production_approved_comment' then p_row->>'pre_production_approved_comment' else p_row->>'AA' end), '') is not null then 'Pre Production approved w/comment'
+    when nullif(btrim(case when p_row ? 'pre_production_resubmitted' then p_row->>'pre_production_resubmitted' else p_row->>'Z' end), '') is not null then 'Pre-Pro Resubmitted'
+    when nullif(btrim(case when p_row ? 'pre_production_resubmit' then p_row->>'pre_production_resubmit' else p_row->>'Y' end), '') is not null then 'Pre-Pro Resubmit'
+    when nullif(btrim(case when p_row ? 'pre_production_sent' then p_row->>'pre_production_sent' else p_row->>'X' end), '') is not null then 'Sample Submitted'
+    when nullif(btrim(case when p_row ? 'sample_photos_received' then p_row->>'sample_photos_received' else p_row->>'W' end), '') is not null then 'Sample Received'
+    when nullif(btrim(case when p_row ? 'request_pre_production_sample' then p_row->>'request_pre_production_sample' else p_row->>'T' end), '') is not null then 'Requested Sample'
+    when nullif(btrim(case when p_row ? 'concept_approved_with_comments' then p_row->>'concept_approved_with_comments' else p_row->>'S' end), '') is not null then 'Concept Approved with Comments'
+    when nullif(btrim(case when p_row ? 'concept_approval' then p_row->>'concept_approval' else p_row->>'R' end), '') is not null then 'Concept Approved'
+    when nullif(btrim(case when p_row ? 'concept_resubmitted' then p_row->>'concept_resubmitted' else p_row->>'Q' end), '') is not null then 'Concept Resubmitted'
+    when nullif(btrim(case when p_row ? 'concept_resubmit' then p_row->>'concept_resubmit' else p_row->>'P' end), '') is not null then 'Concept Resubmit'
+    when nullif(btrim(case when p_row ? 'concept_sent' then p_row->>'concept_sent' else p_row->>'O' end), '') is not null then 'Concept Requested'
     else 'No Info' end;
 $$;
 
@@ -68,17 +80,17 @@ returns jsonb language sql stable security invoker set search_path = pg_catalog,
     select b.id as bridge_id, s.id as tracker_id, s.tracker_type,
       jsonb_build_object(
         'license_status', case when s.tracker_type = 'generic' then 'Generic Item'
-          else dam.orderlist_license_status(s.row_data, s.discontinued) end,
+          when s.tracker_type='licensed' then dam.orderlist_license_status(s.row_data, s.discontinued) else s.license_status end,
         'licensor', s.licensor, 'customer', s.customer,
         'default_vendor', s.default_vendor,
-        'sample_vendor', coalesce(s.row_data->>'sample_vendor', s.row_data->>case when s.tracker_type='licensed' then 'U' else 'S' end),
-        'test_report', dam.orderlist_parse_boolean(coalesce(s.row_data->>'test_report', s.row_data->>case when s.tracker_type='licensed' then 'AI' else 'AE' end)),
-        'professional_photos', dam.orderlist_parse_boolean(coalesce(s.row_data->>'professional_photos', s.row_data->>case when s.tracker_type='licensed' then 'AH' else 'AD' end)),
-        'contractual_sample_reorder', case when s.tracker_type='licensed' then dam.orderlist_parse_boolean(coalesce(s.row_data->>'contractual_samples_reorder',s.row_data->>'AO')) else null end
+        'sample_vendor', case when s.row_data ? 'sample_vendor' then s.row_data->>'sample_vendor' else s.row_data->>case when s.tracker_type='licensed' then 'U' else 'S' end end,
+        'test_report', dam.orderlist_parse_boolean(case when s.row_data ? 'test_report' then s.row_data->>'test_report' else s.row_data->>case when s.tracker_type='licensed' then 'AI' else 'AE' end end),
+        'professional_photos', dam.orderlist_parse_boolean(case when s.row_data ? 'professional_photos' then s.row_data->>'professional_photos' else s.row_data->>case when s.tracker_type='licensed' then 'AH' else 'AD' end end),
+        'contractual_sample_reorder', case when s.tracker_type='licensed' then dam.orderlist_parse_boolean(case when s.row_data ? 'contractual_samples_reorder' then s.row_data->>'contractual_samples_reorder' else s.row_data->>'AO' end) else null end
       ) as facts
     from plm.style_tracker_item_bridge b
     join public.style_tracker_rows s on s.id=b.style_tracker_row_id
-    where b.plm_item_id=p_item_id and (p_catalog is null or s.tracker_type=p_catalog)
+    where b.plm_item_id=p_item_id and (p_catalog is null or b.tracker_type=p_catalog)
   ), summary as (
     select count(*) as row_count, count(distinct facts) as distinct_facts,
       (array_agg(facts))[1] as facts,
@@ -152,7 +164,7 @@ grant select on api.dam_order_sample_depth, api.dam_order_customer_settings to a
 revoke all on api.dam_order_sample_depth, api.dam_order_customer_settings from anon;
 
 create or replace function public.upsert_dam_order_sample_depth(p_sku text, p_customer text, p_depth_inches numeric)
-returns void language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
+returns void language plpgsql volatile security definer set search_path=pg_catalog,pg_temp as $$
 begin
   if auth.uid() is null or app.has_role('administrator'::app.app_role) is not true then
     raise exception 'Administrator access required' using errcode='42501';
@@ -163,7 +175,7 @@ begin
 end;
 $$;
 create or replace function public.upsert_dam_order_customer_settings(p_customer text, p_suffix text)
-returns void language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
+returns void language plpgsql volatile security definer set search_path=pg_catalog,pg_temp as $$
 begin
   if auth.uid() is null or app.has_role('administrator'::app.app_role) is not true then
     raise exception 'Administrator access required' using errcode='42501';
@@ -175,7 +187,7 @@ end;
 $$;
 
 create or replace function public.update_dam_order_tracking(p_order_id uuid,p_patch jsonb)
-returns uuid language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
+returns uuid language plpgsql volatile security definer set search_path=pg_catalog,pg_temp as $$
 declare
   v_key text;
   v_type text;
@@ -206,10 +218,10 @@ begin
       else 'text' end;
     if v_key=any(v_header_keys) then
       execute format('update plm.production_order set %I=$1::%s,updated_at=now() where id=$2',v_key,v_type)
-        using p_patch->>v_key,p_order_id;
+        using case when v_type='text' then p_patch->>v_key else nullif(btrim(p_patch->>v_key),'') end,p_order_id;
     else
       execute format('update dam.order_tracking_ext set %I=$1::%s,updated_at=now(),updated_by=auth.uid() where order_id=$2',v_key,v_type)
-        using p_patch->>v_key,p_order_id;
+        using case when v_type='text' then p_patch->>v_key else nullif(btrim(p_patch->>v_key),'') end,p_order_id;
     end if;
   end loop;
   return p_order_id;
@@ -221,7 +233,7 @@ create or replace view api.dam_order_list with (security_invoker=true) as
 SELECT pol.id AS order_line_id,
     po.id AS order_id,
     po.production_order_number,
-    case when po.source_system='coldlion' and po.production_order_number like 'coldlion/%' then po.status else dam.orderlist_po_status(pol.order_type,pol.sku,pol.assortment_id,pol.quantity_ordered,pol.case_pack,po.close_tracking,po.booking_state,po.etd,coalesce(po.vendor_delivery_date,po.seal_container_date),po.sent_po_date,po.production_order_number) end AS order_status,
+    case when po.source_system='coldlion' and po.production_order_number like 'coldlion/%' then po.status else dam.orderlist_po_status(pol.order_type,pol.sku,pol.assortment_id,coalesce(pol.quantity_ordered,parent.quantity),pol.case_pack,po.close_tracking,po.booking_state,po.etd,coalesce(po.vendor_delivery_date,po.seal_container_date),po.sent_po_date,po.production_order_number) end AS order_status,
     po.company_id,
     coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) AS customer_name,
     po.factory_id,
@@ -289,7 +301,7 @@ SELECT pol.id AS order_line_id,
     pol.metadata #>> '{order_list_snapshot,description}'::text[] AS snapshot_description,
     pol.metadata #>> '{order_list_snapshot,license_status}'::text[] AS snapshot_license_status,
     pol.metadata #>> '{order_list_snapshot,style_type}'::text[] AS snapshot_style_type,
-    pol.metadata #>> '{order_list_snapshot,source_row}'::text[] AS snapshot_source_row,
+    coalesce(pol.metadata #>> '{order_list_source,sheet_row}',pol.metadata #>> '{order_list_snapshot,source_row}') AS snapshot_source_row,
     pol.item_id IS NULL AS item_link_missing,
     pol.item_id IS NOT NULL AND pol.source_style_type IS NOT NULL
       AND NOT EXISTS(select 1 from plm.style_tracker_item_bridge b where b.plm_item_id=pol.item_id and b.tracker_type=pol.source_style_type)
@@ -301,49 +313,40 @@ SELECT pol.id AS order_line_id,
     case when pol.item_id is null then 'at_import' else product.facts->>'source' end AS product_workflow_source,
     product.facts->>'sample_vendor' AS master_data_sample_vendor,
     sample.depth_inches AS sample_depth_inches,
-    case when pol.case_pack=0 then 'Wrong Input' when pol.case_pack<0 then 'Wrong Input' when pol.quantity_ordered is not null and pol.case_pack>pol.quantity_ordered then 'Wrong QTY' end AS cases_error
+    case when pol.case_pack=0 then 'Wrong Input' when pol.case_pack<0 then 'Wrong Input' when coalesce(pol.quantity_ordered,parent.quantity) is not null and pol.case_pack>coalesce(pol.quantity_ordered,parent.quantity) then 'Wrong QTY' end AS cases_error,
+    parent.quantity AS assortment_parent_quantity,
+    case when parent.physical_key is not null and parent.quantity>=pol.case_pack and pol.case_pack>0 then parent.quantity/pol.case_pack end AS assortment_parent_cases,
+    parent.physical_key AS assortment_parent_key
    FROM plm.production_order_line pol
      JOIN plm.production_order po ON po.id = pol.production_order_id
      LEFT JOIN dam.dam_order_list_customer_directory cust ON cust.customer_id = po.company_id
      LEFT JOIN dam.dam_order_list_vendor_directory fact ON fact.vendor_id = po.factory_id
      LEFT JOIN plm.item item ON item.id = pol.item_id
      LEFT JOIN LATERAL (select dam.orderlist_product_facts(pol.item_id,pol.source_style_type) AS facts offset 0) product ON true
+     LEFT JOIN LATERAL (
+       select case when pol.assortment_component_ordinal is not null and pol.metadata #>> '{order_list_snapshot,component_quantity_source}'='absent_never_guessed'
+         then dam.orderlist_parse_number(pol.metadata #>> '{order_list_snapshot,assortment_parent_quantity}') end as quantity,
+         case when pol.assortment_component_ordinal is not null and pol.metadata #>> '{order_list_snapshot,component_quantity_source}'='absent_never_guessed'
+           and nullif(pol.metadata #>> '{order_list_source,spreadsheet_id}','') is not null
+           and nullif(pol.metadata #>> '{order_list_source,tab}','') is not null
+           and nullif(pol.metadata #>> '{order_list_source,sheet_row}','') is not null
+           then jsonb_build_array(pol.metadata #>> '{order_list_source,spreadsheet_id}',pol.metadata #>> '{order_list_source,tab}',pol.metadata #>> '{order_list_source,sheet_row}')::text end as physical_key
+     ) parent ON true
      LEFT JOIN dam.orderlist_sample_depth sample ON sample.sku_normalized=pol.sku_normalized AND sample.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN dam.orderlist_customer_settings customer_settings ON customer_settings.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN plm.production_order_line_source_ref google_ref ON google_ref.production_order_line_id = pol.id AND google_ref.source_system = 'google_order_list'::text
      LEFT JOIN plm.production_order_line_source_ref coldlion_ref ON coldlion_ref.production_order_line_id = pol.id AND coldlion_ref.source_system = 'coldlion'::text;
 
--- Aggregate canonical lines, not the imported assortment parent snapshot. Each
--- physical component is counted once. ColdLion sales-history placeholders are
--- not Google production POs and must not be presented as purchase commitments.
+-- Read and aggregate only the current PO's indexed lines. Expanded assortment
+-- components retain unknown quantities; physical cases belong to the source parent.
 create or replace view api.dam_order_tracking with (security_invoker=true) as
-with lines as (
-  select order_id,count(*) as line_count,
-    sum(cases_reported) filter(where order_type is distinct from 'Contractual Sample' and order_type is distinct from 'David Sample') as total_cases,
-    count(*) filter(where cases_error is not null) as invalid_case_lines,
-    count(*) filter(where dam.orderlist_parse_boolean(test_report) is not true) as missing_test_reports,
-    count(*) filter(where dam.orderlist_parse_boolean(professional_photos) is not true) as missing_photos,
-    count(*) filter(where product_workflow_source is distinct from 'master_data') as unresolved_product_lines,
-    case when count(distinct order_type) filter(where order_type not in('Contractual Sample','David Sample'))=1
-      then min(order_type) filter(where order_type not in('Contractual Sample','David Sample')) end as order_type,
-    min(start_ship_date) as start_ship_date,min(cancel_date) as cancel_date,min(cargo_forecast_date) as cargo_forecast_date,
-    string_agg(distinct customer_po_number,E'\n' order by customer_po_number) as customer_po_number,
-    string_agg(distinct customer_suffix,E'\n' order by customer_suffix) as customer_suffix,
-    jsonb_agg(jsonb_build_object('line_id',order_line_id,'sku',sku,'assortment',assortment_id,'quantity',quantity_ordered,
-      'description',item_description,'license_status',master_data_license_status,'test_report',test_report,
-      'professional_photos',professional_photos,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
-      order by assortment_id nulls last,assortment_component_ordinal nulls last,line_number,order_line_id) as components
-  from api.dam_order_list
-  where order_voided_at is null and line_voided_at is null
-  group by order_id
-)
 select po.id as order_id,po.production_order_number,po.order_date,po.voided_at as order_voided_at,
   coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) as customer_name,coalesce(fact.vendor_name,nullif(po.metadata->>'order_vendor_name','')) as vendor_name,po.factory_id,po.company_id,
   lines.line_count,lines.total_cases,lines.invalid_case_lines,lines.missing_test_reports,lines.missing_photos,
   lines.unresolved_product_lines,lines.order_type,lines.start_ship_date,lines.cancel_date,lines.cargo_forecast_date,
   lines.customer_po_number,lines.customer_suffix,lines.components,
   po.sent_po_date,coalesce(po.vendor_delivery_date,po.seal_container_date) as vendor_delivery_date,
-  case when po.vendor_delivery_date is not null then po.vendor_delivery_date +
+  case when coalesce(po.vendor_delivery_date,po.seal_container_date) is not null then coalesce(po.vendor_delivery_date,po.seal_container_date) +
     case lines.order_type when 'FOB' then 5 when 'POE' then 21 when 'C Stock' then 27 end end as seal_container_forecast,
   po.booking_state,po.etd,po.eta,coalesce(po.eta+5,po.warehouse_date) as warehouse_date,
   case when lines.order_type='FOB' then null
@@ -360,9 +363,41 @@ select po.id as order_id,po.production_order_number,po.order_date,po.voided_at a
   case when lines.order_type='FOB' then 'FOB' when lines.order_type='POE' and po.eta is null then 'no ETA'
     when lines.order_type is not null and lines.cancel_date is null then 'no cancel date'
     when lines.order_type is not null and po.eta is null then 'no WHS Date' end as days_delay_status,
-  case when lines.order_type is not null and po.vendor_delivery_date is null then 'No date' end as seal_container_forecast_status
+  case when lines.order_type is not null and coalesce(po.vendor_delivery_date,po.seal_container_date) is null then 'No date' end as seal_container_forecast_status,lines.unknown_case_groups
 from plm.production_order po
-left join lines on lines.order_id=po.id
+left join lateral (
+  with scoped as materialized (
+    select * from api.dam_order_list l where l.order_id=po.id and l.order_voided_at is null and l.line_voided_at is null
+  ), physical as (
+    select case when count(distinct case_pack)=1 and count(case_pack)=count(*)
+        and count(distinct assortment_parent_quantity)=1 and count(assortment_parent_quantity)=count(*)
+        and min(case_pack)>0 and min(assortment_parent_quantity)>=min(case_pack)
+      then min(assortment_parent_quantity)/min(case_pack) end as cases
+    from scoped where assortment_parent_key is not null
+      and order_type is distinct from 'Contractual Sample' and order_type is distinct from 'David Sample'
+    group by assortment_parent_key
+    union all
+    select cases_reported from scoped where assortment_parent_key is null
+      and order_type is distinct from 'Contractual Sample' and order_type is distinct from 'David Sample'
+  )
+  select count(*) as line_count,
+    (select case when count(cases)=count(*) then sum(cases) end from physical) as total_cases,
+    (select count(*) from physical where cases is null) as unknown_case_groups,
+    count(*) filter(where cases_error is not null) as invalid_case_lines,
+    count(*) filter(where dam.orderlist_parse_boolean(test_report) is not true) as missing_test_reports,
+    count(*) filter(where dam.orderlist_parse_boolean(professional_photos) is not true) as missing_photos,
+    count(*) filter(where product_workflow_source is distinct from 'master_data') as unresolved_product_lines,
+    case when count(distinct order_type) filter(where order_type not in('Contractual Sample','David Sample'))=1
+      then min(order_type) filter(where order_type not in('Contractual Sample','David Sample')) end as order_type,
+    min(start_ship_date) as start_ship_date,min(cancel_date) as cancel_date,min(cargo_forecast_date) as cargo_forecast_date,
+    string_agg(distinct customer_po_number,E'\n' order by customer_po_number) as customer_po_number,
+    string_agg(distinct customer_suffix,E'\n' order by customer_suffix) as customer_suffix,
+    jsonb_agg(jsonb_build_object('line_id',order_line_id,'sku',sku,'assortment',assortment_id,'quantity',quantity_ordered,
+      'description',item_description,'license_status',master_data_license_status,'test_report',test_report,
+      'professional_photos',professional_photos,'parent_cases',assortment_parent_cases,'sample_depth_inches',sample_depth_inches,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
+      order by assortment_id nulls last,assortment_component_ordinal nulls last,line_number,order_line_id) as components
+  from scoped
+) lines on true
 left join dam.dam_order_list_customer_directory cust on cust.customer_id=po.company_id
 left join dam.dam_order_list_vendor_directory fact on fact.vendor_id=po.factory_id
 left join dam.order_tracking_ext ext on ext.order_id=po.id
@@ -377,7 +412,12 @@ select factory_id,min(vendor_name) as vendor_name,count(*) as order_count,
   max(sent_po_date) filter(where order_voided_at is null and production_order_number not ilike '%cancel%') as last_sent_po_date,
   case when max(sent_po_date) filter(where order_voided_at is null and production_order_number not ilike '%cancel%') > (current_date-interval '14 months')::date
     then 'Active' else 'Inactive' end as activity_status
-from api.dam_order_tracking
+from (
+  select po.factory_id,coalesce(v.vendor_name,nullif(po.metadata->>'order_vendor_name','')) as vendor_name,
+    po.close_tracking,po.voided_at as order_voided_at,po.sent_po_date,po.production_order_number
+  from plm.production_order po left join dam.dam_order_list_vendor_directory v on v.vendor_id=po.factory_id
+  where not(coalesce(po.source_system='coldlion',false) and coalesce(po.production_order_number like 'coldlion/%',false))
+) headers
 where vendor_name is not null
 group by factory_id,lower(btrim(vendor_name));
 
@@ -397,19 +437,6 @@ revoke all on function public.update_dam_order_tracking(uuid,jsonb),
 grant execute on function public.update_dam_order_tracking(uuid,jsonb),
   public.upsert_dam_order_sample_depth(text,text,numeric),public.upsert_dam_order_customer_settings(text,text) to authenticated;
 
-do $verify$
-begin
-  if to_regclass('api.dam_order_tracking') is null or to_regclass('api.dam_order_vendor_statistics') is null
-    or to_regclass('dam.orderlist_sample_depth') is null or to_regprocedure('public.update_dam_order_tracking(uuid,jsonb)') is null then
-    raise exception 'OrderList integration contract is incomplete';
-  end if;
-  if has_function_privilege('anon','public.update_dam_order_tracking(uuid,jsonb)','execute')
-    or has_table_privilege('anon','api.dam_order_tracking','select') then
-    raise exception 'OrderList integration must not be anonymously accessible';
-  end if;
-end;
-$verify$;
-
 -- The Master Data page uses the same status calculator as OrderList. A bounded
 -- RPC avoids re-deriving the existing view and its unrelated ERP/RFQ joins.
 create or replace function public.get_dam_style_tracker_license_status(p_row_ids uuid[])
@@ -419,12 +446,65 @@ begin
   if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;
   if cardinality(p_row_ids)>1000 then raise exception 'At most 1000 rows per request' using errcode='22023'; end if;
   return query select r.id,case when r.tracker_type='licensed'
-    then dam.orderlist_license_status(r.row_data,r.discontinued) else r.license_status end
+    then dam.orderlist_license_status(r.row_data,r.discontinued) when r.tracker_type='generic' then 'Generic Item' else r.license_status end
     from public.style_tracker_rows r where r.id=any(p_row_ids);
 end;
 $$;
 revoke all on function public.get_dam_style_tracker_license_status(uuid[]) from public,anon;
 grant execute on function public.get_dam_style_tracker_license_status(uuid[]) to authenticated;
+
+-- Materialize a bounded header page before any line facts or component JSON.
+create or replace function public.get_dam_order_tracking(p_offset integer default 0,p_limit integer default 100,p_search text default null,p_only_open boolean default false)
+returns setof api.dam_order_tracking language plpgsql stable security invoker set search_path=pg_catalog,pg_temp as $$
+begin
+  if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;
+  if p_offset is null or p_offset<0 or p_limit is null or p_limit<1 or p_limit>200 then
+    raise exception 'Tracking requests require a nonnegative offset and 1 to 200 orders' using errcode='22023';
+  end if;
+  if length(p_search)>200 then raise exception 'Search is limited to 200 characters' using errcode='22023'; end if;
+  return query with page as materialized (
+    select po.id,po.order_date,po.production_order_number from plm.production_order po
+    where not(coalesce(po.source_system='coldlion',false) and coalesce(po.production_order_number like 'coldlion/%',false))
+      and (p_only_open is not true or (po.close_tracking is not true and po.voided_at is null))
+      and (nullif(btrim(p_search),'') is null or po.production_order_number ilike '%'||p_search||'%'
+        or po.metadata->>'customer_name' ilike '%'||p_search||'%' or po.metadata->>'order_vendor_name' ilike '%'||p_search||'%')
+    order by po.order_date desc nulls last,po.production_order_number,po.id limit p_limit offset p_offset
+  ) select t.* from page p cross join lateral (select * from api.dam_order_tracking t where t.order_id=p.id offset 0) t
+    order by p.order_date desc nulls last,p.production_order_number,p.id;
+end;
+$$;
+revoke all on function public.get_dam_order_tracking(integer,integer,text,boolean),dam.orderlist_parse_number(text) from public,anon;
+grant execute on function public.get_dam_order_tracking(integer,integer,text,boolean) to authenticated;
+grant execute on function dam.orderlist_parse_number(text) to authenticated,service_role;
+
+do $verify$
+declare object_name text; signature text; table_name text; policy_name text;
+begin
+  foreach object_name in array array['api.dam_order_list','api.dam_order_tracking','api.dam_order_vendor_statistics','api.dam_order_sample_depth','api.dam_order_customer_settings'] loop
+    if to_regclass(object_name) is null or not has_table_privilege('authenticated',object_name,'select') or has_table_privilege('anon',object_name,'select') then
+      raise exception 'Missing or unsafe serving view %',object_name;
+    end if;
+  end loop;
+  foreach table_name in array array['order_tracking_ext','orderlist_sample_depth','orderlist_customer_settings'] loop
+    if not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='dam' and c.relname=table_name and c.relrowsecurity)
+      or not has_table_privilege('authenticated','dam.'||table_name,'select')
+      or has_table_privilege('anon','dam.'||table_name,'select') then raise exception 'Missing RLS or unsafe table %',table_name; end if;
+    foreach policy_name in array array[table_name||'_read',table_name||'_write'] loop
+      if not exists(select 1 from pg_policies p where p.schemaname='dam' and p.tablename=table_name and p.policyname=policy_name) then
+        raise exception 'Missing policy %',policy_name;
+      end if;
+    end loop;
+  end loop;
+  foreach signature in array array['dam.orderlist_parse_number(text)','dam.orderlist_parse_boolean(text)','dam.orderlist_license_status(jsonb,boolean)',
+    'dam.orderlist_po_status(text,text,text,numeric,numeric,boolean,text,date,date,date,text)','dam.orderlist_cargo_forecast(text,text,date)',
+    'dam.orderlist_product_facts(uuid,text)','public.update_dam_order_tracking(uuid,jsonb)','public.upsert_dam_order_sample_depth(text,text,numeric)',
+    'public.upsert_dam_order_customer_settings(text,text)','public.get_dam_style_tracker_license_status(uuid[])','public.get_dam_order_tracking(integer,integer,text,boolean)'] loop
+    if to_regprocedure(signature) is null or not has_function_privilege('authenticated',signature,'execute') or has_function_privilege('anon',signature,'execute') then
+      raise exception 'Missing or unsafe function %',signature;
+    end if;
+  end loop;
+end;
+$verify$;
 
 notify pgrst,'reload schema';
 commit;

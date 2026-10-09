@@ -26,7 +26,6 @@ declare
   ];
   v_actual text[];
   v_other text;
-  v_table text;
 begin
   v_copy_shape :=
         to_regclass('coldlion.order_history_line') is not null
@@ -77,9 +76,23 @@ begin
     'DesignFlow sandbox only: the 2026-09-29 table copy of coldlion, moved aside unchanged by migration 20261009191951 (issue #3869) so the canonical landing tables could be created. Read-only archive; not written by any loader.';
   revoke all on schema coldlion_sandbox_copy_20260929 from public;
 
-  foreach v_table in array v_expected loop
-    execute format('alter table coldlion.%I set schema coldlion_sandbox_copy_20260929', v_table);
-  end loop;
+  alter table coldlion.change_log set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.customer set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.item_detail set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.item_header set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.item_merch_group set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.merch_group_detail set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.merch_group_header set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.order_history_component set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.order_history_line set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.prod_history_component set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.prod_history_last_lookup set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.prod_history_line set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.salesperson set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.season set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.sync_run set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.vendor set schema coldlion_sandbox_copy_20260929;
+  alter table coldlion.window_ledger set schema coldlion_sandbox_copy_20260929;
 
   if exists (select 1 from pg_class where relnamespace = 'coldlion'::regnamespace and relkind in ('r', 'p', 'v', 'm')) then
     raise exception '#3869/20261009191951 post-check: relations remain in coldlion after the move';

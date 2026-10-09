@@ -20,7 +20,7 @@ on:
       - 'scripts/proofs/test_shared_db_4060_observation.py'
       - 'scripts/proofs/4060-*'
       - 'scripts/test_dflow_users_email_ci_unique_forward.py'
-      - 'supabase/migrations/20261009040550_dflow_users_email_ci_unique_forward.sql'
+      - 'supabase/migrations/*_dflow_users_email_ci_unique_forward.sql'
       - 'supabase/tests/dflow_users_email_ci_unique_contracts.sql'
 permissions:
   contents: read

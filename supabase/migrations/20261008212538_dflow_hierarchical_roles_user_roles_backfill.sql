@@ -377,7 +377,7 @@ begin
     where tc.table_schema = 'dflow' and tc.table_name = 'user_roles'
       and tc.constraint_type = 'PRIMARY KEY'
     group by tc.constraint_name
-    having array_agg(kcu.column_name order by kcu.ordinal_position) = array['user_id', 'role_id']
+    having array_agg(kcu.column_name::text order by kcu.ordinal_position) = array['user_id', 'role_id']
   ) then
     raise exception 'ABORT: dflow.user_roles PK is not (user_id, role_id); ON CONFLICT (user_id, role_id) cannot resolve';
   end if;

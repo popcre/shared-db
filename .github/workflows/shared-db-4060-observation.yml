@@ -19,6 +19,9 @@ on:
       - 'scripts/proofs/shared-db-4060-observation.py'
       - 'scripts/proofs/test_shared_db_4060_observation.py'
       - 'scripts/proofs/4060-*'
+      - 'scripts/test_dflow_users_email_ci_unique_forward.py'
+      - 'supabase/migrations/20261009040550_dflow_users_email_ci_unique_forward.sql'
+      - 'supabase/tests/dflow_users_email_ci_unique_contracts.sql'
 permissions:
   contents: read
   actions: read
@@ -49,6 +52,11 @@ jobs:
       - run: python -m unittest discover -s scripts/proofs -p test_shared_db_4060_observation.py
         env:
           PROOF4060_TEST_PORT: '5432'
+      - name: Run 4060 source apply and refusal regressions on the same ephemeral PG16 service
+        run: python -m unittest discover -s scripts -p test_dflow_users_email_ci_unique_forward.py -v
+        env:
+          PROOF4060_TEST_PORT: '5432'
+          PROOF4060_TEST_CONTAINER: ${{ job.services.postgres.id }}
   observe:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'popcre/shared-db'
     needs: tests

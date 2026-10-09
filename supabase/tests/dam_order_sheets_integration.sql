@@ -151,7 +151,7 @@ $tests$;
 
 set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":["administrator"]}}';
 do $tests$
-declare v_order_id uuid := (select id from integration_ids where key='order'); r record;
+declare v_order_id uuid := (select id from integration_ids where key='order'); r record; invalid_number text;
 begin
   perform public.update_dam_order_tracking(v_order_id,'{"sent_po_date":"2026-03-01","vendor_delivery_date":"2026-03-15","booking_state":"Booked","etd":"2026-03-20","comment":"Reviewed fixture","worksheet_done":true,"inspection_passed":"2026-04-01","container_booking_group":"BN-TEST"}');
   select * into strict r from dam.dam_order_tracking where dam.dam_order_tracking.order_id=v_order_id;
@@ -194,6 +194,23 @@ begin
     perform public.get_dam_style_tracker_license_status(array_fill(v_order_id,array[1001]));
     raise exception 'Master status request exceeded bounded capacity';
   exception when invalid_parameter_value then null; end;
+  foreach invalid_number in array array['NaN','Infinity','-Infinity','0','-1'] loop
+    begin
+      perform public.upsert_dam_order_sample_depth('NONFINITE-TEST','TEST-CUSTOMER',invalid_number::numeric);
+      raise exception 'Nonpositive/nonfinite sample depth accepted: %',invalid_number;
+    exception when check_violation then null; end;
+  end loop;
+  foreach invalid_number in array array['NaN','Infinity','-Infinity','-1'] loop
+    begin
+      perform public.update_dam_order_tracking(v_order_id,jsonb_build_object('cbm',invalid_number,'comment','INVALID-NUMBER-PATCH'));
+      raise exception 'Negative/nonfinite tracking volume accepted: %',invalid_number;
+    exception when check_violation then null; end;
+  end loop;
+  if exists(select 1 from dam.order_tracking_ext where order_id=v_order_id and comment='INVALID-NUMBER-PATCH') then
+    raise exception 'Rejected numeric patch partly wrote tracking'; end if;
+  perform public.update_dam_order_tracking(v_order_id,'{"cbm":0}');
+  if (select cbm from dam.order_tracking_ext where order_id=v_order_id) is distinct from 0::numeric then
+    raise exception 'Zero volume is a valid manual input'; end if;
   perform public.upsert_dam_order_sample_depth(' TEST-INTEGRATION-SKU ',' Test-Customer ',1.5);
   if not exists(select 1 from api.dam_order_sample_depth where sku_normalized='test-integration-sku' and customer_normalized='test-customer' and depth_inches=1.5) then
     raise exception 'Customer-specific sample depth normalized incorrectly';

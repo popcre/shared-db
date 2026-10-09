@@ -117,7 +117,7 @@ end;
 create table if not exists dam.orderlist_sample_depth (
   sku_normalized text not null,
   customer_normalized text not null,
-  depth_inches numeric check (depth_inches > 0),
+  depth_inches numeric check (depth_inches > 0 and depth_inches < 'Infinity'::numeric),
   depth_raw text,
   source_workbook_id text,
   source_row_number integer check (source_row_number > 0),
@@ -157,7 +157,7 @@ grant all on dam.orderlist_customer_settings to service_role;
 create table if not exists dam.order_tracking_ext (
   order_id uuid primary key references plm.production_order(id) on delete cascade,
   crd_override_set boolean not null default false, eta_override_set boolean not null default false,
-  agent text, cbm numeric check (cbm >= 0), comment text, vessel text,
+  agent text, cbm numeric check (cbm >= 0 and cbm < 'Infinity'::numeric), comment text, vessel text,
   sent_to_coldlion boolean, worksheet_done boolean, inspection_passed date, inspection_note text,
   document_invoice boolean, document_packing_list boolean, document_bill_of_lading boolean,
   document_tsca boolean, document_lacey_act boolean, document_telex boolean,

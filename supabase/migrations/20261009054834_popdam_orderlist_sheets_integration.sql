@@ -81,11 +81,13 @@ $$;
 
 -- The bridge may contain several tracker rows for one item. Never choose one by
 -- row order. Only an unambiguous set of equal operational facts is publishable.
+-- SQL-standard body binds every object at creation while allowing planner inlining.
+-- Qualified built-ins and bound dependencies preserve lookup security without SET.
 create or replace function dam.orderlist_product_facts(p_item_id uuid, p_catalog text)
-returns jsonb language sql stable security invoker set search_path = pg_catalog, pg_temp as $$
+returns table(facts jsonb) language sql stable security invoker rows 1 begin atomic
   with candidates as (
     select b.id as bridge_id, s.id as tracker_id, s.tracker_type,
-      jsonb_build_object(
+      pg_catalog.jsonb_build_object(
         'license_status', case when s.tracker_type = 'generic' then 'Generic Item'
           when s.tracker_type='licensed' then dam.orderlist_license_status(s.row_data, s.discontinued) else s.license_status end,
         'licensor', s.licensor, 'customer', s.customer,
@@ -99,17 +101,18 @@ returns jsonb language sql stable security invoker set search_path = pg_catalog,
     join public.style_tracker_rows s on s.id=b.style_tracker_row_id
     where b.plm_item_id=p_item_id and (p_catalog is null or b.tracker_type=p_catalog)
   ), summary as (
-    select count(*) as row_count, count(distinct facts) as distinct_facts,
-      (array_agg(facts))[1] as facts,
-      case when count(*)=1 then (array_agg(bridge_id))[1] end as bridge_id,
-      case when count(*)=1 then (array_agg(tracker_id))[1] end as tracker_id,
-      case when count(distinct tracker_type)=1 then min(tracker_type) end as tracker_type
+    select pg_catalog.count(*) as row_count, pg_catalog.count(distinct facts) as distinct_facts,
+      (pg_catalog.array_agg(facts))[1] as facts,
+      case when pg_catalog.count(*)=1 then (pg_catalog.array_agg(bridge_id))[1] end as bridge_id,
+      case when pg_catalog.count(*)=1 then (pg_catalog.array_agg(tracker_id))[1] end as tracker_id,
+      case when pg_catalog.count(distinct tracker_type)=1 then pg_catalog.min(tracker_type) end as tracker_type
     from candidates
-  ) select case when distinct_facts=1 then facts else '{}'::jsonb end || jsonb_build_object(
+  ) select case when distinct_facts=1 then facts else '{}'::jsonb end || pg_catalog.jsonb_build_object(
       'source', case when row_count=0 then 'unavailable' when distinct_facts>1 then 'ambiguous' else 'master_data' end,
       'bridge_id', bridge_id, 'tracker_id', tracker_id, 'tracker_type', tracker_type
     ) from summary;
-$$;
+end;
+
 
 create table if not exists dam.orderlist_sample_depth (
   sku_normalized text not null,
@@ -238,7 +241,9 @@ begin
       when v_key='cbm' then 'numeric'
       when v_key=any(array['close_tracking','sent_to_coldlion','worksheet_done','document_invoice','document_packing_list','document_bill_of_lading','document_tsca','document_lacey_act','document_telex','request_wire']) then 'boolean'
       else 'text' end;
-    if v_key=any(v_header_keys) then
+    if v_key='close_tracking' then
+      update plm.production_order set close_tracking=coalesce(nullif(btrim(p_patch->>v_key),'')::boolean,false),updated_at=now() where id=p_order_id;
+    elsif v_key=any(v_header_keys) then
       execute format('update plm.production_order set %I=$1::%s,updated_at=now() where id=$2',v_key,v_type)
         using nullif(btrim(p_patch->>v_key),''),p_order_id;
     else
@@ -342,14 +347,17 @@ SELECT pol.id AS order_line_id,
     case when parent.physical_key is not null and parent.quantity>=pol.case_pack and pol.case_pack>0 then parent.quantity/pol.case_pack end AS assortment_parent_cases,
     parent.physical_key AS assortment_parent_key,
     sample.depth_raw AS sample_depth_raw,
-    sample.source_row_number AS sample_depth_source_row
+    sample.source_row_number AS sample_depth_source_row,
+    pol.test_report AS snapshot_test_report,
+    pol.professional_photos AS snapshot_professional_photos,
+    pol.contractual_sample_reorder AS snapshot_contractual_sample_reorder
    FROM plm.production_order_line pol
      JOIN plm.production_order po ON po.id = pol.production_order_id
      LEFT JOIN dam.dam_order_list_customer_directory cust ON cust.customer_id = po.company_id
      LEFT JOIN dam.dam_order_list_vendor_directory fact ON fact.vendor_id = po.factory_id
      LEFT JOIN dam.order_tracking_ext ext ON ext.order_id=po.id
      LEFT JOIN plm.item item ON item.id = pol.item_id
-     LEFT JOIN LATERAL (select dam.orderlist_product_facts(pol.item_id,pol.source_style_type) AS facts offset 0) product ON true
+     LEFT JOIN LATERAL (select (select f.facts from dam.orderlist_product_facts(pol.item_id,pol.source_style_type) f) as facts offset 0) product ON true
      LEFT JOIN LATERAL (
        select case when pol.assortment_component_ordinal is not null and pol.metadata #>> '{order_list_snapshot,component_quantity_source}'='absent_never_guessed'
          then dam.orderlist_parse_number(pol.metadata #>> '{order_list_snapshot,assortment_parent_quantity}') end as quantity,
@@ -396,7 +404,7 @@ from plm.production_order po
 left join lateral (
   with scoped as materialized (
     select * from api.dam_order_list l where l.order_id=po.id and l.order_voided_at is null and l.line_voided_at is null
-  ), physical as (
+  ), physical as materialized (
     select case when count(distinct case_pack)=1 and count(case_pack)=count(*)
         and count(distinct assortment_parent_quantity)=1 and count(assortment_parent_quantity)=count(*)
         and min(case_pack)>0 and min(assortment_parent_quantity)>=min(case_pack)
@@ -422,7 +430,7 @@ left join lateral (
     string_agg(distinct customer_suffix,E'\n' order by customer_suffix) as customer_suffix,
     jsonb_agg(jsonb_build_object('line_id',order_line_id,'sku',sku,'assortment',assortment_id,'quantity',quantity_ordered,
       'case_pack',case_pack,'cases',cases_reported,'order_depth_inches',order_depth_inches,'ship_to',ship_to,'start_ship_date',start_ship_date,'cancel_date',cancel_date,'customer_po_number',customer_po_number,'cases_error',cases_error,'description',item_description,'license_status',master_data_license_status,'test_report',test_report,
-      'professional_photos',professional_photos,'parent_cases',assortment_parent_cases,'parent_quantity',assortment_parent_quantity,'sample_depth_raw',sample_depth_raw,'sample_depth_source_row',sample_depth_source_row,'contractual_sample_reorder',contractual_sample_reorder,'sample_depth_inches',sample_depth_inches,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
+      'professional_photos',professional_photos,'parent_cases',assortment_parent_cases,'parent_quantity',assortment_parent_quantity,'sample_depth_raw',sample_depth_raw,'sample_depth_source_row',sample_depth_source_row,'contractual_sample_reorder',contractual_sample_reorder,'snapshot_test_report',snapshot_test_report,'snapshot_professional_photos',snapshot_professional_photos,'snapshot_contractual_sample_reorder',snapshot_contractual_sample_reorder,'sample_depth_inches',sample_depth_inches,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
       order by assortment_id nulls last,assortment_component_ordinal nulls last,line_number,order_line_id) as components
   from scoped
 ) lines on true
@@ -705,6 +713,12 @@ begin
     ('dam.order_tracking_ext','eta_override_set','boolean'),
     ('api.dam_order_list','sample_depth_raw','text'),
     ('api.dam_order_list','sample_depth_source_row','integer'),
+    ('api.dam_order_list','snapshot_test_report','text'),
+    ('api.dam_order_list','snapshot_professional_photos','text'),
+    ('api.dam_order_list','snapshot_contractual_sample_reorder','boolean'),
+    ('plm.production_order','booking_state','text'),
+    ('plm.production_order','container_booking_group','text'),
+    ('plm.production_order','mbl','text'),
     ('plm.production_order','id','uuid'),
     ('plm.production_order','production_order_number','text'),
     ('plm.production_order','metadata','jsonb'),
@@ -779,6 +793,16 @@ begin
   end loop;
 end;
 $verify$;
+
+
+comment on view api.dam_order_list is 'PopDAM order lines: Item Master descriptions, current Master Data workflow, source-qualified historic evidence, sample depth and forecasts. #4111';
+comment on view dam.dam_order_tracking is 'Private per-PO tracking rollup. API reads use bounded get_dam_order_tracking; source-parent cases count once.';
+comment on view api.dam_order_vendor_statistics is 'Header-only vendor counts and 14-month active/inactive classification; sales-history placeholders excluded.';
+comment on view api.dam_order_sample_depth is 'Customer-specific sample depth; original source values and source row retained separately from parsed depth.';
+comment on view api.dam_order_customer_settings is 'Customer suffix settings for derived OrderList output.';
+comment on table dam.orderlist_sample_depth is 'Application sample-depth inputs. One-time source seeding is separate from schema promotion; no curated Master Data load.';
+comment on table dam.orderlist_customer_settings is 'Application customer suffix inputs, maintained through administrator-only RPC.';
+comment on table dam.order_tracking_ext is 'Manual PO tracking inputs. CRD/ETA clear flags suppress historic compatibility fallbacks.';
 
 notify pgrst,'reload schema';
 commit;

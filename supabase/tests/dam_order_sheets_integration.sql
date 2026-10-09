@@ -63,7 +63,8 @@ begin
   if r.item_description is distinct from 'Canonical Item Master description' or r.master_data_description is distinct from 'Canonical Item Master description'
     or r.master_data_license_status is distinct from 'Concept Approved' or r.test_report is distinct from 'false' or r.professional_photos is distinct from 'true'
     or r.master_data_sample_vendor is distinct from 'TEST-SAMPLE-VENDOR' or r.contractual_sample_reorder is distinct from true
-    or r.cases_reported is distinct from 4 then raise exception 'Live Master Data outputs or computed cases failed'; end if;
+    or r.cases_reported is distinct from 4 or r.order_status is distinct from 'Sent PO'
+    or r.snapshot_test_report is distinct from 'true' or r.snapshot_professional_photos is distinct from 'false' then raise exception 'Live Master Data outputs or computed cases failed'; end if;
   select * into strict tracking from dam.dam_order_tracking where order_id=r.order_id;
   if tracking.total_cases is distinct from 4 or tracking.line_count is distinct from 2 or tracking.missing_test_reports is distinct from 2
     or tracking.missing_photos is distinct from 1 or tracking.warehouse_date is distinct from date '2026-04-15' then
@@ -93,7 +94,8 @@ declare r record;
 begin
   select * into strict r from api.dam_order_list where order_line_id=(select id from integration_ids where key='line');
   if r.product_workflow_source is distinct from 'ambiguous' or r.master_data_default_vendor is not null or r.test_report is not null
-    or r.item_description is distinct from 'Canonical Item Master description' then
+    or r.item_description is distinct from 'Canonical Item Master description'
+    or r.snapshot_test_report is distinct from 'true' or r.snapshot_professional_photos is distinct from 'false' then
     raise exception 'Conflicting tracker facts must abstain while preserving the canonical item';
   end if;
 end;
@@ -155,6 +157,16 @@ begin
   if r.inspection_passed is distinct from date '2026-04-01' or r.svn_number is distinct from 'S'||(date '2026-04-01'-date '1899-12-30')::text||'-EST-INTEGRATION-PO' or r.booking_string is distinct from 'BN-TEST,TEST-INTEGRATION-PO' then
     raise exception 'Inspection date and derived SVN/booking references differ from Sheets';
   end if;
+  perform public.update_dam_order_tracking(v_order_id,'{"close_tracking":true}');
+  if (select order_status from api.dam_order_list where order_line_id=(select id from integration_ids where key='line')) is distinct from 'Close tracking' then
+    raise exception 'Current close-tracking must update line status'; end if;
+  perform public.update_dam_order_tracking(v_order_id,'{"close_tracking":null}');
+  if (select close_tracking from plm.production_order where id=v_order_id) is distinct from false then
+    raise exception 'Null close-tracking must reopen'; end if;
+  perform public.update_dam_order_tracking(v_order_id,'{"close_tracking":true}');
+  perform public.update_dam_order_tracking(v_order_id,'{"close_tracking":""}');
+  if (select close_tracking from plm.production_order where id=v_order_id) is distinct from false then
+    raise exception 'Blank close-tracking must reopen'; end if;
   perform public.update_dam_order_tracking(v_order_id,'{"comment":null}');
   select * into strict r from dam.dam_order_tracking where dam.dam_order_tracking.order_id=v_order_id;
   if r.comment is not null or r.sent_po_date is distinct from date '2026-03-01' then
@@ -285,7 +297,45 @@ begin
 end;
 $tests$;
 
+-- Missing and wrong-catalog workflow facts remain unknown, with explicit import evidence.
+delete from plm.style_tracker_item_bridge where style_tracker_row_id=(select id from integration_ids where key='duplicate');
+update plm.production_order_line set metadata='{"order_list_source":{"sheet_row":42},"order_list_snapshot":{"source_row":7}}'::jsonb where id=(select id from integration_ids where key='line');
+do $tests$
+declare r record;
+begin
+  select * into strict r from api.dam_order_list where order_line_id=(select id from integration_ids where key='line');
+  if r.snapshot_source_row is distinct from '42' or r.item_link_type_mismatch is distinct from false then
+    raise exception 'Source-row precedence or matched-catalog flag failed'; end if;
+  update plm.production_order_line set source_style_type='generic' where id=r.order_line_id;
+  select * into strict r from api.dam_order_list where order_line_id=r.order_line_id;
+  if r.item_link_type_mismatch is distinct from true or r.product_workflow_source is distinct from 'unavailable'
+    or r.test_report is not null or r.professional_photos is not null or r.snapshot_test_report is distinct from 'true' then
+    raise exception 'Wrong catalog must abstain without losing imported history'; end if;
+  update plm.production_order_line set source_style_type='licensed' where id=r.order_line_id;
+  delete from plm.style_tracker_item_bridge where style_tracker_row_id=(select id from integration_ids where key='licensed');
+  select * into strict r from api.dam_order_list where order_line_id=r.order_line_id;
+  if r.item_link_type_mismatch is distinct from false or r.product_workflow_source is distinct from 'unavailable'
+    or r.test_report is not null or r.professional_photos is not null or r.snapshot_professional_photos is distinct from 'false' then
+    raise exception 'Unavailable workflow must preserve separate import evidence'; end if;
+  if (select customer_suffix from api.dam_order_list where order_line_id=(select id from integration_ids where key='sample-line')) is distinct from 'CONT' then
+    raise exception 'Contractual sample suffix override failed'; end if;
+  update plm.production_order_line set order_type='David Sample' where id=(select id from integration_ids where key='sample-line');
+  if (select customer_suffix from api.dam_order_list where order_line_id=(select id from integration_ids where key='sample-line')) is distinct from 'David' then
+    raise exception 'David sample suffix override failed'; end if;
+  update plm.production_order_line set quantity_ordered=0 where id=(select id from integration_ids where key='parent-c');
+  select * into strict r from api.dam_order_list where order_line_id=(select id from integration_ids where key='parent-c');
+  if r.cases_reported is not null or r.cases_error is distinct from 'Wrong QTY' then
+    raise exception 'Zero quantity below pack must remain an invalid case total'; end if;
+end;
+$tests$;
+
 grant select on integration_ids to authenticated;
+do $fixture_privilege$
+begin
+  if not has_schema_privilege('authenticated',pg_my_temp_schema(),'usage') then
+    raise exception 'Authenticated fixture cannot read its temporary schema'; end if;
+end;
+$fixture_privilege$;
 set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":[]}}';
 set local role authenticated;
 do $viewer$

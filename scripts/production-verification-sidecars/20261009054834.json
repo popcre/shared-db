@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261009054834",
-  "migration_sha256": "6ad844363430bb01d2ff627e5fca2125d1f496589bcd3a9a5d0f3069862571c7",
+  "migration_sha256": "0b982a7e01950b04a5711339bce63173c9db8e981687440962348f45ea525411",
   "checks": [
     {
       "id": "order_tracking_ext_serving_column",
@@ -197,14 +197,14 @@
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 242,
-      "line_end": 242,
+      "line_start": 247,
+      "line_end": 247,
       "disposition": "no_durable_target",
       "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
     },
     {
-      "line_start": 245,
-      "line_end": 245,
+      "line_start": 250,
+      "line_end": 250,
       "disposition": "no_durable_target",
       "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
     }

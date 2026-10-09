@@ -4806,6 +4806,12 @@ exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid=c.conrel
 # #4111: exact serving columns, dependency shapes and RPC signatures after apply.
 CATALOG_CONTRACTS["dam_order_sheets_integration_v1"] = """
 not exists(select 1 from (values
+    ('api.dam_order_list','snapshot_test_report','text'),
+    ('api.dam_order_list','snapshot_professional_photos','text'),
+    ('api.dam_order_list','snapshot_contractual_sample_reorder','boolean'),
+    ('plm.production_order','booking_state','text'),
+    ('plm.production_order','container_booking_group','text'),
+    ('plm.production_order','mbl','text'),
     ('api.dam_order_customer_settings','customer_normalized','text'),
     ('api.dam_order_customer_settings','suffix','text'),
     ('api.dam_order_customer_settings','updated_at','timestamp with time zone'),

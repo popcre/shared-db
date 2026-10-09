@@ -102,8 +102,14 @@ AI sessions from breaking each other through the one database they all depend on
 > It reports both directions — merged-but-not-applied, and applied-but-not-on-`main`.
 > Exit 0 = no actionable drift (retired/held versions remain listed), 1 = actionable
 > drift, **2 = could not check, which is never "no drift"**. It also
-> runs on every push to `main`, daily, and on demand: workflow `Migration Ledger Drift`
+> runs on eligible pushes to `main`, daily, and on demand: workflow `Migration Ledger Drift`
 > ([`.github/workflows/migration-ledger-drift.yml`](../../.github/workflows/migration-ledger-drift.yml)).
+> Automatic push and scheduled runs succeed on verified actionable drift only after
+> confirming its durable alarm on the existing open issue #2508. That success means
+> **drift reported, not a clean database**. On-demand runs retain exit 1 for drift;
+> unreadable or unknown results remain failures on every event. GitHub-token-generated
+> merges can suppress push workflows, so verify that an actual run occurred before
+> claiming automatic delivery.
 
 > ## ⚠️ A structural migration returning to shared-db carries its live-proof probe
 >

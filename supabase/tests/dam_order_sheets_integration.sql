@@ -47,8 +47,8 @@ select id,'integration-test','License.Style',900001,'licensed','Outdated tracker
 from integration_ids where key='licensed';
 insert into plm.style_tracker_item_bridge(style_tracker_row_id,source_workbook_id,source_sheet,tracker_type,plm_item_id)
 select s.id,'integration-test','License.Style','licensed',i.id from integration_ids s cross join integration_ids i where s.key='licensed' and i.key='item';
-insert into plm.production_order(id,production_order_number,sent_po_date,eta,close_tracking)
-select id,'TEST-INTEGRATION-PO',current_date,'2026-04-10',false from integration_ids where key='order';
+insert into plm.production_order(id,production_order_number,sent_po_date,eta,close_tracking,metadata)
+select id,'TEST-INTEGRATION-PO',current_date,'2026-04-10',false,'{"customer_name":"Test-Customer","order_vendor_name":"Test-Vendor"}'::jsonb from integration_ids where key='order';
 insert into plm.production_order_line(id,production_order_id,item_id,sku,quantity_ordered,case_pack,order_type,source_style_type,test_report,professional_photos)
 select l.id,o.id,i.id,'TEST-INTEGRATION-SKU',24,6,'POE','licensed','true','false'
 from integration_ids l cross join integration_ids o cross join integration_ids i where l.key='line' and o.key='order' and i.key='item';
@@ -163,6 +163,19 @@ begin
     raise exception 'Customer-specific sample depth normalized incorrectly';
   end if;
   perform public.upsert_dam_order_customer_settings(' Test-Customer ','TEST');
+  select * into strict r from api.dam_order_list where order_line_id=(select id from integration_ids where key='line');
+  if r.customer_name<>'Test-Customer' or r.vendor_name<>'Test-Vendor' or r.customer_suffix<>'TEST' or r.sample_depth_inches<>1.5 then
+    raise exception 'Preserved source names must resolve customer settings and sample depth without guessing directory identities';
+  end if;
+  if not exists(select 1 from api.dam_order_vendor_statistics where vendor_name='Test-Vendor' and order_count=1 and activity_status='Active') then
+    raise exception 'Vendor statistics must include source-labelled POs whose directory identity is unresolved';
+  end if;
+  update plm.production_order set warehouse_date='2026-01-01' where id=v_order_id;
+  perform public.update_dam_order_tracking(v_order_id,'{"eta":"2026-04-20"}');
+  if (select warehouse_date from api.dam_order_tracking where order_id=v_order_id)<>date '2026-04-25' then
+    raise exception 'Current ETA must drive warehouse forecast rather than a stale imported forecast';
+  end if;
+
   if not exists(select 1 from api.dam_order_customer_settings where customer_normalized='test-customer' and suffix='TEST') then
     raise exception 'Customer suffix did not persist';
   end if;

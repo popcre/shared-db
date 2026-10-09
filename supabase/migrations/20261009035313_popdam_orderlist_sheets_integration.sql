@@ -223,9 +223,9 @@ SELECT pol.id AS order_line_id,
     po.production_order_number,
     case when po.source_system='coldlion' and po.production_order_number like 'coldlion/%' then po.status else dam.orderlist_po_status(pol.order_type,pol.sku,pol.assortment_id,pol.quantity_ordered,pol.case_pack,po.close_tracking,po.booking_state,po.etd,coalesce(po.vendor_delivery_date,po.seal_container_date),po.sent_po_date,po.production_order_number) end AS order_status,
     po.company_id,
-    cust.customer_name,
+    coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) AS customer_name,
     po.factory_id,
-    fact.vendor_name,
+    coalesce(fact.vendor_name,nullif(po.metadata->>'order_vendor_name','')) AS vendor_name,
     po.metadata ->> 'ordering_company'::text AS ordering_company,
     po.order_date,
     po.sent_po_date,
@@ -236,7 +236,7 @@ SELECT pol.id AS order_line_id,
     po.booking_state,
     po.etd,
     po.eta,
-    coalesce(po.warehouse_date,po.eta+5) AS warehouse_date,
+    coalesce(po.eta+5,po.warehouse_date) AS warehouse_date,
     po.container_booking_group,
     po.mbl,
     po.close_tracking,
@@ -308,8 +308,8 @@ SELECT pol.id AS order_line_id,
      LEFT JOIN dam.dam_order_list_vendor_directory fact ON fact.vendor_id = po.factory_id
      LEFT JOIN plm.item item ON item.id = pol.item_id
      LEFT JOIN LATERAL (select dam.orderlist_product_facts(pol.item_id,pol.source_style_type) AS facts) product ON true
-     LEFT JOIN dam.orderlist_sample_depth sample ON sample.sku_normalized=pol.sku_normalized AND sample.customer_normalized=lower(btrim(cust.customer_name))
-     LEFT JOIN dam.orderlist_customer_settings customer_settings ON customer_settings.customer_normalized=lower(btrim(cust.customer_name))
+     LEFT JOIN dam.orderlist_sample_depth sample ON sample.sku_normalized=pol.sku_normalized AND sample.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
+     LEFT JOIN dam.orderlist_customer_settings customer_settings ON customer_settings.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN plm.production_order_line_source_ref google_ref ON google_ref.production_order_line_id = pol.id AND google_ref.source_system = 'google_order_list'::text
      LEFT JOIN plm.production_order_line_source_ref coldlion_ref ON coldlion_ref.production_order_line_id = pol.id AND coldlion_ref.source_system = 'coldlion'::text;
 
@@ -338,18 +338,18 @@ with lines as (
   group by order_id
 )
 select po.id as order_id,po.production_order_number,po.order_date,po.voided_at as order_voided_at,
-  cust.customer_name,fact.vendor_name,po.factory_id,po.company_id,
+  coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) as customer_name,coalesce(fact.vendor_name,nullif(po.metadata->>'order_vendor_name','')) as vendor_name,po.factory_id,po.company_id,
   lines.line_count,lines.total_cases,lines.invalid_case_lines,lines.missing_test_reports,lines.missing_photos,
   lines.unresolved_product_lines,lines.order_type,lines.start_ship_date,lines.cancel_date,lines.cargo_forecast_date,
   lines.customer_po_number,lines.customer_suffix,lines.components,
   po.sent_po_date,coalesce(po.vendor_delivery_date,po.seal_container_date) as vendor_delivery_date,
   case when po.vendor_delivery_date is not null then po.vendor_delivery_date +
     case lines.order_type when 'FOB' then 5 when 'POE' then 21 when 'C Stock' then 27 end end as seal_container_forecast,
-  po.booking_state,po.etd,po.eta,coalesce(po.warehouse_date,po.eta+5) as warehouse_date,
+  po.booking_state,po.etd,po.eta,coalesce(po.eta+5,po.warehouse_date) as warehouse_date,
   case when lines.order_type='FOB' then null
     when lines.order_type='POE' then po.eta-lines.cancel_date
-    else coalesce(po.warehouse_date,po.eta+5)-lines.cancel_date end as days_delay,
-  case when lines.order_type='POE' and cust.customer_name='Burlington' and ext.worksheet_done is not true
+    else coalesce(po.eta+5,po.warehouse_date)-lines.cancel_date end as days_delay,
+  case when lines.order_type='POE' and coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))='Burlington' and ext.worksheet_done is not true
     then po.eta-current_date-5 end as worksheet_days_remaining,
   po.container_booking_group,po.mbl,po.close_tracking,
   ext.agent,ext.cbm,ext.comment,ext.vessel,ext.sent_to_coldlion,ext.worksheet_done,ext.inspection_passed,
@@ -365,7 +365,7 @@ where not (coalesce(po.source_system='coldlion',false) and coalesce(po.productio
 -- The native sheet's verified activity window is 14 months. Counts are PO
 -- counts; sales-history quantities or stage rows are never summed as purchases.
 create or replace view api.dam_order_vendor_statistics with (security_invoker=true) as
-select factory_id,vendor_name,count(*) as order_count,
+select factory_id,min(vendor_name) as vendor_name,count(*) as order_count,
   count(*) filter(where close_tracking is true) as closed_orders,
   count(*) filter(where close_tracking is not true and order_voided_at is null) as open_orders,
   max(sent_po_date) filter(where order_voided_at is null and production_order_number not ilike '%cancel%') as last_sent_po_date,
@@ -373,7 +373,7 @@ select factory_id,vendor_name,count(*) as order_count,
     then 'Active' else 'Inactive' end as activity_status
 from api.dam_order_tracking
 where vendor_name is not null
-group by factory_id,vendor_name;
+group by factory_id,lower(btrim(vendor_name));
 
 grant select on api.dam_order_list,api.dam_order_tracking,api.dam_order_vendor_statistics to authenticated,service_role;
 revoke all on api.dam_order_tracking,api.dam_order_vendor_statistics from anon;

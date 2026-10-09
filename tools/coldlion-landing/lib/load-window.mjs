@@ -364,6 +364,67 @@ insert into _window (id) select id from upserted;
 create temp table _inserted (grain text not null, n bigint not null) on commit drop;`;
 }
 
+// ---------------------------------------------------------------------------------
+// Unsealed forward loads (/orderHistory only)
+// ---------------------------------------------------------------------------------
+//
+// Sales orders are normally keyed into ColdLion with FUTURE start dates, and the vendor's
+// window filter keys on that start date, so a new order is visible only in a window that
+// has not closed yet. Loading such a window the sealed way would declare a still-changing
+// week complete forever. The forward-scan rule (Albert, 2026-09-17: scan forward until
+// consecutive empty months) is therefore met by an UNSEALED load: the same append-only
+// line/component/document rows and a sync_run record, but no window_ledger row and no page
+// evidence. The window stays unloaded, so the trailing sealed sync still loads it -- with
+// its full page proof -- once it closes. Replaying identical rows is absorbed by the same
+// ON CONFLICT identities, and a changed line lands as a new version, exactly as in the
+// sealed path.
+
+function unsealedPreamble({ scope, window, runId, requestedBy, companyCode, startedAt, rowsFetched, pageSize, httpStatus, bodyStatus }) {
+  if (scope.stage || scope.endpoint !== "/orderHistory") {
+    throw new Error("an unsealed forward load is defined for /orderHistory only");
+  }
+  return `begin;
+
+-- A sealed window is never touched by a forward load.
+do $loaded$
+begin
+  if exists (
+    select 1 from coldlion.window_ledger
+     where endpoint = ${sqlText(scope.endpoint)}
+       and company_code = ${sqlText(companyCode)}
+       and division_code is not distinct from null
+       and stage_code is not distinct from null
+       and window_from = ${sqlDate(window.from)}
+       and state = 'loaded'
+  ) then
+    raise exception 'window ${window.from} for ${scope.endpoint} is already loaded (sealed); a forward load may not touch it';
+  end if;
+end $loaded$;
+
+insert into coldlion.sync_run
+  (id, endpoint, company_code, request_params, window_from, window_to,
+   status, requested_by, started_at, http_status, body_status, rows_fetched)
+values
+  (${sqlUuid(runId)}, ${sqlText(scope.endpoint)}, ${sqlText(companyCode)},
+   ${sqlJson({ companyCode, fromDate: window.from, toDate: window.to, size: pageSize, unsealedForward: true })},
+   ${sqlDate(window.from)}, ${sqlDate(window.to)},
+   'running', ${sqlText(requestedBy)}, ${sqlTimestamp(startedAt)}, ${sqlNumber(httpStatus)}, ${sqlNumber(bodyStatus)}, ${sqlNumber(rowsFetched)});
+
+create temp table _inserted (grain text not null, n bigint not null) on commit drop;`;
+}
+
+function unsealedEpilogue({ runId, finishedAt, durationMs, notes }) {
+  return `update coldlion.sync_run
+   set status = 'succeeded',
+       finished_at = ${sqlTimestamp(finishedAt)},
+       duration_ms = ${sqlNumber(durationMs)},
+       rows_inserted = (select coalesce(sum(n), 0) from _inserted),
+       notes = ${sqlText(notes)}
+ where id = ${sqlUuid(runId)};
+
+commit;`;
+}
+
 function pageLedgerSql({ scope, window, runId, companyCode, pages }) {
   const stage = scope.stage ? sqlText(scope.stage) : "null";
   const values = pages
@@ -497,26 +558,28 @@ export function buildOrderHistoryLoadSql({
   durationMs,
   notes,
   stampColumns = false,
+  sealed = true,
 }) {
   const lineSpec = orderLineSpec(stampColumns);
+  const head = {
+    scope,
+    window,
+    runId,
+    requestedBy,
+    companyCode,
+    startedAt,
+    rowsFetched: completion.rows,
+    pageSize,
+    httpStatus: pages.at(-1).httpStatus,
+    bodyStatus: pages.at(-1).bodyStatus,
+  };
   const lines = withLocals(projected.lines);
   const components = withLocals(projected.components);
   const invoiceRefs = withLocals(projected.invoiceRefs);
   const pickRefs = withLocals(projected.pickTicketRefs);
 
   return [
-    preamble({
-      scope,
-      window,
-      runId,
-      requestedBy,
-      companyCode,
-      startedAt,
-      rowsFetched: completion.rows,
-      pageSize,
-      httpStatus: pages.at(-1).httpStatus,
-      bodyStatus: pages.at(-1).bodyStatus,
-    }),
+    sealed ? preamble(head) : unsealedPreamble(head),
     stageSql("_stage_line", lineSpec, LOCAL, lines),
     insertSql({
       target: "coldlion.order_history_line",
@@ -568,8 +631,10 @@ export function buildOrderHistoryLoadSql({
       stageName: "_stage_pick",
       count: "order_history_pick_ticket_ref",
     }),
-    pageLedgerSql({ scope, window, runId, companyCode, pages }),
-    epilogue({ scope, window, runId, companyCode, completion, finishedAt, durationMs, notes }),
+    sealed ? pageLedgerSql({ scope, window, runId, companyCode, pages }) : "",
+    sealed
+      ? epilogue({ scope, window, runId, companyCode, completion, finishedAt, durationMs, notes })
+      : unsealedEpilogue({ runId, finishedAt, durationMs, notes }),
   ]
     .filter(Boolean)
     .join("\n\n");

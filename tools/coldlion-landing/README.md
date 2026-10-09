@@ -160,6 +160,26 @@ node tools/coldlion-landing/sync-prod-details.mjs --mode keys --keys 20000
 Add `--dry-run` to any of these to see the outstanding work without fetching or
 writing anything.
 
+## Forward scan for sales orders (`sync-history.mjs --forward`)
+
+Sales orders are keyed into ColdLion with FUTURE start dates, and `/orderHistory` filters
+windows by start date, so a new order is visible only in a window that has not closed.
+Settled rule "Forward-scan horizon" (Albert, 2026-09-17): scan forward until consecutive
+empty months, in addition to the trailing re-read.
+
+`--forward` runs, after the trailing sealed re-read, an `/orderHistory`-only scan of the
+open current week and every later grid window. Those windows are loaded UNSEALED: the same
+append-only `order_history_line` / component / document rows and a `sync_run` row
+(`request_params.unsealedForward = true`), but no `window_ledger` row and no page evidence,
+so each window is still loaded sealed, with its full page proof, once it closes. A changed
+line lands as a new version; an identical one is absorbed by the identity constraints. The
+scan stops after two consecutive start-date months that land no line (a failed window never
+counts as empty), or at the 18-month horizon shared with the order-intake poll
+(`lib/order-intake-windows.mjs`). Production history is never forward-loaded.
+
+The DesignFlow sandbox runs this nightly through `coldlion-landing-sync-sandbox.yml`
+(issue #3869); production scheduling stays in `coldlion-landing-sync.yml`.
+
 ## The vendor behaviours this is built around
 
 **The page size is silently capped.** Asking for 2000 returns 200 with no error

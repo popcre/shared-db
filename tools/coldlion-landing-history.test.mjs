@@ -20,7 +20,7 @@ import { projectProdHistoryWindow, quantitiesAgree, selectLookup } from "./coldl
 import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-landing/lib/load-window.mjs";
 import { hasOrderStampColumns, interpretOrderStampColumns, loadedWindowsSql, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
 import { parseArgs as parseBackfillArgs, selectScopes } from "./coldlion-landing/backfill-history.mjs";
-import { parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
+import { forwardScan, parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
 
 // ---------------------------------------------------------------------------------
 // The fixed grid
@@ -515,7 +515,7 @@ const page = (rowCount) => ({
   fetchedAt: "2026-09-08T00:00:00Z",
 });
 
-function orderSql() {
+function orderSql(extra = {}) {
   counter = 0;
   const runId = "11111111-1111-4111-8111-111111111111";
   const projected = projectOrderHistoryWindow([orderRow({ invoiceNoString: "I1", invoiceDateString: "2021-03-04" })], {
@@ -536,6 +536,7 @@ function orderSql() {
     finishedAt: "2026-09-08T00:00:01Z",
     durationMs: 1000,
     notes: "lines=1",
+    ...extra,
   });
 }
 
@@ -852,4 +853,73 @@ test("no secret value can be printed", () => {
     assert.doesNotMatch(workflow, /echo .*\$\{\{\s*secrets\./, `${name} must never echo a secret`);
     assert.doesNotMatch(workflow, /echo "?\$DATABASE_URL/, `${name} must never echo the connection string`);
   }
+});
+
+// ---------------------------------------------------------------------------------
+// Forward scan (unsealed /orderHistory loads, #3869)
+// ---------------------------------------------------------------------------------
+
+test("an unsealed forward load writes lines and a run record but never seals the window", () => {
+  const sql = orderSql({ sealed: false });
+  assert.match(sql, /^begin;/);
+  assert.match(sql, /commit;$/);
+  assert.match(sql, /insert into coldlion\.order_history_line/);
+  assert.match(sql, /coldlion_order_history_line_identity_unique/);
+  assert.match(sql, /"unsealedForward":true/);
+  assert.doesNotMatch(sql, /insert into coldlion\.window_ledger/);
+  assert.doesNotMatch(sql, /history_page_ledger/);
+  assert.doesNotMatch(sql, /set state = 'loaded'/);
+  assert.match(sql, /already loaded \(sealed\)/, "a sealed window is refused, never touched");
+});
+
+test("the sealed load is unchanged by the forward option's default", () => {
+  assert.equal(orderSql(), orderSql({ sealed: true }));
+});
+
+test("forward mode is /orderHistory only", () => {
+  assert.throws(() => orderSql({ sealed: false, scope: prodHistoryScope("ISS") }), /orderHistory only/);
+});
+
+test("--forward is parsed and --today drives the closed-window clamp", () => {
+  const args = parseSyncArgs(["--forward", "--today", "2026-10-09"]);
+  assert.equal(args.forward, true);
+  assert.equal(args.to, "2026-10-05");
+});
+
+async function scanWith(linesByMonth, { failMonth } = {}) {
+  const seen = [];
+  const failures = [];
+  const result = await forwardScan({
+    args: { today: "2026-10-09", company: "TESTCO", pageSize: 200 },
+    apiKey: "k",
+    failures,
+    load: async ({ window, sealed, scope }) => {
+      assert.equal(sealed, false);
+      assert.equal(scope.endpoint, "/orderHistory");
+      seen.push(window.from);
+      const month = window.from.slice(0, 7);
+      if (month === failMonth) throw new Error("vendor down");
+      const lines = linesByMonth[month] ?? 0;
+      return { fetched: { rows: lines }, summary: { lines } };
+    },
+  });
+  return { seen, failures, result };
+}
+
+test("the forward scan starts at the OPEN current window and stops after two empty months", async () => {
+  const { seen, result } = await scanWith({ "2026-10": 5, "2026-11": 3, "2026-12": 1 });
+  assert.equal(seen[0], windowContaining("2026-10-09").from, "the open week is scanned");
+  assert.ok(seen.some((from) => from.startsWith("2026-12")), "a month with orders keeps the scan going");
+  const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
+  assert.deepEqual(months.slice(-2), ["2027-01", "2027-02"], "two consecutive empty months end it");
+  assert.ok(result.stoppedAt.startsWith("2027-02") || result.stoppedAt.startsWith("2027-03"));
+  const lastFeb = seen.filter((from) => from.startsWith("2027-02")).length;
+  assert.ok(lastFeb >= 4, "an empty month is judged only after ALL its windows were read");
+});
+
+test("a failed forward window never counts as an empty month", async () => {
+  const { seen, failures } = await scanWith({ "2026-10": 5 }, { failMonth: "2026-11" });
+  const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
+  assert.deepEqual(months.slice(-2), ["2026-12", "2027-01"]);
+  assert.ok(failures.length > 0);
 });

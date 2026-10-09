@@ -88,7 +88,11 @@ export async function loadWindowScope({
   fetchImpl = fetch,
   execute = runSql,
   orderStampColumns,
+  sealed = true,
 }) {
+  if (!sealed && (scope.stage || scope.endpoint !== "/orderHistory")) {
+    throw new Error("an unsealed forward load is defined for /orderHistory only");
+  }
   const runId = randomUUID();
   const startedAt = new Date();
   try {
@@ -164,6 +168,7 @@ export async function loadWindowScope({
         ...finish(startedAt),
         notes: notesFor(summary),
         stampColumns: orderStampColumns ?? hasOrderStampColumns(dbOptions),
+        sealed,
       });
     }
 
@@ -171,7 +176,7 @@ export async function loadWindowScope({
     return { runId, window, scope, fetched: completion, summary };
   } catch (error) {
     try {
-      recordFailure({ scope, window, runId, companyCode, requestedBy, error, options: dbOptions });
+      recordFailure({ scope, window, runId, companyCode, requestedBy, error, options: dbOptions, sealed });
     } catch (recordError) {
       // A failure we could not even record is worse than the original, so say both.
       error.message = `${error.message} (and the failure could not be recorded: ${recordError.message})`;

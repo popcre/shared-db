@@ -1,0 +1,104 @@
+# Nightly ColdLion order and production history for the DesignFlow SANDBOX only.
+#
+# Owner request (Albert Hazan, 2026-10-09, verbatim): "both the database for the test
+# sandbox and for production should get the nightly factory order and sales order
+# updates." Issue #3869.
+#
+# Target: the DesignFlow non-production Supabase project xupnyeifmpsacrqahwwm, never
+# shared production (qsllyeztdwjgirsysgai) and never shared preview. The target is
+# hard-coded below and proved by the loader itself (COLDLION_EXPECTED_PROJECT_REF) before
+# any write. The password is the designflow-sandbox ENVIRONMENT secret that
+# designflow-sandbox-migrations.yml already uses; the connection is the IPv4 session
+# pooler, because GitHub runners have no IPv6 route to db.<ref>.supabase.co.
+#
+# What it runs: tools/coldlion-landing/sync-history.mjs --forward
+#   * the trailing re-read of the most recent CLOSED grid windows, every scope
+#     (/orderHistory and /prodHistory ISS, INTRAN, REC), sealed with page evidence;
+#   * the forward scan for /orderHistory (Settled rule "Forward-scan horizon", Albert,
+#     2026-09-17): the open current week and every later window, loaded UNSEALED, until
+#     two consecutive start-date months land no sales-order line.
+# The factory-order jobs for this sandbox are Cloud Scheduler jobs in GCP project
+# lithe-breaker-323913 (sandbox-albert-getprodorderheader 1:15 AM, ...detail 1:45 AM
+# America/New_York); this run is scheduled between them at 05:30 UTC (1:30 AM EDT,
+# 12:30 AM EST). GitHub cron is UTC and may start late; it is not a hard clock.
+#
+# Production scheduling is NOT here: coldlion-landing-sync.yml owns production.
+
+name: ColdLion Landing Sync (DesignFlow sandbox)
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Nightly refresh, or a bounded history backfill"
+        type: choice
+        options: [refresh, backfill]
+        default: refresh
+      windows:
+        description: "refresh: how many recent closed 7-day windows to re-read"
+        required: false
+        default: '3'
+      from:
+        description: "backfill: first window date (YYYY-MM-DD, grid anchor 2019-01-01)"
+        required: false
+        default: '2019-01-01'
+      dry_run:
+        description: "Report the work; write nothing"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coldlion-landing-sync-sandbox
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sandbox order and production history
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 300
+    environment: designflow-sandbox
+    env:
+      COLDLION_EXPECTED_PROJECT_REF: xupnyeifmpsacrqahwwm
+      SANDBOX_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+      COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+      OPERATION: ${{ inputs.operation || 'refresh' }}
+      WINDOWS: ${{ inputs.windows || '3' }}
+      FROM: ${{ inputs.from || '2019-01-01' }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prove psql is present
+        run: psql --version
+      - name: Run the offline contract tests before touching anything
+        run: node --test tools/coldlion-landing-history.test.mjs
+      - name: Refuse to run without the target secrets
+        run: |
+          set -euo pipefail
+          [ "$COLDLION_EXPECTED_PROJECT_REF" = "xupnyeifmpsacrqahwwm" ] || { echo "::error::target is not the DesignFlow sandbox"; exit 1; }
+          [ -n "${SANDBOX_PASSWORD:-}" ] || { echo "::error::SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+      - name: Sync
+        run: |
+          set -euo pipefail
+          # Build the URL in-process so the password is never echoed or passed as an argument.
+          ENCODED="$(node -e 'process.stdout.write(encodeURIComponent(process.env.SANDBOX_PASSWORD))')"
+          echo "::add-mask::$ENCODED"
+          export DATABASE_URL="postgresql://postgres.${COLDLION_EXPECTED_PROJECT_REF}:${ENCODED}@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
+          if [ "$OPERATION" = "backfill" ]; then
+            ARGS=(--from "$FROM")
+            if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
+            node tools/coldlion-landing/backfill-history.mjs "${ARGS[@]}"
+          else
+            ARGS=(--windows "$WINDOWS" --forward)
+            if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
+            node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
+          fi

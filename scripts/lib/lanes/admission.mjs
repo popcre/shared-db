@@ -189,15 +189,21 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
     }
   }
   // Verdict recording on a merged PR: only the bound PR and issue. A real GitHub
-  // closing link that matches is accepted exactly as closingIssuesForPr accepts it;
-  // only when GitHub reports no closing link does the full verification (merged,
-  // body, completion record, claims, open issue) run. This keeps mergedPrReviewTarget
-  // consistent with closingIssuesForPr and readReviewerOperationRoute, which already
-  // trust a matching real link, and unblocks post-merge verdict recording for a PR
-  // that closed its issue but whose evidence pair is not in its changed-file list.
+  // closing link that matches is accepted, but the linked issue must still be
+  // open — the same check verifyMergedPrIssueBinding enforces on the no-link
+  // path. When GitHub reports no closing link, the full verification (merged,
+  // body, completion record, claims, open issue) runs. This keeps
+  // mergedPrReviewTarget consistent with closingIssuesForPr and
+  // readReviewerOperationRoute for the link-trust decision, while preserving
+  // the open-issue gate the issue text promises.
   bound.mergedPrReviewTarget=(number,issue)=>{
     if(Number(number)!==binding.pr||Number(issue)!==binding.issue)return false
     const linked=base(number)
+    if(Array.isArray(linked)&&linked.length===1&&Number(linked[0]?.number)===binding.issue){
+      const linkedState=String(linked[0]?.state??'').toLowerCase()
+      if(linkedState&&linkedState!=='open')return false
+      return true
+    }
     return apply(Array.isArray(linked)?linked:[]).length===1
   }
   return bound

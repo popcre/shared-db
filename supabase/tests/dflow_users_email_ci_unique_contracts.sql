@@ -29,8 +29,8 @@ begin
       end
       and i.indclass[0]=(select oc.oid from pg_catalog.pg_opclass oc join pg_catalog.pg_namespace ns on ns.oid=oc.opcnamespace where ns.nspname='pg_catalog' and oc.opcname='text_ops' and oc.opcmethod=am.oid and oc.opcdefault)
       and i.indcollation[0]=(select co.oid from pg_catalog.pg_collation co join pg_catalog.pg_namespace ns on ns.oid=co.collnamespace where ns.nspname='pg_catalog' and co.collname='default' and co.collisdeterministic)
-      and i.indcollation[0]=(select attcollation from pg_catalog.pg_attribute where attrelid=tc.oid and attname='email')
-      and i.indoption[0]=0 and ic.reloptions is null
+      and i.indcollation[0]=(select attcollation from pg_catalog.pg_attribute where attrelid=tc.oid and attname='email' and attnum>0 and not attisdropped)
+      and i.indoption[0]=0 and ic.reloptions is null and ic.reltablespace=0
       and not exists(select 1 from pg_catalog.pg_inherits where inhrelid=tc.oid or inhparent=tc.oid)
   ) then
     raise exception 'dflow.users_email_lower_uidx exact normalized nonblank index contract refused';
@@ -44,7 +44,7 @@ begin
     raise exception 'case/whitespace variant email was accepted';
   exception when unique_violation then
     get stacked diagnostics rejected_constraint = constraint_name;
-    if rejected_constraint <> 'users_email_lower_uidx' then
+    if rejected_constraint is distinct from 'users_email_lower_uidx' then
       raise exception 'unexpected duplicate constraint %', rejected_constraint;
     end if;
   end;

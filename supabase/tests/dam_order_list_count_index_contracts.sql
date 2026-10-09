@@ -78,9 +78,11 @@ begin
   select string_agg(plan_line, E'\n') into v_plan
   from pg_temp.explain_order_list_count() plan_line;
 
-  if position('style_tracker_item_bridge_plm_item_cover_idx' in coalesce(v_plan, '')) = 0
-     or position('production_order_line_count_cover_idx' in coalesce(v_plan, '')) = 0 then
-    raise exception 'OrderList count did not plan through both required indexes: %', v_plan;
+  -- Aggregated product facts are cardinality-preserving and can now be pruned
+  -- entirely from a count. If PostgreSQL retains a bridge lookup, it must keep
+  -- using the covering index; eliminating that lookup is also valid.
+  if position('production_order_line_count_cover_idx' in coalesce(v_plan, '')) = 0 then
+    raise exception 'OrderList count did not use the required line covering index: %', v_plan;
   end if;
 
   if v_plan ~ 'Seq Scan on (plm\.)?style_tracker_item_bridge'
@@ -88,7 +90,7 @@ begin
     raise exception 'OrderList count retained a target sequential scan: %', v_plan;
   end if;
 
-  if v_plan !~ 'Index Only Scan using style_tracker_item_bridge_plm_item_cover_idx' then
+  if v_plan ~ 'on style_tracker_item_bridge' and v_plan !~ 'Index Only Scan using style_tracker_item_bridge_plm_item_cover_idx' then
     raise exception 'OrderList count bridge lookup is not index-only: %', v_plan;
   end if;
 end

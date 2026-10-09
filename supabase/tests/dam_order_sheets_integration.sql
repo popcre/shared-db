@@ -39,14 +39,14 @@ $tests$;
 create temp table integration_ids(key text primary key,id uuid default gen_random_uuid());
 insert into integration_ids(key) values('item'),('licensed'),('duplicate'),('generic'),('order'),('line'),('sample-line'),('coldlion-order'),('coldlion-line');
 
-insert into plm.item(id,item_number,description,name)
-select id,'TEST-INTEGRATION-SKU','Canonical Item Master description','Canonical name' from integration_ids where key='item';
-insert into public.style_tracker_rows(id,tracker_type,description,license_status,default_vendor,discontinued,row_data)
-select id,'licensed','Outdated tracker description','Outdated cached status','TEST-PRIMARY-VENDOR',false,
+insert into plm.item(id,item_number,description,name,source_system,source_id)
+select id,'TEST-INTEGRATION-SKU','Canonical Item Master description','Canonical name','integration_test','integration-fixture-item' from integration_ids where key='item';
+insert into public.style_tracker_rows(id,source_workbook_id,source_sheet,source_row_number,tracker_type,description,license_status,default_vendor,discontinued,row_data)
+select id,'integration-test','License.Style',900001,'licensed','Outdated tracker description','Outdated cached status','TEST-PRIMARY-VENDOR',false,
   '{"sample_vendor":"TEST-SAMPLE-VENDOR","professional_photos":true,"test_report":false,"contractual_samples_reorder":true,"concept_approval":"2026-01-01"}'::jsonb
 from integration_ids where key='licensed';
-insert into plm.style_tracker_item_bridge(style_tracker_row_id,tracker_type,plm_item_id)
-select s.id,'licensed',i.id from integration_ids s cross join integration_ids i where s.key='licensed' and i.key='item';
+insert into plm.style_tracker_item_bridge(style_tracker_row_id,source_workbook_id,source_sheet,tracker_type,plm_item_id)
+select s.id,'integration-test','License.Style','licensed',i.id from integration_ids s cross join integration_ids i where s.key='licensed' and i.key='item';
 insert into plm.production_order(id,production_order_number,sent_po_date,eta,close_tracking)
 select id,'TEST-INTEGRATION-PO',current_date,'2026-04-10',false from integration_ids where key='order';
 insert into plm.production_order_line(id,production_order_id,item_id,sku,quantity_ordered,case_pack,order_type,source_style_type,test_report,professional_photos)
@@ -84,10 +84,10 @@ $tests$;
 
 -- Two conflicting tracker rows linked to one item must become a visible unknown,
 -- not two order rows or an arbitrary selected product value.
-insert into public.style_tracker_rows(id,tracker_type,description,license_status,default_vendor,discontinued,row_data)
-select id,'licensed','Another tracker','No Info','OTHER-VENDOR',false,'{}'::jsonb from integration_ids where key='duplicate';
-insert into plm.style_tracker_item_bridge(style_tracker_row_id,tracker_type,plm_item_id)
-select s.id,'licensed',i.id from integration_ids s cross join integration_ids i where s.key='duplicate' and i.key='item';
+insert into public.style_tracker_rows(id,source_workbook_id,source_sheet,source_row_number,tracker_type,description,license_status,default_vendor,discontinued,row_data)
+select id,'integration-test','License.Style',900002,'licensed','Another tracker','No Info','OTHER-VENDOR',false,'{}'::jsonb from integration_ids where key='duplicate';
+insert into plm.style_tracker_item_bridge(style_tracker_row_id,source_workbook_id,source_sheet,tracker_type,plm_item_id)
+select s.id,'integration-test','License.Style','licensed',i.id from integration_ids s cross join integration_ids i where s.key='duplicate' and i.key='item';
 do $tests$
 declare r record;
 begin

@@ -14,7 +14,8 @@ import { ORDER_HISTORY, allScopes, prodHistoryScope } from "./coldlion-landing/l
 import { assertPagesComplete, buildPageUrl, fetchPage, fetchWindowScope, isPermanentStatus, requestParams, validatePage } from "./coldlion-landing/lib/http.mjs";
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 import { bigint, canonical, date, num, sourceHash, splitTokens, sqlText, text } from "./coldlion-landing/lib/values.mjs";
-import { projectOrderHistoryWindow, splitInvoiceTokens } from "./coldlion-landing/lib/project-order-history.mjs";
+import { projectOrderHistoryWindow, splitInvoiceTokens, wallClockTimestamp } from "./coldlion-landing/lib/project-order-history.mjs";
+import { aggregateStamps, buildStampUpdateSql } from "./coldlion-landing/backfill-order-stamps.mjs";
 import { projectProdHistoryWindow, quantitiesAgree, selectLookup } from "./coldlion-landing/lib/project-prod-history.mjs";
 import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-landing/lib/load-window.mjs";
 import { loadedWindowsSql } from "./coldlion-landing/lib/run-history.mjs";
@@ -281,6 +282,59 @@ test("a differing line projection is a separate VERSION, never a merged row", ()
   assert.equal(projected.lines.length, 2);
   assert.equal(projected.versionFanOut, 1, "the fan-out is reported, not hidden");
   assert.notEqual(projected.lines[0].line_source_hash, projected.lines[1].line_source_hash);
+});
+
+test("entry/edit stamps land on the line, earliest created and latest modified, outside the hash (#3869)", () => {
+  counter = 0;
+  const projected = projectOrderHistoryWindow(
+    [
+      orderRow({ createdTime: "2026-03-27 11:37:34.557", createdUser: "U1", modTime: "2026-04-01 08:00:00.000", modUser: "U2" }),
+      orderRow({ subItemNo: "SKU-2", createdTime: "2026-03-26 09:00:00.000", createdUser: "U0", modTime: "2026-05-01 10:00:00.000", modUser: "U3" }),
+    ],
+    { runId: ids(), fetchedAt: "2026-09-08T00:00:00Z", newId: ids },
+  );
+  assert.equal(projected.lines.length, 1, "differing stamps never split a line into versions");
+  const [line] = projected.lines;
+  assert.equal(line.created_time, "2026-03-26T09:00:00.000Z");
+  assert.equal(line.created_user, "U0");
+  assert.equal(line.mod_time, "2026-05-01T10:00:00.000Z");
+  assert.equal(line.mod_user, "U3");
+  counter = 0;
+  const bare = projectOrderHistoryWindow([orderRow()], { runId: ids(), fetchedAt: "2026-09-08T00:00:00Z", newId: ids });
+  assert.equal(bare.lines[0].line_source_hash, line.line_source_hash, "stamps are not part of line_source_hash");
+  assert.equal(bare.lines[0].created_time, null);
+  const sql = buildOrderHistoryLoadSql({
+    window: { from: "2026-09-07", to: "2026-09-13" }, scope: ORDER_HISTORY, runId: ids(), requestedBy: "t",
+    companyCode: "TESTCO", pages: [{ pageNumber: 0, requestedPageSize: 200, returnedPageSize: 200, rowCount: 2, reportedTotalElements: 2, reportedTotalPages: 1, isLastPage: true, httpStatus: 200, bodyStatus: null, fetchedAt: "2026-09-08T00:00:00Z" }],
+    completion: { rows: 2 }, projected, startedAt: "2026-09-08T00:00:00Z", finishedAt: "2026-09-08T00:00:01Z", durationMs: 1, notes: null,
+  });
+  assert.match(sql, /created_time, created_user, mod_time, mod_user/);
+});
+
+test("vendor wall-clock stamps are read as UTC, never in the machine zone", () => {
+  assert.equal(wallClockTimestamp("2026-03-27 11:37:34.557"), "2026-03-27T11:37:34.557Z");
+  assert.equal(wallClockTimestamp("2026-03-27T11:37:34"), "2026-03-27T11:37:34.000Z");
+  assert.equal(wallClockTimestamp("2026-03-27T11:37:34-04:00"), "2026-03-27T15:37:34.000Z");
+  assert.equal(wallClockTimestamp("1900-01-01 00:00:00.000"), null);
+  assert.equal(wallClockTimestamp(""), null);
+  assert.throws(() => wallClockTimestamp("27/03/2026"), /not an ISO timestamp/);
+});
+
+test("the stamp backfill folds rows per order/item/label and updates only the four columns", () => {
+  const stamps = aggregateStamps([
+    orderRow({ labelCode: "", createdTime: "2026-03-27 11:00:00.000", modTime: "2026-03-28 11:00:00.000" }),
+    orderRow({ labelCode: "", createdTime: "2026-03-25 11:00:00.000", modTime: "2026-03-29 11:00:00.000", modUser: "M" }),
+    orderRow({ itemNo: "NO-STAMPS" }),
+  ]);
+  assert.deepEqual(stamps, [{ sales_order_no: 1001, item_no: "PARENT-A", label_code: null,
+    created_time: "2026-03-25T11:00:00.000Z", created_user: null, mod_time: "2026-03-29T11:00:00.000Z", mod_user: "M" }]);
+  const sql = buildStampUpdateSql(stamps, "master_item_no");
+  assert.match(sql, /^begin;/);
+  assert.match(sql, /set created_time = s\.created_time, created_user = s\.created_user,\s+mod_time = s\.mod_time, mod_user = s\.mod_user/);
+  assert.match(sql, /t\.master_item_no = s\.item_no/);
+  assert.doesNotMatch(sql, /insert into coldlion/);
+  assert.equal(buildStampUpdateSql([], "item_no"), null);
+  assert.throws(() => buildStampUpdateSql(stamps, "x; drop"), /unexpected item column/);
 });
 
 test("EP001 rows are excluded and the exclusion is counted, not silent", () => {

@@ -116,6 +116,15 @@ recipe sequence is deleted (with change_log evidence) only for codes the run
 actually asked, so the landing table tracks the vendor's current state without
 ever touching codes it did not question.
 
+Sales-order entry/edit stamps — `coldlion.order_history_line.created_time`,
+`created_user`, `mod_time`, `mod_user` (issue #3869, 2026-10-09). Every window loaded from now
+on carries them; rows landed earlier are filled by a one-off, re-runnable backfill that updates
+only those four columns and writes no evidence or ledger state:
+
+```bash
+node tools/coldlion-landing/backfill-order-stamps.mjs --from 2019-01-01
+```
+
 Backfill — resumable from the ledger, so re-running after an interruption
 continues where the evidence stops:
 

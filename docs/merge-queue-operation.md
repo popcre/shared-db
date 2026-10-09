@@ -47,19 +47,45 @@ supply that exact reviewed head; the queue proves the head did not move.
 
 Activation must happen only after the implementation PR is merged and green on `main`:
 
-1. Add `Merge queue gate` to required contexts with the additive-only
-   `scripts/update-required-checks.mjs --add "Merge queue gate" --apply`. Preserve all existing
-   contexts and `strict: false`; the tool reads back and rewrites
-   `docs/verification/main-required-status-checks.json` — commit that mirror through the ordinary
-   guarded path.
+1. Restore both `Merge queue gate` and `Queue-sensitive checks (aggregate)` with exactly
+   one GitHub Actions app `15368` binding each. Preserve every current requirement and producer
+   binding plus `strict: false`. The plain `--add` CLI creates unrestricted new contexts and
+   is insufficient for this activation. Use the existing `readLive`, `planUnion`, and
+   `applyUnion` helpers from `scripts/update-required-checks.mjs`: form the additive plan from
+   fresh live settings, set only the two restored queue entries' `app_id` to `15368`, and
+   review that exact `strict`/`checks` payload before its narrow required-checks PATCH.
+   The retirement artifact's bound14 `recovery` payload is valid only when fresh live settings
+   match its12-context `after` snapshot; otherwise form a new producer-preserving additive plan.
+   Verify exact live readback with `verifyReadback`, then refresh the informational mirror using
+   `scripts/update-required-checks.mjs --refresh-mirror` and create its guarded pull request.
+   Keep the native queue inactive until that mirror is merged. On the frozen, independently
+   reviewed mirror PR branch, dispatch both `merge-queue-gate.yml` and `pr-guards.yml`,
+   supplying the exact mirror PR number as `agent_contract_pr_number` for PR Guards.
+   Verify each run's `head_sha` equals the exact reviewed PR head and its successful named
+   check is produced by GitHub Actions app `15368`. After both dispatches, require actual
+   SUCCESS for all13 non-self newest exact-head app-bound contexts, including every
+   dispatch sibling guard, not merely the two queue checks. The fourteenth context,
+   `Migration guarded merge authorization`, is produced by the existing protected
+   guarded lane after these prerequisites pass. Any sibling failure refuses
+   guarded admission; never reuse an older green run or accept skipped. The aggregate dispatch uses `github.sha`
+   and waits for the existing Tools/Promotion lane assertions on that same head; ordinary
+   PR events do not start aggregate work. A skipped aggregate does not satisfy the protected
+   preflight. Wrong-head, foreign-app, pending, failed, or absent results refuse admission.
+   Invoke the existing guarded merge after all13 non-self prerequisites succeed. Its
+   protected-main preflight re-proves those13 before and under the merge lock; the lane
+   then publishes and reads back its fourteenth self-context as SUCCESS before mutation.
+   All14 actual required contexts must therefore succeed before mutation; never post
+   the self-context manually or infer it from dispatch completion. Protected-main lane
+   accounting remains mandatory on both passes. Only after the
+   actual14 mirror is on main can activation pass its live-context coverage gate.
 2. Run `node scripts/configure-merge-queue.mjs`. Default is a read-only dry run that refuses unless
    the owner is an organization, the repository is public, the immutable repository ID matches the
    transfer baseline artifact, the queue workflow is on `main`, every required context including
-   `Merge queue gate` is live, no mutation lane is held, and a migration-bearing main tip already
+   both queue contexts are live and bound to app `15368`, no mutation lane is held, and a migration-bearing main tip already
    carries its exact-SHA rehearsal status. Save the dry-run JSON as evidence.
 3. Inspect the proposed payload independently, then re-run with `--apply`. The tool creates (or
    idempotently updates) exactly the ruleset `main merge queue` and verifies every read-back field.
-4. Read back the ruleset by ID and the branch protection: all prior contexts plus `Merge queue gate`
+4. Read back the ruleset by ID and the branch protection: all prior contexts plus both queue contexts
    remain required, `strict` remains false, administrator enforcement unchanged.
 5. Prove with one documents-only canary PR (Step 9): one synthetic merge group, all required contexts
    green on the group SHA, GitHub — not the guarded lane — performs the merge.
@@ -101,8 +127,33 @@ contexts, or the guarded lane:
    ruleset and verifies it is gone.
 3. The guarded merge lane's `--queue-mode` read then reports `inactive` and direct guarded merges
    resume unchanged. The `merge_group` trigger support and the additive `Merge queue gate` context
-   stay in place (its `pull_request` form keeps ordinary merges green); remove the context later
+   stay in place. Direct-mode PRs use the two-dispatch exact-head bootstrap above when these
+   queue contexts remain required; remove the contexts later
    only through a reviewed settings change if it ever obstructs direct mode.
 
 Rollback never reverses the `popcre` organization transfer; that is a separate owner decision with
 its own authorization (plan §13).
+
+## Inactive queue operation (issue #3987)
+
+While the native queue is inactive, the two queue-specific contexts can be retired
+from classic required checks after assigned review of the exact recoverable payload.
+Ordinary guarded merges retain replacement-run accounting in protected-main
+preflight before lock acquisition and again under the lock. The aggregate identity,
+registered assertion names, and replacement lanes remain unchanged. The aggregate
+runs for merge groups and explicit dispatch; the queue gate retains both events.
+Activation refuses until both queue contexts are restored with their exact producer
+bindings and fresh committed coverage evidence. The prospective settings artifact
+is a proposal, not live readback; the committed mirror is refreshed only after the
+reviewed settings change and actual readback.
+
+Stage A source and negative proof are in `scripts/check-required-checks-preflight.mjs`
+and its test file: "protected merge preflight preserves exact-once runner lane accounting
+after aggregate retirement", "a required registered lane cannot remove the other assertion
+from merge accounting", and "all-attempt listing includes queued replacements and
+newest-name normalization preserves rerun semantics". Trusted-policy invocation before
+and under the merge lock is retained in `guarded-migration-merge.yml`. Positive live
+execution on protected commit2d1d103dc96caf9f78b421c78a25a85ed7aa456a is recorded at
+https://github.com/popcre/shared-db/issues/3987#issuecomment-6023586049.
+
+The PR Guards dispatch must replay all required siblings as real assertions. Its selected positive `agent_contract_pr_number` is checked by a fresh trusted pull-request GET: the PR must remain open, both repository identities must be `popcre/shared-db`, the base must be `main`, and its exact head must equal the workflow run's `GITHUB_SHA`. Missing, moved, closed, foreign, or unknown identities refuse. Collision accounting uses that selected PR; the handoff assertion reads its validated title and body; Domain ownership runs its normal assertion; Destructive SQL scans the selected checkout against `origin/main`. A bare manual run without the selected PR remains red. All thirteen non-self newest exact-head, app-bound contexts must actually succeed after both dispatches; the guarded lane proves and publishes its fourteenth self-context before mutation. All fourteen must actually succeed before mutation; skipped siblings never authorize restoration.

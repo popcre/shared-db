@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3998,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/5",
+  "contract_sha256": "8709e0c09cc6bb4cbc54c896b569ee9b4c7194f1e4efe7e3b88716e82a28f891",
+  "head_sha": "5167e14e9e8820d5a79e4207d2e1e887ef9b430c",
+  "base_sha": "8bc51f3a484862cf8a7f97fa4f378bc95fbd4569",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/pr-guards.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/main-required-status-checks.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/required-check-readback.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "102 tests passed, 19 environmental failures (Windows path doubling, WSL absent); core configure/collision/readback tests all pass."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=334 sources=93 derived_digest=fc88dbec7179"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Current-main...implementation whitespace check exit0."
+    },
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs scripts/lib/required-check-authority.test.mjs scripts/check-handoff-contract.test.mjs scripts/check-destructive-analysis.test.mjs scripts/check-domain-ownership.test.mjs scripts/lib/open-pr-files.test.mjs",
+      "exit_code": 0,
+      "evidence": "205 tests passed, zero failures/skips; eight genuine combined actual workflow/real future checker regression cases included."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Actual static guards pass, including issue1684 EOL reference guard; no net-new dependency. No database execution requested."
+    },
+    {
+      "command": "node --test scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "69 tests passed, zero failures/skips on current-main merged integration."
+    }
+  ],
+  "assumptions_resolved": [
+    "Stage A merged; this first Stage B review head changes no settings and does not fabricate mirror/readback.",
+    "Exact recoverable prospective settings payload preserves twelve app15368 bindings and strict:false. Root may apply only after exact reviewed payload and fresh preconditions/live accounting proof.",
+    "Final actual readback head requires a fresh assigned review before merge.",
+    "First paid review emitted non-recordable REVISE; no approval or settings authority. All justified findings batched: source-bound restoration doc, actual14 pre-change mirror/readback, observed/prospective metadata, StageA test/source reference.",
+    "All first-head CI succeeded; no settings changed. Canonical contract hash and implementation-parent/evidence-only-tail protocol verified through existing validators.",
+    "Supported refresh refused shared test conflict without branch change; resolved exactly by retaining both current-main replay tests/fixtures and own group-only queue assertion. Fresh actual settings still14, all app15368 bindings unchanged; both mirror and dated artifact remain actual14.",
+    "Required aggregate skipped refuses protected preflight; future restoration uses explicit dispatch of both workflows on frozen exact PR branch, preserves app15368 and mandatory lane accounting. Bootstrap capability fix supersedes initial05 review; no settings authority until new exact assigned approval.",
+    "Settings exact reviewed14-to12 application actual12 verified; original provenance retained. Final5377 durable REVISE preserved; fixed deterministic sibling mirror16 expectation to actual12 and bothretired absence; corrected comments and dispatch exactPR input/all14 newestSUCCESS proof. Main refreshedc86; prospectivegen3 published before sibling edit. No further settings write.",
+    "Root held prior approved5d4 after real dispatch bootstrap audit. Prospectivegen4 precedes source fixes: exact trusted open canonical selectedPR/head/base identity reused by collision and handoff; domain dispatch real assertion; destructive dispatch fresh origin/main diff; all14 newest actualSUCCESS still mandatory. No settings write.",
+    "Supported refresh refused additive EOF test conflict without mutation; root approved explicit owned merge preserving both groups/imports verbatim. Current-main b890 implementation and exact two-file evidence tail independently rederived before push.",
+    "5399 durable REVISE retained. F1 truthful command/count repaired; executable bare-manual CLI exits2 without API, real empty-snapshot fresh gathering validates complete file counts/refuses incomplete lists, actual SQL dispatch shell executes fetch/scan and refuses failed fetch, actual Domain dispatch step executes original assertions. CrossPR excludes push; no routing changed for false push premise. Full unchanged source excerpts and validator evidence supplied for next review.",
+    "Prospective signed comment6026004977 precedes root-approved two wording corrections:13 non-self actualSUCCESS prerequisites before guarded admission; existing lane re-proves13 before/underlock and publishes/reads14th selfSUCCESS before mutation; all14 remain mandatory before mutation. Aggregate group+dispatch wording corrected. New test pins unchanged protected workflow sequencing.5405 APPROVE retained historical; fresh final source review required, no608 replay after head moves.",
+    "Root-approved clean upstream refresh432994be preserves all foreign4009 changes without claiming them; supported helper merged and stripped own evidence then refused unsupported explicit check rebind before push. Exact140/188 suites manually re-proved on refreshed implementation81488f98; fresh final source approval required. New4009 freeze retained, no replay/merge/settings action.",
+    "October7 actual Guarded Merge37612863280 refused stale upstream sidecar viewed against currentmain, not own three-dot PRdiff. Rootauthorizedcleanmainrefresh preservingallupstream. Supportedhelperhonorednamedcheckrebindrefusal beforepush; original commands rerun on mergedintegration. No owned source/test changes, no paid draw or safety waiver.",
+    "SeparateCLIrepair4030actuallymerged0f0768; actualnormalcompletionCLI nowworks. Supportedcleanrefresh mergedcurrentmainbeforehonestnamedcheckrebindrefusal; alloriginal140/188/SQL69andstaticSQLchecks reproved on883083 integration. Ownedsourcebyteidentical; no reviewbudgetreset.",
+    "Actualguard3998cd23refusedworkflowdispatchmainSHA beforecollisionchecking. Separatereviewedprotectedrepair4031merged493b78; actualtrustedidentityread+commandonlyPRheadbindingpreserved. Cleanqueueupstreammergewithunchangedownsource;149/197/69testsandstaticSQLPASS. Samehead13replaymustbeprovedfreshbeforeproducer14; no historicalcd23proofclaimedfornewhead.",
+    "Strictmain-ownedtestoverlapcarryREFUSED547head, honoredbeforepush. Prospectivegen5publishedbeforemeaningfulauthored8casecombinedwire/realcheckerregression: actualoldwirefails/newwirepasses3sourceSQLscan/realduplicateandidentityrefusals. Originalpaidstarts5412/5419retained, no budgetrefund/resetasserted; currentprotectedallocatorcapacitymustadmitrealnewauthoredround beforefreshreview."
+  ],
+  "stop_conditions_hit": [],
+  "generation": 5
+}

@@ -1,0 +1,310 @@
+{
+  "schema_version": 1,
+  "issue": 3987,
+  "parent": 3536,
+  "repository": "popcre/shared-db",
+  "branch": "main",
+  "before": {
+    "url": "https://api.github.com/repos/popcre/shared-db/branches/main/protection/required_status_checks",
+    "strict": false,
+    "contexts": [
+      "SQL migration guards",
+      "supabase/tests against an ephemeral database",
+      "Cross-PR object collision",
+      "Destructive SQL outside migrations",
+      "Migration guarded merge authorization",
+      "Merge queue gate",
+      "Cancelled work guard",
+      "Domain ownership",
+      "Handoff contract",
+      "Intake pointer guard",
+      "Migration author lease",
+      "Promotion contract tests (offline)",
+      "Tools offline tests",
+      "Queue-sensitive checks (aggregate)"
+    ],
+    "contexts_url": "https://api.github.com/repos/popcre/shared-db/branches/main/protection/required_status_checks/contexts",
+    "checks": [
+      {
+        "context": "SQL migration guards",
+        "app_id": 15368
+      },
+      {
+        "context": "supabase/tests against an ephemeral database",
+        "app_id": 15368
+      },
+      {
+        "context": "Cross-PR object collision",
+        "app_id": 15368
+      },
+      {
+        "context": "Destructive SQL outside migrations",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration guarded merge authorization",
+        "app_id": 15368
+      },
+      {
+        "context": "Merge queue gate",
+        "app_id": 15368
+      },
+      {
+        "context": "Cancelled work guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Domain ownership",
+        "app_id": 15368
+      },
+      {
+        "context": "Handoff contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration author lease",
+        "app_id": 15368
+      },
+      {
+        "context": "Promotion contract tests (offline)",
+        "app_id": 15368
+      },
+      {
+        "context": "Tools offline tests",
+        "app_id": 15368
+      },
+      {
+        "context": "Queue-sensitive checks (aggregate)",
+        "app_id": 15368
+      }
+    ]
+  },
+  "after": {
+    "strict": false,
+    "checks": [
+      {
+        "context": "SQL migration guards",
+        "app_id": 15368
+      },
+      {
+        "context": "supabase/tests against an ephemeral database",
+        "app_id": 15368
+      },
+      {
+        "context": "Cross-PR object collision",
+        "app_id": 15368
+      },
+      {
+        "context": "Destructive SQL outside migrations",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration guarded merge authorization",
+        "app_id": 15368
+      },
+      {
+        "context": "Cancelled work guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Domain ownership",
+        "app_id": 15368
+      },
+      {
+        "context": "Handoff contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration author lease",
+        "app_id": 15368
+      },
+      {
+        "context": "Promotion contract tests (offline)",
+        "app_id": 15368
+      },
+      {
+        "context": "Tools offline tests",
+        "app_id": 15368
+      }
+    ]
+  },
+  "retired": [
+    "Merge queue gate",
+    "Queue-sensitive checks (aggregate)"
+  ],
+  "preconditions": [
+    "Stage A PR3989 merged on protected main with exact-head APPROVE",
+    "Protected-main preflight runs lane accounting before acquisition and under lock",
+    "Live merge queue inactive",
+    "Fresh live required-context and app-binding list exactly equals this before snapshot"
+  ],
+  "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
+  "method": "PATCH",
+  "recovery": {
+    "strict": false,
+    "checks": [
+      {
+        "context": "SQL migration guards",
+        "app_id": 15368
+      },
+      {
+        "context": "supabase/tests against an ephemeral database",
+        "app_id": 15368
+      },
+      {
+        "context": "Cross-PR object collision",
+        "app_id": 15368
+      },
+      {
+        "context": "Destructive SQL outside migrations",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration guarded merge authorization",
+        "app_id": 15368
+      },
+      {
+        "context": "Merge queue gate",
+        "app_id": 15368
+      },
+      {
+        "context": "Cancelled work guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Domain ownership",
+        "app_id": 15368
+      },
+      {
+        "context": "Handoff contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration author lease",
+        "app_id": 15368
+      },
+      {
+        "context": "Promotion contract tests (offline)",
+        "app_id": 15368
+      },
+      {
+        "context": "Tools offline tests",
+        "app_id": 15368
+      },
+      {
+        "context": "Queue-sensitive checks (aggregate)",
+        "app_id": 15368
+      }
+    ]
+  },
+  "settings_apply": true,
+  "observed_at": "2026-10-06T19:06:27.610509+00:00",
+  "evidence_kind": "observed-before-reviewed-payload-and-actual-after",
+  "stage_a_merge": "eff52bee544e442b8b835ae45bd10807d9058750",
+  "queue_rulesets": [],
+  "effective_branch_rules": [],
+  "observed_fields": [
+    "before",
+    "queue_rulesets",
+    "effective_branch_rules",
+    "actual_after"
+  ],
+  "prospective_fields": [
+    "after",
+    "recovery"
+  ],
+  "payload_shape_note": "before is a full live GET document; after and recovery are exact narrow PATCH request bodies using checks only to retain app producer bindings, as applyUnion emits. Neither request body is an actual post-write readback.",
+  "mirror_baseline_note": "Previous committed16 mirror was stale after earlier retirements; actual14 captured before this write; actual12 mirror and dated readback now follow verified exact reviewed14-to12 application.",
+  "actual_after": {
+    "url": "https://api.github.com/repos/popcre/shared-db/branches/main/protection/required_status_checks",
+    "strict": false,
+    "contexts": [
+      "SQL migration guards",
+      "supabase/tests against an ephemeral database",
+      "Cross-PR object collision",
+      "Destructive SQL outside migrations",
+      "Migration guarded merge authorization",
+      "Cancelled work guard",
+      "Domain ownership",
+      "Handoff contract",
+      "Intake pointer guard",
+      "Migration author lease",
+      "Promotion contract tests (offline)",
+      "Tools offline tests"
+    ],
+    "contexts_url": "https://api.github.com/repos/popcre/shared-db/branches/main/protection/required_status_checks/contexts",
+    "checks": [
+      {
+        "context": "SQL migration guards",
+        "app_id": 15368
+      },
+      {
+        "context": "supabase/tests against an ephemeral database",
+        "app_id": 15368
+      },
+      {
+        "context": "Cross-PR object collision",
+        "app_id": 15368
+      },
+      {
+        "context": "Destructive SQL outside migrations",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration guarded merge authorization",
+        "app_id": 15368
+      },
+      {
+        "context": "Cancelled work guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Domain ownership",
+        "app_id": 15368
+      },
+      {
+        "context": "Handoff contract",
+        "app_id": 15368
+      },
+      {
+        "context": "Intake pointer guard",
+        "app_id": 15368
+      },
+      {
+        "context": "Migration author lease",
+        "app_id": 15368
+      },
+      {
+        "context": "Promotion contract tests (offline)",
+        "app_id": 15368
+      },
+      {
+        "context": "Tools offline tests",
+        "app_id": 15368
+      }
+    ]
+  },
+  "actual_after_observed_at": "2026-10-06T20:16:37.891Z",
+  "apply_review": {
+    "approved_head": "87da05fe37bb3048454bf806c6807d720958b4a1",
+    "applied_head": "7ef7a7987b55c5b4976c0fdd690a55c77561660e",
+    "verdict_ref": "refs/db-review-verdicts/3987-3998-87da05fe37bb3048454bf806c6807d720958b4a1",
+    "verdict_sha": "1a69ec79e3647249fa925b39e82dc9dbb94d1140",
+    "implementation_digest": "9d6653396e3f3eae526e9575dd0a82ee423444b0740a1ae2613daa0a29becdc8",
+    "reviewed_payload_sha256": "9b0a1e77d1eaa7fa333206f9343d8b8c9a7b936ff0def6aba0cdf10db6b85294",
+    "script_sha256": "16b7e97b5bc19cfa11abc56ff1f67dc3216784c233d42a473f1c39de16a86670",
+    "protected_source": "e61e8e7fd3eb05aebd53d6262bf9279fdd7da0b3"
+  }
+}

@@ -5,7 +5,7 @@
 // `merge_group` leaves every merge group pending forever — GitHub waits for a
 // context that never arrives. So the mapping below is the authority tying every
 // required context to the workflow and job that emits it, and proving that
-// emission happens for BOTH `pull_request` and `merge_group` events.
+// emission happens for `merge_group` and, for ordinary required guards, `pull_request`.
 //
 // The context list is derived from TWO sources and must cover both:
 //   1. the committed mirror docs/verification/main-required-status-checks.json
@@ -22,10 +22,11 @@ import { emittedJobNames, jobBlockByName, jobBlocks, jobEvents, stepBlock } from
 
 const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
-function guardedCollisionWire(pr, { fetchFails = false } = {}) {
+function guardedCollisionWire(pr, { fetchFails = false, actualChecker = false, bindHead = true, duplicate = false } = {}) {
   const workflow = readWorkflow('guarded-migration-merge.yml')
-  const block = /          collision_pr="\$\(node[\s\S]*?          GITHUB_SHA="\$REQUESTED_SHA" node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/check-pr-object-collisions\.mjs"/.exec(workflow)?.[0]
+  let block = /          collision_pr="\$\(node[\s\S]*?          GITHUB_SHA="\$REQUESTED_SHA" node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/check-pr-object-collisions\.mjs"/.exec(workflow)?.[0]
   assert.ok(block, 'the actual guarded identity read and collision command must exist')
+  if (!bindHead) block = block.replace('GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"', 'node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"')
   const script = `set -euo pipefail
 node() {
   if [ "$1" = "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" ]; then
@@ -33,6 +34,26 @@ node() {
     [ "$FETCH_FAILS" = 0 ] || return 1
     printf '%s' "$FIXTURE_JSON"
   elif [ "$1" = "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs" ]; then
+    if [ "$ACTUAL_CHECKER" = 1 ]; then
+      command node --input-type=module -e '
+        const { gatherSources, findCollisions } = await import(process.env.CHECKER_URL);
+        const pr = JSON.parse(process.env.FIXTURE_JSON);
+        const calls = [];
+        const sources = gatherSources(process.env, {
+          readPull: () => { calls.push("trusted-GET"); return pr; },
+          load: () => { calls.push("current-and-competing"); return {
+            current: { files: [{ filename: "supabase/migrations/current.sql" }] },
+            others: [{ number: 8, listed: { draft: false, title: "competing", headSha: "c".repeat(40) }, files: [{ filename: "supabase/migrations/other.sql" }] }],
+          }; },
+          readSql: (repo, path) => path.endsWith("current.sql") ? "create table api.wire_current(id int);" : "create table api." + (process.env.DUPLICATE === "1" ? "wire_current" : "wire_other") + "(id int);",
+          baseSource: () => { calls.push("merged-main"); return { label: "main merged source", files: [{ path: "supabase/migrations/main.sql", sql: "create table api.wire_main(id int);" }] }; },
+        });
+        const collisions = findCollisions(sources).collisions;
+        console.log("actual-source-count=" + sources.length + " calls=" + calls.join(",") + " collisions=" + collisions.length);
+        if (collisions.length) process.exitCode = 1;
+      '
+      return
+    fi
     printf 'collision-head=%s\\n' "$GITHUB_SHA"
   else
     command node "$@"
@@ -45,6 +66,8 @@ printf 'workflow-head=%s\\n' "$GITHUB_SHA"
     encoding: 'utf8', timeout: 10000,
     env: { ...process.env, PR_NUMBER: '7', REQUESTED_SHA: 'a'.repeat(40), GITHUB_SHA: 'b'.repeat(40),
       GITHUB_REPOSITORY: 'popcre/shared-db', GITHUB_WORKSPACE: '/synthetic',
+      GITHUB_EVENT_NAME: 'workflow_dispatch', CHECKER_URL: new URL('./check-pr-object-collisions.mjs', import.meta.url).href,
+      ACTUAL_CHECKER: actualChecker ? '1' : '0', DUPLICATE: duplicate ? '1' : '0',
       FIXTURE_JSON: JSON.stringify(pr), FETCH_FAILS: fetchFails ? '1' : '0' },
   })
 }
@@ -87,11 +110,50 @@ test('actual protected guarded collision wire refuses an unreadable PR before ch
   assert.equal(result.status, 1)
   assert.doesNotMatch(result.stdout, /collision-head=/)
 })
+
+const actualGuardedPull = () => ({ ...guardedCollisionPull(), merged: false, base: { ...guardedCollisionPull().base, sha: 'b'.repeat(40) } })
+
+test('combined protected workflow and real dispatch checker reject the old main-head collision invocation', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true, bindHead: false })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not open at the exact canonical workflow head/)
+  assert.doesNotMatch(result.stdout, /actual-source-count=/)
+})
+
+test('combined protected workflow and real dispatch checker scan current, competing, and merged-main sources', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /actual-source-count=3 calls=trusted-GET,current-and-competing,merged-main collisions=0/)
+  assert.match(result.stdout, new RegExp(`workflow-head=${'b'.repeat(40)}`))
+})
+
+test('combined protected workflow and real dispatch checker refuse a real duplicate object collision', () => {
+  const result = guardedCollisionWire(actualGuardedPull(), { actualChecker: true, duplicate: true })
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /actual-source-count=3 .*collisions=1/)
+  assert.doesNotMatch(result.stdout, /workflow-head=/)
+})
+
+for (const [label, mutate] of [
+  ['closed', pr => { pr.state = 'closed' }],
+  ['moved', pr => { pr.head.sha = 'c'.repeat(40) }],
+  ['non-main', pr => { pr.base.ref = 'develop' }],
+  ['already merged', pr => { pr.merged = true }],
+  ['unknown base SHA', pr => { delete pr.base.sha }],
+]) {
+  test(`combined protected workflow and real dispatch checker refuse ${label} identity before scanning`, () => {
+    const pr = actualGuardedPull(); mutate(pr)
+    const result = guardedCollisionWire(pr, { actualChecker: true })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /(?:not the exact open canonical pull request|not open at the exact canonical workflow head)/)
+    assert.doesNotMatch(result.stdout, /actual-source-count=/)
+  })
+}
 const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url), 'utf8'))
 
 // Live on main but not yet in the committed mirror. The mirror is rewritten by
 // scripts/update-required-checks.mjs from the live read-back; it now equals the
-// dated readback artifact below (16 contexts, strict false), so nothing is pending.
+// dated readback artifact below (12 post-write contexts, strict false), so nothing is pending.
 const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the orchestrator marker guard was retired with the role (#3874);
@@ -103,6 +165,7 @@ const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard', 'Agent wor
 // workflow triggers on merge_group. kind 'commit-status': a status is POSTed to
 // an explicit SHA — by the guarded merge lane on the reviewed PR head, and by
 // the queue gate on the synthetic group SHA.
+const QUEUE_ONLY_CONTEXTS = new Set(['Merge queue gate', 'Queue-sensitive checks (aggregate)'])
 const CONTEXT_MAP = {
   'Cancelled work guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cancelled work guard' },
   'Cross-PR object collision': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Cross-PR object collision' },
@@ -130,13 +193,15 @@ test('every mirrored or known-live required context has a mapped emitter', () =>
 
 // Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
 // branch protection. The mirror must carry exactly its contexts and strictness.
-const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20261006.json', import.meta.url), 'utf8'))
 
 test('the committed mirror equals the dated live readback artifact', () => {
   assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())
   assert.equal(READBACK.contextCount, READBACK.contexts.length)
   assert.equal(MIRROR.strict, READBACK.strict)
-  assert.ok(MIRROR.contexts.includes('Queue-sensitive checks (aggregate)'), 'the restored aggregate context left the mirror')
+  for (const context of QUEUE_ONLY_CONTEXTS) assert.ok(!MIRROR.contexts.includes(context), 'inactive queue-only context must be retired from the actual mirror')
+  assert.equal(READBACK.contextCount, 12)
+  assert.ok(READBACK.checks.every(check => check.app_id === 15368))
 })
 
 // #3562 review M-1: the required context "Destructive SQL outside migrations" must
@@ -168,11 +233,11 @@ test('the emitter check matches exact job names, not substrings or comments', ()
   assert.equal(names.has('Tools offline tests'), true)
 })
 
-test('every check-run emitter triggers on pull_request AND merge_group checks_requested', () => {
+test('every check-run emitter retains its required event coverage and merge_group checks_requested', () => {
   for (const [context, spec] of Object.entries(CONTEXT_MAP)) {
     if (spec.kind !== 'check-run') continue
     const text = readWorkflow(spec.workflow)
-    assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
+    if (!QUEUE_ONLY_CONTEXTS.has(context)) assert.match(text, /^ {2}pull_request:$/m, `${spec.workflow} (${context}) lost its pull_request trigger`)
     assert.match(text, /^ {2}merge_group:$/m, `${spec.workflow} (${context}) does not trigger for merge_group`)
     assert.match(text, /^ {4}types: \[checks_requested\]$/m, `${spec.workflow} (${context}) does not pin merge_group checks_requested`)
     // Exact object: a job whose display name (literal, or the default branch of a
@@ -180,17 +245,17 @@ test('every check-run emitter triggers on pull_request AND merge_group checks_re
     assert.ok(emittedJobNames(text).has(spec.job), `${spec.workflow} does not emit a job named exactly "${spec.job}"`)
     // #3746: the JOB bearing the context must itself admit both events. A
     // file-level trigger is not enough once one file holds many gated jobs.
-    assert.deepEqual(requiredJobEventProblems(text, spec.job), [], `${spec.workflow} (${context})`)
+    assert.deepEqual(requiredJobEventProblems(text, spec.job, QUEUE_ONLY_CONTEXTS.has(context) ? ['merge_group'] : undefined), [], `${spec.workflow} (${context})`)
   }
 })
 
-function requiredJobEventProblems(text, name) {
+function requiredJobEventProblems(text, name, requiredEvents = ['pull_request', 'merge_group']) {
   const block = jobBlockByName(text, name)
   if (!block) return [`no job emits "${name}"`]
   const events = jobEvents(block)
   if (events === null) return []
   if (!Array.isArray(events)) return [`job "${name}" has an unrecognised job-level if: ${events}`]
-  return ['pull_request', 'merge_group'].filter((event) => !events.includes(event)).map((event) => `job "${name}" does not run on ${event}`)
+  return requiredEvents.filter((event) => !events.includes(event)).map((event) => `job "${name}" does not run on ${event}`)
 }
 
 test('the job-level event check fails when a required job drops merge_group or pull_request', () => {
@@ -212,7 +277,7 @@ test('pr-guards.yml uses default pull_request types: no ready_for_review (#3746 
   assert.match(onBlock, /^ {2}pull_request:\n {2}merge_group:$/m, 'pull_request must carry no types list')
   assert.ok(!/ready_for_review/.test(onBlock.replace(/^\s*#.*$/gm, '')), 'ready_for_review would start the required aggregate for lane checks it never starts')
   const aggregate = jobEvents(jobBlockByName(text, 'Queue-sensitive checks (aggregate)'))
-  assert.deepEqual(aggregate, ['pull_request', 'merge_group'])
+  assert.deepEqual(aggregate, ['merge_group', 'workflow_dispatch'])
 })
 
 test('no required-context workflow is path-filtered (a filtered required check stays pending forever)', () => {
@@ -258,7 +323,8 @@ test('PR-payload steps defer or re-resolve on merge_group (the payload does not 
 
 test('the queue gate: one-PR identity, ancestry proof, authorization, preview hold, group-SHA status', () => {
   const text = readWorkflow('merge-queue-gate.yml')
-  assert.match(text, /^ {2}pull_request:$/m)
+  assert.doesNotMatch(text, /^ {2}pull_request:$/m)
+  assert.match(text, /^ {2}workflow_dispatch:$/m)
   assert.match(text, /^ {2}merge_group:$/m)
   assert.match(text, /name: Merge queue gate/)
   assert.match(text, /^ {2}statuses: write$/m)
@@ -540,6 +606,16 @@ test('Queue interlock job and the workflow level both grant exactly issues: read
   assert.match(block[1], /^      issues: read\b/m)
 })
 
+test('queue-only checks preserve group capability without ordinary PR waiting', () => {
+  const aggregate = jobBlockByName(readWorkflow('pr-guards.yml'), 'Queue-sensitive checks (aggregate)')
+  assert.deepEqual(jobEvents(aggregate), ['merge_group', 'workflow_dispatch'])
+  assert.match(aggregate, /HEAD_SHA:.*github\.event\.merge_group\.head_sha \|\| github\.sha/)
+  const queue = readWorkflow('merge-queue-gate.yml')
+  assert.doesNotMatch(queue, /^ {2}pull_request:$/m)
+  assert.match(queue, /^ {2}workflow_dispatch:$/m)
+  assert.match(queue, /^ {2}merge_group:\n {4}types: \[checks_requested\]$/m)
+})
+
 // #3536: an explicit replay must inspect the selected PR, never inherited main evidence.
 test('contract replay retains queue admission and validates exact selected PR identity', () => {
   const text = readWorkflow('pr-guards.yml')
@@ -586,6 +662,79 @@ test('manual replay runs base-owned evaluators against exact head evidence', asy
   } finally {rmSync(cwd,{recursive:true,force:true})}
 })
 
+
+test('restoration dispatch runs every required PR Guards sibling with real collision, SQL and handoff inputs', () => {
+  const text=readWorkflow('pr-guards.yml')
+  for (const name of ['Cancelled work guard','Cross-PR object collision','Destructive SQL outside migrations','Domain ownership','Handoff contract','Intake pointer guard']) {
+    assert.ok(jobEvents(jobBlockByName(text,name)).includes('workflow_dispatch'), `${name} must assert on dispatch, never emit skipped`)
+  }
+  const collision=jobBlockByName(text,'Cross-PR object collision')
+  assert.match(stepBlock(collision,'No other open PR replaces the same database object'), /PR_NUMBER:.*github\.event\.pull_request\.number \|\| inputs\.agent_contract_pr_number/)
+  assert.match(stepBlock(collision,'No other open PR replaces the same database object'), /node scripts\/check-pr-object-collisions\.mjs/)
+  const sql=stepBlock(jobBlockByName(text,'Destructive SQL outside migrations'),'Scan SQL added by this change')
+  assert.match(sql,/github\.event_name == 'pull_request' \|\| github\.event_name == 'workflow_dispatch'/)
+  assert.match(sql,/git fetch --no-tags origin main/)
+  assert.match(sql,/--diff-base "origin\/\$\{\{ github\.base_ref \|\| 'main' \}\}"/)
+  const handoff=stepBlock(jobBlockByName(text,'Handoff contract'),'Check the handoff files this pull request touches')
+  assert.match(handoff,/PR_NUMBER:.*inputs\.agent_contract_pr_number/)
+  assert.match(handoff,/readDispatchPull\(\)/)
+  assert.match(handoff,/PR_TITLE=.*jq -r '\.title'/)
+  assert.match(handoff,/PR_BODY=.*jq -r '\.body/)
+  assert.match(handoff,/export PR_TITLE PR_BODY/)
+  assert.match(jobBlockByName(text,'Domain ownership'),/node scripts\/check-domain-ownership\.mjs/)
+})
+
+
+test('actual destructive dispatch shell fetches main and runs scan; failed fetch refuses before scanning', async () => {
+  const {mkdtempSync,writeFileSync,readFileSync,rmSync}=await import('node:fs')
+  const {tmpdir}=await import('node:os')
+  const {join}=await import('node:path')
+  const {spawnSync}=await import('node:child_process')
+  const step=stepBlock(jobBlockByName(readWorkflow('pr-guards.yml'),'Destructive SQL outside migrations'),'Scan SQL added by this change')
+  const script=step.split('        run: |\n')[1].split('\n').map(line=>line.replace(/^ {10}/,'')).join('\n').replace(/\$\{\{ github\.base_ref \|\| 'main' \}\}/g,'main')
+  const dir=mkdtempSync(join(tmpdir(),'queue-dispatch-wire-'));const record=join(dir,'calls')
+  try {
+    writeFileSync(join(dir,'git'),'#!/bin/sh\nprintf "git %s\\n" "$*" >> "$RECORD"\nexit "${FETCH_EXIT:-0}"\n',{mode:0o755})
+    writeFileSync(join(dir,'node'),'#!/bin/sh\nprintf "node %s\\n" "$*" >> "$RECORD"\n',{mode:0o755})
+    for(const fail of [false,true]) {
+      writeFileSync(record,'')
+      const result=spawnSync('/bin/bash',['-c',script],{env:{PATH:dir,GITHUB_EVENT_NAME:'workflow_dispatch',RECORD:record,FETCH_EXIT:fail?'42':'0'},encoding:'utf8'})
+      assert.equal(result.status,fail?42:0,result.stderr)
+      assert.equal(readFileSync(record,'utf8'),fail?'git fetch --no-tags origin main\n':'git fetch --no-tags origin main\nnode scripts/check-destructive-analysis.mjs --diff-base origin/main\n')
+    }
+  } finally {rmSync(dir,{recursive:true,force:true})}
+  assert.ok(!jobEvents(jobBlockByName(readWorkflow('pr-guards.yml'),'Cross-PR object collision')).includes('push'))
+})
+
+
+test('actual Domain dispatch step executes the original CLI assertion', async () => {
+  const {spawnSync}=await import('node:child_process')
+  const job=jobBlockByName(readWorkflow('pr-guards.yml'),'Domain ownership')
+  const step=stepBlock(job,'Enforce DB Data Admin domain ownership')
+  const script=step.split('        run: |\n')[1].split('\n').map(line=>line.replace(/^ {10}/,'')).join('\n')
+  assert.match(script,/node scripts\/check-domain-ownership\.mjs/)
+  const result=spawnSync('/bin/bash',['-e','-c',script],{cwd:new URL('..',import.meta.url),env:{PATH:process.env.PATH,GITHUB_EVENT_NAME:'workflow_dispatch'},encoding:'utf8'})
+  assert.equal(result.status,0,result.stderr)
+  assert.match(result.stdout,/passed|PASS|OK/i)
+})
+
+
+test('restoration preserves13 pre-self prerequisites and guarded14th success before mutation', () => {
+  const doc=readFileSync(new URL('../docs/merge-queue-operation.md',import.meta.url),'utf8')
+  assert.match(doc,/SUCCESS for all13 non-self newest exact-head app-bound contexts/)
+  assert.match(doc,/All14 actual required contexts must therefore succeed before mutation/)
+  assert.match(doc,/never post\s+the self-context manually/)
+  assert.match(doc,/runs for merge groups and explicit dispatch/)
+  const guarded=readWorkflow('guarded-migration-merge.yml')
+  const preflight=[...guarded.matchAll(/node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/check-required-checks-preflight\.mjs"/g)].map(match=>match.index)
+  assert.ok(preflight.length>=2,`expected at least 2 protected preflight passes, found ${preflight.length}`)
+  const publish=guarded.indexOf("-f state=success -f context='Migration guarded merge authorization'")
+  const readback=guarded.indexOf('test "$observed" = \'success\'')
+  const mutate=guarded.indexOf('            gh pr merge ')
+  assert.ok(preflight.filter(index=>index<publish).length>=2,'both protected passes precede self authorization')
+  assert.ok(publish<readback && readback<mutate,'self success must be read back before real mutation')
+})
+
 test('retained14 runs before every mutation without widening authority secret environments',()=>{
   const workflow=readWorkflow('guarded-migration-merge.yml')
   const guarded=stepBlock(workflow,'Re-prove the head and merge while the lock is held')
@@ -605,15 +754,15 @@ test('retained14 runs before every mutation without widening authority secret en
 })
 
 test('all job executable scripts use protected source before any credential and while scratch exists',()=>{
- const workflow=readWorkflow('guarded-migration-merge.yml')
- assert.doesNotMatch(workflow,/\b(?:node|bash|python3?) scripts\//)
- assert.doesNotMatch(workflow,/node "\$GITHUB_WORKSPACE\/scripts\//)
- const binding=workflow.indexOf('Bind protected executable source and PR data before credentials')
- const firstAuthority=workflow.indexOf('AUTHORITY_TOKEN:')
- assert.ok(binding>=0&&binding<firstAuthority)
- assert.match(workflow,/--data-root "\$GITHUB_WORKSPACE" --head-sha/)
- for(const name of ['NODE_OPTIONS','BASH_ENV','PYTHONPATH','LD_PRELOAD','GIT_EXTERNAL_DIFF']) assert.match(workflow,new RegExp(name+": ''"))
- assert.match(workflow,/GIT_CONFIG_GLOBAL: \/dev\/null/)
- assert.match(workflow,/check-sql\.sh" --data-root/)
- assert.match(workflow,/check-production-verification-sidecars\.mjs" --base origin\/main --data-root/)
+  const workflow=readWorkflow('guarded-migration-merge.yml')
+  assert.doesNotMatch(workflow,/\b(?:node|bash|python3?) scripts\//)
+  assert.doesNotMatch(workflow,/node "\$GITHUB_WORKSPACE\/scripts\//)
+  const binding=workflow.indexOf('Bind protected executable source and PR data before credentials')
+  const firstAuthority=workflow.indexOf('AUTHORITY_TOKEN:')
+  assert.ok(binding>=0&&binding<firstAuthority)
+  assert.match(workflow,/--data-root "\$GITHUB_WORKSPACE" --head-sha/)
+  for(const name of ['NODE_OPTIONS','BASH_ENV','PYTHONPATH','LD_PRELOAD','GIT_EXTERNAL_DIFF']) assert.match(workflow,new RegExp(name+": ''"))
+  assert.match(workflow,/GIT_CONFIG_GLOBAL: \/dev\/null/)
+  assert.match(workflow,/check-sql\.sh" --data-root/)
+  assert.match(workflow,/check-production-verification-sidecars\.mjs" --base origin\/main --data-root/)
 })

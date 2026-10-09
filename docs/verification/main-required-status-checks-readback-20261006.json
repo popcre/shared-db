@@ -1,0 +1,73 @@
+{
+  "_why": "Actual post-write classic required-status-checks readback after assigned-reviewed issue3987 Stage B retirement. Informational only, not merge authority.",
+  "repo": "popcre/shared-db",
+  "branch": "main",
+  "capturedIso": "2026-10-06T20:16:37.891Z",
+  "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
+  "strict": false,
+  "contexts": [
+    "Cancelled work guard",
+    "Cross-PR object collision",
+    "Destructive SQL outside migrations",
+    "Domain ownership",
+    "Handoff contract",
+    "Intake pointer guard",
+    "Migration author lease",
+    "Migration guarded merge authorization",
+    "Promotion contract tests (offline)",
+    "SQL migration guards",
+    "Tools offline tests",
+    "supabase/tests against an ephemeral database"
+  ],
+  "checks": [
+    {
+      "context": "Cancelled work guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Cross-PR object collision",
+      "app_id": 15368
+    },
+    {
+      "context": "Destructive SQL outside migrations",
+      "app_id": 15368
+    },
+    {
+      "context": "Domain ownership",
+      "app_id": 15368
+    },
+    {
+      "context": "Handoff contract",
+      "app_id": 15368
+    },
+    {
+      "context": "Intake pointer guard",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration author lease",
+      "app_id": 15368
+    },
+    {
+      "context": "Migration guarded merge authorization",
+      "app_id": 15368
+    },
+    {
+      "context": "Promotion contract tests (offline)",
+      "app_id": 15368
+    },
+    {
+      "context": "SQL migration guards",
+      "app_id": 15368
+    },
+    {
+      "context": "supabase/tests against an ephemeral database",
+      "app_id": 15368
+    },
+    {
+      "context": "Tools offline tests",
+      "app_id": 15368
+    }
+  ],
+  "contextCount": 12
+}

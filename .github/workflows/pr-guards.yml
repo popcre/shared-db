@@ -5,15 +5,12 @@
 # spending shared runner capacity and GITHUB_TOKEN budget. The guards below
 # were separate files with identical shape; they are now jobs here.
 #
-# REQUIRED CONTEXTS ARE UNCHANGED. A job inside a workflow reports its plain
-# job `name:` as its check-run context, so every required context emitted
-# here ("Agent work contract", "Cancelled work guard", "Domain ownership",
-# "Handoff contract", "Intake pointer guard", "Destructive SQL outside
-# migrations", "Cross-PR object collision", "Orchestrator marker guard",
-# "Queue-sensitive checks (aggregate)") is byte-identical to before. Jobs are
-# moved in directly, never called through `workflow_call`, because a reusable
-# workflow call prefixes the context ("caller / callee") and would break every
-# required check.
+# STABLE CONTEXT NAMES. Jobs report plain `name:` check-run contexts. Current
+# required guards here are Cancelled work guard, Domain ownership, Handoff
+# contract, Intake pointer guard, Destructive SQL outside migrations, and
+# Cross-PR object collision. Agent work contract is advisory; the queue aggregate
+# is retained for merge-group and explicit restoration dispatch. Jobs moved
+# directly rather than through workflow_call, which would prefix their names.
 #
 # PER-JOB EVENTS. The workflow triggers on the union of the moved workflows'
 # events; each job's `if:` keeps exactly the events its old workflow ran on,
@@ -41,8 +38,8 @@ name: PR Guards
 on:
   # Default pull_request types (opened, synchronize, reopened) on purpose. The
   # old pr-object-collision.yml also ran on ready_for_review, but a shared
-  # trigger cannot be per-job, and ready_for_review would start the required
-  # Queue-sensitive aggregate for lane checks that event never starts.
+  # trigger cannot be per-job. This shared workflow keeps the standard
+  # pull-request events; the queue aggregate has its own group/dispatch gate.
   # A draft PR's collision verdict comes from its latest push instead.
   pull_request:
   merge_group:
@@ -375,7 +372,7 @@ jobs:
   domain-ownership:
     name: Domain ownership
     needs: route
-    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) }}
+    if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
     runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
@@ -461,8 +458,15 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           MERGE_GROUP_PR: ${{ steps.queue.outputs.pr_number }}
+          PR_NUMBER: ${{ inputs.agent_contract_pr_number }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            facts="$(node --input-type=module -e 'import { readDispatchPull } from "./scripts/check-pr-object-collisions.mjs"; console.log(JSON.stringify(readDispatchPull()))')"
+            PR_TITLE="$(printf '%s' "$facts" | jq -r '.title')"
+            PR_BODY="$(printf '%s' "$facts" | jq -r '.body // ""')"
+            export PR_TITLE PR_BODY
+          fi
           if [ -n "${MERGE_GROUP_PR:-}" ]; then
             git fetch --no-tags origin main
             PR_TITLE="$(node scripts/gh-read.mjs pr view "$MERGE_GROUP_PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)"
@@ -542,7 +546,7 @@ jobs:
   # no secrets, no database contact.
   destructive-sql:
     name: Destructive SQL outside migrations
-    if: contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name)
+    if: contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name)
     permissions:
       contents: read
       issues: read
@@ -574,10 +578,13 @@ jobs:
           permission-pull-requests: read
           permission-statuses: read
       - name: Scan SQL added by this change
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-        run: node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref }}"
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then git fetch --no-tags origin main; fi
+          node scripts/check-destructive-analysis.mjs --diff-base "origin/${{ github.base_ref || 'main' }}"
       - name: Scan SQL added by the queued group
         if: github.event_name == 'merge_group'
         env:
@@ -746,6 +753,7 @@ jobs:
         # so the proof still happens exactly once per merge (#2530).
         if: github.event_name != 'merge_group'
         env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.agent_contract_pr_number }}
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}
           # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
@@ -759,12 +767,13 @@ jobs:
   # "Tools offline tests" and "Promotion contract tests (offline)" can be re-run on another free
   # GitHub-hosted lane (workflow_dispatch input `lane`) when the preferred runner never picks the job
   # up. A replacement run reports "<context> [lane <label>]", so this job is the one stable context:
-  # it passes only when every registered assertion has exactly one successful run for the PR head,
-  # and it refuses when an assertion is absent, duplicated or failed. Lanes are declared in
+  # it runs for a synthetic queue-group head or explicit restoration dispatch and passes when each assertion has one successful run;
+  # protected-main guarded merge preflight enforces the same accounting on ordinary PR heads.
+  # It refuses absent, duplicated or failed assertions. Lanes are declared in
   # scripts/orchestrator-flow/runner-lanes.json. Read-only: it only lists check runs.
   queue-sensitive-aggregate:
     name: Queue-sensitive checks (aggregate)
-    if: contains(fromJSON('["pull_request", "merge_group"]'), github.event_name)
+    if: contains(fromJSON('["merge_group", "workflow_dispatch"]'), github.event_name)
     permissions:
       contents: read
       checks: read
@@ -781,7 +790,7 @@ jobs:
           REPO: ${{ github.repository }}
           # On merge_group the asserted head is the synthetic group commit,
           # which is where the lane jobs report when triggered by the group.
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: node scripts/orchestrator-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50
 
   # ---- moved from .github/workflows/pii-forward-guard.yml (#3746) ----

@@ -4625,21 +4625,6 @@ CATALOG_CONTRACTS["coldlion_unit_5b_landing_v2"] = (
 )
 
 
-# Issue #3869, migration 20261009191951. The migration moves the DesignFlow sandbox's
-# 2026-09-29 coldlion table copy aside and is a no-op wherever coldlion already has the
-# canonical landing shape. Either way the durable state it guarantees is the canonical
-# shape: order_history_line with its surrogate id and window_ledger with stage_code.
-COLDLION_SANDBOX_COPY_SET_ASIDE_CONTRACT_V1 = (
-    "exists (select 1 from pg_attribute a where a.attrelid=to_regclass('coldlion.order_history_line')"
-    " and a.attname='id' and a.attnum>0 and not a.attisdropped)"
-    " and exists (select 1 from pg_attribute a where a.attrelid=to_regclass('coldlion.window_ledger')"
-    " and a.attname='stage_code' and a.attnum>0 and not a.attisdropped)"
-)
-CATALOG_CONTRACTS["coldlion_sandbox_copy_set_aside_v1"] = (
-    COLDLION_SANDBOX_COPY_SET_ASIDE_CONTRACT_V1
-)
-
-
 # Issue #2988. api.dam_order_list must keep invoker semantics while reading the
 # two party display names through narrow authenticated-only directories, so a
 # signed-in PopDAM user with no app.user_role row stops paying a per-row

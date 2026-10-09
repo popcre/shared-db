@@ -4,9 +4,9 @@
   "migration_sha256": "df4d10a3586d3ed8e6fd5d7dcf808914e7abbae099ca406598026319bbf423f0",
   "checks": [
     {
-      "id": "coldlion_sandbox_copy_set_aside_v1",
+      "id": "coldlion_sandbox_copy_set_aside_landing_shape",
       "kind": "catalog_contract",
-      "contract": "coldlion_sandbox_copy_set_aside_v1",
+      "contract": "coldlion_unit_5b_landing_v2",
       "expected_count": 1
     }
   ]

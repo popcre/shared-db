@@ -150,9 +150,13 @@ export async function main(argv = process.argv.slice(2)) {
  * never skip that month's remaining windows. A failed window counts as NOT empty, so an
  * outage can never end the scan early and is reported through `failures`.
  */
+/** Consecutive failed forward windows after which the run stops calling (it stays red). */
+export const FORWARD_MAX_CONSECUTIVE_FAILURES = 4;
+
 export async function forwardScan({ args, apiKey, failures, load = loadWindowScope }) {
   const landedByMonth = {};
   const result = { windows: 0, lines: 0, stoppedAt: null };
+  let consecutiveFailures = 0;
   const track = [windowContaining(args.today)];
   const later = forwardWindows(args.today);
   let next = later.next();
@@ -176,12 +180,22 @@ export async function forwardScan({ args, apiKey, failures, load = loadWindowSco
         sealed: false,
       });
       landed = loadedWindow.summary.lines;
+      consecutiveFailures = 0;
       result.lines += landed;
       console.log(`${window.from}..${window.to} /orderHistory forward (unsealed) ${loadedWindow.fetched.rows} row(s), ${landed} line(s)`);
     } catch (error) {
       landed = 1; // never let a failure look like an empty month
       failures.push(`${window.from} /orderHistory forward: ${error.message}`);
       console.error(`${window.from} /orderHistory forward FAILED: ${error.message}`);
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= FORWARD_MAX_CONSECUTIVE_FAILURES) {
+        // A vendor or database outage: stop hammering, but never as an "empty" stop --
+        // the failures above already make the run red, and the next run starts over.
+        failures.push(`forward scan aborted after ${consecutiveFailures} consecutive failed windows`);
+        console.error(`forward scan aborted after ${consecutiveFailures} consecutive failed windows`);
+        result.aborted = true;
+        break;
+      }
     }
     result.windows += 1;
     recordStagedWindow(landedByMonth, window, landed);
@@ -191,7 +205,7 @@ export async function forwardScan({ args, apiKey, failures, load = loadWindowSco
       break;
     }
   }
-  if (!result.stoppedAt) console.log(`forward scan reached the horizon after ${result.windows} window(s)`);
+  if (!result.stoppedAt && !result.aborted) console.log(`forward scan reached the horizon after ${result.windows} window(s)`);
   return result;
 }
 

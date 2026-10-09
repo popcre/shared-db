@@ -100,7 +100,9 @@ jobs:
         run: |
           set -euo pipefail
           [ "$COLDLION_EXPECTED_PROJECT_REF" = "xupnyeifmpsacrqahwwm" ] || { echo "::error::target is not the DesignFlow sandbox"; exit 1; }
-          [ -n "${PREVIEW_PROJECT_REF// /}" ] || { echo "::error::repository variable PREVIEW_PROJECT_REF is unset; the sandbox cannot be proven distinct from preview"; exit 1; }
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then
+            echo "::error::repository variable PREVIEW_PROJECT_REF is unset; the sandbox cannot be proven distinct from preview"; exit 1
+          fi
           [ "$COLDLION_EXPECTED_PROJECT_REF" != "$PREVIEW_PROJECT_REF" ] || { echo "::error::target is the shared PREVIEW branch"; exit 1; }
           [ -n "${SANDBOX_PASSWORD:-}" ] || { echo "::error::SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX is not set."; exit 1; }
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }

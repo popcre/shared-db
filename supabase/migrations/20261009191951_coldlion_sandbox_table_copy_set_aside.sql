@@ -136,7 +136,7 @@ begin
   create schema coldlion_sandbox_copy_20260929;
   comment on schema coldlion_sandbox_copy_20260929 is
     'DesignFlow sandbox only: the 2026-09-29 table copy of coldlion, moved aside unchanged by migration 20261009191951 (issue #3869) so the canonical landing tables could be created. Read-only archive; not written by any loader.';
-  revoke all on schema coldlion_sandbox_copy_20260929 from public;
+  revoke all on schema coldlion_sandbox_copy_20260929 from public, anon, authenticated, service_role;
 
   alter table coldlion.change_log set schema coldlion_sandbox_copy_20260929;
   alter table coldlion.customer set schema coldlion_sandbox_copy_20260929;
@@ -157,7 +157,7 @@ begin
   alter table coldlion.window_ledger set schema coldlion_sandbox_copy_20260929;
 
   -- Read-only archive: no API role keeps any privilege on the moved tables.
-  revoke all on all tables in schema coldlion_sandbox_copy_20260929 from public, anon, authenticated;
+  revoke all on all tables in schema coldlion_sandbox_copy_20260929 from public, anon, authenticated, service_role;
 
   -- Nothing at all may remain: tables, their indexes, owned sequences and toast move
   -- together, so any leftover relation (a free sequence included) is a refusal.

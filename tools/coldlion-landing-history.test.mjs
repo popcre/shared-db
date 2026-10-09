@@ -906,7 +906,7 @@ test("--forward is parsed and --today drives the closed-window clamp", () => {
   assert.equal(args.to, "2026-10-05");
 });
 
-async function scanWith(linesByMonth, { failMonth } = {}) {
+async function scanWith(linesByMonth, { failMonth, failWindows = [] } = {}) {
   const seen = [];
   const failures = [];
   const result = await forwardScan({
@@ -918,7 +918,7 @@ async function scanWith(linesByMonth, { failMonth } = {}) {
       assert.equal(scope.endpoint, "/orderHistory");
       seen.push(window.from);
       const month = window.from.slice(0, 7);
-      if (month === failMonth) throw new Error("vendor down");
+      if (month === failMonth || failWindows.includes(window.from)) throw new Error("vendor down");
       const lines = linesByMonth[month] ?? 0;
       return { fetched: { rows: lines }, summary: { lines } };
     },
@@ -937,11 +937,22 @@ test("the forward scan starts at the OPEN current window and stops after two emp
   assert.equal(lastFeb, 4, "an empty month is judged only after ALL its windows were read");
 });
 
+test("a forward outage stops after a bounded run of failures and stays red", async () => {
+  const { seen, failures, result } = await scanWith({}, { failMonth: "2026-10" });
+  assert.equal(seen.length, 4);
+  assert.equal(result.aborted, true);
+  assert.equal(result.stoppedAt, null, "an outage is never an empty-month stop");
+  assert.ok(failures.some((f) => /aborted after 4 consecutive/.test(f)));
+});
+
 test("a failed forward window never counts as an empty month", async () => {
-  const { seen, failures } = await scanWith({ "2026-10": 5 }, { failMonth: "2026-11" });
+  // November would be empty, but one of its windows failed: it is NOT an empty month, so
+  // the scan runs through December and January before two empty months end it.
+  const novemberWindow = windowAtIndex(windowContaining("2026-11-10").index).from;
+  const { seen, failures } = await scanWith({ "2026-10": 5 }, { failWindows: [novemberWindow] });
   const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
   assert.deepEqual(months.slice(-2), ["2026-12", "2027-01"]);
-  assert.ok(failures.length > 0);
+  assert.equal(failures.length, 1);
 });
 
 // ---------------------------------------------------------------------------------

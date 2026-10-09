@@ -97,17 +97,21 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
 // A merged pull request whose body never produced a GitHub closing link cannot
 // gain one after merge, so its post-merge preview/production routes refuse
 // forever. An operator names the binding explicitly as "PR:ISSUE" (workflow
-// input merged_pr_issue_binding). It applies only to that exact merged PR, only
-// when GitHub reports zero closing links, and only after independent records
-// agree: the PR body's single "Work issue #N" line, any issue-N branch name,
+// input merged_pr_issue_binding). For the merged-PR review verdict gate
+// (mergedPrReviewTarget), a real GitHub closing link that matches the bound
+// issue is trusted without evidence-pair verification — the same trust
+// closingIssuesForPr and readReviewerOperationRoute already extend. When no
+// real link exists, or the link disagrees, the full verification path runs:
+// the PR body's single "Work issue #N" line, any issue-N branch name,
 // the merged head's .agent/completion.json (work_issue and pr), the PR's
 // migration versions equal to that record, and a permanent refs/db-claims
-// reservation for every version. Any mismatch, an unmerged PR, or a real closing
-// link that disagrees refuses, and so does a closed work issue or a renamed,
-// copied, or removed migration file. The reservation check proves each version
-// was issued by the claim allocator; it does not by itself tie the version to
-// this issue. That tie is the PR body, the completion record, and the unchanged
-// downstream issue admission, which still checks the declared objects.
+// reservation for every version. Any mismatch, an unmerged PR, or a real
+// closing link that disagrees refuses, and so does a closed work issue or a
+// renamed, copied, or removed migration file. The reservation check proves each
+// version was issued by the claim allocator; it does not by itself tie the
+// version to this issue. That tie is the PR body, the completion record, and
+// the unchanged downstream issue admission, which still checks the declared
+// objects.
 export function parseMergedPrIssueBinding(value) {
   const match=/^\s*([1-9]\d*):([1-9]\d*)\s*$/.exec(String(value??''))
   if(!match)throw new LaneError('merged PR issue binding must be exactly PR:ISSUE')

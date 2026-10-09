@@ -200,7 +200,7 @@ values
   ('${runId}', ${literal(scope.endpoint)}, ${literal(companyCode)},
    jsonb_build_object('fromDate', ${literal(window.from)}, 'toDate', ${literal(window.to)}${
      scope.stage ? `, 'stageCode', ${literal(scope.stage)}` : ""
-   }),
+   }${sealed ? "" : ", 'unsealedForward', true"}),
    date ${literal(window.from)}, date ${literal(window.to)},
    'failed', ${literal(requestedBy)}, now(), now(),
    ${error?.httpStatus ?? "null"}, ${error?.bodyStatus ?? "null"}, ${literal(message)})

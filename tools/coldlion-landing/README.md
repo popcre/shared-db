@@ -172,8 +172,11 @@ open current week and every later grid window. Those windows are loaded UNSEALED
 append-only `order_history_line` / component / document rows and a `sync_run` row
 (`request_params.unsealedForward = true`), but no `window_ledger` row and no page evidence,
 so each window is still loaded sealed, with its full page proof, once it closes. A changed
-line lands as a new version; an identical one is absorbed by the identity constraints. The
-scan stops after two consecutive start-date months that land no line (a failed window never
+line lands as a new version; an identical one is absorbed by the identity constraints, so it
+keeps the `run_id`, `fetched_at` and ColdLion stamps (`created_time`, `mod_time`, ...) of the
+FIRST load that saw it, usually a forward one. Stamps are outside `line_source_hash`, so a
+change to the stamps alone does not create a new version. `--today YYYY-MM-DD` overrides the
+scan date for tests and rehearsal; no workflow passes it. The scan stops after two consecutive start-date months that land no line (a failed window never
 counts as empty), or at the 18-month horizon shared with the order-intake poll
 (`lib/order-intake-windows.mjs`). Production history is never forward-loaded.
 

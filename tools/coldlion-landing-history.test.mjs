@@ -923,3 +923,43 @@ test("a failed forward window never counts as an empty month", async () => {
   assert.deepEqual(months.slice(-2), ["2026-12", "2027-01"]);
   assert.ok(failures.length > 0);
 });
+
+// ---------------------------------------------------------------------------------
+// The DesignFlow sandbox sync workflow (#3869): the third sanctioned writer
+// ---------------------------------------------------------------------------------
+
+const SANDBOX_REF = "xupnyeifmpsacrqahwwm";
+const sandboxSync = readWorkflow("coldlion-landing-sync-sandbox.yml");
+
+test("the sandbox sync can only target the DesignFlow sandbox", () => {
+  const declarations = sandboxSync.match(/COLDLION_EXPECTED_PROJECT_REF: (\S+)/g) ?? [];
+  assert.deepEqual(declarations, [`COLDLION_EXPECTED_PROJECT_REF: ${SANDBOX_REF}`]);
+  assert.doesNotMatch(sandboxSync, new RegExp(PRODUCTION_REF), "never names production");
+  assert.doesNotMatch(sandboxSync, /SUPABASE_DB_URL_PRODUCTION|DATABASE_URL: \$\{\{/, "no production or injected URL secret");
+  assert.match(sandboxSync, /environment: designflow-sandbox/);
+  assert.match(sandboxSync, /secrets\.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX/);
+});
+
+test("the sandbox sync cannot be reached by a push, a pull request or a fork", () => {
+  const on = sandboxSync.slice(sandboxSync.indexOf("\non:"), sandboxSync.indexOf("\njobs:"));
+  assert.doesNotMatch(on, /pull_request|push:/);
+  assert.match(on, /workflow_dispatch/);
+  assert.match(on, /cron: '30 5 \* \* \*'/);
+});
+
+test("the sandbox sync shares the one sandbox writer lock and never cancels a run", () => {
+  assert.match(sandboxSync, /concurrency:\n\s+group: designflow-sandbox-migrations\n\s+cancel-in-progress: false/);
+  assert.match(readWorkflow("designflow-sandbox-migrations.yml"), /group: designflow-sandbox-migrations/);
+});
+
+test("the sandbox sync runs the offline tests first, masks the password and bounds the backfill", () => {
+  assert.ok(sandboxSync.indexOf("node --test") < sandboxSync.indexOf("name: Sync"));
+  assert.match(sandboxSync, /::add-mask::/);
+  assert.doesNotMatch(sandboxSync, /echo[^\n]*\$SANDBOX_PASSWORD/);
+  assert.match(sandboxSync, /--from "\$FROM" --limit "\$LIMIT"/);
+  assert.match(sandboxSync, /--windows "\$WINDOWS" --forward/);
+});
+
+test("--today is validated", () => {
+  assert.throws(() => parseSyncArgs(["--today", "2026-13-40"]), /--today/);
+});

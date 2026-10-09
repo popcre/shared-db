@@ -71,6 +71,61 @@ begin
     raise exception '#3869/20261009191951: coldlion holds functions or free-standing types; not the known copy';
   end if;
 
+  -- Dependents OUTSIDE coldlion (the #2482 guard set). A moved table carries its
+  -- dependents with it by OID, so each kind is either refused or explicitly accounted for.
+  -- The ONE expected dependent is plm.v_prod_order_sales_order_link (migrations
+  -- 20261002135053 .. 20261009170724, already in the sandbox ledger): it follows the copy
+  -- into the archive schema here, and the sandbox apply re-executes 20261009170724 in the
+  -- same transaction, after the canonical tables exist, so the view is re-bound to them
+  -- before commit (that apply's post-check refuses any reference left to the archive).
+  select string_agg(distinct rw.ev_class::regclass::text, ', ') into v_other
+    from pg_depend dep
+    join pg_rewrite rw on rw.oid = dep.objid
+    join pg_class c on c.oid = dep.refobjid
+   where dep.classid = 'pg_rewrite'::regclass
+     and c.relnamespace = 'coldlion'::regnamespace
+     and rw.ev_class is distinct from to_regclass('plm.v_prod_order_sales_order_link')
+     and (select relnamespace from pg_class where oid = rw.ev_class) <> 'coldlion'::regnamespace;
+  if v_other is not null then
+    raise exception '#3869/20261009191951: unexpected views depend on the coldlion copy: %', v_other;
+  end if;
+
+  select string_agg(conname || ' on ' || conrelid::regclass::text, ', ') into v_other
+    from pg_constraint
+   where contype = 'f'
+     and confrelid in (select oid from pg_class where relnamespace = 'coldlion'::regnamespace)
+     and conrelid not in (select oid from pg_class where relnamespace = 'coldlion'::regnamespace);
+  if v_other is not null then
+    raise exception '#3869/20261009191951: foreign keys from outside reference the coldlion copy: %', v_other;
+  end if;
+
+  select string_agg(p.oid::regprocedure::text, ', ') into v_other
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname not in ('pg_catalog', 'information_schema')
+     and p.prokind in ('f', 'p')
+     and p.prosrc ~* '\mcoldlion\.';
+  if v_other is not null then
+    raise exception '#3869/20261009191951: routines reference coldlion objects: %', v_other;
+  end if;
+
+  select string_agg(pol.polname || ' on ' || pol.polrelid::regclass::text, ', ') into v_other
+    from pg_policy pol
+   where concat_ws(' ', pg_get_expr(pol.polqual, pol.polrelid), pg_get_expr(pol.polwithcheck, pol.polrelid))
+         ~* '\mcoldlion\.'
+      or pol.polrelid in (select oid from pg_class where relnamespace = 'coldlion'::regnamespace);
+  if v_other is not null then
+    raise exception '#3869/20261009191951: policies reference the coldlion copy: %', v_other;
+  end if;
+
+  select string_agg(pub.pubname, ', ') into v_other
+    from pg_publication_rel pr
+    join pg_publication pub on pub.oid = pr.prpubid
+   where pr.prrelid in (select oid from pg_class where relnamespace = 'coldlion'::regnamespace);
+  if v_other is not null then
+    raise exception '#3869/20261009191951: publications include the coldlion copy: %', v_other;
+  end if;
+
   create schema coldlion_sandbox_copy_20260929;
   comment on schema coldlion_sandbox_copy_20260929 is
     'DesignFlow sandbox only: the 2026-09-29 table copy of coldlion, moved aside unchanged by migration 20261009191951 (issue #3869) so the canonical landing tables could be created. Read-only archive; not written by any loader.';
@@ -93,6 +148,25 @@ begin
   alter table coldlion.sync_run set schema coldlion_sandbox_copy_20260929;
   alter table coldlion.vendor set schema coldlion_sandbox_copy_20260929;
   alter table coldlion.window_ledger set schema coldlion_sandbox_copy_20260929;
+
+  -- Read-only archive: no API role keeps any privilege on the moved tables.
+  revoke all on coldlion_sandbox_copy_20260929.change_log from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.customer from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.item_detail from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.item_header from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.item_merch_group from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.merch_group_detail from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.merch_group_header from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.order_history_component from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.order_history_line from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.prod_history_component from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.prod_history_last_lookup from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.prod_history_line from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.salesperson from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.season from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.sync_run from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.vendor from public, anon, authenticated;
+  revoke all on coldlion_sandbox_copy_20260929.window_ledger from public, anon, authenticated;
 
   if exists (select 1 from pg_class where relnamespace = 'coldlion'::regnamespace and relkind in ('r', 'p', 'v', 'm')) then
     raise exception '#3869/20261009191951 post-check: relations remain in coldlion after the move';

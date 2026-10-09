@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The scheduled ongoing history sync.
 //
-//   node tools/coldlion-landing/sync-history.mjs [--windows 3] [--to 2026-09-07]
+//   node tools/coldlion-landing/sync-history.mjs [--windows 3] [--to 2026-09-07] [--forward]
+//                                                [--today YYYY-MM-DD]   (tests/rehearsal: the scan date)
 //
 // It re-fetches the most recent N CLOSED grid windows every run, because a window that is
 // already loaded is skipped and a window that is not is completed.
@@ -42,7 +43,7 @@ import {
   forwardWindows,
   recordStagedWindow,
 } from "./lib/order-intake-windows.mjs";
-import { windowContaining } from "./lib/grid.mjs";
+import { parseIsoDate, windowContaining } from "./lib/grid.mjs";
 
 export const DEFAULT_WINDOWS = 3;
 
@@ -67,6 +68,7 @@ export function parseArgs(argv) {
   // LOAD and is clamped to a window that has already closed. A future `--to` must
   // never be obeyed: the vendor returns an empty envelope, completion is "proved",
   // and an unloaded week is silently sealed as loaded with zero rows.
+  if (args.today !== undefined) parseIsoDate(args.today, "--today");
   args.today ??= isoDate(new Date());
   const lastClosed = windowAtIndex(lastClosedWindowIndex(args.today));
   if (!args.to || args.to > lastClosed.to) args.to = lastClosed.to;

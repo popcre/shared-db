@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "migration_version": "20261009035313",
+  "migration_version": "20261009054834",
   "migration_sha256": "6ad844363430bb01d2ff627e5fca2125d1f496589bcd3a9a5d0f3069862571c7",
   "checks": [
     {

@@ -150,23 +150,7 @@ begin
   alter table coldlion.window_ledger set schema coldlion_sandbox_copy_20260929;
 
   -- Read-only archive: no API role keeps any privilege on the moved tables.
-  revoke all on coldlion_sandbox_copy_20260929.change_log from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.customer from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.item_detail from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.item_header from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.item_merch_group from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.merch_group_detail from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.merch_group_header from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.order_history_component from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.order_history_line from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.prod_history_component from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.prod_history_last_lookup from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.prod_history_line from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.salesperson from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.season from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.sync_run from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.vendor from public, anon, authenticated;
-  revoke all on coldlion_sandbox_copy_20260929.window_ledger from public, anon, authenticated;
+  revoke all on all tables in schema coldlion_sandbox_copy_20260929 from public, anon, authenticated;
 
   if exists (select 1 from pg_class where relnamespace = 'coldlion'::regnamespace and relkind in ('r', 'p', 'v', 'm')) then
     raise exception '#3869/20261009191951 post-check: relations remain in coldlion after the move';

@@ -36,7 +36,9 @@
   "assumptions_resolved": [
     "Prospective contracts generations1\u21922\u21923 were published and read back before each expanded implementation; no backdated authority.",
     "Unchanged exact808line OrderList migration installed through repaired native helper in isolated PostgreSQL15: ledger_row=1,73 complete statements. No hosted preview or production writes.",
-    "Only the exact pinned OrderList entry opts into stripping its outer envelope; existing entries retain their old refusal."
+    "Only the exact pinned OrderList entry opts into stripping its outer envelope; existing entries retain their old refusal.",
+    "Native scripts/agent-work-contract-git-evidence.mjs requires head_sha to identify the implementation commit, which must be an ancestor of PR head; only these two keyed evidence files may follow it. Implementation04b0fe32 and reviewed97971862 differ only in this contract/completion pair. Native git evidence validation passed on97971862; replacing head_sha with the evidence commit would incorrectly include evidence paths in files_changed and create a self-reference.",
+    "PostgreSQL proofs were rerun on reviewed head97971862 at9:56AM EDT October9: 10 executed tests PASS in the existing isolated PG15 container. Root logs provided to the new reviewer; hosted writes remain zero. Ephemeral database CI37938568503 also passed at this exact reviewed head."
   ],
   "stop_conditions_hit": []
 }

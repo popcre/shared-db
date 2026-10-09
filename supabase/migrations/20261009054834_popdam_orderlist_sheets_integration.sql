@@ -429,7 +429,7 @@ left join lateral (
     string_agg(distinct customer_po_number,E'\n' order by customer_po_number) as customer_po_number,
     string_agg(distinct customer_suffix,E'\n' order by customer_suffix) as customer_suffix,
     jsonb_agg(jsonb_build_object('line_id',order_line_id,'sku',sku,'assortment',assortment_id,'quantity',quantity_ordered,
-      'case_pack',case_pack,'cases',cases_reported,'order_depth_inches',order_depth_inches,'ship_to',ship_to,'start_ship_date',start_ship_date,'cancel_date',cancel_date,'customer_po_number',customer_po_number,'cases_error',cases_error,'description',item_description,'license_status',master_data_license_status,'test_report',test_report,
+      'case_pack',case_pack,'cases',cases_reported,'order_depth_inches',order_depth_inches,'ship_to',ship_to,'start_ship_date',start_ship_date,'cancel_date',cancel_date,'customer_po_number',customer_po_number,'cases_error',cases_error,'description',item_description,'license_status',master_data_license_status,'workflow_source',product_workflow_source,'test_report',test_report,
       'professional_photos',professional_photos,'parent_cases',assortment_parent_cases,'parent_quantity',assortment_parent_quantity,'sample_depth_raw',sample_depth_raw,'sample_depth_source_row',sample_depth_source_row,'contractual_sample_reorder',contractual_sample_reorder,'snapshot_test_report',snapshot_test_report,'snapshot_professional_photos',snapshot_professional_photos,'snapshot_contractual_sample_reorder',snapshot_contractual_sample_reorder,'sample_depth_inches',sample_depth_inches,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
       order by assortment_id nulls last,assortment_component_ordinal nulls last,line_number,order_line_id) as components
   from scoped

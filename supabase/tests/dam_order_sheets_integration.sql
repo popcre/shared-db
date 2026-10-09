@@ -29,6 +29,8 @@ begin
   if actual is distinct from 'Confirmed Booking' then raise exception 'ETD must outrank booking state'; end if;
   actual:=dam.orderlist_po_status('POE','TEST-SKU',null,12,6,true,'Booked','2026-01-01',null,null,'TEST-PO');
   if actual is distinct from 'Close tracking' then raise exception 'Closed tracking must outrank shipping states'; end if;
+  if not exists(select 1 from pg_proc where oid='dam.orderlist_product_facts(uuid,text)'::regprocedure and proretset and prosqlbody is not null and not prosecdef and proconfig is null) then
+    raise exception 'Product facts must keep its bound, invoker SQL table-function body'; end if;
   if has_function_privilege('anon','public.update_dam_order_tracking(uuid,jsonb)','execute')
     or has_table_privilege('anon','dam.dam_order_tracking','select') then
     raise exception 'Anonymous access is forbidden';
@@ -67,7 +69,9 @@ begin
     or r.snapshot_test_report is distinct from 'true' or r.snapshot_professional_photos is distinct from 'false' then raise exception 'Live Master Data outputs or computed cases failed'; end if;
   select * into strict tracking from dam.dam_order_tracking where order_id=r.order_id;
   if tracking.total_cases is distinct from 4 or tracking.line_count is distinct from 2 or tracking.missing_test_reports is distinct from 2
-    or tracking.missing_photos is distinct from 1 or tracking.warehouse_date is distinct from date '2026-04-15' then
+    or tracking.missing_photos is distinct from 1
+    or (select c->>'workflow_source' from jsonb_array_elements(tracking.components) c where c->>'sku'='TEST-INTEGRATION-SKU') is distinct from 'master_data'
+    or tracking.warehouse_date is distinct from date '2026-04-15' then
     raise exception 'PO aggregate duplicated components or lost missing-value warnings';
   end if;
   -- Clearing a current status must not resurrect the imported value.

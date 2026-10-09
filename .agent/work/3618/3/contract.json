@@ -1,0 +1,55 @@
+{
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/claim-author-transfer.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    ".agent/work/3618/3/contract.json",
+    ".agent/work/3618/3/completion.json"
+  ],
+  "assumptions": [
+    "Only expired-unconfirmed merged claims qualify; active and relinquished merged claims refuse.",
+    "Original source/merge/objects/reservations and prior refusals remain immutable.",
+    "Independent abandonment audit, current chat authorization, clean successor and no stages/conflicts remain required."
+  ],
+  "base_sha": "4cbdd26ad0120e33f838df57e34470e0de49e58f",
+  "branch": "codex/3618-expired-merged-adoption",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex root chat01a11d57-118f-7f50-9c36-432c72e819d9",
+  "evidence_parent": {
+    "work_issue": 3618,
+    "generation": 2,
+    "contract_sha256": "0ab40253327d7b2eb97824986ff288646484c603640d0617bd283de97b89bca3"
+  },
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/claim-author-transfer.test.mjs",
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    ".agent/work/3618/3/contract.json",
+    ".agent/work/3618/3/completion.json"
+  ],
+  "generation": 3,
+  "goal": "Guarded operator adoption for expired merged-stranded author claims without an active-lease override.",
+  "prohibited_actions": [
+    "No live claim adoption, schema writes, preview, merge or production.",
+    "No active-lease override, reviewer replacement or erased substantive refusal."
+  ],
+  "required_checks": [
+    "node --test scripts/claim-author-transfer.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 2,
+  "stop_conditions": [
+    "Stop if the exact claim, PR, version reservation, audit, chat marker, or operator attestation cannot be proved",
+    "Stop if a target worktree identity collides or the immutable adoption record cannot be read back",
+    "Stop before any live claim transfer pending a separate exact owner decision"
+  ],
+  "work_issue": 3618,
+  "work_type": "repo-maintenance",
+  "worker": "Codex subagent chat01a11d57-8ede-7483-8d13-d9dd718113ad",
+  "worktree": "/home/ahazan/.codex/worktrees/3618-expired-merged-adoption/shared-db"
+}

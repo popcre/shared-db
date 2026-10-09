@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4130,
+  "outcome": "ready-for-merge",
+  "pr": 4131,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4130/2",
+  "contract_sha256": "b77cc308e490f2c1ccbe973516e8ef916f31115da58eca0de94384da6bad16e6",
+  "head_sha": "d3089f5b33a8944e01bb8bd59297fe877490f631",
+  "base_sha": "23e3901ddbd4d60f565602ef09ec6014baa4d9bf",
+  "files_changed": [
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_production_catalog_verification.py",
+      "exit_code": 0,
+      "evidence": "All 238 tests passed; new regression proves 268 unique exact column/type checks, required security assertions, and named-contract SQL generation."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "70 existing sidecars verified; all mandatory scans passed with regenerated exact detector hash."
+    },
+    {
+      "command": "PATH=<session python3 venv>/bin:$PATH node --test scripts/throughput-guard/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "All72 passed. Initial11 local failures were absent python executable; isolated Python3 virtualenv restored test runtime without changing OS tools."
+    }
+  ],
+  "assumptions_resolved": [
+    "Copied the already independently reviewed exact verifier expression from structural PR4118 without changing its bytes; no migrations, schemas or rows changed.",
+    "Contract published prospectively before implementation commit.",
+    "Generation2 prospectively declared baseline regeneration; all historical marker rows retained exactly. No initial failed CI or local results are claimed passed."
+  ],
+  "stop_conditions_hit": []
+}

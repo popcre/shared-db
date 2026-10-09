@@ -119,7 +119,11 @@ end;
 $tests$;
 
 -- The write guards must actually fire, not merely be present in source text.
+-- Test-only synthetic account: use the repository's invitation-gate fixture pattern.
+-- Restore normal trigger behavior immediately, before any access/write assertion.
+set local session_replication_role=replica;
 insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000001','order-integration-fixture@example.invalid') on conflict(id) do nothing;
+set local session_replication_role=origin;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
 set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":[]}}';
 do $tests$
